@@ -659,7 +659,9 @@ std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   return unreachable_roots;
 }
 
-Status HloComputation::Accept(DfsHloVisitor* visitor) const {
+template <typename HloInstructionPtr>
+Status HloComputation::Accept(
+    DfsHloVisitorBase<HloInstructionPtr>* visitor) const {
   // Visit unreachable roots. Beware that the visitor might delete the currently
   // visited root, which would invalidate iterators if the unreachable roots
   // weren't computed ahead of time.
@@ -671,6 +673,10 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
   // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
 }
+
+// Explicit instantiations.
+template Status HloComputation::Accept(DfsHloVisitor* visitor) const;
+template Status HloComputation::Accept(ConstDfsHloVisitor* visitor) const;
 
 Status HloComputation::AcceptWithOperandOrder(
     DfsHloVisitor* visitor,
@@ -719,8 +725,14 @@ Status HloComputation::AcceptOrdered(
 }
 
 Status HloComputation::Accept(
-    const FunctionVisitor::VisitorFunction& visitor_func) const {
+    const std::function<Status(HloInstruction*)>& visitor_func) {
   FunctionVisitor visitor(visitor_func);
+  return this->Accept(&visitor);
+}
+
+Status HloComputation::Accept(
+    const std::function<Status(const HloInstruction*)>& visitor_func) const {
+  ConstFunctionVisitor visitor(visitor_func);
   return this->Accept(&visitor);
 }
 

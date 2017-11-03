@@ -271,7 +271,8 @@ class HloComputation {
   // via the root. The root instruction of the computation is visited last, and
   // the visitor's FinishVisit method is called once upon completion (with the
   // root instruction as the argument).
-  Status Accept(DfsHloVisitor* visitor) const;
+  template <typename HloInstructionPtr>
+  Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor) const;
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -286,7 +287,9 @@ class HloComputation {
                        const std::vector<const HloInstruction*>& order) const;
 
   // Same as Accept() above, but the visitor is given as a function.
-  Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
+  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
+  Status Accept(
+      const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Returns a deep copy of this computation including all instructions.
   // If the module pointer is not nullptr, it will be the module where

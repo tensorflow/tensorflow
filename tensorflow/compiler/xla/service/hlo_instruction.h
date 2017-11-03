@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
@@ -459,8 +458,15 @@ class HloInstruction {
   // reachable via control dependencies will not be visited, and the postorder
   // will not take control dependencies into account. It is as if the control
   // dependencies didn't exist in the graph at all.
-  Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true,
+  template <typename HloInstructionPtr>
+  Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
+                bool call_finish_visit = true,
                 bool ignore_control_predecessors = false);
+  Status Accept(ConstDfsHloVisitor* visitor, bool call_finish_visit = true,
+                bool ignore_control_predecessors = false) const {
+    return const_cast<HloInstruction*>(this)->Accept(
+        visitor, call_finish_visit, ignore_control_predecessors);
+  }
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -473,7 +479,9 @@ class HloInstruction {
 
   // Performs a postorder DFS visit using this node as the root. Calls the given
   // visitor function at each instruction.
-  Status Accept(const FunctionVisitor::VisitorFunction& visitor_func);
+  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
+  Status Accept(
+      const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Visits all instructions rooted at this instruction using the given visitor
   // in the given order. 'order' must contain at least the set of instructions
@@ -486,7 +494,8 @@ class HloInstruction {
                        const std::vector<const HloInstruction*>& order);
 
   // Visit this instruction and only this instruction with the given visitor.
-  Status Visit(DfsHloVisitor* visitor);
+  template <typename HloInstructionPtr>
+  Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
 
   // Returns the literal associated with this instruction.
   //
