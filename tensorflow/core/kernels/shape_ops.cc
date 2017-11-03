@@ -355,7 +355,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                               .TypeConstraint<type>("T")     \
                               .TypeConstraint<int32>("Tdim") \
                               .HostMemory("dim"),            \
-                          ExpandDimsOp<int32>);\
+                          ExpandDimsOp<int32>);              \
   REGISTER_KERNEL_BUILDER(Name("ExpandDims")                 \
                               .Device(DEVICE_GPU)            \
                               .TypeConstraint<type>("T")     \
@@ -391,7 +391,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                               .TypeConstraint<type>("T")     \
                               .TypeConstraint<int32>("Tdim") \
                               .HostMemory("dim"),            \
-                          ExpandDimsOp<int32>);\
+                          ExpandDimsOp<int32>);              \
   REGISTER_KERNEL_BUILDER(Name("ExpandDims")                 \
                               .Device(DEVICE_SYCL)           \
                               .TypeConstraint<type>("T")     \

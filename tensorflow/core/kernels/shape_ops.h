@@ -145,7 +145,7 @@ class SizeOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
-template<typename Tdim>
+template <typename Tdim>
 class ExpandDimsOp : public OpKernel {
  public:
   explicit ExpandDimsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -235,10 +235,10 @@ class SqueezeOp : public OpKernel {
       if (!wrapped_squeeze_dims.empty()) {
         if (wrapped_squeeze_dims.count(i) > 0) {
           OP_REQUIRES(ctx, existing_dim == 1,
-                      errors::InvalidArgument(
-                          "Tried to explicitly squeeze "
-                          "dimension ",
-                          i, " but dimension was not 1: ", existing_dim));
+                      errors::InvalidArgument("Tried to explicitly squeeze "
+                                              "dimension ",
+                                              i, " but dimension was not 1: ",
+                                              existing_dim));
         } else {
           // This dimension is not being squeezed.
           new_shape.push_back(existing_dim);
