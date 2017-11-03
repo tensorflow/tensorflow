@@ -253,7 +253,7 @@ def abs(x, name=None):
   """
   with ops.name_scope(name, "Abs", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
-      if x.values.dtype in (dtypes.complex64, dtypes.complex128):
+      if x.values.dtype.is_complex:
         x_abs = gen_math_ops._complex_abs(
             x.values, Tout=x.values.dtype.real_dtype, name=name)
         return sparse_tensor.SparseTensor(
@@ -263,7 +263,7 @@ def abs(x, name=None):
           indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
     else:
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype in (dtypes.complex64, dtypes.complex128):
+      if x.dtype.is_complex:
         return gen_math_ops._complex_abs(x, Tout=x.dtype.real_dtype, name=name)
       return gen_math_ops._abs(x, name=name)
 

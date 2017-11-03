@@ -354,7 +354,7 @@ def size(input, name=None, out_type=dtypes.int32):
 
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
-    
+
   @compatibility(numpy)
   Equivalent to np.size()
   @end_compatibility
@@ -1373,7 +1373,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
   with ops.name_scope(name, "transpose", [a]) as name:
     transpose_fn = (
         gen_array_ops._conjugate_transpose
-        if conjugate else gen_array_ops.transpose)
+        if (conjugate and a.dtype.is_complex) else gen_array_ops.transpose)
     if perm is None:
       rank = gen_array_ops.rank(a)
       perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
