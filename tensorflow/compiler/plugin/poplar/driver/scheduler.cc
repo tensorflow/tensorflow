@@ -35,6 +35,10 @@ public:
 
   int64 FindDepths(HloInstruction* inst) {
     int64 cost = 0;
+    if (distance.find(inst) != distance.end()) {
+      return distance.at(inst);
+    }
+    
     for (auto o : inst->operands()) {
       int64 c = FindDepths(o);
       cost = std::max(cost, c);
