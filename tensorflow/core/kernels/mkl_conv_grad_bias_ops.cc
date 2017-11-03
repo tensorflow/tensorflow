@@ -19,6 +19,10 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
+// Disabling MKLDNN layout propagation in MKL kernels that do not support MKLDNN
+// layout propagation yet. Remove this later.
+#undef INTEL_MKL_DNN
+
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
