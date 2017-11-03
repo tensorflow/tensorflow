@@ -27,6 +27,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 
+
 CUDNN_RNN_UNIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION
 CUDNN_RNN_BIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -43,6 +44,9 @@ CUDNN_RNN_RELU_PARAMS_PER_LAYER = cudnn_rnn_ops.CUDNN_RNN_RELU_PARAMS_PER_LAYER
 CUDNN_INPUT_LINEAR_MODE = cudnn_rnn_ops.CUDNN_INPUT_LINEAR_MODE
 CUDNN_INPUT_SKIP_MODE = cudnn_rnn_ops.CUDNN_INPUT_SKIP_MODE
 CUDNN_INPUT_AUTO_MODE = cudnn_rnn_ops.CUDNN_INPUT_AUTO_MODE
+
+
+__all__ = ["CudnnLSTM", "CudnnGRU", "CudnnRNNTanh", "CudnnRNNRelu"]
 
 
 class _CudnnRNN(base_layer.Layer):
@@ -454,6 +458,8 @@ class _CudnnRNN(base_layer.Layer):
         weights=cu_weights,
         biases=cu_biases,
         input_mode=self._input_mode,
+        seed=self._seed,
+        dropout=self._dropout,
         direction=self._direction)
 
   def _forward(self, inputs, h, c, opaque_params, training):

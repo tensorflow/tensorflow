@@ -95,6 +95,7 @@ tf_custom_op_py_library(
     name = "cudnn_rnn_py",
     srcs = [
         "__init__.py",
+        "python/layers/__init__.py",
         "python/layers/cudnn_rnn.py",
     ],
     dso = [
