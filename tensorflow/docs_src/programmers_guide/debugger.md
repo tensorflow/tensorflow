@@ -149,12 +149,13 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `pt <tensor>[slicing]` | Print a subarray of tensor, using [numpy](http://www.numpy.org/)-style array slicing. | `pt hidden/Relu:0[0:50,:]` |
 | | `-a` | Print the entirety of a large tensor, without using ellipses. (May take a long time for large tensors.) | `pt -a hidden/Relu:0[0:50,:]` |
 | | `-r <range>` | Highlight elements falling into specified numerical range. Multiple ranges can be used in conjunction. | `pt hidden/Relu:0 -a -r [[-inf,-1],[1,inf]]` |
+| | `-n <number>` | 0-based dump number for specifying which dump to print. Required for tensors with multiple dumps. | `pt -n 0 hidden/Relu:0` |
 | | `-s` | Include a summary of the numeric values of the tensor (applicable only to non-empty tensors with Boolean and numeric types such as `int*` and `float*`.) | `pt -s hidden/Relu:0[0:50,:]` |
 | **`@[coordinates]`** | | Navigate to specified element in `pt` output. | `@[10,0]` or `@10,0` |
 | **`/regex`** | |  [less](https://linux.die.net/man/1/less)-style search for given regular expression. | `/inf` |
 | **`/`** | | Scroll to the next line with matches to the searched regex (if any). | `/` |
 | **`pf`** | | **Print a value in the feed_dict to `Session.run`.** | |
-| | `pf <feed_tensor_name>` | Print the value of the feed. Also note that the `pf` command has the `-a`, `-r` and `-s` flags (not listed below), which have the same syntax and semantics as the identically-named flags of `pt`. | `pf input_xs:0` |
+| | `pf <feed_tensor_name>` | Print the value of the feed. Also note that the `pf` command has the `-a`, `-r`, `-n` and `-s` flags (not listed below), which have the same syntax and semantics as the identically-named flags of `pt`. | `pf input_xs:0` |
 | **eval** | | **Evaluate arbitrary Python and numpy expression.** | |
 | | `eval <expression>` | Evaluate a Python / numpy expression, with numpy available as `np` and debug tensor names enclosed in backticks. | ``eval "np.matmul((`output/Identity:0` / `Softmax:0`).T, `Softmax:0`)"`` |
 | | `-a` | Print a large-sized evaluation result in its entirety, i.e., without using ellipses. | ``eval -a 'np.sum(`Softmax:0`, axis=1)'`` |
@@ -166,10 +167,12 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-r` | List the inputs to node, recursively (the input tree.) | `li -r hidden/Relu:0` |
 | | `-d <max_depth>` | Limit recursion depth under the `-r` mode. | `li -r -d 3 hidden/Relu:0` |
 | | `-c` | Include control inputs. | `li -c -r hidden/Relu:0` |
+| | `-t` | Show op types of input nodes. | `li -t -r hidden/Relu:0` |
 | **`lo`** | | **List output recipients of node** | |
 | | `-r` | List the output recipients of node, recursively (the output tree.) | `lo -r hidden/Relu:0` |
 | | `-d <max_depth>` | Limit recursion depth under the `-r` mode. | `lo -r -d 3 hidden/Relu:0` |
 | | `-c` | Include recipients via control edges. | `lo -c -r hidden/Relu:0` |
+| | `-t` | Show op types of recipient nodes. | `lo -t -r hidden/Relu:0` |
 | **`ls`** | | **List Python source files involved in node creation.** | |
 | | `-p <path_pattern>` | Limit output to source files matching given regular-expression path pattern. | `ls -p .*debug_mnist.*` |
 | | `-n` | Limit output to node names matching given regular-expression pattern. | `ls -n Softmax.*` |
