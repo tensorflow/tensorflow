@@ -1014,6 +1014,25 @@ class LMDBReaderTest(test.TestCase):
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
 
+  def testReadFromSameFile(self):
+    with self.test_session() as sess:
+      reader1 = io_ops.LMDBReader(name="test_read_from_same_file1")
+      reader2 = io_ops.LMDBReader(name="test_read_from_same_file2")
+      filename_queue = input_lib.string_input_producer([self.db_path],
+                                                       num_epochs=None)
+      key1, value1 = reader1.read(filename_queue)
+      key2, value2 = reader2.read(filename_queue)
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
+      for i in range(3):
+        for j in range(10):
+          k1, v1, k2, v2 = sess.run([key1, value1, key2, value2])
+          self.assertAllEqual(compat.as_bytes(k1), compat.as_bytes(k2))
+          self.assertAllEqual(compat.as_bytes(v1), compat.as_bytes(v2))
+      coord.request_stop()
+      coord.join(threads)
+
   def testReadFromFolder(self):
     with self.test_session() as sess:
       reader = io_ops.LMDBReader(name="test_read_from_folder")
