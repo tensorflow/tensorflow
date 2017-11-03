@@ -723,7 +723,9 @@ y: a tensor of the same shape and type as x but filled with zeros.
 REGISTER_OP("OnesLike")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .Attr(
+        "T: {float, double, int8, uint8, int16, uint16, int32, int64, "
+        "complex64, complex128, bool}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns a tensor of ones with the same shape and type as x.
@@ -4902,10 +4904,10 @@ with the range of qint8.
 If the mode is 'MIN_FIRST', then this approach is used:
 
 ```
-number_of_steps = 1 << (# of bits in T)
-range_adjust = number_of_steps / (number_of_steps - 1)
+num_discrete_values = 1 << (# of bits in T)
+range_adjust = num_discrete_values / (num_discrete_values - 1)
 range = (range_max - range_min) * range_adjust
-range_scale = number_of_steps / range
+range_scale = num_discrete_values / range
 quantized = round(input * range_scale) - round(range_min * range_scale) +
   numeric_limits<T>::min()
 quantized = max(quantized, numeric_limits<T>::min())
@@ -5017,10 +5019,10 @@ each value by 128 prior to casting.
 If the mode is 'MIN_FIRST', then this approach is used:
 
 ```c++
-number_of_steps = 1 << (# of bits in T)
-range_adjust = number_of_steps / (number_of_steps - 1)
+num_discrete_values = 1 << (# of bits in T)
+range_adjust = num_discrete_values / (num_discrete_values - 1)
 range = (range_max - range_min) * range_adjust
-range_scale = range / number_of_steps
+range_scale = range / num_discrete_values
 const double offset_input = static_cast<double>(input) - lowest_quantized;
 result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
 ```

@@ -46,8 +46,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
       }
       // Create function type for the function.
       llvm::FunctionType* function_type = llvm::FunctionType::get(
-          llvm_ir::PrimitiveTypeToIrType(element_type, ir_builder_),
-          llvm_ir::PrimitiveTypeToIrType(element_type, ir_builder_),
+          llvm_ir::PrimitiveTypeToIrType(element_type, module_),
+          llvm_ir::PrimitiveTypeToIrType(element_type, module_),
           /*isVarArg=*/false);
       // Create function declaration for 'tanhf'.
       llvm::Function* function =

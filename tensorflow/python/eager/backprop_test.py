@@ -401,6 +401,13 @@ class BackpropTest(test.TestCase):
         backprop.gradients_function(part)(constant_op.constant(1.0))[0],
         2.0)
 
+  def testReturnSameThing(self):
+
+    def f(x):
+      return x, 2 * x
+
+    self.assertAllEqual(backprop.gradients_function(f)(1.0)[0], 3.0)
+
   def testExceptionSafety(self):
 
     def f(unused_x):
@@ -568,6 +575,39 @@ class BackpropTest(test.TestCase):
       for (grad, var) in grads_and_vars:
         var.assign_sub(lr*grad)
     self.assertAllEqual(losses, [4.0, 3., 2., 1., 0.])
+
+  def testCustomGradientIdentity(self):
+
+    @custom_gradient.custom_gradient
+    def my_identity(x):
+
+      def grad(dresult):
+        return [2 * dresult]
+
+      return x, grad
+
+    self.assertAllEqual(backprop.gradients_function(my_identity)(1.0)[0], 2.0)
+
+  def testDifferentiatingFunctionThatReturnsNone(self):
+
+    def fn(x, y):
+      result = x*y  # pylint: disable=unused-variable
+
+    x = constant_op.constant(1)
+    y = constant_op.constant(2)
+
+    loss_grads_fn = backprop.implicit_val_and_grad(fn)
+    with self.assertRaisesRegexp(
+        ValueError, 'Cannot differentiate a function that returns None; '
+        'did you forget to return a value from fn?'):
+      loss_grads_fn(x, y)
+
+    val_and_grads_fn = backprop.val_and_grad_function(fn)
+    with self.assertRaisesRegexp(
+        ValueError, 'Cannot differentiate a function that returns None; '
+        'did you forget to return a value from fn?'):
+      val_and_grads_fn(x, y)
+
 
 if __name__ == '__main__':
   test.main()

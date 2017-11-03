@@ -119,13 +119,13 @@ class Variable(object):
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
 
-  @compatiblity(eager)
+  @compatibility(eager)
   `tf.Variable` is not compatible with eager execution.  Use
-  `tfe.Variable` instead which is compatable with both eager execution
+  `tfe.Variable` instead which is compatible with both eager execution
   and graph construction.  See [the TensorFlow Eager Execution
   guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
   for details on how variables work in eager execution.
-  @end_compatiblity
+  @end_compatibility
   """
 
   def __init__(self,
@@ -197,6 +197,14 @@ class Variable(object):
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
       RuntimeError: If eager execution is enabled.
+
+    @compatibility(eager)
+    `tf.Variable` is not compatible with eager execution.  Use
+    `tfe.Variable` instead which is compatable with both eager execution
+    and graph construction.  See [the TensorFlow Eager Execution
+    guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
+    for details on how variables work in eager execution.
+    @end_compatibility
     """
     if not context.in_graph_mode():
       raise RuntimeError("tf.Variable not supported in Eager mode. "
@@ -1053,7 +1061,16 @@ class Variable(object):
 
 
 class PartitionedVariable(object):
-  """A container for partitioned `Variable` objects."""
+  """A container for partitioned `Variable` objects.
+
+  @compatiblity(eager) `tf.PartitionedVariable` is not compatible with
+  eager execution.  Use `tfe.Variable` instead which is compatable
+  with both eager execution and graph construction.  See [the
+  TensorFlow Eager Execution
+  guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
+  for details on how variables work in eager execution.
+  @end_compatiblity
+  """
 
   class PartitionedVariableIterator(object):
     """An iterator that allows accessing the underlying `Variable` objects.
@@ -1102,10 +1119,11 @@ class PartitionedVariable(object):
         `partitions` is not a list.
       ValueError: If `variable_list` is empty, or the `Variable` shape
         information does not match `shape`, or `partitions` has invalid values.
-      RuntimeError: If created in EAGER mode.
+      RuntimeError: If eager execution is enabled
     """
     if not context.in_graph_mode():
-      raise RuntimeError("PartitionedVariable not supported in Eager mode.")
+      raise RuntimeError("tf.PartitionedVariable not supported in "
+                         "eager mode. Please use tfe.Variable instead")
     if not isinstance(variable_list, (list, tuple)):
       raise TypeError(
           "variable_list is not a list or tuple: %s" % variable_list)

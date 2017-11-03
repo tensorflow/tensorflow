@@ -82,7 +82,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:util",
@@ -190,7 +189,8 @@ py_test(
     deps = [
         ":logit_fns",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:session",
         "//tensorflow/python/estimator:model_fn",
     ],
 )

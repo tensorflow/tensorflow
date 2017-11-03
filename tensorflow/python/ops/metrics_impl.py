@@ -52,10 +52,14 @@ def _local_variable(initial_value, validate_shape=True, name=None):
 
 
 def _remove_squeezable_dimensions(predictions, labels, weights):
-  """Internal version of `remove_squeezable_dimensions` which handles weights.
+  """Squeeze or expand last dim if needed.
 
-  Squeezes `predictions` and `labels` if their rank differs by 1.
-  Squeezes `weights` if its rank is 1 more than the new rank of `predictions`
+  Squeezes last dim of `predictions` or `labels` if their rank differs by 1
+  (using confusion_matrix.remove_squeezable_dimensions).
+  Squeezes or expands last dim of `weights` if its rank differs by 1 from the
+  new rank of `predictions`.
+
+  If `weights` is scalar, it is kept scalar.
 
   This will use static shape if available. Otherwise, it will add graph
   operations, which could result in a performance hit.
@@ -63,12 +67,12 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
   Args:
     predictions: Predicted values, a `Tensor` of arbitrary dimensions.
     labels: Optional label `Tensor` whose dimensions match `predictions`.
-    weights: Optional weight `Tensor`. It will be squeezed if its rank is 1
-      more than the new rank of `predictions`
+    weights: Optional weight scalar or `Tensor` whose dimensions match
+      `predictions`.
 
   Returns:
-    Tuple of `predictions`, `labels` and `weights`, possibly with the last
-    dimension squeezed.
+    Tuple of `predictions`, `labels` and `weights`. Each of them possibly has
+    the last dimension squeezed, `weights` could be extended by one dimension.
   """
   predictions = ops.convert_to_tensor(predictions)
   if labels is not None:

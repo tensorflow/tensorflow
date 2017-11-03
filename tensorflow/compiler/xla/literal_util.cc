@@ -204,6 +204,8 @@ Status Literal::Copy(const Literal& src_literal,
       return *Literal::CreateR0<float>(0);
     case F64:
       return *Literal::CreateR0<double>(0);
+    case C64:
+      return *Literal::CreateR0<complex64>(0);
     case PRED:
       return *Literal::CreateR0<bool>(false);
     case S16:
@@ -236,6 +238,8 @@ Status Literal::Copy(const Literal& src_literal,
       return *Literal::CreateR0<float>(1);
     case F64:
       return *Literal::CreateR0<double>(1);
+    case C64:
+      return *Literal::CreateR0<complex64>(1);
     case PRED:
       return *Literal::CreateR0<bool>(true);
     case S16:
@@ -271,6 +275,8 @@ Status Literal::Copy(const Literal& src_literal,
     case F64:
       return *Literal::CreateR0<double>(
           -std::numeric_limits<double>::infinity());
+    case C64:
+      LOG(FATAL) << "C64 element type has no minimum value";
     case PRED:
       return *Literal::CreateR0<bool>(false);
     case S16:

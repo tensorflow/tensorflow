@@ -582,8 +582,10 @@ def gradients(ys,
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
             if (not isinstance(out_grad, ops.Tensor) and
-                not out_grad) and _IsTrainable(op.outputs[i]):
-              # Only floating-point outputs get a zero gradient. Gradient
+                not out_grad) and ((not grad_fn and is_func_call) or
+                                   _IsTrainable(op.outputs[i])):
+              # Only trainable outputs or outputs for a function call that
+              # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
               # TODO(apassos) gradients of resource handles might be an
               # issue here because of zeros.
@@ -670,15 +672,15 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state):
         grad_state.pending_exits_count -= 1
         if grad_state.pending_exits_count == 0:
           # We now have all the exits so process them.
-          has_real_grad = False
+          has_not_none_grad = False
           for y in grad_state.deferred_exits:
             if _HasAnyNotNoneGrads(grads, y.op):
-              has_real_grad = True
+              has_not_none_grad = True
               queue.append(y.op)
             else:
               grad_state.unused_exits.append(y)
-          if has_real_grad:
-            # For an unused exit, if it has floating-point outputs, backprop
+          if has_not_none_grad:
+            # For an unused exit, if it has trainable outputs, backprop
             # a zero gradient. Otherwise, just ignore it.
             for y in grad_state.unused_exits:
               if _IsTrainable(y):

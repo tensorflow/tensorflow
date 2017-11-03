@@ -53,9 +53,10 @@ namespace gpu {
 IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                      IrEmitterContext* ir_emitter_context, bool is_nested)
     : ir_emitter_context_(ir_emitter_context),
-      ir_builder_(ir_emitter_context->llvm_module()->getContext()),
+      module_(ir_emitter_context->llvm_module()),
+      ir_builder_(module_->getContext()),
       bindings_(ir_emitter_context->hlo_module(),
-                &ir_emitter_context->buffer_assignment(), &ir_builder_,
+                &ir_emitter_context->buffer_assignment(), &ir_builder_, module_,
                 is_nested),
       hlo_module_config_(hlo_module_config) {
   ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
@@ -71,18 +72,17 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
     };
   }
   return EmitTargetElementLoop(
-      *hlo, GpuElementalIrEmitter(hlo_module_config_,
-                                  ir_emitter_context_->llvm_module(),
-                                  &ir_builder_, GetNestedComputer())
+      *hlo, GpuElementalIrEmitter(hlo_module_config_, module_, &ir_builder_,
+                                  GetNestedComputer())
                 .MakeElementGenerator(hlo, operand_to_generator));
 }
 
-Status IrEmitter::HandleConstant(HloInstruction* constant,
-                                 const Literal& literal) {
+Status IrEmitter::HandleConstant(HloInstruction* constant) {
+  const Literal& literal = constant->literal();
   llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, &ir_builder_);
+      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
   llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-      *ir_emitter_context_->llvm_module(), initializer->getType(),
+      *module_, initializer->getType(),
       /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage, initializer,
       /*Name=*/"");
   VLOG(2) << "HandleConstant: " << constant->ToString() << std::endl
@@ -106,8 +106,8 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element,
-                                        HloInstruction* operand) {
+Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
+  auto operand = get_tuple_element->operand(0);
   CHECK(bindings_.BoundToIrValue(*operand));
   bindings_.BindHloToIrValue(
       *get_tuple_element,
@@ -115,32 +115,29 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element,
           get_tuple_element->shape(), get_tuple_element->tuple_index(),
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
-          /*alignment=*/1, GetBasePointer(*operand), &ir_builder_));
+          /*alignment=*/1, GetBasePointer(*operand), &ir_builder_, module_));
   return Status::OK();
 }
 
-Status IrEmitter::HandleSort(HloInstruction* sort,
-                             HloInstruction* operand_instruction) {
+Status IrEmitter::HandleSort(HloInstruction*) {
   // TODO(b/26783907): Implement sort on GPU.
   return Unimplemented("sort");
 }
 
-Status IrEmitter::HandleSend(HloInstruction* send) {
+Status IrEmitter::HandleSend(HloInstruction*) {
   return Unimplemented("Send is not implemented on GPU");
 }
 
-Status IrEmitter::HandleRecv(HloInstruction* recv) {
+Status IrEmitter::HandleRecv(HloInstruction*) {
   return Unimplemented("Recv is not implemented on GPU");
 }
 
-Status IrEmitter::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   std::vector<llvm::Value*> base_ptrs;
-  for (const HloInstruction* operand : operands) {
+  for (const HloInstruction* operand : tuple->operands()) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
-  llvm_ir::EmitTuple(GetIrArray(*tuple), base_ptrs, &ir_builder_);
+  llvm_ir::EmitTuple(GetIrArray(*tuple), base_ptrs, &ir_builder_, module_);
   return Status::OK();
 }
 
@@ -321,15 +318,16 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
   return Status::OK();
 }
 
-Status IrEmitter::HandleSelect(HloInstruction* select, HloInstruction* pred,
-                               HloInstruction* on_true,
-                               HloInstruction* on_false) {
+Status IrEmitter::HandleSelect(HloInstruction* select) {
+  auto pred = select->operand(0);
+  auto on_true = select->operand(1);
+  auto on_false = select->operand(2);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
 
   if (ShapeUtil::IsTuple(select->shape())) {
     llvm_ir::EmitTupleSelect(GetIrArray(*select), GetIrArray(*pred),
                              GetBasePointer(*on_true),
-                             GetBasePointer(*on_false), &ir_builder_);
+                             GetBasePointer(*on_false), &ir_builder_, module_);
     return Status::OK();
   }
 
@@ -339,9 +337,9 @@ Status IrEmitter::HandleSelect(HloInstruction* select, HloInstruction* pred,
   return IrEmitter::DefaultAction(select);
 }
 
-Status IrEmitter::HandleDot(HloInstruction* dot,
-                            HloInstruction* lhs_instruction,
-                            HloInstruction* rhs_instruction) {
+Status IrEmitter::HandleDot(HloInstruction* dot) {
+  auto lhs_instruction = dot->operand(0);
+  auto rhs_instruction = dot->operand(1);
   const llvm_ir::IrArray& target_array = GetIrArray(*dot);
   const llvm_ir::IrArray& lhs_array = GetIrArray(*lhs_instruction);
   const llvm_ir::IrArray& rhs_array = GetIrArray(*rhs_instruction);
@@ -355,7 +353,26 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
         lhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
     llvm::Value* rhs_value =
         rhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
-    llvm::Value* result = ir_builder_.CreateFMul(lhs_value, rhs_value);
+    llvm::Value* result;
+    if (ShapeUtil::ElementIsComplex(lhs_shape)) {
+      auto real = [&](llvm::Value* x) {
+        return ir_builder_.CreateExtractValue(x, {0});
+      };
+      auto imag = [&](llvm::Value* x) {
+        return ir_builder_.CreateExtractValue(x, {1});
+      };
+      llvm::Value* real_result = ir_builder_.CreateFSub(
+          ir_builder_.CreateFMul(real(lhs_value), real(rhs_value)),
+          ir_builder_.CreateFMul(imag(lhs_value), imag(rhs_value)));
+      llvm::Value* imag_result = ir_builder_.CreateFAdd(
+          ir_builder_.CreateFMul(real(lhs_value), imag(rhs_value)),
+          ir_builder_.CreateFMul(imag(lhs_value), real(rhs_value)));
+      result = llvm::ConstantAggregateZero::get(lhs_array.GetElementLlvmType());
+      result = ir_builder_.CreateInsertValue(result, real_result, {0});
+      result = ir_builder_.CreateInsertValue(result, imag_result, {1});
+    } else {
+      result = ir_builder_.CreateFMul(lhs_value, rhs_value);
+    }
     target_array.EmitWriteArrayElement(/*index=*/{}, result, &ir_builder_);
     return Status::OK();
   }
@@ -411,8 +428,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
 
   // Initialize the accumulator in the preheader to zero.
   new llvm::StoreInst(
-      llvm::ConstantFP::get(accum_type, 0.0),  // The value stored.
-      accum_address,                           // The address.
+      llvm::Constant::getNullValue(lhs_array.GetElementLlvmType()),  // init 0
+      accum_address,  // The address.
       reduction_loop->GetPreheaderBasicBlock()
           ->getTerminator());  // The instruction this store is inserted before.
 
@@ -427,9 +444,27 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
       lhs_array.EmitReadArrayElement(lhs_index, &ir_builder_);
   llvm::Value* rhs_element =
       rhs_array.EmitReadArrayElement(rhs_index, &ir_builder_);
-  llvm::Value* product = ir_builder_.CreateFMul(lhs_element, rhs_element);
   llvm::Value* accum = ir_builder_.CreateLoad(accum_address);
-  llvm::Value* updated_accum = ir_builder_.CreateFAdd(accum, product);
+  llvm::Value* updated_accum;
+  if (ShapeUtil::ElementIsComplex(lhs_shape)) {
+#define REAL(x) ir_builder_.CreateExtractValue(x, {0})
+#define IMAG(x) ir_builder_.CreateExtractValue(x, {1})
+    llvm::Value* product_real = ir_builder_.CreateFSub(
+        ir_builder_.CreateFMul(REAL(lhs_element), REAL(rhs_element)),
+        ir_builder_.CreateFMul(IMAG(lhs_element), IMAG(rhs_element)));
+    llvm::Value* product_imag = ir_builder_.CreateFAdd(
+        ir_builder_.CreateFMul(REAL(lhs_element), IMAG(rhs_element)),
+        ir_builder_.CreateFMul(IMAG(lhs_element), REAL(rhs_element)));
+    updated_accum = ir_builder_.CreateInsertValue(
+        accum, ir_builder_.CreateFAdd(REAL(accum), product_real), {0});
+    updated_accum = ir_builder_.CreateInsertValue(
+        updated_accum, ir_builder_.CreateFAdd(IMAG(accum), product_imag), {1});
+#undef IMAG
+#undef REAL
+  } else {
+    llvm::Value* product = ir_builder_.CreateFMul(lhs_element, rhs_element);
+    updated_accum = ir_builder_.CreateFAdd(accum, product);
+  }
   ir_builder_.CreateStore(updated_accum, accum_address);
 
   // After the reduction loop exits, store the accumulator into the target
@@ -461,10 +496,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
   return Status::OK();
 }
 
-Status IrEmitter::HandleConvolution(HloInstruction* convolution,
-                                    HloInstruction* lhs_instruction,
-                                    HloInstruction* rhs_instruction,
-                                    const Window& window) {
+Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   if (ShapeUtil::HasZeroElements(convolution->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
@@ -484,17 +516,18 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                               HloInstruction* init_value,
-                               tensorflow::gtl::ArraySlice<int64> dimensions,
-                               HloComputation* function) {
+Status IrEmitter::HandleReduce(HloInstruction* reduce) {
+  auto arg = reduce->operand(0);
+  auto init_value = reduce->operand(1);
+  tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  HloComputation* function = reduce->to_apply();
   return EmitTargetElementLoop(
       *reduce,
       [=](const llvm_ir::IrArray::Index& index) -> StatusOr<llvm::Value*> {
         // Initialize an accumulator with init_value.
         llvm::AllocaInst* accumulator_addr =
             ir_builder_.CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
-                reduce->shape().element_type(), &ir_builder_));
+                reduce->shape().element_type(), module_));
         ir_builder_.CreateStore(
             ir_builder_.CreateLoad(GetBasePointer(*init_value)),
             accumulator_addr);
@@ -547,8 +580,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   for (HloInstruction* operand : fusion->operands()) {
     parameter_arrays.push_back(GetIrArray(*operand));
   }
-  GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
-                                          ir_emitter_context_->llvm_module(),
+  GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_,
                                           &ir_builder_, GetNestedComputer());
   FusedIrEmitter fused_emitter(parameter_arrays, &elemental_emitter);
   TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
@@ -565,23 +597,19 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
                                      GetBasePointer(*call));
 }
 
-Status IrEmitter::HandleCustomCall(
-    HloInstruction* custom_call,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece custom_call_target) {
+Status IrEmitter::HandleCustomCall(HloInstruction*) {
   return Unimplemented("custom-call");
 }
 
-Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
+Status IrEmitter::HandleInfeed(HloInstruction*) {
   return Unimplemented("Infeed is not supported on GPU (b/30467474).");
 }
 
-Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+Status IrEmitter::HandleOutfeed(HloInstruction*) {
   return Unimplemented("Outfeed is not supported on GPU (b/34359662).");
 }
 
-Status IrEmitter::HandleRng(HloInstruction* random,
-                            RandomDistribution /*distribution*/) {
+Status IrEmitter::HandleRng(HloInstruction* random) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : random->operands()) {
     operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
@@ -591,9 +619,8 @@ Status IrEmitter::HandleRng(HloInstruction* random,
   // Emits a single-threaded loop because the loop body generated by the element
   // generator for Rng can't be parallelized (b/32333178).
   return llvm_ir::LoopEmitter(
-             GpuElementalIrEmitter(hlo_module_config_,
-                                   ir_emitter_context_->llvm_module(),
-                                   &ir_builder_, GetNestedComputer())
+             GpuElementalIrEmitter(hlo_module_config_, module_, &ir_builder_,
+                                   GetNestedComputer())
                  .MakeElementGenerator(random, operand_to_generator),
              GetIrArray(*random), &ir_builder_)
       .EmitLoop(IrName(random));
@@ -634,7 +661,7 @@ StatusOr<llvm::Value*> IrEmitter::ComputeNestedElement(
     tensorflow::gtl::ArraySlice<llvm::Value*> parameter_elements) {
   llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
       llvm_ir::PrimitiveTypeToIrType(
-          computation.root_instruction()->shape().element_type(), &ir_builder_),
+          computation.root_instruction()->shape().element_type(), module_),
       "return_buffer", &ir_builder_);
   std::vector<llvm::Value*> parameter_buffers;
   for (llvm::Value* parameter_element : parameter_elements) {

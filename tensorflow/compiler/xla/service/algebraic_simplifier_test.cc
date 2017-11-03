@@ -433,6 +433,56 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that real(complex(r,i)) is simplified to r.
+TEST_F(AlgebraicSimplifierTest, RealOfComplex) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
+  HloInstruction* cplx = builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::ChangeElementType(r2f32, C64),
+                                   HloOpcode::kComplex, param0, param1));
+  HloInstruction* real = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kReal, cplx));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root, real);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that imag(complex(r,i)) is simplified to i.
+TEST_F(AlgebraicSimplifierTest, ImagOfComplex) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
+  HloInstruction* cplx = builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::ChangeElementType(r2f32, C64),
+                                   HloOpcode::kComplex, param0, param1));
+  HloInstruction* imag = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kImag, cplx));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root, imag);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param1);
+}
+
 // Test that get_element(make_tuple({A,B}),1) is simplified to B
 TEST_F(AlgebraicSimplifierTest, SelectMakeTuple) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});

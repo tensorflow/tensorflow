@@ -60,14 +60,10 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
     return DefaultAction(hlo);
   }
 
-  Status HandleClamp(HloInstruction* clamp, HloInstruction* /*min*/,
-                     HloInstruction* /*arg*/,
-                     HloInstruction* /*max*/) override {
+  Status HandleClamp(HloInstruction* clamp) override {
     return DefaultAction(clamp);
   }
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
+  Status HandleConcatenate(HloInstruction* concatenate) override {
     return DefaultAction(concatenate);
   }
   Status HandleConvert(HloInstruction* convert) override {
@@ -76,30 +72,20 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   Status HandleCopy(HloInstruction* copy) override {
     return DefaultAction(copy);
   }
-  Status HandleSelect(HloInstruction* select, HloInstruction* /*pred*/,
-                      HloInstruction* /*on_true*/,
-                      HloInstruction* /*on_false*/) override {
+  Status HandleSelect(HloInstruction* select) override {
     return DefaultAction(select);
   }
-  Status HandleDot(HloInstruction* dot, HloInstruction* /*lhs*/,
-                   HloInstruction* /*rhs*/) override {
-    return DefaultAction(dot);
-  }
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* /*lhs*/,
-                           HloInstruction* /*rhs*/,
-                           const Window& /*window*/) override {
+  Status HandleDot(HloInstruction* dot) override { return DefaultAction(dot); }
+  Status HandleConvolution(HloInstruction* convolution) override {
     return DefaultAction(convolution);
   }
   Status HandleCrossReplicaSum(HloInstruction* crs) override {
     return DefaultAction(crs);
   }
-  Status HandleCompare(HloInstruction* compare, HloOpcode /*opcode*/,
-                       HloInstruction* /*lhs*/,
-                       HloInstruction* /*rhs*/) override {
+  Status HandleCompare(HloInstruction* compare) override {
     return DefaultAction(compare);
   }
-  Status HandleRng(HloInstruction* random,
-                   RandomDistribution /*distribution*/) override {
+  Status HandleRng(HloInstruction* random) override {
     return DefaultAction(random);
   }
   Status HandleInfeed(HloInstruction* infeed) override {
@@ -108,20 +94,16 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   Status HandleOutfeed(HloInstruction* outfeed) override {
     return DefaultAction(outfeed);
   }
-  Status HandleReverse(HloInstruction* reverse,
-                       HloInstruction* /*operand*/) override {
+  Status HandleReverse(HloInstruction* reverse) override {
     return DefaultAction(reverse);
   }
-  Status HandleSort(HloInstruction* sort,
-                    HloInstruction* /*operand*/) override {
+  Status HandleSort(HloInstruction* sort) override {
     return DefaultAction(sort);
   }
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& /*literal*/) override {
+  Status HandleConstant(HloInstruction* constant) override {
     return DefaultAction(constant);
   }
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* /*operand*/) override {
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override {
     return DefaultAction(get_tuple_element);
   }
   Status HandleParameter(HloInstruction* parameter) override {
@@ -133,50 +115,27 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   Status HandleCall(HloInstruction* call) override {
     return DefaultAction(call);
   }
-  Status HandleCustomCall(
-      HloInstruction* custom_call,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/,
-      tensorflow::StringPiece /*custom_call_target*/) override {
+  Status HandleCustomCall(HloInstruction* custom_call) override {
     return DefaultAction(custom_call);
   }
-  Status HandleSlice(HloInstruction* slice,
-                     HloInstruction* /*operand*/) override {
+  Status HandleSlice(HloInstruction* slice) override {
     return DefaultAction(slice);
   }
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* /*operand*/,
-                            HloInstruction* /*start_indices*/) override {
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override {
     return DefaultAction(dynamic_slice);
   }
-  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
-                                  HloInstruction* /*operand*/,
-                                  HloInstruction* /*update*/,
-                                  HloInstruction* /*start_indices*/) override {
+  Status HandleDynamicUpdateSlice(
+      HloInstruction* dynamic_update_slice) override {
     return DefaultAction(dynamic_update_slice);
   }
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
+  Status HandleTuple(HloInstruction* tuple) override {
     return DefaultAction(tuple);
   }
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/,
-      HloComputation* /*function*/,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/)
-      override {
-    return DefaultAction(map);
-  }
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* /*arg*/,
-                      HloInstruction* /*init_value*/,
-                      tensorflow::gtl::ArraySlice<int64> /*dimensions*/,
-                      HloComputation* /*function*/) override {
+  Status HandleMap(HloInstruction* map) override { return DefaultAction(map); }
+  Status HandleReduce(HloInstruction* reduce) override {
     return DefaultAction(reduce);
   }
-  Status HandleReduceWindow(HloInstruction* reduce_window,
-                            HloInstruction* /*operand*/,
-                            const Window& /*window*/,
-                            HloComputation* /*function*/) override {
+  Status HandleReduceWindow(HloInstruction* reduce_window) override {
     return DefaultAction(reduce_window);
   }
   Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override {

@@ -28,7 +28,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
@@ -121,7 +120,7 @@ def _count_condition(values,
       or tuple.
   """
   check_ops.assert_type(values, dtypes.bool)
-  count = _create_local('count', shape=[])
+  count_ = _create_local('count', shape=[])
 
   values = math_ops.to_float(values)
   if weights is not None:
@@ -129,8 +128,8 @@ def _count_condition(values,
     with ops.control_dependencies((_assert_weights_rank(weights, values),)):
       values = math_ops.multiply(values, weights)
 
-  value_tensor = array_ops.identity(count)
-  update_op = state_ops.assign_add(count, math_ops.reduce_sum(values))
+  value_tensor = array_ops.identity(count_)
+  update_op = state_ops.assign_add(count_, math_ops.reduce_sum(values))
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, value_tensor)
@@ -223,7 +222,7 @@ def streaming_true_negatives(predictions,
   with variable_scope.variable_scope(name, 'true_negatives',
                                      (predictions, labels, weights)):
 
-    predictions, labels, weights = _remove_squeezable_dimensions(
+    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
         predictions=math_ops.cast(predictions, dtype=dtypes.bool),
         labels=math_ops.cast(labels, dtype=dtypes.bool),
         weights=weights)
@@ -449,7 +448,8 @@ def streaming_mean_tensor(values,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None, "Please switch to tf.metrics.accuracy. Note that the order "
+    "of the inputs of labels and predictions have been switched.")
 def streaming_accuracy(predictions,
                        labels,
                        weights=None,
@@ -654,7 +654,7 @@ def _true_negatives(labels,
   with variable_scope.variable_scope(name, 'true_negatives',
                                      (predictions, labels, weights)):
 
-    predictions, labels, weights = _remove_squeezable_dimensions(
+    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
         predictions=math_ops.cast(predictions, dtype=dtypes.bool),
         labels=math_ops.cast(labels, dtype=dtypes.bool),
         weights=weights)
@@ -715,7 +715,7 @@ def streaming_false_positive_rate(predictions,
   """
   with variable_scope.variable_scope(name, 'false_positive_rate',
                                      (predictions, labels, weights)):
-    predictions, labels, weights = _remove_squeezable_dimensions(
+    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
         predictions=math_ops.cast(predictions, dtype=dtypes.bool),
         labels=math_ops.cast(labels, dtype=dtypes.bool),
         weights=weights)
@@ -803,7 +803,7 @@ def streaming_false_negative_rate(predictions,
   """
   with variable_scope.variable_scope(name, 'false_negative_rate',
                                      (predictions, labels, weights)):
-    predictions, labels, weights = _remove_squeezable_dimensions(
+    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
         predictions=math_ops.cast(predictions, dtype=dtypes.bool),
         labels=math_ops.cast(labels, dtype=dtypes.bool),
         weights=weights)
@@ -896,7 +896,7 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
       if include not in all_includes:
         raise ValueError('Invaild key: %s.' % include)
 
-  predictions, labels, weights = _remove_squeezable_dimensions(
+  predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
       predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
@@ -1123,7 +1123,8 @@ def streaming_curve_points(labels=None,
 
     return points, update_op
 
-
+@deprecated(None, "Please switch to tf.metrics.auc. Note that the order of "
+    "the inputs of labels and predictions have been switched.")
 def streaming_auc(predictions,
                   labels,
                   weights=None,
@@ -1284,8 +1285,10 @@ def streaming_precision_recall_at_equal_thresholds(predictions,
             math_ops.cast(1.0, dtype=predictions.dtype),
             message='predictions must be in [0, 1]')
     ]):
-      predictions, labels, weights = _remove_squeezable_dimensions(
-          predictions=predictions, labels=labels, weights=weights)
+      predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
+          predictions=predictions,
+          labels=labels,
+          weights=weights)
 
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
@@ -1506,7 +1509,9 @@ def streaming_sensitivity_at_specificity(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(
+    None, "Please switch to tf.metrics.precision_at_thresholds. Note that the "
+    "order of of the inputs of labels and predictions have been switched.")
 def streaming_precision_at_thresholds(predictions,
                                       labels,
                                       thresholds,
@@ -1565,7 +1570,9 @@ def streaming_precision_at_thresholds(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(
+    None, "Please switch to tf.metrics.recall_at_thresholds. Note that the "
+    "order of of the inputs of labels and predictions have been switched.")
 def streaming_recall_at_thresholds(predictions,
                                    labels,
                                    thresholds,
@@ -1775,8 +1782,8 @@ def _at_k_name(name, k=None, class_id=None):
   return name
 
 
-@deprecated('2016-11-08', 'Please use `streaming_sparse_recall_at_k`, '
-            'and reshape labels from [batch_size] to [batch_size, 1].')
+@deprecated("2016-11-08", "Please use `streaming_sparse_recall_at_k`, "
+            "and reshape labels from [batch_size] to [batch_size, 1].")
 def streaming_recall_at_k(predictions,
                           labels,
                           k,
@@ -2306,7 +2313,7 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None, "Please switch to tf.metrics.mean.")
 def streaming_mean_absolute_error(predictions,
                                   labels,
                                   weights=None,
@@ -2597,10 +2604,10 @@ def streaming_covariance(predictions,
   """
   with variable_scope.variable_scope(name, 'covariance',
                                      (predictions, labels, weights)):
-    predictions, labels, weights = _remove_squeezable_dimensions(
+    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
         predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    count = _create_local('count', [])
+    count_ = _create_local('count', [])
     mean_prediction = _create_local('mean_prediction', [])
     mean_label = _create_local('mean_label', [])
     comoment = _create_local('comoment', [])  # C_A in update equation
@@ -2615,7 +2622,7 @@ def streaming_covariance(predictions,
       weighted_predictions = math_ops.multiply(predictions, weights)
       weighted_labels = math_ops.multiply(labels, weights)
 
-    update_count = state_ops.assign_add(count, batch_count)  # n_AB in eqn
+    update_count = state_ops.assign_add(count_, batch_count)  # n_AB in eqn
     prev_count = update_count - batch_count  # n_A in update equation
 
     # We update the means by Delta=Error*BatchCount/(BatchCount+PrevCount)
@@ -2659,15 +2666,15 @@ def streaming_covariance(predictions,
     update_comoment = state_ops.assign_add(comoment, delta_comoment)
 
     covariance = array_ops.where(
-        math_ops.less_equal(count, 1.),
+        math_ops.less_equal(count_, 1.),
         float('nan'),
-        math_ops.truediv(comoment, count - 1),
+        math_ops.truediv(comoment, count_ - 1),
         name='covariance')
     with ops.control_dependencies([update_comoment]):
       update_op = array_ops.where(
-          math_ops.less_equal(count, 1.),
+          math_ops.less_equal(count_, 1.),
           float('nan'),
-          math_ops.truediv(comoment, count - 1),
+          math_ops.truediv(comoment, count_ - 1),
           name='update_op')
 
   if metrics_collections:
@@ -2731,7 +2738,7 @@ def streaming_pearson_correlation(predictions,
   """
   with variable_scope.variable_scope(name, 'pearson_r',
                                      (predictions, labels, weights)):
-    predictions, labels, weights = _remove_squeezable_dimensions(
+    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
         predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     # Broadcast weights here to avoid duplicate broadcasting in each call to
@@ -2813,7 +2820,7 @@ def streaming_mean_cosine_distance(predictions,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels, weights = _remove_squeezable_dimensions(
+  predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
       predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.multiply(predictions, labels)
@@ -3123,54 +3130,71 @@ def aggregate_metric_map(names_to_tuples):
   return dict(zip(metric_names, value_ops)), dict(zip(metric_names, update_ops))
 
 
-def _remove_squeezable_dimensions(predictions, labels, weights):
-  """Squeeze last dim if needed.
+def count(values,
+          weights=None,
+          metrics_collections=None,
+          updates_collections=None,
+          name=None):
+  """Computes the number of examples, or sum of `weights`.
 
-  Squeezes `predictions` and `labels` if their rank differs by 1.
-  Squeezes `weights` if its rank is 1 more than the new rank of `predictions`
+  When evaluating some metric (e.g. mean) on one or more subsets of the data,
+  this auxiliary metric is useful for keeping track of how many examples there
+  are in each subset.
 
-  This will use static shape if available. Otherwise, it will add graph
-  operations, which could result in a performance hit.
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: Predicted values, a `Tensor` of arbitrary dimensions.
-    labels: Label values, a `Tensor` whose dimensions match `predictions`.
-    weights: Optional weight `Tensor`. It will be squeezed if its rank is 1
-      more than the new rank of `predictions`
+    values: A `Tensor` of arbitrary dimensions. Only it's shape is used.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions
+      must be either `1`, or the same as the corresponding `labels`
+      dimension).
+    metrics_collections: An optional list of collections that the metric
+      value variable should be added to.
+    updates_collections: An optional list of collections that the metric update
+      ops should be added to.
+    name: An optional variable_scope name.
 
   Returns:
-    Tuple of `predictions`, `labels` and `weights`, possibly with the last
-    dimension squeezed.
+    count: A `Tensor` representing the current value of the metric.
+    update_op: An operation that accumulates the metric from a batch of data.
+
+  Raises:
+    ValueError: If `weights` is not `None` and its shape doesn't match `values`,
+      or if either `metrics_collections` or `updates_collections` are not a list
+      or tuple.
   """
-  labels, predictions = confusion_matrix.remove_squeezable_dimensions(
-      labels, predictions)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-  if weights is not None:
-    weights = ops.convert_to_tensor(weights)
-    predictions_shape = predictions.get_shape()
-    predictions_rank = predictions_shape.ndims
-    weights_shape = weights.get_shape()
-    weights_rank = weights_shape.ndims
+  with variable_scope.variable_scope(name, 'count', (values, weights)):
+    count_ = _create_local('count', shape=[])
 
-    if (predictions_rank is not None) and (weights_rank is not None):
-      # Use static rank.
-      if weights_rank - predictions_rank == 1:
-        weights = array_ops.squeeze(weights, [-1])
-    elif (weights_rank is
-          None) or (weights_shape.dims[-1].is_compatible_with(1)):
-      # Use dynamic rank
-      weights = control_flow_ops.cond(
-          math_ops.equal(
-              array_ops.rank(weights),
-              math_ops.add(array_ops.rank(predictions), 1)),
-          lambda: array_ops.squeeze(weights, [-1]), lambda: weights)
-  return predictions, labels, weights
+    if weights is None:
+      num_values = math_ops.to_float(array_ops.size(values))
+    else:
+      _, _, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
+          predictions=values,
+          labels=None,
+          weights=weights)
+      weights = weights_broadcast_ops.broadcast_weights(
+          math_ops.to_float(weights), values)
+      num_values = math_ops.reduce_sum(weights)
+
+    with ops.control_dependencies([values]):
+      update_op = state_ops.assign_add(count_, num_values)
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, count_)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return count_, update_op
 
 
 __all__ = [
     'aggregate_metric_map',
     'aggregate_metrics',
+    'count',
     'sparse_recall_at_top_k',
     'streaming_accuracy',
     'streaming_auc',
