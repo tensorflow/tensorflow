@@ -1233,7 +1233,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
     new_instruction->AppendOperand(new_operand);
   }
   // Clone all the fused instructions for the new fusion instruction.
-  std::map<HloInstruction*, HloInstruction*> old_to_new;
+  HloInstructionMap<HloInstruction*> old_to_new;
   std::list<std::unique_ptr<HloInstruction>> new_fused_instructions;
   // Create the list of fused parameters by mapping through the cloned,
   // fused instructions.

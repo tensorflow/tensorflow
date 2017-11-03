@@ -58,7 +58,7 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<const HloModule> hlo_module,
-    std::unique_ptr<const std::map<HloInstruction*, string>> function_names,
+    std::unique_ptr<const HloInstructionMap<string>> function_names,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
@@ -102,10 +102,10 @@ namespace {
 // in 'pending' on 'thread_pool' (storing resulting data in 'results').
 class Executor {
  public:
-  Executor(const std::map<HloInstruction*, ComputeFunctionType>& functions,
+  Executor(const HloInstructionMap<ComputeFunctionType>& functions,
            const ServiceExecutableRunOptions* run_options,
            std::list<HloInstruction*>* pending,
-           std::map<HloInstruction*, const void*>* results, void** temps_array,
+           HloInstructionMap<const void*>* results, void** temps_array,
            uint64* profile_counters_array, const BufferAssignment* assignment)
       : functions_(functions),
         run_options_(run_options),
@@ -142,10 +142,10 @@ class Executor {
   const void** GetOperandBuffers(HloInstruction* instruction);
 
   // Arguments passed into Executor.
-  const std::map<HloInstruction*, ComputeFunctionType>& functions_;
+  const HloInstructionMap<ComputeFunctionType>& functions_;
   const ServiceExecutableRunOptions* run_options_;
   std::list<HloInstruction*>* pending_;
-  std::map<HloInstruction*, const void*>* results_;
+  HloInstructionMap<const void*>* results_;
   void** temps_array_;
   uint64* profile_counters_array_;
   tensorflow::thread::ThreadPool* thread_pool_;
@@ -400,7 +400,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   }
 
   // Resolve functions for all the HLO instructions ahead of time.
-  std::map<HloInstruction*, ComputeFunctionType> functions;
+  HloInstructionMap<ComputeFunctionType> functions;
   for (auto& entry : *function_names_) {
     tensorflow::mutex_lock lock(jit_mutex_);
     HloInstruction* instruction = entry.first;
@@ -412,7 +412,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   }
 
   // Map containing pointers to result buffers for each instruction.
-  std::map<HloInstruction*, const void*> results;
+  HloInstructionMap<const void*> results;
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 

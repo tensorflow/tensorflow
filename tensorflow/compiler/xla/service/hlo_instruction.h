@@ -1231,6 +1231,25 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
+// Map classes that guarantee a deterministic iteration order when the key is
+// an HloInstruction* or a const HloInstruction*.
+// To make the iteration order over the map deterministic, the comparator
+// should not be using the pointer values, but rather an intrinsic property of
+// the hlo.
+struct HloPtrComparator {
+  bool operator()(const HloInstruction* const& lhs,
+                  const HloInstruction* const& rhs) const {
+    return lhs->unique_id() < rhs->unique_id();
+  }
+};
+
+template <typename ValueT>
+using HloInstructionMap = std::map<HloInstruction*, ValueT, HloPtrComparator>;
+
+template <typename ValueT>
+using ConstHloInstructionMap =
+    std::map<const HloInstruction*, ValueT, HloPtrComparator>;
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTION_H_

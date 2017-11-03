@@ -610,8 +610,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
                          &hlo_to_profile_idx, jit->target_machine(),
                          jit->external_constant_pool());
 
-    std::unique_ptr<std::map<HloInstruction*, string>> function_names(
-        new std::map<HloInstruction*, string>());
+    std::unique_ptr<HloInstructionMap<string>> function_names(
+        new HloInstructionMap<string>());
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
       if (embedded_computation->IsFusionComputation()) {
