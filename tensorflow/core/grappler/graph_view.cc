@@ -28,13 +28,18 @@ GraphView::GraphView(GraphDef* graph) : graph_(graph) {
   }
   for (NodeDef& node : *graph_->mutable_node()) {
     for (int i = 0; i < node.input_size(); ++i) {
-      InputPort input;
-      input.node = &node;
-      input.port_id = i;
-
       OutputPort fanin;
       string fanin_name = ParseNodeName(node.input(i), &fanin.port_id);
       fanin.node = nodes_[fanin_name];
+
+      InputPort input;
+      input.node = &node;
+      if (fanin.port_id < 0) {
+        input.port_id = -1;
+      } else {
+        input.port_id = i;
+      }
+
       fanouts_[fanin].insert(input);
     }
   }
@@ -75,8 +80,32 @@ GraphView::GetFanout(const GraphView::OutputPort& port) const {
   return it->second;
 }
 
-const GraphView::OutputPort GraphView::GetFanin(
+const std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
+GraphView::GetFanin(const GraphView::InputPort& port) const {
+  std::unordered_set<GraphView::OutputPort, GraphView::HashPort> result;
+  if (port.port_id >= 0) {
+    result.insert(GetRegularFanin(port));
+  } else {
+    for (int i = port.node->input_size() - 1; i >= 0; --i) {
+      OutputPort fanin;
+      string fanin_name = ParseNodeName(port.node->input(i), &fanin.port_id);
+      if (fanin.port_id < 0) {
+        auto it = nodes_.find(fanin_name);
+        if (it != nodes_.end()) {
+          fanin.node = it->second;
+          result.insert(fanin);
+        }
+      } else {
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+const GraphView::OutputPort GraphView::GetRegularFanin(
     const GraphView::InputPort& port) const {
+  CHECK_LE(0, port.port_id);
   OutputPort fanin;
   string fanin_name =
       ParseNodeName(port.node->input(port.port_id), &fanin.port_id);

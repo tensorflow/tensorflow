@@ -84,6 +84,7 @@ tf_cc_test(
     deps = [
         ":graph_view",
         ":grappler_item",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
