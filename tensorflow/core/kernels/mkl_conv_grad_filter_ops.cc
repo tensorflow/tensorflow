@@ -576,7 +576,7 @@ class MklConv2DCustomBackpropFilterOp :
 
   // Allocate tensor for bias grad
   void AllocateBiasGradTensor(OpKernelContext* context,
-                              TensorShape& bias_grad_shape,
+                              const TensorShape& bias_grad_shape,
                               Tensor** bias_grad_tensor) {
     CHECK_NOTNULL(bias_grad_tensor);
 
@@ -639,7 +639,7 @@ class MklConv2DCustomBackpropFilterOp :
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 #undef REGISTER_MKL_FILTER_KERNELS
 
-#endif // INTEL_MKL_DNN
+#endif  // INTEL_MKL_DNN
 
 }  // namespace tensorflow
 
