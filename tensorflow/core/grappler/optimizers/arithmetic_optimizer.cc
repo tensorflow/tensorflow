@@ -864,6 +864,31 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       return new_mul_node->name();
     }
   }
+
+  // Fuse ops by absorbing Conj into Transpose or ConjugateTranspose.
+  if (node->op() == "Conj" || node->op() == "Transpose" ||
+      node->op() == "ConjugateTranspose") {
+    const NodeDef* input = node_map->GetNode(node->input(0));
+    const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
+    const NodeDef* conj_op = node->op() == "Conj" ? node : input;
+    if ((transpose_op->op() == "Transpose" ||
+         transpose_op->op() == "ConjugateTranspose") &&
+        conj_op->op() == "Conj") {
+      NodeDef* new_op = graph_def->add_node();
+      *new_op = *transpose_op;
+      new_op->set_name(node->name() + "_fused");
+      // Flip the type of transpose op to absorb the conjugation.
+      new_op->set_op(transpose_op->op() == "Transpose" ? "ConjugateTranspose"
+                                                       : "Transpose");
+      new_op->set_input(0, input->input(0));
+      node_map->AddNode(new_op->name(), new_op);
+      node_map->UpdateInput(new_op->name(), node->name(), input->input(0));
+      AddFrameControlDeps(node, {new_op}, "", {}, graph_def, node_map,
+                          frame_map);
+      return new_op->name();
+    }
+  }
+
   return "";
 }
 

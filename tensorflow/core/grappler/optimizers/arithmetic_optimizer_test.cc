@@ -191,6 +191,79 @@ TEST_F(ArithmeticOptimizerTest, SimplifyHoistFactor) {
   EXPECT_EQ("mul1_hoist", new_id.input(0));
 }
 
+TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output re = ops::Const(s.WithOpName("re"), {1.0, 2.0, 3.0, 4.0}, {2, 2});
+  Output im = ops::Const(s.WithOpName("im"), {5.0, 6.0, 7.0, 8.0}, {2, 2});
+  Output z = ops::Complex(s.WithOpName("z"), re, im);
+  Output perm = ops::Const(s.WithOpName("perm"), {1, 0}, {2});
+  Output conj = ops::Conj(s.WithOpName("conj"), z);
+  Output transp = ops::Transpose(s.WithOpName("trans"), conj, perm);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  LOG(INFO) << output.DebugString();
+
+  EXPECT_EQ(7, output.node_size());
+  EXPECT_EQ("trans_fused", output.node(6).name());
+  EXPECT_EQ("ConjugateTranspose", output.node(6).op());
+  EXPECT_EQ("z", output.node(6).input(0));
+  EXPECT_EQ("perm", output.node(6).input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, FuseConjAndConjugateTranspose) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output re = ops::Const(s.WithOpName("re"), {1.0, 2.0, 3.0, 4.0}, {2, 2});
+  Output im = ops::Const(s.WithOpName("im"), {5.0, 6.0, 7.0, 8.0}, {2, 2});
+  Output z = ops::Complex(s.WithOpName("z"), re, im);
+  Output perm = ops::Const(s.WithOpName("perm"), {1, 0}, {2});
+  Output conj = ops::Conj(s.WithOpName("conj"), z);
+  Output transp =
+      ops::ConjugateTranspose(s.WithOpName("conjugate_trans"), conj, perm);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  LOG(INFO) << output.DebugString();
+
+  EXPECT_EQ(7, output.node_size());
+  EXPECT_EQ("conjugate_trans_fused", output.node(6).name());
+  EXPECT_EQ("Transpose", output.node(6).op());
+  EXPECT_EQ("z", output.node(6).input(0));
+  EXPECT_EQ("perm", output.node(6).input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output re = ops::Const(s.WithOpName("re"), {1.0, 2.0, 3.0, 4.0}, {2, 2});
+  Output im = ops::Const(s.WithOpName("im"), {5.0, 6.0, 7.0, 8.0}, {2, 2});
+  Output z = ops::Complex(s.WithOpName("z"), re, im);
+  Output perm = ops::Const(s.WithOpName("perm"), {1, 0}, {2});
+  Output trans = ops::Transpose(s.WithOpName("trans"), z, perm);
+  Output conj = ops::Conj(s.WithOpName("conj"), trans);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  LOG(INFO) << output.DebugString();
+
+  EXPECT_EQ(7, output.node_size());
+  EXPECT_EQ("conj_fused", output.node(6).name());
+  EXPECT_EQ("ConjugateTranspose", output.node(6).op());
+  EXPECT_EQ("z", output.node(6).input(0));
+  EXPECT_EQ("perm", output.node(6).input(1));
+}
+
 TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs =
