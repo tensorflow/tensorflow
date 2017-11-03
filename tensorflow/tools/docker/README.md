@@ -65,7 +65,8 @@ from a binary docker image such as for example `tensorflow/tensorflow:latest` wi
 not work. One needs to execute the script from a developer docker image since by
 contrast with a binary docker image it contains not only the compiled solution but
 also the tensorflow source code. Please select the appropriate developer docker
-image of tensorflow at `tensorflow/tensorflow:[.](https://hub.docker.com/r/tensorflow/tensorflow/tags/)`.
+image of tensorflow at
+[tensorflow/tensorflow repository on dockerhub](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 The smallest command line to generate a docker image will then be:
 ```docker run -it tensorflow/tensorflow:"right_tag"```
