@@ -188,6 +188,10 @@ class VariantTensorDataReader : public IteratorStateReader {
     return ReadScalarInternal(key, val);
   }
 
+  Status ReadTensor(StringPiece key, Tensor* val) override {
+    return ReadTensorInternal(key, val);
+  }
+
   bool Contains(StringPiece key) override {
     return map_.find(key.ToString()) != map_.end();
   }
@@ -217,6 +221,14 @@ class VariantTensorDataReader : public IteratorStateReader {
     return Status::OK();
   }
 
+  Status ReadTensorInternal(StringPiece key, Tensor* val) {
+    if (map_.find(key.ToString()) == map_.end()) {
+      return errors::NotFound(key);
+    }
+    *val = data_->tensors(map_[key.ToString()]);
+    return Status::OK();
+  }
+
   std::map<string, size_t> map_;
   const VariantTensorData* data_;  // Not owned.
   Status status_;
@@ -236,6 +248,10 @@ class VariantTensorDataWriter : public IteratorStateWriter {
     return WriteScalarInternal(key, val);
   }
 
+  Status WriteTensor(StringPiece key, const Tensor& val) override {
+    return WriteTensorInternal(key, val);
+  }
+
   // Writes the metadata to `data_`.
   Status Flush() {
     string metadata;
@@ -249,15 +265,19 @@ class VariantTensorDataWriter : public IteratorStateWriter {
  private:
   template <typename T>
   Status WriteScalarInternal(StringPiece key, const T& val) {
+    Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+    val_t.scalar<T>()() = val;
+    return WriteTensorInternal(key, val_t);
+  }
+
+  Status WriteTensorInternal(StringPiece key, const Tensor& val) {
     // Write key to the metadata proto. This gets written to `data_`
     // when `Flush()` is called. We do this lazily to avoid multiple
     // serialization calls.
     metadata_proto_.add_keys(key.ToString());
 
     // Update tensors.
-    Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
-    val_t.scalar<T>()() = val;
-    *(data_->add_tensors()) = std::move(val_t);
+    *(data_->add_tensors()) = val;
     return Status::OK();
   }
 

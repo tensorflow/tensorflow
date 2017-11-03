@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -47,6 +49,7 @@ class IteratorStateReader {
  public:
   virtual Status ReadScalar(StringPiece key, int64* val) = 0;
   virtual Status ReadScalar(StringPiece key, string* val) = 0;
+  virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
   virtual bool Contains(StringPiece key) = 0;
 
   virtual ~IteratorStateReader() {}
@@ -58,6 +61,7 @@ class IteratorStateWriter {
  public:
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
   virtual Status WriteScalar(StringPiece key, const string& val) = 0;
+  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
 };
@@ -112,6 +116,13 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
+  template <class DatasetType>
+  Status AddDataset(const DatasetType* dataset,
+                    const std::vector<NodeBuilder::NodeOut>& inputs,
+                    Node** output) {
+    return AddDataset(dataset, inputs, {}, output);
+  }
+
   // Adds a node corresponding to the `DatasetType` to the Graph.
   // Return value of `DatasetType::op_name()` is used as the op type for the
   // node.
@@ -122,7 +133,9 @@ class GraphDefBuilderWrapper {
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
   template <class DatasetType>
   Status AddDataset(const DatasetType* dataset,
-                    std::vector<NodeBuilder::NodeOut> inputs, Node** output) {
+                    const std::vector<NodeBuilder::NodeOut>& inputs,
+                    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+                    Node** output) {
     const string& op_type_name = dataset->op_name();
     std::unique_ptr<const GraphDefBuilder::Options> opts(
         new GraphDefBuilder::Options(b_->opts()));
@@ -137,6 +150,10 @@ class GraphDefBuilderWrapper {
     if (has_output_types_attr) {
       opts.reset(new GraphDefBuilder::Options(
           opts->WithAttr("output_types", dataset->output_dtypes())));
+    }
+    for (auto attr : attrs) {
+      opts.reset(new GraphDefBuilder::Options(
+          opts->WithAttr(attr.first, attr.second)));
     }
     if (opts->HaveError()) {
       return errors::Internal("AddDataset: Error building Options.");
@@ -185,6 +202,11 @@ class GraphDefBuilderWrapper {
                               " op.");
     }
     return Status::OK();
+  }
+
+  template <typename T>
+  void BuildAttrValue(const T& value, AttrValue* attr) {
+    SetAttrValue(value, attr);
   }
 
  private:
