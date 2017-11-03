@@ -457,7 +457,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
+  VLOG(2) << "Before optimization:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
+
+  VLOG(2) << "After optimization:";
+  XLA_VLOG_LINES(2, module->ToString());
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
