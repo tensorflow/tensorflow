@@ -1,13 +1,16 @@
 #include <algorithm>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
+
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
@@ -127,6 +130,19 @@ LookupBinaryInPlaceFn(const HloInstruction* inst) {
   return port::Status(port::error::UNKNOWN,
                       port::StrCat("[Poplar] Invalid opcode lookup ",
                                    HloOpcodeString(opcode)));
+}
+
+static poplin::FullyConnectedPass GetMatMulPass(const HloInstruction* inst) {
+  if (IsForwardMatMul(inst)) {
+    return poplin::FullyConnectedPass::FWD;
+  }
+  if (IsGradientMatMul(inst)) {
+    return poplin::FullyConnectedPass::BWD;
+  }
+  if (IsWeightUpdateMatMul(inst)) {
+    return poplin::FullyConnectedPass::WU;
+  }
+  return poplin::FullyConnectedPass::NONE;
 }
 
 port::StatusOr<poplar::program::Program>
@@ -255,6 +271,10 @@ CreateMatMulOp(poplar::Graph &graph,
   if (in1.rank() == 1) {
     in1 = in1.reshape({in1.dim(0), 1});
   }
+
+  poplin::MatMulOptions opts;
+  opts.cache = &res.dot_cache;
+  opts.fullyConnectedPass = GetMatMulPass(inst);
 
   out = poplin::matMul(graph, in0, in1, seq, inst->name());
 

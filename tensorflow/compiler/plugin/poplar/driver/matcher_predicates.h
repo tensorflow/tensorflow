@@ -25,6 +25,10 @@ bool IsOutputFeed(const HloInstruction *inst);
 bool IsForwardConvolution(const HloInstruction *inst);
 bool IsGradientConvolution(const HloInstruction *inst);
 bool IsWeightUpdateConvolution(const HloInstruction *inst);
+bool IsForwardMatMul(const HloInstruction* inst);
+bool IsGradientMatMul(const HloInstruction* inst);
+bool IsWeightUpdateMatMul(const HloInstruction* inst);
+
 }
 }
 

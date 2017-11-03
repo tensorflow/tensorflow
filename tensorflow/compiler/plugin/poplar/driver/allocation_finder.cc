@@ -87,7 +87,7 @@ AllocationFinder::CompareConvolutionTargets(const TensorTarget& a,
 bool
 AllocationFinder::CompareDotTargets(const TensorTarget& a,
                                     const TensorTarget& b) {
-  return true;
+  return IsForwardMatMul(a.first) && !IsForwardMatMul(b.first);
 }
 
 void

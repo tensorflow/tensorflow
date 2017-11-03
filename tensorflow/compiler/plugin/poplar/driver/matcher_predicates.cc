@@ -165,6 +165,26 @@ bool IsWeightUpdateConvolution(const HloInstruction *inst) {
           tf_core_op == "DepthwiseConv2dNativeBackpropFilter");
 }
 
+bool IsForwardMatMul(const HloInstruction* inst) {
+  const HloInstruction* lh = inst->operand(0);
+  const HloInstruction* rh = inst->operand(1);
+  return (lh->opcode() != HloOpcode::kTranspose &&
+          rh->opcode() != HloOpcode::kTranspose);
+}
+
+bool IsGradientMatMul(const HloInstruction* inst) {
+  const HloInstruction* lh = inst->operand(0);
+  const HloInstruction* rh = inst->operand(1);
+  return (lh->opcode() != HloOpcode::kTranspose &&
+          rh->opcode() == HloOpcode::kTranspose);
+}
+
+bool IsWeightUpdateMatMul(const HloInstruction* inst) {
+  const HloInstruction* lh = inst->operand(0);
+  const HloInstruction* rh = inst->operand(1);
+  return (lh->opcode() == HloOpcode::kTranspose &&
+          rh->opcode() != HloOpcode::kTranspose);
+}
 
 }
 }
