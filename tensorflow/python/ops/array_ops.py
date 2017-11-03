@@ -1495,6 +1495,10 @@ def zeros(shape, dtype=dtypes.float32, name=None):
     if context.in_eager_mode() and dtype != dtypes.bool:
       return fill(shape, constant(zero, dtype=dtype), name=name)
     try:
+      if isinstance(shape, ops.Tensor):
+        # TODO(apassos) this is required to reproduce the behavior from before
+        # Tensors were iterable. It's a crutch.
+        raise TypeError
       shape = tensor_shape.as_shape(shape)
       output = constant(zero, shape=shape, dtype=dtype, name=name)
     except (TypeError, ValueError):
@@ -1617,6 +1621,9 @@ def ones(shape, dtype=dtypes.float32, name=None):
   with ops.name_scope(name, "ones", [shape]) as name:
     one = True if dtype == dtypes.bool else 1
     try:
+      if isinstance(shape, ops.Tensor):
+        raise TypeError(
+            "preserving semantics from before tensors were iterable")
       shape = tensor_shape.as_shape(shape)
       output = constant(one, shape=shape, dtype=dtype, name=name)
     except (TypeError, ValueError):

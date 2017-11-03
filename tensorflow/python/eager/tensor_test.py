@@ -208,6 +208,12 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t_np = t.numpy()
     self.assertTrue(np.all(t_np == t_np_orig), "%s vs %s" % (t_np, t_np_orig))
 
+  def testIterateOverTensor(self):
+    l = [[1, 2], [3, 4]]
+    t = _create_tensor(l)
+    for list_element, tensor_element in zip(l, t):
+      self.assertAllEqual(list_element, tensor_element.numpy())
+
   def testStringTensorOnGPU(self):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")

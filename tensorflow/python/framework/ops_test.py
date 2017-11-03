@@ -93,7 +93,7 @@ class TensorTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     self.assertTrue(isinstance(t, ops.Tensor))
-    with self.assertRaisesRegexp(TypeError, "not iterable"):
+    with self.assertRaisesRegexp(TypeError, "iter"):
       for _ in t:
         pass
 

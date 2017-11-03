@@ -371,6 +371,22 @@ class Tensor(_TensorLike):
     """
     return self._shape
 
+  def __iter__(self):
+    if context.in_graph_mode():
+      raise TypeError(
+          "`Tensor` objects are not iterable when eager execution is not "
+          "enabled. To iterate over this tensor use `tf.map_fn`.")
+    shape = self._shape_tuple()
+    if shape is None:
+      raise TypeError("Cannot iterate over a tensor with unknown shape.")
+    if not shape:
+      raise TypeError("Cannot iterate over a scalar tensor.")
+    if shape[0] is None:
+      raise TypeError(
+          "Cannot iterate over a tensor with unknown first dimension.")
+    for i in xrange(shape[0]):
+      yield self[i]
+
   def _shape_as_list(self):
     if self._shape.ndims is not None:
       return [dim.value for dim in self._shape.dims]
@@ -513,19 +529,6 @@ class Tensor(_TensorLike):
   @staticmethod
   def _override_operator(operator, func):
     _override_helper(Tensor, operator, func)
-
-  def __iter__(self):
-    """Dummy method to prevent iteration. Do not call.
-
-    NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the Tensor from 0 to
-    infinity.  Declaring this method prevents this unintended
-    behavior.
-
-    Raises:
-      TypeError: when invoked.
-    """
-    raise TypeError("'Tensor' object is not iterable.")
 
   def __bool__(self):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
