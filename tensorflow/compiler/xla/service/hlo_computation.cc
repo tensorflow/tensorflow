@@ -697,8 +697,9 @@ Status HloComputation::AcceptWithOperandOrder(
                                                     /*call_finish_visit=*/true);
 }
 
+template <typename HloInstructionPtr>
 Status HloComputation::AcceptOrdered(
-    DfsHloVisitor* visitor,
+    DfsHloVisitorBase<HloInstructionPtr>* visitor,
     const std::vector<const HloInstruction*>& order) const {
   VLOG(3) << "Accepting visitor with order.";
   for (HloInstruction* root : CollectUnreachableRoots()) {
@@ -726,6 +727,12 @@ Status HloComputation::AcceptOrdered(
   TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
   return Status::OK();
 }
+
+// Explicit instantiations.
+template Status HloComputation::AcceptOrdered(
+    DfsHloVisitor*, const std::vector<const HloInstruction*>&) const;
+template Status HloComputation::AcceptOrdered(
+    ConstDfsHloVisitor*, const std::vector<const HloInstruction*>&) const;
 
 Status HloComputation::Accept(
     const std::function<Status(HloInstruction*)>& visitor_func) {
