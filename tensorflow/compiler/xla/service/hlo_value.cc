@@ -184,7 +184,7 @@ void HloValue::AddPosition(HloInstruction* instruction,
     live_out_of_module_ = true;
   }
 
-  if (instruction == defining_instruction()->parent()->root_instruction()) {
+  if (instruction == instruction->parent()->root_instruction()) {
     live_out_of_computation_ = true;
   }
 }

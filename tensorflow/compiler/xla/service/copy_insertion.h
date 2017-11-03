@@ -25,25 +25,12 @@ limitations under the License.
 
 namespace xla {
 
-// Copy insertion is a legalization HLO pass which inserts copies (kCopy
-// instructions) to eliminate several kinds of problems in the HLO module.
-//
-//   (1) Entry parameter or a constant live out of the entry computation.  Entry
-//       computation arguments and constants have different lifetimes than the
-//       computation result and cannot share the same allocation. Parameters and
-//       constants live out of non-entry computations do not need copies.
-//
-//   (2) Different values which are simultaneously live and which must be held
-//       in the same buffer. This can occur in while bodies. Specifically, the
-//       while loop state (the arguments to the while instruction) is updated
-//       in-place and the update may clobber the value from the previous
-//       iteration before the previous value is dead. Computations called from
-//       kCall instructions do not need such copies because kCall has no update
-//       in-place semantics.
-//
-//   (3) The buffer set of the root instruction of the entry computation must be
-//       unambiguous and distinct. That is, InstructionAliasSet::IsAmbiguous and
-//       InstructionAliasSet::IsDistinct return true.
+// HLO pass which inserts a copy of the root instruction (creating a new root)
+// if the root is or points-to any constant or parameter instruction.
+// If the root instruction is a Tuple, only tuple elements which point to
+// constant or parameter instructions will be copied.
+// Copy insertion is necessary because constant and parameter arrays have
+// different lifetimes than computation results.
 class CopyInsertion : public HloPassInterface {
  public:
   tensorflow::StringPiece name() const override { return "copy-insertion"; }
@@ -51,6 +38,15 @@ class CopyInsertion : public HloPassInterface {
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
   StatusOr<bool> Run(HloModule* module) override;
+
+ protected:
+  // Returns a copy of `hlo`. Looks in inserted_copies_ first to avoid making
+  // duplicate copies.
+  StatusOr<HloInstruction*> FindOrInsertCopy(HloInstruction* hlo);
+
+  // A map containing all copies inserted during the copy insertion pass. The
+  // key is the copied instruction and the value is the copy.
+  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> inserted_copies_;
 };
 
 }  // namespace xla

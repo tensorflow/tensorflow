@@ -126,16 +126,13 @@ class HloDataflowAnalysis {
   HloValue* NewHloValue(HloInstruction* instruction, const ShapeIndex& index,
                         bool is_phi = false);
 
-  // Mark the HloValue with the given ID for deletion.
-  void MarkValueForDeletion(HloValue::Id value_id);
-
-  // Delete all HloValues marked for deletion. Should be called after
-  // propagation is complete.
-  void DeleteMarkedValues();
+  // Delete the HloValue with the given ID.
+  void DeleteHloValue(HloValue::Id value_id);
 
   // Constructs and initializes the InstructionValueSets of all instructions to
   // contain exactly the HloValues defined by each instruction. These values can
-  // then propagated throughout the HLO graph by calling Propagate.
+  // then propagated throughout the HLO graph by calling
+  // UpdateInstructionsAndPropagate.
   Status InitializeInstructionValueSets();
 
   // Updates the value set of the given instruction based on the values flowing
@@ -153,8 +150,10 @@ class HloDataflowAnalysis {
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
 
-  // Propagate the dataflow through the module.
-  void Propagate();
+  // Update the value sets of the given instructions and propagate the
+  // changes to fixed point.
+  void UpdateInstructionsAndPropagate(
+      tensorflow::gtl::ArraySlice<HloInstruction*> instructions);
 
   // Return the result of the SSA Phi function applied to the given inputs at
   // the given instruction. If skip_top_level is true, then the top level of the
@@ -189,11 +188,6 @@ class HloDataflowAnalysis {
 
   // A map from instruction to InstructionValueSet.
   std::unordered_map<const HloInstruction*, InstructionValueSet> value_sets_;
-
-  // Values marked for deletion during construction. We don't delete them
-  // immediately because references to them may still remain in ValueSets. After
-  // construction, these values are deleted.
-  std::vector<HloValue::Id> value_ids_to_delete_;
 
   // A vector containing all HloValues sorted by HloValue::Id.
   std::vector<const HloValue*> values_vector_;

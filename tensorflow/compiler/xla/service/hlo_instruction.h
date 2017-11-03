@@ -83,16 +83,12 @@ class HloInstruction {
   //     must contain all operands of the newly constructed instruction.
   //   computation_map: a map from computation name to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
-  //     calls.
-  //   add_fused_computation: A function to call to add a fused
-  //     computation. Used (clearly) when the instruction is a fusion
-  //     instruction.
+  //     calls. If the instruction is a fusion instruction, then the fusion
+  //     computation is added to this map and the module.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       HloModule* module, const HloInstructionProto& proto,
       const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
-      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
-      const std::function<void(std::unique_ptr<HloComputation>)>&
-          add_fused_computation);
+      tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
@@ -981,8 +977,7 @@ class HloInstruction {
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Set the unique id for this instruction to "id"
-  using Id = int;
-  void SetUniqueId(Id id) {
+  void SetUniqueId(int id) {
     CHECK_EQ(unique_id_, -1);  // Should not be assigned already
     CHECK_GE(id, 0);
     unique_id_ = id;
@@ -990,7 +985,7 @@ class HloInstruction {
 
   // Return the unique ID assigned to this node via SetUniqueId (or -1
   // if no id has been assigned yet).
-  Id unique_id() const { return unique_id_; }
+  int unique_id() const { return unique_id_; }
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -1093,7 +1088,7 @@ class HloInstruction {
   // Returns how this instruction uses elements of its `i`th operand.
   UseKind OperandElementUse(int64 i) const;
 
-  Id unique_id_;  // Unique to this HloInstruction within a HloModule
+  int unique_id_;  // Unique to this HloInstruction within a HloModule
 
   // Opcode for this instruction.
   HloOpcode opcode_;

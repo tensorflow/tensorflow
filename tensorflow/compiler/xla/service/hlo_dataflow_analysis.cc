@@ -75,41 +75,11 @@ HloValue* HloDataflowAnalysis::NewHloValue(HloInstruction* instruction,
       std::forward_as_tuple(value_id, instruction, index, is_phi));
   CHECK(emplaced.second);
 
-  VLOG(4) << "NewHloValue = " << emplaced.first->second.ToShortString();
-
   return &emplaced.first->second;
 }
 
-void HloDataflowAnalysis::MarkValueForDeletion(HloValue::Id value_id) {
-  HloValue& value = values_.at(value_id);
-  VLOG(4) << "MarkValueForDeletion(" << value.ToShortString() << ")";
-
-  value_ids_to_delete_.push_back(value_id);
-}
-
-void HloDataflowAnalysis::DeleteMarkedValues() {
-  // Verify that no marked-for-deletion values are in any of the value sets.
-  tensorflow::gtl::FlatSet<HloValue::Id> id_set(value_ids_to_delete_.begin(),
-                                                value_ids_to_delete_.end());
-  for (const auto& pair : value_sets_) {
-    const HloInstruction* instruction = pair.first;
-    const InstructionValueSet& instruction_value_set = pair.second;
-    for (const auto& index_value_set : instruction_value_set) {
-      const HloValueSet& value_set = index_value_set.second;
-      for (const HloValue* value : value_set.values()) {
-        DCHECK(!ContainsKey(id_set, value->id()))
-            << "Value " << value->ToShortString()
-            << " marked for deletion, but still exists in value set for "
-               "instruction "
-            << instruction->name();
-      }
-    }
-  }
-
-  for (HloValue::Id value_id : value_ids_to_delete_) {
-    values_.erase(value_id);
-  }
-  value_ids_to_delete_.clear();
+void HloDataflowAnalysis::DeleteHloValue(HloValue::Id value_id) {
+  values_.erase(value_id);
 }
 
 string HloDataflowAnalysis::ToString() const {
@@ -151,7 +121,6 @@ bool HloDataflowAnalysis::Phi(
     HloInstruction* instruction,
     tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs) {
   CHECK(ssa_form_);
-  VLOG(4) << "Phi(" << instruction->name() << ")";
 
   for (const InstructionValueSet* input : inputs) {
     DCHECK(ShapeUtil::Compatible(instruction->shape(), input->shape()));
@@ -214,7 +183,7 @@ bool HloDataflowAnalysis::Phi(
       } else if (current_value != &new_value) {
         if (current_value_defined_here) {
           // Remove the existing phi.
-          MarkValueForDeletion(current_value->id());
+          DeleteHloValue(current_value->id());
         }
         value_set.Clear();
         value_set.AddValue(&new_value);
@@ -224,8 +193,7 @@ bool HloDataflowAnalysis::Phi(
       // Multiple distinct values reach this point. A phi value is
       // necessary.
       CHECK_GT(input_value_ids.size(), 1);
-      if (current_value == nullptr ||
-          !(current_value->is_phi() && current_value_defined_here)) {
+      if (current_value == nullptr || !current_value->is_phi()) {
         value_set.Clear();
         value_set.AddValue(NewHloValue(instruction, index, /*is_phi=*/true));
         changed = true;
@@ -468,13 +436,11 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
   }
 }
 
-void HloDataflowAnalysis::Propagate() {
+void HloDataflowAnalysis::UpdateInstructionsAndPropagate(
+    tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
   std::queue<HloInstruction*> worklist;
-
-  for (HloComputation* computation : module_->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      worklist.push(instruction);
-    }
+  for (HloInstruction* instruction : instructions) {
+    worklist.push(instruction);
   }
 
   while (!worklist.empty()) {
@@ -631,10 +597,18 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
       new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value));
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
-  dataflow_analysis->Propagate();
 
-  // Delete all values marked for deletion.
-  dataflow_analysis->DeleteMarkedValues();
+  // Construct list of all instructions to initialize the worklist to propagate
+  // the data flow. For efficiency sort the instruction in post order so
+  // producers appear before consumers.
+  std::vector<HloInstruction*> all_instructions;
+  for (const HloComputation* computation : module->MakeComputationPostOrder()) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      all_instructions.push_back(instruction);
+    }
+  }
+  dataflow_analysis->UpdateInstructionsAndPropagate(all_instructions);
 
   // Add in positions to all values.
   for (const HloComputation* computation : module->computations()) {

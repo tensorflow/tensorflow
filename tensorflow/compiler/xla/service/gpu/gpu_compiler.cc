@@ -220,8 +220,9 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<GpuCopyInsertion>();
+  pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 

@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_COPY_INSERTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_COPY_INSERTION_H_
 
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
@@ -25,20 +25,9 @@ namespace gpu {
 // Besides the modifications made by the generic xla::CopyInsertion, this
 // GPU-specific copy insertion also materializes operands of library calls by
 // inserting kCopy instructions.
-class GpuCopyInsertion : public HloPassInterface {
+class GpuCopyInsertion : public CopyInsertion {
  public:
-  tensorflow::StringPiece name() const override { return "copy-insertion"; }
-
   StatusOr<bool> Run(HloModule* module) override;
-
- protected:
-  // Returns a copy of `hlo`. Looks in inserted_copies_ first to avoid making
-  // duplicate copies.
-  StatusOr<HloInstruction*> FindOrInsertCopy(HloInstruction* hlo);
-
-  // A map containing all copies inserted to materialize operands of library
-  // calls. The key is the copied instruction and the value is the copy.
-  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> inserted_copies_;
 };
 
 }  // namespace gpu

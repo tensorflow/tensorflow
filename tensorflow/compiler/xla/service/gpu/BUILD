@@ -350,8 +350,8 @@ cc_library(
         ":ir_emission_utils",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
-        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:logical_buffer",
+        "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
         "//tensorflow/core:lib",
     ],
 )
@@ -573,14 +573,11 @@ tf_cc_test(
     deps = [
         ":instruction_fusion",
         ":while_transformer",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:copy_insertion",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
     ],
 )
 
