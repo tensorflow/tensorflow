@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <string>
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace tools {
 namespace {
+
+using tensorflow::StringPiece;
 
 struct TestData {
   string test_name;
@@ -82,6 +85,40 @@ ENTRY %ConstantF32.v4 () -> f32[] {
 
 )"
 },
+// constant 4D
+{
+"Constant4D",
+R"(HloModule Small_3x2x1x1_module:
+
+ENTRY %Small_3x2x1x1.v1 () -> f32[3,2,1,1] {
+  ROOT %constant = f32[3,2,1,1]{3,2,1,0} constant(f32[3,2,1,1] { { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
+}
+
+)"
+},
+// non-finite constants: nan, inf, -inf
+{
+"ConstantNonFinite",
+R"(HloModule IsFiniteR1F32s_module:
+
+ENTRY %IsFiniteR1F32s.v2 () -> pred[6] {
+  %constant = f32[6]{0} constant({nan, 7, nan, -1, inf, -inf})
+  ROOT %is-finite = pred[6]{0} is-finite(f32[6]{0} %constant)
+}
+
+)"
+},
+// constant f16
+{
+"ConstantF16",
+R"(HloModule ConstantF16_module:
+
+ENTRY %ConstantF16.v4 () -> f16[] {
+  ROOT %constant = f16[] constant(500)
+}
+
+)"
+},
 // constant + constant
 {
 "AddConstants",
@@ -90,6 +127,17 @@ R"(HloModule add_constants_module:
 ENTRY %add_constants () -> f32[] {
   %constant = f32[] constant(3.14)
   ROOT %add = f32[] add(f32[] %constant, f32[] %constant)
+}
+
+)"
+},
+// tuple constant
+{
+"TupleConstant",
+R"(HloModule TupleConstant_module:
+
+ENTRY %TupleConstant.v1 () -> (f32[2,1], f32[2]) {
+  ROOT %constant = (f32[2,1]{1,0}, f32[2]{0}) constant((f32[2,1], f32[2]) ( f32[2,1] { { 1 }, { 2 } }, {2, 42} ))
 }
 
 )"
@@ -176,11 +224,11 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 "GetTupleElement",
 R"(HloModule GetTupleElement_module:
 
-ENTRY %GetTupleElement.v4 () -> s32[] {
-  %constant = f32[] constant(1.23)
-  %constant.1 = s32[] constant(4)
-  %tuple = (f32[], s32[]) tuple(f32[] %constant, s32[] %constant.1)
-  ROOT %get-tuple-element = s32[] get-tuple-element((f32[], s32[]) %tuple), index=1, sharding={maximal device=0}
+ENTRY %GetTupleElement.v4 () -> s32[2,3] {
+  %constant = f32[3]{0} constant({1, 2, 3})
+  %constant.1 = s32[2,3]{1,0} constant(s32[2,3] { { 1, 2, 3 }, { 4, 5, 6 } })
+  %tuple = (f32[3]{0}, s32[2,3]{1,0}) tuple(f32[3]{0} %constant, s32[2,3]{1,0} %constant.1)
+  ROOT %get-tuple-element = s32[2,3]{1,0} get-tuple-element((f32[3]{0}, s32[2,3]{1,0}) %tuple), index=1, sharding={maximal device=0}
 }
 
 )"
@@ -208,11 +256,17 @@ ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
 class HloParserTest : public ::testing::Test,
                       public ::testing::WithParamInterface<TestData> {
  protected:
+  static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+    EXPECT_TRUE(StringPiece(s).contains(expected))
+        << "'" << s << "' does not contain '" << expected << "'";
+  }
+
   void ExpectSuccess() {
     const string& original = GetParam().module_string;
     auto result = Parse(original);
     TF_EXPECT_OK(result.status());
-    EXPECT_EQ(original, result.ValueOrDie()->ToString());
+    EXPECT_EQ(original,
+              result.ValueOrDie()->ToString(/*include_large_constants=*/true));
   }
 };
 
@@ -299,6 +353,63 @@ ENTRY %SelectScalarS32True.v4 () -> s32[] {
   TF_EXPECT_OK(result.status());
   // Constant instructions have no name. The string will be parsed successfully
   // but the constant names will not be exactly the same.
+}
+
+TEST_F(HloParserTest, LiteralDimensionsMismatch_1) {
+  const string original = R"(HloModule some_2_module:
+
+ENTRY %some_2 () -> f32[2] {
+  ROOT %constant = f32[2]{0} constant({1,{2}})
+}
+
+)";
+  auto result = Parse(original);
+  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "expects nested array in rank 1, but sees larger");
+}
+
+TEST_F(HloParserTest, LiteralDimensionsMismatch_2) {
+  const string original = R"(HloModule some_2x3_module:
+
+ENTRY %some_2x3 () -> f32[2,3] {
+  ROOT %constant = f32[2,3]{1,0} constant(f32[2,3] {1, 2, 3, 4, 5, 6})
+}
+
+)";
+  auto result = Parse(original);
+  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "expects nested array in rank 2, but sees 1");
+}
+
+TEST_F(HloParserTest, LiteralDimensionsMismatch_3) {
+  const string original = R"(HloModule some_2x3x2_module:
+
+ENTRY %some_2x3x2 () -> f32[2,3,2] {
+  ROOT %constant = f32[2,3,2]{2,1,0} constant(f32[2,3,2] {{{1, 2}, {3, 4}, {5, 6}, {7, 8}, {9, 10}, {11, 12}}})
+}
+
+)";
+  auto result = Parse(original);
+  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "expects 3 elements in the [0]th element");
+}
+
+TEST_F(HloParserTest, ConstantF16Overflow) {
+  const string original =
+      R"(HloModule ConstantF16Overflow_module:
+
+ENTRY %ConstantF16Overflow.v4 () -> f16[] {
+  ROOT %constant = f16[] constant(-65505)
+}
+
+)";
+  auto result = Parse(original);
+  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type F16");
 }
 
 TEST_F(HloParserTest, ConstantWithExp) {

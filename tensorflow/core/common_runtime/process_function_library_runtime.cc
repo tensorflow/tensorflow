@@ -30,15 +30,15 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     DistributedFunctionLibraryRuntime* parent)
-    : lib_def_(lib_def), parent_(parent) {
+    : device_mgr_(device_mgr), lib_def_(lib_def), parent_(parent) {
   if (device_mgr == nullptr) {
-    flr_map_[kDefaultFLRDevice] =
+    flr_map_[nullptr] =
         NewFunctionLibraryRuntime(nullptr, env, nullptr, graph_def_version,
                                   lib_def, optimizer_options, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d->name()] =
+    flr_map_[d] =
         NewFunctionLibraryRuntime(device_mgr, env, d, graph_def_version,
                                   lib_def, optimizer_options, this);
   }
@@ -50,15 +50,15 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator,
     DistributedFunctionLibraryRuntime* parent)
-    : lib_def_(lib_def), parent_(parent) {
+    : device_mgr_(device_mgr), lib_def_(lib_def), parent_(parent) {
   if (device_mgr == nullptr) {
-    flr_map_[kDefaultFLRDevice] = NewFunctionLibraryRuntime(
+    flr_map_[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, nullptr, graph_def_version, lib_def, optimizer_options,
         std::move(custom_kernel_creator), this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d->name()] = NewFunctionLibraryRuntime(
+    flr_map_[d] = NewFunctionLibraryRuntime(
         device_mgr, env, d, graph_def_version, lib_def, optimizer_options,
         custom_kernel_creator, this);
   }
@@ -163,17 +163,19 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 
 FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
     const string& device_name) {
-  string clean_device_name;
+  Device* device = nullptr;
   if (device_name != kDefaultFLRDevice) {
-    clean_device_name = DeviceNameUtils::CanonicalizeDeviceName(device_name);
-  } else {
-    clean_device_name = device_name;
+    if (!device_mgr_->LookupDevice(device_name, &device).ok()) {
+      LOG(ERROR) << "Could not find device: " << device_name;
+      return nullptr;
+    }
   }
-  if (flr_map_.find(clean_device_name) == flr_map_.end()) {
+  const auto& iter = flr_map_.find(device);
+  if (iter == flr_map_.end()) {
     LOG(ERROR) << "Could not find device: " << device_name;
     return nullptr;
   }
-  return flr_map_[clean_device_name].get();
+  return iter->second.get();
 }
 
 FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(

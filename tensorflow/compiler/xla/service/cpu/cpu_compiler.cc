@@ -82,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -277,6 +278,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_simplification=*/false);
     pass.AddPass<TupleSimplifier>();
+    pass.AddPass<WhileLoopSimplifier>();
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
@@ -455,7 +457,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
+  VLOG(2) << "Before optimization:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
+
+  VLOG(2) << "After optimization:";
+  XLA_VLOG_LINES(2, module->ToString());
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
@@ -532,8 +540,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
                          &hlo_to_profile_idx, jit->target_machine(),
                          jit->external_constant_pool());
 
-    std::unique_ptr<std::map<HloInstruction*, string>> function_names(
-        new std::map<HloInstruction*, string>());
+    std::unique_ptr<HloInstructionMap<string>> function_names(
+        new HloInstructionMap<string>());
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
       if (embedded_computation->IsFusionComputation()) {

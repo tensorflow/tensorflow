@@ -420,7 +420,7 @@ tf_py_test(
 
 tf_py_test(
     name = "record_input_test",
-    size = "small",
+    size = "medium",
     srcs = ["record_input_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",

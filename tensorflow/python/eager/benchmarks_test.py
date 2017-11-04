@@ -144,6 +144,28 @@ def benchmark_matmul(shape, n, use_gpu=False):
       f(m, m, transpose_b=transpose_b)
 
 
+def benchmark_multiply(shape, n, use_gpu=False):
+  m = random_ops.random_uniform(shape)
+  if use_gpu:
+    m = m.gpu()
+    # Warm up the GPU - the very first kernel invocation
+    # seems to require a bunch of setup.
+    _ = m * m
+
+  def label(s):
+    return "Multiply {}: {:30s}".format(shape, s)
+
+  if not use_gpu:
+    a = m.cpu().numpy()
+    with timer(label("np.multiply"), iters=n) as iters:
+      for _ in iters:
+        _ = a * a
+
+  with timer(label("tf.multiply"), iters=n) as iters:
+    for _ in iters:
+      _ = m * m
+
+
 class BenchmarksTest(test_util.TensorFlowTestCase):
 
   def testBenchmarks(self):
@@ -153,6 +175,7 @@ class BenchmarksTest(test_util.TensorFlowTestCase):
     benchmark_create_tensor(FLAGS.iters or 30000)
     benchmark_matmul([2, 2], FLAGS.iters or 30000)
     benchmark_matmul([100, 28 * 28], FLAGS.iters or 1000)
+    benchmark_multiply([2], FLAGS.iters or 30000)
 
     if context.context().num_gpus() > 0:
       print("---- RUNNING ON GPU NOW ----")
@@ -160,6 +183,7 @@ class BenchmarksTest(test_util.TensorFlowTestCase):
         benchmark_create_tensor(FLAGS.iters or 30000)
       benchmark_matmul([2, 2], FLAGS.iters or 30000, use_gpu=True)
       benchmark_matmul([100, 28 * 28], FLAGS.iters or 1000, use_gpu=True)
+      benchmark_multiply([2], FLAGS.iters or 30000, use_gpu=True)
 
 
 if __name__ == "__main__":

@@ -1753,6 +1753,24 @@ class Stream {
   // See DnnSupport::DoRnnForward for more details.
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
+                         const DeviceMemory<Eigen::half> &input_data,
+                         const dnn::RnnStateTensorDescriptor &input_h_desc,
+                         const DeviceMemory<Eigen::half> &input_h_data,
+                         const dnn::RnnStateTensorDescriptor &input_c_desc,
+                         const DeviceMemory<Eigen::half> &input_c_data,
+                         const DeviceMemory<Eigen::half> &params,
+                         const dnn::RnnSequenceTensorDescriptor &output_desc,
+                         DeviceMemory<Eigen::half> *output_data,
+                         const dnn::RnnStateTensorDescriptor &output_h_desc,
+                         DeviceMemory<Eigen::half> *output_h_data,
+                         const dnn::RnnStateTensorDescriptor &output_c_desc,
+                         DeviceMemory<Eigen::half> *output_c_data,
+                         bool is_training,
+                         ScratchAllocator *reserve_space_allocator,
+                         ScratchAllocator *workspace_allocator);
+
+  Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
+                         const dnn::RnnSequenceTensorDescriptor &input_desc,
                          const DeviceMemory<float> &input_data,
                          const dnn::RnnStateTensorDescriptor &input_h_desc,
                          const DeviceMemory<float> &input_h_data,
@@ -1787,6 +1805,31 @@ class Stream {
 
   // Enqueue a backward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnBackward for more details.
+  Stream &ThenRnnBackward(
+      const dnn::RnnDescriptor &rnn_desc,
+      const dnn::RnnSequenceTensorDescriptor &input_desc,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::RnnStateTensorDescriptor &input_h_desc,
+      const DeviceMemory<Eigen::half> &input_h_data,
+      const dnn::RnnStateTensorDescriptor &input_c_desc,
+      const DeviceMemory<Eigen::half> &input_c_data,
+      const DeviceMemory<Eigen::half> &params,
+      const dnn::RnnSequenceTensorDescriptor &output_desc,
+      const DeviceMemory<Eigen::half> &output_data,
+      const dnn::RnnStateTensorDescriptor &output_h_desc,
+      const DeviceMemory<Eigen::half> &output_h_data,
+      const dnn::RnnStateTensorDescriptor &output_c_desc,
+      const DeviceMemory<Eigen::half> &output_c_data,
+      const DeviceMemory<Eigen::half> &output_backprop_data,
+      const DeviceMemory<Eigen::half> &output_h_backprop_data,
+      const DeviceMemory<Eigen::half> &output_c_backprop_data,
+      DeviceMemory<Eigen::half> *input_backprop_data,
+      DeviceMemory<Eigen::half> *input_h_backprop_data,
+      DeviceMemory<Eigen::half> *input_c_backprop_data,
+      DeviceMemory<Eigen::half> *params_backprop_data,
+      DeviceMemory<uint8> *reserve_space_data,
+      ScratchAllocator *workspace_allocator);
+
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
                           const DeviceMemory<float> &input_data,

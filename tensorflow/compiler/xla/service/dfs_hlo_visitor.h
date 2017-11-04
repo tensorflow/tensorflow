@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_H_
 
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -52,170 +53,177 @@ class HloInstruction;
 // "unimplemented" error status.
 //
 // Note: this may change to an iterator in the future for flexibility purposes.
-class DfsHloVisitor {
+//
+// Users should not use this class directly, but use the type-aliases
+// DfsHloVisitor/ConstDfsHloVisitor instead.
+template <typename HloInstructionPtr>
+class DfsHloVisitorBase {
+  static_assert(
+      std::is_same<HloInstruction*, HloInstructionPtr>::value ||
+          std::is_same<const HloInstruction*, HloInstructionPtr>::value,
+      "Template argument expected to be HloInstruction* or const "
+      "HloInstruction*");
+
  public:
-  DfsHloVisitor() {}
-  virtual ~DfsHloVisitor() {}
+  DfsHloVisitorBase() {}
+  virtual ~DfsHloVisitorBase() {}
 
   // These routines are self-descriptive, see class comment for usage
   // information.
 
-  virtual Status HandleElementwiseUnary(HloInstruction* hlo);
-  virtual Status HandleElementwiseBinary(HloInstruction* hlo);
-  virtual Status HandleClamp(HloInstruction* clamp) = 0;
-  virtual Status HandleSelect(HloInstruction* select) = 0;
-  virtual Status HandleMaximum(HloInstruction* maximum) {
-    return HandleElementwiseBinary(maximum);
+  virtual Status HandleElementwiseUnary(HloInstructionPtr hlo);
+  virtual Status HandleElementwiseBinary(HloInstructionPtr hlo);
+
+  virtual Status HandleClamp(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSelect(HloInstructionPtr hlo) = 0;
+  virtual Status HandleMaximum(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleMinimum(HloInstruction* minimum) {
-    return HandleElementwiseBinary(minimum);
+  virtual Status HandleMinimum(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleConcatenate(HloInstruction* concatenate) = 0;
-  virtual Status HandleConvert(HloInstruction* convert) {
-    return HandleElementwiseUnary(convert);
+  virtual Status HandleConcatenate(HloInstructionPtr hlo) = 0;
+  virtual Status HandleConvert(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleCopy(HloInstruction* copy) {
-    return HandleElementwiseUnary(copy);
+  virtual Status HandleCopy(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleComplex(HloInstruction* complex) {
-    return HandleElementwiseBinary(complex);
+  virtual Status HandleComplex(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleMultiply(HloInstruction* multiply) {
-    return HandleElementwiseBinary(multiply);
+  virtual Status HandleMultiply(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleDot(HloInstruction* dot) = 0;
-  virtual Status HandlePower(HloInstruction* power) {
-    return HandleElementwiseBinary(power);
+  virtual Status HandleDot(HloInstructionPtr hlo) = 0;
+  virtual Status HandlePower(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleConvolution(HloInstruction* convolution) = 0;
-  virtual Status HandleCrossReplicaSum(HloInstruction* crs) = 0;
-  virtual Status HandleCompare(HloInstruction* compare) {
-    return HandleElementwiseBinary(compare);
+  virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCrossReplicaSum(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCompare(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleAdd(HloInstruction* add) {
-    return HandleElementwiseBinary(add);
+  virtual Status HandleAdd(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleDivide(HloInstruction* divide) {
-    return HandleElementwiseBinary(divide);
+  virtual Status HandleDivide(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleRemainder(HloInstruction* remainder) {
-    return HandleElementwiseBinary(remainder);
+  virtual Status HandleRemainder(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleSubtract(HloInstruction* subtract) {
-    return HandleElementwiseBinary(subtract);
+  virtual Status HandleSubtract(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleAbs(HloInstruction* abs) {
-    return HandleElementwiseUnary(abs);
+  virtual Status HandleAbs(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleAtan2(HloInstruction* atan2) {
-    return HandleElementwiseBinary(atan2);
+  virtual Status HandleAtan2(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleRound(HloInstruction* round) {
-    return HandleElementwiseUnary(round);
+  virtual Status HandleRound(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleSign(HloInstruction* sign) {
-    return HandleElementwiseUnary(sign);
+  virtual Status HandleSign(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleNegate(HloInstruction* negate) {
-    return HandleElementwiseUnary(negate);
+  virtual Status HandleNegate(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleExp(HloInstruction* exp) {
-    return HandleElementwiseUnary(exp);
+  virtual Status HandleExp(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleFloor(HloInstruction* floor) {
-    return HandleElementwiseUnary(floor);
+  virtual Status HandleFloor(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleCeil(HloInstruction* ceil) {
-    return HandleElementwiseUnary(ceil);
+  virtual Status HandleCeil(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleLog(HloInstruction* log) {
-    return HandleElementwiseUnary(log);
+  virtual Status HandleLog(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleCos(HloInstruction* cos) {
-    return HandleElementwiseUnary(cos);
+  virtual Status HandleCos(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleSin(HloInstruction* sin) {
-    return HandleElementwiseUnary(sin);
+  virtual Status HandleSin(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleTanh(HloInstruction* tanh) {
-    return HandleElementwiseUnary(tanh);
+  virtual Status HandleTanh(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleReal(HloInstruction* real) {
-    return HandleElementwiseUnary(real);
+  virtual Status HandleReal(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleImag(HloInstruction* imag) {
-    return HandleElementwiseUnary(imag);
+  virtual Status HandleImag(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleIsFinite(HloInstruction* is_finite) {
-    return HandleElementwiseUnary(is_finite);
+  virtual Status HandleIsFinite(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleAnd(HloInstruction* and_) {
-    return HandleElementwiseBinary(and_);
+  virtual Status HandleAnd(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleNot(HloInstruction* not_) {
-    return HandleElementwiseUnary(not_);
+  virtual Status HandleNot(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
-  virtual Status HandleOr(HloInstruction* or_) {
-    return HandleElementwiseBinary(or_);
+  virtual Status HandleOr(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleShiftLeft(HloInstruction* shift_left) {
-    return HandleElementwiseBinary(shift_left);
+  virtual Status HandleShiftLeft(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleShiftRightArithmetic(
-      HloInstruction* shift_right_arithmetic) {
-    return HandleElementwiseBinary(shift_right_arithmetic);
+  virtual Status HandleShiftRightArithmetic(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
-  virtual Status HandleShiftRightLogical(HloInstruction* shift_right_logical) {
-    return HandleElementwiseBinary(shift_right_logical);
+  virtual Status HandleShiftRightLogical(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
 
-  virtual Status HandleReducePrecision(HloInstruction* reduce_precision) {
-    return HandleElementwiseUnary(reduce_precision);
+  virtual Status HandleReducePrecision(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
 
-  virtual Status HandleInfeed(HloInstruction* infeed) = 0;
-  virtual Status HandleOutfeed(HloInstruction* outfeed) = 0;
-  virtual Status HandleRng(HloInstruction* random) = 0;
-  virtual Status HandleReverse(HloInstruction* reverse) = 0;
-  virtual Status HandleSort(HloInstruction* sort) = 0;
-  virtual Status HandleConstant(HloInstruction* constant) = 0;
-  virtual Status HandleGetTupleElement(HloInstruction* get_tuple_element) = 0;
-  virtual Status HandleReduce(HloInstruction* reduce) = 0;
-  virtual Status HandleBitcast(HloInstruction* bitcast) = 0;
-  virtual Status HandleBroadcast(HloInstruction* broadcast) = 0;
-  virtual Status HandleReshape(HloInstruction* reshape) = 0;
-  virtual Status HandleTranspose(HloInstruction* transpose) = 0;
-  virtual Status HandleParameter(HloInstruction* parameter) = 0;
-  virtual Status HandleFusion(HloInstruction* fusion) = 0;
-  virtual Status HandleCall(HloInstruction* call) = 0;
-  virtual Status HandleCustomCall(HloInstruction* custom_call) = 0;
-  virtual Status HandleSlice(HloInstruction* slice) = 0;
-  virtual Status HandleDynamicSlice(HloInstruction* dynamic_slice) = 0;
-  virtual Status HandleDynamicUpdateSlice(
-      HloInstruction* dynamic_update_slice) = 0;
-  virtual Status HandleTuple(HloInstruction* tuple) = 0;
-  virtual Status HandleMap(HloInstruction* map) = 0;
-  virtual Status HandleReduceWindow(HloInstruction* reduce_window) = 0;
-  virtual Status HandleSelectAndScatter(HloInstruction* instruction) = 0;
-  virtual Status HandleWhile(HloInstruction* xla_while) = 0;
+  virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
+  virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRng(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSort(HloInstructionPtr hlo) = 0;
+  virtual Status HandleConstant(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGetTupleElement(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReduce(HloInstructionPtr hlo) = 0;
+  virtual Status HandleBitcast(HloInstructionPtr hlo) = 0;
+  virtual Status HandleBroadcast(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReshape(HloInstructionPtr hlo) = 0;
+  virtual Status HandleTranspose(HloInstructionPtr hlo) = 0;
+  virtual Status HandleParameter(HloInstructionPtr hlo) = 0;
+  virtual Status HandleFusion(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCall(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCustomCall(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSlice(HloInstructionPtr hlo) = 0;
+  virtual Status HandleDynamicSlice(HloInstructionPtr hlo) = 0;
+  virtual Status HandleDynamicUpdateSlice(HloInstructionPtr hlo) = 0;
+  virtual Status HandleTuple(HloInstructionPtr hlo) = 0;
+  virtual Status HandleMap(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReduceWindow(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
+  virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandlePad(HloInstruction* pad) = 0;
+  virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandleSend(HloInstruction* send) = 0;
+  virtual Status HandleSend(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandleRecv(HloInstruction* recv) = 0;
+  virtual Status HandleRecv(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandleBatchNormTraining(
-      HloInstruction* batch_norm_training) = 0;
+  virtual Status HandleBatchNormTraining(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandleBatchNormInference(
-      HloInstruction* batch_norm_inference) = 0;
+  virtual Status HandleBatchNormInference(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) = 0;
+  virtual Status HandleBatchNormGrad(HloInstructionPtr hlo) = 0;
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".
-  virtual Status FinishVisit(HloInstruction* root) = 0;
+  virtual Status FinishVisit(HloInstructionPtr root) = 0;
 
   // 3 possible visitation states of HLO instructions. Each instruction's
   // state only flows one way: kNotVisited -> kVisiting -> kVisited.
@@ -273,7 +281,7 @@ class DfsHloVisitor {
   //
   // Overriding methods should call DfsHloVisitor::Preprocess before doing their
   // own preprocessing.
-  virtual Status Preprocess(HloInstruction* hlo);
+  virtual Status Preprocess(HloInstructionPtr hlo);
 
   // This method should be overridden by subclasses that wish to run some
   // operation on an op after its Handle* visitor method is called. See
@@ -281,7 +289,7 @@ class DfsHloVisitor {
   //
   // Overriding methods should call DfsHloVisitor::Postprocess after doing their
   // own postprocessing.
-  virtual Status Postprocess(HloInstruction* visited);
+  virtual Status Postprocess(HloInstructionPtr hlo);
 
  private:
   class DFSVisitStates {
@@ -322,8 +330,13 @@ class DfsHloVisitor {
 
   DFSVisitStates visit_state_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitor);
+  TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorBase);
 };
+
+// Users should use one of these two type aliases, which are the only two valid
+// instantiations of DfsHloVisitorBase.
+using DfsHloVisitor = DfsHloVisitorBase<HloInstruction*>;
+using ConstDfsHloVisitor = DfsHloVisitorBase<const HloInstruction*>;
 
 }  // namespace xla
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/graph_memory.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/platform/test.h"
@@ -131,6 +132,39 @@ TEST_F(GraphMemoryTest, MultiDevice) {
   gpu_expected.insert("AddN_1:0");
   gpu_expected.insert("AddN_3:0");
   EXPECT_EQ(gpu_expected, gpu_tensors);
+}
+
+TEST_F(GraphMemoryTest, CtrlDependencies) {
+  // Build a simple graph with a control dependency.
+  Scope s = Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a").WithDevice("/CPU:0"), 10.0f, {3});
+  Output v =
+      ops::Variable(s.WithOpName("v").WithDevice("/CPU:0"), {3}, DT_FLOAT);
+  Output assign =
+      ops::Assign(s.WithOpName("assign").WithDevice("/CPU:0"), v, a);
+  ops::NoOp init(
+      s.WithOpName("init").WithDevice("/CPU:0").WithControlDependencies(
+          assign));
+
+  GrapplerItem item;
+  item.fetch.push_back("init");
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphMemory memory(item);
+  Status status = memory.InferStatically(devices_);
+  TF_CHECK_OK(status);
+
+  const GraphMemory::MemoryUsage& mem = memory.GetPeakMemoryUsage("/CPU:0");
+  EXPECT_EQ(36, mem.used_memory);
+  std::set<string> tensors;
+  for (const auto& t : mem.live_tensors) {
+    tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+  }
+  std::set<string> expected;
+  expected.insert("a:0");
+  expected.insert("v:0");
+  expected.insert("assign:0");
+  EXPECT_EQ(expected, tensors);
 }
 
 }  // namespace

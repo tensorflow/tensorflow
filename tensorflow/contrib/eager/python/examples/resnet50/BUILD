@@ -39,5 +39,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "nomsan",
+        "notsan",
     ],
 )

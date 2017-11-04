@@ -123,6 +123,8 @@ cc_library(
         ":const_analysis",
         ":dump_graph",
         ":functionalize_control_flow",
+        ":sharding_util",
+        ":tf2xla_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -169,6 +171,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "sharding_util",
+    srcs = ["sharding_util.cc"],
+    hdrs = ["sharding_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "sharding_util_test",
+    srcs = ["sharding_util_test.cc"],
+    deps = [
+        ":sharding_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 # Internal targets below this point.
 
 cc_library(
@@ -176,7 +208,9 @@ cc_library(
     srcs = ["tf2xla_util.cc"],
     hdrs = ["tf2xla_util.h"],
     deps = [
+        ":sharding_util",
         ":tf2xla_proto",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -190,8 +224,14 @@ tf_cc_test(
     name = "tf2xla_util_test",
     srcs = ["tf2xla_util_test.cc"],
     deps = [
+        ":sharding_util",
         ":tf2xla_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -350,6 +390,7 @@ cc_library(
     srcs = ["functionalize_control_flow.cc"],
     hdrs = ["functionalize_control_flow.h"],
     deps = [
+        ":tf2xla_util",
         "//tensorflow/compiler/jit:graph_to_functiondef",
         "//tensorflow/compiler/jit:union_find",
         "//tensorflow/compiler/tf2xla:dump_graph",

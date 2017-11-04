@@ -208,27 +208,19 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
     int64 next_stamp_token = next_stamp_token_t->scalar<int64>()();
     CHECK(stamp_token != next_stamp_token);
 
-    // Get the delta updates.
-    const Tensor* delta_updates_t;
-    OP_REQUIRES_OK(context, context->input("delta_updates", &delta_updates_t));
-    OP_REQUIRES(
-        context,
-        delta_updates_t->dim_size(0) + 1 == learner_config_.num_classes(),
-        errors::InvalidArgument(
-            "Delta updates size must be consistent with label dimensions."));
-    auto delta_updates = delta_updates_t->vec<float>();
-
     // Update the ensemble stamp.
     ensemble_resource->set_stamp(next_stamp_token);
 
+    // Get the delta updates.
+    const Tensor* delta_updates_t;
+    OP_REQUIRES_OK(context, context->input("delta_updates", &delta_updates_t));
+    auto delta_updates = delta_updates_t->vec<float>();
+    const int64 logits_dimension = delta_updates_t->dim_size(0);
+
     // Get the bias.
-    boosted_trees::trees::Leaf* const bias = RetrieveBias(ensemble_resource);
+    boosted_trees::trees::Leaf* const bias =
+        RetrieveBias(ensemble_resource, logits_dimension);
     CHECK(bias->has_vector());
-    OP_REQUIRES(
-        context,
-        bias->vector().value_size() + 1 == learner_config_.num_classes(),
-        errors::InvalidArgument(
-            "Bias vector size must be consistent with label dimensions."));
 
     // Update the bias.
     float total_delta = 0;
@@ -256,7 +248,8 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
  private:
   // Helper method to retrieve the bias from the tree ensemble.
   boosted_trees::trees::Leaf* RetrieveBias(
-      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource) {
+      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource,
+      int64 logits_dimension) {
     const int32 num_trees = ensemble_resource->num_trees();
     if (num_trees <= 0) {
       // Add a new bias leaf.
@@ -264,7 +257,7 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
       boosted_trees::trees::DecisionTreeConfig* const tree_config =
           ensemble_resource->AddNewTree(1.0);
       auto* const leaf = tree_config->add_nodes()->mutable_leaf();
-      for (size_t idx = 0; idx + 1 < learner_config_.num_classes(); ++idx) {
+      for (size_t idx = 0; idx < logits_dimension; ++idx) {
         leaf->mutable_vector()->add_value(0.0);
       }
       ensemble_resource->LastTreeMetadata()->set_is_finalized(true);

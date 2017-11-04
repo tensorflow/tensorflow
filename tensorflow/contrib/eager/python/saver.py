@@ -23,7 +23,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training import adam as _adam
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as _saver
 
@@ -171,20 +170,12 @@ class Saver(object):
 def get_optimizer_variables(optimizer):
   """Returns a list of variables for the given `tf.train.Optimizer`.
 
+  Equivalent to `optimizer.variables()`.
+
   Args:
     optimizer: An instance of `tf.train.Optimizer` which has created variables
       (typically after a call to `Optimizer.minimize`).
   Returns:
-    A list of variables which have been created by the `Optimizer`. Currently
-    returns all variables even if they were not created in the default graph,
-    but this behavior may change.
+    A list of variables which have been created by the `Optimizer`.
   """
-  variables = []
-  # pylint: disable=protected-access
-  for _, variable_dict in optimizer._slots.items():
-    for _, slot_for_variable in variable_dict.items():
-      variables.append(slot_for_variable)
-  if isinstance(optimizer, _adam.AdamOptimizer):
-    variables.append(optimizer._beta1_power)
-    variables.append(optimizer._beta2_power)
-  return variables
+  return optimizer.variables()

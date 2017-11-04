@@ -109,7 +109,7 @@ newaxis = None
 
 # We override the 'slice' for the "slice" op, so we keep python's
 # existing 'slice' for later use in this module.
-_baseslice = slice
+_BaseSlice = slice
 
 
 def identity(input, name=None):  # pylint: disable=redefined-builtin
@@ -306,6 +306,32 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_array_ops.shape(input, name=name, out_type=out_type)
 
 
+def shape_n(input, out_type=dtypes.int32, name=None):
+  # pylint: disable=redefined-builtin
+  """Returns shape of tensors.
+
+  Args:
+    input: A list of at least 1 `Tensor` object with the same type.
+    out_type: The specified output type of the operation
+      (`int32` or `int64`). Defaults to `tf.int32`(optional).
+    name: A name for the operation (optional).
+
+  Returns:
+    A list with the same length as `input` of `Tensor` objects with
+      type `out_type`.
+  """
+
+  output = gen_array_ops.shape_n(input, out_type=out_type, name=name)
+  if context.in_graph_mode():
+    for i, input_tensor in enumerate(input):
+      input_tensor = ops.convert_to_tensor(input_tensor)
+      input_shape = input_tensor.get_shape()
+      if input_shape.is_fully_defined():
+        output[i] = constant(
+            input_shape.as_list(), dtype=out_type, name=name)
+  return output
+
+
 def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
@@ -328,7 +354,7 @@ def size(input, name=None, out_type=dtypes.int32):
 
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
-    
+
   @compatibility(numpy)
   Equivalent to np.size()
   @end_compatibility
@@ -419,7 +445,7 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
-def _SliceHelper(tensor, slice_spec, var=None):
+def _slice_helper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
   This operation extracts the specified region from the tensor.
@@ -482,7 +508,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
   begin_mask, end_mask = 0, 0
   ellipsis_mask = 0
   for s in slice_spec:
-    if isinstance(s, _baseslice):
+    if isinstance(s, _BaseSlice):
       # python doesn't always use None when constructing ranges
       # for example a[:] gives slice(None,sys.maxsize,None)
       # whereas a[::1] gives slice(None,None,None)
@@ -549,7 +575,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
         name=name)
 
 
-# pylint: disable=undefined-variable,protected-access
+# pylint: disable=undefined-variable,protected-access,redefined-outer-name
 def slice(input_, begin, size, name=None):
   # pylint: disable=redefined-builtin
   """Extracts a slice from a tensor.
@@ -788,10 +814,10 @@ def _SliceHelperVar(var, slice_spec):
 
   """
 
-  return _SliceHelper(var._AsTensor(), slice_spec, var)
+  return _slice_helper(var._AsTensor(), slice_spec, var)
 
 
-ops.Tensor._override_operator("__getitem__", _SliceHelper)
+ops.Tensor._override_operator("__getitem__", _slice_helper)
 
 
 def parallel_stack(values, name="parallel_stack"):
@@ -1251,7 +1277,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Args:
     value: The `Tensor` to split.
     num_or_size_splits: Either a 0-D integer `Tensor` indicating the number of
-      splits along split_dim or a 1-D integer `Tensor` integer tensor containing
+      splits along split_dim or a 1-D integer `Tensor` containing
       the sizes of each output tensor along split_dim. If a scalar then it must
       evenly divide `value.shape[axis]`; otherwise the sum of sizes along the
       split dimension must match that of the `value`.
@@ -1271,21 +1297,21 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
     ValueError: If `num` is unspecified and cannot be inferred.
   """
   size_splits = ops.convert_to_tensor(num_or_size_splits)
-  if size_splits.get_shape().ndims == 0 and size_splits.dtype.is_integer:
+  if size_splits._rank() == 0 and size_splits.dtype.is_integer:
     return gen_array_ops._split(
         split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
-  else:
+
+  if num is None:
+    num = size_splits._shape_tuple()[0]
     if num is None:
-      size_splits_shape = size_splits.get_shape()
-      num = size_splits_shape.dims[0]
-      if num._value is None:
-        raise ValueError("Cannot infer num from shape %s" % num_or_size_splits)
-    return gen_array_ops._split_v(
-        value=value,
-        size_splits=size_splits,
-        split_dim=axis,
-        num_split=num,
-        name=name)
+      raise ValueError("Cannot infer num from shape %s" % num_or_size_splits)
+
+  return gen_array_ops._split_v(
+      value=value,
+      size_splits=size_splits,
+      split_dim=axis,
+      num_split=num,
+      name=name)
 
 
 def transpose(a, perm=None, name="transpose", conjugate=False):
@@ -1347,7 +1373,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
   with ops.name_scope(name, "transpose", [a]) as name:
     transpose_fn = (
         gen_array_ops._conjugate_transpose
-        if conjugate else gen_array_ops.transpose)
+        if (conjugate and a.dtype.is_complex) else gen_array_ops.transpose)
     if perm is None:
       rank = gen_array_ops.rank(a)
       perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
@@ -1469,6 +1495,10 @@ def zeros(shape, dtype=dtypes.float32, name=None):
     if context.in_eager_mode() and dtype != dtypes.bool:
       return fill(shape, constant(zero, dtype=dtype), name=name)
     try:
+      if isinstance(shape, ops.Tensor):
+        # TODO(apassos) this is required to reproduce the behavior from before
+        # Tensors were iterable. It's a crutch.
+        raise TypeError
       shape = tensor_shape.as_shape(shape)
       output = constant(zero, shape=shape, dtype=dtype, name=name)
     except (TypeError, ValueError):
@@ -1517,8 +1547,8 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
     # For now, variant types must be created via zeros_like; as we need to
     # pass the input variant object to the proper zeros callback.
 
-    if optimize and tensor.shape.is_fully_defined() and \
-        tensor.dtype != dtypes.variant:
+    if (optimize and tensor.shape.is_fully_defined() and
+        tensor.dtype != dtypes.variant):
       # We can produce a zeros tensor independent of the value of 'tensor',
       # since the shape is known statically.
       return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
@@ -1592,6 +1622,9 @@ def ones(shape, dtype=dtypes.float32, name=None):
   with ops.name_scope(name, "ones", [shape]) as name:
     one = True if dtype == dtypes.bool else 1
     try:
+      if isinstance(shape, ops.Tensor):
+        raise TypeError(
+            "preserving semantics from before tensors were iterable")
       shape = tensor_shape.as_shape(shape)
       output = constant(one, shape=shape, dtype=dtype, name=name)
     except (TypeError, ValueError):
@@ -1825,11 +1858,16 @@ def meshgrid(*args, **kwargs):
 
   Args:
     *args: `Tensor`s with rank 1.
-    indexing: Either 'xy' or 'ij' (optional, default: 'xy').
-    name: A name for the operation (optional).
+    **kwargs:
+      - indexing: Either 'xy' or 'ij' (optional, default: 'xy').
+      - name: A name for the operation (optional).
 
   Returns:
     outputs: A list of N `Tensor`s with rank N.
+
+  Raises:
+    TypeError: When no keyword arguments (kwargs) are passed.
+    ValueError: When indexing keyword argument is not one of `xy` or `ij`.
   """
 
   indexing = kwargs.pop("indexing", "xy")
@@ -1860,7 +1898,7 @@ def meshgrid(*args, **kwargs):
       output[1] = reshape(output[1], (-1, 1) + (1,) * (ndim - 2))
       shapes[0], shapes[1] = shapes[1], shapes[0]
 
-    # TODO: improve performance with a broadcast
+    # TODO(nolivia): improve performance with a broadcast
     mult_fact = ones(shapes, output_dtype)
     return [x * mult_fact for x in output]
 
@@ -1870,7 +1908,7 @@ SHRINK_AXIS = -2
 
 
 # PEP-8 naming
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name,redefined-outer-name
 def _compute_size_of_strided_dim(shrink, spec, size):
   """Computes the size of a single strided slice dimension."""
 
@@ -2251,6 +2289,7 @@ def one_hot(indices,
       != i`. (default: 0)
     axis: The axis to fill (default: -1, a new inner-most axis).
     dtype: The data type of the output tensor.
+    name: A name for the operation (optional).
 
   Returns:
     output: The one-hot tensor.
@@ -2265,19 +2304,19 @@ def one_hot(indices,
     on_exists = on_value is not None
     off_exists = off_value is not None
 
-    on_dtype = ops.convert_to_tensor(on_value).dtype.base_dtype if on_exists \
-                  else None
-    off_dtype = ops.convert_to_tensor(off_value).dtype.base_dtype if off_exists\
-                  else None
+    on_dtype = (ops.convert_to_tensor(on_value).dtype.base_dtype if on_exists
+                else None)
+    off_dtype = (ops.convert_to_tensor(off_value).dtype.base_dtype if off_exists
+                 else None)
 
     if on_exists or off_exists:
       if dtype is not None:
         # Ensure provided on_value and/or off_value match dtype
-        if (on_exists and on_dtype != dtype):
-          raise TypeError("dtype {0} of on_value does not match " \
+        if on_exists and on_dtype != dtype:
+          raise TypeError("dtype {0} of on_value does not match "
                           "dtype parameter {1}".format(on_dtype, dtype))
-        if (off_exists and off_dtype != dtype):
-          raise TypeError("dtype {0} of off_value does not match " \
+        if off_exists and off_dtype != dtype:
+          raise TypeError("dtype {0} of off_value does not match "
                           "dtype parameter {1}".format(off_dtype, dtype))
       else:
         # dtype not provided: automatically assign it
@@ -2296,7 +2335,7 @@ def one_hot(indices,
       off_dtype = dtype
 
     if on_dtype != off_dtype:
-      raise TypeError("dtype {0} of on_value does not match " \
+      raise TypeError("dtype {0} of on_value does not match "
                       "dtype {1} of off_value".format(on_dtype, off_dtype))
 
     return gen_array_ops._one_hot(indices, depth, on_value, off_value, axis,

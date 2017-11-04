@@ -82,4 +82,25 @@ identifier
   : [a-zA-Z_][a-zA-Z0-9_.-]*
   ;
 
+/* literal is in the right hand side of a constant instruction. */
+literal
+  : tuple
+  | non_tuple
+  ;
+tuple
+  : shape '(' literal_list ')'
+  ;
+literal_list
+  : /*empty*/
+  : literal
+  | literal_list ',' literal
+  ;
+non_tuple
+  : rank01
+  | rank2345
+  ;
+rank2345
+  : shape nested_array
+  ;
+
 ```

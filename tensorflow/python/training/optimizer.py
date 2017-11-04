@@ -574,6 +574,47 @@ class Optimizer(object):
     """
     return sorted(self._slots.keys())
 
+  def variables(self):
+    """A list of variables which encode the current state of `Optimizer`.
+
+    Includes slot variables and additional global variables created by the
+    optimizer in the current default graph.
+
+    Returns:
+      A list of variables.
+    """
+    executing_eagerly = context.in_eager_mode()
+    current_graph = ops.get_default_graph()
+
+    def _from_current_graph(variable):
+      if executing_eagerly:
+        # No variable.op in eager mode. We don't expect lots of eager graphs,
+        # but behavior should be consistent with graph mode.
+        return variable._container_prefix == current_graph._container_prefix  # pylint: disable=protected-access
+      else:
+        return variable.op.graph is current_graph
+
+    optimizer_variables = [v for v in self._non_slot_variables()
+                           if _from_current_graph(v)]
+    for _, variable_dict in self._slots.items():
+      for _, slot_for_variable in variable_dict.items():
+        if _from_current_graph(slot_for_variable):
+          optimizer_variables.append(slot_for_variable)
+    # Sort variables by name so that the return is deterministic.
+    return sorted(optimizer_variables, key=lambda v: v.name)
+
+  def _non_slot_variables(self):
+    """Additional variables created by the `Optimizer`.
+
+    This method should be overridden by child classes which create extra
+    variables, so that `variables()` includes the `Optimizer`'s non-slot
+    variables.
+
+    Returns:
+      A list or tuple of variables.
+    """
+    return []
+
   def _assert_valid_dtypes(self, tensors):
     """Asserts tensors are all valid types (see `_valid_dtypes`).
 

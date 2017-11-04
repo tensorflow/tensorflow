@@ -133,16 +133,15 @@ class FullFB(FisherBlock):
   to any type of parameter in principle, but has very high variance.
   """
 
-  def __init__(self, layer_collection, params, batch_size):
+  def __init__(self, layer_collection, params):
     """Creates a FullFB block.
 
     Args:
       layer_collection: The collection of all layers in the K-FAC approximate
           Fisher information matrix to which this FisherBlock belongs.
       params: The parameters of this layer (Tensor or tuple of Tensors).
-      batch_size: The batch size, used in the covariance estimator.
     """
-    self._batch_size = batch_size
+    self._batch_sizes = []
     self._params = params
 
     super(FullFB, self).__init__(layer_collection)
@@ -172,9 +171,21 @@ class FullFB(FisherBlock):
   def tensors_to_compute_grads(self):
     return self._params
 
+  def register_additional_minibatch(self, batch_size):
+    """Register an additional minibatch.
+
+    Args:
+      batch_size: The batch size, used in the covariance estimator.
+    """
+    self._batch_sizes.append(batch_size)
+
   @property
   def num_registered_minibatches(self):
-    return 1  # Multiple minibatches not supported.
+    return len(self._batch_sizes)
+
+  @property
+  def _batch_size(self):
+    return math_ops.reduce_sum(self._batch_sizes)
 
 
 class NaiveDiagonalFB(FisherBlock):
@@ -186,17 +197,16 @@ class NaiveDiagonalFB(FisherBlock):
   to any type of parameter in principle, but has very high variance.
   """
 
-  def __init__(self, layer_collection, params, batch_size):
+  def __init__(self, layer_collection, params):
     """Creates a NaiveDiagonalFB block.
 
     Args:
       layer_collection: The collection of all layers in the K-FAC approximate
           Fisher information matrix to which this FisherBlock belongs.
       params: The parameters of this layer (Tensor or tuple of Tensors).
-      batch_size: The batch size, used in the covariance estimator.
     """
     self._params = params
-    self._batch_size = batch_size
+    self._batch_sizes = []
 
     super(NaiveDiagonalFB, self).__init__(layer_collection)
 
@@ -221,9 +231,21 @@ class NaiveDiagonalFB(FisherBlock):
   def tensors_to_compute_grads(self):
     return self._params
 
+  def register_additional_minibatch(self, batch_size):
+    """Register an additional minibatch.
+
+    Args:
+      batch_size: The batch size, used in the covariance estimator.
+    """
+    self._batch_sizes.append(batch_size)
+
   @property
   def num_registered_minibatches(self):
-    return 1  # Multiple minibatches not supported.
+    return len(self._batch_sizes)
+
+  @property
+  def _batch_size(self):
+    return math_ops.reduce_sum(self._batch_sizes)
 
 
 class FullyConnectedDiagonalFB(FisherBlock):
