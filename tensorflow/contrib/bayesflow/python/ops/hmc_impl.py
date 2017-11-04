@@ -304,7 +304,7 @@ def ais_chain(n_iterations, step_size, n_leapfrog_steps, initial_x,
 
 
 def kernel(step_size, n_leapfrog_steps, x, target_log_prob_fn, event_dims=(),
-           x_log_prob=None, x_grad=None, name=None):
+           x_log_prob=None, x_grad=None, skip_metropolis_step=False, name=None):
   """Runs one iteration of Hamiltonian Monte Carlo.
 
   Hamiltonian Monte Carlo (HMC) is a Markov chain Monte Carlo (MCMC)
@@ -347,6 +347,9 @@ def kernel(step_size, n_leapfrog_steps, x, target_log_prob_fn, event_dims=(),
       `target_log_prob_fn()` evaluated at `x` (such as that provided by
       a previous call to `kernel()`). Providing `x_log_prob` and
       `x_grad` saves one gradient computation per call to `kernel()`.
+    skip_metropolis_step (optional): boolean specifying whether to skip the
+      Metropolis-Hastings step and directly return the newly proposed values
+      by the integrator. The acceptance probabilities returned remain unchanged.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
@@ -474,9 +477,15 @@ def kernel(step_size, n_leapfrog_steps, x, target_log_prob_fn, event_dims=(),
     acceptance_probs = math_ops.exp(math_ops.minimum(0., log_potential_0 -
                                                      log_potential_1 +
                                                      kinetic_0 - kinetic_1))
+
+    # If we are skipping the MH step directly return
+    if skip_metropolis_step:
+      return new_x, acceptance_probs, -log_potential_1, -grad_1
+
     accepted = math_ops.cast(
         random_ops.random_uniform(array_ops.shape(acceptance_probs)) <
         acceptance_probs, np.float32)
+
     new_log_prob = (-log_potential_0 * (1. - accepted) -
                     log_potential_1 * accepted)
 
