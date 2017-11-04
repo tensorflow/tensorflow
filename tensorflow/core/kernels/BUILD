@@ -773,12 +773,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "roll_op",
-    prefix = "roll_op",
-    deps = ARRAY_DEPS,
-)
-
-tf_kernel_library(
     name = "shape_ops",
     prefix = "shape_ops",
     deps = ARRAY_DEPS,
@@ -1271,25 +1265,6 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":reverse_op",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "roll_op_test",
-    size = "small",
-    srcs = ["roll_op_test.cc"],
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        ":roll_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -2486,8 +2461,7 @@ cc_library(
 MANIP_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:lib_internal",
-    "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core:manip_ops_op_lib",
     "//third_party/eigen3",
 ]
 

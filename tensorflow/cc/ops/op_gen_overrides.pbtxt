@@ -169,6 +169,8 @@ op { name: "InitializeTableV2" rename_to: "InitializeTable" }
 op { name: "InitializeTableFromTextFile" skip: true }
 op { name: "InitializeTableFromTextFileV2" rename_to: "InitializeTableFromTextFile" }
 
+# manip_ops
+
 # math_ops
 op { name: "All" alias: "ReduceAll" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Any" alias: "ReduceAny" input_rename: { from: "reduction_indices" to: "axis" } }
@@ -235,4 +237,3 @@ op { name: "VariableV2" rename_to: "Variable" }
 # user_ops
 
 # training_ops
-

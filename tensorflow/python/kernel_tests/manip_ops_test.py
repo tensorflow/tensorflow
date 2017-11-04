@@ -23,6 +23,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as test_lib
 

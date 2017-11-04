@@ -1563,8 +1563,8 @@ REGISTER_OP("GatherNd")
       if (c->Value(r_dim) > c->Rank(params)) {
         return errors::InvalidArgument(
             "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices), " and params shape: ",
-            c->DebugString(params));
+            c->DebugString(indices),
+            " and params shape: ", c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
@@ -2150,12 +2150,12 @@ REGISTER_OP("ReverseSequence")
       // Validate batch_dim and seq_dim against input.
       const int32 input_rank = c->Rank(input);
       if (batch_dim >= input_rank) {
-        return errors::InvalidArgument("batch_dim must be < input rank: ",
-                                       batch_dim, " vs. ", input_rank);
+        return errors::InvalidArgument(
+            "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
       }
       if (seq_dim >= input_rank) {
-        return errors::InvalidArgument("seq_dim must be < input rank: ",
-                                       seq_dim, " vs. ", input_rank);
+        return errors::InvalidArgument(
+            "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -2257,46 +2257,6 @@ rank(t) ==> 3
 **Note**: The rank of a tensor is not the same as the rank of a matrix. The rank
 of a tensor is the number of indices required to uniquely select each element
 of the tensor. Rank is also known as "order", "degree", or "ndims."
-)doc");
-
-// --------------------------------------------------------------------------
-REGISTER_OP("Roll")
-    .Input("input: T")
-    .Input("shift: Tshift")
-    .Input("axis: Taxis")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("Tshift: {int32,int64}")
-    .Attr("Taxis: {int32,int64}")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Rolls the elements of a tensor by the offsets of `shift` along the dimensions
-of `axis`. Elements that roll passed the last position will wrap around
-to the first.
-
-For example:
-
-```
-# 't' is [0, 1, 2, 3, 4]
-roll(t, shift=2, axis=0) ==> [3, 4, 0, 1, 2]
-
-# shifting along multiple dimensions
-# 't' is [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
-roll(t, shift=[1, -2], axis=[0, 1]) ==> [[7, 8, 9, 5, 6], [2, 3, 4, 0, 1]]
-
-# shifting along the same axis multiple times
-# 't' is [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
-roll(t, shift=[2, -3], axis=[1, 1]) ==> [[1, 2, 3, 4, 0], [6, 7, 8, 9, 5]]
-```
-
-shift: `shift[i]` specifies the number of places by which elements are shifted
-  along the dimension specified by `axis[i]`. Negative shifts will roll the
-  elements in the opposite direction.
-axis: `axis[i]` specifies the dimension that the shift `shift[i]` should occur.
-  if the same axis is referenced more than once, the total shift for that axis
-  will be the sum of all the shifts that belong to that axis.
-output: Has the same shape and size as the input. The elements are shifted by
-  the offsets of `shift` along the dimensions of `axis`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -5254,8 +5214,9 @@ Status ScatterNdShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", outer_dims, " dimensions of indices.shape=",
-            c->DebugString(indices_shape), " must match the outer ", outer_dims,
+            "The outer ", outer_dims,
+            " dimensions of indices.shape=", c->DebugString(indices_shape),
+            " must match the outer ", outer_dims,
             " dimensions of updates.shape=", c->DebugString(updates_shape),
             ": ", s.error_message());
       }

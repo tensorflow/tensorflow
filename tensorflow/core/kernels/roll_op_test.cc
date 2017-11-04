@@ -195,21 +195,6 @@ TEST_F(RollOpTest, OneSize_ThreeD32) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(RollOpTest, OneSize_ThreeD32) {
-  MakeOp(DT_FLOAT, DT_INT32);
-
-  // Feed and run
-  AddInputFromArray<float>(TensorShape({1, 1, 1}), {5});
-  AddInputFromArray<int32>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({}), {0});
-  TF_ASSERT_OK(RunOpKernel());
-
-  // Check the output.
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1}));
-  test::FillValues<float>(&expected, {5});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
-}
-
 TEST_F(RollOpTest, DuplicateShifts_TwoD32) {
   MakeOp(DT_FLOAT, DT_INT32);
 

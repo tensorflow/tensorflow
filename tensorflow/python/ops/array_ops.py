@@ -47,7 +47,6 @@ See the @{$python/array_ops} guide.
 @@reverse_sequence
 @@reverse
 @@reverse_v2
-@@roll
 @@transpose
 @@extract_image_patches
 @@space_to_batch_nd
@@ -2514,14 +2513,6 @@ reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
     deprecation.rewrite_argument_docstring(
         gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
     "seq_dim", "seq_axis")
-
-
-def roll(input, shift, axis):
-  return gen_array_ops.roll(input, shift, axis)
-
-
-roll.__doc__ = gen_array_ops.roll.__doc__
-
 
 def gather(params, indices, validate_indices=None, name=None, axis=0):
   # TODO(rjryan): Remove "Gather" creation in favor of GatherV2 once the forward

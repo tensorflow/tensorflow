@@ -27,6 +27,7 @@ set(tf_op_lib_names
     "linalg_ops"
     "lookup_ops"
     "logging_ops"
+    "manip_ops"
     "math_ops"
     "nn_ops"
     "no_op"
