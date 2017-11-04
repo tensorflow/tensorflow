@@ -62,8 +62,19 @@ class ConcatBaseOp : public OpKernel {
                     axis_attribute_name,
                     " tensor should be a scalar integer, but got shape ",
                     concat_dim_tensor->shape().DebugString()));
-    const int32 concat_dim =
-        internal::SubtleMustCopy(concat_dim_tensor->scalar<int32>()());
+    int64 concat_dim;
+    // In case of ConcatV2, "axis" could be int32 or int64
+    if (AxisArgName == NAME_IS_AXIS) {
+      OP_REQUIRES(c, (concat_dim_tensor->dtype() == DT_INT32 || concat_dim_tensor->dtype() == DT_INT64), errors::InvalidArgument(axis_attribute_name, " tensor should be int32 or int64, but got ", concat_dim_tensor->dtype()));
+    } else {
+      OP_REQUIRES(c, (concat_dim_tensor->dtype() == DT_INT32), errors::InvalidArgument(axis_attribute_name, " tensor should be int32, but got ", concat_dim_tensor->dtype()));
+    }
+    if (concat_dim_tensor->dtype() == DT_INT32) {
+      concat_dim = internal::SubtleMustCopy(concat_dim_tensor->scalar<int32>()());
+    } else {
+      concat_dim = internal::SubtleMustCopy(concat_dim_tensor->scalar<int64>()());
+    }
+
     OpInputList values;
     OP_REQUIRES_OK(c, c->input_list("values", &values));
     const int N = values.size();
@@ -163,7 +174,6 @@ using ConcatV2Op = ConcatBaseOp<Device, T, NAME_IS_AXIS>;
   REGISTER_KERNEL_BUILDER(Name("ConcatV2")                   \
                               .Device(DEVICE_CPU)            \
                               .TypeConstraint<type>("T")     \
-                              .TypeConstraint<int32>("Tidx") \
                               .HostMemory("axis"),           \
                           ConcatV2Op<CPUDevice, type>)
 
@@ -187,7 +197,6 @@ REGISTER_CONCAT(qint32);
   REGISTER_KERNEL_BUILDER(Name("ConcatV2")                   \
                               .Device(DEVICE_GPU)            \
                               .TypeConstraint<type>("T")     \
-                              .TypeConstraint<int32>("Tidx") \
                               .HostMemory("axis"),           \
                           ConcatV2Op<GPUDevice, type>)
 
@@ -212,7 +221,6 @@ REGISTER_KERNEL_BUILDER(Name("Concat")
 REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tidx")
                             .HostMemory("values")
                             .HostMemory("axis")
                             .HostMemory("output"),
@@ -230,7 +238,6 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
   REGISTER_KERNEL_BUILDER(Name("ConcatV2")                   \
                               .Device(DEVICE_SYCL)           \
                               .TypeConstraint<type>("T")     \
-                              .TypeConstraint<int32>("Tidx") \
                               .HostMemory("axis"),           \
                           ConcatV2Op<SYCLDevice, type>)
 
@@ -246,7 +253,6 @@ REGISTER_KERNEL_BUILDER(Name("Concat")
 REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tidx")
                             .HostMemory("values")
                             .HostMemory("axis")
                             .HostMemory("output"),
