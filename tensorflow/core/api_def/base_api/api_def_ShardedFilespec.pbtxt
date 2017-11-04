@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "ShardedFilespec"
+  summary: "Generate a glob pattern matching all sharded file names."
+}

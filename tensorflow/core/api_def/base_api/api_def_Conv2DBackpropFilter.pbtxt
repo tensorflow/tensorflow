@@ -1,0 +1,57 @@
+op {
+  graph_op_name: "Conv2DBackpropFilter"
+  in_arg {
+    name: "input"
+    description: <<END
+4-D with shape `[batch, in_height, in_width, in_channels]`.
+END
+  }
+  in_arg {
+    name: "filter_sizes"
+    description: <<END
+An integer vector representing the tensor shape of `filter`,
+where `filter` is a 4-D
+`[filter_height, filter_width, in_channels, out_channels]` tensor.
+END
+  }
+  in_arg {
+    name: "out_backprop"
+    description: <<END
+4-D with shape `[batch, out_height, out_width, out_channels]`.
+Gradients w.r.t. the output of the convolution.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+4-D with shape
+`[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+the `filter` input of the convolution.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+The stride of the sliding window for each dimension of the input
+of the convolution. Must be in the same order as the dimension specified with
+format.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  attr {
+    name: "data_format"
+    description: <<END
+Specify the data format of the input and output data. With the
+default format "NHWC", the data is stored in the order of:
+    [batch, in_height, in_width, in_channels].
+Alternatively, the format could be "NCHW", the data storage order of:
+    [batch, in_channels, in_height, in_width].
+END
+  }
+  summary: "Computes the gradients of convolution with respect to the filter."
+}

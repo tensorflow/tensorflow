@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "BitwiseOr"
+  summary: "Elementwise computes the bitwise OR of `x` and `y`."
+  description: <<END
+The result will have those bits set, that are set in `x`, `y` or both. The
+computation is performed on the underlying representations of `x` and `y`.
+END
+}
