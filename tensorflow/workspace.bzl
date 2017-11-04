@@ -540,16 +540,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
      strip_prefix = "grpc-6da4f51e06f4077af5beb057ec5316c4ed5229ee",
   )
 
-  native.http_archive(
-      name = "com_google_absl",
-      urls = [
-          # "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
-          "https://github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
-      ],
-     sha256 = "f1a7349f88d2846210c42e2f7271dabeee404c2a3b4198e34a797993e3569b03",
-     strip_prefix = "abseil-cpp-cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
-  )
-
   # gRPC wants the existence of a cares dependence but its contents are not
   # actually important since we have set GRPC_ARES=0 in tools/bazel.rc
   native.bind(
