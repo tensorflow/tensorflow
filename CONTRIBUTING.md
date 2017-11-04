@@ -42,18 +42,18 @@ TensorFlow coding style.
   changes to lower the maintenance cost.
 * Bug fixes also generally require unit tests, because the presence of bugs
   usually indicates insufficient test coverage.
-* Keep API compatibility in mind when you change code in core TensorFlow,
+* Keep API compatibility in mind when you change the code in core TensorFlow,
   e.g., code in [tensorflow/core](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core) and  [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
   TensorFlow has reached version 1 and hence cannot make
   non-backward-compatible API changes without a major release. Reviewers of your
   pull request will comment on any API compatibility issues.
 * When you contribute a new feature to TensorFlow, the maintenance burden is (by
   default) transferred to the TensorFlow team. This means that benefit of
-  contribution must be compared against the cost of maintaining the feature.
+  the contribution must be compared against the cost of maintaining the feature.
 * Full new features (e.g., a new op implementing a cutting-edge algorithm)
   typically will live in
   [tensorflow/contrib](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib)
-  to get some airtime before decision is made regarding whether they are to be
+  to get some airtime before a decision is made regarding whether they are to be
   migrated to the core.
 
 #### License
