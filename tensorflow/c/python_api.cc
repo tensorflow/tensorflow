@@ -31,6 +31,7 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
                                attr_value_proto->length)) {
     status->status =
         tensorflow::errors::InvalidArgument("Invalid AttrValue proto");
+    return;
   }
 
   mutex_lock l(graph->mu);

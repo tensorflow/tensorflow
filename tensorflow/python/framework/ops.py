@@ -2090,6 +2090,7 @@ class Operation(object):
         # implemented to use the _set_attr method instead of node_def.attr.
         with errors.raise_exception_on_not_ok_status() as status:
           metadata = c_api.TF_OperationGetAttrMetadata(self._c_op, name, status)
+        with errors.raise_exception_on_not_ok_status() as status:
           if metadata.type == c_api.TF_ATTR_INT and metadata.is_list == 0:
             return c_api.TF_OperationGetAttrInt(self._c_op, name, status)
       except errors.InvalidArgumentError:
