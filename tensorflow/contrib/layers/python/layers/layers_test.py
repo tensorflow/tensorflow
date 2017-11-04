@@ -1784,28 +1784,40 @@ class BatchNormTest(test.TestCase):
   def testCreateOpFused(self):
     self._testCreateOp(True)
 
-  def testCreateOpBetaRegularizer(self):
+  def _testCreateOpBetaRegularizer(self, fused=True):
     height, width = 3, 3
     with self.test_session():
       reg = lambda x: 0.1 * math_ops.reduce_sum(x)
       images = np.random.uniform(size=(5, height, width, 3)).astype('f')
-      _layers.batch_norm(images, param_regularizers={'beta': reg})
+      _layers.batch_norm(images, param_regularizers={'beta': reg}, fused=fused)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
       beta_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(beta_decay.op.name, 'BatchNorm/beta/Regularizer/mul')
 
-  def testCreateOpGammaRegularizer(self):
+  def testCreateOpBetaRegularizerFused(self):
+    self._testCreateOpBetaRegularizer(fused=True)
+
+  def testCreateOpBetaRegularizerNonFused(self):
+    self._testCreateOpBetaRegularizer(fused=False)
+
+  def _testCreateOpGammaRegularizer(self, fused=True):
     height, width = 3, 3
     with self.test_session():
       reg = lambda x: 0.1 * math_ops.reduce_sum(x)
       images = np.random.uniform(size=(5, height, width, 3)).astype('f')
       _layers.batch_norm(
-          images, param_regularizers={'gamma': reg}, scale=True)
+          images, param_regularizers={'gamma': reg}, scale=True, fused=fused)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
       gamma_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(gamma_decay.op.name, 'BatchNorm/gamma/Regularizer/mul')
+
+  def testCreateOpGammaRegularizerFused(self):
+    self._testCreateOpGammaRegularizer(fused=True)
+
+  def testCreateOpGammaRegularizerNonFused(self):
+    self._testCreateOpGammaRegularizer(fused=False)
 
   def testCreateVariables(self):
     height, width = 3, 3

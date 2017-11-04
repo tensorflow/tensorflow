@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
+
+#include <algorithm>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -23,6 +27,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/utils/frame.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -30,6 +37,45 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+template <typename T>
+bool SafeSetTensorValue(double value, Tensor* tensor) {
+  using RealType = typename Eigen::NumTraits<T>::Real;
+  if (value > std::numeric_limits<RealType>::max() ||
+      value < std::numeric_limits<RealType>::min()) {
+    return false;
+  }
+  tensor->flat<T>()(0) = static_cast<T>(value);
+  return true;
+}
+
+#define HANDLE_CASE(DTYPE)                                          \
+  case DTYPE:                                                       \
+    if (!SafeSetTensorValue<EnumToDataType<DTYPE>::Type>(           \
+            static_cast<double>(value), tensor)) {                  \
+      return errors::InvalidArgument("Cannot store value ", value,  \
+                                     " in tensor of type " #DTYPE); \
+    }                                                               \
+    break
+
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
+  switch (dtype) {
+    //    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_FLOAT);
+    HANDLE_CASE(DT_DOUBLE);
+    HANDLE_CASE(DT_UINT8);
+    HANDLE_CASE(DT_INT8);
+    HANDLE_CASE(DT_UINT16);
+    HANDLE_CASE(DT_INT16);
+    HANDLE_CASE(DT_INT32);
+    HANDLE_CASE(DT_INT64);
+    HANDLE_CASE(DT_COMPLEX64);
+    HANDLE_CASE(DT_COMPLEX128);
+    default:
+      return errors::InvalidArgument("Unexpected type ", DataTypeString(dtype));
+  }
+  return Status::OK();
+}
 
 static bool IsInvolution(const NodeDef& node) {
   const std::unordered_set<string> involution_ops = {"Conj", "Reciprocal",
@@ -107,14 +153,28 @@ DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
   return attr.type();
 }
 
-bool IsCommutative(const OpDef& op, const NodeDef& input1) {
-  if (op.name() == "Add") {
+bool IsCommutative(const NodeDef& node) {
+  if (node.op() == "Add" && node.input_size() > 0) {
     // Workaround for "Add" not being marked is_commutative and is_aggregate.
     // (See cl/173915048).
-    const auto type = GetDataTypeFromAttr(input1, "T");
+    const auto type = GetDataTypeFromAttr(node, "T");
     return type != DT_INVALID && type != DT_STRING;
   }
-  return op.is_commutative();
+  const OpDef* op_def = nullptr;
+  const Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  return status.ok() && op_def->is_commutative();
+}
+
+bool IsAggregate(const NodeDef& node) {
+  if (node.op() == "Add" && node.input_size() > 0) {
+    // Workaround for "Add" not being marked is_commutative and is_aggregate.
+    // (See cl/173915048).
+    const auto type = GetDataTypeFromAttr(node, "T");
+    return type != DT_INVALID && type != DT_STRING;
+  }
+  const OpDef* op_def = nullptr;
+  const Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  return status.ok() && op_def->is_aggregate();
 }
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
@@ -208,6 +268,30 @@ bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
   return true;
 }
 
+// Fix frame dependencies by adding control dependencies from old_input to nodes
+// in new_nodes_for_control_dep, and update frame_map for all nodes in
+// new_nodes.
+void AddFrameControlDeps(const NodeDef* old_node,
+                         const std::vector<NodeDef*>& new_nodes,
+                         const string& source_for_ctrl_dep,
+                         const std::vector<NodeDef*>& sinks_for_control_dep,
+                         GraphDef* graph, NodeMap* node_map,
+                         FrameMap* frame_map) {
+  const auto frame_it = frame_map->find(old_node);
+  if (frame_it != frame_map->end()) {
+    for (auto node : new_nodes) {
+      frame_map->emplace(node, frame_it->second);
+    }
+    if (!source_for_ctrl_dep.empty() && !sinks_for_control_dep.empty()) {
+      const string ctrl_dep = ConstantFolding::AddControlDependency(
+          source_for_ctrl_dep, graph, node_map);
+      for (auto node : sinks_for_control_dep) {
+        node->add_input(ctrl_dep);
+      }
+    }
+  }
+}
+
 }  // namespace
 
 class UniqueNodes {
@@ -264,10 +348,7 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   }
 
   // Compare inputs.
-  const OpDef* op_def = nullptr;
-  Status status = OpRegistry::Global()->LookUpOpDef(node1.op(), &op_def);
-  const bool is_commutative = status.ok() && IsCommutative(*op_def, node1);
-  if (is_commutative) {
+  if (IsCommutative(node1)) {
     std::vector<string> inputs1(node1.input().begin(), node1.input().end());
     std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs1.begin(), inputs1.end());
@@ -399,7 +480,7 @@ void ArithmeticOptimizer::DedupComputations(GraphDef* optimized_graph) const {
 
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
-    std::vector<const NodeDef*>* new_nodes) const {
+    std::vector<const NodeDef*>* new_nodes, FrameMap* frame_map) const {
   // Remove involutions applied twice.
   if (IsInvolution(*node)) {
     // An involution is a function f(x) that is its own inverse,
@@ -519,6 +600,11 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
 
           new_nodes->push_back(new_transpose);
           new_nodes->push_back(new_cast);
+          //  Add frame dependencies that the original node might have had.
+          AddFrameControlDeps(node, {new_transpose, new_cast},
+                              new_transpose->input(0), {new_transpose},
+                              graph_def, node_map, frame_map);
+
           return new_cast->name();
         }
       }
@@ -625,6 +711,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             node_map->AddOutput(weights->name(), scaled_weights->name());
             scaled_weights->add_input(mul->input(1));
             node_map->AddOutput(scale->name(), scaled_weights->name());
+            AddFrameControlDeps(node, {scaled_weights}, "", {}, graph_def,
+                                node_map, frame_map);
 
             // Update `conv`'s weights to `scaled_weights`.
             conv->set_input(1, scaled_weights->name());
@@ -645,6 +733,159 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           }
         }
       }
+    }
+  }
+
+  if (node->input_size() > 0 && IsAggregate(*node) &&
+      !node_map->GetOutputs(node->name()).empty()) {
+    // Discard aggregate nodes with a single input.
+    if (node->input_size() == 1) {
+      return node->input(0);
+    }
+
+    // Try to rewrite aggregations of N >= 2 identical terms (possibly due
+    // to deduping or other rewrites) so we can get rid of the sum entirely.
+    // The expression (using AddN as an example of an aggregate op):
+    //   AddN(x, x, x, ... ,x)
+    //        <-- N terms -->
+    // can be rewritten to
+    //   Mul(Const(N), x))
+    //
+    bool all_equal = true;
+    for (int i = 1; i < node->input_size(); ++i) {
+      if (node->input(i) != node->input(0)) {
+        all_equal = false;
+        break;
+      }
+    }
+    if (all_equal) {
+      // 1. Create constant node with value N.
+      const int N = node->input_size();
+      const auto type = GetDataTypeFromAttr(*node, "T");
+      Tensor t(type, TensorShape({}));
+      Status status = SetTensorValue(type, N, &t);
+      if (!status.ok()) {
+        LOG(WARNING) << "Failed to create const node: "
+                     << status.error_message();
+        return "";
+      }
+      TensorValue value(&t);
+      NodeDef* new_const_node = graph_def->add_node();
+      *new_const_node =
+          ConstantFolding::CreateNodeDef(node->name() + "_const", value);
+      new_const_node->set_device(node->device());
+      node_map->AddNode(new_const_node->name(), new_const_node);
+      new_nodes->push_back(new_const_node);
+
+      // 2. Replace the aggregate node with Mul(Const(N), x).
+      NodeDef* new_mul_node = graph_def->add_node();
+      new_mul_node->set_name(node->name() + "_mul");
+      new_mul_node->set_op("Mul");
+      new_mul_node->set_device(node->device());
+      SetDataTypeToAttr(type, "T", new_mul_node);
+      node_map->AddNode(new_mul_node->name(), new_mul_node);
+      new_nodes->push_back(new_mul_node);
+      new_mul_node->add_input(new_const_node->name());
+      node_map->AddOutput(new_const_node->name(), new_mul_node->name());
+      new_mul_node->add_input(node->input(0));
+      node_map->AddOutput(node->input(0), new_mul_node->name());
+
+      AddFrameControlDeps(node, {new_const_node, new_mul_node}, node->input(0),
+                          {new_const_node}, graph_def, node_map, frame_map);
+      return new_mul_node->name();
+    }
+  }
+
+  // Use the commutativity and (left- and right-) distributive property of
+  // multiplication over addition to hoist common factors out of aggregate nodes
+  // where all the inputs are Mul nodes. This pattern occurs frequently in
+  // regularization terms for the gradients during training.
+  if (node->input_size() > 1 && IsAggregate(*node) &&
+      !node_map->GetOutputs(node->name()).empty()) {
+    // Determine the set of common factors if the input nodes are all Mul nodes.
+    std::set<string> common_factors;
+    int i = 0;
+    while (i < node->input_size() && (i == 0 || !common_factors.empty())) {
+      const NodeDef* input = node_map->GetNode(node->input(i));
+      if (input->op() == "Mul") {
+        std::set<string> factors_i{input->input(0), input->input(1)};
+        if (i == 0) {
+          std::swap(common_factors, factors_i);
+        } else {
+          std::set<string> intersection;
+          std::set_intersection(
+              factors_i.begin(), factors_i.end(), common_factors.begin(),
+              common_factors.end(),
+              std::inserter(intersection, intersection.begin()));
+          std::swap(common_factors, intersection);
+        }
+      } else {
+        common_factors.clear();
+        break;
+      }
+      ++i;
+    }
+    if (common_factors.size() == 1) {
+      // In this case we have an expression of the form
+      //   AddN(Mul(x, y1), Mul(y2, x), Mul(x, y3), ... Mul(x, yn))
+      // that can be rewritten as
+      //   Mul(x, AddN(y1, y2, y3, ... yn))
+      // 1. Hoist non-shared factors up into AddN node.
+      const string& common_factor = *common_factors.begin();
+      NodeDef* new_mul_node = graph_def->add_node();
+      NodeDef* new_add_node = graph_def->add_node();
+      *new_add_node = *node;
+      new_add_node->set_name(node->name() + "_hoist");
+      new_nodes->push_back(new_add_node);
+      node_map->AddNode(new_add_node->name(), new_add_node);
+      for (int i = 0; i < node->input_size(); ++i) {
+        NodeDef* mul_node = node_map->GetNode(node->input(i));
+        int unique_factor_index = mul_node->input(0) == common_factor ? 1 : 0;
+        const string unique_factor = mul_node->input(unique_factor_index);
+        new_add_node->set_input(i, unique_factor);
+        // 2. Use a copy of the first Mul node for the outer multiplication.
+        if (i == 0) {
+          *new_mul_node = *mul_node;
+          new_mul_node->set_name(new_mul_node->name() + "_hoist");
+          new_mul_node->set_input(0, common_factor);
+          new_mul_node->set_input(1, new_add_node->name());
+          new_nodes->push_back(new_mul_node);
+          node_map->AddNode(new_mul_node->name(), new_mul_node);
+        }
+      }
+      // 3. Set the device of the new nodes to that of the common factor "x".
+      NodeDef* common_factor_node = node_map->GetNode(common_factor);
+      new_add_node->set_device(common_factor_node->device());
+      new_mul_node->set_device(common_factor_node->device());
+
+      // 4. Add frame dependencies that the original node might have had.
+      AddFrameControlDeps(node, {new_add_node, new_mul_node}, common_factor,
+                          {new_add_node}, graph_def, node_map, frame_map);
+      return new_mul_node->name();
+    }
+  }
+
+  // Fuse ops by absorbing Conj into Transpose or ConjugateTranspose.
+  if (node->op() == "Conj" || node->op() == "Transpose" ||
+      node->op() == "ConjugateTranspose") {
+    const NodeDef* input = node_map->GetNode(node->input(0));
+    const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
+    const NodeDef* conj_op = node->op() == "Conj" ? node : input;
+    if ((transpose_op->op() == "Transpose" ||
+         transpose_op->op() == "ConjugateTranspose") &&
+        conj_op->op() == "Conj") {
+      NodeDef* new_op = graph_def->add_node();
+      *new_op = *transpose_op;
+      new_op->set_name(node->name() + "_fused");
+      // Flip the type of transpose op to absorb the conjugation.
+      new_op->set_op(transpose_op->op() == "Transpose" ? "ConjugateTranspose"
+                                                       : "Transpose");
+      new_op->set_input(0, input->input(0));
+      node_map->AddNode(new_op->name(), new_op);
+      node_map->UpdateInput(new_op->name(), node->name(), input->input(0));
+      AddFrameControlDeps(node, {new_op}, "", {}, graph_def, node_map,
+                          frame_map);
+      return new_op->name();
     }
   }
 
@@ -681,9 +922,13 @@ class SetVector {
 };
 }  // namespace
 
-void ArithmeticOptimizer::SimplifyArithmeticOps(
+Status ArithmeticOptimizer::SimplifyArithmeticOps(
     GraphDef* optimized_graph) const {
   NodeMap node_map(optimized_graph);
+  FrameMap frame_map;
+  int num_frames;
+  TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph, node_map,
+                                               &frame_map, &num_frames));
   SetVector<const NodeDef*> nodes_to_simplify;
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
     nodes_to_simplify.PushBack(optimized_graph->mutable_node()->Mutable(i));
@@ -691,8 +936,8 @@ void ArithmeticOptimizer::SimplifyArithmeticOps(
   while (!nodes_to_simplify.Empty()) {
     const NodeDef* node = nodes_to_simplify.PopBack();
     std::vector<const NodeDef*> new_nodes;
-    const string simplified_tensor =
-        TrySimplifyAndReplaceUses(node, optimized_graph, &node_map, &new_nodes);
+    const string simplified_tensor = TrySimplifyAndReplaceUses(
+        node, optimized_graph, &node_map, &new_nodes, &frame_map);
     if (simplified_tensor.empty()) {
       continue;
     }
@@ -730,6 +975,7 @@ void ArithmeticOptimizer::SimplifyArithmeticOps(
       }
     }
   }
+  return Status::OK();
 }
 
 Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
@@ -743,7 +989,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   TF_RETURN_IF_ERROR(graph_properties.AnnotateOutputShapes(optimized_graph));
 
   DedupComputations(optimized_graph);
-  SimplifyArithmeticOps(optimized_graph);
+  TF_RETURN_IF_ERROR(SimplifyArithmeticOps(optimized_graph));
 
   // Clear output shapes.
   for (int i = 0; i < optimized_graph->node_size(); ++i) {

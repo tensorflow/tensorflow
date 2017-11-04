@@ -23,6 +23,7 @@ import math
 
 from tensorflow.contrib.compiler import jit
 from tensorflow.contrib.layers.python.layers import layers
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
@@ -1017,7 +1018,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
 
 
 # pylint: disable=protected-access
-_Linear = rnn_cell_impl._Linear  # pylint: disable=invalid-name
+_Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name
 # pylint: enable=protected-access
 
 

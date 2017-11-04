@@ -46,7 +46,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   void DedupComputations(GraphDef* optimized_graph) const;
   // Runs peep-hole optimizations on `optimized_graph`, e.g., removing inverse
   // transposes.
-  void SimplifyArithmeticOps(GraphDef* optimized_graph) const;
+  Status SimplifyArithmeticOps(GraphDef* optimized_graph) const;
   // Tries to simplify the expression that roots at `node` and replaces the uses
   // of `node` to the simplified expression. Returns the name of the simplified
   // tensor (e.g. "split:1") or an emtpy string if no simplification is
@@ -64,7 +64,8 @@ class ArithmeticOptimizer : public GraphOptimizer {
   // NodeDef.
   string TrySimplifyAndReplaceUses(
       const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
-      std::vector<const NodeDef*>* new_nodes) const;
+      std::vector<const NodeDef*>* new_nodes,
+      std::unordered_map<const NodeDef*, std::vector<int>>* frame_map) const;
 
   std::unordered_set<string> nodes_to_preserve_;
 

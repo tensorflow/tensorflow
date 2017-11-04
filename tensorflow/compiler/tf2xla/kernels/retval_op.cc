@@ -60,7 +60,13 @@ class RetvalOp : public XlaOpKernel {
         OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
         OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
       } else {
-        tc.AddRetval(index_, dtype_, input);
+        // The core from which a return value is returned depends on the core
+        // assignment of the input to the retval .Since we can't change the core
+        // assignment of <input> as this point, create a tuple/get-tuple-element
+        // combination so that the core will be set on them.
+        auto tuple_elem =
+            ctx->builder()->GetTupleElement(ctx->builder()->Tuple({input}), 0);
+        tc.AddRetval(index_, dtype_, tuple_elem);
       }
     }
   }

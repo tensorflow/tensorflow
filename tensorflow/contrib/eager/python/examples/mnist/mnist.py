@@ -211,7 +211,7 @@ def main(_):
         test(model, test_ds)
       all_variables = (
           model.variables
-          + tfe.get_optimizer_variables(optimizer)
+          + optimizer.variables()
           + [global_step])
       tfe.Saver(all_variables).save(
           checkpoint_prefix, global_step=global_step)

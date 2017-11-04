@@ -371,6 +371,22 @@ class Tensor(_TensorLike):
     """
     return self._shape
 
+  def __iter__(self):
+    if context.in_graph_mode():
+      raise TypeError(
+          "`Tensor` objects are not iterable when eager execution is not "
+          "enabled. To iterate over this tensor use `tf.map_fn`.")
+    shape = self._shape_tuple()
+    if shape is None:
+      raise TypeError("Cannot iterate over a tensor with unknown shape.")
+    if not shape:
+      raise TypeError("Cannot iterate over a scalar tensor.")
+    if shape[0] is None:
+      raise TypeError(
+          "Cannot iterate over a tensor with unknown first dimension.")
+    for i in xrange(shape[0]):
+      yield self[i]
+
   def _shape_as_list(self):
     if self._shape.ndims is not None:
       return [dim.value for dim in self._shape.dims]
@@ -513,19 +529,6 @@ class Tensor(_TensorLike):
   @staticmethod
   def _override_operator(operator, func):
     _override_helper(Tensor, operator, func)
-
-  def __iter__(self):
-    """Dummy method to prevent iteration. Do not call.
-
-    NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the Tensor from 0 to
-    infinity.  Declaring this method prevents this unintended
-    behavior.
-
-    Raises:
-      TypeError: when invoked.
-    """
-    raise TypeError("'Tensor' object is not iterable.")
 
   def __bool__(self):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
@@ -2056,6 +2059,19 @@ class Operation(object):
         self._traceback,
         include_func_start_lineno=True)
 
+  def _set_attr(self, attr_name, attr_value):
+    """Private method used to set an attribute in the node_def."""
+    if not _USE_C_API:
+      assert "_set_attr not supported with _USE_C_API == False"
+      return
+    buf = c_api.TF_NewBufferFromString(
+        compat.as_bytes(attr_value.SerializeToString()))
+    try:
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf, status)  # pylint: disable=protected-access
+    finally:
+      c_api.TF_DeleteBuffer(buf)
+
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
 
@@ -2068,6 +2084,21 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
+    if _USE_C_API:
+      try:
+        # TODO(b/65162920): remove this try/except block when all attrs are
+        # implemented to use the _set_attr method instead of node_def.attr.
+        with errors.raise_exception_on_not_ok_status() as status:
+          metadata = c_api.TF_OperationGetAttrMetadata(self._c_op, name, status)
+        with errors.raise_exception_on_not_ok_status() as status:
+          if metadata.type == c_api.TF_ATTR_INT and metadata.is_list == 0:
+            return c_api.TF_OperationGetAttrInt(self._c_op, name, status)
+      except errors.InvalidArgumentError:
+        # Colocation ops are failing to find attrs begininning with "_*". They
+        # should fall through to the not-CAPI logic until the attribute is set
+        # via the C-API always.
+        pass
+
     fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
     if name not in self._node_def.attr:
       raise ValueError("No attr named '" + name + "' in " + str(self._node_def))
@@ -4897,6 +4928,9 @@ class GraphKeys(object):
   # Key to collect local variables that are local to the machine and are not
   # saved/restored.
   LOCAL_VARIABLES = "local_variables"
+  # Key to collect local variables which are used to accumulate interal state
+  # to be used in tf.metrics.*.
+  METRIC_VARIABLES = "metric_variables"
   # Key to collect model variables defined by layers.
   MODEL_VARIABLES = "model_variables"
   # Key to collect Variable objects that will be trained by the
@@ -4961,6 +4995,7 @@ class GraphKeys(object):
   _VARIABLE_COLLECTIONS = [
       GLOBAL_VARIABLES,
       LOCAL_VARIABLES,
+      METRIC_VARIABLES,
       MODEL_VARIABLES,
       TRAINABLE_VARIABLES,
       MOVING_AVERAGE_VARIABLES,

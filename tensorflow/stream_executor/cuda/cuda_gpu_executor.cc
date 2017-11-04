@@ -234,6 +234,21 @@ bool CUDAExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
   if (on_disk_spec != nullptr) {
     LOG(WARNING) << "loading CUDA kernel from disk is not supported";
     return false;
+  } else if (spec.has_cuda_cubin_in_memory()) {
+    kernelname = &spec.cuda_cubin_in_memory().kernelname();
+    const char *cubin = spec.cuda_cubin_in_memory().bytes();
+    mutex_lock lock{in_memory_modules_mu_};
+    module = in_memory_modules_[cubin];
+
+    if (module == nullptr) {
+      auto load_status = CUDADriver::LoadCubin(context_, cubin, &module);
+      if (!load_status.ok()) {
+        LOG(ERROR) << "failed to load CUBIN: " << load_status;
+        return false;
+      }
+
+      in_memory_modules_[cubin] = module;
+    }
   } else if (spec.has_cuda_ptx_in_memory()) {
     kernelname = &spec.cuda_ptx_in_memory().kernelname();
 
@@ -275,21 +290,6 @@ bool CUDAExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
         }
       }
       in_memory_modules_[orig_ptx] = module;
-    }
-  } else if (spec.has_cuda_cubin_in_memory()) {
-    kernelname = &spec.cuda_cubin_in_memory().kernelname();
-    const char *cubin = spec.cuda_cubin_in_memory().bytes();
-    mutex_lock lock{in_memory_modules_mu_};
-    module = in_memory_modules_[cubin];
-
-    if (module == nullptr) {
-      auto load_status = CUDADriver::LoadCubin(context_, cubin, &module);
-      if (!load_status.ok()) {
-        LOG(ERROR) << "failed to load CUBIN: " << load_status;
-        return false;
-      }
-
-      in_memory_modules_[cubin] = module;
     }
   } else {
     LOG(WARNING) << "no method of loading CUDA kernel provided";

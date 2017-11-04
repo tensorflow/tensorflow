@@ -1,4 +1,4 @@
-# `Dataset` Input Pipeline
+# Dataset Input Pipeline
 [TOC]
 
 @{tf.data.Dataset} allows you to build complex input pipelines. See the

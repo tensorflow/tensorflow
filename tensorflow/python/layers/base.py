@@ -434,6 +434,9 @@ class Layer(object):
       trainable: whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases)
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
+        Note, if the current variable scope is marked as non-trainable
+        then this parameter is ignored and any added variables are also
+        marked as non-trainable.
       constraint: constraint instance (callable).
       partitioner: (optional) partitioner instance (callable).  If
         provided, when the requested variable is created it will be split
@@ -476,6 +479,10 @@ class Layer(object):
                                    constraint=constraint,
                                    trainable=trainable and self.trainable,
                                    partitioner=partitioner)
+        if (context.in_graph_mode() and trainable and self.trainable
+            and variable not in tf_variables.trainable_variables()):
+          # A custom getter / variable scope overrode the trainable flag.
+          trainable = False
         if variable in existing_variables:
           return variable
         if regularizer:

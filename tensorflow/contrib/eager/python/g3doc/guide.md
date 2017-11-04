@@ -388,7 +388,7 @@ many arguments.
 
 In fact, eager execution encourages use of the [Keras](https://keras.io)-style
 "Layer" classes in the
-[`tf.layers`](https://www.tensorflow.org/versions/master/api_docs/python/tf/layers)
+[`tf.layers`](https://www.tensorflow.org/api_docs/python/tf/layers)
 module.
 
 Furthermore, you may want to apply more sophisticated techniques to compute
@@ -488,10 +488,10 @@ parameters of the model as arguments to the `loss` function.
 ### Using Keras and the Layers API
 
 [Keras](https://keras.io) is a popular API for defining model structures. The
-[`tf.keras.layers`](https://www.tensorflow.org/versions/master/api_docs/python/tf/keras/layers)
+[`tf.keras.layers`](https://www.tensorflow.org/api_docs/python/tf/keras/layers)
 module provides a set of building blocks for models and is implemented using the
 `tf.layers.Layer` subclasses in the
-[`tf.layers`](https://www.tensorflow.org/versions/master/api_docs/python/tf/layers)
+[`tf.layers`](https://www.tensorflow.org/api_docs/python/tf/layers)
 module. We encourage the use of these same building blocks when using
 TensorFlow's eager execution feature. For example, the very same linear
 regression model can be built using `tf.layers.Dense`:
@@ -608,9 +608,9 @@ it provides conveniences like keeping track of all model variables and methods
 to save and restore from checkpoints.
 
 Sub-classes of `tfe.Network` may register `Layer`s (like classes in
-[`tf.layers`](https://www.tensorflow.org/versions/master/api_docs/python/tf/layers),
+[`tf.layers`](https://www.tensorflow.org/api_docs/python/tf/layers),
 or [Keras
-layers](https://www.tensorflow.org/versions/master/api_docs/python/tf/keras/layers))
+layers](https://www.tensorflow.org/api_docs/python/tf/keras/layers))
 using a call to `self.track_layer()` and define the computation in an
 implementation of `call()`.
 
@@ -704,7 +704,7 @@ with tfe.restore_variables_on_create(
                                     net(inp).numpy()))
       all_variables = (
           net.variables
-          + tfe.get_optimizer_variables(optimizer)
+          + optimizer.variables()
           + [global_step])
       # Save the checkpoint.
       tfe.Saver(all_variables).save(checkpoint_prefix, global_step=global_step)
@@ -800,7 +800,7 @@ example in
 
 The discussion above has been centered around the computation executed by your
 model. The
-[`tf.data`](https://www.tensorflow.org/versions/master/api_docs/python/tf/data)
+[`tf.data`](https://www.tensorflow.org/api_docs/python/tf/data)
 module provides APIs to build complex input pipelines from simple, reusable
 pieces.
 
@@ -810,8 +810,7 @@ However, the process of iterating over elements of the dataset differs between
 eager execution and graph construction. When eager execution is enabled, the
 discussion on iterator creation using `make_one_shot_iterator()` and
 `get_next()` in the
-[Programmer's
-Guide](https://www.tensorflow.org/versions/master/programmers_guide/datasets) is
+[Programmer's Guide](https://www.tensorflow.org/programmers_guide/datasets) is
 *not* applicable. Instead, a more Pythonic `Iterator` class is available.
 
 For example:
