@@ -86,8 +86,8 @@ class UniqueOp : public OpKernel {
     auto Tin = input.shaped<T, 3>(new_sizes);
 
     Tensor* idx = nullptr;
-    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {0}, 1, TensorShape({Tin.dimension(1)}), &idx));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                1, TensorShape({Tin.dimension(1)}), &idx));
     auto idx_vec = idx->template vec<TIndex>();
 
     auto hash_fn = [&Tin](const int64& key) -> unsigned long {
