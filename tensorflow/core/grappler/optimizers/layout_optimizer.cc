@@ -61,23 +61,12 @@ std::set<string> GetOpsFormatSupported() {
 }
 
 std::set<string> GetOpsFormatAgnostic() {
-  std::set<string> ops_format_agnostic = {"Add",
-                                          "AddN",
-                                          "Concat",
-                                          "ConcatV2",
-                                          "Floor",
-                                          "Identity",
-                                          "Mul",
-                                          "Neg",
-                                          "RealDiv",
-                                          "Relu",
-                                          "Relu6",
-                                          "ReluGrad",
-                                          "Sigmoid",
-                                          "Slice",
-                                          "SquaredDifference",
-                                          "Squeeze",
-                                          "Sub"};
+  std::set<string> ops_format_agnostic = {
+      "Add",      "AddN",     "Concat", "ConcatV2",
+      "Floor",    "Identity", "Mul",    "Neg",
+      "Pad",      "RealDiv",  "Relu",   "Relu6",
+      "ReluGrad", "Sigmoid",  "Slice",  "SquaredDifference",
+      "Squeeze",  "Sub"};
   return ops_format_agnostic;
 }
 
@@ -279,10 +268,23 @@ class NodeProcessor : public GraphProcessor {
     if (!success) {
       LOG(ERROR) << "Failed to parse TensorProto.";
     }
-    int c = tensor.flat<int>()(3);
-    tensor.flat<int>()(3) = tensor.flat<int>()(2);
-    tensor.flat<int>()(2) = tensor.flat<int>()(1);
-    tensor.flat<int>()(1) = c;
+    if (tensor.dims() == 1) {
+      int c = tensor.flat<int>()(3);
+      tensor.flat<int>()(3) = tensor.flat<int>()(2);
+      tensor.flat<int>()(2) = tensor.flat<int>()(1);
+      tensor.flat<int>()(1) = c;
+    } else if (tensor.dims() == 2) {
+      for (int i = 0; i < 2; i++) {
+        int c = tensor.matrix<int>()(3, i);
+        tensor.matrix<int>()(3, i) = tensor.matrix<int>()(2, i);
+        tensor.matrix<int>()(2, i) = tensor.matrix<int>()(1, i);
+        tensor.matrix<int>()(1, i) = c;
+      }
+    } else {
+      return Status(
+          error::INVALID_ARGUMENT,
+          strings::StrCat("Unsupported dimension size: ", tensor.dims()));
+    }
     tensor.AsProtoTensorContent(
         node->mutable_attr()->at({"value"}).mutable_tensor());
     return Status::OK();
@@ -290,6 +292,8 @@ class NodeProcessor : public GraphProcessor {
 
   Status UpdateAttrValueOfInput(int input_index) {
     auto input_node = node_map_->GetNode(node_->input(input_index));
+    // We created a copy of the node, so that we don't modify the original node,
+    // which might be used elsewhere.
     NodeDef* added_node = graph_->add_node();
     *added_node = *input_node;
     string base_name = strings::StrCat(node_->name(), "-", input_node->name());
@@ -876,6 +880,38 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 };
 
+class PadProcessor : public AgnosticNodeProcessor {
+ public:
+  PadProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
+               bool is_in_frame)
+      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           PaddingSupported();
+  }
+  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
+
+ private:
+  bool PaddingSupported() const {
+    auto pad_const = node_map_->GetNode(node_->input(1));
+    bool is_const = IsConstant(*pad_const);
+    bool is_4D = false;
+    if (HasAttribute(*pad_const, "value").ok()) {
+      Tensor tensor;
+      if (tensor.FromProto(pad_const->mutable_attr()->at({"value"}).tensor())) {
+        if (tensor.dims() == 2) {
+          if (tensor.dim_size(0) == 4 && tensor.dim_size(1) == 2) {
+            is_4D = true;
+          }
+        }
+      }
+    }
+    return is_const && is_4D;
+  }
+};
+
 class ReluGradProcessor : public AgnosticNodeProcessor {
  public:
   ReluGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
@@ -1303,6 +1339,9 @@ class DataLayoutOptimizer : GraphProcessor {
                      node->op().compare("ConcatV2") == 0) {
             node_processor.reset(
                 new ConcatProcessor(graph_, node, node_map_, is_in_frame));
+          } else if (node->op().compare("Pad") == 0) {
+            node_processor.reset(
+                new PadProcessor(graph_, node, node_map_, is_in_frame));
           } else if (node->op().compare("ReluGrad") == 0) {
             node_processor.reset(
                 new ReluGradProcessor(graph_, node, node_map_, is_in_frame));
