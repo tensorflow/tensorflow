@@ -1563,8 +1563,8 @@ REGISTER_OP("GatherNd")
       if (c->Value(r_dim) > c->Rank(params)) {
         return errors::InvalidArgument(
             "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices),
-            " and params shape: ", c->DebugString(params));
+            c->DebugString(indices), " and params shape: ",
+            c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
@@ -2150,12 +2150,12 @@ REGISTER_OP("ReverseSequence")
       // Validate batch_dim and seq_dim against input.
       const int32 input_rank = c->Rank(input);
       if (batch_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("batch_dim must be < input rank: ",
+                                       batch_dim, " vs. ", input_rank);
       }
       if (seq_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("seq_dim must be < input rank: ",
+                                       seq_dim, " vs. ", input_rank);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -2275,7 +2275,7 @@ This operation returns an integer representing the number of elements in
 For example:
 
 ```
-# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
+# 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
 size(t) ==> 12
 ```
 
@@ -5214,9 +5214,8 @@ Status ScatterNdShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", outer_dims,
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ", outer_dims,
             " dimensions of updates.shape=", c->DebugString(updates_shape),
             ": ", s.error_message());
       }

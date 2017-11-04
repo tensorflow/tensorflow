@@ -2514,6 +2514,7 @@ reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
         gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
     "seq_dim", "seq_axis")
 
+
 def gather(params, indices, validate_indices=None, name=None, axis=0):
   # TODO(rjryan): Remove "Gather" creation in favor of GatherV2 once the forward
   # compatibility 3 week period has passed.
