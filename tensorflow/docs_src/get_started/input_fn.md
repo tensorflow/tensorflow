@@ -191,7 +191,7 @@ import pandas as pd
 
 def get_input_fn_from_pandas(data_set, num_epochs=None, shuffle=True):
   return tf.estimator.inputs.pandas_input_fn(
-      x=pdDataFrame(...),
+      x=pd.DataFrame(...),
       y=pd.Series(...),
       num_epochs=num_epochs,
       shuffle=shuffle)
