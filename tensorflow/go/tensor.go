@@ -207,6 +207,9 @@ func (t *Tensor) WriteContentsTo(w io.Writer) (int64, error) {
 func tensorData(c *C.TF_Tensor) []byte {
 	// See: https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
 	cbytes := C.TF_TensorData(c)
+	if cbytes == nil {
+		return nil
+	}
 	length := int(C.TF_TensorByteSize(c))
 	slice := (*[1 << 30]byte)(unsafe.Pointer(cbytes))[:length:length]
 	return slice
