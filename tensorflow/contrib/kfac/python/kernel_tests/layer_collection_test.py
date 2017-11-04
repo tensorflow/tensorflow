@@ -30,6 +30,21 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 
+class MockFisherBlock(object):
+  """A fake FisherBlock."""
+
+  num_registered_minibatches = 2
+
+  def __init__(self, name='MockFisherBlock'):
+    self.name = name
+
+  def __eq__(self, other):
+    return isinstance(other, MockFisherBlock) and other.name == self.name
+
+  def __hash__(self):
+    return hash(self.name)
+
+
 class LayerParametersDictTest(test.TestCase):
 
   def testSetItem(self):
@@ -172,10 +187,12 @@ class LayerCollectionTest(test.TestCase):
     y = variable_scope.get_variable('y', initializer=array_ops.constant(1,))
     z = variable_scope.get_variable('z', initializer=array_ops.constant(1,))
     lc = layer_collection.LayerCollection()
-    lc.fisher_blocks = {x: '1', z: '2'}
+    lc.fisher_blocks = {x: MockFisherBlock('1'), z: MockFisherBlock('2')}
 
-    lc.register_block((x, y), 'foo')
-    self.assertEqual(set(['2', 'foo']), set(lc.get_blocks()))
+    lc.register_block((x, y), MockFisherBlock('foo'))
+    self.assertEqual(
+        set([MockFisherBlock('2'), MockFisherBlock('foo')]),
+        set(lc.get_blocks()))
 
   def testRegisterTupleVarSomeRegisteredInOtherTuples(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
@@ -438,11 +455,6 @@ class LayerCollectionTest(test.TestCase):
 
   def testGetUseCountMap(self):
     """Ensure get_use_count_map() sums 'num_registered_minibatches'."""
-
-    class MockFisherBlock(object):
-
-      num_registered_minibatches = 2
-
     lc = layer_collection.LayerCollection()
     lc.fisher_blocks = {
         'a': MockFisherBlock(),

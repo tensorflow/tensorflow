@@ -701,7 +701,11 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
-      return sess.run(tensors)
+      if sess is None:
+        with self.test_session() as sess:
+          return sess.run(tensors)
+      else:
+        return sess.run(tensors)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager

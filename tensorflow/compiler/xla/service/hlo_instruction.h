@@ -27,6 +27,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
@@ -458,8 +458,15 @@ class HloInstruction {
   // reachable via control dependencies will not be visited, and the postorder
   // will not take control dependencies into account. It is as if the control
   // dependencies didn't exist in the graph at all.
-  Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true,
+  template <typename HloInstructionPtr>
+  Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
+                bool call_finish_visit = true,
                 bool ignore_control_predecessors = false);
+  Status Accept(ConstDfsHloVisitor* visitor, bool call_finish_visit = true,
+                bool ignore_control_predecessors = false) const {
+    return const_cast<HloInstruction*>(this)->Accept(
+        visitor, call_finish_visit, ignore_control_predecessors);
+  }
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -472,7 +479,9 @@ class HloInstruction {
 
   // Performs a postorder DFS visit using this node as the root. Calls the given
   // visitor function at each instruction.
-  Status Accept(const FunctionVisitor::VisitorFunction& visitor_func);
+  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
+  Status Accept(
+      const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Visits all instructions rooted at this instruction using the given visitor
   // in the given order. 'order' must contain at least the set of instructions
@@ -485,7 +494,8 @@ class HloInstruction {
                        const std::vector<const HloInstruction*>& order);
 
   // Visit this instruction and only this instruction with the given visitor.
-  Status Visit(DfsHloVisitor* visitor);
+  template <typename HloInstructionPtr>
+  Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
 
   // Returns the literal associated with this instruction.
   //
@@ -588,13 +598,13 @@ class HloInstruction {
   string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
-  string ToString(bool compact_operands = false,
-                  bool include_metadata = true) const;
+  string ToString(bool compact_operands = false, bool include_metadata = true,
+                  bool include_large_constants = false) const;
 
   // Components of the ToString() representation:
 
   // Returns a string representation of the operand list.
-  string OperandsToString(bool compact) const;
+  string OperandsToString(bool compact, bool include_large_constants) const;
 
   // Returns string representation of op-specific attributes.
   std::vector<string> ExtraAttributesToString() const;
@@ -870,12 +880,19 @@ class HloInstruction {
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
   // the instruction to form the name of the cloned instruction.
-  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone") const;
+  // If the module pointer is not nullptr, it will be the module where
+  // the cloned computations will be added to (in order to support deep
+  // cloning).
+  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone",
+                                        HloModule* module = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape and operands.
+  // If the module pointer is not nullptr, it will be the module where
+  // the cloned computations will be added to (in order to support deep
+  // cloning).
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) const;
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloModule* module = nullptr) const;
 
   // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
@@ -1061,8 +1078,8 @@ class HloInstruction {
 
   // Clones a fusion instruction with a new shape and operands.
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) const;
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloModule* module = nullptr) const;
 
   // Returns true if this instruction can legally have the dimensions field
   // set. Used for checking precondition of dimensions field accessors.
@@ -1208,6 +1225,25 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
+
+// Map classes that guarantee a deterministic iteration order when the key is
+// an HloInstruction* or a const HloInstruction*.
+// To make the iteration order over the map deterministic, the comparator
+// should not be using the pointer values, but rather an intrinsic property of
+// the hlo.
+struct HloPtrComparator {
+  bool operator()(const HloInstruction* const& lhs,
+                  const HloInstruction* const& rhs) const {
+    return lhs->unique_id() < rhs->unique_id();
+  }
+};
+
+template <typename ValueT>
+using HloInstructionMap = std::map<HloInstruction*, ValueT, HloPtrComparator>;
+
+template <typename ValueT>
+using ConstHloInstructionMap =
+    std::map<const HloInstruction*, ValueT, HloPtrComparator>;
 
 }  // namespace xla
 

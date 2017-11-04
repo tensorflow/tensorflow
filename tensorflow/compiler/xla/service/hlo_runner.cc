@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/platform/logging.h"
@@ -52,6 +53,17 @@ HloRunner::ReadModuleFromHloProtoFile(const char* filename,
   TF_ASSIGN_OR_RETURN(auto module,
                       HloModule::CreateFromProto(proto.hlo_module(), config));
   return std::move(module);
+}
+
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunner::ReadModuleFromHloTextDumpFile(const char* filename,
+                                         const DebugOptions& debug_options) {
+  string hlo_string;
+  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
+                                                  filename, &hlo_string));
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  return tools::Parse(hlo_string, config);
 }
 
 // Define this in .cc file to avoid having to include eigen or forward declare

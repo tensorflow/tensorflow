@@ -161,6 +161,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_folding",
         ":graph_optimizer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -170,6 +171,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:frame",
     ],
 )
 
@@ -235,9 +237,11 @@ cc_library(
         ":graph_rewriter",
         ":static_schedule",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_memory",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
     ],

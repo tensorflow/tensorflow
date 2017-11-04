@@ -288,6 +288,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Make a dummy rule that we can chaqnge "default" in select statements to.
+# to disable dependencies in copybara.
+config_setting(
+    name = "dummy_disabled_internal",
+    values = {"define": "with_dummy_disabled_internal=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
@@ -413,6 +421,7 @@ filegroup(
         "//tensorflow/contrib/makefile:all_files",
         "//tensorflow/contrib/meta_graph_transform:all_files",
         "//tensorflow/contrib/metrics:all_files",
+        "//tensorflow/contrib/model_pruning:all_files",
         "//tensorflow/contrib/mpi_collectives:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nearest_neighbor:all_files",

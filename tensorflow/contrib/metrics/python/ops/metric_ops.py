@@ -38,6 +38,9 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util.deprecation import deprecated
 
+# Epsilon constant used to represent extremely small quantity.
+_EPSILON = 1e-7
+
 
 def _safe_div(numerator, denominator, name):
   """Divides two values, returning 0 if the denominator is <= 0.
@@ -55,34 +58,6 @@ def _safe_div(numerator, denominator, name):
       math_ops.truediv(numerator, denominator),
       0,
       name=name)
-
-
-def _create_local(name,
-                  shape,
-                  collections=None,
-                  validate_shape=True,
-                  dtype=dtypes.float32):
-  """Creates a new local variable.
-
-  Args:
-    name: The name of the new or existing variable.
-    shape: Shape of the new or existing variable.
-    collections: A list of collection names to which the Variable will be added.
-    validate_shape: Whether to validate the shape of the variable.
-    dtype: Data type of the variables.
-
-  Returns:
-    The created variable.
-  """
-  # Make sure local variables are added to tf.GraphKeys.LOCAL_VARIABLES
-  collections = list(collections or [])
-  collections += [ops.GraphKeys.LOCAL_VARIABLES]
-  return variable_scope.variable(
-      initial_value=array_ops.zeros(shape, dtype=dtype),
-      name=name,
-      trainable=False,
-      collections=collections,
-      validate_shape=validate_shape)
 
 
 # TODO(ptucker): Move this somewhere common, to share with ops/losses/losses.py.
@@ -120,7 +95,7 @@ def _count_condition(values,
       or tuple.
   """
   check_ops.assert_type(values, dtypes.bool)
-  count_ = _create_local('count', shape=[])
+  count_ = metrics_impl.metric_variable([], dtypes.float32, name='count')
 
   values = math_ops.to_float(values)
   if weights is not None:
@@ -943,7 +918,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   update_ops = {}
 
   if 'tp' in includes:
-    true_positives = _create_local('true_positives', shape=[num_thresholds])
+    true_positives = metrics_impl.metric_variable(
+        [num_thresholds], dtypes.float32, name='true_positives')
     is_true_positive = math_ops.to_float(
         math_ops.logical_and(label_is_pos, pred_is_pos))
     if weights_tiled is not None:
@@ -954,7 +930,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
     values['tp'] = true_positives
 
   if 'fn' in includes:
-    false_negatives = _create_local('false_negatives', shape=[num_thresholds])
+    false_negatives = metrics_impl.metric_variable(
+        [num_thresholds], dtypes.float32, name='false_negatives')
     is_false_negative = math_ops.to_float(
         math_ops.logical_and(label_is_pos, pred_is_neg))
     if weights_tiled is not None:
@@ -965,7 +942,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
     values['fn'] = false_negatives
 
   if 'tn' in includes:
-    true_negatives = _create_local('true_negatives', shape=[num_thresholds])
+    true_negatives = metrics_impl.metric_variable(
+        [num_thresholds], dtypes.float32, name='true_negatives')
     is_true_negative = math_ops.to_float(
         math_ops.logical_and(label_is_neg, pred_is_neg))
     if weights_tiled is not None:
@@ -976,7 +954,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
     values['tn'] = true_negatives
 
   if 'fp' in includes:
-    false_positives = _create_local('false_positives', shape=[num_thresholds])
+    false_positives = metrics_impl.metric_variable(
+        [num_thresholds], dtypes.float32, name='false_positives')
     is_false_positive = math_ops.to_float(
         math_ops.logical_and(label_is_neg, pred_is_pos))
     if weights_tiled is not None:
@@ -1086,7 +1065,7 @@ def streaming_curve_points(labels=None,
                                      (labels, predictions, weights)):
     if curve != 'ROC' and curve != 'PR':
       raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
-    kepsilon = 1e-7  # to account for floating point imprecisions
+    kepsilon = _EPSILON  # to account for floating point imprecisions
     thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                   for i in range(num_thresholds - 2)]
     thresholds = [0.0 - kepsilon] + thresholds + [1.0 + kepsilon]
@@ -1337,10 +1316,10 @@ def streaming_precision_recall_at_equal_thresholds(predictions,
         math_ops.floor(predictions * (num_thresholds - 1)), dtypes.int32)
 
     with ops.name_scope('variables'):
-      tp_buckets_v = _create_local(
-          'tp_buckets', shape=[num_thresholds], dtype=dtype)
-      fp_buckets_v = _create_local(
-          'fp_buckets', shape=[num_thresholds], dtype=dtype)
+      tp_buckets_v = metrics_impl.metric_variable(
+          [num_thresholds], dtype, name='tp_buckets')
+      fp_buckets_v = metrics_impl.metric_variable(
+          [num_thresholds], dtype, name='fp_buckets')
 
     with ops.name_scope('update_op'):
       update_tp = state_ops.scatter_add(
@@ -1684,7 +1663,7 @@ def streaming_false_positive_rate_at_thresholds(predictions,
         predictions, labels, thresholds, weights, includes=('fp', 'tn'))
 
     # Avoid division by zero.
-    epsilon = 1e-7
+    epsilon = _EPSILON
 
     def compute_fpr(fp, tn, name):
       return math_ops.div(fp, epsilon + fp + tn, name='fpr_' + name)
@@ -1755,7 +1734,7 @@ def streaming_false_negative_rate_at_thresholds(predictions,
         predictions, labels, thresholds, weights, includes=('fn', 'tp'))
 
     # Avoid division by zero.
-    epsilon = 1e-7
+    epsilon = _EPSILON
 
     def compute_fnr(fn, tp, name):
       return math_ops.div(fn, epsilon + fn + tp, name='fnr_' + name)
@@ -2173,7 +2152,7 @@ def sparse_recall_at_top_k(labels,
   default_name = _at_k_name('recall', class_id=class_id)
   with ops.name_scope(name, default_name,
                       (top_k_predictions, labels, weights)) as name_scope:
-    return metrics_impl._sparse_recall_at_top_k(  # pylint: disable=protected-access
+    return metrics_impl.recall_at_top_k(
         labels=labels,
         predictions_idx=top_k_predictions,
         class_id=class_id,
@@ -2181,6 +2160,109 @@ def sparse_recall_at_top_k(labels,
         metrics_collections=metrics_collections,
         updates_collections=updates_collections,
         name=name_scope)
+
+
+def _compute_recall_at_precision(tp, fp, fn, precision, name):
+  """Helper function to compute recall at a given `precision`.
+
+  Args:
+    tp: The number of true positives.
+    fp: The number of false positives.
+    fn: The number of false negatives.
+    precision: The precision for which the recall will be calculated.
+    name: An optional variable_scope name.
+
+  Returns:
+    The recall at a the given `precision`.
+  """
+  precisions = math_ops.div(tp, tp + fp + _EPSILON)
+  tf_index = math_ops.argmin(
+      math_ops.abs(precisions - precision), 0, output_type=dtypes.int32)
+
+  # Now, we have the implicit threshold, so compute the recall:
+  return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
+                      name)
+
+
+def recall_at_precision(labels,
+                        predictions,
+                        precision,
+                        weights=None,
+                        num_thresholds=200,
+                        metrics_collections=None,
+                        updates_collections=None,
+                        name=None):
+  """Computes `recall` at `precision`.
+
+  The `recall_at_precision` function creates four local variables,
+  `tp` (true positives), `fp` (false positives) and `fn` (false negatives)
+  that are used to compute the `recall` at the given `precision` value. The
+  threshold for the given `precision` value is computed and used to evaluate the
+  corresponding `recall`.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `recall`. `update_op` increments the `tp`, `fp` and `fn` counts with the
+  weight of each case found in the `predictions` and `labels`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    precision: A scalar value in range `[0, 1]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    num_thresholds: The number of thresholds to use for matching the given
+      `precision`.
+    metrics_collections: An optional list of collections that `recall`
+      should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    recall: A scalar `Tensor` representing the recall at the given
+      `precision` value.
+    update_op: An operation that increments the `tp`, `fp` and `fn`
+      variables appropriately and whose value matches `recall`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      `precision` is not between 0 and 1, or if either `metrics_collections`
+      or `updates_collections` are not a list or tuple.
+
+  """
+  if not 0 <= precision <= 1:
+    raise ValueError('`precision` must be in the range [0, 1].')
+
+  with variable_scope.variable_scope(name, 'recall_at_precision',
+                                     (predictions, labels, weights)):
+    thresholds = [
+        i * 1.0 / (num_thresholds - 1) for i in range(1, num_thresholds - 1)
+    ]
+    thresholds = [0.0 - _EPSILON] + thresholds + [1.0 + _EPSILON]
+
+    values, update_ops = _streaming_confusion_matrix_at_thresholds(
+        labels, predictions, thresholds, weights)
+
+    recall = _compute_recall_at_precision(values['tp'], values['fp'],
+                                          values['fn'], precision, 'value')
+    update_op = _compute_recall_at_precision(update_ops['tp'], update_ops['fp'],
+                                             update_ops['fn'], precision,
+                                             'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, recall)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return recall, update_op
 
 
 def streaming_sparse_average_precision_at_k(predictions,
@@ -2607,10 +2689,13 @@ def streaming_covariance(predictions,
     predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
         predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    count_ = _create_local('count', [])
-    mean_prediction = _create_local('mean_prediction', [])
-    mean_label = _create_local('mean_label', [])
-    comoment = _create_local('comoment', [])  # C_A in update equation
+    count_ = metrics_impl.metric_variable([], dtypes.float32, name='count')
+    mean_prediction = metrics_impl.metric_variable(
+        [], dtypes.float32, name='mean_prediction')
+    mean_label = metrics_impl.metric_variable(
+        [], dtypes.float32, name='mean_label')
+    comoment = metrics_impl.metric_variable(  # C_A in update equation
+        [], dtypes.float32, name='comoment')
 
     if weights is None:
       batch_count = math_ops.to_float(array_ops.size(labels))  # n_B in eqn
@@ -3030,9 +3115,9 @@ def streaming_concat(values,
     # applied to contiguous slices
     init_size = 0 if max_size is None else max_size
     init_shape = [init_size] + fixed_shape
-    array = _create_local(
-        'array', shape=init_shape, validate_shape=False, dtype=values.dtype)
-    size = _create_local('size', shape=[], dtype=dtypes.int32)
+    array = metrics_impl.metric_variable(
+        init_shape, values.dtype, validate_shape=False, name='array')
+    size = metrics_impl.metric_variable([], dtypes.int32, name='size')
 
     perm = [0 if n == axis else n + 1 if n < axis else n for n in range(ndim)]
     valid_array = array[:size]
@@ -3166,7 +3251,7 @@ def count(values,
   """
 
   with variable_scope.variable_scope(name, 'count', (values, weights)):
-    count_ = _create_local('count', shape=[])
+    count_ = metrics_impl.metric_variable([], dtypes.float32, name='count')
 
     if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
@@ -3195,6 +3280,7 @@ __all__ = [
     'aggregate_metric_map',
     'aggregate_metrics',
     'count',
+    'recall_at_precision',
     'sparse_recall_at_top_k',
     'streaming_accuracy',
     'streaming_auc',

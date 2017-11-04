@@ -72,6 +72,36 @@ class WarmStartingUtilTest(test.TestCase):
           var = var._get_variable_list()
         return var, sess.run(var)
 
+  def _create_prev_run_multiple_vars(self,
+                                     var_names,
+                                     initializers,
+                                     shapes=None,
+                                     partitioners=None):
+    if not shapes:
+      shapes = [None] * len(var_names)
+    if not partitioners:
+      partitioners = [None] * len(var_names)
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        var_list = []
+        for var_name, shape, initializer, partitioner in zip(
+            var_names, shapes, initializers, partitioners):
+          var_list.append(
+              variable_scope.get_variable(
+                  var_name,
+                  shape=shape,
+                  initializer=initializer,
+                  partitioner=partitioner))
+        self._write_checkpoint(sess)
+        run_vars = []
+        for var, partitioner in zip(var_list, partitioners):
+          if partitioner:
+            self.assertTrue(isinstance(var, variables.PartitionedVariable))
+            run_vars.append(sess.run(var._get_variable_list()))
+          else:
+            run_vars.append(sess.run(var))
+        return var_list, run_vars
+
   def _create_dummy_inputs(self):
     return {
         "sc_int": array_ops.sparse_placeholder(dtypes.int32),
@@ -98,7 +128,7 @@ class WarmStartingUtilTest(test.TestCase):
   def _assert_cols_to_vars(self, cols_to_vars, cols_to_expected_values, sess):
     for col, expected_values in six.iteritems(cols_to_expected_values):
       for i, var in enumerate(cols_to_vars[col]):
-        self.assertAllEqual(expected_values[i], var.eval(sess))
+        self.assertAllClose(expected_values[i], var.eval(sess))
 
   def testWarmStartVar(self):
     _, prev_val = self._create_prev_run_var(
@@ -174,6 +204,99 @@ class WarmStartingUtilTest(test.TestCase):
         new_val = np.concatenate(
             [fruit_weights[0].eval(sess), fruit_weights[1].eval(sess)], axis=0)
         self.assertAllEqual(prev_val, new_val)
+
+  def testWarmStartVarMultipleVars(self):
+    _, prev_vals = self._create_prev_run_multiple_vars(
+        var_names=["fruit_weights", "other_weights"],
+        initializers=[[[0.5], [1.], [1.5], [2.]], [[.05], [.1], [.15], [.2]]])
+
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        fruit_weights = variable_scope.get_variable(
+            "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
+        other_weights = variable_scope.get_variable(
+            "other_weights", initializer=[[0.], [0.], [0.], [0.]])
+        ws_util._warmstart_var([fruit_weights, other_weights],
+                               self.get_temp_dir())
+        sess.run(variables.global_variables_initializer())
+        self.assertAllEqual(prev_vals[0], fruit_weights.eval(sess))
+        self.assertAllEqual(prev_vals[1], other_weights.eval(sess))
+
+  def testWarmStartVarMultipleVarsBothPartitioned(self):
+    _, prev_vals = self._create_prev_run_multiple_vars(
+        var_names=["fruit_weights", "other_weights"],
+        shapes=[[4, 1], [4, 1]],
+        initializers=[[[0.5], [1.], [1.5], [2.]], [[.05], [.1], [.15], [.2]]],
+        partitioners=[lambda shape, dtype: [2, 1], lambda shape, dtype: [2, 1]])
+
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        fruit_weights = variable_scope.get_variable(
+            "fruit_weights",
+            shape=[4, 1],
+            initializer=[[0.], [0.], [0.], [0.]],
+            partitioner=lambda shape, dtype: [2, 1])
+        other_weights = variable_scope.get_variable(
+            "other_weights",
+            shape=[4, 1],
+            initializer=[[0.], [0.], [0.], [0.]],
+            partitioner=lambda shape, dtype: [2, 1])
+        ws_util._warmstart_var([fruit_weights, other_weights],
+                               self.get_temp_dir())
+        sess.run(variables.global_variables_initializer())
+        fruit_weights = fruit_weights._get_variable_list()
+        new_fruit_weights_val = np.concatenate(
+            [fruit_weights[0].eval(sess), fruit_weights[1].eval(sess)], axis=0)
+        other_weights = other_weights._get_variable_list()
+        new_other_weights_val = np.concatenate(
+            [other_weights[0].eval(sess), other_weights[1].eval(sess)], axis=0)
+        self.assertAllEqual(
+            np.concatenate(prev_vals[0], axis=0), new_fruit_weights_val)
+        self.assertAllEqual(
+            np.concatenate(prev_vals[1], axis=0), new_other_weights_val)
+
+  def testWarmStartVarMultipleVarsMixOfPartitions(self):
+    # First is not partitioned, but the second two are.
+    _, prev_vals = self._create_prev_run_multiple_vars(
+        var_names=["fruit_weights", "other_weights", "veggie_weights"],
+        shapes=[None, [4, 1], [4, 1]],
+        initializers=[[[0.5], [1.], [1.5], [2.]], [[.05], [.1], [.15], [.2]],
+                      [[5.], [10.], [15.], [20.]]],
+        partitioners=[
+            None, lambda shape, dtype: [2, 1], lambda shape, dtype: [2, 1]
+        ])
+
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        fruit_weights = variable_scope.get_variable(
+            "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
+        other_weights = variable_scope.get_variable(
+            "other_weights",
+            shape=[4, 1],
+            initializer=[[0.], [0.], [0.], [0.]],
+            partitioner=lambda shape, dtype: [2, 1])
+        veggie_weights = variable_scope.get_variable(
+            "veggie_weights",
+            shape=[4, 1],
+            initializer=[[0.], [0.], [0.], [0.]],
+            partitioner=lambda shape, dtype: [2, 1])
+        # Flatten one of the partitioned variables.
+        ws_util._warmstart_var([fruit_weights, other_weights] +
+                               veggie_weights._get_variable_list(),
+                               self.get_temp_dir())
+        sess.run(variables.global_variables_initializer())
+        veggie_weights = veggie_weights._get_variable_list()
+        new_veggie_weights_val = np.concatenate(
+            [veggie_weights[0].eval(sess), veggie_weights[1].eval(sess)],
+            axis=0)
+        other_weights = other_weights._get_variable_list()
+        new_other_weights_val = np.concatenate(
+            [other_weights[0].eval(sess), other_weights[1].eval(sess)], axis=0)
+        self.assertAllEqual(prev_vals[0], fruit_weights.eval(sess))
+        self.assertAllEqual(
+            np.concatenate(prev_vals[1], axis=0), new_other_weights_val)
+        self.assertAllEqual(
+            np.concatenate(prev_vals[2], axis=0), new_veggie_weights_val)
 
   def testWarmStartVarWithVocab(self):
     prev_vocab_path = self._write_vocab(["apple", "banana", "guava", "orange"],
@@ -558,6 +681,66 @@ class WarmStartingUtilTest(test.TestCase):
             ]
         }, sess)
 
+  def testWarmStartInputLayerEmbeddingColumn(self):
+    # Create old and new vocabs for embedding column "sc_vocab".
+    prev_vocab_path = self._write_vocab(["apple", "banana", "guava", "orange"],
+                                        "old_vocab")
+    new_vocab_path = self._write_vocab(
+        ["orange", "guava", "banana", "apple", "raspberry", "blueberry"],
+        "new_vocab")
+
+    # Save checkpoint from which to warm-start.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        _ = variable_scope.get_variable(
+            "input_layer/sc_vocab_embedding/embedding_weights",
+            initializer=[[0.5, 0.4], [1., 1.1], [2., 2.2], [3., 3.3]])
+        self._write_checkpoint(sess)
+
+    def _partitioner(shape, dtype):  # pylint:disable=unused-argument
+      # Partition each var into 2 equal slices.
+      partitions = [1] * len(shape)
+      partitions[0] = min(2, shape[0].value)
+      return partitions
+
+    # Create feature columns.
+    sc_vocab = fc.categorical_column_with_vocabulary_file(
+        "sc_vocab", vocabulary_file=new_vocab_path, vocabulary_size=6)
+    emb_vocab = fc.embedding_column(
+        categorical_column=sc_vocab,
+        dimension=2,
+        # Can't use constant_initializer with load_and_remap.  In practice,
+        # use a truncated normal initializer.
+        initializer=init_ops.random_uniform_initializer(
+            minval=0.42, maxval=0.42))
+    all_deep_cols = [emb_vocab]
+    # New graph, new session with warmstarting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = {}
+        with variable_scope.variable_scope("", partitioner=_partitioner):
+          # Create the variables.
+          fc.input_layer(
+              features=self._create_dummy_inputs(),
+              feature_columns=all_deep_cols,
+              cols_to_vars=cols_to_vars)
+        ws_settings = ws_util._WarmStartSettings(
+            self.get_temp_dir(), col_to_prev_vocab={
+                emb_vocab: prev_vocab_path
+            })
+        ws_util._warmstart_input_layer(cols_to_vars, ws_settings)
+        sess.run(variables.global_variables_initializer())
+        # Verify weights were correctly warmstarted. Var corresponding to
+        # emb_vocab should be correctly warmstarted after vocab remapping.
+        # Missing values are filled in with the EmbeddingColumn's initializer.
+        self._assert_cols_to_vars(
+            cols_to_vars, {
+                emb_vocab: [
+                    np.array([[3., 3.3], [2., 2.2], [1., 1.1]]),
+                    np.array([[0.5, 0.4], [0.42, 0.42], [0.42, 0.42]])
+                ]
+            }, sess)
+
   def testErrorConditions(self):
     self.assertRaises(ValueError, ws_util._WarmStartSettings, None)
     x = variable_scope.get_variable(
@@ -566,8 +749,7 @@ class WarmStartingUtilTest(test.TestCase):
         initializer=ones(),
         partitioner=lambda shape, dtype: [2, 1])
 
-    # List of PartitionedVariable is invalid type.
-    self.assertRaises(TypeError, ws_util._warmstart_var, [x], prev_ckpt="/tmp")
+    # List of PartitionedVariable is invalid type when warmstarting with vocab.
     self.assertRaises(TypeError, ws_util._warmstart_var_with_vocab, [x], "/tmp",
                       5, "/tmp", "/tmp")
     # Keys of type other than FeatureColumn.

@@ -39,6 +39,7 @@ Status GraphMemory::InferDynamically(Cluster* cluster) {
   if (!cluster->DetailedStatsEnabled()) {
     return errors::Unavailable("Detailed stats collection must be enabled");
   }
+
   TF_RETURN_IF_ERROR(cluster->Initialize(item_));
   RunMetadata metadata;
   TF_RETURN_IF_ERROR(
@@ -163,6 +164,7 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
         live->memory_used = output.tensor_description()
                                 .allocation_description()
                                 .allocated_bytes();
+
         // Allocations typically take place at the very beginning of the op
         // execution.
         live->allocation_time =
@@ -185,7 +187,10 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
       for (const string& input : node->input()) {
         int position;
         string input_node = ParseNodeName(input, &position);
-
+        if (position < 0) {
+          // Skip control dependencies
+          continue;
+        }
         LiveTensor* live = FindOrCreateLiveTensor(
             input_node, position, &live_tensors,
             &live_tensors_per_device[node_placement[input_node]]);

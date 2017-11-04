@@ -82,6 +82,7 @@ py_library(
 
 py_test(
     name = "metric_loss_ops_test",
+    size = "large",
     srcs = [
         "python/metric_learning/metric_loss_ops_test.py",
     ],

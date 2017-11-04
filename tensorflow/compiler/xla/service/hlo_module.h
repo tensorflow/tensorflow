@@ -139,7 +139,7 @@ class HloModule {
 
   const HloModuleConfig& config() const { return config_; }
 
-  string ToString() const;
+  string ToString(bool include_large_constants = false) const;
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;

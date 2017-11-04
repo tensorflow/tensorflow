@@ -211,16 +211,13 @@ class BatchNormalization(base.Layer):
                          'be specified')
 
     if self.fused:
-      # Currently fused batch norm doesn't support renorm and beta/gamma
-      # regularizer; and only supports an input tensor of rank 4 and a channel
-      # dimension on axis 1 and 3.
+      # Currently fused batch norm doesn't support renorm. It also only supports
+      # an input tensor of rank 4 and a channel dimension on axis 1 or 3.
       # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
       # output back to its original shape accordingly.
       self.fused = (not self.renorm and
                     ndims == 4 and
                     self.axis in [[1], [3]] and
-                    self.beta_regularizer is None and
-                    self.gamma_regularizer is None and
                     self.virtual_batch_size is None and
                     self.adjustment is None)
       # TODO(chrisying): fused batch norm is currently not supported for

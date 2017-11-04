@@ -11,7 +11,18 @@ Contents:
 
 # Benchmarks
 
-Using a synthetic data.
+Using a synthetic data, run:
+
+```
+# Using eager execution
+python resnet50_test.py --benchmarks=.
+
+# Using graph execution
+python resnet50_graph_test.py --benchmarks=.
+```
+
+The above uses the model definition included with the TensorFlow pip
+package. To build (and run benchmarks) from source:
 
 ```
 # Using eager execution

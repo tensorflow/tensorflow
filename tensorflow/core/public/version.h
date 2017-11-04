@@ -90,6 +90,7 @@ limitations under the License.
 // 23. Remove NonMaxSuppression in favor of NonMaxSuppressionV2.
 // 24. Deprecate lookup ops (v1) ops in favor of v2 (30may2017)
 // 25. Deprecate stack (v1) ops in favor of v2 (2017/6/15).
+// 25. Deprecate RandomPoisson (v1) ops in favor of v2 (2017/10/25).
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
