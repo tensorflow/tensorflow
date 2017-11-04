@@ -223,8 +223,17 @@ class Metric(object):
     """***Only for use by descendants of Metric***."""
     if self._built:
       raise RuntimeError("Can't call add_variable() except in build().")
-    v = variable_scope.get_variable(name, shape, dtype, initializer,
-                                    trainable=False, use_resource=True)
+    collections = None if context.in_eager_mode() else [
+        ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
+    ]
+    v = variable_scope.get_variable(
+        name,
+        shape,
+        dtype,
+        initializer,
+        trainable=False,
+        collections=collections,
+        use_resource=True)
     self._vars.append(v)
     if context.in_eager_mode():
       self._initial_values[v] = v.value()

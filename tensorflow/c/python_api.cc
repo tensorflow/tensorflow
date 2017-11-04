@@ -24,6 +24,20 @@ void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
   graph->graph.AddControlEdge(&input->node, &op->node);
 }
 
+void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+             TF_Buffer* attr_value_proto, TF_Status* status) {
+  AttrValue attr_val;
+  if (!attr_val.ParseFromArray(attr_value_proto->data,
+                               attr_value_proto->length)) {
+    status->status =
+        tensorflow::errors::InvalidArgument("Invalid AttrValue proto");
+    return;
+  }
+
+  mutex_lock l(graph->mu);
+  op->node.AddAttr(attr_name, attr_val);
+}
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
   mutex_lock l(graph->mu);
   op->node.set_requested_device(device);

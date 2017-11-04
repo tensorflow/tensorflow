@@ -234,7 +234,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     for (auto hlo_prof_idx : hlo_to_profile_idx_) {
       const HloInstruction* hlo = hlo_prof_idx.first;
       uint64 cycles_taken = profile_counters[hlo_prof_idx.second];
-      hlo_execution_profile->AddProfileResult(hlo, cycles_taken);
+      hlo_execution_profile->SetCyclesTakenBy(hlo, cycles_taken);
     }
   }
   return Status::OK();

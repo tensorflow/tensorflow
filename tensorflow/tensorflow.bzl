@@ -276,6 +276,10 @@ def tf_cc_shared_object(
       }),
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_cc_shared_object",
+    label_regex_for_dep="{extension_name}")
+
 
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
@@ -590,6 +594,10 @@ def tf_cc_test_gpu(name,
       suffix=suffix,
       args=args)
 
+register_extension_info(
+    extension_name="tf_cc_test_gpu",
+    label_regex_for_dep="{extension_name}")
+
 
 def tf_cuda_cc_test(name,
                     srcs=[],
@@ -629,6 +637,11 @@ def tf_cuda_cc_test(name,
       size=size,
       linkopts=linkopts,
       args=args)
+
+register_extension_info(
+    extension_name="tf_cuda_cc_test",
+    label_regex_for_dep="{extension_name}")
+
 
 def tf_cuda_only_cc_test(name,
                     srcs=[],
@@ -1173,6 +1186,10 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
           clean_dep("//tensorflow:darwin"): [],
       }),)
 
+register_extension_info(
+    extension_name="tf_custom_op_library",
+    label_regex_for_dep="{extension_name}")
+
 
 def tf_custom_op_py_library(name,
                             srcs=[],
@@ -1319,7 +1336,7 @@ def tf_py_test(name,
 
 register_extension_info(
     extension_name="tf_py_test",
-    label_regex_map={"deps": "additional_deps:{extension_name}"})
+    label_regex_map={"additional_deps": "deps:{extension_name}"})
 
 
 def cuda_py_test(name,

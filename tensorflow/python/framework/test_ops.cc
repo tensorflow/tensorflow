@@ -331,4 +331,14 @@ REGISTER_OP("OpWithDefaultAttr")
 REGISTER_OP("OpWithFutureDefaultAttr")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("IntAttr")
+    .Output("out: int64")
+    .Attr("foo: int = 1")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("StringListAttr")
+    .Attr("a: list(string)")
+    .Attr("b: string")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // end namespace tensorflow

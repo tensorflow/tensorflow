@@ -32,13 +32,16 @@ cc_library(
 
 py_library(
     name = "tpu_test_util",
-    srcs = [
-        "python/tpu/test_util.py",
-    ],
+    srcs = ["python/tpu/test_util.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -53,17 +56,23 @@ py_library(
     deps = [
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:run_config",
         "//tensorflow/python/estimator:util",
+        "@six_archive//:six",
     ],
 )
 
@@ -108,6 +117,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -124,21 +134,15 @@ tf_custom_op_py_library(
         ":tpu_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:util",
     ],
 )
 
 py_library(
     name = "tpu",
-    srcs = [
-        "python/tpu/__init__.py",
-    ],
+    srcs = ["python/tpu/__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_estimator",
@@ -211,7 +215,9 @@ tf_py_test(
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["**/*"],
+        include = [
+            "**/*",
+        ],
         exclude = [
             "**/METADATA",
             "**/OWNERS",

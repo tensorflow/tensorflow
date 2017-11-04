@@ -26,6 +26,7 @@ from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training import training_util
 
@@ -40,6 +41,17 @@ class MetricsTest(test.TestCase):
     self.assertEqual(111111.0/6, m.result().numpy())
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testVariableCollections(self):
+    with context.graph_mode(), ops.Graph().as_default():
+      m = metrics.Mean()
+      m(1000)
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)))
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
 
   def testInitVariables(self):
     m = metrics.Mean()

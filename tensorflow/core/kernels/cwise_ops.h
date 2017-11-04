@@ -676,7 +676,9 @@ struct sub : base<T, Eigen::internal::scalar_difference_op<T>> {
 };
 
 template <typename T>
-struct mul : base<T, Eigen::internal::scalar_product_op<T>> {};
+struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
+  static const bool use_bcast_optimization = true;
+};
 
 template <typename T>
 struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};

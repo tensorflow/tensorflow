@@ -1070,7 +1070,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     lines.push_back(Printf("[%p]", instr));
   }
   if (profile_ != nullptr) {
-    double hlo_cycles_executed = profile_->GetProfileResult(*instr);
+    double hlo_cycles_executed = profile_->GetCyclesTakenBy(*instr);
     double total_cycles_executed =
         profile_->total_cycles_executed(*instr->parent());
     if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
@@ -1391,7 +1391,8 @@ void DumpText(const HloModule& module, const string& label,
   string filename =
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
-  TF_CHECK_OK(WriteStringToFile(env, path, module.ToString()));
+  TF_CHECK_OK(WriteStringToFile(
+      env, path, module.ToString(/*include_large_constants=*/true)));
   LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
 }
 

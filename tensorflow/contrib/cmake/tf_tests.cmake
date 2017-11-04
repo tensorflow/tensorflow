@@ -179,17 +179,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
 
   # exclude the ones we don't want
   set(tf_test_src_py_exclude
-    # generally excluded
+    # Not a test.
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/__init__.py"
-
-    # Python source line inspection tests are flaky on Windows (b/36375074).
-    "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/debug/cli/profile_analyzer_cli_test.py"
-    # Windows does not have the curses library and uses readline.
-    "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
-    # TFDBG grpc:// mode is not yet available on Windows.
-    "${tensorflow_source_dir}/tensorflow/python/debug/lib/dist_session_debug_grpc_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
+    # Flaky because of port collisions.
+    "${tensorflow_source_dir}/tensorflow/python/training/localhost_cluster_performance_test.py"
     # generally not working
     "${tensorflow_source_dir}/tensorflow/python/profiler/pprof_profiler_test.py"
     # flaky test
@@ -216,7 +209,14 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # TODO: failing tests.
       # Nothing critical in here but should get this list down to []
       # The failing list is grouped by failure source
-
+      # Python source line inspection tests are flaky on Windows (b/36375074).
+      "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/cli/profile_analyzer_cli_test.py"
+      # Windows does not have the curses library and uses readline.
+      "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
+      # TFDBG grpc:// mode is not yet available on Windows.
+      "${tensorflow_source_dir}/tensorflow/python/debug/lib/dist_session_debug_grpc_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
       # stl on windows handles overflows different
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/as_string_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
