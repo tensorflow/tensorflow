@@ -83,24 +83,6 @@ class TensorUtilTest(test.TestCase):
     self.assertEquals(np.float32, a.dtype)
     self.assertAllClose(np.array([10.0, 20.0, 30.0], dtype=np.float32), a)
 
-  def testFloatTypedNone(self):
-    t = tensor_util.make_tensor_proto([10.0, 20.0, None], dtype=dtypes.float32)
-    if sys.byteorder == "big":
-      self.assertProtoEquals("""
-        dtype: DT_FLOAT  
-        tensor_shape { dim { size: 3 } }  
-        tensor_content: "A \000\000A\240\000\000\177\300\000\000"
-        """, t)
-    else:
-      self.assertProtoEquals("""
-        dtype: DT_FLOAT
-        tensor_shape { dim { size: 3 } }
-        tensor_content: "\000\000 A\000\000\240A\000\000\300\177"
-        """, t)
-    a = tensor_util.MakeNdarray(t)
-    self.assertEquals(np.float32, a.dtype)
-    self.assertAllClose(np.array([10.0, 20.0, None], dtype=np.float32), a)
-
   def testFloatTypeCoerce(self):
     t = tensor_util.make_tensor_proto([10, 20, 30], dtype=dtypes.float32)
     if sys.byteorder == "big":
@@ -190,7 +172,7 @@ class TensorUtilTest(test.TestCase):
       self.assertProtoEquals("""
         dtype: DT_DOUBLE  
         tensor_shape { dim { size: 1 } dim { size: 3 } }  
-        tensor_content: "@$\000\000\000\000\000\000@4\000\000\000\000\000\000@>\000\000\000\000\000\000"
+        tensor_content: "@$\000\000\000\000\000\000@4\000\000\000\000\000\000@>\000\000\000\000\000\000"  
         """, t)
     else:
       self.assertProtoEquals("""
@@ -200,25 +182,9 @@ class TensorUtilTest(test.TestCase):
         """, t)
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(np.float64, a.dtype)
-    self.assertAllClose(np.array([[10.0, 20.0, 30.0]], dtype=np.float64), a)
-
-  def testFloat64TypedNone(self):
-    t = tensor_util.make_tensor_proto([[10.0, 20.0, None]], dtype=dtypes.float64)
-    if sys.byteorder == "big":
-      self.assertProtoEquals("""
-        dtype: DT_DOUBLE  
-        tensor_shape { dim { size: 1 } dim { size: 3 } }  
-        tensor_content: "@$\000\000\000\000\000\000@4\000\000\000\000\000\000\370\177\000\000\000\000\000\000"  
-        """, t)
-    else:
-      self.assertProtoEquals("""
-        dtype: DT_DOUBLE
-        tensor_shape { dim { size: 1 } dim { size: 3 } }
-        tensor_content: "\000\000\000\000\000\000$@\000\000\000\000\000\0004@\000\000\000\000\000\000\370\177"
-        """, t)          
-    a = tensor_util.MakeNdarray(t)
-    self.assertEquals(np.float64, a.dtype)
-    self.assertAllClose(np.array([[10.0, 20.0, None]], dtype=np.float64), a)
+    self.assertAllClose(
+        np.array([[10.0, 20.0, 30.0]], dtype=np.float64),
+        tensor_util.MakeNdarray(t))
 
   def testFloatTypesWithImplicitRepeat(self):
     for dtype, nptype in [(dtypes.float32, np.float32),
@@ -249,23 +215,6 @@ class TensorUtilTest(test.TestCase):
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(np.float16, a.dtype)
     self.assertAllClose(np.array([10.0, 20.0], dtype=np.float16), a)
-  
-  def testHalfNone(self):
-    t = tensor_util.make_tensor_proto([10.0, None], dtype=dtypes.float16)
-    self.assertProtoEquals("""
-      dtype: DT_HALF
-      tensor_shape {
-        dim {
-          size: 2
-        }
-      }
-      half_val: 18688
-      half_val: 32256
-      """, t)
-
-    a = tensor_util.MakeNdarray(t)
-    self.assertEquals(np.float16, a.dtype)
-    self.assertAllClose(np.array([10.0, None], dtype=np.float16), a)
 
   def testInt(self):
     t = tensor_util.make_tensor_proto(10)

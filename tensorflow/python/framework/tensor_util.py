@@ -252,7 +252,7 @@ def _FilterInt(v):
 def _FilterFloat(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterFloat(x) for x in v])
-  return None if isinstance(v, compat.real_types) or v is None else _NotNone(v)
+  return None if isinstance(v, compat.real_types) else _NotNone(v)
 
 
 def _FilterComplex(v):
