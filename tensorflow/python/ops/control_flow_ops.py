@@ -72,7 +72,6 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
@@ -1957,23 +1956,20 @@ def smart_constant_value(pred):
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
   Arguments:
-    pred: A scalar, either a Python bool or a TensorFlow boolean variable
-      or tensor.
+    pred: A scalar, either a Python bool or tensor.
 
   Returns:
     True or False if `pred` has a constant boolean value, None otherwise.
 
   Raises:
-    TypeError: If `pred` is not a Variable, Tensor or bool.
+    TypeError: If `pred` is not a Tensor or bool.
   """
   if isinstance(pred, bool):
     pred_value = pred
-  elif isinstance(pred, variables.Variable):
-    pred_value = None
   elif isinstance(pred, ops.Tensor):
     pred_value = tensor_util.constant_value(pred)
   else:
-    raise TypeError('`pred` must be a Tensor, a Variable, or a Python bool.')
+    raise TypeError('`pred` must be a Tensor or a Python bool.')
   return pred_value
 
 
