@@ -25,12 +25,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 
-# pylint: disable=invalid-name
-# Function alias of smart_constant_value to determine a scalar (Python
-# bool, TensorFlow boolean variable or tensor) has a boolean value.
-constant_value = control_flow_ops.smart_constant_value
-# pylint: enable=invalid-name
-
 
 def convert_data_format(data_format, ndim):
   if data_format == 'channels_last':
