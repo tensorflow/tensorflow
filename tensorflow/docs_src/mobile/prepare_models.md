@@ -296,6 +296,6 @@ complains about missing header files, add the .h’s that are needed into
 the
 [`android_extended_ops`](https://www.tensorflow.org/code/tensorflow/core/kernels/BUILD#L3525) target.
 
-If you’re using a makefile targetting iOS, Raspberry Pi, etc, go to
+If you’re using a makefile targeting iOS, Raspberry Pi, etc, go to
 [`tensorflow/contrib/makefile/tf_op_files.txt`](https://www.tensorflow.org/code/tensorflow/contrib/makefile/tf_op_files.txt) and
 add the right implementation files there.
