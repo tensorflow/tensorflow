@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
@@ -121,18 +122,18 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
         bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
       # pylint: disable=protected-access
       value = math_ops.sigmoid(
-          rnn_cell_impl._linear([inputs, state], 2 * self._num_units, True,
+          core_rnn_cell._linear([inputs, state], 2 * self._num_units, True,
                                 bias_ones, self._kernel_initializer))
       r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
       # pylint: enable=protected-access
     with vs.variable_scope("candidate"):
       # pylint: disable=protected-access
       with vs.variable_scope("input_projection"):
-        hi = rnn_cell_impl._linear(inputs, self._num_units, True,
+        hi = core_rnn_cell._linear(inputs, self._num_units, True,
                                    self._bias_initializer,
                                    self._kernel_initializer)
       with vs.variable_scope("hidden_projection"):
-        hh = r * (rnn_cell_impl._linear(state, self._num_units, True,
+        hh = r * (core_rnn_cell._linear(state, self._num_units, True,
                                         self._bias_initializer,
                                         self._kernel_initializer))
       # pylint: enable=protected-access

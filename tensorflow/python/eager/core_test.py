@@ -122,13 +122,13 @@ class TFETest(test_util.TensorFlowTestCase):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 
-    x = constant_op.constant(1.).as_gpu_tensor()
+    x = constant_op.constant(1.).gpu()
     with context.device('gpu:0'):
       y = constant_op.constant(2.)
     # Add would fail if t2 were not on GPU
     result = execute(
         b'Add', 1, inputs=[x, y],
-        attrs=('T', x.dtype.as_datatype_enum))[0].as_cpu_tensor().numpy()
+        attrs=('T', x.dtype.as_datatype_enum))[0].cpu().numpy()
     self.assertEqual(3, result)
 
   def testCopyBetweenDevices(self):
@@ -136,26 +136,26 @@ class TFETest(test_util.TensorFlowTestCase):
       self.skipTest('No GPUs found')
 
     x = constant_op.constant([[1., 2.], [3., 4.]])
-    x = x.as_cpu_tensor()
-    x = x.as_gpu_tensor()
-    x = x.as_gpu_tensor()
-    x = x.as_cpu_tensor()
+    x = x.cpu()
+    x = x.gpu()
+    x = x.gpu()
+    x = x.cpu()
 
     # Invalid device
     with self.assertRaises(RuntimeError):
-      x.as_gpu_tensor(context.context().num_gpus() + 1)
+      x.gpu(context.context().num_gpus() + 1)
 
   def testNumpyForceCPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 
     cpu = constant_op.constant([[1., 2.], [3., 4.]])
-    c2g = cpu.as_gpu_tensor()
+    c2g = cpu.gpu()
     self.assertAllEqual(c2g, cpu.numpy())
 
   def testCopyFromCPUToCPU(self):
     ta = constant_op.constant([[1, 2], [3, 4]])
-    tb = ta.as_cpu_tensor()
+    tb = ta.cpu()
 
     self.assertNotEqual(id(ta), id(tb))
     self.assertAllEqual(ta, tb.numpy())
@@ -189,8 +189,8 @@ class TFETest(test_util.TensorFlowTestCase):
   def testMatMulGPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
-    three = constant_op.constant([[3.]]).as_gpu_tensor()
-    five = constant_op.constant([[5.]]).as_gpu_tensor()
+    three = constant_op.constant([[3.]]).gpu()
+    five = constant_op.constant([[5.]]).gpu()
     product = execute(
         b'MatMul',
         num_outputs=1,
@@ -450,7 +450,7 @@ class TFETest(test_util.TensorFlowTestCase):
     shape = constant_op.constant([], dtype=dtypes.int32)
 
     # x: Run the "TruncatedNormal" op CPU and copy result to GPU.
-    x = truncated_normal(shape).as_gpu_tensor()
+    x = truncated_normal(shape).gpu()
     # y: Explicitly run the "TruncatedNormal" op on GPU.
     with context.device('gpu:0'):
       y = truncated_normal(shape)

@@ -40,12 +40,13 @@ template <typename T>
 class Array {
  public:
   // Creates a new array with the specified dimensions.
-  explicit Array(const std::vector<int64>& sizes) : Array(sizes, T()) {}
+  explicit Array(tensorflow::gtl::ArraySlice<int64> sizes)
+      : Array(sizes, T()) {}
 
   // Creates a new array with the specified dimensions and specified value for
   // every cell.
-  Array(const std::vector<int64>& sizes, T value)
-      : sizes_(sizes), values_(new T[num_elements()]) {
+  Array(tensorflow::gtl::ArraySlice<int64> sizes, T value)
+      : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]) {
     Fill(value);
   }
 
@@ -192,6 +193,18 @@ class Array {
     return values_[calculate_index(indexes)];
   }
 
+  // Returns the value at the cell specified by the indexes. The number of
+  // arguments have to match with the number of dimensions for the array.
+  const T& operator()(tensorflow::gtl::ArraySlice<int64> indexes) const {
+    return values_[calculate_index(indexes)];
+  }
+
+  // Returns the value at the cell specified by the indexes. The number of
+  // arguments have to match with the number of dimensions for the array.
+  T& operator()(tensorflow::gtl::ArraySlice<int64> indexes) {
+    return values_[calculate_index(indexes)];
+  }
+
   // Low-level accessor for stuff like memcmp, handle with care. Returns pointer
   // to the underlying storage of the array (similarly to std::vector::data()).
   T* data() const {
@@ -217,6 +230,11 @@ class Array {
     return std::accumulate(sizes_.begin(), sizes_.end(), 1,
                            std::multiplies<int64>());
   }
+
+  const T* begin() const { return &values_[0]; }
+  T* begin() { return &values_[0]; }
+  const T* end() const { return &values_[num_elements()]; }
+  T* end() { return &values_[num_elements()]; }
 
   bool operator==(const Array<T>& other) const {
     if (sizes_.size() != other.sizes_.size()) {
@@ -302,7 +320,7 @@ class Array {
   }
 
   // Advances the specified set of indexes and returns true if we haven't
-  // wrapped around (i.e. result isnt {0, 0, ...}).
+  // wrapped around (i.e. result isn't {0, 0, ...}).
   bool next_index(std::vector<int64>* index) const {
     CHECK_EQ(index->size(), sizes_.size());
     for (int64 i = sizes_.size() - 1; i >= 0; --i) {

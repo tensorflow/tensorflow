@@ -30,15 +30,15 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     DistributedFunctionLibraryRuntime* parent)
-    : lib_def_(lib_def), parent_(parent) {
+    : device_mgr_(device_mgr), lib_def_(lib_def), parent_(parent) {
   if (device_mgr == nullptr) {
-    flr_map_[kDefaultFLRDevice] =
+    flr_map_[nullptr] =
         NewFunctionLibraryRuntime(nullptr, env, nullptr, graph_def_version,
                                   lib_def, optimizer_options, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d->name()] =
+    flr_map_[d] =
         NewFunctionLibraryRuntime(device_mgr, env, d, graph_def_version,
                                   lib_def, optimizer_options, this);
   }
@@ -50,15 +50,15 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator,
     DistributedFunctionLibraryRuntime* parent)
-    : lib_def_(lib_def), parent_(parent) {
+    : device_mgr_(device_mgr), lib_def_(lib_def), parent_(parent) {
   if (device_mgr == nullptr) {
-    flr_map_[kDefaultFLRDevice] = NewFunctionLibraryRuntime(
+    flr_map_[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, nullptr, graph_def_version, lib_def, optimizer_options,
         std::move(custom_kernel_creator), this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d->name()] = NewFunctionLibraryRuntime(
+    flr_map_[d] = NewFunctionLibraryRuntime(
         device_mgr, env, d, graph_def_version, lib_def, optimizer_options,
         custom_kernel_creator, this);
   }
@@ -95,7 +95,8 @@ string ProcessFunctionLibraryRuntime::ObtainFunctionTarget(
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64 src_incarnation,
-    gtl::ArraySlice<Tensor> tensors_to_send, const Rendezvous::Args& args,
+    gtl::ArraySlice<Tensor> tensors_to_send, DeviceContext* device_context,
+    const std::vector<AllocatorAttributes>& alloc_attrs,
     Rendezvous* rendezvous) {
   std::vector<string> keys;
   for (int i = 0; i < tensors_to_send.size(); ++i) {
@@ -104,8 +105,8 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
                                        target_device, name, FrameAndIter(0, 0));
     keys.push_back(key);
   }
-  TF_RETURN_IF_ERROR(
-      SendTensorsToRendezvous(rendezvous, args, keys, tensors_to_send));
+  TF_RETURN_IF_ERROR(SendTensorsToRendezvous(
+      rendezvous, device_context, alloc_attrs, keys, tensors_to_send));
   return Status::OK();
 }
 
@@ -113,7 +114,8 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
 void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64 src_incarnation, int64 num_tensors,
-    const Rendezvous::Args& args, Rendezvous* rendezvous,
+    DeviceContext* device_context,
+    const std::vector<AllocatorAttributes>& alloc_attrs, Rendezvous* rendezvous,
     std::vector<Tensor>* received_tensors, const StatusCallback& done) {
   std::vector<string> keys;
   for (int64 i = 0; i < num_tensors; ++i) {
@@ -123,7 +125,7 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     keys.push_back(key);
   }
   RecvOutputsFromRendezvousAsync(
-      rendezvous, args, keys, received_tensors,
+      rendezvous, device_context, alloc_attrs, keys, received_tensors,
       [done](const Status& status) { done(status); });
 }
 
@@ -161,17 +163,19 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 
 FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
     const string& device_name) {
-  string clean_device_name;
+  Device* device = nullptr;
   if (device_name != kDefaultFLRDevice) {
-    clean_device_name = DeviceNameUtils::CanonicalizeDeviceName(device_name);
-  } else {
-    clean_device_name = device_name;
+    if (!device_mgr_->LookupDevice(device_name, &device).ok()) {
+      LOG(ERROR) << "Could not find device: " << device_name;
+      return nullptr;
+    }
   }
-  if (flr_map_.find(clean_device_name) == flr_map_.end()) {
+  const auto& iter = flr_map_.find(device);
+  if (iter == flr_map_.end()) {
     LOG(ERROR) << "Could not find device: " << device_name;
     return nullptr;
   }
-  return flr_map_[clean_device_name].get();
+  return iter->second.get();
 }
 
 FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
@@ -265,8 +269,8 @@ void ProcessFunctionLibraryRuntime::Run(
   if (flr != nullptr) {
     auto rendezvous = opts.rendezvous;
     string source_device = opts.source_device;
-    Rendezvous::Args rendez_args;
-    Status s = GetDeviceContext(source_device, &rendez_args.device_context);
+    DeviceContext* device_context;
+    Status s = GetDeviceContext(source_device, &device_context);
     if (!s.ok()) {
       done(s);
       return;
@@ -281,15 +285,18 @@ void ProcessFunctionLibraryRuntime::Run(
 
     // Send the args over to the target device.
     s = SendTensors(source_device, target_device, "arg_", src_incarnation, args,
-                    rendez_args, rendezvous);
+                    device_context, opts.args_alloc_attrs, rendezvous);
     if (!s.ok()) {
       done(s);
       return;
     }
+    const std::vector<AllocatorAttributes>& rets_alloc_attrs =
+        opts.rets_alloc_attrs;
     std::vector<Tensor>* remote_rets = new std::vector<Tensor>;
     flr->Run(opts, handle, args, remote_rets,
              [source_device, target_device, target_incarnation, rendezvous,
-              remote_rets, rets, done, rendez_args](const Status& status) {
+              device_context, rets_alloc_attrs, remote_rets, rets,
+              done](const Status& status) {
                if (!status.ok()) {
                  delete remote_rets;
                  done(status);
@@ -299,8 +306,9 @@ void ProcessFunctionLibraryRuntime::Run(
                delete remote_rets;
                // Now receive the return values from the target.
                ReceiveTensorsAsync(target_device, source_device, "ret_",
-                                   target_incarnation, num_returns, rendez_args,
-                                   rendezvous, rets, done);
+                                   target_incarnation, num_returns,
+                                   device_context, rets_alloc_attrs, rendezvous,
+                                   rets, done);
              });
     return;
   }

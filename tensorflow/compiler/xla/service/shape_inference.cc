@@ -53,6 +53,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_EXP;
     case HloOpcode::kFloor:
       return UNOP_FLOOR;
+    case HloOpcode::kImag:
+      return UNOP_IMAG;
     case HloOpcode::kIsFinite:
       return UNOP_IS_FINITE;
     case HloOpcode::kLog:
@@ -61,6 +63,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_NOT;
     case HloOpcode::kNegate:
       return UNOP_NEGATE;
+    case HloOpcode::kReal:
+      return UNOP_REAL;
     case HloOpcode::kRoundNearestAfz:
       return UNOP_ROUND_NEAREST_AFZ;
     case HloOpcode::kSign:
@@ -81,6 +85,10 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
 // opcode.
 BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
   switch (opcode) {
+    case HloOpcode::kAtan2:
+      return BINOP_ATAN2;
+    case HloOpcode::kComplex:
+      return BINOP_COMPLEX;
     case HloOpcode::kDot:
       return BINOP_DOT;
     case HloOpcode::kMultiply:
@@ -89,8 +97,6 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
       return BINOP_ADD;
     case HloOpcode::kSubtract:
       return BINOP_SUB;
-    case HloOpcode::kIndex:
-      return BINOP_INDEX;
     case HloOpcode::kDivide:
       return BINOP_DIV;
     case HloOpcode::kEq:
@@ -136,8 +142,6 @@ TernaryOperation OpcodeToTernaryOperation(HloOpcode opcode) {
       return TRIOP_CLAMP;
     case HloOpcode::kSelect:
       return TRIOP_SELECT;
-    case HloOpcode::kUpdate:
-      return TRIOP_UPDATE;
     default:
       LOG(FATAL) << "unhandled opcode " << opcode;
   }
@@ -309,19 +313,41 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   switch (operation) {
     case UNOP_FLOOR:
     case UNOP_CEIL:
+      if (!ShapeUtil::ElementIsFloating(arg)) {
+        return InvalidArgument(
+            "expected element type in shape to be floating for floor/ceil "
+            "operation; got %s",
+            PrimitiveType_Name(arg.element_type()).c_str());
+      }
+      return arg;
     case UNOP_COS:
     case UNOP_SIN:
     case UNOP_EXP:
     case UNOP_LOG:
     case UNOP_TANH:
-      if (!ShapeUtil::ElementIsFloating(arg)) {
+      if (!ShapeUtil::ElementIsFloating(arg) &&
+          !ShapeUtil::ElementIsComplex(arg)) {
         return InvalidArgument(
-            "expected element type in shape to be floating for exp/log/tanh "
-            "operation; got %s",
+            "expected element type in shape to be floating or complex for "
+            "sin/cos/exp/log/tanh operation; got %s",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
+    case UNOP_REAL:
+    case UNOP_IMAG:
+      if (!ShapeUtil::ElementIsComplex(arg)) {
+        return InvalidArgument(
+            "expected element type in shape to be complex for real/imag "
+            "operation; got %s",
+            PrimitiveType_Name(arg.element_type()).c_str());
+      }
+      return ShapeUtil::ChangeElementType(arg, F32);
     case UNOP_ABS:
+      if (ShapeUtil::ElementIsComplex(arg)) {
+        return ShapeUtil::ChangeElementType(
+            arg, primitive_util::ComplexComponentType(arg.element_type()));
+      }
+      return arg;
     case UNOP_NEGATE:
     case UNOP_ROUND_NEAREST_AFZ:
     case UNOP_SIGN:
@@ -753,6 +779,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     case BINOP_MIN:
     case BINOP_SUB:
     case BINOP_ADD:
+    case BINOP_ATAN2:
     case BINOP_POW:
     case BINOP_DIV:
     case BINOP_REM:
@@ -763,6 +790,22 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
 
+    case BINOP_COMPLEX: {
+      if (!ShapeUtil::ElementIsFloating(lhs)) {
+        return InvalidArgument(
+            "expected element type in shape to be floating for complex compose "
+            "operation; got %s",
+            PrimitiveType_Name(lhs.element_type()).c_str());
+      }
+      TF_ASSIGN_OR_RETURN(const Shape& shape,
+                          InferElementwiseBinaryOpShape(operation, lhs, rhs,
+                                                        broadcast_dimensions));
+      if (lhs.element_type() == F32) {
+        return ShapeUtil::ChangeElementType(shape, C64);
+      } else {
+        return Unimplemented("complex component type not supported");
+      }
+    }
     case BINOP_AND:
     case BINOP_OR:
       if (lhs.element_type() != PRED &&
@@ -785,17 +828,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                                                         broadcast_dimensions));
       return ShapeUtil::ChangeElementType(shape, PRED);
     }
-    case BINOP_INDEX:
-      if (ShapeUtil::Rank(lhs) > 0 && ShapeUtil::Rank(rhs) == 0) {
-        tensorflow::gtl::ArraySlice<int64> dimensions =
-            AsInt64Slice(lhs.dimensions());
-        dimensions.pop_front();
-        return ShapeUtil::MakeShape(lhs.element_type(), dimensions);
-      }
-      return Unimplemented("cannot infer shape for operation: %s <%s> %s",
-                           ShapeUtil::HumanString(lhs).c_str(),
-                           BinaryOperation_Name(operation).c_str(),
-                           ShapeUtil::HumanString(rhs).c_str());
     default:
       return Unimplemented(
           "not yet implemented; infer binary op shape: %s; lhs: %s; rhs: %s",
@@ -822,14 +854,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InferClampShape(lhs, rhs, ehs);
     case TRIOP_SELECT:
       return InferSelectShape(lhs, rhs, ehs);
-    case TRIOP_UPDATE:
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(lhs, "lhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(rhs, "rhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(ehs, "ehs of ternary operation"));
-      return lhs;
     default:
       return InvalidArgument("unknown operation %s",
                              TernaryOperation_Name(operation).c_str());
@@ -1385,14 +1409,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Window: %s",
         window.DebugString().c_str());
   }
-  int num_spatial_dims = dnums.spatial_dimensions_size();
-  if (num_spatial_dims < 1) {
-    return InvalidArgument(
-        "Convolution requires at least one spatial dimension.\n"
-        "Window: %s",
-        window.DebugString().c_str());
-  }
 
+  const int num_spatial_dims = dnums.spatial_dimensions_size();
   if (window.dimensions_size() != num_spatial_dims) {
     return InvalidArgument(
         "Window must have same number of dimensions as dimension numbers.\n"
@@ -1400,7 +1418,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         window.DebugString().c_str(), dnums.DebugString().c_str());
   }
 
-  int num_dims = num_spatial_dims + 2;
+  const int num_dims = num_spatial_dims + 2;
   if (ShapeUtil::Rank(lhs) != num_dims) {
     return InvalidArgument(
         "The LHS argument to a convolution should have rank %d.\n"

@@ -32,6 +32,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 
 
 class FunctionTest(test.TestCase):
@@ -56,7 +57,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testGraphModeWithGradients(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = resource_variable_ops.ResourceVariable(1.0, name='v')
 
     @function.defun
     def step():
@@ -67,6 +68,44 @@ class FunctionTest(test.TestCase):
       return backprop.implicit_grad(inner)()[0][0]
 
     self.assertAllEqual(step(), 2.0)
+
+  def testGraphModeCaptureVariable(self):
+    with context.graph_mode(), self.test_session() as sess:
+
+      class HasAVar(object):
+
+        def __init__(self):
+          self.v = resource_variable_ops.ResourceVariable(1.0)
+
+        def call(self):
+          return self.v * 2
+
+      o = HasAVar()
+      variables.global_variables_initializer().run()
+      call = function.defun(o.call)
+      op = call()
+      self.assertAllEqual(sess.run(op), 2.0)
+
+  def testGraphModeManyFunctions(self):
+    with context.graph_mode(), self.test_session():
+
+      @function.defun
+      def f(x):
+        return x * x
+
+      @function.defun
+      def g(x):
+        return f(x) + 1
+
+      self.assertAllEqual(g(constant_op.constant(2.0)).eval(), 5.0)
+
+  def testDict(self):
+
+    @function.defun
+    def f(x):
+      return {'name': x + 1}
+
+    self.assertAllEqual(f(constant_op.constant(1.0))['name'], 2.0)
 
   def testTensorConversionWithDefun(self):
 
@@ -107,7 +146,7 @@ class FunctionTest(test.TestCase):
             'v', initializer=constant_op.constant(1.0))
         return x * constant_op.constant(2.0)
       with self.assertRaisesRegexp(ValueError,
-                                   'no trainable variables were accessed'):
+                                   'No trainable variables were accessed'):
         backprop.implicit_val_and_grad(f)()
 
   def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):
@@ -138,7 +177,7 @@ class FunctionTest(test.TestCase):
     g(constant_op.constant(1.0))
 
   def testGradientTensorConversionWithDefun(self):
-    three = resource_variable_ops.ResourceVariable(3.0)
+    three = resource_variable_ops.ResourceVariable(3.0, name='v')
 
     @function.defun
     def f(x):
@@ -173,9 +212,9 @@ class FunctionTest(test.TestCase):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 
-    x = constant_op.constant([1.]).as_gpu_tensor()
+    x = constant_op.constant([1.]).gpu()
     f = function.defun(math_ops.add)
-    y = f(x, x).as_cpu_tensor()
+    y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
   def testFunctionHandlesInputsOnDifferentDevices(self):
@@ -184,9 +223,9 @@ class FunctionTest(test.TestCase):
 
     # The Reshape op requires the shape tensor to be placed in host memory.
     reshape = function.defun(array_ops.reshape)
-    value = constant_op.constant([1., 2.]).as_gpu_tensor()
+    value = constant_op.constant([1., 2.]).gpu()
     shape = constant_op.constant([2, 1])
-    reshaped = reshape(value, shape).as_cpu_tensor()
+    reshaped = reshape(value, shape).cpu()
     self.assertAllEqual(reshaped, [[1], [2]])
 
   def testFunctionHandlesInputsPlacedOnTheWrongDeviceGracefully(self):
@@ -195,8 +234,8 @@ class FunctionTest(test.TestCase):
 
     # The Reshape op requires the shape tensor to be placed in host memory.
     reshape = function.defun(array_ops.reshape)
-    value = constant_op.constant([1., 2.]).as_gpu_tensor()
-    shape = constant_op.constant([2, 1]).as_gpu_tensor()
+    value = constant_op.constant([1., 2.]).gpu()
+    shape = constant_op.constant([2, 1]).gpu()
     with self.assertRaises(errors.InvalidArgumentError):
       reshape(value, shape)
 

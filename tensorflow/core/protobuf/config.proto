@@ -87,6 +87,13 @@ message OptimizerOptions {
   // If true, perform constant folding optimization on the graph.
   bool do_constant_folding = 2;
 
+  // Constant folding optimization replaces tensors whose values can be
+  // predetermined, with constant nodes. To avoid inserting too large constants,
+  // the size of each constant created can be limited. If this value is zero, a
+  // default limit of 10 MiB will be applied. If constant folding optimization
+  // is disabled, this value is ignored.
+  int64 max_folded_constant_in_bytes = 6;
+
   // If true, perform function inlining on the graph.
   bool do_function_inlining = 4;
 

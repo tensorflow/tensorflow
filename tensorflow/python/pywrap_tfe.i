@@ -30,11 +30,26 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeDeleteTrace;
 %rename("%s") TFE_Py_TapeRecordOperation;
 %rename("%s") TFE_Py_TapeExport;
-
+%rename("%s") TFE_NewContextOptions;
+%rename("%s") TFE_ContextOptionsSetConfig;
+%rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
+%rename("%s") TFE_DeleteContextOptions;
+%rename("%s") TFE_Py_TensorShapeSlice;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
 %}
+
+%typemap(in) (const void* proto) {
+  char* c_string;
+  Py_ssize_t py_size;
+  // PyBytes_AsStringAndSize() does not copy but simply interprets the input
+  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
+    // Python has raised an error (likely TypeError or UnicodeEncodeError).
+    SWIG_fail;
+  }
+  $1 = static_cast<void*>(c_string);
+}
 
 %typemap(out) TF_DataType {
   $result = PyInt_FromLong($1);
@@ -87,6 +102,11 @@ limitations under the License.
     $result = PyCapsule_New($1, nullptr, TFE_DeleteContextCapsule);
   }
 }
+
+%rename("%s") TFE_ContextDevicePlacementPolicy;
+%rename("%s") TFE_DEVICE_PLACEMENT_EXPLICIT;
+%rename("%s") TFE_DEVICE_PLACEMENT_WARN;
+%rename("%s") TFE_DEVICE_PLACEMENT_SILENT;
 
 %include "tensorflow/c/eager/c_api.h"
 
@@ -165,3 +185,4 @@ limitations under the License.
 %typemap(in, numinputs=0) TF_Status *out_status;
 %typemap(freearg) (TF_Status* out_status);
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status);
+%typemap(in) (const void* proto);

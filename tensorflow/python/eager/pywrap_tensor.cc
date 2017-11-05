@@ -377,6 +377,15 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   return shape;
 }
 
+// Getter for `_rank`.
+static PyObject* EagerTensor_rank(EagerTensor* self) {
+#if PY_MAJOR_VERSION < 3
+  return PyInt_FromLong(TFE_TensorHandleNumDims(self->handle));
+#else
+  return PyLong_FromLong(TFE_TensorHandleNumDims(self->handle));
+#endif
+}
+
 static PyObject* EagerTensor_tensor_handle(EagerTensor* self, void* unused) {
   Py_INCREF(self->handle_data);
   return self->handle_data;
@@ -470,6 +479,7 @@ static PyMethodDef EagerTensor_methods[] = {
      PyDoc_STR("_datatype_enum")},
     {"_shape_tuple", (PyCFunction)EagerTensor_shape_tuple, METH_NOARGS,
      PyDoc_STR("_shape_tuple")},
+    {"_rank", (PyCFunction)EagerTensor_rank, METH_NOARGS, PyDoc_STR("_rank")},
     {"_copy_to_device", (PyCFunction)EagerTensor_copy_to_device,
      METH_VARARGS | METH_KEYWORDS, PyDoc_STR("_copy_to_device")},
     {nullptr, nullptr},
@@ -646,4 +656,72 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   // dictionaries are correctly initialized in the first place.
   EagerTensorType->tp_dictoffset = 0;
   return reinterpret_cast<PyObject*>(EagerTensorType);
+}
+
+PyObject* TFE_Py_TensorShapeSlice(PyObject* tensor_list, int slice_dim) {
+  if (!PyList_Check(tensor_list)) {
+    PyErr_SetString(PyExc_TypeError,
+                    tensorflow::strings::StrCat(
+                        "tensor_list argument must be a list. Got \"",
+                        Py_TYPE(tensor_list)->tp_name, "\"")
+                        .c_str());
+    return nullptr;
+  }
+  if (slice_dim < 0) {
+    PyErr_SetString(
+        PyExc_ValueError,
+        tensorflow::strings::StrCat("Slice dimension must be non-negative. "
+                                    "Got ",
+                                    slice_dim)
+            .c_str());
+    return nullptr;
+  }
+
+  Py_ssize_t num_tensors = PyList_Size(tensor_list);
+  int64_t num_tensors_int = static_cast<int64_t>(num_tensors);
+  auto tensor = tensorflow::make_safe(TF_AllocateTensor(
+      TF_INT32, &num_tensors_int, /*num_dims=*/1, /*len=*/4 * num_tensors_int));
+  int32_t* data = reinterpret_cast<int32_t*>(TF_TensorData(tensor.get()));
+  for (Py_ssize_t i = 0; i < num_tensors; ++i) {
+    PyObject* tensor_obj = PyList_GET_ITEM(tensor_list, i);
+    if (!EagerTensor_CheckExact(tensor_obj)) {
+      PyErr_SetString(PyExc_TypeError,
+                      tensorflow::strings::StrCat(
+                          "Expected a list of EagerTensors but "
+                          "element ",
+                          i, " has type \"", Py_TYPE(tensor_obj)->tp_name, "\"")
+                          .c_str());
+      return nullptr;
+    }
+
+    EagerTensor* t = reinterpret_cast<EagerTensor*>(tensor_obj);
+    TFE_TensorHandle* handle = t->handle;
+    if (slice_dim >= TFE_TensorHandleNumDims(handle)) {
+      PyErr_SetString(PyExc_IndexError,
+                      tensorflow::strings::StrCat(
+                          "Slice dimension (", slice_dim,
+                          ") must be smaller than rank of all "
+                          "tensors, but tensor at index ",
+                          i, " has rank ", TFE_TensorHandleNumDims(handle))
+                          .c_str());
+      return nullptr;
+    }
+    int64_t dim = TFE_TensorHandleDim(handle, slice_dim);
+    data[i] = dim;
+  }
+
+  auto status = tensorflow::make_safe(TF_NewStatus());
+  TFE_TensorHandle* handle = TFE_NewTensorHandle(tensor.get(), status.get());
+  if (TF_GetCode(status.get()) != TF_OK) {
+    PyErr_SetString(
+        PyExc_RuntimeError,
+        tensorflow::strings::StrCat("Failed to construct new tensor handle: ",
+                                    TF_Message(status.get()))
+            .c_str());
+    return nullptr;
+  }
+  // handle now owns the tensor. Release it from the smart pointer.
+  tensor.release();
+
+  return EagerTensorFromHandle(handle);
 }

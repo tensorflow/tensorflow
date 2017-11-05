@@ -635,7 +635,7 @@ def set_tf_cuda_version(environ_cp):
   write_action_env_to_bazelrc('TF_CUDA_VERSION', tf_cuda_version)
 
 
-def set_tf_cunn_version(environ_cp):
+def set_tf_cudnn_version(environ_cp):
   """Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION."""
   ask_cudnn_version = (
       'Please specify the cuDNN version you want to use. '
@@ -963,6 +963,19 @@ def set_monolithic():
   write_to_bazelrc('build --define framework_shared_object=true')
 
 
+def create_android_bazelrc_configs():
+  # Flags for --config=android
+  write_to_bazelrc('build:android --crosstool_top=//external:android/crosstool')
+  write_to_bazelrc(
+      'build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain')
+  # Flags for --config=android_arm
+  write_to_bazelrc('build:android_arm --config=android')
+  write_to_bazelrc('build:android_arm --cpu=armeabi-v7a')
+  # Flags for --config=android_arm64
+  write_to_bazelrc('build:android_arm64 --config=android')
+  write_to_bazelrc('build:android_arm64 --cpu=arm64-v8a')
+
+
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
@@ -981,6 +994,7 @@ def main():
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
+    environ_cp['TF_NEED_S3'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
 
   if is_macos():
@@ -1011,7 +1025,7 @@ def main():
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
     set_tf_cuda_version(environ_cp)
-    set_tf_cunn_version(environ_cp)
+    set_tf_cudnn_version(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
 
     set_tf_cuda_clang(environ_cp)
@@ -1033,7 +1047,7 @@ def main():
   set_cc_opt_flags(environ_cp)
   set_mkl()
   set_monolithic()
-
+  create_android_bazelrc_configs()
 
 if __name__ == '__main__':
   main()

@@ -945,7 +945,7 @@ REGISTER_OP("Conv3D")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
@@ -977,7 +977,7 @@ REGISTER_OP("Conv3DBackpropInput")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropInputV2")
@@ -1003,7 +1003,7 @@ REGISTER_OP("Conv3DBackpropFilter")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropFilterV2")
@@ -1032,7 +1032,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
@@ -1069,7 +1069,7 @@ REGISTER_OP("Conv3DBackpropFilterV2")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
@@ -2176,9 +2176,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -2278,9 +2278,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument(
-            "Input must have last dimension > n = ", c->Value(n_dim), " but is ",
-            c->Value(last_dim));
+        return errors::InvalidArgument("Input must have last dimension > n = ",
+                                       c->Value(n_dim), " but is ",
+                                       c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor

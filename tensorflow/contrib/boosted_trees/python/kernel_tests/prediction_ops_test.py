@@ -136,6 +136,27 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
     self._sparse_int_shape1 = np.array([2, 2])
     self._seed = 123
 
+  def _get_predictions(self,
+                       tree_ensemble_handle,
+                       learner_config,
+                       apply_dropout=False,
+                       apply_averaging=False,
+                       center_bias=False,
+                       reduce_dim=False):
+    return prediction_ops.gradient_trees_prediction(
+        tree_ensemble_handle,
+        self._seed, [self._dense_float_tensor],
+        [self._sparse_float_indices1, self._sparse_float_indices2],
+        [self._sparse_float_values1, self._sparse_float_values2],
+        [self._sparse_float_shape1, self._sparse_float_shape2],
+        [self._sparse_int_indices1], [self._sparse_int_values1],
+        [self._sparse_int_shape1],
+        learner_config=learner_config,
+        apply_dropout=apply_dropout,
+        apply_averaging=apply_averaging,
+        center_bias=center_bias,
+        reduce_dim=reduce_dim)
+
   def testEmptyEnsemble(self):
     with self.test_session():
       # Empty tree ensenble.
@@ -151,18 +172,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config = learner_pb2.LearnerConfig()
       learner_config.num_classes = 2
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=True)
       self.assertAllEqual([[0], [0]], result.eval())
       # Empty dropout.
@@ -187,18 +199,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config = learner_pb2.LearnerConfig()
       learner_config.num_classes = 2
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=True)
       self.assertAllClose([[-0.4], [-0.4]], result.eval())
 
@@ -226,18 +229,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config = learner_pb2.LearnerConfig()
       learner_config.num_classes = 3
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=True)
       self.assertAllClose([[-0.4, 0.9], [-0.4, 0.9]], result.eval())
 
@@ -279,18 +273,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config = learner_pb2.LearnerConfig()
       learner_config.num_classes = 2
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=True)
 
       # The first example will get bias -0.4 from first tree and
@@ -338,18 +323,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config.num_classes = 2
       learner_config.growing_mode = learner_pb2.LearnerConfig.WHOLE_TREE
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=True)
 
       # All the examples should get only the bias since the second tree is
@@ -395,18 +371,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config.num_classes = 2
       learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=True)
 
       # The first example will get bias -0.4 from first tree and
@@ -454,18 +421,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config = learner_pb2.LearnerConfig()
       learner_config.num_classes = 2
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=True)
 
       # The first example will get bias -0.4 from first tree and
@@ -512,18 +470,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config.multi_class_strategy = (
           learner_pb2.LearnerConfig.TREE_PER_CLASS)
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=True)
       # The first example will get bias class 1 -0.2 from first tree and
       # leaf 2 payload (sparse feature missing) of 0.5 hence [0.5, -0.2],
@@ -572,18 +521,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config.multi_class_strategy = (
           learner_pb2.LearnerConfig.FULL_HESSIAN)
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=False)
       # The first example will get bias class 1 -0.2 from first tree and
       # leaf 2 payload (sparse feature missing) of 0.5 hence [0.5, -0.2],
@@ -631,18 +571,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       learner_config.multi_class_strategy = (
           learner_pb2.LearnerConfig.FULL_HESSIAN)
 
-      result, dropout_info = prediction_ops.gradient_trees_prediction(
+      result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
-          apply_dropout=False,
-          apply_averaging=False,
-          center_bias=False,
           reduce_dim=False)
       # The first example will get bias class 1 -0.2 and -2 for class 2 from
       # first tree and leaf 2 payload (sparse feature missing) of 0.5 hence
@@ -652,26 +583,6 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
       # Empty dropout.
       self.assertAllEqual([[], []], dropout_info.eval())
-
-  def _get_predictions(self,
-                       tree_ensemble_handle,
-                       learner_config,
-                       apply_dropout=False,
-                       apply_averaging=False,
-                       center_bias=False):
-    return prediction_ops.gradient_trees_prediction(
-        tree_ensemble_handle,
-        self._seed, [self._dense_float_tensor], [
-            self._sparse_float_indices1, self._sparse_float_indices2
-        ], [self._sparse_float_values1, self._sparse_float_values2],
-        [self._sparse_float_shape1,
-         self._sparse_float_shape2], [self._sparse_int_indices1],
-        [self._sparse_int_values1], [self._sparse_int_shape1],
-        learner_config=learner_config.SerializeToString(),
-        apply_dropout=apply_dropout,
-        apply_averaging=apply_averaging,
-        center_bias=center_bias,
-        reduce_dim=True)
 
   def testDropout(self):
     with self.test_session():
@@ -699,10 +610,11 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
       result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
 
       # We expect approx 500 trees were dropped.
       dropout_info = dropout_info.eval()
@@ -719,10 +631,11 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       # Don't apply dropout.
       result_no_dropout, no_dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           apply_dropout=False,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
 
       self.assertEqual(result.eval().size, result_no_dropout.eval().size)
       for i in range(result.eval().size):
@@ -760,17 +673,19 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
       result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
 
       result_center, dropout_info_center = self._get_predictions(
           tree_ensemble_handle,
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
-          center_bias=True)
+          center_bias=True,
+          reduce_dim=True)
 
       dropout_info = dropout_info.eval()
       dropout_info_center = dropout_info_center.eval()
@@ -830,17 +745,19 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
       result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
 
       result_center, dropout_info_center = self._get_predictions(
           tree_ensemble_handle,
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
-          center_bias=True)
+          center_bias=True,
+          reduce_dim=True)
 
       dropout_info = dropout_info.eval()
       dropout_info_center = dropout_info_center.eval()
@@ -888,28 +805,16 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
           name="empty")
       resources.initialize_resources(resources.shared_resources()).run()
 
-      _, dropout_info_1 = prediction_ops.gradient_trees_prediction(
+      _, dropout_info_1 = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
           center_bias=False,
           reduce_dim=True)
 
-      _, dropout_info_2 = prediction_ops.gradient_trees_prediction(
+      _, dropout_info_2 = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
@@ -919,12 +824,12 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       # Different seed.
       _, dropout_info_3 = prediction_ops.gradient_trees_prediction(
           tree_ensemble_handle,
-          112314, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
+          112314, [self._dense_float_tensor],
+          [self._sparse_float_indices1, self._sparse_float_indices2],
+          [self._sparse_float_values1, self._sparse_float_values2],
+          [self._sparse_float_shape1, self._sparse_float_shape2],
+          [self._sparse_int_indices1], [self._sparse_int_values1],
+          [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
@@ -932,14 +837,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
           reduce_dim=True)
 
       # First seed with centering bias.
-      _, dropout_info_4 = prediction_ops.gradient_trees_prediction(
+      _, dropout_info_4 = self._get_predictions(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1],
           learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
@@ -983,17 +882,19 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
       result, dropout_info = self._get_predictions(
           tree_ensemble_handle,
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           apply_dropout=True,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
 
       result_no_dropout, _ = self._get_predictions(
           tree_ensemble_handle,
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           apply_dropout=False,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
 
       self.assertAllEqual([[], []], dropout_info.eval())
       self.assertAllClose(result.eval(), result_no_dropout.eval())
@@ -1048,12 +949,16 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
       # Do averaging.
       result, dropout_info = self._get_predictions(
-          tree_ensemble_handle, learner_config, apply_averaging=True)
+          tree_ensemble_handle,
+          learner_config.SerializeToString(),
+          apply_averaging=True,
+          reduce_dim=True)
 
-      pattern_result, pattern_dropout_info = (self._get_predictions(
+      pattern_result, pattern_dropout_info = self._get_predictions(
           adjusted_tree_ensemble_handle,
-          learner_config_no_averaging,
-          apply_averaging=False))
+          learner_config_no_averaging.SerializeToString(),
+          apply_averaging=False,
+          reduce_dim=True)
 
       self.assertAllEqual(result.eval(), pattern_result.eval())
       self.assertAllEqual(dropout_info.eval(), pattern_dropout_info.eval())
@@ -1116,15 +1021,22 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       result_1, dropout_info_1 = self._get_predictions(
-          tree_ensemble_handle, learner_config_1, apply_averaging=True)
+          tree_ensemble_handle,
+          learner_config_1.SerializeToString(),
+          apply_averaging=True,
+          reduce_dim=True)
 
       result_2, dropout_info_2 = self._get_predictions(
-          tree_ensemble_handle, learner_config_2, apply_averaging=True)
+          tree_ensemble_handle,
+          learner_config_2.SerializeToString(),
+          apply_averaging=True,
+          reduce_dim=True)
 
       pattern_result, pattern_dropout_info = self._get_predictions(
           adjusted_tree_ensemble_handle,
-          learner_config_no_averaging,
-          apply_averaging=False)
+          learner_config_no_averaging.SerializeToString(),
+          apply_averaging=False,
+          reduce_dim=True)
 
       self.assertAllEqual(result_1.eval(), pattern_result.eval())
       self.assertAllEqual(result_2.eval(), pattern_result.eval())
@@ -1179,12 +1091,16 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       result, dropout_info = self._get_predictions(
-          tree_ensemble_handle, learner_config, apply_averaging=True)
+          tree_ensemble_handle,
+          learner_config.SerializeToString(),
+          apply_averaging=True,
+          reduce_dim=True)
 
-      pattern_result, pattern_dropout_info = (self._get_predictions(
+      pattern_result, pattern_dropout_info = self._get_predictions(
           adjusted_tree_ensemble_handle,
-          learner_config_no_averaging,
-          apply_averaging=False))
+          learner_config_no_averaging.SerializeToString(),
+          apply_averaging=False,
+          reduce_dim=True)
 
       self.assertAllEqual(result.eval(), pattern_result.eval())
       self.assertAllEqual(dropout_info.eval(), pattern_dropout_info.eval())
@@ -1224,10 +1140,6 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
           name="full_ensemble")
       resources.initialize_resources(resources.shared_resources()).run()
 
-      # Prepare learner config.
-      learner_config = learner_pb2.LearnerConfig()
-      learner_config.num_classes = 2
-
       result = prediction_ops.gradient_trees_partition_examples(
           tree_ensemble_handle, [self._dense_float_tensor], [
               self._sparse_float_indices1, self._sparse_float_indices2
@@ -1263,10 +1175,6 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
           name="full_ensemble")
       resources.initialize_resources(resources.shared_resources()).run()
 
-      # Prepare learner config.
-      learner_config = learner_pb2.LearnerConfig()
-      learner_config.num_classes = 2
-
       result = prediction_ops.gradient_trees_partition_examples(
           tree_ensemble_handle, [self._dense_float_tensor], [
               self._sparse_float_indices1, self._sparse_float_indices2
@@ -1301,10 +1209,6 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
           tree_ensemble_config=tree_ensemble_config.SerializeToString(),
           name="full_ensemble")
       resources.initialize_resources(resources.shared_resources()).run()
-
-      # Prepare learner config.
-      learner_config = learner_pb2.LearnerConfig()
-      learner_config.num_classes = 2
 
       result = prediction_ops.gradient_trees_partition_examples(
           tree_ensemble_handle, [self._dense_float_tensor], [

@@ -122,16 +122,7 @@ class Layer(object):
     self._inbound_nodes = []
     self._outbound_nodes = []
 
-    # Determine layer name (non-unique).
-    if isinstance(name, vs.VariableScope):
-      base_name = name.name
-    else:
-      base_name = name
-      self._name = name
-    if not name:
-      base_name = _to_snake_case(self.__class__.__name__)
-      self._name = _unique_layer_name(base_name)
-    self._base_name = base_name
+    self._init_set_name(name)
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
@@ -146,6 +137,17 @@ class Layer(object):
     if 'input_shape' in kwargs:
       batch_size = kwargs.get('batch_size')
       self._batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
+
+  def _init_set_name(self, name):
+    # Determine layer name (non-unique).
+    if isinstance(name, vs.VariableScope):
+      base_name = name.name
+    else:
+      base_name = name
+      self._name = name
+    if not name:
+      self._name, base_name = self._make_unique_name()
+    self._base_name = base_name
 
   @property
   def dtype(self):
@@ -218,7 +220,7 @@ class Layer(object):
 
     Weight updates (for instance, the updates of the moving mean and variance
     in a BatchNormalization layer) may be dependent on the inputs passed
-    when calling a layer. Hence, when reusing a same layer on
+    when calling a layer. Hence, when reusing the same layer on
     different inputs `a` and `b`, some entries in `layer.updates` may be
     dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
@@ -292,9 +294,9 @@ class Layer(object):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
     Some losses (for instance, activity regularization losses) may be dependent
-    on the inputs passed when calling a layer. Hence, when reusing a same layer
-    on different inputs `a` and `b`, some entries in `layer.losses` may be
-    dependent on `a` and some on `b`. This method automatically keeps track
+    on the inputs passed when calling a layer. Hence, when reusing the same
+    layer on different inputs `a` and `b`, some entries in `layer.losses` may
+    be dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
 
     The `get_losses_for` method allows to retrieve the losses relevant to a
@@ -399,6 +401,12 @@ class Layer(object):
     """
     return input_shape
 
+  def _make_unique_name(self, name_uid_map=None, avoid_names=None):
+    base_name = _to_snake_case(self.__class__.__name__)
+    name = _unique_layer_name(base_name, name_uid_map=name_uid_map,
+                              avoid_names=avoid_names)
+    return (name, base_name)
+
   def _set_scope(self, scope=None):
     if self._scope is None:
       # If constructed with _scope=None, lazy setting of scope.
@@ -413,7 +421,8 @@ class Layer(object):
 
   def add_variable(self, name, shape, dtype=None,
                    initializer=None, regularizer=None,
-                   trainable=True, constraint=None):
+                   trainable=True, constraint=None,
+                   partitioner=None):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -425,10 +434,23 @@ class Layer(object):
       trainable: whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases)
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
+        Note, if the current variable scope is marked as non-trainable
+        then this parameter is ignored and any added variables are also
+        marked as non-trainable.
       constraint: constraint instance (callable).
+      partitioner: (optional) partitioner instance (callable).  If
+        provided, when the requested variable is created it will be split
+        into multiple partitions according to `partitioner`.  In this case,
+        an instance of `PartitionedVariable` is returned.  Available
+        partitioners include `tf.fixed_size_partitioner` and
+        `tf.variable_axis_size_partitioner`.  For more details, see the
+        documentation of `tf.get_variable` and the  "Variable Partitioners
+        and Sharding" section of the API guide.
 
     Returns:
-      The created variable.
+      The created variable.  Usually either a `Variable` or `ResourceVariable`
+      instance.  If `partitioner` is not `None`, a `PartitionedVariable`
+      instance is returned.
 
     Raises:
       RuntimeError: If called in Eager mode with regularizers.
@@ -455,7 +477,12 @@ class Layer(object):
                                    initializer=initializer,
                                    dtype=dtypes.as_dtype(dtype),
                                    constraint=constraint,
-                                   trainable=trainable and self.trainable)
+                                   trainable=trainable and self.trainable,
+                                   partitioner=partitioner)
+        if (context.in_graph_mode() and trainable and self.trainable
+            and variable not in tf_variables.trainable_variables()):
+          # A custom getter / variable scope overrode the trainable flag.
+          trainable = False
         if variable in existing_variables:
           return variable
         if regularizer:
@@ -508,6 +535,7 @@ class Layer(object):
     input_list = nest.flatten(inputs)
 
     in_graph_mode = context.in_graph_mode()
+    in_deferred_mode = isinstance(input_list[0], _DeferredTensor)
     # Ensure the Layer, if being reused, is working with inputs from
     # the same graph as where it was created.
     if in_graph_mode:
@@ -515,6 +543,7 @@ class Layer(object):
         ops._get_graph_from_inputs(input_list, graph=self.graph)  # pylint: disable=protected-access
       except ValueError as e:
         raise ValueError('Input graph and Layer graph are not the same: %s' % e)
+    if in_graph_mode or in_deferred_mode:
       user_kwargs = copy.copy(kwargs)
 
     # Handle Keras mask propagation from previous layer to current layer.
@@ -553,6 +582,7 @@ class Layer(object):
               raise ValueError('activity_regularizer currently unsupported in '
                                'Eager mode. Found an activity_regularizer in '
                                '%s(%s).' % (self.__class__.__name__, self))
+          if not in_graph_mode and not in_deferred_mode:
             # TODO(agarwal): support _keras_history in Eager mode.
             for x in input_list:
               if hasattr(x, '_keras_history'):
@@ -581,13 +611,26 @@ class Layer(object):
         if call_has_scope_arg:
           kwargs['scope'] = scope
         # Check input assumptions set after layer building, e.g. input shape.
-        if in_graph_mode:
+        if in_graph_mode or in_deferred_mode:
           self._assert_input_compatibility(inputs)
-        outputs = self.call(inputs, *args, **kwargs)
 
-        if outputs is None:
-          raise ValueError('A layer\'s `call` method should return a Tensor '
-                           'or a list of Tensors, not None.')
+        if not in_deferred_mode:
+          outputs = self.call(inputs, *args, **kwargs)
+          if outputs is None:
+            raise ValueError('A layer\'s `call` method should return a Tensor '
+                             'or a list of Tensors, not None.')
+        else:
+          # Deferred mode behavior: use `_compute_output_shape` to
+          # infer the number of outputs of the layer and their shapes.
+          output_shapes = self._compute_output_shape(input_shapes)
+          output_shapes = nest.flatten(output_shapes)
+          outputs = [
+              # TODO(fchollet): name the deferred tensors?
+              _DeferredTensor(shape=shape, dtype=self._dtype)
+              for shape in output_shapes
+          ]
+          if len(outputs) == 1:
+            outputs = outputs[0]
 
         if in_graph_mode:
           # Apply activity regularization.
@@ -600,16 +643,18 @@ class Layer(object):
                 activity_regularization = self._activity_regularizer(output)
               self.add_loss(activity_regularization)
 
-        # Handle mask computation and propagation to the next layer.
-        if hasattr(self, 'compute_mask'):
-          output_mask = self.compute_mask(inputs, previous_mask)
-          if isinstance(outputs, list):
-            if output_mask is None:
-              output_mask = [None for _ in range(len(outputs))]
-            for x, m in zip(outputs, output_mask):
-              x._keras_mask = m  # pylint: disable=protected-access
-          else:
-            outputs._keras_mask = output_mask  # pylint: disable=protected-access
+        if not in_deferred_mode:
+          # TODO(fchollet): consider how masking will work with deferred mode.
+          # Handle mask computation and propagation to the next layer.
+          if hasattr(self, 'compute_mask'):
+            output_mask = self.compute_mask(inputs, previous_mask)
+            if isinstance(outputs, list):
+              if output_mask is None:
+                output_mask = [None for _ in range(len(outputs))]
+              for x, m in zip(outputs, output_mask):
+                x._keras_mask = m  # pylint: disable=protected-access
+            else:
+              outputs._keras_mask = output_mask  # pylint: disable=protected-access
 
     if in_graph_mode:
       # If all input tensors have history metadata,
@@ -631,13 +676,15 @@ class Layer(object):
         else:
           outputs = output_ls_copy
 
+      # Update global default collections.
+      _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
+
+    if in_deferred_mode or in_graph_mode:
+      if _have_all_keras_metadata(inputs):
         # Add an inbound node to the layer, so it can keep track of this call.
         # This updates the layer history of the output tensor(s).
         self._add_inbound_node(
             input_tensors=inputs, output_tensors=outputs, arguments=user_kwargs)
-
-      # Update global default collections.
-      _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
 
     self.built = True
     return outputs
@@ -692,7 +739,6 @@ class Layer(object):
         arguments: dictionary of keyword arguments that were passed to the
             `call` method of the layer at the call that created the node.
     """
-    assert context.in_graph_mode()
     input_tensors = nest.flatten(input_tensors)
     output_tensors = nest.flatten(output_tensors)
 
@@ -1251,6 +1297,34 @@ class Node(object):
     }
 
 
+class _DeferredTensor(object):
+  """Tensor-like object used to build graphs of layers in Eager mode.
+
+  When calling a layer on a DeferredTensor, the layer will not perform any
+  computation and will simply perfom shape inference to return new
+  DeferredTensors with appropriate shape information. Thus DeferredTensor
+  behaves like a graph-mode Tensor when manipulated by layers.
+  """
+
+  def __init__(self, shape, dtype, name=None):
+    self.shape = tensor_shape.TensorShape(shape)
+    self.dtype = dtypes.as_dtype(dtype)
+    self.name = name
+
+  def get_shape(self):
+    return self.shape
+
+  def __str__(self):
+    return "DeferredTensor('%s', shape=%s, dtype=%s)" % (self.name,
+                                                         self.get_shape(),
+                                                         self.dtype.name)
+
+  def __repr__(self):
+    return "<_DeferredTensor '%s' shape=%s dtype=%s>" % (self.name,
+                                                         self.get_shape(),
+                                                         self.dtype.name)
+
+
 class InputLayer(Layer):
   """Layer to be used as an entry point into a Network (a graph of layers).
 
@@ -1283,8 +1357,6 @@ class InputLayer(Layer):
                input_tensor=None,
                sparse=False,
                name=None):
-    if context.in_eager_mode():
-      raise RuntimeError('InputLayer not supported in Eager mode.')
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse
@@ -1299,16 +1371,24 @@ class InputLayer(Layer):
       else:
         batch_input_shape = None
 
-      if sparse:
-        input_tensor = array_ops.sparse_placeholder(
+      if context.in_eager_mode():
+        # In eager mode, create a temporary placeholder to call the layer on.
+        input_tensor = _DeferredTensor(
             shape=batch_input_shape,
             dtype=dtype,
             name=self.name)
       else:
-        input_tensor = array_ops.placeholder(
-            shape=batch_input_shape,
-            dtype=dtype,
-            name=self.name)
+        # In graph mode, create a graph placeholder to call the layer on.
+        if sparse:
+          input_tensor = array_ops.sparse_placeholder(
+              shape=batch_input_shape,
+              dtype=dtype,
+              name=self.name)
+        else:
+          input_tensor = array_ops.placeholder(
+              shape=batch_input_shape,
+              dtype=dtype,
+              name=self.name)
 
       # For compatibility with Keras API.
       self.is_placeholder = True
@@ -1375,8 +1455,6 @@ def Input(  # pylint: disable=invalid-name
   Raises:
     RuntimeError: If called in Eager mode.
   """
-  if context.in_eager_mode():
-    raise RuntimeError('Input not supported in Eager mode.')
   input_layer = InputLayer(
       input_shape=shape,
       batch_size=batch_size,
@@ -1440,22 +1518,15 @@ class Network(Layer):
   """
 
   def __init__(self, inputs, outputs, name=None):  # pylint: disable=super-init-not-called
-    # TODO(agarwal): Make Network work in Eager mode.
     if context.in_eager_mode():
-      raise RuntimeError('Network not supported in Eager mode.')
-    # Set layer name and scope
-    if isinstance(name, vs.VariableScope):
-      base_name = name.name
-    else:
-      base_name = name
-      self._name = name
-    if not name:
-      base_name = _to_snake_case(self.__class__.__name__)
-      self._name = _unique_layer_name(base_name)
+      # TODO(fchollet): check that all inputs and outputs are DeferredTensors.
+      pass
+
+    self._init_set_name(name)
     self._activity_regularizer = None
-    with vs.variable_scope(None, default_name=base_name) as captured_scope:
+    with vs.variable_scope(
+        None, default_name=self._base_name) as captured_scope:
       self._scope = captured_scope
-    self._base_name = base_name
     call_fn_args = estimator_util.fn_args(self.call)
     self._compute_previous_mask = ('mask' in call_fn_args or
                                    hasattr(self, 'compute_mask'))
@@ -1919,16 +1990,17 @@ class Network(Layer):
       masks = [None for _ in range(len(inputs))]
     else:
       masks = nest.flatten(mask)
-    # Try to retrieve cached outputs if the layer has already been called
-    # on these exact inputs.
-    cache_key = _object_list_uid(inputs) + '_' + _object_list_uid(masks)
-    if cache_key in self._output_tensor_cache:
-      # Cache hit.
-      return self._output_tensor_cache[cache_key]
-    else:
-      # Cache miss: actually apply the network graph to the new inputs.
-      output_tensors, _, _ = self._run_internal_graph(inputs, masks)
-      return output_tensors
+
+    if context.in_graph_mode():
+      # Try to retrieve cached outputs if the layer has already been called
+      # on these exact inputs.
+      cache_key = _object_list_uid(inputs) + '_' + _object_list_uid(masks)
+      if cache_key in self._output_tensor_cache:
+        # Cache hit.
+        return self._output_tensor_cache[cache_key]
+    # Actually apply the network graph to the new inputs.
+    outputs, _ = self._run_internal_graph(inputs, masks)
+    return outputs
 
   def _compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
@@ -2091,6 +2163,7 @@ class Network(Layer):
               if 'mask' in estimator_util.fn_args(layer.call):
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_mask
+
               output_tensors = nest.flatten(
                   layer.call(computed_tensor, **kwargs))
               if hasattr(layer, 'compute_mask'):
@@ -2121,18 +2194,19 @@ class Network(Layer):
               ]
               layer.add_loss(regularization_losses, computed_tensors)
 
-          # Update model updates and losses:
-          # Keep track of updates that depend on the inputs
-          # (e.g. BN updates).
-          self.add_update(layer.get_updates_for(computed_tensors), inputs)
-          # Keep track of unconditional updates (e.g. a counter).
-          self.add_update(layer.get_updates_for(None), None)
-          # Keep track of losses that depend on the inputs
-          # (e.g. activity regularizers).
-          self.add_loss(layer.get_losses_for(computed_tensors), inputs)
-          # Keep track of unconditional losses
-          # (e.g. weight regularizers).
-          self.add_loss(layer.get_losses_for(None), None)
+          if context.in_graph_mode():
+            # Update model updates and losses:
+            # Keep track of updates that depend on the inputs
+            # (e.g. BN updates).
+            self.add_update(layer.get_updates_for(computed_tensors), inputs)
+            # Keep track of unconditional updates (e.g. a counter).
+            self.add_update(layer.get_updates_for(None), None)
+            # Keep track of losses that depend on the inputs
+            # (e.g. activity regularizers).
+            self.add_loss(layer.get_losses_for(computed_tensors), inputs)
+            # Keep track of unconditional losses
+            # (e.g. weight regularizers).
+            self.add_loss(layer.get_losses_for(None), None)
 
           # Update tensor_map.
           for x, y, mask in zip(reference_output_tensors, output_tensors,
@@ -2149,31 +2223,26 @@ class Network(Layer):
       output_tensors.append(tensor)
       output_masks.append(mask)
 
-    # Update cache;
-    # keys are based on ids on input tensors and inputs masks.
-    cache_key = _object_list_uid(inputs) + '_' + _object_list_uid(masks)
-
     if len(output_tensors) == 1:
       output_tensors = output_tensors[0]
-      self._output_tensor_cache[cache_key] = output_tensors
-    else:
-      self._output_tensor_cache[cache_key] = output_tensors
-
-    if len(output_masks) == 1:
-      output_masks = output_masks[0]
-      self._output_mask_cache[cache_key] = output_masks
-    else:
-      self._output_mask_cache[cache_key] = output_masks
-
-    if output_shapes is not None:
-      input_shapes = [_static_shape(x) for x in inputs]
-      cache_key = _object_list_uid(input_shapes)
-      if len(output_shapes) == 1:
+      if output_shapes is not None:
         output_shapes = output_shapes[0]
+      if output_masks is not None:
+        output_masks = output_masks[0]
+
+    if context.in_graph_mode():
+      # Update cache;
+      # keys are based on ids on input tensors and inputs masks.
+      cache_key = _object_list_uid(inputs) + '_' + _object_list_uid(masks)
+      self._output_tensor_cache[cache_key] = output_tensors
+      if output_masks is not None:
+        self._output_mask_cache[cache_key] = output_masks
+      if output_shapes is not None:
+        input_shapes = [_static_shape(x) for x in inputs]
+        cache_key = _object_list_uid(input_shapes)
         self._output_shape_cache[cache_key] = output_shapes
-      else:
-        self._output_shape_cache[cache_key] = output_shapes
-    return output_tensors, output_masks, output_shapes
+
+    return output_tensors, output_masks
 
 
 def _is_tensor_or_tensor_list(v):
@@ -2292,11 +2361,24 @@ def _collect_previous_mask(input_tensors):
 PER_GRAPH_LAYER_NAME_UIDS = weakref.WeakKeyDictionary()
 
 
-def _unique_layer_name(name):
+def _get_default_graph_uid_map():
+  graph = ops.get_default_graph()
+  name_uid_map = PER_GRAPH_LAYER_NAME_UIDS.get(graph, None)
+  if name_uid_map is None:
+    name_uid_map = collections.defaultdict(int)
+    PER_GRAPH_LAYER_NAME_UIDS[graph] = name_uid_map
+  return name_uid_map
+
+
+def _unique_layer_name(name, name_uid_map=None, avoid_names=None):
   """Makes a layer name (or arbitrary string) unique within a TensorFlow graph.
 
   Arguments:
     name: String name to make unique.
+    name_uid_map: An optional defaultdict(int) to use when creating unique
+      names. If None (default), uses a per-Graph dictionary.
+    avoid_names: An optional set or dict with names which should not be used. If
+      None (default) does not avoid any names.
 
   Returns:
     Unique string name.
@@ -2308,9 +2390,12 @@ def _unique_layer_name(name):
   _unique_layer_name('dense')  # dense_2
   ```
   """
-  graph = ops.get_default_graph()
-  if graph not in PER_GRAPH_LAYER_NAME_UIDS:
-    PER_GRAPH_LAYER_NAME_UIDS[graph] = collections.defaultdict(int)
-  layer_name_uids = PER_GRAPH_LAYER_NAME_UIDS[graph]
-  layer_name_uids[name] += 1
-  return name + '_' + str(layer_name_uids[name])
+  if name_uid_map is None:
+    name_uid_map = _get_default_graph_uid_map()
+  if avoid_names is None:
+    avoid_names = set()
+  proposed_name = None
+  while proposed_name is None or proposed_name in avoid_names:
+    name_uid_map[name] += 1
+    proposed_name = name + '_' + str(name_uid_map[name])
+  return proposed_name

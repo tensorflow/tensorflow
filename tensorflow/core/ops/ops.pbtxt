@@ -45,6 +45,58 @@ op {
   description: "Given a tensor `x`, this operation returns a tensor containing the absolute\nvalue of each element in `x`. For example, if x is an input element and y is\nan output element, this operation computes \\\\(y = |x|\\\\)."
 }
 op {
+  name: "AccumulateNV2"
+  input_arg {
+    name: "inputs"
+    description: "A list of `Tensor` objects, each with same shape and type."
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "sum"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "Shape of elements of `inputs`."
+  }
+  summary: "Returns the element-wise sum of a list of tensors."
+  description: "`tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not\nwait for all of its inputs to be ready before beginning to sum. This can\nsave memory if inputs are ready at different times, since minimum temporary\nstorage is proportional to the output size rather than the inputs size.\n\nUnlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.\n\nReturns a `Tensor` of same shape and type as the elements of `inputs`."
+  is_aggregate: true
+  is_commutative: true
+}
+op {
   name: "AccumulatorApplyGradient"
   input_arg {
     name: "handle"
@@ -393,6 +445,43 @@ op {
   summary: "Add a `SparseTensor` to a `SparseTensorsMap` return its handle."
   description: "A `SparseTensor` is represented by three tensors: `sparse_indices`,\n`sparse_values`, and `sparse_shape`.\n\nThis operator takes the given `SparseTensor` and adds it to a container\nobject (a `SparseTensorsMap`).  A unique key within this container is generated\nin the form of an `int64`, and this is the value that is returned.\n\nThe `SparseTensor` can then be read out as part of a minibatch by passing\nthe key as a vector element to `TakeManySparseFromTensorsMap`.  To ensure\nthe correct `SparseTensorsMap` is accessed, ensure that the same\n`container` and `shared_name` are passed to that Op.  If no `shared_name`\nis provided here, instead use the *name* of the Operation created by calling\n`AddSparseToTensorsMap` as the `shared_name` passed to\n`TakeManySparseFromTensorsMap`.  Ensure the Operations are colocated."
   is_stateful: true
+}
+op {
+  name: "AddV2"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Returns x + y element-wise."
+  description: "*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+  is_aggregate: true
+  is_commutative: true
 }
 op {
   name: "AdjustContrast"
@@ -5172,6 +5261,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5238,6 +5328,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5293,6 +5384,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5358,6 +5450,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5413,6 +5506,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5639,6 +5733,7 @@ op {
     allowed_values {
       list {
         type: DT_UINT8
+        type: DT_UINT16
         type: DT_INT8
         type: DT_INT16
         type: DT_INT32
@@ -5706,6 +5801,7 @@ op {
     allowed_values {
       list {
         type: DT_UINT8
+        type: DT_UINT16
         type: DT_INT8
         type: DT_INT16
         type: DT_INT32
@@ -6321,6 +6417,7 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
         type: DT_STRING
@@ -6995,7 +7092,22 @@ op {
     }
   }
   summary: "Dequantize the \'input\' tensor into a float Tensor."
-  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nif T == qint8, in[i] += (range(T) + 1)/ 2.0\nout[i] = min_range + (in[i]* (max_range - min_range) / range(T))\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nIf the input comes from a QuantizedRelu6, the output type is\nquint8 (range of 0-255) but the possible range of QuantizedRelu6 is\n0-6.  The min_range and max_range values are therefore 0.0 and 6.0.\nDequantize on quint8 will take each value, cast to float, and multiply\nby 6 / 255.\nNote that if quantizedtype is qint8, the operation will additionally add\neach value by 128 prior to casting.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```c++\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = range / number_of_steps\nconst double offset_input = static_cast<double>(input) - lowest_quantized;\nresult = range_min + ((input - numeric_limits<T>::min()) * range_scale)\n```\n\n*SCALED mode Example*\n\n`SCALED` mode matches the quantization approach used in\n`QuantizeAndDequantize{V2|V3}`.\n\nIf the mode is `SCALED`, we do not use the full range of the output type,\nchoosing to elide the lowest possible value for symmetry (e.g., output range is\n-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to\n0.\n\nWe first find the range of values in our tensor. The\nrange we use is always centered on 0, so we find m such that\n```c++\n  m = max(abs(input_min), abs(input_max))\n```\n\nOur input tensor range is then `[-m, m]`.\n\nNext, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.\nIf T is signed, this is\n```\n  num_bits = sizeof(T) * 8\n  [min_fixed, max_fixed] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]\n```\n\nOtherwise, if T is unsigned, the fixed-point range is\n```\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]\n```\n\nFrom this we compute our scaling factor, s:\n```c++\n  s = (2 * m) / (max_fixed - min_fixed)\n```\n\nNow we can dequantize the elements of our tensor:\n```c++\nresult = input * s\n```"
+  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nif T == qint8, in[i] += (range(T) + 1)/ 2.0\nout[i] = min_range + (in[i]* (max_range - min_range) / range(T))\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nIf the input comes from a QuantizedRelu6, the output type is\nquint8 (range of 0-255) but the possible range of QuantizedRelu6 is\n0-6.  The min_range and max_range values are therefore 0.0 and 6.0.\nDequantize on quint8 will take each value, cast to float, and multiply\nby 6 / 255.\nNote that if quantizedtype is qint8, the operation will additionally add\neach value by 128 prior to casting.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```c++\nnum_discrete_values = 1 << (# of bits in T)\nrange_adjust = num_discrete_values / (num_discrete_values - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = range / num_discrete_values\nconst double offset_input = static_cast<double>(input) - lowest_quantized;\nresult = range_min + ((input - numeric_limits<T>::min()) * range_scale)\n```\n\n*SCALED mode Example*\n\n`SCALED` mode matches the quantization approach used in\n`QuantizeAndDequantize{V2|V3}`.\n\nIf the mode is `SCALED`, we do not use the full range of the output type,\nchoosing to elide the lowest possible value for symmetry (e.g., output range is\n-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to\n0.\n\nWe first find the range of values in our tensor. The\nrange we use is always centered on 0, so we find m such that\n```c++\n  m = max(abs(input_min), abs(input_max))\n```\n\nOur input tensor range is then `[-m, m]`.\n\nNext, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.\nIf T is signed, this is\n```\n  num_bits = sizeof(T) * 8\n  [min_fixed, max_fixed] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]\n```\n\nOtherwise, if T is unsigned, the fixed-point range is\n```\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]\n```\n\nFrom this we compute our scaling factor, s:\n```c++\n  s = (2 * m) / (max_fixed - min_fixed)\n```\n\nNow we can dequantize the elements of our tensor:\n```c++\nresult = input * s\n```"
+}
+op {
+  name: "DeserializeIterator"
+  input_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "serialized"
+    description: "A variant tensor storing the state of the iterator contained in the\nresource."
+    type: DT_VARIANT
+  }
+  summary: "Converts the given variant tensor to an iterator and stores it in the given resource."
+  is_stateful: true
 }
 op {
   name: "DeserializeManySparse"
@@ -7071,7 +7183,7 @@ op {
   name: "Diag"
   input_arg {
     name: "diagonal"
-    description: "Rank k tensor where k is at most 3."
+    description: "Rank k tensor where k is at most 1."
     type_attr: "T"
   }
   output_arg {
@@ -7099,7 +7211,7 @@ op {
   name: "DiagPart"
   input_arg {
     name: "input"
-    description: "Rank k tensor where k is 2, 4, or 6."
+    description: "Rank k tensor where k is even and not zero."
     type_attr: "T"
   }
   output_arg {
@@ -10284,6 +10396,56 @@ op {
   summary: "Creates a non-initialized hash table."
   description: "This op creates a hash table, specifying the type of its keys and values.\nBefore using the table you will have to initialize it.  After initialization the\ntable will be immutable."
   is_stateful: true
+}
+op {
+  name: "HistogramFixedWidth"
+  input_arg {
+    name: "values"
+    description: "Numeric `Tensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "value_range"
+    description: "Shape [2] `Tensor` of same `dtype` as `values`.\nvalues <= value_range[0] will be mapped to hist[0],\nvalues >= value_range[1] will be mapped to hist[-1]."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "nbins"
+    description: "Scalar `int32 Tensor`.  Number of histogram bins."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "out"
+    description: "A 1-D `Tensor` holding histogram of values."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Return histogram of values."
+  description: "Given the tensor `values`, this operation returns a rank 1 histogram counting\nthe number of entries in `values` that fall into every bin.  The bins are\nequal width and determined by the arguments `value_range` and `nbins`.\n\n```python\n# Bins will be:  (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)\nnbins = 5\nvalue_range = [0.0, 5.0]\nnew_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]\n\nwith tf.get_default_session() as sess:\n  hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)\n  variables.global_variables_initializer().run()\n  sess.run(hist) => [2, 1, 1, 0, 2]\n```"
 }
 op {
   name: "HistogramSummary"
@@ -15223,6 +15385,53 @@ op {
   is_commutative: true
 }
 op {
+  name: "NthElement"
+  input_arg {
+    name: "input"
+    description: "1-D or higher with last dimension at least `n+1`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "n"
+    description: "0-D. Position of sorted vector to select along the last dimension (along\neach row for matrices). Valid range of n is `[0, input.shape[:-1])`"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    description: "The `n`-th order statistic along each last dimensional slice."
+    type_attr: "T"
+  }
+  attr {
+    name: "reverse"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, find the nth-largest value in the vector and vice\nversa."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  summary: "Finds values of the `n`-th order statistic for the last dmension."
+  description: "If the input is a vector (rank-1), finds the entries which is the nth-smallest\nvalue in the vector and outputs their values as scalar tensor.\n\nFor matrices (resp. higher rank input), computes the entries which is the\nnth-smallest value in each row (resp. vector along the last dimension). Thus,\n\n    values.shape = input.shape[:-1]"
+}
+op {
   name: "OneHot"
   input_arg {
     name: "indices"
@@ -16014,6 +16223,57 @@ op {
   }
   summary: "Interleave the values from the `data` tensors into a single tensor."
   description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues may be merged in parallel, so if an index appears in both `indices[m][i]`\nand `indices[n][j]`, the result may be invalid. This differs from the normal\nDynamicStitch operator that defines the behavior in that case.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
+}
+op {
+  name: "ParallelInterleaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sloppy"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  description: "The resulting dataset is similar to the `InterleaveDataset`, with the exception\nthat if retrieving the next value from a dataset would cause the requester to\nblock, it will skip that input dataset. This dataset is especially useful\nwhen loading data from a variable-latency datastores (e.g. HDFS, GCS), as it\nallows the training step to proceed so long as some data is available.\n\n!! WARNING !! This dataset is not deterministic!"
 }
 op {
   name: "ParallelMapDataset"
@@ -17269,8 +17529,21 @@ op {
       }
     }
   }
+  attr {
+    name: "round_mode"
+    type: "string"
+    default_value {
+      s: "HALF_AWAY_FROM_ZERO"
+    }
+    allowed_values {
+      list {
+        s: "HALF_AWAY_FROM_ZERO"
+        s: "HALF_TO_EVEN"
+      }
+    }
+  }
   summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
-  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nout[i] = (in[i] - min_range) * range(T) / (max_range - min_range)\nif T == qint8, out[i] -= (range(T) + 1) / 2.0\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nAssume the input is type float and has a possible range of [0.0, 6.0] and the\noutput type is quint8 ([0, 255]). The min_range and max_range values should be\nspecified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each\nvalue of the input by 255/6 and cast to quint8.\n\nIf the output type was qint8 ([-128, 127]), the operation will additionally\nsubtract each value by 128 prior to casting, so that the range of values aligns\nwith the range of qint8.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = number_of_steps / range\nquantized = round(input * range_scale) - round(range_min * range_scale) +\n  numeric_limits<T>::min()\nquantized = max(quantized, numeric_limits<T>::min())\nquantized = min(quantized, numeric_limits<T>::max())\n```\n\nThe biggest difference between this and MIN_COMBINED is that the minimum range\nis rounded first, before it\'s subtracted from the rounded value. With\nMIN_COMBINED, a small bias is introduced where repeated iterations of quantizing\nand dequantizing will introduce a larger and larger error.\n\n*SCALED mode Example*\n\n`SCALED` mode matches the quantization approach used in\n`QuantizeAndDequantize{V2|V3}`.\n\nIf the mode is `SCALED`, we do not use the full range of the output type,\nchoosing to elide the lowest possible value for symmetry (e.g., output range is\n-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to\n0.\n\nWe first find the range of values in our tensor. The\nrange we use is always centered on 0, so we find m such that\n```c++\n  m = max(abs(input_min), abs(input_max))\n```\n\nOur input tensor range is then `[-m, m]`.\n\nNext, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.\nIf T is signed, this is\n```\n  num_bits = sizeof(T) * 8\n  [min_fixed, max_fixed] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]\n```\n\nOtherwise, if T is unsigned, the fixed-point range is\n```\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]\n```\n\nFrom this we compute our scaling factor, s:\n```c++\n  s = (max_fixed - min_fixed) / (2 * m)\n```\n\nNow we can quantize the elements of our tensor:\n```c++\nresult = (input * s).round_to_nearest()\n```\n\nOne thing to watch out for is that the operator may choose to adjust the\nrequested minimum and maximum values slightly during the quantization process,\nso you should always use the output ports as the range for further calculations.\nFor example, if the requested minimum and maximum values are close to equal,\nthey will be separated by a small epsilon value to prevent ill-formed quantized\nbuffers from being created. Otherwise, you can end up with buffers where all the\nquantized values map to the same float value, which causes problems for\noperations that have to perform further calculations on them."
+  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.  The\n\'round_mode\' attribute controls which rounding tie-breaking algorithm is used\nwhen rounding float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nout[i] = (in[i] - min_range) * range(T) / (max_range - min_range)\nif T == qint8, out[i] -= (range(T) + 1) / 2.0\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nAssume the input is type float and has a possible range of [0.0, 6.0] and the\noutput type is quint8 ([0, 255]). The min_range and max_range values should be\nspecified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each\nvalue of the input by 255/6 and cast to quint8.\n\nIf the output type was qint8 ([-128, 127]), the operation will additionally\nsubtract each value by 128 prior to casting, so that the range of values aligns\nwith the range of qint8.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnum_discrete_values = 1 << (# of bits in T)\nrange_adjust = num_discrete_values / (num_discrete_values - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = num_discrete_values / range\nquantized = round(input * range_scale) - round(range_min * range_scale) +\n  numeric_limits<T>::min()\nquantized = max(quantized, numeric_limits<T>::min())\nquantized = min(quantized, numeric_limits<T>::max())\n```\n\nThe biggest difference between this and MIN_COMBINED is that the minimum range\nis rounded first, before it\'s subtracted from the rounded value. With\nMIN_COMBINED, a small bias is introduced where repeated iterations of quantizing\nand dequantizing will introduce a larger and larger error.\n\n*SCALED mode Example*\n\n`SCALED` mode matches the quantization approach used in\n`QuantizeAndDequantize{V2|V3}`.\n\nIf the mode is `SCALED`, we do not use the full range of the output type,\nchoosing to elide the lowest possible value for symmetry (e.g., output range is\n-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to\n0.\n\nWe first find the range of values in our tensor. The\nrange we use is always centered on 0, so we find m such that\n```c++\n  m = max(abs(input_min), abs(input_max))\n```\n\nOur input tensor range is then `[-m, m]`.\n\nNext, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.\nIf T is signed, this is\n```\n  num_bits = sizeof(T) * 8\n  [min_fixed, max_fixed] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]\n```\n\nOtherwise, if T is unsigned, the fixed-point range is\n```\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]\n```\n\nFrom this we compute our scaling factor, s:\n```c++\n  s = (max_fixed - min_fixed) / (2 * m)\n```\n\nNow we can quantize the elements of our tensor:\n```c++\nresult = round(input * s)\n```\n\nOne thing to watch out for is that the operator may choose to adjust the\nrequested minimum and maximum values slightly during the quantization process,\nso you should always use the output ports as the range for further calculations.\nFor example, if the requested minimum and maximum values are close to equal,\nthey will be separated by a small epsilon value to prevent ill-formed quantized\nbuffers from being created. Otherwise, you can end up with buffers where all the\nquantized values map to the same float value, which causes problems for\noperations that have to perform further calculations on them."
 }
 op {
   name: "QuantizedAdd"
@@ -19098,17 +19371,14 @@ op {
   name: "RandomPoisson"
   input_arg {
     name: "shape"
-    description: "1-D integer tensor. Shape of independent samples to draw from each\ndistribution described by the shape parameters given in rate."
     type_attr: "S"
   }
   input_arg {
     name: "rate"
-    description: "A tensor in which each scalar is a \"rate\" parameter describing the\nassociated poisson distribution."
     type_attr: "dtype"
   }
   output_arg {
     name: "output"
-    description: "A tensor with shape `shape + shape(rate)`. Each slice\n`[:, ..., :, i0, i1, ...iN]` contains the samples drawn for\n`rate[i0, i1, ...iN]`. The dtype of the output matches the dtype of\nrate."
     type_attr: "dtype"
   }
   attr {
@@ -19117,7 +19387,6 @@ op {
     default_value {
       i: 0
     }
-    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
   }
   attr {
     name: "seed2"
@@ -19125,7 +19394,6 @@ op {
     default_value {
       i: 0
     }
-    description: "A second seed to avoid seed collision."
   }
   attr {
     name: "S"
@@ -19148,8 +19416,11 @@ op {
       }
     }
   }
-  summary: "Outputs random values from the Poisson distribution(s) described by rate."
-  description: "This op uses two algorithms, depending on rate. If rate >= 10, then\nthe algorithm by Hormann is used to acquire samples via\ntransformation-rejection.\nSee http://www.sciencedirect.com/science/article/pii/0167668793909974.\n\nOtherwise, Knuth\'s algorithm is used to acquire samples via multiplying uniform\nrandom variables.\nSee Donald E. Knuth (1969). Seminumerical Algorithms. The Art of Computer\nProgramming, Volume 2. Addison Wesley"
+  summary: "Use RandomPoissonV2 instead."
+  deprecation {
+    version: 25
+    explanation: "Replaced by RandomPoissonV2"
+  }
   is_stateful: true
 }
 op {
@@ -20799,9 +21070,10 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT8
         type: DT_INT16
+        type: DT_UINT16
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
@@ -20843,9 +21115,10 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT8
         type: DT_INT16
+        type: DT_UINT16
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
@@ -20924,9 +21197,10 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT8
         type: DT_INT16
+        type: DT_UINT16
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
@@ -21006,9 +21280,10 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT8
         type: DT_INT16
+        type: DT_UINT16
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
@@ -21946,6 +22221,36 @@ op {
   is_stateful: true
 }
 op {
+  name: "ResourceCountUpTo"
+  input_arg {
+    name: "resource"
+    description: "Should be from a scalar `Variable` node."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "output"
+    description: "A copy of the input before increment. If nothing else modifies the\ninput, the values produced will all be distinct."
+    type_attr: "T"
+  }
+  attr {
+    name: "limit"
+    type: "int"
+    description: "If incrementing ref would bring it above limit, instead generates an\n\'OutOfRange\' error."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Increments variable pointed to by \'resource\' until it reaches \'limit\'."
+  is_stateful: true
+}
+op {
   name: "ResourceGather"
   input_arg {
     name: "resource"
@@ -22036,7 +22341,62 @@ op {
     }
   }
   summary: "Adds sparse updates to the variable referenced by `resource`."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/ScatterAdd.png\" alt>\n</div>"
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\'https://www.tensorflow.org/images/ScatterAdd.png\' alt>\n</div>"
+  is_stateful: true
+}
+op {
+  name: "ResourceScatterUpdate"
+  input_arg {
+    name: "resource"
+    description: "Should be from a `Variable` node."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    description: "A tensor of indices into the first dimension of `ref`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A tensor of updated values to add to `ref`."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Assigns sparse updates to the variable referenced by `resource`."
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]"
   is_stateful: true
 }
 op {
@@ -23026,19 +23386,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "RestoreIterator"
-  input_arg {
-    name: "iterator"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "path"
-    type: DT_STRING
-  }
-  summary: "Restores the state of the `iterator` from the checkpoint saved at `path` using \"SaveIterator\"."
-  is_stateful: true
-}
-op {
   name: "RestoreSlice"
   input_arg {
     name: "file_pattern"
@@ -23253,7 +23600,7 @@ op {
     }
   }
   summary: "Reverses specific dimensions of a tensor."
-  description: "NOTE `tf.reverse` has now changed behavior in preparation for 1.0.\n`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.\n\nGiven a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
+  description: "NOTE `tf.reverse` has now changed behavior in preparation for 1.0.\n`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.\n\nGiven a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is [-1]\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
 }
 op {
   name: "RightShift"
@@ -23630,20 +23977,6 @@ op {
   }
   summary: "Saves the input tensors to disk."
   description: "The size of `tensor_names` must match the number of tensors in `data`. `data[i]`\nis written to `filename` with name `tensor_names[i]`.\n\nSee also `SaveSlices`."
-  is_stateful: true
-}
-op {
-  name: "SaveIterator"
-  input_arg {
-    name: "iterator"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "path"
-    type: DT_STRING
-  }
-  summary: "Saves the state of the `iterator` at `path`."
-  description: "This state can be restored using \"RestoreIterator\"."
   is_stateful: true
 }
 op {
@@ -24991,6 +25324,21 @@ op {
   summary: "Computes gradients for the scaled exponential linear (Selu) operation."
 }
 op {
+  name: "SerializeIterator"
+  input_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "serialized"
+    description: "A variant tensor storing the state of the iterator contained in the\nresource."
+    type: DT_VARIANT
+  }
+  summary: "Converts the given `resource_handle` representing an iterator to a variant tensor."
+  is_stateful: true
+}
+op {
   name: "SerializeManySparse"
   input_arg {
     name: "sparse_indices"
@@ -25570,53 +25918,6 @@ op {
   }
   summary: "Return a slice from \'input\'."
   description: "The output tensor is a tensor with dimensions described by \'size\'\nwhose values are extracted from \'input\' starting at the offsets in\n\'begin\'.\n\n*Requirements*:\n  0 <= begin[i] <= begin[i] + size[i] <= Di  for i in [0, n)"
-}
-op {
-  name: "SloppyInterleaveDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "other_arguments"
-    type_list_attr: "Targuments"
-  }
-  input_arg {
-    name: "cycle_length"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "block_length"
-    type: DT_INT64
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "f"
-    type: "func"
-    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
-  }
-  attr {
-    name: "Targuments"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  description: "The resulting dataset is similar to the `InterleaveDataset`, with the exception\nthat if retrieving the next value from a dataset would cause the requester to\nblock, it will skip that input dataset. This dataset is especially useful\nwhen loading data from a variable-latency datastores (e.g. HDFS, GCS), as it\nallows the training step to proceed so long as some data is available.\n\n!! WARNING !! This dataset is not deterministic!"
 }
 op {
   name: "Softmax"
@@ -32062,7 +32363,7 @@ op {
     }
   }
   summary: "Returns x / y element-wise for integer types."
-  description: "Truncation designates that negative numbers will round fractional quantities\ntoward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different\nthan Python semantics. See `FloorDiv` for a division function that matches\nPython Semantics.\n\n*NOTE*: `TruncateDiv` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+  description: "Truncation designates that negative numbers will round fractional quantities\ntoward zero. I.e. -7 / 5 = -1. This matches C semantics but it is different\nthan Python semantics. See `FloorDiv` for a division function that matches\nPython Semantics.\n\n*NOTE*: `TruncateDiv` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "TruncateMod"

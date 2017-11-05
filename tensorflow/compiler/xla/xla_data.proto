@@ -48,6 +48,9 @@ enum PrimitiveType {
   F32 = 11;
   F64 = 12;
 
+  // Complex values of fixed width.
+  C64 = 15;  // Paired F32 (real, imag), as in std::complex<float>.
+
   // A tuple is a polymorphic sequence; e.g. a shape that holds different
   // sub-shapes. They are used for things like returning multiple values from a
   // computation; e.g. a computation that returns weights and biases may have a
@@ -305,6 +308,7 @@ message LiteralProto {
   repeated uint64 u64s = 7;
   repeated float f32s = 8;
   repeated double f64s = 9;
+  repeated float c64s = 12;  // Stored as interleaved real, imag floats.
   repeated LiteralProto tuple_literals = 10;
   bytes f16s = 11;  // Note: the F16s are encoded in little endian byte order
 }
@@ -427,6 +431,20 @@ message ConvolveRequest {
   ComputationDataHandle rhs = 3;  // This is the filter/kernel.
   Window window = 4;              // Describes the filter/kenel.
   ConvolutionDimensionNumbers dimension_numbers = 5;
+}
+
+enum FftType {
+  FFT = 0;    // Forward FFT; complex in, complex out.
+  IFFT = 1;   // Inverse FFT; complex in, complex out.
+  RFFT = 2;   // Forward real FFT; real in, fft_length / 2 + 1 complex out
+  IRFFT = 3;  // Inverse real FFT; fft_length / 2 + 1 complex in,
+              //                   fft_length real out
+}
+
+message FftRequest {
+  FftType fft_type = 1;
+  repeated int64 fft_length = 2;  // Multivalent for higher-order FFT.
+  ComputationDataHandle operand = 3;
 }
 
 message InfeedRequest {
@@ -663,6 +681,12 @@ enum UnaryOperation {
   // Elementwise, rounds x to nearest integral value, rounding half-way cases
   // away from zero.
   UNOP_ROUND_NEAREST_AFZ = 14;
+
+  // Elementwise, extract real component of complex x.
+  UNOP_REAL = 15;
+
+  // Elementwise, extract real component of complex x.
+  UNOP_IMAG = 16;
 }
 
 message UnaryOpRequest {
@@ -690,14 +714,6 @@ enum BinaryOperation {
   // Dot product, matrix multiply.
   BINOP_DOT = 12;
 
-  // Indexes into the LHS with the RHS.
-  //
-  // If the RHS is higher-rank, this is a gather operation.
-  //
-  // Note: currently out of bounds indices may crash the underlying XLA
-  // machine.
-  BINOP_INDEX = 13;
-
   // Element-wise maximum.
   BINOP_MAX = 14;
 
@@ -717,6 +733,12 @@ enum BinaryOperation {
   BINOP_SHIFT_LEFT = 20;
   BINOP_SHIFT_RIGHT_ARITHMETIC = 21;
   BINOP_SHIFT_RIGHT_LOGICAL = 22;
+
+  // Complex from real, imag.
+  BINOP_COMPLEX = 23;
+
+  // Computes the 4-quadrant arctangent of the y, x input arguments.
+  BINOP_ATAN2 = 24;
 }
 
 message BinaryOpRequest {
@@ -754,10 +776,6 @@ enum TernaryOperation {
   // Given a predicate and two operands, selects operand0 if the predicate is
   // true and operand1 if the predicate is false.
   TRIOP_SELECT = 1;
-
-  // Updates operand0 at index operand1 with value operand2 and outputs the
-  // updated value.
-  TRIOP_UPDATE = 2;
 
   // Given a min, max and an operand returns the operand if between min and max,
   // else returns min if operand is less than min or max if operand is greater
@@ -800,18 +818,32 @@ message RecvRequest {
   ChannelHandle channel_handle = 2;
 }
 
-message OpDeviceAssignment {
-  bool has_device = 1;
-
-  // Number of the device to which this operator is assigned. Ignored if
-  // 'has_device' is false.
-  int32 device = 2;
+message OpSharding {
+  enum Type {
+    // This sharding is replicated across all devices (implies maximal,
+    // all other fields are unused).
+    REPLICATED = 0;
+    // This sharding is maximal - one device runs the entire operation.
+    MAXIMAL = 1;
+    // Neither of the above; tile_shape and tile_assignment are both used.
+    OTHER = 2;
+  }
+  Type type = 1;
+  // The shape of the sharded tile.
+  Shape tile_shape = 2;
+  // The shape of the tile assignment tensor - this must be the same rank as
+  // tile_shape and the product of its dimensions must equal
+  // tile_assignment_devices.size().
+  repeated int64 tile_assignment_dimensions = 3;
+  // Flattened list of device IDs. The order of flattening is the same as used
+  // by IndexUtil::MultiToLinearIndex(tile_assignment_shape).
+  repeated int64 tile_assignment_devices = 4;
 }
 
 message OpRequest {
   ComputationHandle computation = 1;
   OpMetadata metadata = 33;
-  OpDeviceAssignment device_assignment = 39;
+  OpSharding sharding = 40;
 
   oneof op {
     BinaryOpRequest binary_op_request = 2;
@@ -850,7 +882,8 @@ message OpRequest {
     BatchNormTrainingRequest batch_norm_training_request = 35;
     BatchNormGradRequest batch_norm_grad_request = 37;
     BatchNormInferenceRequest batch_norm_inference_request = 38;
-    // Next: 40
+    FftRequest fft_request = 41;
+    // Next: 42
   }
 }
 

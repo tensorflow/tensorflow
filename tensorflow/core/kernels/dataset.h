@@ -17,12 +17,16 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -39,54 +43,27 @@ namespace tensorflow {
 
 class ResourceMgr;
 
-class BundleReaderWrapper {
+// Interface for reading values from a key-value store.
+// Used for restoring iterator state.
+class IteratorStateReader {
  public:
-  BundleReaderWrapper(BundleReader* bundle_reader)
-      : bundle_reader_(bundle_reader) {}
+  virtual Status ReadScalar(StringPiece key, int64* val) = 0;
+  virtual Status ReadScalar(StringPiece key, string* val) = 0;
+  virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
+  virtual bool Contains(StringPiece key) = 0;
 
-  // Reads a scalar value.
-  template <typename T>
-  Status ReadScalar(StringPiece key, T* val) {
-    Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
-    TF_RETURN_IF_ERROR(Lookup(key, &val_t));
-    *val = val_t.scalar<T>()();
-    return Status::OK();
-  }
-
-  bool Contains(StringPiece key) { return bundle_reader_->Contains(key); }
-
- private:
-  Status Lookup(StringPiece key, Tensor* val) {
-    return bundle_reader_->Lookup(key, val);
-  }
-
-  BundleReader* bundle_reader_;
+  virtual ~IteratorStateReader() {}
 };
 
-class BundleWriterWrapper {
+// Interface for writing values to a key-value store.
+// Used for saving iterator state.
+class IteratorStateWriter {
  public:
-  // Note: We intentionally do not provide a constructor that builds a
-  // BundleWriter from the checkpoint path because we want the caller to be
-  // in-charge of calling BundleWriter::Finish(). If we expose the Finish()
-  // method here it may be called pre-maturely by users of this object.
-  explicit BundleWriterWrapper(BundleWriter* bundle_writer)
-      : bundle_writer_(bundle_writer) {}
+  virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
+  virtual Status WriteScalar(StringPiece key, const string& val) = 0;
+  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
 
-  // Writes a scalar value.
-  template <typename T>
-  Status WriteScalar(StringPiece key, const T val) {
-    Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
-    val_t.scalar<T>()() = val;
-    TF_RETURN_IF_ERROR(Add(key, val_t));
-    return Status::OK();
-  }
-
- private:
-  Status Add(StringPiece key, const Tensor& val) {
-    return bundle_writer_->Add(key, val);
-  }
-
-  BundleWriter* bundle_writer_;
+  virtual ~IteratorStateWriter() {}
 };
 
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
@@ -102,10 +79,7 @@ class GraphDefBuilderWrapper {
   Status AddScalar(const T& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
     val_t.scalar<T>()() = val;
-    *output =
-        ops::SourceOp("Const", b_->opts()
-                                   .WithAttr("dtype", DataTypeToEnum<T>::v())
-                                   .WithAttr("value", val_t));
+    AddTensorInternal(val_t, output);
     if (*output == nullptr) {
       return errors::Internal("AddScalar: Failed to build Const op.");
     }
@@ -123,14 +97,30 @@ class GraphDefBuilderWrapper {
     for (int i = 0; i < val.size(); i++) {
       val_t.flat<T>()(i) = val[i];
     }
-    *output =
-        ops::SourceOp("Const", b_->opts()
-                                   .WithAttr("dtype", DataTypeToEnum<T>::v())
-                                   .WithAttr("value", val_t));
+    AddTensorInternal(val_t, output);
     if (*output == nullptr) {
       return errors::Internal("AddVector: Failed to build Const op.");
     }
     return Status::OK();
+  }
+
+  // Adds a Const node with Tensor value to the Graph.
+  // `*output` contains a pointer to the output `Node`. It is guaranteed to be
+  // non-null if the method returns with an OK status.
+  // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  Status AddTensor(const Tensor& val, Node** output) {
+    AddTensorInternal(val, output);
+    if (*output == nullptr) {
+      return errors::Internal("AddTesor: Failed to build Const op.");
+    }
+    return Status::OK();
+  }
+
+  template <class DatasetType>
+  Status AddDataset(const DatasetType* dataset,
+                    const std::vector<NodeBuilder::NodeOut>& inputs,
+                    Node** output) {
+    return AddDataset(dataset, inputs, {}, output);
   }
 
   // Adds a node corresponding to the `DatasetType` to the Graph.
@@ -143,7 +133,9 @@ class GraphDefBuilderWrapper {
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
   template <class DatasetType>
   Status AddDataset(const DatasetType* dataset,
-                    std::vector<NodeBuilder::NodeOut> inputs, Node** output) {
+                    const std::vector<NodeBuilder::NodeOut>& inputs,
+                    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+                    Node** output) {
     const string& op_type_name = dataset->op_name();
     std::unique_ptr<const GraphDefBuilder::Options> opts(
         new GraphDefBuilder::Options(b_->opts()));
@@ -158,6 +150,10 @@ class GraphDefBuilderWrapper {
     if (has_output_types_attr) {
       opts.reset(new GraphDefBuilder::Options(
           opts->WithAttr("output_types", dataset->output_dtypes())));
+    }
+    for (auto attr : attrs) {
+      opts.reset(new GraphDefBuilder::Options(
+          opts->WithAttr(attr.first, attr.second)));
     }
     if (opts->HaveError()) {
       return errors::Internal("AddDataset: Error building Options.");
@@ -175,7 +171,51 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
+  // TODO(shivaniagrawal): Single method for AddDataset for
+  // NodeOut/ArrraySlice<NodeOut>
+  template <class DatasetType>
+  Status AddDatasetWithInputAsList(const DatasetType* dataset,
+                                   gtl::ArraySlice<NodeBuilder::NodeOut> input,
+                                   Node** output) {
+    const string& op_type_name = dataset->op_name();
+    std::unique_ptr<const GraphDefBuilder::Options> opts(
+        new GraphDefBuilder::Options(b_->opts()));
+    bool has_output_types_attr = HasAttr(op_type_name, "output_types");
+    bool has_output_shapes_attr = HasAttr(op_type_name, "output_shapes");
+    if (has_output_shapes_attr) {
+      opts.reset(new GraphDefBuilder::Options(
+          opts->WithAttr("output_shapes", dataset->output_shapes())));
+    }
+    if (has_output_types_attr) {
+      opts.reset(new GraphDefBuilder::Options(
+          opts->WithAttr("output_types", dataset->output_dtypes())));
+    }
+    if (opts->HaveError()) {
+      return errors::Internal("AddDataset: Error building Options.");
+    }
+    NodeBuilder node_builder(opts->GetNameForOp(op_type_name), op_type_name,
+                             opts->op_registry());
+    node_builder.Input(input);
+    *output = opts->FinalizeBuilder(&node_builder);
+    if (*output == nullptr) {
+      return errors::Internal("AddDataset: Failed to build ", op_type_name,
+                              " op.");
+    }
+    return Status::OK();
+  }
+
+  template <typename T>
+  void BuildAttrValue(const T& value, AttrValue* attr) {
+    SetAttrValue(value, attr);
+  }
+
  private:
+  void AddTensorInternal(const Tensor& val, Node** output) {
+    *output = ops::SourceOp(
+        "Const",
+        b_->opts().WithAttr("dtype", val.dtype()).WithAttr("value", val));
+  }
+
   bool HasAttr(const string& op_type_name, const string& attr_name) {
     const OpDef* op_def = nullptr;
     Status s = b_->opts().op_registry()->LookUpOpDef(op_type_name, &op_def);
@@ -249,10 +289,6 @@ class IteratorContext {
 // range of outputs is typically represented by an `DatasetBase`,
 // defined below.
 class IteratorBase {
- protected:
-  class IteratorBundleReader;
-  class IteratorBundleWriter;
-
  public:
   virtual ~IteratorBase() {}
 
@@ -284,75 +320,17 @@ class IteratorBase {
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
   // Saves the state of this iterator.
-  virtual Status Save(OpKernelContext* ctx, const string& path) {
-    BundleWriter bundle_writer(ctx->env(), path);
-    TF_RETURN_IF_ERROR(bundle_writer.status());
-    IteratorBundleWriter writer(&bundle_writer);
-    TF_RETURN_IF_ERROR(Save(ctx, &writer));
-    return bundle_writer.Finish();
-  }
-
-  virtual Status Restore(OpKernelContext* ctx, const string& path) {
-    if (!(ctx->env()->FileExists(MetaFilename(path)).ok())) {
-      return errors::NotFound(
-          "Failed to restore Iterator state. No file found at ",
-          MetaFilename(path));
-    }
-    BundleReader bundle_reader(ctx->env(), path);
-    TF_RETURN_IF_ERROR(bundle_reader.status());
-    IteratorBundleReader reader(&bundle_reader);
-    return Restore(ctx, &reader);
-  }
-
-  static const char kIteratorExhausted[];
-
- protected:
-  // This is needed so that sub-classes of IteratorBase can call
-  // `RestoreInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
-  class IteratorBundleReader : public BundleReaderWrapper {
-   public:
-    IteratorBundleReader(BundleReader* bundle_reader)
-        : BundleReaderWrapper(bundle_reader) {}
-
-    // Restores the state of a parent iterator recursively.
-    Status RestoreParent(OpKernelContext* ctx,
-                         const std::unique_ptr<IteratorBase>& parent) {
-      return parent->RestoreInternal(ctx, this);
-    }
-  };
-
-  // This is needed so that sub-classes of IteratorBase can call
-  // `SaveInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
-  class IteratorBundleWriter : public BundleWriterWrapper {
-   public:
-    IteratorBundleWriter(BundleWriter* bundle_writer)
-        : BundleWriterWrapper(bundle_writer) {}
-    // Saves the state of a parent iterator recursively.
-    Status SaveParent(OpKernelContext* ctx,
-                      const std::unique_ptr<IteratorBase>& parent) {
-      return parent->SaveInternal(ctx, this);
-    }
-  };
-
-  virtual Status Save(OpKernelContext* ctx, IteratorBundleWriter* writer) {
+  virtual Status Save(IteratorStateWriter* writer) {
     if (is_exhausted_) {
       LOG(INFO) << "Iterator exhausted.";
-      return writer->WriteScalar<string>(kIteratorExhausted,
-                                         kIteratorExhausted);
+      return writer->WriteScalar(kIteratorExhausted, kIteratorExhausted);
     } else {
-      return SaveInternal(ctx, writer);
+      return SaveInternal(writer);
     }
   }
 
-  // Saves the state of this iterator.
-  virtual Status SaveInternal(OpKernelContext* ctx,
-                              IteratorBundleWriter* writer) {
-    return errors::Unimplemented("SaveInternal");
-  }
-
-  virtual Status Restore(OpKernelContext* ctx, IteratorBundleReader* reader) {
+  // Restores the state of this iterator.
+  virtual Status Restore(OpKernelContext* ctx, IteratorStateReader* reader) {
     if (reader->Contains(kIteratorExhausted)) {
       LOG(INFO) << "Iterator exhausted. Nothing to restore.";
       is_exhausted_ = true;
@@ -362,9 +340,33 @@ class IteratorBase {
     }
   }
 
-  // Restores the state of this iterator.
+  static const char kIteratorExhausted[];
+
+ protected:
+  // This is needed so that sub-classes of IteratorBase can call
+  // `SaveInternal` on their parent iterators, e.g., in
+  // `RepeatDataasetOp::Dataset`.
+  Status SaveParent(IteratorStateWriter* writer,
+                    const std::unique_ptr<IteratorBase>& parent) {
+    return parent->SaveInternal(writer);
+  }
+
+  // This is needed so that sub-classes of IteratorBase can call
+  // `RestoreInternal` on their parent iterators, e.g., in
+  // `RepeatDataasetOp::Dataset`.
+  Status RestoreParent(OpKernelContext* ctx, IteratorStateReader* reader,
+                       const std::unique_ptr<IteratorBase>& parent) {
+    return parent->RestoreInternal(ctx, reader);
+  }
+
+  // Saves the state of this iterator recursively.
+  virtual Status SaveInternal(IteratorStateWriter* writer) {
+    return errors::Unimplemented("SaveInternal");
+  }
+
+  // Restores the state of this iterator recursively.
   virtual Status RestoreInternal(OpKernelContext* ctx,
-                                 IteratorBundleReader* reader) {
+                                 IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
   }
 
@@ -404,7 +406,7 @@ class DatasetBase : public core::RefCounted {
   virtual string DebugString() = 0;
 
   // Serializes the dataset and writes it to the `writer`.
-  virtual Status Save(BundleWriterWrapper* writer) const {
+  virtual Status Save(IteratorStateWriter* writer) const {
     return errors::Unimplemented("DatasetBase::Save");
   }
 
@@ -435,20 +437,14 @@ class GraphDatasetBase : public DatasetBase {
 
   const string op_name() const { return op_name_; }
 
-  Status Save(BundleWriterWrapper* writer) const override {
-    GraphDefBuilder b;
-    DatasetGraphDefBuilder db(&b);
-    Node* node = nullptr;
-    TF_RETURN_IF_ERROR(AsGraphDefInternal(&db, &node));
-    string output_name = node->name();
-    GraphDef graph_def;
-    TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
+  Status Save(IteratorStateWriter* writer) const override {
     string serialized_graph_def;
-    graph_def.SerializeToString(&serialized_graph_def);
+    string output_node;
+    TF_RETURN_IF_ERROR(Serialize(&serialized_graph_def, &output_node));
     TF_RETURN_IF_ERROR(
-        writer->WriteScalar<string>(kDatasetGraphKey, serialized_graph_def));
+        writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
     TF_RETURN_IF_ERROR(
-        writer->WriteScalar<string>(kDatasetGraphOutputNodeKey, output_name));
+        writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
     return Status::OK();
   }
 
@@ -460,6 +456,18 @@ class GraphDatasetBase : public DatasetBase {
   static const char kDatasetGraphOutputNodeKey[];
 
  private:
+  Status Serialize(string* serialized_graph_def, string* output_node) const {
+    GraphDefBuilder b;
+    DatasetGraphDefBuilder db(&b);
+    Node* node = nullptr;
+    TF_RETURN_IF_ERROR(AsGraphDefInternal(&db, &node));
+    *output_node = node->name();
+    GraphDef graph_def;
+    TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
+    graph_def.SerializeToString(serialized_graph_def);
+    return Status::OK();
+  }
+
   const string op_name_;
 };
 
@@ -505,18 +513,18 @@ class DatasetIterator : public IteratorBase {
     return GetNextInternal(ctx, out_tensors, end_of_sequence);
   }
 
- protected:
-  Status Save(OpKernelContext* ctx, IteratorBundleWriter* writer) final {
+  Status Save(IteratorStateWriter* writer) final {
     TF_RETURN_IF_ERROR(dataset()->Save(writer));
-    return IteratorBase::Save(ctx, writer);
+    return IteratorBase::Save(writer);
   }
 
+ protected:
   // Internal implementation of GetNext that is wrapped in tracing logic.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;
 
-  string full_name(const string& name) {
+  string full_name(const string& name) const {
     return strings::StrCat(prefix(), ":", name);
   }
 

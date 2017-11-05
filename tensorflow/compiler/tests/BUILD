@@ -23,6 +23,10 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 generate_backend_suites()
 
@@ -110,6 +114,18 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "categorical_op_test",
+    size = "small",
+    srcs = ["categorical_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
     ],
 )
 
@@ -460,7 +476,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "unary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["unary_ops_test.py"],
     deps = [
         ":xla_test",
@@ -581,11 +597,12 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "randomized_tests",
+    size = "large",
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "manual",
         "notap",
-    ],
+    ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
 

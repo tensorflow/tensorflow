@@ -30,6 +30,21 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 
+class MockFisherBlock(object):
+  """A fake FisherBlock."""
+
+  num_registered_minibatches = 2
+
+  def __init__(self, name='MockFisherBlock'):
+    self.name = name
+
+  def __eq__(self, other):
+    return isinstance(other, MockFisherBlock) and other.name == self.name
+
+  def __hash__(self):
+    return hash(self.name)
+
+
 class LayerParametersDictTest(test.TestCase):
 
   def testSetItem(self):
@@ -81,9 +96,18 @@ class LayerCollectionTest(test.TestCase):
       lc = layer_collection.LayerCollection()
       lc.register_fully_connected(
           array_ops.constant(1), array_ops.constant(2), array_ops.constant(3))
+      lc.register_fully_connected(
+          array_ops.constant(1),
+          array_ops.constant(2),
+          array_ops.constant(3),
+          approx=layer_collection.APPROX_DIAGONAL_NAME)
       lc.register_conv2d(
           array_ops.constant(4), [1, 1, 1, 1], 'SAME',
           array_ops.ones((1, 1, 1, 1)), array_ops.constant(3))
+      lc.register_conv2d(
+          array_ops.constant(4), [1, 1, 1, 1], 'SAME',
+          array_ops.ones((1, 1, 1, 1)), array_ops.constant(3),
+          approx=layer_collection.APPROX_DIAGONAL_NAME)
       lc.register_generic(
           array_ops.constant(5), 16, approx=layer_collection.APPROX_FULL_NAME)
       lc.register_generic(
@@ -91,7 +115,7 @@ class LayerCollectionTest(test.TestCase):
           16,
           approx=layer_collection.APPROX_DIAGONAL_NAME)
 
-      self.assertEqual(4, len(lc.get_blocks()))
+      self.assertEqual(6, len(lc.get_blocks()))
 
   def testRegisterBlocksMultipleRegistrations(self):
     with ops.Graph().as_default():
@@ -163,10 +187,12 @@ class LayerCollectionTest(test.TestCase):
     y = variable_scope.get_variable('y', initializer=array_ops.constant(1,))
     z = variable_scope.get_variable('z', initializer=array_ops.constant(1,))
     lc = layer_collection.LayerCollection()
-    lc.fisher_blocks = {x: '1', z: '2'}
+    lc.fisher_blocks = {x: MockFisherBlock('1'), z: MockFisherBlock('2')}
 
-    lc.register_block((x, y), 'foo')
-    self.assertEqual(set(['2', 'foo']), set(lc.get_blocks()))
+    lc.register_block((x, y), MockFisherBlock('foo'))
+    self.assertEqual(
+        set([MockFisherBlock('2'), MockFisherBlock('foo')]),
+        set(lc.get_blocks()))
 
   def testRegisterTupleVarSomeRegisteredInOtherTuples(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
@@ -205,8 +231,8 @@ class LayerCollectionTest(test.TestCase):
       self.assertEqual(1, len(lc.losses))
 
       # Add logits to same loss function.
-      with self.assertRaises(NotImplementedError):
-        lc.register_categorical_predictive_distribution(logits, name='loss1')
+      lc.register_categorical_predictive_distribution(
+          logits, name='loss1', reuse=True)
       self.assertEqual(1, len(lc.losses))
 
       # Add another new loss function.
@@ -219,10 +245,57 @@ class LayerCollectionTest(test.TestCase):
       logits = linalg_ops.eye(2)
       lc = layer_collection.LayerCollection()
 
-      # Create a new loss function by name.
+      # Create a new loss function with default names.
       lc.register_categorical_predictive_distribution(logits)
       lc.register_categorical_predictive_distribution(logits)
       self.assertEqual(2, len(lc.losses))
+
+  def testCategoricalPredictiveDistributionMultipleMinibatches(self):
+    """Ensure multiple minibatches are registered."""
+    with ops.Graph().as_default():
+      batch_size = 3
+      output_size = 2
+      logits = array_ops.zeros([batch_size, output_size])
+      targets = array_ops.ones([batch_size], dtype=dtypes.int32)
+      lc = layer_collection.LayerCollection()
+
+      # Create a new loss function.
+      lc.register_categorical_predictive_distribution(
+          logits, targets=targets, name='loss1')
+
+      # Can add when reuse=True
+      lc.register_categorical_predictive_distribution(
+          logits, targets=targets, name='loss1', reuse=True)
+
+      # Can add when reuse=VARIABLE_SCOPE and reuse=True there.
+      with variable_scope.variable_scope(
+          variable_scope.get_variable_scope(), reuse=True):
+        lc.register_categorical_predictive_distribution(
+            logits,
+            targets=targets,
+            name='loss1',
+            reuse=layer_collection.VARIABLE_SCOPE)
+
+      # Can't add when reuse=False
+      with self.assertRaises(KeyError):
+        lc.register_categorical_predictive_distribution(
+            logits, targets=targets, name='loss1', reuse=False)
+
+      # Can't add when reuse=VARIABLE_SCOPE and reuse=False there.
+      with self.assertRaises(KeyError):
+        lc.register_categorical_predictive_distribution(
+            logits,
+            targets=targets,
+            name='loss1',
+            reuse=layer_collection.VARIABLE_SCOPE)
+
+      self.assertEqual(len(lc.losses), 1)
+      loss = lc.losses[0]
+
+      # Three successful registrations.
+      self.assertEqual(loss.params.shape.as_list(),
+                       [3 * batch_size, output_size])
+      self.assertEqual(loss.targets.shape.as_list(), [3 * batch_size])
 
   def testRegisterCategoricalPredictiveDistributionBatchSize1(self):
     with ops.Graph().as_default():
@@ -273,6 +346,83 @@ class LayerCollectionTest(test.TestCase):
       single_loss = sess.run(lc.total_loss())
       self.assertAlmostEqual(7.6983433, single_loss)
 
+  def ensureLayerReuseWorks(self, register_fn):
+    """Ensure the 'reuse' keyword argument function as intended.
+
+    Args:
+      register_fn: function for registering a layer. Arguments are
+        layer_collection, reuse, and approx.
+    """
+    # Fails on second if reuse=False.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc)
+    with self.assertRaises(ValueError):
+      register_fn(lc, reuse=False)
+
+    # Succeeds on second if reuse=True.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc)
+    register_fn(lc, reuse=True)
+
+    # Fails on second if reuse=VARIABLE_SCOPE and no variable reuse.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc)
+    with self.assertRaises(ValueError):
+      register_fn(lc, reuse=layer_collection.VARIABLE_SCOPE)
+
+    # Succeeds on second if reuse=VARIABLE_SCOPE and variable reuse.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc)
+    with variable_scope.variable_scope(
+        variable_scope.get_variable_scope(), reuse=True):
+      register_fn(lc, reuse=layer_collection.VARIABLE_SCOPE)
+
+    # Fails if block type changes.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc, approx=layer_collection.APPROX_KRONECKER_NAME)
+    with self.assertRaises(ValueError):
+      register_fn(lc, approx=layer_collection.APPROX_DIAGONAL_NAME, reuse=True)
+
+    # Fails if reuse requested but no FisherBlock exists.
+    lc = layer_collection.LayerCollection()
+    with self.assertRaises(KeyError):
+      register_fn(lc, reuse=True)
+
+  def testRegisterFullyConnectedReuse(self):
+    """Ensure the 'reuse' works with register_fully_connected."""
+    with ops.Graph().as_default():
+      inputs = array_ops.ones([2, 10])
+      outputs = array_ops.zeros([2, 5])
+      params = (
+          variable_scope.get_variable('w', [10, 5]),  #
+          variable_scope.get_variable('b', [5]))
+
+      def register_fn(lc, **kwargs):
+        lc.register_fully_connected(
+            params=params, inputs=inputs, outputs=outputs, **kwargs)
+
+      self.ensureLayerReuseWorks(register_fn)
+
+  def testRegisterConv2dReuse(self):
+    """Ensure the 'reuse' works with register_conv2d."""
+    with ops.Graph().as_default():
+      inputs = array_ops.ones([2, 5, 5, 10])
+      outputs = array_ops.zeros([2, 5, 5, 3])
+      params = (
+          variable_scope.get_variable('w', [1, 1, 10, 3]),  #
+          variable_scope.get_variable('b', [3]))
+
+      def register_fn(lc, **kwargs):
+        lc.register_conv2d(
+            params=params,
+            strides=[1, 1, 1, 1],
+            padding='SAME',
+            inputs=inputs,
+            outputs=outputs,
+            **kwargs)
+
+      self.ensureLayerReuseWorks(register_fn)
+
   def testMakeOrGetFactor(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
@@ -304,10 +454,15 @@ class LayerCollectionTest(test.TestCase):
       self.assertTrue(all([var.name.startswith(scope) for var in variables]))
 
   def testGetUseCountMap(self):
+    """Ensure get_use_count_map() sums 'num_registered_minibatches'."""
     lc = layer_collection.LayerCollection()
-    lc.fisher_blocks = {'a': 1, ('a', 'c'): 2, ('b', 'c'): 2}
+    lc.fisher_blocks = {
+        'a': MockFisherBlock(),
+        ('a', 'c'): MockFisherBlock(),
+        ('b', 'c'): MockFisherBlock()
+    }
     use_count_map = lc.get_use_count_map()
-    self.assertDictEqual({'a': 2, 'b': 1, 'c': 2}, use_count_map)
+    self.assertDictEqual({'a': 4, 'b': 2, 'c': 4}, use_count_map)
 
 
 if __name__ == '__main__':

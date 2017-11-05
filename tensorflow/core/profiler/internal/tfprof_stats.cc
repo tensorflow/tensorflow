@@ -36,7 +36,9 @@ bool CreateRunMetadataNode(const string& name, NodeDef* def) {
   }
   def->set_name(name);
   // TODO(xpan): Better operation type.
-  def->set_op("RunTimeOp");
+  // This is because some times a node doesn't have a op type,
+  // so we use node name as the op type.
+  def->set_op(name);
   return true;
 }
 }  // namespace
@@ -86,7 +88,7 @@ TFStats::TFStats(const string& filename,
   }
   for (const auto& node_pb : profile.nodes()) {
     std::unique_ptr<TFGraphNode> node(
-        new TFGraphNode(node_pb.second, profile, &id_to_string_));
+        new TFGraphNode(node_pb.second, profile, &id_to_string_, &nodes_map_));
     nodes_map_.insert(std::pair<string, std::unique_ptr<TFGraphNode>>(
         node_pb.second.name(), std::move(node)));
   }
@@ -178,12 +180,14 @@ const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
 
 void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
   std::map<string, const NodeDef*> node_defs;
+  bool node_added = false;
   for (const NodeDef& node : graph->node()) {
     if (nodes_map_.find(node.name()) != nodes_map_.end()) {
       continue;
     }
-    nodes_map_[node.name()] =
-        std::unique_ptr<TFGraphNode>(new TFGraphNode(&node, nodes_map_.size()));
+    node_added = true;
+    nodes_map_[node.name()] = std::unique_ptr<TFGraphNode>(
+        new TFGraphNode(&node, nodes_map_.size(), &nodes_map_));
     node_defs[node.name()] = &node;
   }
   for (auto it = node_defs.begin(); it != node_defs.end(); it++) {
@@ -192,6 +196,7 @@ void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
       string node_input = it->second->input(i);
       int output_idx = 0;
       // input name format can be: "^node:src_output"
+      // if not :src_output, then it's the first one (further verify?)
       auto prefix_pos = node_input.find(":");
       if (prefix_pos != node_input.npos) {
         std::vector<string> input_parts = str_util::Split(node_input, ":");
@@ -204,14 +209,17 @@ void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
       if (node_input.substr(0, 1) == "^") {
         node_input = node_input.substr(1);
       }
-      auto input_node = nodes_map_.find(node_input);
-      // TODO(xpan): P1: Add the input even if it doesn't exist yet, because
-      // this can be a partial graph.
-      if (input_node == nodes_map_.end()) {
-        continue;
-      }
-      node->AddInput(input_node->second.get(), output_idx, i);
+      // Delay input TFGraphNode retrieval as late as possible.
+      // In long run, when we have TensorFlow runtime graph, the
+      // graph connection should be dynamic and per-step.
+      node->AddInput(node_input, output_idx, i);
     }
+  }
+  if (node_added) {
+    graph_view_.reset(nullptr);
+    scope_view_.reset(nullptr);
+    op_view_.reset(nullptr);
+    code_view_.reset(nullptr);
   }
 }
 
@@ -263,10 +271,11 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
         NodeDef def;
         if (CreateRunMetadataNode(name, &def)) {
           nodes_map_[name] = std::unique_ptr<TFGraphNode>(
-              new TFGraphNode(&def, nodes_map_.size()));
+              new TFGraphNode(&def, nodes_map_.size(), &nodes_map_));
           nodes_map_.at(name)->AddStepStat(step, dev_stat.device(), node_stat);
         }
       } else {
+        covered_nodes_.insert(node->second->id());
         node->second->AddStepStat(step, dev_stat.device(), node_stat);
       }
     }

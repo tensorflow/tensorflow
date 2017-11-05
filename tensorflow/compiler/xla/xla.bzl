@@ -17,11 +17,3 @@ def xla_proto_library(name, srcs=[], deps=[], visibility=None, testonly=0):
                    protoc="@protobuf_archive//:protoc",
                    testonly=testonly,
                    visibility=visibility,)
-
-# Flags required for modules that export symbols that are to be called by the
-# XLA CustomCall operator. CustomCall must be able to find symbols with dlsym(),
-# which on Linux requires we link with --export-dynamic.
-export_dynamic_linkopts = select({
-    "//tensorflow:darwin": [],
-    "//conditions:default": ["-Wl,--export-dynamic"],
-})

@@ -15,7 +15,7 @@
 include (ExternalProject)
 
 set(lmdb_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/lmdb)
-set(lmdb_URL http://mirror.bazel.build/github.com/LMDB/lmdb/archive/LMDB_0.9.19.tar.gz)
+set(lmdb_URL https://mirror.bazel.build/github.com/LMDB/lmdb/archive/LMDB_0.9.19.tar.gz)
 set(lmdb_HASH SHA256=108532fb94c6f227558d45be3f3347b52539f0f58290a7bb31ec06c462d05326)
 set(lmdb_BUILD ${CMAKE_BINARY_DIR}/lmdb/src/lmdb)
 set(lmdb_INSTALL ${CMAKE_BINARY_DIR}/lmdb/install)
@@ -29,10 +29,14 @@ ExternalProject_Add(lmdb
     INSTALL_DIR ${lmdb_INSTALL}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     CMAKE_CACHE_ARGS
+		if(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
+			-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+		else()
+			-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=OFF
+		endif()
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${lmdb_INSTALL}
-    -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 )
 
 if(WIN32)

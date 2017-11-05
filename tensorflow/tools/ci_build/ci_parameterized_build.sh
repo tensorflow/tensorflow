@@ -201,13 +201,13 @@ function get_cuda_capability_version() {
 # Container type, e.g., CPU, GPU
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
 
-# Determine if Docker is available
+# Determine if the machine is a Mac
 OPT_FLAG=""
-if [[ -z "$(which docker)" ]]; then
+if [[ "$(uname -s)" == "Darwin" ]]; then
   DO_DOCKER=0
 
-  echo "It appears that Docker is not available on this system. "\
-"Will perform build without Docker."
+  echo "It appears this machine is a Mac. "\
+"We will perform this build without Docker."
   echo "Also, the additional option flags will be applied to the build:"
   echo "  ${NO_DOCKER_OPT_FLAG}"
   MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"

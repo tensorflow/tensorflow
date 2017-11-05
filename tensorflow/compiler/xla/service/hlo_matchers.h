@@ -38,6 +38,36 @@ class HloMatcher : public ::testing::MatcherInterface<const HloInstruction*> {
   std::vector<::testing::Matcher<const HloInstruction*>> operands_;
 };
 
+// Custom matcher for parameters, which accepts a parameter number.
+class HloParameterMatcher : public HloMatcher {
+ public:
+  explicit HloParameterMatcher(int64 parameter_number)
+      : HloMatcher(HloOpcode::kParameter, /*operands=*/{}),
+        parameter_number_(parameter_number) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+
+ private:
+  int64 parameter_number_;
+};
+
+// Custom matcher for get-tuple-element instructions, which accepts a tuple
+// index to match.
+class HloGetTupleElementMatcher : public HloMatcher {
+ public:
+  explicit HloGetTupleElementMatcher(
+      ::testing::Matcher<const HloInstruction*> operand, int64 tuple_index)
+      : HloMatcher(HloOpcode::kGetTupleElement, /*operands=*/{operand}),
+        tuple_index_(tuple_index) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+
+ private:
+  int64 tuple_index_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -72,9 +102,7 @@ HLO_MATCHER(Exp);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
 HLO_MATCHER(Ge);
-HLO_MATCHER(GetTupleElement);
 HLO_MATCHER(Gt);
-HLO_MATCHER(Index);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
 HLO_MATCHER(Le);
@@ -91,7 +119,6 @@ HLO_MATCHER(Ne);
 HLO_MATCHER(Negate);
 HLO_MATCHER(Outfeed);
 HLO_MATCHER(Pad);
-HLO_MATCHER(Parameter);
 HLO_MATCHER(Power);
 HLO_MATCHER(Recv);
 HLO_MATCHER(Reduce);
@@ -115,8 +142,44 @@ HLO_MATCHER(Tanh);
 HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
-HLO_MATCHER(Update);
 HLO_MATCHER(While);
+
+// The special cases below let you check additional information about the
+// HloInstruction, beyond just its opcode and operands.  In all cases you can
+// still use the generic matcher which doesn't check this info.
+//
+// Feel free to add additional custom matchers below.
+
+//  - Parameter(N) matches parameter number N.
+//  - Parameter() matches any parameter.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter(
+    int64 parameter_number) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloParameterMatcher(parameter_number));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kParameter, {}));
+}
+
+// GetTupleElement(operand, N) matches a GTE instruction which gets the N'th
+// tuple element of operand, while GetTupleElement(operand) matches any GTE
+// operation on operand, and GetTupleElement() matches any GTE operation at all.
+inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement(
+    ::testing::Matcher<const HloInstruction*> operand, int64 tuple_index) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloGetTupleElementMatcher(operand, tuple_index));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement(
+    ::testing::Matcher<const HloInstruction*> operand) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kGetTupleElement, {operand}));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kGetTupleElement, {}));
+}
+
 #undef HLO_MATCHER
 }  // namespace opcode_matchers
 

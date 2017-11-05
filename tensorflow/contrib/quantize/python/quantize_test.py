@@ -23,7 +23,9 @@ from tensorflow.contrib.quantize.python import quantize
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
@@ -52,6 +54,29 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         str(err.exception), 'Some inputs not quantized for ops: [Relu6]')
 
+  def testInsertQuantOpForAddAfterConv2d(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      input2 = array_ops.zeros((batch_size, height / 2, width / 2, 32))
+      conv = conv2d(input1, 32, [5, 5], stride=2, padding='SAME',
+                    weights_initializer=self._WeightInit(0.09),
+                    activation_fn=None, scope='test/test')
+      node = math_ops.add(conv, input2, name='test/add')
+      node = array_ops.identity(node, name='test/identity')
+      update_barrier = control_flow_ops.no_op(name='update_barrier')
+      with ops.control_dependencies([update_barrier]):
+        array_ops.identity(node, name='control_dependency')
+
+    quantize.Quantize(graph=graph, weight_bits=8, weight_narrow_range=True,
+                      activation_bits=8)
+
+    quantization_node_name = 'FakeQuantWithMinMaxVars'
+    add_quant = graph.get_operation_by_name('test/add_quant/' +
+                                            quantization_node_name)
+    self.assertEqual(add_quant.type, quantization_node_name)
+
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.
 
@@ -64,29 +89,6 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       An initialized that initialzes with a truncated normal variable.
     """
     return init_ops.truncated_normal_initializer(stddev=stddev)
-
-  def _AssertInputOpsAre(self, op, in_op_names):
-    """Asserts that all inputs to op come from in_op_names (disregarding order).
-
-    Args:
-      op: Operation to check inputs for.
-      in_op_names: List of strings, operations where all op's inputs should
-        come from.
-    """
-    expected_inputs = [in_op_name + ':0' for in_op_name in in_op_names]
-    self.assertItemsEqual([t.name for t in op.inputs], expected_inputs)
-
-  def _AssertOutputGoesToOps(self, op, graph, out_op_names):
-    """Asserts that outputs from op go to out_op_names (and perhaps others).
-
-    Args:
-      op: Operation to check outputs for.
-      graph: Graph where output operations are located.
-      out_op_names: List of strings, operations where op's outputs should go.
-    """
-    for out_op_name in out_op_names:
-      out_op = graph.get_operation_by_name(out_op_name)
-      self.assertIn(op.outputs[0].name, [str(t.name) for t in out_op.inputs])
 
 if __name__ == '__main__':
   googletest.main()

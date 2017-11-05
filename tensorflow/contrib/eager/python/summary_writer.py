@@ -32,9 +32,9 @@ from tensorflow.python.ops import summary_op_util
 from tensorflow.python.ops import variable_scope
 
 
-def _maybe_as_cpu_tensor(v):
+def _maybe_cpu(v):
   if isinstance(v, (ops.EagerTensor, ops.Tensor)):
-    return v.as_cpu_tensor()
+    return v.cpu()
   else:
     return v
 
@@ -114,11 +114,9 @@ class SummaryWriter(object):
       self._resource = gen_summary_ops.summary_writer(shared_name=self._name)
       gen_summary_ops.create_summary_file_writer(
           self._resource, logdir, max_queue, flush_secs, filename_suffix)
-
-  def __del__(self):
-    if self._resource:
-      resource_variable_ops.destroy_resource_op(self._resource)
-      self._resource = None
+      # Delete the resource when this object is deleted
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          handle=self._resource, handle_device=self._CPU_DEVICE)
 
   def step(self):
     """Increment the global step counter of this SummaryWriter instance."""
@@ -161,9 +159,9 @@ class SummaryWriter(object):
         gen_summary_ops.write_summary(
             self._resource,
             self._update_global_step_tensor(),
-            _maybe_as_cpu_tensor(tensor),
+            _maybe_cpu(tensor),
             tag,
-            _maybe_as_cpu_tensor(metadata),
+            _maybe_cpu(metadata),
             name=scope)
 
   def scalar(self, name, tensor, family=None):
@@ -185,7 +183,7 @@ class SummaryWriter(object):
           name, family, values=[tensor]) as (tag, scope):
         gen_summary_ops.write_scalar_summary(
             self._resource, self._update_global_step_tensor(),
-            tag, _maybe_as_cpu_tensor(tensor), name=scope)
+            tag, _maybe_cpu(tensor), name=scope)
 
   def histogram(self, name, tensor, family=None):
     """Write a histogram summary.
@@ -203,7 +201,7 @@ class SummaryWriter(object):
           name, family, values=[tensor]) as (tag, scope):
         gen_summary_ops.write_histogram_summary(
             self._resource, self._update_global_step_tensor(),
-            tag, _maybe_as_cpu_tensor(tensor), name=scope)
+            tag, _maybe_cpu(tensor), name=scope)
 
   def image(self, name, tensor, bad_color=None, max_images=3, family=None):
     """Write an image summary."""
@@ -214,7 +212,7 @@ class SummaryWriter(object):
           name, family, values=[tensor]) as (tag, scope):
         gen_summary_ops.write_image_summary(
             self._resource, self._update_global_step_tensor(),
-            tag, _maybe_as_cpu_tensor(tensor), bad_color_, max_images,
+            tag, _maybe_cpu(tensor), bad_color_, max_images,
             name=scope)
 
   def audio(self, name, tensor, sample_rate, max_outputs, family=None):
@@ -238,7 +236,7 @@ class SummaryWriter(object):
         gen_summary_ops.write_audio_summary(
             self._resource, self._update_global_step_tensor(),
             tag,
-            _maybe_as_cpu_tensor(tensor),
-            sample_rate=_maybe_as_cpu_tensor(sample_rate),
+            _maybe_cpu(tensor),
+            sample_rate=_maybe_cpu(sample_rate),
             max_outputs=max_outputs,
             name=scope)

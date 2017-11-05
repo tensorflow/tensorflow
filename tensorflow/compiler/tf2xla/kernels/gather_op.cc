@@ -77,6 +77,18 @@ xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
                               out_shape.dim_sizes());
   }
 
+  // Degenerate case: single slice.
+  if (num_indices == 1) {
+    auto index = builder->Reshape(indices, {1});
+    auto start_index = builder->Pad(
+        index, XlaHelpers::Zero(builder, index_type),
+        xla::MakeEdgePaddingConfig(
+            {{input_shape_pre_axis.dims(), input_shape_post_axis.dims()}}));
+    auto slice =
+        builder->DynamicSlice(input, start_index, slice_shape.dim_sizes());
+    return builder->Reshape(slice, out_shape.dim_sizes());
+  }
+
   // Specify the shape of the loop-carried Tensor tuple.
   xla::PrimitiveType ptype;
   TF_CHECK_OK(DataTypeToPrimitiveType(dtype, &ptype));
@@ -192,7 +204,7 @@ void GatherOpDynamicSlice::Compile(XlaOpKernelContext* context) {
               errors::InvalidArgument("indices must be int32 or int64"));
 
   xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-      context, input, input_shape, indices, indices_shape, axis, DT_FLOAT,
+      context, input, input_shape, indices, indices_shape, axis, input_type(0),
       index_type, builder);
   context->SetOutput(0, gather);
 }

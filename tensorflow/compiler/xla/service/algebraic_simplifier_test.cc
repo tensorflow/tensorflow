@@ -47,69 +47,7 @@ AlgebraicSimplifier::ValidBitcastCallback non_bitcasting_callback() {
   return [](const Shape&, const Shape&) { return false; };
 }
 
-class AlgebraicSimplifierTest : public HloVerifiedTestBase {
- public:
-  // Makes a computation that contains a loop that runs num_iters times.
-  HloComputation* MakeSimpleLoop(HloModule* module, int num_iters);
-};
-
-HloComputation* AlgebraicSimplifierTest::MakeSimpleLoop(HloModule* module,
-                                                        int num_iters) {
-  HloComputation::Builder builder(TestName());
-
-  auto loop_iter_init = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(42)));
-  auto loop_data_init = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<int32>({0, 1, 2})));
-  auto loop_init = builder.AddInstruction(
-      HloInstruction::CreateTuple({loop_iter_init, loop_data_init}));
-
-  HloComputation* condition;
-  {
-    HloComputation::Builder cond_builder(TestName() + ".condition");
-    auto loop_var = cond_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    auto loop_induction_var =
-        cond_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-            ShapeUtil::MakeShape(S32, {}), loop_var, 0));
-    auto limit = cond_builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<int32>(42 + num_iters)));
-    cond_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, loop_induction_var,
-        limit));
-    condition = module->AddEmbeddedComputation(cond_builder.Build());
-  }
-
-  HloComputation* body;
-  {
-    HloComputation::Builder body_builder(TestName() + ".body");
-    auto loop_var = body_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    auto loop_induction_var =
-        body_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-            ShapeUtil::MakeShape(S32, {}), loop_var, 0));
-    auto new_loop_induction_var =
-        body_builder.AddInstruction(HloInstruction::CreateBinary(
-            loop_induction_var->shape(), HloOpcode::kAdd, loop_induction_var,
-            body_builder.AddInstruction(
-                HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)))));
-    auto loop_data =
-        body_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-            loop_data_init->shape(), loop_var, 1));
-    auto new_loop_data =
-        body_builder.AddInstruction(HloInstruction::CreateBinary(
-            loop_data_init->shape(), HloOpcode::kMultiply, loop_data,
-            loop_data));
-    body_builder.AddInstruction(
-        HloInstruction::CreateTuple({new_loop_induction_var, new_loop_data}));
-    body = module->AddEmbeddedComputation(body_builder.Build());
-  }
-
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      loop_init->shape(), condition, body, loop_init));
-
-  return module->AddEntryComputation(builder.Build());
-}
+class AlgebraicSimplifierTest : public HloVerifiedTestBase {};
 
 // Test that A + 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, AddZero) {
@@ -353,6 +291,42 @@ TEST_F(AlgebraicSimplifierTest, DivOfPower) {
               op::Multiply(param0, op::Power(param1, op::Negate(param2))));
 }
 
+// Test that broadcasting is done on the right step when simplifying A/pow(B,C)
+// to A*pow(B,-C).
+TEST_F(AlgebraicSimplifierTest, DivOfBroadcastingPower) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {7});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r1f32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0f32, "param2"));
+  HloInstruction* power = builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kPower, param1, param2));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kDivide, param0, power));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Divide(param0, op::Power(param1, param2)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  ASSERT_THAT(computation->root_instruction(),
+              op::Multiply(param0, op::Power(param1, op::Negate(param2))));
+
+  const HloInstruction* negate =
+      computation->root_instruction()->operand(1)->operand(1);
+  const Shape& negate_shape = negate->shape();
+  EXPECT_EQ(0, negate_shape.dimensions_size());
+}
+
 // Test that A/1 is simplified to A for a scalar.
 TEST_F(AlgebraicSimplifierTest, DivOneScalar) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -395,6 +369,56 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
+}
+
+// Test that real(complex(r,i)) is simplified to r.
+TEST_F(AlgebraicSimplifierTest, RealOfComplex) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
+  HloInstruction* cplx = builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::ChangeElementType(r2f32, C64),
+                                   HloOpcode::kComplex, param0, param1));
+  HloInstruction* real = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kReal, cplx));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root, real);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that imag(complex(r,i)) is simplified to i.
+TEST_F(AlgebraicSimplifierTest, ImagOfComplex) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
+  HloInstruction* cplx = builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::ChangeElementType(r2f32, C64),
+                                   HloOpcode::kComplex, param0, param1));
+  HloInstruction* imag = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kImag, cplx));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root, imag);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param1);
 }
 
 // Test that get_element(make_tuple({A,B}),1) is simplified to B
@@ -2091,7 +2115,7 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
       HloInstruction::CreateConstant(Literal::CreateR1<float>({0.0f})));
   HloInstruction* one = call_builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR1<float>({1.0f})));
-  builder.AddInstruction(
+  call_builder.AddInstruction(
       HloInstruction::CreateCall(r1f32, {zero, one}, dot_computation.get()));
 
   auto module = CreateNewModule();
@@ -2120,99 +2144,6 @@ TEST_F(AlgebraicSimplifierTest, ConstantTupleBecomesTupleOfConstants) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::Tuple(op::Constant(), op::Constant()));
-}
-
-TEST_F(AlgebraicSimplifierTest, WhileLoopWithZeroIterations) {
-  HloModule module(TestName());
-  HloComputation* computation = MakeSimpleLoop(&module, /*num_iters=*/0);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
-  ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction(),
-              op::Tuple(op::Constant(), op::Constant()));
-}
-
-TEST_F(AlgebraicSimplifierTest, WhileLoopWithOneIteration) {
-  HloModule module(TestName());
-  HloComputation* computation = MakeSimpleLoop(&module, /*num_iters=*/1);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
-  ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction(),
-              op::Tuple(op::Add(), op::Multiply()));
-}
-
-TEST_F(AlgebraicSimplifierTest, WhileLoopWithTwoIterations) {
-  HloModule module(TestName());
-  MakeSimpleLoop(&module, /*num_iters=*/2);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
-  EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
-}
-
-TEST_F(AlgebraicSimplifierTest, WhileLoopWithControlDependency) {
-  HloModule module(TestName());
-  HloComputation* computation = MakeSimpleLoop(&module, /*num_iters=*/1);
-  auto* while_op = computation->root_instruction();
-  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
-  auto* true_op = while_op->while_body()->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
-  TF_ASSERT_OK(true_op->AddControlDependencyTo(
-      while_op->while_body()->root_instruction()));
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
-  ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction()->control_predecessors(),
-              ElementsAre(op::Constant()))
-      << computation->ToString();
-}
-
-// Loops that contain send/recv nodes can't be simplified; the loop structure
-// around send/recv nodes must be preserved.
-TEST_F(AlgebraicSimplifierTest, NotRemovedIfContainsSend) {
-  HloModule module(TestName());
-  HloComputation* computation = MakeSimpleLoop(&module, /*num_iters=*/1);
-  auto* while_op = computation->root_instruction();
-  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
-  auto* while_body = while_op->while_body();
-  while_body->AddInstruction(HloInstruction::CreateSend(
-      while_body->AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<bool>(true))),
-      /*channel_id=*/0));
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
-  EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
-}
-
-TEST_F(AlgebraicSimplifierTest, NotRemovedIfContainsRecv) {
-  HloModule module(TestName());
-  HloComputation* computation = MakeSimpleLoop(&module, /*num_iters=*/1);
-  auto* while_op = computation->root_instruction();
-  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
-  auto* while_body = while_op->while_body();
-  while_body->AddInstruction(
-      HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}),
-                                 /*channel_id=*/0));
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
-  EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
-}
-
-// The limitation on not being able to simplify loops that contain infeeds (and
-// other non-removable instructions) isn't fundamental -- it just stems from the
-// fact that our infrastructure sees simplifying such a loop as tantamount to
-// removing the non-removable instruction.
-TEST_F(AlgebraicSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
-  HloModule module(TestName());
-  HloComputation* computation = MakeSimpleLoop(&module, /*num_iters=*/1);
-  auto* while_op = computation->root_instruction();
-  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
-  auto* while_body = while_op->while_body();
-  while_body->AddInstruction(
-      HloInstruction::CreateInfeed(ShapeUtil::MakeShape(F32, {1}), "config"));
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
-  EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
 }
 
 // A dynamic-slice is trivial if its start indices are all zeroes and the size

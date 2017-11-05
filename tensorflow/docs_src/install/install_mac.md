@@ -1,6 +1,11 @@
 # Installing TensorFlow on macOS
 
-This guide explains how to install TensorFlow on macOS.
+This guide explains how to install TensorFlow on macOS. Although these
+instructions might also work on other macOS variants, we have only
+tested (and we only support) these instructions on machines meeting the
+following requirements:
+
+  * macOS X 10.11 (El Capitan) or higher
 
 Note: As of version 1.2, TensorFlow no longer provides GPU support on macOS.
 
@@ -8,21 +13,21 @@ Note: As of version 1.2, TensorFlow no longer provides GPU support on macOS.
 
 You must pick the mechanism by which you install TensorFlow. The supported choices are as follows:
 
-  * virtualenv
+  * Virtualenv
   * "native" pip
   * Docker
   * installing from sources, which is documented in
     [a separate guide](https://www.tensorflow.org/install/install_sources).
 
-**We recommend the virtualenv installation.**
+**We recommend the Virtualenv installation.**
 [Virtualenv](https://virtualenv.pypa.io/en/stable)
 is a virtual Python environment isolated from other Python development,
 incapable of interfering with or being affected by other Python programs
-on the same machine.  During the virtualenv installation process,
+on the same machine.  During the Virtualenv installation process,
 you will install not only TensorFlow but also all the packages that
 TensorFlow requires.  (This is actually pretty easy.)
 To start working with TensorFlow, you simply need to "activate" the
-virtual environment.  All in all, virtualenv provides a safe and
+virtual environment.  All in all, Virtualenv provides a safe and
 reliable mechanism for installing and running TensorFlow.
 
 Native pip installs TensorFlow directly on your system without going through
@@ -48,30 +53,30 @@ However, within Anaconda, we recommend installing TensorFlow with the
 That is, the TensorFlow team neither tests nor maintains the conda package.
 Use that package at your own risk.
 
-## Installing with virtualenv
+## Installing with Virtualenv
 
 Take the following steps to install TensorFlow with Virtualenv:
 
   1. Start a terminal (a shell). You'll perform all subsequent steps
      in this shell.
 
-  2. Install pip and virtualenv by issuing the following commands:
+  2. Install pip and Virtualenv by issuing the following commands:
 
      <pre> $ <b>sudo easy_install pip</b>
      $ <b>pip install --upgrade virtualenv</b> </pre>
 
-  3. Create a virtualenv environment by issuing a command of one
+  3. Create a Virtualenv environment by issuing a command of one
      of the following formats:
 
      <pre> $ <b>virtualenv --system-site-packages</b> <i>targetDirectory</i> # for Python 2.7
      $ <b>virtualenv --system-site-packages -p python3</b> <i>targetDirectory</i> # for Python 3.n
      </pre>
 
-     where <i>targetDirectory</i> identifies the top of the virtualenv tree.
+     where <i>targetDirectory</i> identifies the top of the Virtualenv tree.
      Our instructions assume that <i>targetDirectory</i>
      is `~/tensorflow`, but you may choose any directory.
 
-  4. Activate the virtualenv environment by issuing one of the
+  4. Activate the Virtualenv environment by issuing one of the
      following commands:
 
      <pre>$ <b>source ~/tensorflow/bin/activate</b>      # If using bash, sh, ksh, or zsh
@@ -93,7 +98,7 @@ Take the following steps to install TensorFlow with Virtualenv:
 
   7. Optional. If Step 6 failed (typically because you invoked a pip version
      lower than 8.1), install TensorFlow in the active
-     virtualenv environment by issuing a command of the following format:
+     Virtualenv environment by issuing a command of the following format:
 
      <pre> $ <b>pip install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
      $ <b>pip3 install --upgrade</b> <i>tfBinaryURL</i>  # Python 3.n </pre>
@@ -109,7 +114,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      TensorFlow in the active Virtualenv is as follows:
 
      <pre> $ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc0-py2-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc1-py2-none-any.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common-installation-problems).
@@ -121,8 +126,8 @@ After installing TensorFlow,
 [validate your installation](#ValidateYourInstallation)
 to confirm that the installation worked properly.
 
-Note that you must activate the virtualenv environment each time you
-use TensorFlow in a new shell.  If the virtualenv environment is not
+Note that you must activate the Virtualenv environment each time you
+use TensorFlow in a new shell.  If the Virtualenv environment is not
 currently active (that is, the prompt is not `(tensorflow)`, invoke
 one of the following commands:
 
@@ -134,7 +139,7 @@ tensorflow environment is active:
 
 <pre> (tensorflow)$ </pre>
 
-When the virtualenv environment is active, you may run
+When the Virtualenv environment is active, you may run
 TensorFlow programs from this shell.
 
 When you are done using TensorFlow, you may deactivate the
@@ -230,7 +235,7 @@ take the following steps:
      issue the following command:
 
      <pre> $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc0-py2-none-any.whl</b> </pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc1-py2-none-any.whl</b> </pre>
 
      If the preceding command fails, see
      [installation problems](#common-installation-problems).
@@ -339,7 +344,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 2.7:
 
      <pre> (tensorflow)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc0-py2-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc1-py2-none-any.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -353,11 +358,11 @@ To validate your TensorFlow installation, do the following:
 
 ### Prepare your environment
 
-If you installed on native pip, virtualenv, or Anaconda, then
+If you installed on native pip, Virtualenv, or Anaconda, then
 do the following:
 
   1. Start a terminal.
-  2. If you installed with virtualenv or Anaconda, activate your container.
+  2. If you installed with Virtualenv or Anaconda, activate your container.
   3. If you installed TensorFlow source code, navigate to any
      directory *except* one containing TensorFlow source code.
 
@@ -512,7 +517,7 @@ This section documents the relevant values for Mac OS installations.
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc0-py2-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc1-py2-none-any.whl
 </pre>
 
 
@@ -520,7 +525,7 @@ https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc0-py2-none-a
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc0-py3-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0rc1-py3-none-any.whl
 </pre>
 
 

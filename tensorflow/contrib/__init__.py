@@ -51,6 +51,7 @@ from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
 from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
+from tensorflow.contrib import model_pruning
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
@@ -77,9 +78,11 @@ from tensorflow.contrib import timeseries
 from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
+from tensorflow.contrib.eager.python import tfe as eager
 from tensorflow.contrib.ndlstm import python as ndlstm
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
+from tensorflow.contrib.summary import summary
 
 from tensorflow.python.util.lazy_loader import LazyLoader
 ffmpeg = LazyLoader("ffmpeg",

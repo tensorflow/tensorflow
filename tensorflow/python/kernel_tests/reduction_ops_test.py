@@ -163,6 +163,13 @@ class SumReductionTest(BaseReductionTest):
       reduction_axes = tuple(reduction_axes)
     return np.sum(x, axis=reduction_axes, keepdims=keep_dims)
 
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_sum([0, 0], constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, 0)
+
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
       for special_value_x in [-np.inf, np.inf]:
@@ -192,6 +199,7 @@ class SumReductionTest(BaseReductionTest):
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
       tf_out_mean = sess.run(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
+
 
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
@@ -369,6 +377,13 @@ class MeanReductionTest(BaseReductionTest):
       return np_sum // count
     return np_sum / count
 
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_mean([0, 0], constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, 0)
+
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
       for special_value_x in [-np.inf, np.inf]:
@@ -434,6 +449,13 @@ class ProdReductionTest(BaseReductionTest):
                                                       np.ndarray):
       reduction_axes = tuple(reduction_axes)
     return np.prod(x, axis=reduction_axes, keepdims=keep_dims)
+
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_prod([0, 0], constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
@@ -530,6 +552,13 @@ class MinReductionTest(test.TestCase):
     self._compare(x, reduction_axes, False, use_gpu=False)
     self._compare(x, reduction_axes, True, use_gpu=True)
     self._compare(x, reduction_axes, True, use_gpu=False)
+
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_min([0, 0], constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
@@ -636,6 +665,13 @@ class MaxReductionTest(test.TestCase):
     self._compare(x, reduction_axes, False, use_gpu=False)
     self._compare(x, reduction_axes, True, use_gpu=True)
     self._compare(x, reduction_axes, True, use_gpu=False)
+
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_max([0, 0], constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
@@ -757,6 +793,14 @@ class AllReductionTest(test.TestCase):
     self._compare(x, reduction_axes, True, use_gpu=True)
     self._compare(x, reduction_axes, True, use_gpu=False)
 
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_all([True, True],
+                                constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, True)
+
   def testAll3D(self):
     # Create a 3D array of bools and reduce across all possible
     # dimensions
@@ -797,6 +841,14 @@ class AnyReductionTest(test.TestCase):
     self._compare(x, reduction_axes, False, use_gpu=False)
     self._compare(x, reduction_axes, True, use_gpu=True)
     self._compare(x, reduction_axes, True, use_gpu=False)
+
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_any([True, True],
+                                constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, True)
 
   def testAll3D(self):
     # Create a 3D array of bools and reduce across all possible

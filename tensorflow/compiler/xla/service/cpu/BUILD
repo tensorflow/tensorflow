@@ -122,6 +122,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",  # fixdeps: keep
         "//tensorflow/core:lib",  # fixdeps: keep
         "//tensorflow/core:stream_executor_no_cuda",
@@ -146,13 +147,13 @@ cc_library(
     name = "simple_orc_jit",
     srcs = ["simple_orc_jit.cc"],
     hdrs = ["simple_orc_jit.h"],
-    linkopts = ["-ldl"],
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
         ":cpu_runtime_avx",
         ":cpu_runtime_neon",
         ":cpu_runtime_sse4_1",
+        ":custom_call_target_registry",
         ":disassembler",
         ":external_constant_pool",
         ":runtime_conv2d",
@@ -525,6 +526,7 @@ cc_library(
 tf_cc_test(
     name = "cpu_runtime_test",
     srcs = ["cpu_runtime_test.cc"],
+    tags = ["optonly"],
     deps = [
         ":cpu_runtime",
         ":runtime_matmul",
@@ -716,6 +718,17 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/service:hlo_module_config",
     ],
+)
+
+cc_library(
+    name = "custom_call_target_registry",
+    srcs = [
+        "custom_call_target_registry.cc",
+    ],
+    hdrs = [
+        "custom_call_target_registry.h",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 # -----------------------------------------------------------------------------

@@ -34,6 +34,12 @@ option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
+if(HAIKU)
+	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" OFF)
+else()
+	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" ON)
+endif()
+
 
 if (NOT WIN32)
   # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
@@ -58,7 +64,12 @@ set (DOWNLOAD_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/downloads"
      CACHE PATH "Location where external projects will be downloaded.")
 mark_as_advanced(DOWNLOAD_LOCATION)
 
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+if (tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
+	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+else()
+	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+endif()
+
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC)
@@ -216,6 +227,9 @@ if(WIN32)
 endif()
 if(UNIX)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+endif()
+if(HAIKU)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES network)
 endif()
 
 if (tensorflow_ENABLE_GPU)

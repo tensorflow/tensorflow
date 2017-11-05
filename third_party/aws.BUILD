@@ -18,6 +18,12 @@ cc_library(
         "@%ws%//tensorflow:darwin": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
+        "@%ws%//tensorflow:linux_ppc64le": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "@%ws%//tensorflow:raspberry_pi_armeabi": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
         "//conditions:default": [],
     }) + glob([
         "aws-cpp-sdk-core/include/**/*.h",
@@ -54,6 +60,11 @@ cc_library(
         ],
         "@%ws%//tensorflow:darwin": [
             "PLATFORM_APPLE",
+            "ENABLE_CURL_CLIENT",
+            "ENABLE_NO_ENCRYPTION",
+        ],
+        "@%ws%//tensorflow:linux_ppc64le": [
+            "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
         ],

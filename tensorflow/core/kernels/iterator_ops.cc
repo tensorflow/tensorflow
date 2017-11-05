@@ -16,9 +16,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/framework/iterator.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -34,6 +36,8 @@ namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following ops.
+
+const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received) {
@@ -93,10 +97,10 @@ class IteratorResource : public ResourceBase {
     }
   }
 
-  Status Save(OpKernelContext* ctx, const string& path) {
+  Status Save(IteratorStateWriter* writer) {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
     if (captured_iterator) {
-      return captured_iterator->Save(ctx, path);
+      return captured_iterator->Save(writer);
     } else {
       return errors::FailedPrecondition(
           "Save() failed because the iterator has not been initialized. "
@@ -105,49 +109,34 @@ class IteratorResource : public ResourceBase {
     }
   }
 
-  Status Restore(OpKernelContext* ctx, const string& path) {
-    if (!(ctx->env()->FileExists(MetaFilename(path)).ok())) {
-      return errors::NotFound(
-          "Failed to restore Iterator state. No file found at ",
-          MetaFilename(path));
+  Status Restore(OpKernelContext* ctx, IteratorStateReader* reader) {
+    string serialized_graph_def;
+    TF_RETURN_IF_ERROR(reader->ReadScalar(GraphDatasetBase::kDatasetGraphKey,
+                                          &serialized_graph_def));
+    GraphDef graph_def;
+    if (!graph_def.ParseFromString(serialized_graph_def)) {
+      return errors::Internal("Error parsing dataset GraphDef.");
     }
+    string output_node;
+    TF_RETURN_IF_ERROR(reader->ReadScalar(
+        GraphDatasetBase::kDatasetGraphOutputNodeKey, &output_node));
+    DatasetBase* dataset = nullptr;
+    Graph graph(OpRegistry::Global());
+    TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
+    std::vector<Tensor> outputs;
+    GraphRunner graph_runner(ctx->env());
+    TF_RETURN_IF_ERROR(graph_runner.Run(&graph, ctx->function_library(), {},
+                                        {output_node}, &outputs));
+    TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
-    BundleReader bundle_reader(ctx->env(), path);
-    TF_RETURN_IF_ERROR(bundle_reader.status());
-    BundleReaderWrapper reader(&bundle_reader);
-    if (reader.Contains(GraphDatasetBase::kDatasetGraphKey)) {
-      string serialized_graph_def;
-      TF_RETURN_IF_ERROR(reader.ReadScalar(GraphDatasetBase::kDatasetGraphKey,
-                                           &serialized_graph_def));
-      GraphDef graph_def;
-      graph_def.ParseFromString(serialized_graph_def);
-      // TODO(srbs): Is there a way of getting the op registry of the original
-      // graph.
-      Graph graph(OpRegistry::Global());
-      TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
-      string output_node;
-      TF_RETURN_IF_ERROR(reader.ReadScalar(
-          GraphDatasetBase::kDatasetGraphOutputNodeKey, &output_node));
-      std::vector<Tensor> outputs;
-      GraphRunner graph_runner(ctx->env());
-      TF_RETURN_IF_ERROR(graph_runner.Run(&graph, ctx->function_library(), {},
-                                          {output_node}, &outputs));
-      DatasetBase* dataset;
-      TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
-      TF_RETURN_IF_ERROR(set_iterator(dataset->MakeIterator("Iterator")));
-    } else if (reader.Contains(IteratorBase::kIteratorExhausted)) {
-      TF_RETURN_IF_ERROR(set_iterator(std::unique_ptr<IteratorBase>(
-          new ExhaustedIterator(output_dtypes_, output_shapes_))));
-    }
+    TF_RETURN_IF_ERROR(set_iterator(dataset->MakeIterator("Iterator")));
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
     if (captured_iterator) {
-      // TODO(srbs): Figure a way to pass bundle_reader here.
-      return captured_iterator->Restore(ctx, path);
+      return captured_iterator->Restore(ctx, reader);
     } else {
       return errors::FailedPrecondition(
-          "Failed to restore iterator from ", path,
-          ". Make sure the checkpoint ",
+          "Failed to restore iterator. Make sure the checkpoint ",
           "is not corrupt. If the checkpoint does not contain the GraphDef, ",
           "you will need to initialize your iterator before restoring.");
     }
@@ -174,42 +163,213 @@ class IteratorResource : public ResourceBase {
   }
 
  private:
-  // A no-op iterator which always sets end_of_sequence = true. An instance of
-  // this is returned when attempting to restore an exhausted iterator. This is
-  // needed because the Dataset GraphDef may not have been saved for exhausted
-  // iterators so the actual Iterator can not be built.
-  class ExhaustedIterator : public IteratorBase {
-   public:
-    ExhaustedIterator(const DataTypeVector& output_dtypes,
-                      const std::vector<PartialTensorShape>& output_shapes)
-        : output_dtypes_(output_dtypes), output_shapes_(output_shapes) {}
-    Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                   bool* end_of_sequence) final {
-      *end_of_sequence = true;
-      return Status::OK();
-    }
-
-    const DataTypeVector& output_dtypes() const override {
-      return output_dtypes_;
-    }
-
-    const std::vector<PartialTensorShape>& output_shapes() const override {
-      return output_shapes_;
-    }
-
-    virtual const std::vector<PartialTensorShape>& output_shapes() {
-      return output_shapes_;
-    }
-
-   private:
-    const DataTypeVector output_dtypes_;
-    const std::vector<PartialTensorShape> output_shapes_;
-  };
-
   std::shared_ptr<IteratorBase> iterator_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
+
+// Helper class for reading data from a VariantTensorData object.
+class VariantTensorDataReader : public IteratorStateReader {
+ public:
+  explicit VariantTensorDataReader(const VariantTensorData* data)
+      : data_(data) {
+    PreProcess();
+  }
+
+  // Returns OK iff the initialization was successful, i.e.,
+  // pre-processing did not have errors.
+  Status status() const { return status_; }
+
+  Status ReadScalar(StringPiece key, int64* val) override {
+    return ReadScalarInternal(key, val);
+  }
+
+  Status ReadScalar(StringPiece key, string* val) override {
+    return ReadScalarInternal(key, val);
+  }
+
+  Status ReadTensor(StringPiece key, Tensor* val) override {
+    return ReadTensorInternal(key, val);
+  }
+
+  bool Contains(StringPiece key) override {
+    return map_.find(key.ToString()) != map_.end();
+  }
+
+ private:
+  void PreProcess() {
+    string metadata;
+    data_->get_metadata(&metadata);
+    IteratorStateMetadata proto;
+    if (!proto.ParseFromString(metadata)) {
+      status_ = errors::Internal("Error parsing IteratorStateMetadata.");
+      return;
+    }
+    size_t num_entries = proto.keys_size();
+    CHECK_EQ(num_entries, data_->tensors_size());
+    for (size_t i = 0; i < num_entries; i++) {
+      map_[proto.keys(i)] = i;
+    }
+  }
+
+  template <typename T>
+  Status ReadScalarInternal(StringPiece key, T* val) {
+    if (map_.find(key.ToString()) == map_.end()) {
+      return errors::NotFound(key);
+    }
+    *val = data_->tensors(map_[key.ToString()]).scalar<T>()();
+    return Status::OK();
+  }
+
+  Status ReadTensorInternal(StringPiece key, Tensor* val) {
+    if (map_.find(key.ToString()) == map_.end()) {
+      return errors::NotFound(key);
+    }
+    *val = data_->tensors(map_[key.ToString()]);
+    return Status::OK();
+  }
+
+  std::map<string, size_t> map_;
+  const VariantTensorData* data_;  // Not owned.
+  Status status_;
+};
+
+// Helper class for writing data to a VariantTensorData object.
+class VariantTensorDataWriter : public IteratorStateWriter {
+ public:
+  // Does not take ownership of data.
+  explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
+
+  Status WriteScalar(StringPiece key, const int64 val) override {
+    return WriteScalarInternal(key, val);
+  }
+
+  Status WriteScalar(StringPiece key, const string& val) override {
+    return WriteScalarInternal(key, val);
+  }
+
+  Status WriteTensor(StringPiece key, const Tensor& val) override {
+    return WriteTensorInternal(key, val);
+  }
+
+  // Writes the metadata to `data_`.
+  Status Flush() {
+    string metadata;
+    if (!metadata_proto_.SerializeToString(&metadata)) {
+      return errors::Internal("Unable to serialize IteratorStateMetadata.");
+    }
+    data_->set_metadata(metadata);
+    return Status::OK();
+  }
+
+ private:
+  template <typename T>
+  Status WriteScalarInternal(StringPiece key, const T& val) {
+    Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+    val_t.scalar<T>()() = val;
+    return WriteTensorInternal(key, val_t);
+  }
+
+  Status WriteTensorInternal(StringPiece key, const Tensor& val) {
+    // Write key to the metadata proto. This gets written to `data_`
+    // when `Flush()` is called. We do this lazily to avoid multiple
+    // serialization calls.
+    metadata_proto_.add_keys(key.ToString());
+
+    // Update tensors.
+    *(data_->add_tensors()) = val;
+    return Status::OK();
+  }
+
+  VariantTensorData* data_;
+  // TODO(srbs): Set the version string.
+  IteratorStateMetadata metadata_proto_;
+};
+
+// Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
+// The get() method returns an IteratorStateReader which can be used
+// to restore iterator state.
+//
+// Usage example:
+//
+// Encoding:
+//
+//   Tensor t(DT_VARIANT, TensorShape({}));
+//   t->scalar<Variant>()() = IteratorStateVariant(iterator_resource);
+//
+// Encode() sets the type_name of the VariantTensorData object to
+// IteratorStateVariant::TypeName().
+//
+// Decoding:
+//
+//   Variant v = <VariantTensorDataProto object>;
+//   DecodeUnaryVariant(&v);
+//   IteratorStateVariant* wrapper = v.get<IteratorStateVariant>();
+//   iterator_resource->Restore(ctx, wrapper->get())
+//
+// The type_name of the VariantTensorData object to be decoded must
+// match IteratorStateVariant::TypeName().
+class IteratorStateVariant {
+ public:
+  IteratorStateVariant() : data_(nullptr) {}
+  IteratorStateVariant(const IteratorStateVariant& other) : data_(nullptr) {
+    if (other.data_) {
+      Decode(*other.data_);
+    }
+  }
+  // Initializes this object with the current state of the iterator so
+  // that it can be written on the next call to Encode().
+  Status InitializeFromIterator(IteratorResource* iterator_resource) {
+    data_.reset(new VariantTensorData());
+    data_->set_type_name(TypeName());
+    VariantTensorDataWriter writer(data_.get());
+    TF_RETURN_IF_ERROR(iterator_resource->Save(&writer));
+    TF_RETURN_IF_ERROR(writer.Flush());
+    return Status::OK();
+  }
+  string TypeName() const { return kIteratorVariantTypeName; }
+  void Encode(VariantTensorData* data) const { *data = *data_; }
+  bool Decode(const VariantTensorData& data) {
+    if (data.type_name() != TypeName()) {
+      return false;
+    }
+    std::unique_ptr<VariantTensorData> tensor_data(new VariantTensorData);
+    *tensor_data = data;
+    std::unique_ptr<VariantTensorDataReader> reader(
+        new VariantTensorDataReader(tensor_data.get()));
+    status_ = reader->status();
+    if (!status_.ok()) {
+      return false;
+    }
+    data_ = std::move(tensor_data);
+    reader_ = std::move(reader);
+    return true;
+  }
+  IteratorStateReader* get() { return reader_.get(); }
+  Status status() const { return status_; }
+  string DebugString() const {
+    if (data_) {
+      return strings::StrCat("IteratorStateVariant<",
+                             "data: ", data_->DebugString(),
+                             " status: ", status_.ToString(), ">");
+    } else {
+      return strings::StrCat("IteratorStateVariant<empty>");
+    }
+  }
+
+ private:
+  std::unique_ptr<IteratorStateReader> reader_;
+  Status status_;
+  std::unique_ptr<VariantTensorData> data_;
+};
+
+// Register the reader class in the global variant decode_fn registry
+// so that a Variant containing a serialized representation of iterator state
+// can be decoded using DecodeUnaryVariant. If we don't do this we will need
+// to manually decode the returned Variant using MaybeDecodeAndCopy in
+// DeserializeIteratorOp which is not recommended.
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
+                                       kIteratorVariantTypeName);
 
 // TODO(mrry): Can we simply use the template kernel here?
 class IteratorHandleOp : public ResourceOpKernel<IteratorResource> {
@@ -291,37 +451,6 @@ class ToSingleElementOp : public OpKernel {
                    iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
     OP_REQUIRES(ctx, end_of_sequence,
                 errors::InvalidArgument("Dataset had more than one element."));
-  }
-};
-
-class SaveIteratorOp : public OpKernel {
- public:
-  explicit SaveIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    IteratorResource* iterator_resource;
-    OP_REQUIRES_OK(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
-                errors::InvalidArgument("SaveIteratorOp: path must be scalar"));
-    const string& path = ctx->input(1).scalar<string>()();
-    OP_REQUIRES_OK(ctx, iterator_resource->Save(ctx, path));
-  }
-};
-
-class RestoreIteratorOp : public OpKernel {
- public:
-  explicit RestoreIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    IteratorResource* iterator_resource;
-    OP_REQUIRES_OK(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
-        errors::InvalidArgument("RestoreIteratorOp: path must be scalar"));
-    const string& path = ctx->input(1).scalar<string>()();
-    OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, path));
   }
 };
 
@@ -475,7 +604,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     return Status::OK();
   }
 
-  void ProduceOutput(OpKernelContext* ctx, DoneCallback done) {
+  void ProduceOutput(OpKernelContext* ctx, const DoneCallback& done) {
     Tensor* handle;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, TensorShape({}), &handle),
                          done);
@@ -644,15 +773,55 @@ class IteratorFromStringHandleOp : public OpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+class SerializeIteratorOp : public OpKernel {
+ public:
+  explicit SerializeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& resource_handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
+                errors::InvalidArgument("resource_handle must be a scalar"));
+
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    iterator_resource->Unref();
+    Tensor* variant_t;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &variant_t));
+    IteratorStateVariant v;
+    OP_REQUIRES_OK(ctx, v.InitializeFromIterator(iterator_resource));
+    variant_t->scalar<Variant>()() = v;
+  }
+};
+
+class DeserializeIteratorOp : public OpKernel {
+ public:
+  explicit DeserializeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+
+    Variant variant = ctx->input(1).scalar<Variant>()();
+    auto* wrapper = variant.get<IteratorStateVariant>();
+    OP_REQUIRES(ctx, wrapper != nullptr,
+                errors::InvalidArgument(
+                    "DeserializeIteratorOp: Unable to parse variant tensor."));
+    OP_REQUIRES_OK(ctx, wrapper->status());
+    OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, wrapper->get()));
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);
-REGISTER_KERNEL_BUILDER(Name("SaveIterator").Device(DEVICE_CPU),
-                        SaveIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("RestoreIterator").Device(DEVICE_CPU),
-                        RestoreIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
@@ -661,6 +830,10 @@ REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
                         IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),
                         IteratorFromStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
+                        SerializeIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
+                        DeserializeIteratorOp);
 
 }  // namespace
 

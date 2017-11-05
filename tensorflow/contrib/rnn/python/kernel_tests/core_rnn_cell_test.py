@@ -22,10 +22,8 @@ import functools
 
 import numpy as np
 
-# TODO(ebrevdo): Remove once _linear is fully deprecated.
-# pylint: disable=protected-access
-
 from tensorflow.contrib import rnn as contrib_rnn
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -40,11 +38,10 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
 
 
 # pylint: enable=protected-access
-Linear = rnn_cell_impl._Linear  # pylint: disable=invalid-name
+Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name
 
 
 class RNNCellTest(test.TestCase):
@@ -128,8 +125,8 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[0], [[0.175991, 0.175991]])
       with variable_scope.variable_scope(
           "other", initializer=init_ops.constant_initializer(0.5)):
-        x = array_ops.zeros(
-            [1, 3])  # Test GRUCell with input_size != num_units.
+        # Test GRUCell with input_size != num_units.
+        x = array_ops.zeros([1, 3])
         m = array_ops.zeros([1, 2])
         g, _ = rnn_cell_impl.GRUCell(2)(x, m)
         sess.run([variables_lib.global_variables_initializer()])

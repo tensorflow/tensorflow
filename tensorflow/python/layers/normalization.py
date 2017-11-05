@@ -101,6 +101,18 @@ class BatchNormalization(base.Layer):
       Normalization", which creates virtual sub-batches which are each
       normalized separately (with shared gamma, beta, and moving statistics).
       Must divide the actual batch size during execution.
+    adjustment: A function taking the `Tensor` containing the (dynamic) shape of
+      the input tensor and returning a pair (scale, bias) to apply to the
+      normalized values (before gamma and beta), only during training. For
+      example, if axis==-1,
+        `adjustment = lambda shape: (
+          tf.random_uniform(shape[-1:], 0.93, 1.07),
+          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+      will scale the normalized value by up to 7% up or down, then shift the
+      result by up to 0.1 (with independent scaling and bias for each feature
+      but shared across all examples), and finally apply gamma and/or beta. If
+      `None`, no adjustment is applied. Cannot be specified if
+      virtual_batch_size is specified.
     name: A string, the name of the layer.
   """
 
@@ -124,6 +136,7 @@ class BatchNormalization(base.Layer):
                fused=None,
                trainable=True,
                virtual_batch_size=None,
+               adjustment=None,
                name=None,
                **kwargs):
     super(BatchNormalization, self).__init__(
@@ -143,6 +156,7 @@ class BatchNormalization(base.Layer):
     self.gamma_constraint = gamma_constraint
     self.renorm = renorm
     self.virtual_batch_size = virtual_batch_size
+    self.adjustment = adjustment
     if fused is None:
       fused = True
 
@@ -192,19 +206,20 @@ class BatchNormalization(base.Layer):
       if 0 in self.axis:
         raise ValueError('When using virtual_batch_size, the batch dimension '
                          'must be 0 and thus axis cannot include 0')
+      if self.adjustment is not None:
+        raise ValueError('When using virtual_batch_size, adjustment cannot '
+                         'be specified')
 
     if self.fused:
-      # Currently fused batch norm doesn't support renorm and beta/gamma
-      # regularizer; and only supports an input tensor of rank 4 and a channel
-      # dimension on axis 1 and 3.
+      # Currently fused batch norm doesn't support renorm. It also only supports
+      # an input tensor of rank 4 and a channel dimension on axis 1 or 3.
       # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
       # output back to its original shape accordingly.
       self.fused = (not self.renorm and
                     ndims == 4 and
                     self.axis in [[1], [3]] and
-                    self.beta_regularizer is None and
-                    self.gamma_regularizer is None and
-                    self.virtual_batch_size is None)
+                    self.virtual_batch_size is None and
+                    self.adjustment is None)
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping
@@ -418,27 +433,30 @@ class BatchNormalization(base.Layer):
     if dmax is not None:
       d = math_ops.maximum(d, -dmax)
       d = math_ops.minimum(d, dmax)
-    # When not training, use r=1, d=0, and decay=1 meaning no updates.
+    # When not training, use r=1, d=0.
     r = utils.smart_cond(training, lambda: r, lambda: array_ops.ones_like(r))
     d = utils.smart_cond(training, lambda: d, lambda: array_ops.zeros_like(d))
-    decay = utils.smart_cond(training, lambda: self.renorm_momentum, lambda: 1.)
 
     def _update_renorm_variable(var, weight, value):
       """Updates a moving average and weight, returns the unbiased value."""
-      # Update the variables without zero debiasing. The debiasing will be
-      # accomplished by dividing the exponential moving average by the weight.
-      # For example, after a single update, the moving average would be
-      # (1-decay) * value. and the weight will be 1-decay, with their ratio
-      # giving value.
-      # Make sure the weight is not updated until before r and d computation.
       value = array_ops.identity(value)
-      with ops.control_dependencies([value]):
-        weight_value = array_ops.constant(1., dtype=weight.dtype)
-      new_var = moving_averages.assign_moving_average(
-          var, value, decay, zero_debias=False)
-      new_weight = moving_averages.assign_moving_average(
-          weight, weight_value, decay, zero_debias=False)
-      return new_var / new_weight
+      def _do_update():
+        # Update the variables without zero debiasing. The debiasing will be
+        # accomplished by dividing the exponential moving average by the weight.
+        # For example, after a single update, the moving average would be
+        # (1-decay) * value. and the weight will be 1-decay, with their ratio
+        # giving the value.
+        # Make sure the weight is not updated until before r and d computation.
+        with ops.control_dependencies([value]):
+          weight_value = array_ops.constant(1., dtype=weight.dtype)
+        new_var = moving_averages.assign_moving_average(
+            var, value, self.renorm_momentum, zero_debias=False)
+        new_weight = moving_averages.assign_moving_average(
+            weight, weight_value, self.renorm_momentum, zero_debias=False)
+        return new_var / new_weight
+      def _fake_update():
+        return array_ops.identity(var)
+      return utils.smart_cond(training, _do_update, _fake_update)
 
     with ops.colocate_with(self.moving_mean):
       new_mean = _update_renorm_variable(self.renorm_mean,
@@ -482,11 +500,41 @@ class BatchNormalization(base.Layer):
     if self.virtual_batch_size is not None:
       del reduction_axes[1]     # Do not reduce along virtual batch dim
 
-    scale, offset = self.gamma, self.beta
+    # Broadcasting only necessary for single-axis batch norm where the axis is
+    # not the last dimension
+    broadcast_shape = [1] * ndims
+    broadcast_shape[self.axis[0]] = input_shape[self.axis[0]].value
+    def _broadcast(v):
+      if (v is not None and
+          len(v.get_shape()) != ndims and
+          reduction_axes != list(range(ndims - 1))):
+        return array_ops.reshape(v, broadcast_shape)
+      return v
+
+    scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+
+    def _compose_transforms(scale, offset, then_scale, then_offset):
+      if then_scale is not None:
+        scale *= then_scale
+        offset *= then_scale
+      if then_offset is not None:
+        offset += then_offset
+      return (scale, offset)
 
     # Determine a boolean value for `training`: could be True, False, or None.
     training_value = utils.constant_value(training)
     if training_value is not False:
+      if self.adjustment:
+        adj_scale, adj_bias = self.adjustment(array_ops.shape(inputs))
+        # Adjust only during training.
+        adj_scale = utils.smart_cond(training,
+                                     lambda: adj_scale,
+                                     lambda: array_ops.ones_like(adj_scale))
+        adj_bias = utils.smart_cond(training,
+                                    lambda: adj_bias,
+                                    lambda: array_ops.zeros_like(adj_bias))
+        scale, offset = _compose_transforms(adj_scale, adj_bias, scale, offset)
+
       # Some of the computations here are not necessary when training==False
       # but not a constant. However, this makes the code simpler.
       keep_dims = self.virtual_batch_size is not None or len(self.axis) > 1
@@ -508,18 +556,12 @@ class BatchNormalization(base.Layer):
         # When training, the normalized values (say, x) will be transformed as
         # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
         # = x * (r * gamma) + (d * gamma + beta) with renorm.
-        scale = array_ops.stop_gradient(r, name='renorm_r')
-        offset = array_ops.stop_gradient(d, name='renorm_d')
-        if self.gamma is not None:
-          scale *= self.gamma
-          offset *= self.gamma
-        if self.beta is not None:
-          offset += self.beta
+        r = _broadcast(array_ops.stop_gradient(r, name='renorm_r'))
+        d = _broadcast(array_ops.stop_gradient(d, name='renorm_d'))
+        scale, offset = _compose_transforms(r, d, scale, offset)
       else:
         new_mean, new_variance = mean, variance
 
-      # Update moving averages when training, and prevent updates otherwise.
-      decay = utils.smart_cond(training, lambda: self.momentum, lambda: 1.)
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
         # supposed to sequentially update the moving_mean and moving_variance
@@ -531,10 +573,18 @@ class BatchNormalization(base.Layer):
         new_variance = math_ops.reduce_mean(new_variance,
                                             axis=1, keep_dims=True)
 
-      mean_update = moving_averages.assign_moving_average(
-          self.moving_mean, new_mean, decay, zero_debias=False)
-      variance_update = moving_averages.assign_moving_average(
-          self.moving_variance, new_variance, decay, zero_debias=False)
+      def _do_update(var, value):
+        return moving_averages.assign_moving_average(
+            var, value, self.momentum, zero_debias=False)
+
+      mean_update = utils.smart_cond(
+          training,
+          lambda: _do_update(self.moving_mean, new_mean),
+          lambda: self.moving_mean)
+      variance_update = utils.smart_cond(
+          training,
+          lambda: _do_update(self.moving_variance, new_variance),
+          lambda: self.moving_variance)
       if context.in_graph_mode():
         self.add_update(mean_update, inputs=inputs)
         self.add_update(variance_update, inputs=inputs)
@@ -542,24 +592,14 @@ class BatchNormalization(base.Layer):
     else:
       mean, variance = self.moving_mean, self.moving_variance
 
-    # Broadcasting only necessary for single-axis batch norm where the axis is
-    # not the last dimension
-    broadcast_shape = [1] * ndims
-    broadcast_shape[self.axis[0]] = input_shape[self.axis[0]].value
-    rank = len(inputs.get_shape())
-    def _broadcast(v):
-      if (v is not None and
-          len(v.get_shape()) != rank and
-          reduction_axes != list(range(ndims))[:-1]):
-        return array_ops.reshape(v, broadcast_shape)
-      return v
-
     outputs = nn.batch_normalization(inputs,
                                      _broadcast(mean),
                                      _broadcast(variance),
-                                     _broadcast(offset),
-                                     _broadcast(scale),
+                                     offset,
+                                     scale,
                                      self.epsilon)
+    # If some components of the shape got lost due to adjustments, fix that.
+    outputs.set_shape(input_shape)
 
     if self.virtual_batch_size is not None:
       return undo_virtual_batching(outputs)
@@ -589,7 +629,8 @@ def batch_normalization(inputs,
                         renorm_clipping=None,
                         renorm_momentum=0.99,
                         fused=None,
-                        virtual_batch_size=None):
+                        virtual_batch_size=None,
+                        adjustment=None):
   """Functional interface for the batch normalization layer.
 
   Reference: http://arxiv.org/abs/1502.03167
@@ -667,9 +708,24 @@ def batch_normalization(inputs,
       Normalization", which creates virtual sub-batches which are each
       normalized separately (with shared gamma, beta, and moving statistics).
       Must divide the actual batch size during execution.
+    adjustment: A function taking the `Tensor` containing the (dynamic) shape of
+      the input tensor and returning a pair (scale, bias) to apply to the
+      normalized values (before gamma and beta), only during training. For
+      example, if axis==-1,
+        `adjustment = lambda shape: (
+          tf.random_uniform(shape[-1:], 0.93, 1.07),
+          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+      will scale the normalized value by up to 7% up or down, then shift the
+      result by up to 0.1 (with independent scaling and bias for each feature
+      but shared across all examples), and finally apply gamma and/or beta. If
+      `None`, no adjustment is applied. Cannot be specified if
+      virtual_batch_size is specified.
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = BatchNormalization(
       axis=axis,
@@ -691,6 +747,7 @@ def batch_normalization(inputs,
       fused=fused,
       trainable=trainable,
       virtual_batch_size=virtual_batch_size,
+      adjustment=adjustment,
       name=name,
       _reuse=reuse,
       _scope=name)
@@ -701,4 +758,3 @@ def batch_normalization(inputs,
 
 BatchNorm = BatchNormalization
 batch_norm = batch_normalization
-

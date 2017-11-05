@@ -5,7 +5,6 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load("//tensorflow/compiler/xla:xla.bzl", "export_dynamic_linkopts")
 
 tf_kernel_library(
     name = "xla_ops",
@@ -19,6 +18,7 @@ tf_kernel_library(
         "bias_ops.cc",
         "binary_ops.cc",
         "cast_op.cc",
+        "categorical_op.cc",
         "concat_op.cc",
         "const_op.cc",
         "conv_ops.cc",
@@ -83,6 +83,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:sendrecv_ops",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
@@ -152,6 +153,7 @@ cc_library(
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
@@ -163,6 +165,7 @@ cc_library(
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
