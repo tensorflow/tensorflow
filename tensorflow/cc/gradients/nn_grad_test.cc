@@ -63,6 +63,15 @@ TEST_F(NNGradTest, SoftmaxGrad) {
   TensorShape shape({32, 10});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto y = Softmax(scope_, x);
+
+  RunTest(x, shape, y, shape);
+}
+
+TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
+  TensorShape shape({5, });
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto l = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = SoftmaxCrossEntropyWithLogits(scope_, x, l).backprop;
   RunTest(x, shape, y, shape);
 }
 
@@ -164,6 +173,6 @@ TEST_F(NNGradTest, MaxPoolGradV2Helper) {
   auto y = MaxPoolV2(scope_, x, ksize, strides, "SAME");
   RunTest(x, shape, y, shape);
 }
-  
+
 }  // namespace
 }  // namespace tensorflow
