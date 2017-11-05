@@ -55,6 +55,15 @@ config_setting(
 )
 
 config_setting(
+    name = "raspberry_pi_armeabi",
+    values = {
+        "crosstool_top": "@local_config_arm_compiler//:toolchain",
+        "cpu": "armeabi",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
