@@ -719,12 +719,12 @@ versions {
   }
 
   // Returns cost based on op.
-  Costs SimplePredictCosts(const NodeInfo& info) const {
+  Costs SimplePredictCosts(const OpContext& op_context) const {
     Costs c;
     int64 exec_cost = 0;
-    if (info.op_info.op() == "MatMul") {
+    if (op_context.op_info.op() == "MatMul") {
       exec_cost = 2000000000;
-    } else if (info.op_info.op() == "RandomUniform") {
+    } else if (op_context.op_info.op() == "RandomUniform") {
       exec_cost = 1000000000;
     } else {
       exec_cost = 1000;
@@ -735,18 +735,19 @@ versions {
 
   // Call this after init scheduler_. Scheduler stops after executing
   // target_node.
-  std::unordered_map<string, NodeInfo> RunScheduler(const string& target_node) {
+  std::unordered_map<string, OpContext> RunScheduler(
+      const string& target_node) {
     Costs zero_costs = Costs::ZeroCosts();
-    std::unordered_map<string, NodeInfo> ops_executed;
+    std::unordered_map<string, OpContext> ops_executed;
     bool more_nodes = true;
     do {
-      NodeInfo node_info = scheduler_->GetCurrNodeInfo();
-      ops_executed[node_info.name] = node_info;
+      OpContext op_context = scheduler_->GetCurrNode();
+      ops_executed[op_context.name] = op_context;
 
-      Costs node_costs = SimplePredictCosts(node_info);
+      Costs node_costs = SimplePredictCosts(op_context);
 
       // Check scheduling order.
-      auto it = dependency_.find(node_info.name);
+      auto it = dependency_.find(op_context.name);
       if (it != dependency_.end()) {
         for (const auto& preceding_node : it->second) {
           EXPECT_GT(ops_executed.count(preceding_node), 0);
@@ -754,7 +755,7 @@ versions {
       }
       more_nodes = scheduler_->MarkCurrNodeExecuted(node_costs);
 
-      if (node_info.name == target_node) {
+      if (op_context.name == target_node) {
         // Scheduler has the state after executing the target node.
         break;
       }
@@ -1234,7 +1235,7 @@ TEST_F(VirtualSchedulerTest, CalculateOutputSize) {
   EXPECT_EQ(2 * 10 * 10 * 10, scheduler_->CalculateOutputSize(output, 2));
   EXPECT_EQ(4 * 100 * 7 * 8 * 99, scheduler_->CalculateOutputSize(output, 3));
 
-  // Any uknown shape (-1) shall yield zero output size.
+  // Any unknown shape (-1) shall yield zero output size.
   EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 4));
   EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 5));
 
@@ -1319,8 +1320,10 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
         return std::make_pair(node_port.first->name(), node_port.second);
       });
   std::set<std::pair<string, int>> expected = {
-      std::make_pair("bn", -1), std::make_pair("bn", 0),
-      std::make_pair("bn", 2), std::make_pair("x", 0),
+      std::make_pair("bn", -1),
+      std::make_pair("bn", 0),
+      std::make_pair("bn", 2),
+      std::make_pair("x", 0),
   };
   ExpectSetEq(expected, nodes_in_memory);
 
@@ -1468,13 +1471,13 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
 
   // Helper lambda to extract port num from _Send and _Recv op name.
   auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn:0") != std::string::npos) {
+    if (name.find("bn_0") != std::string::npos) {
       return 0;
-    } else if (name.find("bn:1") != std::string::npos) {
+    } else if (name.find("bn_1") != std::string::npos) {
       return 1;
-    } else if (name.find("bn:2") != std::string::npos) {
+    } else if (name.find("bn_2") != std::string::npos) {
       return 2;
-    } else if (name.find("bn:minus1") != std::string::npos) {
+    } else if (name.find("bn_minus1") != std::string::npos) {
       return -1;
     }
     return -999;
@@ -1511,7 +1514,6 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
       output_properties.push_back(output_property);
     }
     return scheduler_->CalculateOutputSize(output_properties, 0);
-
   };
 
   // Validate transfer size.
@@ -1528,6 +1530,5 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
   EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
 }
-
 }  // end namespace grappler
 }  // end namespace tensorflow

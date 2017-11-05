@@ -127,6 +127,8 @@ TEST(GenerateHeader, Golden) {
   HeaderOpts opts;
   opts.class_name = "MyClass";
   opts.namespaces = {"foo", "bar"};
+  opts.gen_name_to_index = true;
+  opts.gen_program_shape = true;
   tf2xla::Config config;
   tf2xla::Feed* feed = config.add_feed();
   feed->mutable_id()->set_node_name("feed0");
@@ -145,7 +147,8 @@ TEST(GenerateHeader, Golden) {
           xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
           xla::ShapeUtil::MakeOpaqueShape(),
       },
-      xla::ShapeUtil::MakeShape(xla::U32, {5, 6}));
+      xla::ShapeUtil::MakeTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}));
   compile_result.has_context_arg = true;
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;

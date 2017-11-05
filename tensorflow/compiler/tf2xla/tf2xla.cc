@@ -255,11 +255,10 @@ Status CreateXlaArgs(const Graph& graph,
 Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
                          xla::Computation* computation,
                          bool* requires_runtime_context) {
-  // Create a device and context to convert the graph into an XLA computation.
   XlaOpRegistry::RegisterCompilationKernels();
-  // Populate the context with args from the graph.
   for (Node* node : graph->nodes()) {
-    node->set_assigned_device_name(DEVICE_CPU_XLA_JIT);
+    node->set_assigned_device_name(
+        strings::StrCat("/device:", DEVICE_CPU_XLA_JIT));
   }
   std::vector<XlaCompiler::Argument> xla_args;
   TF_RETURN_IF_ERROR(CreateXlaArgs(*graph, &xla_args));

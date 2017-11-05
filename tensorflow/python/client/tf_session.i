@@ -45,6 +45,9 @@ tensorflow::ImportNumpy();
 // Compiler
 %constant const char* __compiler_version__ = tf_compiler_version();
 
+// _GLIBCXX_USE_CXX11_ABI flag value
+%constant const int __cxx11_abi_flag__ = tf_cxx11_abi_flag();
+
 // Release the Python GIL for the duration of most methods.
 %exception {
   Py_BEGIN_ALLOW_THREADS;
@@ -97,6 +100,31 @@ tensorflow::ImportNumpy();
   for (size_t i = 0; i < $1.size(); ++i) {
     PyList_SET_ITEM($result, i, SWIG_NewPointerObj(
                             $1[i], SWIGTYPE_p_TF_Operation, 0));
+  }
+}
+
+%unignore GetOperationInputs;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception GetOperationInputs;
+
+// Build a Python list of TF_Outputs and return it.
+// TODO(skyewm): is there some way to generalize this pattern? Maybe a macro?
+%typemap(out) std::vector<TF_Output> tensorflow::GetOperationInputs {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>> via &
+  std::vector<TF_Output>* tf_outputs = &$1;
+  for (size_t i = 0; i < $1.size(); ++i) {
+    // We used wrapped heap-allocated pointers in the Python runtime (this is
+    // what SWIG generates by default for functions returning TF_Output).
+    TF_Output* tf_output_ptr = new TF_Output((*tf_outputs)[i]);
+    // Use SWIG_POINTER_OWN so the TF_Output* is deleted by Python.
+    PyList_SET_ITEM($result, i,
+                    SWIG_NewPointerObj(tf_output_ptr, SWIGTYPE_p_TF_Output,
+                                       SWIG_POINTER_OWN));
   }
 }
 
@@ -315,6 +343,16 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
+
+// Create temporary int64_t to pass to TF_OperationGetAttrInt
+%typemap(in, numinputs=0) int64_t* value (int64_t val) {
+  $1 = &val;
+}
+
+// Convert value to Python int
+%typemap(argout) int64_t* value {
+  $result = PyInt_FromLong(*$1);
+}
 
 %include "tensorflow/c/c_api.h"
 %include "tensorflow/c/python_api.h"

@@ -103,8 +103,7 @@ class ConstantTest(test.TestCase):
 
     # This integer is larger than all non-infinite numbers representable
     # by a double, raises an exception.
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 "out-of-range integer"):
+    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
       constant_op.constant(10**310, dtypes_lib.float64)
 
   def testInt32(self):
@@ -126,8 +125,7 @@ class ConstantTest(test.TestCase):
     self.assertAllClose(np.array(orig), tf_ans.numpy())
 
     # Out of range for an int64
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 "out-of-range integer"):
+    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
       constant_op.constant([2**72])
 
   def testComplex64(self):
@@ -240,14 +238,13 @@ class ConstantTest(test.TestCase):
     self._testAll((x, 1))
 
   def testSparseValuesRaiseErrors(self):
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 "non-rectangular Python sequence"):
+    with self.assertRaisesRegexp(ValueError, "non-rectangular Python sequence"):
       constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):
+    with self.assertRaisesRegexp(ValueError, None):
       constant_op.constant([[1, 2], [3]])
 
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):
+    with self.assertRaisesRegexp(ValueError, None):
       constant_op.constant([[1, 2], [3], [4, 5]])
 
 

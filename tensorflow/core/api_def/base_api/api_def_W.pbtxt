@@ -1,0 +1,72 @@
+op {
+  graph_op_name: "Where"
+  endpoint {
+    name: "Where"
+  }
+  summary: "Returns locations of true values in a boolean tensor."
+  description: <<END
+This operation returns the coordinates of true elements in `input`. The
+coordinates are returned in a 2-D tensor where the first dimension (rows)
+represents the number of true elements, and the second dimension (columns)
+represents the coordinates of the true elements. Keep in mind, the shape of
+the output tensor can vary depending on how many true values there are in
+`input`. Indices are output in row-major order.
+
+For example:
+
+```
+# 'input' tensor is [[True, False]
+#                    [True, False]]
+# 'input' has two true values, so output has two coordinates.
+# 'input' has rank of 2, so coordinates have two indices.
+where(input) ==> [[0, 0],
+                  [1, 0]]
+
+# `input` tensor is [[[True, False]
+#                     [True, False]]
+#                    [[False, True]
+#                     [False, True]]
+#                    [[False, False]
+#                     [False, True]]]
+# 'input' has 5 true values, so output has 5 coordinates.
+# 'input' has rank of 3, so coordinates have three indices.
+where(input) ==> [[0, 0, 0],
+                  [0, 1, 0],
+                  [1, 0, 1],
+                  [1, 1, 1],
+                  [2, 1, 1]]
+```
+END
+}
+op {
+  graph_op_name: "WholeFileReader"
+  endpoint {
+    name: "WholeFileReader"
+  }
+  summary: "A Reader that outputs the entire contents of a file as a value."
+  description: <<END
+To use, enqueue filenames in a Queue.  The output of ReaderRead will
+be a filename (key) and the contents of that file (value).
+END
+}
+op {
+  graph_op_name: "WholeFileReaderV2"
+  endpoint {
+    name: "WholeFileReaderV2"
+  }
+  summary: "A Reader that outputs the entire contents of a file as a value."
+  description: <<END
+To use, enqueue filenames in a Queue.  The output of ReaderRead will
+be a filename (key) and the contents of that file (value).
+END
+}
+op {
+  graph_op_name: "WriteFile"
+  endpoint {
+    name: "WriteFile"
+  }
+  summary: "Writes contents to the file at input filename. Creates file and recursively"
+  description: <<END
+creates directory if not existing.
+END
+}

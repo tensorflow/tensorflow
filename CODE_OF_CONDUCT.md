@@ -42,7 +42,7 @@ The Code of Conduct also applies within project spaces and in public spaces when
 
 Conflicts in an open source project can take many forms, from someone having a bad day and using harsh and hurtful language in the issue queue, to more serious instances such as sexist/racist statements or threats of violence, and everything in between.
 
-If the behaviour is threatening or harassing, or for other reasons requires immediate escalation, please see below.
+If the behavior is threatening or harassing, or for other reasons requires immediate escalation, please see below.
 
 However, for the vast majority of issues, we aim to empower individuals to first resolve conflicts themselves, asking for help when needed, and only after that fails to escalate further. This approach gives people more control over the outcome of their dispute. 
 

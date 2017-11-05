@@ -652,6 +652,9 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Save the output tensors of this run we choose to keep.
   TF_RETURN_IF_ERROR(
       run_state.tensor_store.SaveTensors(output_names, &session_state_));
+  if (args.stats_collector) {
+    args.stats_collector->Finalize();
+  }
 
   // Build and return the cost model as instructed.
   mutex_lock l(executor_lock_);

@@ -225,22 +225,23 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
 
   ```python
   numeric_feature = numeric_column(...)
-  sparse_column_a = categorical_column_with_hash_bucket(...)
-  sparse_column_b = categorical_column_with_hash_bucket(...)
+  categorical_column_a = categorical_column_with_hash_bucket(...)
+  categorical_column_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_x_categorical_feature_b = crossed_column(...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_id_column=categorical_feature_b, ...)
 
   estimator = DNNLinearCombinedClassifier(
       # wide settings
-      linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
+      linear_feature_columns=[categorical_feature_a_x_categorical_feature_b],
       linear_optimizer=tf.train.FtrlOptimizer(...),
       # deep settings
       dnn_feature_columns=[
-          sparse_feature_a_emb, sparse_feature_b_emb, numeric_feature],
+          categorical_feature_a_emb, categorical_feature_b_emb,
+          numeric_feature],
       dnn_hidden_units=[1000, 500, 100],
       dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
 
@@ -277,6 +278,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       whose `value` is a `Tensor`.
 
   Loss is calculated by using softmax cross entropy.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,
@@ -384,22 +389,23 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
 
   ```python
   numeric_feature = numeric_column(...)
-  sparse_column_a = categorical_column_with_hash_bucket(...)
-  sparse_column_b = categorical_column_with_hash_bucket(...)
+  categorical_column_a = categorical_column_with_hash_bucket(...)
+  categorical_column_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_x_categorical_feature_b = crossed_column(...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_column=categorical_feature_b, ...)
 
   estimator = DNNLinearCombinedRegressor(
       # wide settings
-      linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
+      linear_feature_columns=[categorical_feature_a_x_categorical_feature_b],
       linear_optimizer=tf.train.FtrlOptimizer(...),
       # deep settings
       dnn_feature_columns=[
-          sparse_feature_a_emb, sparse_feature_b_emb, numeric_feature],
+          categorical_feature_a_emb, categorical_feature_b_emb,
+          numeric_feature],
       dnn_hidden_units=[1000, 500, 100],
       dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
 
@@ -436,6 +442,10 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       whose `value` is a `Tensor`.
 
   Loss is calculated by using mean squared error.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,

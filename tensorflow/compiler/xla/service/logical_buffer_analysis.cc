@@ -41,12 +41,9 @@ Status LogicalBufferAnalysis::Analyze() {
   // We filter out fusion computations, and get to them through fusion
   // instructions. This is because it's possible to have orphaned (unreachable)
   // fusion computations, and we don't want to try to assign buffers to those.
-  for (auto& computation : module_->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (auto* computation : module_->MakeNonfusionComputations()) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kFusion) {
         continue;
       }
@@ -89,8 +86,7 @@ Status LogicalBufferAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleGetTupleElement(
-    HloInstruction* get_tuple_element, HloInstruction* operand) {
+Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
   // GetTupleElement does not create buffers.
   return Status::OK();
 }
@@ -102,24 +98,19 @@ Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleBitcast(HloInstruction* bitcast) {
+Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
   // A kBitcast instruction aliases its operand. That is, the buffer of its
   // result *is* the buffer of its operand.
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select,
-                                           HloInstruction* /*pred*/,
-                                           HloInstruction* on_true,
-                                           HloInstruction* on_false) {
+Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
   NewLogicalBuffer(select, /*index=*/{});

@@ -49,6 +49,38 @@ inputs: Must all be the same size and shape.
 
 // --------------------------------------------------------------------------
 
+// Note that the following operator is just a placeholder and has no
+// associated kernel. The code in accumulate_n_optimizer.cc replaces
+// this placeholder with a graph of operators that do have kernels.
+// The Python code that generates instances of this op is currently in
+// contrib/framework/python/ops/accumulate_n_v2.py
+REGISTER_OP("AccumulateNV2")
+    .Input("inputs: N * T")
+    .Output("sum: T")
+    .Attr("N: int >= 1")
+    .Attr("T: numbertype")
+    .Attr("shape: shape")
+    .SetIsCommutative()
+    .SetIsAggregate()
+    .SetShapeFn(shape_inference::ExplicitShape)
+    .Doc(R"doc(
+Returns the element-wise sum of a list of tensors.
+
+`tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
+wait for all of its inputs to be ready before beginning to sum. This can
+save memory if inputs are ready at different times, since minimum temporary
+storage is proportional to the output size rather than the inputs size.
+
+Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
+
+Returns a `Tensor` of same shape and type as the elements of `inputs`.
+
+inputs: A list of `Tensor` objects, each with same shape and type.
+shape: Shape of elements of `inputs`.
+)doc");
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("BatchMatMul")
     .Input("x: T")
     .Input("y: T")
@@ -198,12 +230,14 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
 
 #define UNARY_GRADIENT_COMPLEX()                               \
   Input("y: T")                                                \
-      .Input("dy: T")                                           \
+      .Input("dy: T")                                          \
       .Output("z: T")                                          \
       .Attr("T: {half, float, double, complex64, complex128}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
-REGISTER_OP("Neg").UNARY().Doc(R"doc(
+REGISTER_OP("Neg")
+    .UNARY()
+    .Doc(R"doc(
 Computes numerical negative value element-wise.
 I.e., \\(y = -x\\).
 )doc");
@@ -226,155 +260,217 @@ is the corresponding input gradient.
 )doc")
     .Deprecated(17, "Use ReciprocalGrad");
 
-REGISTER_OP("Reciprocal").UNARY().Doc(R"doc(
+REGISTER_OP("Reciprocal")
+    .UNARY()
+    .Doc(R"doc(
 Computes the reciprocal of x element-wise.
 I.e., \\(y = 1 / x\\).
 )doc");
 
-REGISTER_OP("ReciprocalGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("ReciprocalGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the inverse of `x` wrt its input.
 
 Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Square").UNARY().Doc(R"doc(
+REGISTER_OP("Square")
+    .UNARY()
+    .Doc(R"doc(
 Computes square of x element-wise.
 I.e., \\(y = x * x = x^2\\).
 )doc");
 
-REGISTER_OP("Sqrt").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Sqrt")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes square root of x element-wise.
 I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 )doc");
 
-REGISTER_OP("SqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("SqrtGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the sqrt of `x` wrt its input.
 
 Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Rsqrt").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Rsqrt")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes reciprocal of square root of x element-wise.
 I.e., \\(y = 1 / \sqrt{x}\\).
 )doc");
 
-REGISTER_OP("Round").UNARY().Doc(R"doc(
+REGISTER_OP("Round")
+    .UNARY()
+    .Doc(R"doc(
 Rounds the values of a tensor to the nearest integer, element-wise.
 
 Rounds half to even.  Also known as bankers rounding. If you want to round
 according to the current system rounding mode use std::cint.
 )doc");
 
-REGISTER_OP("RsqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("RsqrtGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the rsqrt of `x` wrt its input.
 
 Specifically, `grad = dy * -0.5 * y^3`, where `y = rsqrt(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Exp").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Exp")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes exponential of x element-wise.  \\(y = e^x\\).
 )doc");
 
-REGISTER_OP("Expm1").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Expm1")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes exponential of x - 1 element-wise.
 I.e., \\(y = (\exp x) - 1\\).
 )doc");
 
-REGISTER_OP("Log").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Log")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes natural logarithm of x element-wise.
 I.e., \\(y = \log_e x\\).
 )doc");
 
-REGISTER_OP("Log1p").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Log1p")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
 )doc");
 
-REGISTER_OP("Sinh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Sinh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes hyperbolic sine of x element-wise.
 )doc");
 
-REGISTER_OP("Cosh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Cosh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes hyperbolic cosine of x element-wise.
 )doc");
 
-REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Tanh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
 
-REGISTER_OP("Asinh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Asinh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes inverse hyperbolic sine of x element-wise.
 )doc");
 
-REGISTER_OP("Acosh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Acosh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes inverse hyperbolic cosine of x element-wise.
 )doc");
 
-REGISTER_OP("Atanh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Atanh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes inverse hyperbolic tangent of x element-wise.
 )doc");
 
-REGISTER_OP("TanhGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("TanhGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the tanh of `x` wrt its input.
 
 Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Lgamma").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Lgamma")
+    .UNARY_REAL()
+    .Doc(R"doc(
 Computes the log of the absolute value of `Gamma(x)` element-wise.
 )doc");
 
-REGISTER_OP("Digamma").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Digamma")
+    .UNARY_REAL()
+    .Doc(R"doc(
 Computes Psi, the derivative of Lgamma (the log of the absolute value of
 `Gamma(x)`), element-wise.
 )doc");
 
-REGISTER_OP("Erf").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Erf")
+    .UNARY_REAL()
+    .Doc(R"doc(
 Computes the Gauss error function of `x` element-wise.
 )doc");
 
-REGISTER_OP("Erfc").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Erfc")
+    .UNARY_REAL()
+    .Doc(R"doc(
 Computes the complementary error function of `x` element-wise.
 )doc");
 
-REGISTER_OP("Sigmoid").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Sigmoid")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes sigmoid of `x` element-wise.
 
 Specifically, `y = 1 / (1 + exp(-x))`.
 )doc");
 
-REGISTER_OP("SigmoidGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("SigmoidGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient of the sigmoid of `x` wrt its input.
 
 Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
 `dy` is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Sin").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Sin")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes sin of x element-wise.
 )doc");
 
-REGISTER_OP("Cos").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Cos")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes cos of x element-wise.
 )doc");
 
-REGISTER_OP("Tan").UNARY().Doc(R"doc(
+REGISTER_OP("Tan")
+    .UNARY()
+    .Doc(R"doc(
 Computes tan of x element-wise.
 )doc");
 
-REGISTER_OP("Asin").UNARY().Doc(R"doc(
+REGISTER_OP("Asin")
+    .UNARY()
+    .Doc(R"doc(
 Computes asin of x element-wise.
 )doc");
 
-REGISTER_OP("Acos").UNARY().Doc(R"doc(
+REGISTER_OP("Acos")
+    .UNARY()
+    .Doc(R"doc(
 Computes acos of x element-wise.
 )doc");
 
-REGISTER_OP("Atan").UNARY().Doc(R"doc(
+REGISTER_OP("Atan")
+    .UNARY()
+    .Doc(R"doc(
 Computes atan of x element-wise.
 )doc");
 
@@ -482,7 +578,6 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
   Input("x: T").Input("y: T").Output("z: T").Attr( \
       "T: {half, float, double, int32, int64, complex64, complex128}")
 
-// TODO(mrry): Restore `SetIsCommutative()` for non-string types.
 REGISTER_OP("Add")
     .Input("x: T")
     .Input("y: T")
@@ -491,6 +586,25 @@ REGISTER_OP("Add")
         "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
         "complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Returns x + y element-wise.
+
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+)doc");
+
+// TODO(rmlarsen): Add a Python wrapper that swiches non-string instances to
+// use AddV2 (b/68646025).
+REGISTER_OP("AddV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr(
+        "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
+        "complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetIsAggregate()
+    .SetIsCommutative()
     .Doc(R"doc(
 Returns x + y element-wise.
 
@@ -591,7 +705,7 @@ REGISTER_OP("TruncateDiv")
 Returns x / y element-wise for integer types.
 
 Truncation designates that negative numbers will round fractional quantities
-toward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different
+toward zero. I.e. -7 / 5 = -1. This matches C semantics but it is different
 than Python semantics. See `FloorDiv` for a division function that matches
 Python Semantics.
 
@@ -692,8 +806,8 @@ REGISTER_OP("Mod")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns element-wise remainder of division. This emulates C semantics in that
-the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
-y + truncate_mod(x, y) = x`.
+the result here is consistent with a truncating divide. E.g.
+`tf.truncatediv(x, y) * y + truncate_mod(x, y) = x`.
 
 *NOTE*: `Mod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -910,28 +1024,36 @@ beta function.
       .Attr("T: realnumbertype") \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("Less").COMPARISON().Doc(R"doc(
+REGISTER_OP("Less")
+    .COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x < y) element-wise.
 
 *NOTE*: `Less` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("LessEqual").COMPARISON().Doc(R"doc(
+REGISTER_OP("LessEqual")
+    .COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x <= y) element-wise.
 
 *NOTE*: `LessEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("Greater").COMPARISON().Doc(R"doc(
+REGISTER_OP("Greater")
+    .COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x > y) element-wise.
 
 *NOTE*: `Greater` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("GreaterEqual").COMPARISON().Doc(R"doc(
+REGISTER_OP("GreaterEqual")
+    .COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x >= y) element-wise.
 
 *NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
@@ -953,14 +1075,18 @@ Returns the truth value of (x >= y) element-wise.
           "quint8, qint8, qint32, string, bool, complex128}")           \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("Equal").EQUALITY_COMPARISON().Doc(R"doc(
+REGISTER_OP("Equal")
+    .EQUALITY_COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x == y) element-wise.
 
 *NOTE*: `Equal` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("NotEqual").EQUALITY_COMPARISON().Doc(R"doc(
+REGISTER_OP("NotEqual")
+    .EQUALITY_COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x != y) element-wise.
 
 *NOTE*: `NotEqual` supports broadcasting. More about broadcasting
@@ -998,14 +1124,18 @@ Returns the truth value of NOT x element-wise.
       .SetIsCommutative() \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("LogicalAnd").BINARY_LOGICAL().Doc(R"doc(
+REGISTER_OP("LogicalAnd")
+    .BINARY_LOGICAL()
+    .Doc(R"doc(
 Returns the truth value of x AND y element-wise.
 
 *NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("LogicalOr").BINARY_LOGICAL().Doc(R"doc(
+REGISTER_OP("LogicalOr")
+    .BINARY_LOGICAL()
+    .Doc(R"doc(
 Returns the truth value of x OR y element-wise.
 
 *NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
@@ -1945,12 +2075,12 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   T limit = limit_t->scalar<T>()();
   T delta = delta_t->scalar<T>()();
   if (start > limit && delta > 0) {
-    return errors::InvalidArgument(
-        "Requires start <= limit when delta > 0: ", start, "/", limit);
+    return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
+                                   start, "/", limit);
   }
   if (start < limit && delta < 0) {
-    return errors::InvalidArgument(
-        "Requires start >= limit when delta < 0: ", start, "/", limit);
+    return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
+                                   start, "/", limit);
   }
   if (delta == 0) {
     return errors::InvalidArgument("Requires delta != 0");
@@ -2217,6 +2347,51 @@ product: Pairwise cross product of the vectors in `a` and `b`.
 )doc");
 
 // --------------------------------------------------------------------------
+
+REGISTER_OP("HistogramFixedWidth")
+    .Input("values: T")
+    .Input("value_range: T")
+    .Input("nbins: int32")
+    .Output("out: dtype")
+    .Attr("T: {int32, int64, float32, float64}")
+    .Attr("dtype: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      const Tensor* nbins_input = c->input_tensor(2);
+      if (nbins_input != nullptr) {
+        int64 nbins;
+        TF_RETURN_IF_ERROR(c->GetScalarFromTensor(nbins_input, &nbins));
+        c->set_output(0, c->Vector(nbins));
+      } else {
+        c->set_output(0, c->UnknownShapeOfRank(1));
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Return histogram of values.
+
+Given the tensor `values`, this operation returns a rank 1 histogram counting
+the number of entries in `values` that fall into every bin.  The bins are
+equal width and determined by the arguments `value_range` and `nbins`.
+
+```python
+# Bins will be:  (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+nbins = 5
+value_range = [0.0, 5.0]
+new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+
+with tf.get_default_session() as sess:
+  hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
+  variables.global_variables_initializer().run()
+  sess.run(hist) => [2, 1, 1, 0, 2]
+```
+
+values:  Numeric `Tensor`.
+value_range:  Shape [2] `Tensor` of same `dtype` as `values`.
+  values <= value_range[0] will be mapped to hist[0],
+  values >= value_range[1] will be mapped to hist[-1].
+nbins:  Scalar `int32 Tensor`.  Number of histogram bins.
+out: A 1-D `Tensor` holding histogram of values.
+)doc");
 
 REGISTER_OP("Bincount")
     .Input("arr: int32")

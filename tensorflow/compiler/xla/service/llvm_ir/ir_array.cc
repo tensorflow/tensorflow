@@ -229,9 +229,11 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   }
 
   if (!is_implicit_broadcast && index.LinearValidOnShape(*shape_)) {
+    llvm::Module* module =
+        ir_builder->GetInsertBlock()->getParent()->getParent();
     return ir_builder->CreateInBoundsGEP(
         ir_builder->CreateBitCast(
-            base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), ir_builder)
+            base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), module)
                            ->getPointerTo()),
         {index.linear()}, llvm_ir::AsStringRef(name));
   }
@@ -268,8 +270,6 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::Value* element_address =
       EmitArrayElementAddress(index, ir_builder, name);
   llvm::LoadInst* load = ir_builder->CreateLoad(element_address);
-  llvm_ir::SetTbaaForInstruction(load, GetShape(),
-                                 /*is_pointer_to=*/false);
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
@@ -278,14 +278,13 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
                                     llvm::IRBuilder<>* ir_builder) const {
   llvm::Value* element_address = EmitArrayElementAddress(index, ir_builder);
   llvm::StoreInst* store = ir_builder->CreateStore(value, element_address);
-  llvm_ir::SetTbaaForInstruction(store, GetShape(),
-                                 /*is_pointer_to=*/false);
   AnnotateLoadStoreInstructionWithMetadata(store);
 }
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
                              llvm::IRBuilder<>* ir_builder) const {
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, ir_builder);
+  llvm::Module* module = ir_builder->GetInsertBlock()->getParent()->getParent();
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   return IrArray(
       ir_builder->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()),
       new_shape);

@@ -95,8 +95,7 @@ TEST(HloGraphDumperTest, NestedFusion) {
        {root_computation,  //
         inner_fusion->fused_instructions_computation(),
         outer_fusion->fused_instructions_computation()}) {
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
       EXPECT_THAT(graph, HasSubstr(instruction->name()));
     }
   }
@@ -105,10 +104,10 @@ TEST(HloGraphDumperTest, NestedFusion) {
   // care that the outer nodes are omitted -- whether they are or not is based
   // fiddly heuristics -- but we do care that the node we asked for is printed.
   const HloInstruction* inner_sum = nullptr;
-  for (const std::unique_ptr<HloInstruction>& instruction :
+  for (const HloInstruction* instruction :
        inner_fusion->fused_instructions_computation()->instructions()) {
     if (instruction->opcode() == HloOpcode::kAdd) {
-      inner_sum = instruction.get();
+      inner_sum = instruction;
       break;
     }
   }

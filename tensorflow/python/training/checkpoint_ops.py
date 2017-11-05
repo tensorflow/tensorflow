@@ -372,6 +372,15 @@ def _load_and_remap_matrix_initializer(ckpt_path,
                                  max(0, offset + shape[0] - new_row_vocab_size))
     num_rows_to_load = shape[0] - row_oov_buckets_to_use
 
+    # We may be operating on an OOV-only partition, in which case we newly
+    # initialize all rows of this partition.
+    if offset > new_row_vocab_size:
+      if shape[0] != row_oov_buckets_to_use:
+        raise ValueError(
+            "Partitioned variable offset is greater than new vocab size and "
+            "not operating on OOV-only partition.")
+      return initializer(shape)
+
     return _load_and_remap_matrix(
         ckpt_path=ckpt_path,
         old_tensor_name=old_tensor_name,

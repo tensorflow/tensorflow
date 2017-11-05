@@ -107,6 +107,9 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
 
   auto f16_lit = Literal::CreateR0<half>(static_cast<half>(0.5f));
   ASSERT_EQ("0.5", f16_lit->ToString());
+
+  auto c64_lit = Literal::CreateR0<complex64>({3.14f, 2.78f});
+  ASSERT_EQ("(3.14, 2.78)", c64_lit->ToString());
 }
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
@@ -119,7 +122,7 @@ TEST_F(LiteralUtilTest, R2ToString) {
   const string expected = R"(s32[3,2] {
   { 1, 2 },
   { 3, 4 },
-  { 5, 6 },
+  { 5, 6 }
 })";
   ASSERT_EQ(expected, literal->ToString());
 }
@@ -145,8 +148,8 @@ TEST_F(LiteralUtilTest, TupleToString) {
 1,
 f32[2,2] {
   { 1, 2 },
-  { 3, 4 },
-},
+  { 3, 4 }
+}
 ))";
   ASSERT_EQ(expected, tuple->ToString());
 }
@@ -188,18 +191,18 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   EXPECT_THAT(literal->shape().dimensions(), ElementsAre(1, 2, 3, 2));
   string result = literal->ToString();
   const string expected = R"(f32[1,2,3,2] {
-  {  // i0=0
-    {  // i1=0
+  {  /*i0=0*/
+    {  /*i1=0*/
       {1, 2},
       {1001, 1002},
-      {2001, 2002},
+      {2001, 2002}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {1, 2},
       {1001, 1002},
-      {2001, 2002},
-    },
-  },
+      {2001, 2002}
+    }
+  }
 })";
   ASSERT_EQ(expected, result);
 }
@@ -209,30 +212,30 @@ TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
               ElementsAre(2, 2, 3, 3));
   string result = literal_r4_2x2x3x3_dim0major_->ToString();
   const string expected = R"(f32[2,2,3,3] {
-  {  // i0=0
-    {  // i1=0
+  {  /*i0=0*/
+    {  /*i1=0*/
       {1, 2, 3},
       {4, 5, 6},
-      {7, 8, 9},
+      {7, 8, 9}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {11, 12, 13},
       {14, 15, 16},
-      {17, 18, 19},
-    },
+      {17, 18, 19}
+    }
   },
-  {  // i0=1
-    {  // i1=0
+  {  /*i0=1*/
+    {  /*i1=0*/
       {101, 102, 103},
       {104, 105, 106},
-      {107, 108, 109},
+      {107, 108, 109}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {201, 202, 203},
       {204, 205, 206},
-      {207, 208, 209},
-    },
-  },
+      {207, 208, 209}
+    }
+  }
 })";
   ASSERT_EQ(expected, result);
 }
@@ -331,6 +334,19 @@ TEST_F(LiteralUtilTest, TupleEquality) {
   EXPECT_NE(*tuple1, *different_tuple);
 }
 
+TEST_F(LiteralUtilTest, C64Equality) {
+  // Test equality with tuples.
+  auto vector = Literal::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
+
+  // Tuple with the same elements. One element is shared with the original
+  // tuple, the other is a clone of the element in the original tuple.
+  auto vector_clone = Literal::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*vector, *vector_clone);
+
+  auto vector_reversed = Literal::CreateR1<complex64>({{3.0, 4.0}, {1.0, 2.0}});
+  EXPECT_NE(*vector, *vector_reversed);
+}
+
 TEST_F(LiteralUtilTest, IsAllTuple) {
   auto element1 = Literal::CreateR0<float>(0.0);
   auto element2 = Literal::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
@@ -381,6 +397,9 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_FALSE(Literal::CreateR2<half>({{h8}, {h9}})->IsAll(8));
   EXPECT_FALSE(Literal::CreateR2<half>({{h9}, {h8}})->IsAll(8));
 
+  complex64 c8_9 = {8, 9};
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c8_9}, {c8_9}})->IsAll(8));
+
   auto uint64_max = std::numeric_limits<uint64>::max();
   EXPECT_FALSE(Literal::CreateR2<uint64>(
                    {{uint64_max, uint64_max}, {uint64_max, uint64_max}})
@@ -411,6 +430,25 @@ TEST_F(LiteralUtilTest, IsAllFloat) {
       Literal::CreateR2<double>({{0, 0, 0}, {0, .1, 0}})->IsAllFloat(0));
 }
 
+TEST_F(LiteralUtilTest, IsAllComplex) {
+  // IsAllComplex always returns false when the literal is not complex.
+  EXPECT_FALSE(Literal::CreateR0<bool>(false)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<int8>(0)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<uint8>(0)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<int>(0)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<float>(0)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<double>(0)->IsAllComplex(0));
+
+  complex64 c8_9 = {8, 9};
+  complex64 c7_9 = {7, 9};
+  EXPECT_TRUE(Literal::CreateR2<complex64>({{c8_9}, {c8_9}})
+                  ->IsAllComplex({8.0f, 9.0f}));
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c7_9}, {c8_9}})
+                   ->IsAllComplex({8.0f, 9.0f}));
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c8_9}, {c7_9}})
+                   ->IsAllComplex({8.0f, 9.0f}));
+}
+
 TEST_F(LiteralUtilTest, IsZero) {
   auto scalar_zero = Literal::CreateR0<float>(0.0f);
   auto scalar_one = Literal::CreateR0<float>(1.0f);
@@ -422,12 +460,17 @@ TEST_F(LiteralUtilTest, IsZero) {
   EXPECT_TRUE(array->IsZero({0, 2}));
   EXPECT_TRUE(array->IsZero({1, 1}));
   EXPECT_FALSE(array->IsZero({1, 2}));
+
+  auto complex_zero = Literal::CreateR0<complex64>(0.0f);
+  auto complex_nonzero = Literal::CreateR0<complex64>(0.5f);
+  EXPECT_TRUE(complex_zero->IsZero({}));
+  EXPECT_FALSE(complex_nonzero->IsZero({}));
 }
 
 template <typename T>
 class LiteralUtilTestTemplated : public ::testing::Test {};
 
-using TestedTypes = ::testing::Types<float, int32, uint32>;
+using TestedTypes = ::testing::Types<float, int32, uint32, complex64>;
 TYPED_TEST_CASE(LiteralUtilTestTemplated, TestedTypes);
 
 TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
@@ -626,10 +669,25 @@ TEST_F(LiteralUtilTest, PopulateR1S64) {
   EXPECT_EQ(output, *expected);
 }
 
-TEST_F(LiteralUtilTest, PopulateR2U64) {
+TEST_F(LiteralUtilTest, PopulateR1U64) {
   Literal output;
   output.PopulateR1<uint64>({{77, 88}});
   auto expected = Literal::CreateR1<uint64>({{77, 88}});
+  EXPECT_EQ(output, *expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateR1C64) {
+  Literal output;
+  output.PopulateR1<complex64>({{77, 88}});
+  auto expected = Literal::CreateR1<complex64>({{77, 88}});
+  EXPECT_EQ(output, *expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateR2C64) {
+  Literal output;
+  output.PopulateR2<complex64>({{{7, 8}, {9, 10}}, {{1, 2}, {3, 4}}});
+  auto expected =
+      Literal::CreateR2<complex64>({{{7, 8}, {9, 10}}, {{1, 2}, {3, 4}}});
   EXPECT_EQ(output, *expected);
 }
 
@@ -651,6 +709,14 @@ TEST_F(LiteralUtilTest, PopulateWithValueR2U64) {
   Literal output;
   output.PopulateWithValue<uint64>(42, {2, 2});
   auto expected = Literal::CreateR2<uint64>({{42, 42}, {42, 42}});
+  EXPECT_EQ(output, *expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateWithValueR2C64) {
+  Literal output;
+  output.PopulateWithValue<complex64>({4, 2}, {2, 2});
+  auto expected =
+      Literal::CreateR2<complex64>({{{4, 2}, {4, 2}}, {{4, 2}, {4, 2}}});
   EXPECT_EQ(output, *expected);
 }
 
@@ -919,6 +985,11 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0.0, 19.0, 0.0, 21.0}, {22.0, 0.0, 24.0, 0.0}},
     {{26.0, 0.0, 28.0, 0.0}, {0.0, 31.0, 0.0, 33.0}},
   }}, layout_r4_dim0major_);
+  auto c64 = Literal::CreateR4WithLayout<complex64>({{
+    {{10.0f, 0.0f, 12.0f, 0.0f}, {0.0f, 15.0f, 0.0f, 17.0f}},
+    {{0.0f, 19.0f, 0.0f, 21.0f}, {22.0f, 0.0f, 24.0f, 0.0f}},
+    {{26.0f, 0.0f, 28.0f, 0.0f}, {0.0f, 31.0f, 0.0f, 33.0f}},
+  }}, layout_r4_dim0major_);
   // clang-format on
   std::unique_ptr<Literal> conv;
 
@@ -961,11 +1032,21 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   conv = u32->Convert(F16).ConsumeValueOrDie();
   EXPECT_EQ(*conv, *f16);
 
+  conv = s32->Convert(C64).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *c64);
+
+  conv = f16->Convert(C64).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *c64);
+
   EXPECT_EQ(s32->Convert(TUPLE).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
   EXPECT_EQ(s32->Convert(S16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
   EXPECT_EQ(s32->Convert(U16).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(c64->Convert(F32).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(c64->Convert(S32).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
 }
 

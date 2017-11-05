@@ -25,6 +25,7 @@ py_test(
     srcs = ["predict_test.py"],
     data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67513579
     deps = [
         ":predict",
         "//tensorflow/python:client_testlib",
@@ -87,6 +88,8 @@ py_binary(
     tags = ["no_pip"],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/timeseries/python/timeseries:estimators",
+        "//tensorflow/contrib/timeseries/python/timeseries:model",
         "//third_party/py/numpy",
     ],
 )
@@ -96,7 +99,11 @@ py_test(
     timeout = "long",  # Moderate but for asan
     srcs = ["lstm_test.py"],
     srcs_version = "PY2AND3",
-    deps = [":lstm"],
+    tags = ["notsan"],
+    deps = [
+        ":lstm",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 filegroup(

@@ -11,7 +11,7 @@ median house values.
 The `input_fn` is used to pass feature and target data to the `train`,
 `evaluate`, and `predict` methods of the `Estimator`.
 The user can do feature engineering or pre-processing inside the `input_fn`.
-Here's an example taken from the @{$estimator$tf.estimator Quickstart tutorial}:
+Here's an example taken from the @{$get_started/estimator$tf.estimator Quickstart tutorial}:
 
 ```python
 import numpy as np
@@ -191,7 +191,7 @@ import pandas as pd
 
 def get_input_fn_from_pandas(data_set, num_epochs=None, shuffle=True):
   return tf.estimator.inputs.pandas_input_fn(
-      x=pdDataFrame(...),
+      x=pd.DataFrame(...),
       y=pd.Series(...),
       num_epochs=num_epochs,
       shuffle=shuffle)
