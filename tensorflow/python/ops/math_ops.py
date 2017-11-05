@@ -2190,8 +2190,10 @@ def bincount(arr,
     maxlength = ops.convert_to_tensor(
         maxlength, name="maxlength", dtype=dtypes.int32)
     output_size = gen_math_ops.minimum(maxlength, output_size)
-  weights = (ops.convert_to_tensor(weights, name="weights")
-             if weights is not None else constant_op.constant([], dtype))
+  if weights is not None:
+    weights = ops.convert_to_tensor(weights, name="weights")
+    return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
+  weights = constant_op.constant([], dtype)
   return gen_math_ops.bincount(arr, output_size, weights)
 
 
