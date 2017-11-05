@@ -17,7 +17,7 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG c563b583cb9b7fecc33971581368796d2df4759d)
+set(GRPC_TAG 781fd6f6ea03645a520cd5c675da67ab61f87e4b)
 
 if(WIN32)
   set(grpc_STATIC_LIBRARIES
@@ -28,11 +28,9 @@ else()
   set(grpc_STATIC_LIBRARIES
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/cares/libcares.a)
 endif()
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DGRPC_ARES=0")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGRPC_ARES=0")
 
 ExternalProject_Add(grpc
     PREFIX grpc
@@ -41,6 +39,9 @@ ExternalProject_Add(grpc
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    # TODO(jhseu): Remove this PATCH_COMMAND once grpc removes the dependency
+    # on "grpc" from the "grpc++_unsecure" rule.
+    PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
     BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
     COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
     INSTALL_COMMAND ""
