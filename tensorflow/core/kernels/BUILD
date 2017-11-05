@@ -925,7 +925,6 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:cuda",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -933,11 +932,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@local_config_cuda//cuda:cublas",
-        "@local_config_cuda//cuda:cuda_driver",
-        "@local_config_cuda//cuda:cudnn",
-        "@local_config_cuda//cuda:cufft",
-        "@local_config_cuda//cuda:curand",
     ],
 )
 

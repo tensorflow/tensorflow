@@ -254,7 +254,6 @@ BatchFFT3D
 BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
-Bincount
 Bucketize
 Complex
 ComplexAbs
