@@ -119,7 +119,7 @@ class Head(object):
       update_op = tf.contrib.layers.optimize_loss(optimizer=sync,
                                                   loss=model_fn_ops.loss, ...)
       hooks = [sync.make_session_run_hook(is_chief)]
-      ... upate train_op and hooks in ModelFnOps and return
+      ... update train_op and hooks in ModelFnOps and return
     ```
   """
   __metaclass__ = abc.ABCMeta
