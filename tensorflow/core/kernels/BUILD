@@ -1601,7 +1601,10 @@ DYNAMIC_DEPS = [
 tf_kernel_library(
     name = "dynamic_partition_op",
     prefix = "dynamic_partition_op",
-    deps = DYNAMIC_DEPS,
+    deps = DYNAMIC_DEPS + [
+        ":fill_functor",
+        ":gather_functor",
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -1671,7 +1674,7 @@ tf_kernel_library(
     ],
 )
 
-tf_cc_tests(
+tf_cuda_cc_tests(
     name = "dynamic_op_test",
     size = "small",
     srcs = [
