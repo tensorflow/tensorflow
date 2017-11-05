@@ -16,6 +16,11 @@
 
 These methods come from https://arxiv.org/abs/1606.03498 and
 https://arxiv.org/abs/1706.08500.
+
+NOTE: This implementation uses the same weights as in
+https://github.com/openai/improved-gan/blob/master/inception_score/model.py,
+but is more numerically stable and is an unbiased estimator of the true
+Inception score even when splitting the inputs into batches.
 """
 
 from __future__ import absolute_import
@@ -54,17 +59,16 @@ __all__ = [
     'classifier_score',
     'frechet_inception_distance',
     'frechet_classifier_distance',
+    'INCEPTION_DEFAULT_IMAGE_SIZE',
 ]
 
 
-INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v3_2017_09_13.tar.gz'
-INCEPTION_FROZEN_GRAPH = 'frozen_inception_v3.pb'
-INCEPTION_V3_INPUT = 'inputs'
-INCEPTION_V3_OUTPUT = 'InceptionV3/Logits/SpatialSqueeze:0'
-INCEPTION_V3_FINAL_POOL = 'InceptionV3/Logits/AvgPool_1a_8x8/AvgPool:0'
-_INCEPTION_V3_NUM_CLASSES = 1001
-_INCEPTION_V3_FINAL_POOL_SIZE = 2048
-INCEPTION_V3_DEFAULT_IMG_SIZE = 299
+INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v1_2015_12_05.tar.gz'
+INCEPTION_FROZEN_GRAPH = 'inceptionv1_for_inception_score.pb'
+INCEPTION_INPUT = 'Mul:0'
+INCEPTION_OUTPUT = 'logits:0'
+INCEPTION_FINAL_POOL = 'pool_3:0'
+INCEPTION_DEFAULT_IMAGE_SIZE = 299
 
 
 def _validate_images(images, image_size):
@@ -75,12 +79,13 @@ def _validate_images(images, image_size):
   return images
 
 
-def _matrix_square_root(mat, eps=1e-10):
-  """Compute symmetric square root of matrix.
+def _symmetric_matrix_square_root(mat, eps=1e-10):
+  """Compute square root of a symmetric matrix.
 
-  Equivalent to matrix square root when matrix is invertible; note that this is
-  different from an elementwise square root. We want to compute M' where M' =
-  sqrt(mat) such that M' * M' = mat.
+  Note that this is different from an elementwise square root. We want to
+  compute M' where M' = sqrt(mat) such that M' * M' = mat.
+
+  Also note that this method **only** works for symmetric matrices.
 
   Args:
     mat: Matrix to take the square root of.
@@ -101,46 +106,37 @@ def _matrix_square_root(mat, eps=1e-10):
       math_ops.matmul(u, array_ops.diag(si)), v, transpose_b=True)
 
 
-# Convenience preprocessing function, with fixed defaults.
-# NOTE: Floating-point inputs are expected to be in [0, 1].
-# Copied from /tensorflow_models/slim/preprocessing/inception_preprocessing.py.
 def preprocess_image(
-    image, height=INCEPTION_V3_DEFAULT_IMG_SIZE,
-    width=INCEPTION_V3_DEFAULT_IMG_SIZE, central_fraction=0.875, scope=None):
-  """Prepare one image for evaluation.
+    images, height=INCEPTION_DEFAULT_IMAGE_SIZE,
+    width=INCEPTION_DEFAULT_IMAGE_SIZE, scope=None):
+  """Prepare a batch of images for evaluation.
 
-  If height and width are specified it would output an image with that size by
-  applying resize_bilinear.
+  This is the preprocessing portion of the graph from
+  http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz.
 
-  If central_fraction is specified it would crop the central fraction of the
-  input image.
+  Note that it expects Tensors in [0, 255]. This function maps pixel values to
+  [-1, 1] and resizes to match the InceptionV1 network.
 
   Args:
-    image: 3-D Tensor of image. If dtype is tf.float32 then the range should be
-      [0, 1], otherwise it would converted to tf.float32 assuming that the range
-      is [0, MAX], where MAX is largest positive representable number for
-      int(8/16/32) data type (see `tf.image.convert_image_dtype` for details).
-    height: integer
-    width: integer
-    central_fraction: Optional Float, fraction of the image to crop.
+    images: 3-D or 4-D Tensor of images. Values are in [0, 255].
+    height: Integer. Height of resized output image.
+    width: Integer. Width of resized output image.
     scope: Optional scope for name_scope.
-  Returns:
-    3-D float Tensor of prepared image.
-  """
-  with ops.name_scope(scope, 'eval_image', [image, height, width]):
-    if image.dtype != dtypes.float32:
-      image = image_ops.convert_image_dtype(image, dtype=dtypes.float32)
-    # Crop the central region of the image with an area containing 87.5% of
-    # the original image.
-    image = image_ops.central_crop(image, central_fraction=central_fraction)
 
-    # Resize the image to the specified height and width.
-    image = array_ops.expand_dims(image, 0)
-    image = image_ops.resize_bilinear(image, [height, width],
-                                      align_corners=False)
-    image = array_ops.squeeze(image, [0])
-    image = (image - 0.5) * 2.0
-    return image
+  Returns:
+    3-D or 4-D float Tensor of prepared image(s). Values are in [-1, 1].
+  """
+  is_single = images.shape.ndims == 3
+  with ops.name_scope(scope, 'preprocess', [images, height, width]):
+    if not images.dtype.is_floating:
+      images = math_ops.to_float(images)
+    if is_single:
+      images = array_ops.expand_dims(images, axis=0)
+    resized = image_ops.resize_bilinear(images, [height, width])
+    resized = (resized - 128.0) / 128.0
+    if is_single:
+      resized = array_ops.squeeze(resized, axis=0)
+    return resized
 
 
 def _kl_divergence(p, p_logits, q):
@@ -210,9 +206,9 @@ def _default_graph_def_fn():
 def run_inception(images,
                   graph_def=None,
                   default_graph_def_fn=_default_graph_def_fn,
-                  image_size=INCEPTION_V3_DEFAULT_IMG_SIZE,
-                  input_tensor=INCEPTION_V3_INPUT,
-                  output_tensor=INCEPTION_V3_OUTPUT):
+                  image_size=INCEPTION_DEFAULT_IMAGE_SIZE,
+                  input_tensor=INCEPTION_INPUT,
+                  output_tensor=INCEPTION_OUTPUT):
   """Run images through a pretrained Inception classifier.
 
   Args:
@@ -301,7 +297,8 @@ def classifier_score(images, classifier_fn, num_batches=1):
       efficiently run them through the classifier network.
 
   Returns:
-    The classifier score. A floating-point scalar.
+    The classifier score. A floating-point scalar of the same type as the output
+    of `classifier_fn`.
   """
   generated_images_list = array_ops.split(
       images, num_or_size_splits=num_batches)
@@ -316,26 +313,77 @@ def classifier_score(images, classifier_fn, num_batches=1):
       name='RunClassifier')
   logits = array_ops.concat(array_ops.unstack(logits), 0)
   logits.shape.assert_has_rank(2)
+
+  # Use maximum precision for best results.
+  logits_dtype = logits.dtype
+  if logits_dtype != dtypes.float64:
+    logits = math_ops.to_double(logits)
+
   p = nn_ops.softmax(logits)
   q = math_ops.reduce_mean(p, axis=0)
   kl = _kl_divergence(p, logits, q)
   kl.shape.assert_has_rank(1)
   log_score = math_ops.reduce_mean(kl)
+  final_score = math_ops.exp(log_score)
 
-  return math_ops.exp(log_score)
+  if logits_dtype != dtypes.float64:
+    final_score = math_ops.cast(final_score, logits_dtype)
+  return final_score
 
 
 inception_score = functools.partial(
     classifier_score,
     classifier_fn=functools.partial(
-        run_inception, output_tensor=INCEPTION_V3_OUTPUT))
+        run_inception, output_tensor=INCEPTION_OUTPUT))
+
+
+def trace_sqrt_product(sigma, sigma_v):
+  """Find the trace of the positive sqrt of product of covariance matrices.
+
+  '_symmetric_matrix_square_root' only works for symmetric matrices, so we
+  cannot just take _symmetric_matrix_square_root(sigma * sigma_v).
+  ('sigma' and 'sigma_v' are symmetric, but their product is not necessarily).
+
+  Let sigma = A A so A = sqrt(sigma), and sigma_v = B B.
+  We want to find trace(sqrt(sigma sigma_v)) = trace(sqrt(A A B B))
+  Note the following properties:
+  (i) forall M1, M2: eigenvalues(M1 M2) = eigenvalues(M2 M1)
+     => eigenvalues(A A B B) = eigenvalues (A B B A)
+  (ii) if M1 = sqrt(M2), then eigenvalues(M1) = sqrt(eigenvalues(M2))
+     => eigenvalues(sqrt(sigma sigma_v)) = sqrt(eigenvalues(A B B A))
+  (iii) forall M: trace(M) = sum(eigenvalues(M))
+     => trace(sqrt(sigma sigma_v)) = sum(eigenvalues(sqrt(sigma sigma_v)))
+                                   = sum(sqrt(eigenvalues(A B B A)))
+                                   = sum(eigenvalues(sqrt(A B B A)))
+                                   = trace(sqrt(A B B A))
+                                   = trace(sqrt(A sigma_v A))
+  A = sqrt(sigma). Both sigma and A sigma_v A are symmetric, so we **can**
+  use the _symmetric_matrix_square_root function to find the roots of these
+  matrices.
+
+  Args:
+    sigma: a square, symmetric, real, positive semi-definite covariance matrix
+    sigma_v: same as sigma
+
+  Returns:
+    The trace of the positive square root of sigma*sigma_v
+  """
+
+  # Note sqrt_sigma is called "A" in the proof above
+  sqrt_sigma = _symmetric_matrix_square_root(sigma)
+
+  # This is sqrt(A sigma_v A) above
+  sqrt_a_sigmav_a = math_ops.matmul(
+      sqrt_sigma, math_ops.matmul(sigma_v, sqrt_sigma))
+
+  return math_ops.trace(_symmetric_matrix_square_root(sqrt_a_sigmav_a))
 
 
 def frechet_classifier_distance(real_images,
                                 generated_images,
                                 classifier_fn,
                                 num_batches=1):
-  """Classifier distance for evaluating a conditional generative model.
+  """Classifier distance for evaluating a generative model.
 
   This is based on the Frechet Inception distance, but for an arbitrary
   classifier.
@@ -351,6 +399,13 @@ def frechet_classifier_distance(real_images,
   Inception score, this is a true distance and utilizes information about real
   world images.
 
+  Note that when computed using sample means and sample covariance matrices,
+  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
+  even if the two distributions are the same, for a small sample size, the
+  expected Frechet distance is large). It is important to use the same
+  sample size to compute frechet classifier distance when comparing two
+  generative models.
+
   Args:
     real_images: Real images to use to compute Frechet Inception distance.
     generated_images: Generated images to use to compute Frechet Inception
@@ -361,7 +416,8 @@ def frechet_classifier_distance(real_images,
       efficiently run them through the classifier network.
 
   Returns:
-    The Frechet Inception distance. A floating-point scalar.
+    The Frechet Inception distance. A floating-point scalar of the same type
+    as the output of `classifier_fn`
   """
 
   real_images_list = array_ops.split(
@@ -380,19 +436,24 @@ def frechet_classifier_distance(real_images,
       swap_memory=True,
       name='RunClassifier')
 
+  activations_dtype = activations.dtype
   # Split the activations by the real and generated images.
   real_a, gen_a = array_ops.split(activations, [num_batches, num_batches], 0)
 
   # Ensure the activations have the right shapes.
   real_a = array_ops.concat(array_ops.unstack(real_a), 0)
   gen_a = array_ops.concat(array_ops.unstack(gen_a), 0)
+  if activations_dtype != dtypes.float64:
+    real_a = math_ops.to_double(real_a)
+    gen_a = math_ops.to_double(gen_a)
+
   real_a.shape.assert_has_rank(2)
   gen_a.shape.assert_has_rank(2)
 
   # Compute mean and covariance matrices of activations.
   m = math_ops.reduce_mean(real_a, 0)
   m_v = math_ops.reduce_mean(gen_a, 0)
-  num_examples = math_ops.to_float(array_ops.shape(real_a)[0])
+  num_examples = math_ops.to_double(array_ops.shape(real_a)[0])
 
   # sigma = (1 / (n - 1)) * (X - mu) (X - mu)^T
   sigma = math_ops.matmul(
@@ -401,13 +462,20 @@ def frechet_classifier_distance(real_images,
   sigma_v = math_ops.matmul(
       gen_a - m_v, gen_a - m_v, transpose_a=True) / (num_examples - 1)
 
-  # Take matrix square root of the product of covariance matrices.
-  sqcc = _matrix_square_root(math_ops.matmul(sigma, sigma_v))
+  # Find the Tr(sqrt(sigma sigma_v)) component of FID
+  sqrt_trace_component = trace_sqrt_product(sigma, sigma_v)
 
   # Compute the two components of FID.
-  trace = math_ops.trace(sigma + sigma_v - 2.0 * sqcc)
+
+  # First the covariance component.
+  # Here, note that trace(A + B) = trace(A) + trace(B)
+  trace = math_ops.trace(sigma + sigma_v) - 2.0 * sqrt_trace_component
+
+  # Next the distance between means.
   mean = math_ops.square(linalg_ops.norm(m - m_v))  # This uses the L2 norm.
   fid = trace + mean
+  if activations_dtype != dtypes.float64:
+    fid = math_ops.cast(fid, activations_dtype)
 
   return fid
 
@@ -415,4 +483,4 @@ def frechet_classifier_distance(real_images,
 frechet_inception_distance = functools.partial(
     frechet_classifier_distance,
     classifier_fn=functools.partial(
-        run_inception, output_tensor=INCEPTION_V3_FINAL_POOL))
+        run_inception, output_tensor=INCEPTION_FINAL_POOL))

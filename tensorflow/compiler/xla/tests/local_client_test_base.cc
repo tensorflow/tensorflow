@@ -90,6 +90,9 @@ int64 TestAllocator::deallocation_count(int device_ordinal) const {
 
 /* static */ TestAllocator* LocalClientTestBase::GetOrCreateAllocator(
     perftools::gputools::Platform* platform) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  tensorflow::mutex_lock lock(mu);
+
   if (allocator_ == nullptr) {
     allocator_ = new TestAllocator(
         platform == nullptr ? PlatformUtil::GetDefaultPlatform().ValueOrDie()
@@ -126,27 +129,11 @@ LocalClientTestBase::LocalClientTestBase(
 
 LocalClientTestBase::~LocalClientTestBase() {}
 
-std::unique_ptr<ScopedShapedBuffer>
-LocalClientTestBase::LiteralToScopedShapedBuffer(const Literal& literal) {
-  return LiteralToScopedShapedBuffer(literal,
-                                     local_client_->default_device_ordinal());
-}
-
-std::unique_ptr<ScopedShapedBuffer>
-LocalClientTestBase::LiteralToScopedShapedBuffer(const Literal& literal,
-                                                 int device_ordinal) {
-  CHECK(!ShapeUtil::IsTuple(literal.shape()));
-  auto scoped_buffer =
-      ScopedShapedBuffer::MakeScopedShapedBuffer(
-          literal.shape(), GetOrCreateAllocator(local_client_->platform()),
-          device_ordinal)
-          .ConsumeValueOrDie();
-  // The creation of the scoped shaped buffer should allocate the buffer.
-  CHECK(!scoped_buffer->buffer(/*index=*/{}).is_null() ||
-        ShapeUtil::HasZeroElements(literal.shape()));
-  TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, literal, scoped_buffer->mutable_buffer(/*index=*/{})));
-  return scoped_buffer;
+std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::LiteralToShapedBuffer(
+    const Literal& literal) {
+  return local_client_
+      ->LiteralToShapedBuffer(literal, local_client_->default_device_ordinal())
+      .ConsumeValueOrDie();
 }
 
 void LocalClientTestBase::CopyShapedBufferToLiteral(
@@ -172,33 +159,6 @@ std::unique_ptr<Literal> LocalClientTestBase::ShapedBufferToLiteral(
   ShapeIndex index;
   CopyShapedBufferToLiteral(shaped_buffer, &index, literal.get());
   return literal;
-}
-
-std::unique_ptr<ScopedShapedBuffer>
-LocalClientTestBase::ShapedBufferToScopedShapedBuffer(
-    std::unique_ptr<ShapedBuffer> shaped_buffer,
-    DeviceMemoryAllocator* allocator) {
-  std::unique_ptr<ScopedShapedBuffer> scoped_buffer =
-      ScopedShapedBuffer::MakeScopedShapedBuffer(
-          shaped_buffer->shape(), allocator, shaped_buffer->device_ordinal())
-          .ConsumeValueOrDie();
-  // Deallocate the existing DeviceMemoryBase values in the newly created scoped
-  // buffer and replace them with the values from the shaped buffer.
-  for (perftools::gputools::DeviceMemoryBase& memory_base :
-       *scoped_buffer->mutable_buffers()) {
-    TF_CHECK_OK(
-        allocator->Deallocate(shaped_buffer->device_ordinal(), &memory_base));
-  }
-  *scoped_buffer->mutable_buffers() = shaped_buffer->buffers();
-
-  scoped_buffer->mutable_shape_index_to_buffer_entry()->ForEachMutableElement(
-      [&shaped_buffer](const ShapeIndex& index, size_t* buffer_entry) {
-        if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
-          *buffer_entry =
-              shaped_buffer->shape_index_to_buffer_entry().element(index);
-        }
-      });
-  return scoped_buffer;
 }
 
 ExecutableBuildOptions LocalClientTestBase::DefaultExecutableBuildOptions()
@@ -253,10 +213,7 @@ LocalClientTestBase::ExecuteLocally(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<LocalExecutable> executable,
       local_client_->Compile(computation, argument_layouts, build_options));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> buffer,
-                      executable->Run(arguments, run_options));
-  return ShapedBufferToScopedShapedBuffer(std::move(buffer),
-                                          run_options.allocator());
+  return executable->Run(arguments, run_options);
 }
 
 }  // namespace xla

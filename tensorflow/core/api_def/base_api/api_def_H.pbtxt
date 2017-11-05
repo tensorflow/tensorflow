@@ -1,0 +1,52 @@
+op {
+  graph_op_name: "HSVToRGB"
+  endpoint {
+    name: "HSVToRGB"
+  }
+  summary: "Convert one or more images from HSV to RGB."
+  description: <<END
+Outputs a tensor of the same shape as the `images` tensor, containing the RGB
+value of the pixels. The output is only well defined if the value in `images`
+are in `[0,1]`.
+
+See `rgb_to_hsv` for a description of the HSV encoding.
+END
+}
+op {
+  graph_op_name: "HashTable"
+  endpoint {
+    name: "HashTable"
+  }
+  summary: "Creates a non-initialized hash table."
+  description: <<END
+This op creates a hash table, specifying the type of its keys and values.
+Before using the table you will have to initialize it.  After initialization the
+table will be immutable.
+END
+}
+op {
+  graph_op_name: "HashTableV2"
+  endpoint {
+    name: "HashTableV2"
+  }
+  summary: "Creates a non-initialized hash table."
+  description: <<END
+This op creates a hash table, specifying the type of its keys and values.
+Before using the table you will have to initialize it.  After initialization the
+table will be immutable.
+END
+}
+op {
+  graph_op_name: "HistogramSummary"
+  endpoint {
+    name: "HistogramSummary"
+  }
+  summary: "Outputs a `Summary` protocol buffer with a histogram."
+  description: <<END
+The generated
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+has one summary value containing a histogram for `values`.
+
+This op reports an `InvalidArgument` error if any value is not finite.
+END
+}

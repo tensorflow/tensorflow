@@ -89,24 +89,24 @@ Computation CreateScalarMinComputation(PrimitiveType type,
          const ComputationDataHandle& rhs) { return b->Min(lhs, rhs); });
 }
 
-Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder) {
+Computation CreateScalarAndComputation(ComputationBuilder* builder) {
   return CreateScalarComputation(
-      "logical_and", PRED, builder,
+      "and", PRED, builder,
       [](ComputationBuilder* b, const ComputationDataHandle& lhs,
-         const ComputationDataHandle& rhs) { return b->LogicalAnd(lhs, rhs); });
+         const ComputationDataHandle& rhs) { return b->And(lhs, rhs); });
 }
 
-Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder) {
+Computation CreateScalarOrComputation(ComputationBuilder* builder) {
   return CreateScalarComputation(
-      "logical_or", PRED, builder,
+      "or", PRED, builder,
       [](ComputationBuilder* b, const ComputationDataHandle& lhs,
-         const ComputationDataHandle& rhs) { return b->LogicalOr(lhs, rhs); });
+         const ComputationDataHandle& rhs) { return b->Or(lhs, rhs); });
 }
 
 StatusOr<ComputationDataHandle> Any(const ComputationDataHandle& predicates,
                                     ComputationBuilder* builder) {
   auto f = builder->ConstantR0<bool>(false);
-  Computation logical_or = CreateScalarLogicalOrComputation(builder);
+  Computation logical_or = CreateScalarOrComputation(builder);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Shape> predicates_shape,
                       builder->GetShape(predicates));
   std::vector<int64> all_dimensions(ShapeUtil::Rank(*predicates_shape));

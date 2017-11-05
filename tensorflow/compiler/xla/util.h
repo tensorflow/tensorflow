@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -360,6 +361,9 @@ int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
 std::vector<std::pair<int64, int64>> CommonFactors(
     tensorflow::gtl::ArraySlice<int64> a, tensorflow::gtl::ArraySlice<int64> b);
+
+// Removes illegal characters from filenames.
+string SanitizeFileName(string file_name);
 
 }  // namespace xla
 

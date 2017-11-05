@@ -489,6 +489,16 @@ ComputationDataHandle ComputationBuilder::Collapse(
   }
   std::unique_ptr<Shape> original_shape = shape_or_status.ConsumeValueOrDie();
 
+  VLOG(3) << "original shape: " << ShapeUtil::HumanString(*original_shape);
+  VLOG(3) << "dims to collapse: "
+          << tensorflow::str_util::Join(dims_to_collapse, ",");
+
+  if (dims_to_collapse.size() <= 1) {
+    // Not collapsing anything, trivially we can return the operand versus
+    // enqueueing a trivial reshape.
+    return operand;
+  }
+
   std::vector<int64> new_sizes;
   for (int i = 0; i < ShapeUtil::Rank(*original_shape); ++i) {
     if (i <= dims_to_collapse.front() || i > dims_to_collapse.back()) {
@@ -497,6 +507,9 @@ ComputationDataHandle ComputationBuilder::Collapse(
       new_sizes.back() *= original_shape->dimensions(i);
     }
   }
+
+  VLOG(3) << "new sizes: [" << tensorflow::str_util::Join(new_sizes, ",")
+          << "]";
 
   return Reshape(operand, new_sizes);
 }
@@ -650,7 +663,7 @@ bool ComputationBuilder::VerifyConvolution(
     return false;
   }
   int num_dims = ShapeUtil::Rank(lhs_shape);
-  if (num_dims < 3) {
+  if (num_dims < 2) {
     NoteError(InvalidArgument(
         "Convolution expects argument arrays with >= 3 dimensions. "
         "Got: %s and %s",
@@ -900,6 +913,17 @@ ComputationDataHandle ComputationBuilder::CustomCall(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::Complex(
+    const ComputationDataHandle& real, const ComputationDataHandle& imag,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_COMPLEX, real, imag, broadcast_dimensions);
+}
+
+ComputationDataHandle ComputationBuilder::Conj(
+    const ComputationDataHandle& operand) {
+  return Complex(Real(operand), Neg(Imag(operand)));
+}
+
 ComputationDataHandle ComputationBuilder::Add(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
@@ -942,26 +966,50 @@ ComputationDataHandle ComputationBuilder::Min(
   return BinaryOp(BINOP_MIN, lhs, rhs, broadcast_dimensions);
 }
 
-ComputationDataHandle ComputationBuilder::LogicalAnd(
+ComputationDataHandle ComputationBuilder::And(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_LOGICAL_AND, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_AND, lhs, rhs, broadcast_dimensions);
 }
 
-ComputationDataHandle ComputationBuilder::LogicalOr(
+ComputationDataHandle ComputationBuilder::Or(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_LOGICAL_OR, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_OR, lhs, rhs, broadcast_dimensions);
 }
 
-ComputationDataHandle ComputationBuilder::LogicalNot(
+ComputationDataHandle ComputationBuilder::Not(
     const ComputationDataHandle& operand) {
-  return UnaryOp(UNOP_LOGICAL_NOT, operand);
+  return UnaryOp(UNOP_NOT, operand);
+}
+
+ComputationDataHandle ComputationBuilder::ShiftLeft(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_SHIFT_LEFT, lhs, rhs, broadcast_dimensions);
+}
+
+ComputationDataHandle ComputationBuilder::ShiftRightArithmetic(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_SHIFT_RIGHT_ARITHMETIC, lhs, rhs, broadcast_dimensions);
+}
+
+ComputationDataHandle ComputationBuilder::ShiftRightLogical(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_SHIFT_RIGHT_LOGICAL, lhs, rhs, broadcast_dimensions);
 }
 
 ComputationDataHandle ComputationBuilder::Abs(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_ABS, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Atan2(
+    const ComputationDataHandle& y, const ComputationDataHandle& x,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_ATAN2, y, x, broadcast_dimensions);
 }
 
 ComputationDataHandle ComputationBuilder::Exp(
@@ -1007,6 +1055,16 @@ ComputationDataHandle ComputationBuilder::Sin(
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Real(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_REAL, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Imag(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_IMAG, operand);
 }
 
 ComputationDataHandle ComputationBuilder::IsFinite(
@@ -1307,6 +1365,7 @@ StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
 ComputationDataHandle ComputationBuilder::Map(
     tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
     const Computation& computation,
+    tensorflow::gtl::ArraySlice<int64> dimensions,
     tensorflow::gtl::ArraySlice<ComputationDataHandle> static_operands) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
@@ -1317,6 +1376,9 @@ ComputationDataHandle ComputationBuilder::Map(
     *request.add_operands() = operand;
   }
   *request.mutable_to_apply() = computation.handle();
+  for (int64 dimension : dimensions) {
+    request.add_dimensions(dimension);
+  }
   for (const ComputationDataHandle& sop : static_operands) {
     *request.add_static_operands() = sop;
   }
@@ -1429,10 +1491,20 @@ ComputationDataHandle ComputationBuilder::ReduceWindow(
     return ComputationDataHandle();
   }
 
-  return ReduceWindowWithGeneralPadding(
-      operand, init_value, computation, window_dimensions, window_strides,
+  Status padding_valid =
+      ValidatePaddingValues(AsInt64Slice(shape.ValueOrDie()->dimensions()),
+                            window_dimensions, window_strides);
+  if (!padding_valid.ok()) {
+    first_error_ = padding_valid;
+    return ComputationDataHandle();
+  }
+
+  std::vector<std::pair<int64, int64>> padding_values =
       MakePadding(AsInt64Slice(shape.ValueOrDie()->dimensions()),
-                  window_dimensions, window_strides, padding));
+                  window_dimensions, window_strides, padding);
+  return ReduceWindowWithGeneralPadding(operand, init_value, computation,
+                                        window_dimensions, window_strides,
+                                        padding_values);
 }
 
 ComputationDataHandle ComputationBuilder::ReduceWindowWithGeneralPadding(
@@ -1722,21 +1794,18 @@ StatusOr<Computation> ComputationBuilder::Build() {
 
 void ComputationBuilder::AddCommonFieldsToOpRequest(OpRequest* request) const {
   *request->mutable_metadata() = metadata_;
-  *request->mutable_device_assignment() = device_assignment_;
-}
-
-void ComputationBuilder::ClearDeviceAssignment() { device_assignment_.Clear(); }
-
-void ComputationBuilder::SetDeviceAssignment(
-    const OpDeviceAssignment& assignment) {
-  device_assignment_ = assignment;
+  if (sharding_) {
+    *request->mutable_sharding() = *sharding_;
+  }
 }
 
 /* static */ ConvolutionDimensionNumbers
 ComputationBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_batch_dimension(kConvBatchDimension);
-  dimension_numbers.set_feature_dimension(kConvFeatureDimension);
+  dimension_numbers.set_input_batch_dimension(kConvBatchDimension);
+  dimension_numbers.set_input_feature_dimension(kConvFeatureDimension);
+  dimension_numbers.set_output_batch_dimension(kConvBatchDimension);
+  dimension_numbers.set_output_feature_dimension(kConvFeatureDimension);
   dimension_numbers.set_kernel_output_feature_dimension(
       kConvKernelOutputDimension);
   dimension_numbers.set_kernel_input_feature_dimension(
@@ -1750,15 +1819,17 @@ ComputationBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
 
 /* static */ StatusOr<ConvolutionDimensionNumbers>
 ComputationBuilder::CreateConvDimensionNumbers(
-    int64 batch, int64 feature, int64 first_spatial, int64 second_spatial,
+    int64 input_batch, int64 input_feature, int64 output_batch,
+    int64 output_feature, int64 first_spatial, int64 second_spatial,
     int64 kernel_output_feature, int64 kernel_input_feature,
     int64 kernel_first_spatial, int64 kernel_second_spatial) {
-  if (std::set<int64>({batch, feature, first_spatial, second_spatial}).size() !=
-      4) {
+  if (std::set<int64>(
+          {input_batch, input_feature, first_spatial, second_spatial})
+          .size() != 4) {
     return FailedPrecondition(
         "dimension numbers for the input are not unique: (%lld, %lld, %lld, "
         "%lld)",
-        batch, feature, first_spatial, second_spatial);
+        input_batch, input_feature, first_spatial, second_spatial);
   }
   if (std::set<int64>({kernel_output_feature, kernel_input_feature,
                        kernel_first_spatial, kernel_second_spatial})
@@ -1769,9 +1840,19 @@ ComputationBuilder::CreateConvDimensionNumbers(
         kernel_output_feature, kernel_input_feature, kernel_first_spatial,
         kernel_second_spatial);
   }
+  if (std::set<int64>(
+          {output_batch, output_feature, first_spatial, second_spatial})
+          .size() != 4) {
+    return FailedPrecondition(
+        "dimension numbers for the output are not unique: (%lld, %lld, %lld, "
+        "%lld)",
+        output_batch, output_feature, first_spatial, second_spatial);
+  }
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_batch_dimension(batch);
-  dimension_numbers.set_feature_dimension(feature);
+  dimension_numbers.set_input_batch_dimension(input_batch);
+  dimension_numbers.set_input_feature_dimension(input_feature);
+  dimension_numbers.set_output_batch_dimension(output_batch);
+  dimension_numbers.set_output_feature_dimension(output_feature);
   dimension_numbers.add_spatial_dimensions(first_spatial);
   dimension_numbers.add_spatial_dimensions(second_spatial);
   dimension_numbers.set_kernel_output_feature_dimension(kernel_output_feature);

@@ -29,13 +29,17 @@ int64 BytesInDimension(const Shape& shape, int64 dimension) {
 bool IsFusile(const HloInstruction& hlo) {
   // These are the only ones we fuse since we rely on effective elemental IR
   // generation.
-  return (hlo.opcode() == HloOpcode::kBroadcast ||
-          hlo.opcode() == HloOpcode::kReshape ||
-          hlo.opcode() == HloOpcode::kBitcast ||
-          hlo.opcode() == HloOpcode::kReverse ||
-          hlo.opcode() == HloOpcode::kSlice ||
-          hlo.opcode() == HloOpcode::kDynamicSlice ||
-          hlo.opcode() == HloOpcode::kTranspose || hlo.IsElementwise());
+  return hlo.IsElementwise() ||  //
+         hlo.opcode() == HloOpcode::kBitcast ||
+         hlo.opcode() == HloOpcode::kBroadcast ||
+         hlo.opcode() == HloOpcode::kConcatenate ||
+         hlo.opcode() == HloOpcode::kDynamicSlice ||
+         hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
+         hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kReshape ||
+         hlo.opcode() == HloOpcode::kReverse ||
+         hlo.opcode() == HloOpcode::kSlice ||
+         hlo.opcode() == HloOpcode::kTranspose;
 }
 
 }  // namespace
@@ -113,15 +117,8 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return true;
   }
 
-  if (consumer->IsElementwise()) {
-    VLOG(2) << "Fusing: consumer is elementwise.";
-    return true;
-  }
-
-  // TODO(b/66271886): Figure out which consumers should be fused into.  At the
-  // moment, this is ad-hoc.
-  if (consumer->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    VLOG(2) << "Fusing: consumer is dynamic-update-slice.";
+  if (IsFusile(*consumer)) {
+    VLOG(2) << "Fusing: consumer is elementwise or fusile.";
     return true;
   }
 

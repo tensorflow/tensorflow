@@ -63,12 +63,19 @@ class XLATestCase(test.TestCase):
     self.float_tf_types = [
         dtype for dtype in self.all_tf_types if dtype.is_floating
     ]
-    self.numeric_tf_types = self.int_tf_types + self.float_tf_types
+    self.complex_tf_types = [
+        dtype for dtype in self.all_tf_types if dtype.is_complex
+    ]
+    self.numeric_tf_types = (
+        self.int_tf_types + self.float_tf_types + self.complex_tf_types)
 
     self.all_types = [dtype.as_numpy_dtype for dtype in self.all_tf_types]
     self.int_types = [dtype.as_numpy_dtype for dtype in self.int_tf_types]
     self.float_types = [dtype.as_numpy_dtype for dtype in self.float_tf_types]
-    self.numeric_types = self.int_types + self.float_types
+    self.complex_types = [
+        dtype.as_numpy_dtype for dtype in self.complex_tf_types
+    ]
+    self.numeric_types = self.int_types + self.float_types + self.complex_types
 
     # Parse the manifest file, if any, into a regex identifying tests to
     # disable

@@ -348,10 +348,6 @@ Status GraphExecutionState::OptimizeGraph(
         cpu_device = device;
       }
     }
-    if (cpu_device == nullptr) {
-      return errors::Internal(
-          "Unable to find CPU device needed for constant folding");
-    }
     grappler::VirtualCluster cluster(device_map);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(

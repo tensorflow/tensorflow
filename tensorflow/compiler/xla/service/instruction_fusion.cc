@@ -32,17 +32,16 @@ namespace xla {
     const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     // Cheap instructions.
-    case HloOpcode::kAbs:
     case HloOpcode::kAdd:
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConstant:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
-    case HloOpcode::kCos:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kEq:
@@ -50,12 +49,13 @@ namespace xla {
     case HloOpcode::kGe:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kGt:
+    case HloOpcode::kImag:
     case HloOpcode::kInfeed:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalNot:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -64,20 +64,30 @@ namespace xla {
     case HloOpcode::kNegate:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
+    case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return false;
 
+    // Cheap instructions for reals, but expensive for complex.
+    case HloOpcode::kAbs:
+    case HloOpcode::kCos:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+      return ShapeUtil::ElementIsComplex(instruction.shape());
+
     // Expensive instructions.
+    case HloOpcode::kAtan2:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
@@ -89,7 +99,6 @@ namespace xla {
     case HloOpcode::kDot:
     case HloOpcode::kExp:
     case HloOpcode::kFusion:
-    case HloOpcode::kIndex:
     case HloOpcode::kLog:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
@@ -102,7 +111,6 @@ namespace xla {
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
-    case HloOpcode::kUpdate:
     case HloOpcode::kWhile:
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
@@ -203,16 +211,12 @@ bool InstructionFusion::CanFuseOnAllPaths(
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
+  VLOG(2) << "Before instruction fusion:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   bool changed = false;
   module_ = module;
-  std::vector<HloComputation*> computations;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(computation.get());
-  }
-  for (auto& computation : computations) {
+  for (auto* computation : module->MakeNonfusionComputations()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
 
@@ -378,6 +382,10 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       }
     }
   }
+
+  VLOG(2) << "After instruction fusion:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   return changed;
 }
 

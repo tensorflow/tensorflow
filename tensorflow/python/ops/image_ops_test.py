@@ -1374,6 +1374,25 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     y = image_ops.pad_to_bounding_box(image, 0, 0, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
+  def testInt64(self):
+    x = [1, 2, 3,
+         4, 5, 6,
+         7, 8, 9]
+    x_shape = [3, 3, 1]
+
+    y = [0, 0, 0,
+         1, 2, 3,
+         4, 5, 6,
+         7, 8, 9]
+    y_shape = [4, 3, 1]
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    i = constant_op.constant([1, 0, 4, 3], dtype=dtypes.int64)
+    y_tf = image_ops.pad_to_bounding_box(x, i[0], i[1], i[2], i[3])
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(y, y_tf.eval())
+
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
@@ -1672,8 +1691,8 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
              image_ops.ResizeMethod.BICUBIC,
              image_ops.ResizeMethod.AREA]
 
-  TYPES = [np.uint8, np.int8, np.int16, np.int32, np.int64,
-           np.float32, np.float64]
+  TYPES = [np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64,
+           np.float16, np.float32, np.float64]
 
   def _assertShapeInference(self, pre_shape, size, post_shape):
     # Try single image resize
@@ -1794,6 +1813,21 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       _ = image_ops.resize_images(image, [6, None],
                                   image_ops.ResizeMethod.BILINEAR)
+
+  def testReturnDtype(self):
+    target_shapes = [[6, 4], [3, 2], [array_ops.placeholder(dtypes.int32),
+                                      array_ops.placeholder(dtypes.int32)]]
+    for nptype in self.TYPES:
+      image = array_ops.placeholder(nptype, shape=[1, 6, 4, 1])
+      for opt in self.OPTIONS:
+        for target_shape in target_shapes:
+          y = image_ops.resize_images(image, target_shape, opt)
+          if (opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR or
+              target_shape == image.shape[1:3]):
+            expected_dtype = image.dtype
+          else:
+            expected_dtype = dtypes.float32
+          self.assertEqual(y.dtype, expected_dtype)
 
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]
@@ -2419,8 +2453,12 @@ class JpegTest(test_util.TensorFlowTestCase):
         y, x, h, w = crop_window
         image1_crop = image_ops.crop_to_bounding_box(image1, y, x, h, w)
 
-        # Combined crop+decode.
+        # Combined decode+crop.
         image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+
+        # Combined decode+crop should have the same shape inference
+        self.assertAllEqual(image1_crop.get_shape().as_list(),
+                            image2.get_shape().as_list())
 
         # CropAndDecode should be equal to DecodeJpeg+Crop.
         image1_crop, image2 = sess.run([image1_crop, image2])

@@ -311,8 +311,48 @@ the same location, their contributions add.
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
+<img style="width:100%" src='https://www.tensorflow.org/images/ScatterAdd.png' alt>
 </div>
+
+resource: Should be from a `Variable` node.
+indices: A tensor of indices into the first dimension of `ref`.
+updates: A tensor of updated values to add to `ref`.
+)doc");
+
+REGISTER_OP("ResourceScatterUpdate")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeAndType handle_shape_and_type;
+      TF_RETURN_IF_ERROR(
+          ValidateVariableResourceHandle(c, &handle_shape_and_type));
+      ShapeHandle var_shape = handle_shape_and_type.shape;
+      ShapeHandle indices_shape = c->input(1);
+
+      ShapeHandle unused_updates_shape;
+      ShapeHandle concat;
+      ShapeHandle var_subshape;
+      TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
+      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Assigns sparse updates to the variable referenced by `resource`.
+
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] = updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] = updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
 
 resource: Should be from a `Variable` node.
 indices: A tensor of indices into the first dimension of `ref`.

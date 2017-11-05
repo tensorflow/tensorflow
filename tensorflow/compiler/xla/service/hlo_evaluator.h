@@ -84,6 +84,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Same as Evaluate, except returning nullptr on error.
   std::unique_ptr<Literal> TryEvaluate(HloInstruction* instruction);
 
+  // Evaluates a single HLO instruction, substituting the given literals for
+  // some of the instruction's operands.
+  //
+  // For example, given instruction = op(A, B, C) and the map
+  // {A = x, C = y}, this evaluates op(x, B, y).
+  StatusOr<std::unique_ptr<Literal>> EvaluateWithSubstitutions(
+      const HloInstruction* instruction,
+      const std::unordered_map<const HloInstruction*, const Literal*>&
+          substitutions);
+
  protected:
   // Templated DfsHloVisitor. Typically ReturnT here indicates the resulting
   // literal type of each evaluated Handle* method of a TypedVisitor.
@@ -110,28 +120,20 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   //
   Status HandleParameter(HloInstruction* parameter) override;
 
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override;
+  Status HandleConstant(HloInstruction* constant) override;
 
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleConcatenate(HloInstruction* concatenate) override;
 
   Status HandleReshape(HloInstruction* reshape) override;
 
   Status HandleTranspose(HloInstruction* transpose) override;
 
-  Status HandleIsFinite(HloInstruction* is_finite,
-                        HloInstruction* operand) override;
+  Status HandleIsFinite(HloInstruction* is_finite) override;
 
-  Status HandleCompare(HloInstruction* compare, HloOpcode opcode,
-                       HloInstruction* lhs, HloInstruction* rhs) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleCompare(HloInstruction* compare) override;
+  Status HandleTuple(HloInstruction* tuple) override;
 
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleCopy(HloInstruction* copy) override;
 

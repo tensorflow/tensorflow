@@ -137,15 +137,12 @@ Status TuplePointsToAnalysis::Analyze() {
   logical_buffer_aliases_.resize(
       logical_buffer_analysis_->num_logical_buffers());
 
-  for (auto& computation : module_->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (auto* computation : module_->MakeNonfusionComputations()) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
     // Run points-to analysis on fusion instructions in 'computation'.
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kFusion) {
         continue;
       }
@@ -160,21 +157,21 @@ Status TuplePointsToAnalysis::Analyze() {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
-    const std::list<std::unique_ptr<HloInstruction>>& instructions) {
-  for (auto& instruction : instructions) {
-    PerInstruction* pi = PerInst(instruction.get());
+Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(const decltype(
+    std::declval<HloComputation>().instructions())& instructions) {
+  for (auto* instruction : instructions) {
+    PerInstruction* pi = PerInst(instruction);
     TF_RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
-        instruction.get(), &pi->instruction_defined_buffers));
+        instruction, &pi->instruction_defined_buffers));
 
-    const PointsToSet& points_to_set = GetPointsToSet(instruction.get());
+    const PointsToSet& points_to_set = GetPointsToSet(instruction);
     points_to_set.ForEachElement(
         [this, &instruction](
             const ShapeIndex& index,
             const PointsToSet::BufferList& pointed_to_buffers) {
           for (const LogicalBuffer* buffer : pointed_to_buffers) {
-            logical_buffer_aliases_[buffer->id()].emplace_back(
-                instruction.get(), index);
+            logical_buffer_aliases_[buffer->id()].emplace_back(instruction,
+                                                               index);
           }
         });
   }
@@ -203,13 +200,14 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
 }
 
 Status TuplePointsToAnalysis::HandleGetTupleElement(
-    HloInstruction* get_tuple_element, HloInstruction* operand) {
+    HloInstruction* get_tuple_element) {
   // GetTupleElement forwards a pointer to a particular element of the tuple
   // operand.
   int64 element_index = get_tuple_element->tuple_index();
 
   PointsToSet& points_to_set = CreateEmptyPointsToSet(get_tuple_element);
-  const PointsToSet& operand_points_to_set = *PerInst(operand)->points_to_set;
+  const PointsToSet& operand_points_to_set =
+      *PerInst(get_tuple_element->operand(0))->points_to_set;
 
   // Copy the points-to set (and tuple sources) at index {element_index} of the
   // operand to the points-to set for this GetTupleElement instruction.
@@ -255,9 +253,8 @@ Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
+  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
   PointsToSet& points_to_set = CreateEmptyPointsToSet(tuple);
   points_to_set.AddPointedToBuffer(
       logical_buffer_analysis_->GetBuffer(tuple, /*index=*/{}),
@@ -295,10 +292,7 @@ Status TuplePointsToAnalysis::HandleTuple(
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
-                                           HloInstruction* /*pred*/,
-                                           HloInstruction* on_true,
-                                           HloInstruction* on_false) {
+Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer. Which side is chosen cannot be
   // determined statically so conservatively set the points-to set to the union
@@ -306,6 +300,8 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
   //
   // First create a copy of the on_true points-to set (and tuple sources), then
   // add in elements of the on_false points-to set (tuple sources).
+  auto on_true = select->operand(1);
+  auto on_false = select->operand(2);
   PointsToSet& points_to_set = CreateCopiedPointsToSet(select, on_true);
   const PointsToSet& false_points_to_set = *PerInst(on_false)->points_to_set;
   points_to_set.ForEachMutableElement(
@@ -452,20 +448,17 @@ PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
 string TuplePointsToAnalysis::ToString() const {
   string output = tensorflow::strings::Printf(
       "TuplePointsToSet for module %s:\n", module_->name().c_str());
-  for (const auto& computation : module_->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (const auto* computation : module_->MakeNonfusionComputations()) {
     const char* entry =
-        computation.get() == module_->entry_computation() ? "entry " : "";
+        computation == module_->entry_computation() ? "entry " : "";
     tensorflow::strings::StrAppend(&output, entry, "computation ",
                                    computation->name(), ":\n");
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       InstructionToString(instruction, &output);
       if (instruction->opcode() == HloOpcode::kFusion) {
-        for (auto& fused : instruction->fused_instructions()) {
-          InstructionToString(fused.get(), &output);
+        for (auto* fused : instruction->fused_instructions()) {
+          InstructionToString(fused, &output);
         }
       }
     }

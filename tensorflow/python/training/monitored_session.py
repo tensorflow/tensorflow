@@ -25,6 +25,7 @@ import sys
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.estimator import util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -348,8 +349,10 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       config=config)
 
   if checkpoint_dir:
-    all_hooks.append(basic_session_run_hooks.StepCounterHook(
-        output_dir=checkpoint_dir, every_n_steps=log_step_count_steps))
+    if log_step_count_steps and log_step_count_steps > 0:
+      all_hooks.append(
+          basic_session_run_hooks.StepCounterHook(
+              output_dir=checkpoint_dir, every_n_steps=log_step_count_steps))
 
     if (save_summaries_steps and save_summaries_steps > 0) or (
         save_summaries_secs and save_summaries_secs > 0):
@@ -520,10 +523,104 @@ class _MonitoredSession(object):
                           options=options,
                           run_metadata=run_metadata)
 
+  def run_step_fn(self, step_fn):
+    """Run ops using a step function.
+
+    Args:
+      step_fn: A function or a method with a single argument of type
+        `StepContext`.  The function may use methods of the argument to
+        perform computations with access to a raw session.
+
+        The returned value of the `step_fn` will be returned from `run_step_fn`,
+        unless a stop is requested.  In that case, the next `should_stop` call
+        will return True.
+
+        Example usage:
+        ```python
+           with tf.Graph().as_default():
+             c = tf.placeholder(dtypes.float32)
+             v = tf.add(c, 4.0)
+             w = tf.add(c, 0.5)
+
+             def step_fn(step_context):
+               a = step_context.session.run(fetches=v, feed_dict={c: 0.5})
+               if a <= 4.5:
+                 step_context.request_stop()
+               return step_context.run_with_hooks(fetches=w, feed_dict={c: 0.1})
+
+             with tf.MonitoredSession() as session:
+               while not session.should_stop():
+                 a = session.run_step_fn(step_fn)
+        ```
+        Hooks interact with the `run_with_hooks()` call inside the `step_fn`
+        as they do with a `MonitoredSession.run` call.
+
+    Returns:
+      Returns the returned value of `step_fn`.
+
+    Raises:
+      StopIteration: if `step_fn` has called `request_stop()`.  It may be
+        caught by `with tf.MonitoredSession()` to close the session.
+      ValueError: if `step_fn` doesn't have a single argument called
+        `step_context`. It may also optionally have `self` for cases when it
+        belongs to an object.
+    """
+    step_fn_arguments = util.fn_args(step_fn)
+    if step_fn_arguments != ('step_context',) and step_fn_arguments != (
+        'self',
+        'step_context',
+    ):
+      raise ValueError(
+          '`step_fn` may either have one `step_context` argument, or'
+          ' `self` and `step_context` arguments if it\'s an instance'
+          ' method. Got {} instead.'.format(step_fn_arguments))
+
+    # `self._sess` is either `_RecoverableSession` or a `_CoordinatedSession`.
+    # Setting `run_with_hooks` to `None` will cause `run_with_hooks` to be
+    # `_CoordinatedSession.run` downstream in either case. This allows
+    # `_PREEMPTION_ERRORS` to propage from within `step_fn` to
+    # `_RecoverableSession.run_step_fn`.
+    return self._sess.run_step_fn(step_fn, self._tf_sess(), run_with_hooks=None)
+
+  class StepContext(object):
+    """Control flow instrument for the `step_fn` from `run_step_fn()`.
+
+       Users of `step_fn` may perform `run()` calls without running hooks
+       by accessing the `session`.  A `run()` call with hooks may be performed
+       using `run_with_hooks()`.  Computation flow can be interrupted using
+       `request_stop()`.
+    """
+
+    def __init__(self, session, run_with_hooks_fn):
+      """Initializes the `step_context` argument for a `step_fn` invocation.
+
+      Args:
+        session: An instance of `tf.Session`.
+        run_with_hooks_fn: A function for running fetches and hooks.
+      """
+      self._session = session
+      self._run_with_hooks_fn = run_with_hooks_fn
+
+    @property
+    def session(self):
+      return self._session
+
+    def run_with_hooks(self, *args, **kwargs):
+      """Same as `MonitoredSession.run`. Accepts the same arguments."""
+      return self._run_with_hooks_fn(*args, **kwargs)
+
+    def request_stop(self):
+      """Exit the training loop by causing `should_stop()` to return `True`.
+
+         Causes `step_fn` to exit by raising an exception.
+
+      Raises:
+        StopIteration
+      """
+      raise StopIteration('step_fn has requested the iterations to stop.')
+
   def should_stop(self):
-    if self._sess:
-      return self._sess.should_stop()
-    return True
+    return self._sess is None or self._sess.should_stop()
 
   def close(self):
     self._close_internal()
@@ -826,6 +923,13 @@ class _WrappedSession(object):
   def run(self, *args, **kwargs):
     return self._sess.run(*args, **kwargs)
 
+  def run_step_fn(self, step_fn, raw_session, run_with_hooks):
+    # `_RecoverableSession` sets `run_with_hooks` to `_CoordinatedSession.run`.
+    # It is `None` when called from `_CoordinatedSession`. In that case
+    # `self.run` is `_CoordinatedSession.run`.
+    run_with_hooks = run_with_hooks or self.run
+    return step_fn(_MonitoredSession.StepContext(raw_session, run_with_hooks))
+
 
 class _RecoverableSession(_WrappedSession):
   """A wrapped session that recreates a session upon certain kinds of errors.
@@ -890,6 +994,22 @@ class _RecoverableSession(_WrappedSession):
                               feed_dict=feed_dict,
                               options=options,
                               run_metadata=run_metadata)
+      except _PREEMPTION_ERRORS as e:
+        logging.info('An error was raised. This may be due to a preemption in '
+                     'a connected worker or parameter server. The current '
+                     'session will be closed and a new session will be '
+                     'created. Error: %s', e)
+        self.close()
+        self._sess = None
+
+  def run_step_fn(self, step_fn, raw_session, run_with_hooks):
+    while True:
+      try:
+        if not self._sess:
+          self._sess = self._create_session()
+
+        run_with_hooks = self._sess.run
+        return self._sess.run_step_fn(step_fn, raw_session, run_with_hooks)
       except _PREEMPTION_ERRORS as e:
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '

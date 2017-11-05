@@ -36,10 +36,12 @@ class HloToIrBindings {
  public:
   HloToIrBindings(const HloModule& module,
                   const BufferAssignment* buffer_assignment,
-                  llvm::IRBuilder<>* ir_builder, bool is_nested)
+                  llvm::IRBuilder<>* ir_builder, llvm::Module* llvm_module,
+                  bool is_nested)
       : buffer_assignment_(buffer_assignment),
         is_nested_(is_nested),
         ir_builder_(ir_builder),
+        module_(llvm_module),
         alias_analysis_(module, *buffer_assignment_,
                         &ir_builder_->getContext()) {}
 
@@ -93,6 +95,7 @@ class HloToIrBindings {
   const bool is_nested_;
 
   llvm::IRBuilder<>* ir_builder_;
+  llvm::Module* module_;
 
   // Stores the underlying llvm::IrArray for each HloInstruction.
   // For an instruction that generates multiple outputs, the root will be a

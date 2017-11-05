@@ -260,39 +260,7 @@ REGISTER_OP("FusedBatchNorm")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle x;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
-
-      bool is_training;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-      int number_inputs = (is_training) ? 3 : 5;
-      string data_format;
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
-      DimensionHandle channel_dim =
-          (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
-
-      // covers scale, offset, and if is_training is false, mean, variance
-      for (int i = 1; i < number_inputs; ++i) {
-        ShapeHandle vec;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
-      }
-
-      ShapeHandle y;
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
-      } else {
-        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
-      }
-      c->set_output(0, y);
-      ShapeHandle vector_shape = c->Vector(channel_dim);
-      c->set_output(1, vector_shape);
-      c->set_output(2, vector_shape);
-      c->set_output(3, vector_shape);
-      c->set_output(4, vector_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
     .Doc(R"doc(
 Batch normalization.
 Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
@@ -321,6 +289,52 @@ is_training: A bool value to indicate the operation is for training (default)
              or inference.
 )doc");
 
+REGISTER_OP("FusedBatchNormV2")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Attr("T: {half, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
+    .Doc(R"doc(
+Batch normalization.
+Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+The size of 1D Tensors matches the dimension C of the 4D Tensors.
+
+x: A 4D Tensor for input data.
+scale: A 1D Tensor for scaling factor, to scale the normalized x.
+offset: A 1D Tensor for offset, to shift to the normalized x.
+mean: A 1D Tensor for population mean. Used for inference only;
+      must be empty for training.
+variance: A 1D Tensor for population variance. Used for inference only;
+          must be empty for training.
+y: A 4D Tensor for output data.
+batch_mean: A 1D Tensor for the computed batch mean, to be used by TensorFlow
+            to compute the running mean.
+batch_variance: A 1D Tensor for the computed batch variance, to be used by
+                TensorFlow to compute the running variance.
+reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
+                 in the gradient computation.
+reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
+                 in the cuDNN case), to be reused in the gradient computation.
+T: The data type for the elements of input and output Tensors.
+U: The data type for the scale, offset, mean, and variance.
+epsilon: A small float number added to the variance of x.
+data_format: The data format for x and y. Either "NHWC" (default) or "NCHW".
+is_training: A bool value to indicate the operation is for training (default)
+             or inference.
+)doc");
+
 REGISTER_OP("FusedBatchNormGrad")
     .Input("y_backprop: T")
     .Input("x: T")
@@ -336,55 +350,7 @@ REGISTER_OP("FusedBatchNormGrad")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle y_backprop;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
-      ShapeHandle x;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
-
-      bool is_training;
-      string data_format;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
-      DimensionHandle channel_dim = (data_format == "NHWC")
-                                        ? c->Dim(y_backprop, 3)
-                                        : c->Dim(y_backprop, 1);
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 3), &channel_dim));
-      } else {
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 1), &channel_dim));
-      }
-
-      // covers scale, mean (reserve_space_1), variance (reserve_space_2)
-      for (int i = 2; i < 5; ++i) {
-        ShapeHandle vec;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
-      }
-
-      ShapeHandle x_backprop;
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(
-            c->ReplaceDim(y_backprop, 3, channel_dim, &x_backprop));
-      } else {
-        TF_RETURN_IF_ERROR(
-            c->ReplaceDim(y_backprop, 1, channel_dim, &x_backprop));
-      }
-      c->set_output(0, x_backprop);
-      c->set_output(1, c->Vector(channel_dim));
-      c->set_output(2, c->Vector(channel_dim));
-      // Set the correct shapes for reserve_spaces
-      // so that gradients can be performed when
-      // the op is in a symbolic condition.
-      if (is_training) {
-        c->set_output(3, c->Vector(0));
-        c->set_output(4, c->Vector(0));
-      } else {
-        c->set_output(3, c->Vector(channel_dim));
-        c->set_output(4, c->Vector(channel_dim));
-      }
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
     .Doc(R"doc(
 Gradient for batch normalization.
 Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
@@ -393,14 +359,15 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 y_backprop: A 4D Tensor for the gradient with respect to y.
 x: A 4D Tensor for input data.
 scale: A 1D Tensor for scaling factor, to scale the normalized x.
-reserve_space_1: When is_training is True, a 1D Tensor for the computed batch mean
-                 to be reused in gradient computation.
-                 When is_training is False, a 1D Tensor for the population mean
-                 to be reused in both 1st and 2nd order gradient computation.
-reserve_space_2: When is_training is True, a 1D Tensor for the computed batch variance
-                 (inverted variance in the cuDNN case) to be reused in gradient computation.
-                 When is_training is False, a 1D Tensor for the population variance
-                 to be reused in both 1st and 2nd order gradient computation.
+reserve_space_1: When is_training is True, a 1D Tensor for the computed batch 
+                 mean to be reused in gradient computation. When is_training is
+                 False, a 1D Tensor for the population mean to be reused in both
+                 1st and 2nd order gradient computation.
+reserve_space_2: When is_training is True, a 1D Tensor for the computed batch
+                 variance (inverted variance in the cuDNN case) to be reused in
+                 gradient computation. When is_training is False, a 1D Tensor
+                 for the population variance to be reused in both 1st and 2nd
+                 order gradient computation.
 x_backprop: A 4D Tensor for the gradient with respect to x.
 scale_backprop: A 1D Tensor for the gradient with respect to scale.
 offset_backprop: A 1D Tensor for the gradient with respect to offset.
@@ -408,6 +375,55 @@ reserve_space_3: Unused placeholder to match the mean input in FusedBatchNorm.
 reserve_space_4: Unused placeholder to match the variance input
                  in FusedBatchNorm.
 T: The data type for the elements of input and output Tensors.
+epsilon: A small float number added to the variance of x.
+data_format: The data format for y_backprop, x, x_backprop.
+             Either "NHWC" (default) or "NCHW".
+is_training: A bool value to indicate the operation is for training (default)
+             or inference.
+)doc");
+
+REGISTER_OP("FusedBatchNormGradV2")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: float")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Output("reserve_space_3: U")
+    .Output("reserve_space_4: U")
+    .Attr("T: {half, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
+    .Doc(R"doc(
+Gradient for batch normalization.
+Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+The size of 1D Tensors matches the dimension C of the 4D Tensors.
+
+y_backprop: A 4D Tensor for the gradient with respect to y.
+x: A 4D Tensor for input data.
+scale: A 1D Tensor for scaling factor, to scale the normalized x.
+reserve_space_1: When is_training is True, a 1D Tensor for the computed batch 
+                 mean to be reused in gradient computation. When is_training is
+                 False, a 1D Tensor for the population mean to be reused in both
+                 1st and 2nd order gradient computation.
+reserve_space_2: When is_training is True, a 1D Tensor for the computed batch
+                 variance (inverted variance in the cuDNN case) to be reused in
+                 gradient computation. When is_training is False, a 1D Tensor
+                 for the population variance to be reused in both 1st and 2nd
+                 order gradient computation.
+x_backprop: A 4D Tensor for the gradient with respect to x.
+scale_backprop: A 1D Tensor for the gradient with respect to scale.
+offset_backprop: A 1D Tensor for the gradient with respect to offset.
+reserve_space_3: Unused placeholder to match the mean input in FusedBatchNorm.
+reserve_space_4: Unused placeholder to match the variance input
+                 in FusedBatchNorm.
+T: The data type for the elements of input and output Tensors.
+U: The data type for the scale, offset, mean, and variance.
 epsilon: A small float number added to the variance of x.
 data_format: The data format for y_backprop, x, x_backprop.
              Either "NHWC" (default) or "NCHW".
@@ -1835,7 +1851,8 @@ REGISTER_OP("Relu6Grad")
 Computes rectified linear 6 gradients for a Relu6 operation.
 
 gradients: The backpropagated gradients to the corresponding Relu6 operation.
-features: The features passed as input to the corresponding Relu6 operation.
+features: The features passed as input to the corresponding Relu6 operation, or
+  its output; using either one produces the same result.
 backprops: The gradients:
   `gradients * (features > 0) * (features < 6)`.
 )doc");
@@ -2159,9 +2176,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -2239,6 +2256,56 @@ sorted: If true the resulting `k` elements will be sorted by the values in
   descending order.
 values: The `k` largest elements along each last dimensional slice.
 indices: The indices of `values` within the last dimension of `input`.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("NthElement")
+    .Input("input: T")
+    .Input("n: int32")
+    .Output("values: T")
+    .Attr("reverse: bool = false")
+    .Attr("T: realnumbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+
+      // Get the n value from input tensor, and make sure which is a scalar.
+      DimensionHandle n_dim;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &n_dim));
+
+      // The last dimension of input tensor must be greater than N.
+      DimensionHandle last_dim = c->Dim(input, -1);
+      if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
+          c->Value(last_dim) <= c->Value(n_dim)) {
+        return errors::InvalidArgument("Input must have last dimension > n = ",
+                                       c->Value(n_dim), " but is ",
+                                       c->Value(last_dim));
+      }
+
+      // Reduce last_dim for output tensor
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Finds values of the `n`-th order statistic for the last dmension.
+
+If the input is a vector (rank-1), finds the entries which is the nth-smallest
+value in the vector and outputs their values as scalar tensor.
+
+For matrices (resp. higher rank input), computes the entries which is the
+nth-smallest value in each row (resp. vector along the last dimension). Thus,
+
+    values.shape = input.shape[:-1]
+
+input: 1-D or higher with last dimension at least `n+1`.
+n: 0-D. Position of sorted vector to select along the last dimension (along
+  each row for matrices). Valid range of n is `[0, input.shape[:-1])`
+reverse: When set to True, find the nth-largest value in the vector and vice
+  versa.
+values: The `n`-th order statistic along each last dimensional slice.
 )doc");
 
 // --------------------------------------------------------------------------

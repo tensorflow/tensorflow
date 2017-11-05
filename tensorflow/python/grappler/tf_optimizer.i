@@ -55,14 +55,40 @@ limitations under the License.
   #include <memory>
   #include "tensorflow/c/tf_status_helper.h"
   #include "tensorflow/core/lib/core/status.h"
+  #include "tensorflow/core/common_runtime/device.h"
   #include "tensorflow/core/framework/device_base.h"
+  #include "tensorflow/core/common_runtime/device_factory.h"
+  #include "tensorflow/core/framework/device_attributes.pb.h"
   #include "tensorflow/core/framework/graph.pb.h"
   #include "tensorflow/core/grappler/grappler_item.h"
   #include "tensorflow/core/grappler/grappler_item_builder.h"
+  #include "tensorflow/core/grappler/clusters/utils.h"
   #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
   #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
   #include "tensorflow/core/protobuf/meta_graph.pb.h"
   #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+  #include "tensorflow/core/public/session_options.h"
+
+
+void DetectDevices(std::unordered_map<string, tensorflow::DeviceProperties>* device_map) {
+  tensorflow::SessionOptions options;
+  std::vector<tensorflow::Device*> devices;
+  tensorflow::Status status = tensorflow::DeviceFactory::AddDevices(options, "", &devices);
+  if (!status.ok()) {
+    return;
+  }
+
+  for (const tensorflow::Device* device : devices) {
+    tensorflow::DeviceProperties& prop = (*device_map)[device->name()];
+    prop = tensorflow::grappler::GetDeviceInfo(device->parsed_name());
+
+    // Overwrite the memory limit since users might have requested to use only a fraction of the
+    // available device memory.
+    const tensorflow::DeviceAttributes& attr = device->attributes();
+    prop.set_memory_size(attr.memory_limit());
+    delete device;
+  }
+}
 
 PyObject* TF_OptimizeGraph(
       const tensorflow::RewriterConfig& rewriter_config,
@@ -74,6 +100,7 @@ PyObject* TF_OptimizeGraph(
     std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
         tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph, item_config);
     std::unordered_map<string, tensorflow::DeviceProperties> device_map;
+    DetectDevices(&device_map);
     tensorflow::DeviceBase* cpu_device = nullptr;
     tensorflow::grappler::VirtualCluster cluster(device_map);
     tensorflow::GraphDef out_graph;
