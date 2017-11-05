@@ -220,7 +220,7 @@ class Layer(object):
 
     Weight updates (for instance, the updates of the moving mean and variance
     in a BatchNormalization layer) may be dependent on the inputs passed
-    when calling a layer. Hence, when reusing a same layer on
+    when calling a layer. Hence, when reusing the same layer on
     different inputs `a` and `b`, some entries in `layer.updates` may be
     dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
@@ -294,9 +294,9 @@ class Layer(object):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
     Some losses (for instance, activity regularization losses) may be dependent
-    on the inputs passed when calling a layer. Hence, when reusing a same layer
-    on different inputs `a` and `b`, some entries in `layer.losses` may be
-    dependent on `a` and some on `b`. This method automatically keeps track
+    on the inputs passed when calling a layer. Hence, when reusing the same
+    layer on different inputs `a` and `b`, some entries in `layer.losses` may
+    be dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
 
     The `get_losses_for` method allows to retrieve the losses relevant to a
