@@ -427,8 +427,6 @@ class ToSingleElementOp : public OpKernel {
 
     IteratorContext::Params params;
     params.env = ctx->env();
-    params.step_id = ctx->step_id();
-    params.resource_manager = ctx->resource_manager();
     params.runner = *(ctx->runner());
     IteratorContext iter_ctx(std::move(params));
 
@@ -664,8 +662,6 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
       IteratorContext::Params params;
       params.env = ctx->env();
-      params.step_id = ctx->step_id();
-      params.resource_manager = ctx->resource_manager();
       params.runner = *(ctx->runner());
       IteratorContext iter_ctx(std::move(params));
 
