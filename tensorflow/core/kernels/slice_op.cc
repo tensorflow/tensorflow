@@ -252,8 +252,25 @@ class MklSliceOp : public OpKernel {
       if (input_dims == 4) {
         HandleCase4D(context, begin, size, result);
       } else {
-        functor::Slice<Device, T, input_dims>()(
-            context->eigen_device<Device>(), result, input, begin, size);
+#define HANDLE_DIM(NDIM)                                                  \
+      if (input_dims == NDIM) {                                           \
+        functor::Slice<Device, T, NDIM>()(                                \
+            context->eigen_device<Device>(), result, input, begin, size); \
+            return;                                                       \
+      }
+
+      HANDLE_DIM(1);
+      HANDLE_DIM(2);
+      HANDLE_DIM(3);
+      HANDLE_DIM(4);
+      HANDLE_DIM(5);
+      HANDLE_DIM(6);
+
+#undef HANDLE_DIM
+
+        // handle cases which dim >= 7
+        functor::Slice<Device, T, 7>()(
+          context->eigen_device<Device>(), result, input, begin, size);
       }
     }
   }
@@ -375,7 +392,7 @@ class MklSliceOp : public OpKernel {
     }
 
     functor::Slice<Device, T, 4>()(
-        context->eigen_device<Device>(), result, input, begin, size);
+        context->eigen_device<Device>(), result, context->input(0), begin, size);
   }
 };
 #endif
