@@ -127,6 +127,11 @@ class DType(object):
     """Returns a `numpy.dtype` based on this `DType`."""
     return _TF_TO_NP[self._type_enum]
 
+  def convert_to_numpy_obj(self, obj):
+    """Explicitly convert obj based on numpy type except for string type."""
+    numpy_dtype = self.as_numpy_dtype
+    return numpy_dtype(obj) if  numpy_dtype is not object else str(obj)
+
   @property
   def as_datatype_enum(self):
     """Returns a `types_pb2.DataType` enum value based on this `DType`."""

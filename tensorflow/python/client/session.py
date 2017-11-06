@@ -1073,9 +1073,9 @@ class BaseSession(SessionInterface):
 
           subfeed_dtype = subfeed_t.dtype.as_numpy_dtype
           if isinstance(subfeed_val,
-                        int) and subfeed_dtype(subfeed_val) != subfeed_val:
+                        int) and subfeed_t.dtype.convert_to_numpy_obj(subfeed_val) != subfeed_val:
             raise TypeError(
-                'Type of feed value ' + str(subfeed_val) + ' is not'
+                'Type of feed value ' + str(subfeed_val) + 'with type ' + type(subfeed_val) + ' is not'
                 ' compatible with Tensor type ' + str(subfeed_dtype) + '.'
                 ' Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
