@@ -31,6 +31,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -54,6 +55,28 @@ class ImportGraphDefTest(test.TestCase):
     ret = graph_pb2.GraphDef()
     text_format.Merge(text, ret)
     return ret
+
+  # The C API doesn't currently support return elements (or anything else beyond
+  # the most basic import). This test only checks that the import can run
+  # without error, and will be removed once more functionality is implemented
+  # and we can get coverage from the other tests.
+  @test_util.enable_c_api
+  def testCApi(self):
+    importer.import_graph_def(
+        self._MakeGraphDef("""
+        node { name: 'A' op: 'IntOutputFloatOutput' }
+          node { name: 'B' op: 'ListOutput'
+                 attr { key: 'T'
+                        value { list { type: DT_INT32 type: DT_FLOAT } } } }
+          node { name: 'C' op: 'ListInput'
+                 attr { key: 'N' value { i: 2 } }
+                 attr { key: 'T' value { type: DT_INT32 } }
+                 input: 'A:0' input: 'B:0' }
+          node { name: 'D' op: 'ListInput'
+                 attr { key: 'N' value { i: 2 } }
+                 attr { key: 'T' value { type: DT_FLOAT } }
+                 input: 'A:1' input: 'B:1' }
+          """))
 
   def testBasic(self):
     with ops.Graph().as_default():
