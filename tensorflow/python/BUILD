@@ -1545,6 +1545,7 @@ py_library(
         ":platform",
         ":sparse_tensor",
         ":tensor_array_ops",
+        ":tf_should_use",
         ":util",
         "//tensorflow/core:protos_all_py",
         "@six_archive//:six",
@@ -1834,6 +1835,7 @@ py_library(
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":tf_should_use",
     ],
 )
 
@@ -2308,7 +2310,7 @@ py_library(
         ":math_ops",
         ":tensor_shape",
         ":tensor_util",
-        ":util",
+        ":tf_should_use",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -2345,6 +2347,7 @@ py_library(
         ":math_ops",
         ":state_ops",
         ":tensor_shape",
+        ":tf_should_use",
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
@@ -2728,6 +2731,7 @@ py_library(
         ["util/**/*.py"],
         exclude = [
             "util/example_parser*",
+            "util/tf_should_use.py",
             "util/**/*_test.py",
         ],
     ),
@@ -2790,6 +2794,17 @@ py_test(
     ],
 )
 
+py_library(
+    name = "tf_should_use",
+    srcs = ["util/tf_should_use.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow/python/eager:context",
+        "@six_archive//:six",
+    ],
+)
+
 py_test(
     name = "tf_should_use_test",
     size = "small",
@@ -2797,7 +2812,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
-        ":util",
+        ":tf_should_use",
     ],
 )
 

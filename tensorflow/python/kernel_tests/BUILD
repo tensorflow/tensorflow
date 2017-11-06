@@ -2864,7 +2864,11 @@ tf_py_test(
     size = "small",
     srcs = ["garbage_collection_test.py"],
     additional_deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:client_testlib",
     ],
 )
