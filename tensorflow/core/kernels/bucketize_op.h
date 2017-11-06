@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
-
 namespace functor {
 
 template <typename Device, typename T>

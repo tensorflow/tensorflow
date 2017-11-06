@@ -51,6 +51,7 @@ namespace functor {
 
 template <typename T>
 struct BucketizeFunctor<GPUDevice, T> {
+  // PRECONDITION: boundaries_vector must be sorted.
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& input,
                         const std::vector<float>& boundaries_vector,
@@ -72,7 +73,6 @@ struct BucketizeFunctor<GPUDevice, T> {
         boundaries_vector.data(), boundaries_vector.size());
 
     CudaLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
-
     BucketizeCustomKernel<
         T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
         input.size(), input.data(), boundaries.size(), boundaries.data(),

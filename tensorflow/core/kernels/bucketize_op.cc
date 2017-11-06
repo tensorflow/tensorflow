@@ -34,6 +34,7 @@ namespace functor {
 
 template <typename T>
 struct BucketizeFunctor<CPUDevice, T> {
+  // PRECONDITION: boundaries_vector must be sorted.
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& input,
                         const std::vector<float>& boundaries_vector,
