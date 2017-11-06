@@ -439,11 +439,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "nsync",
       urls = [
-          "https://mirror.bazel.build/github.com/google/nsync/archive/839fcc53ff9be58218ed55397deb3f8376a1444e.tar.gz",
-          # "https://github.com/google/nsync/archive/839fcc53ff9be58218ed55397deb3f8376a1444e.tar.gz",
+          "https://mirror.bazel.build/github.com/google/nsync/archive/4fc8ff3e7626c5f24bc9674438d8257f0ffc226c.tar.gz",
+          # "https://github.com/google/nsync/archive/4fc8ff3e7626c5f24bc9674438d8257f0ffc226c.tar.gz",
       ],
-      sha256 = "124d105edb0313ef2d7f5bb86ec94d9f8de95479e55641c4254ffa8f795e9b37",
-      strip_prefix = "nsync-839fcc53ff9be58218ed55397deb3f8376a1444e",
+      sha256 = "ffbbe828f3d0bef75462e34801de5cea31d10aa63eaa42a4ed74c46521bdfd58",
+      strip_prefix = "nsync-4fc8ff3e7626c5f24bc9674438d8257f0ffc226c",
   )
 
   native.http_archive(
