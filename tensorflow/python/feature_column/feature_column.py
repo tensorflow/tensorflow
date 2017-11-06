@@ -586,7 +586,7 @@ def numeric_column(key,
     shape: An iterable of integers specifies the shape of the `Tensor`. An
       integer can be given which means a single dimension `Tensor` with given
       width. The `Tensor` representing the column will have the shape of
-      [batch_size] + `shape`.
+      (batch_size, shape).
     default_value: A single value compatible with `dtype` or an iterable of
       values compatible with `dtype` which the column takes on during
       `tf.Example` parsing if data is missing. A default value of `None` will
@@ -1394,7 +1394,7 @@ class _DenseColumn(_FeatureColumn):
         `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.Variable}).
 
     Returns:
-      `Tensor` of shape [batch_size] + `_variable_shape`.
+      `Tensor` of shape (batch_size, _variable_shape).
     """
     pass
 
