@@ -354,6 +354,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party:six.BUILD")),
   )
 
+  native.http_archive(
+      name = "absl_py",
+      urls = [
+          "https://github.com/abseil/abseil-py/archive/231e3870b976c1dc61dce1749138661d21556028.tar.gz",
+      ],
+      sha256 = "8ea2b23bfdb9ae7622f3e5d95236bc600c8d8509a2f38c84732b3145585d4f73",
+      strip_prefix = "abseil-py-231e3870b976c1dc61dce1749138661d21556028",
+  )
+
   native.new_http_archive(
       name = "org_python_pypi_backports_weakref",
       urls = [

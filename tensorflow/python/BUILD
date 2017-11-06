@@ -130,6 +130,7 @@ py_library(
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/flags",
         "@six_archive//:six",
     ],
 )
