@@ -24,6 +24,7 @@ tf_custom_op_py_library(
         "python/framework/__init__.py",
         "python/framework/checkpoint_utils.py",
         "python/framework/experimental.py",
+        "python/framework/graph_util.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
         "python/ops/accumulate_n_v2.py",
@@ -224,6 +225,17 @@ py_test(
 py_test(
     name = "experimental_test",
     srcs = ["python/framework/experimental_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "graph_util_test",
+    srcs = ["python/framework/graph_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
