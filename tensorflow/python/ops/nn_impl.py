@@ -795,11 +795,12 @@ def batch_normalization(x,
     the normalized, scaled, offset tensor.
   """
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
-    inv = math_ops.rsqrt(variance + variance_epsilon)
+    normalized = (x - mean) * math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
-      inv *= scale
-    return x * inv + (offset - mean * inv
-                      if offset is not None else -mean * inv)
+      normalized *= scale
+    if offset is not None:
+      normalized += offset
+    return normalized
 
 
 def fused_batch_norm(
