@@ -323,6 +323,7 @@ def _check_weights_match_logits_and_reshape(weights, logits):
   Consider logits of shape [D0, D1, ... DN, logits_dimension]. Weights shape
   can be either:
   * [D0, D1, ... DN, logits_dimension]
+  * [D0, D1, ... DN, 1]
   * [D0, D1, ... DN]: In this case, weights is reshaped into
     [D0, D1, ... DN, 1] to work with weight broadcasting rules.
 
@@ -502,7 +503,20 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
                                                       name=None):
   """Creates a '_Head' for multi class classification.
 
-  This head expects to be fed integer labels specifying the class index.
+  The head expects `logits` with shape `[D0, D1, ... DN, n_classes]`.
+  In many applications, the shape is `[batch_size, n_classes]`.
+
+  `labels` must be a dense `Tensor` with shape matching `logits`, namely
+  `[D0, D1, ... DN, 1]`. If `label_vocabulary` given, `labels` must be a string
+  `Tensor` with values from the vocabulary. If `label_vocabulary` is not given,
+  `labels` must be an integer `Tensor` with values specifying the class index.
+
+  If `weight_column` is specified, weights must be of shape
+  `[D0, D1, ... DN]`, or `[D0, D1, ... DN, 1]`.
+
+  The loss is the weighted sum over the input dimensions. Namely, if the input
+  labels have shape `[batch_size, 1]`, the loss is the weighted sum over
+  `batch_size`.
 
   Args:
     n_classes: Number of classes, must be greater than 2 (for 2 classes, use
@@ -605,12 +619,18 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode  # Unused for this head.
-    label_ids = self._label_ids(_check_and_reshape_dense_labels(labels, 1))
+    logits = ops.convert_to_tensor(logits)
+    labels = _check_dense_labels_match_logits_and_reshape(
+        labels=labels, logits=logits, expected_labels_dimension=1)
+    label_ids = self._label_ids(labels)
     unweighted_loss = losses.sparse_softmax_cross_entropy(
         labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
     # Restore the squeezed dim, so unweighted_loss matches the weights shape.
-    unweighted_loss = array_ops.expand_dims(unweighted_loss, axis=(1,))
+    unweighted_loss = array_ops.expand_dims(unweighted_loss, axis=-1)
     weights = _weights(features, self._weight_column)
+    if self._weight_column is not None:
+      weights = _check_weights_match_logits_and_reshape(
+          weights=weights, logits=logits)
     weighted_sum_loss = losses.compute_weighted_loss(
         unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
     # _weights() can return 1.
@@ -623,16 +643,32 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
 
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
-    """See `Head`."""
+    """Returns an `EstimatorSpec`.
+
+    Args:
+      features: Input `dict` of `Tensor` or `SparseTensor` objects.
+      mode: Estimator's `ModeKeys`.
+      logits: logits `Tensor` with shape `[D0, D1, ... DN, logits_dimension]`.
+        For many applications, the shape is `[batch_size, logits_dimension]`.
+      labels: Labels integer or string `Tensor` with shape matching `logits`,
+        namely `[D0, D1, ... DN, 1]`. `labels` is required argument when `mode`
+        equals `TRAIN` or `EVAL`.
+      train_op_fn: Function that takes a scalar loss `Tensor` and returns
+        `train_op`. Required in TRAIN mode.
+    Returns:
+      `EstimatorSpec`.
+    Raises:
+      ValueError: If `train_op_fn` is `None` in TRAIN mode.
+    """
     with ops.name_scope(self._name, 'head'):
-      logits = _check_logits(logits, self.logits_dimension)
+      logits = _check_logits_final_dim(logits, self.logits_dimension)
 
       # Predict.
       pred_keys = prediction_keys.PredictionKeys
       with ops.name_scope(None, 'predictions', (logits,)):
-        # class_ids's shape is [batch_size]
-        class_ids = math_ops.argmax(logits, 1, name=pred_keys.CLASS_IDS)
-        class_ids = array_ops.expand_dims(class_ids, axis=(1,))
+        # class_ids's shape is [D0, D1, ... DN].
+        class_ids = math_ops.argmax(logits, axis=-1, name=pred_keys.CLASS_IDS)
+        class_ids = array_ops.expand_dims(class_ids, axis=-1)
         if self._label_vocabulary:
           table = lookup_ops.index_to_string_table_from_tensor(
               vocabulary_list=self._label_vocabulary,
@@ -1030,9 +1066,6 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """Returns an `EstimatorSpec`.
-
-    Please note that,
-    + All args must be passed via name.
 
     Args:
       features: Input `dict` of `Tensor` or `SparseTensor` objects.
