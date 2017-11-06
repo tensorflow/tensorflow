@@ -123,7 +123,7 @@ def train():
     diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y)
     with tf.name_scope('total'):
       cross_entropy = tf.reduce_mean(diff)
-  tf.summary.scalar('cross_entropy', cross_entropy)
+  tf.summary.scalar('cross_entropy/', cross_entropy)
 
   with tf.name_scope('train'):
     train_step = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(
@@ -134,7 +134,7 @@ def train():
       correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
     with tf.name_scope('accuracy'):
       accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-  tf.summary.scalar('accuracy', accuracy)
+  tf.summary.scalar('accuracy/', accuracy)
 
   # Merge all the summaries and write them out to
   # /tmp/tensorflow/mnist/logs/mnist_with_summaries (by default)
