@@ -127,7 +127,7 @@ bool RdmaMgr::ConnectivityCheck() {
     VLOG(2) << "Ping to " << worker_name;
     CHECK(rc->PingPostSend() == 0) << "Couldn't post send  to " << worker_name
                                    << " with error: " << std::strerror(errno);
-    for (int i = 0; i < 100; i++) {
+    for (i = 0; i < rc->adapter_->params_.queue_depth - 1; i++) {
       rc->Recv();
     }
   }
