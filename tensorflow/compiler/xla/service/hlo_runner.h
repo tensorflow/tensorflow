@@ -44,15 +44,23 @@ class HloRunner {
 
   ~HloRunner();
 
-  // Reads the binary proto file in xla.HloProto format, creates and returns the
-  // HloModule.
+  // Reads the proto file in xla.HloProto format, creates and returns the
+  // HloModule. Will try to parse the filename as binary proto, then try as
+  // text proto if that fails.
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloProtoFile(
-      const char* filename, const DebugOptions& debug_options);
+      const std::string& filename, const DebugOptions& debug_options);
 
   // Reads the hlo text dump file in HloModule::ToString format, creates and
   // returns the HloModule.
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextDumpFile(
-      const char* filename, const DebugOptions& debug_options);
+      const std::string& filename, const DebugOptions& debug_options);
+
+  // Tries to parse the filename specified first as binary proto format, then
+  // as a textual proto format, then textual IR, then gives up if both fail.
+  // ReadModuleFromHloProtoFile or ReadModuleFromHloTextDumpFile should be used
+  // explicitly when you know the format, this if you don't.
+  static StatusOr<std::unique_ptr<HloModule>> ReadModule(
+      const std::string& filename, const DebugOptions& debug_options);
 
   // Executes the given module with given literals as input and returns the
   // result as a Literal. The LiteralPtr type accepts Literal* or
