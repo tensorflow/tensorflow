@@ -2860,6 +2860,16 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "garbage_collection_test",
+    size = "small",
+    srcs = ["garbage_collection_test.py"],
+    additional_deps = [
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "list_files_dataset_op_test",
     size = "small",
     srcs = ["list_files_dataset_op_test.py"],
