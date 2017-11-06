@@ -15,6 +15,8 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        # The test dependency enables testing batch_dataset_op_test against a pip installation
+        "//third_party/tensorflow/contrib/data/python/kernel_tests:dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:prefetching_py",
