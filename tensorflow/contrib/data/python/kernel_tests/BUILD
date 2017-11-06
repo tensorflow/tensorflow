@@ -11,6 +11,7 @@ py_test(
     size = "small",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nopip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
@@ -117,10 +118,12 @@ py_test(
 
 py_library(
     name = "dataset_serialization_test",
+    testonly = 1,
     srcs = [
         "dataset_serialization_test_base.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/python:errors",
