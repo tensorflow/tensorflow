@@ -2239,7 +2239,7 @@ def conv1d_transpose(value,
                      output_shape,
                      stride,
                      padding="SAME",
-                     data_format="NHWC",
+                     data_format="NWC",
                      name=None):
   """The transpose of `conv1d`.
 
@@ -2250,8 +2250,8 @@ def conv1d_transpose(value,
 
   Args:
     value: A 3-D `Tensor` of type `float` and shape
-      `[batch, in_width, in_channels]` for `NHWC` data format or
-      `[batch, in_channels, in_width]` for `NCHW` data format.
+      `[batch, in_width, in_channels]` for `NWC` data format or
+      `[batch, in_channels, in_width]` for `NCW` data format.
     filter: A 3-D `Tensor` with the same type as `value` and shape
       `[filter_width, output_channels, in_channels]`.  `filter`'s
       `in_channels` dimension must match that of `value`.
@@ -2278,13 +2278,15 @@ def conv1d_transpose(value,
       raise ValueError("output_shape must have shape (3,), got {}"
                        .format(output_shape_.get_shape()))
 
-    if data_format is None or data_format == "NHWC":
-      data_format = "NHWC"
+    # The format could be either NWC or NCW, map to NHWC or NCHW
+    if data_format is None or data_format == "NWC":
+      data_format_2d = "NHWC"
       axis = 2
-    elif data_format == "NCHW":
+    elif data_format == "NCW":
+      data_format_2d = "NCHW"
       axis = 1
     else:
-      raise ValueError("data_format must be \"NHWC\" or \"NCHW\".")
+      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
 
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[2]):
       raise ValueError("input channels does not match filter's input channels, "
@@ -2303,7 +2305,7 @@ def conv1d_transpose(value,
                        " {}".format(padding))
 
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
-    if data_format is None or data_format == "NHWC":
+    if data_format_2d == "NHWC":
       output_shape_ = array_ops.concat([output_shape_[:1], [1],
                                         output_shape_[1:]], axis=0)
       spatial_start_dim = 1
@@ -2321,7 +2323,7 @@ def conv1d_transpose(value,
                                               out_backprop=value,
                                               strides=strides,
                                               padding=padding,
-                                              data_format=data_format,
+                                              data_format=data_format_2d,
                                               name=name)
     return array_ops.squeeze(result, [spatial_start_dim])
 
