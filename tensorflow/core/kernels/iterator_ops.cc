@@ -787,7 +787,7 @@ class SerializeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-    iterator_resource->Unref();
+    core::ScopedUnref unref_iterator(iterator_resource);
     Tensor* variant_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &variant_t));
     IteratorStateVariant v;
