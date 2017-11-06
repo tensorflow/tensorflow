@@ -490,13 +490,19 @@ Service::ExecuteParallelAndRegisterResult(
         std::vector<perftools::gputools::DeviceMemoryBase>>
         arguments,
     Backend* backend, tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
-    tensorflow::gtl::ArraySlice<string> result_tags) {
+    tensorflow::gtl::ArraySlice<string> result_tags,
+    ExecutionProfile* profile) {
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
   std::vector<Pool<se::Stream>::SmartPtr> streams;
+  std::vector<std::unique_ptr<perftools::gputools::Timer>> timers;
 
   // Global data handles for the computation results, one for each computation.
   std::vector<GlobalDataHandle> result_handles;
+
+  // Device ID to stream executor, populated only with devices that are being
+  // profiled.
+  std::map<int64, se::Stream*> index_to_profiled_streams;
 
   TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                       backend->computation_placer()->AssignDevices(
@@ -509,6 +515,21 @@ Service::ExecuteParallelAndRegisterResult(
       TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
+
+      if (replica == 0 && profile != nullptr) {
+        timers.emplace_back(
+            new perftools::gputools::Timer(streams.back()->parent()));
+        streams.back()
+            ->InitTimer(timers.back().get())
+            .ThenStartTimer(timers.back().get());
+        CHECK(timers.front() != nullptr);
+      }
+
+      if (replica == 0 &&
+          executables[i]->module_config().debug_options().xla_hlo_profile() &&
+          executables[i]->hlo_profiling_enabled()) {
+        index_to_profiled_streams[i] = streams.back().get();
+      }
 
       // Set up run options.
       ExecutableRunOptions options;
@@ -526,6 +547,10 @@ Service::ExecuteParallelAndRegisterResult(
           perftools::gputools::DeviceMemoryBase result,
           executables[i]->ExecuteAsyncOnStream(&run_options, arguments[i]));
 
+      if (replica == 0 && profile != nullptr) {
+        streams.back()->ThenStopTimer(timers.back().get());
+      }
+
       // All replicas share the same device address for the result allocation,
       // so only one of the replicas need to register the result handle.
       if (replica == 0) {
@@ -540,6 +565,69 @@ Service::ExecuteParallelAndRegisterResult(
   for (int64 i = 0; i < streams.size(); ++i) {
     if (!streams[i]->BlockHostUntilDone()) {
       return InternalError("failed to complete execution for stream %lld", i);
+    }
+  }
+
+  // For every stream that had profiling enabled, obtain and debug-dump the HLO
+  // profile.
+  for (auto& index_to_profiled_stream : index_to_profiled_streams) {
+    int64 device = index_to_profiled_stream.first;
+    se::Stream* stream = index_to_profiled_stream.second;
+    HloExecutionProfile hlo_profile;
+    TF_RETURN_IF_ERROR(executables[device]->PopulateExecutionProfile(
+        &hlo_profile, stream->parent()));
+
+    std::unordered_set<const xla::HloComputation*> profiled_computations =
+        hlo_profile.profiled_computations();
+    // To ensure we have print the profiles in a stable order, iterate over the
+    // computations in post order.
+    auto& module = executables[device]->module();
+    std::list<xla::HloComputation*> all_computations =
+        module.MakeComputationPostOrder();
+    for (xla::HloComputation* computation : all_computations) {
+      if (profiled_computations.count(computation) > 0) {
+        string profile_string = hlo_profile.ToString(
+            *computation, streams[0]->parent()->GetDeviceDescription(),
+            executables[device]->CreateCostAnalysis().get());
+        if (!profile_string.empty()) {
+          LOG(INFO) << "HLO profile for execution on device " << device
+                    << ":\n";
+          XLA_LOG_LINES(tensorflow::INFO, profile_string);
+        }
+      }
+    }
+    hlo_graph_dumper::MaybeDumpHloModule(module, "Service::Execute",
+                                         &hlo_profile);
+  }
+
+  if (profile != nullptr) {
+    CHECK(!timers.empty());
+    std::vector<uint64> timer_nanoseconds;
+    timer_nanoseconds.reserve(timers.size());
+    for (auto& timer : timers) {
+      timer_nanoseconds.push_back(timer->Nanoseconds());
+    }
+    uint64 nanoseconds =
+        *std::max_element(timer_nanoseconds.begin(), timer_nanoseconds.end());
+
+    // Merge in run-time profile information from execution_profile on the
+    // zeroth device.
+    profile->MergeFrom(executables[0]->execution_profile());
+
+    // Overall execution time (in nanoseconds) from the executor timer.
+    profile->set_compute_and_transfer_time_ns(nanoseconds);
+
+    // TODO(b/28123297): On GPU we end up including transfer time in
+    // the compute time this way. Instead, we should get the correct
+    // value by measuring it. Setting the field here at least lets
+    // benchmarks provide *some* value for GPU computations.
+    //
+    // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
+    // the compute time without the transfer time, so this way we get the
+    // correct compute time. We should instead have the correct value for
+    // compute_and_transfer_time and set compute_time to the compute time.
+    if (profile->compute_time_ns() == 0) {
+      profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
   }
 
@@ -715,14 +803,16 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
 
   // Execute the generated executables in parallel and return the device
   // handles for each computation's output.
+  ExecutionProfile profile;
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDataHandle> outputs,
       ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
                                        execute_backend_.get(), device_handles,
-                                       computation_names));
+                                       computation_names, &profile));
   for (const GlobalDataHandle& output : outputs) {
     ExecuteResponse response;
     *response.mutable_output() = output;
+    *response.mutable_profile() = profile;
     *result->add_responses() = response;
   }
 
