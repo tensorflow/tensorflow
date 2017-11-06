@@ -147,3 +147,8 @@ target_link_libraries(${benchmark_model} PUBLIC
   ${tf_core_gpu_kernels_lib}
   ${tensorflow_EXTERNAL_LIBRARIES}
 )
+
+install(TARGETS ${transform_graph} ${summarize_graph} ${compare_graphs} ${benchmark_model}
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)

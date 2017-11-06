@@ -130,10 +130,10 @@ def preprocess_image(
   with ops.name_scope(scope, 'preprocess', [images, height, width]):
     if not images.dtype.is_floating:
       images = math_ops.to_float(images)
-    images = (images - 128.0) / 128.0
     if is_single:
       images = array_ops.expand_dims(images, axis=0)
     resized = image_ops.resize_bilinear(images, [height, width])
+    resized = (resized - 128.0) / 128.0
     if is_single:
       resized = array_ops.squeeze(resized, axis=0)
     return resized
@@ -297,7 +297,8 @@ def classifier_score(images, classifier_fn, num_batches=1):
       efficiently run them through the classifier network.
 
   Returns:
-    The classifier score. A floating-point scalar.
+    The classifier score. A floating-point scalar of the same type as the output
+    of `classifier_fn`.
   """
   generated_images_list = array_ops.split(
       images, num_or_size_splits=num_batches)
@@ -316,7 +317,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
   # Use maximum precision for best results.
   logits_dtype = logits.dtype
   if logits_dtype != dtypes.float64:
-    logits = math_ops.cast(logits, dtypes.float64)
+    logits = math_ops.to_double(logits)
 
   p = nn_ops.softmax(logits)
   q = math_ops.reduce_mean(p, axis=0)
@@ -326,7 +327,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
   final_score = math_ops.exp(log_score)
 
   if logits_dtype != dtypes.float64:
-    final_score = math_ops.cast(final_score, dtypes.float64)
+    final_score = math_ops.cast(final_score, logits_dtype)
   return final_score
 
 
@@ -415,7 +416,8 @@ def frechet_classifier_distance(real_images,
       efficiently run them through the classifier network.
 
   Returns:
-    The Frechet Inception distance. A floating-point scalar.
+    The Frechet Inception distance. A floating-point scalar of the same type
+    as the output of `classifier_fn`
   """
 
   real_images_list = array_ops.split(
@@ -434,19 +436,24 @@ def frechet_classifier_distance(real_images,
       swap_memory=True,
       name='RunClassifier')
 
+  activations_dtype = activations.dtype
   # Split the activations by the real and generated images.
   real_a, gen_a = array_ops.split(activations, [num_batches, num_batches], 0)
 
   # Ensure the activations have the right shapes.
   real_a = array_ops.concat(array_ops.unstack(real_a), 0)
   gen_a = array_ops.concat(array_ops.unstack(gen_a), 0)
+  if activations_dtype != dtypes.float64:
+    real_a = math_ops.to_double(real_a)
+    gen_a = math_ops.to_double(gen_a)
+
   real_a.shape.assert_has_rank(2)
   gen_a.shape.assert_has_rank(2)
 
   # Compute mean and covariance matrices of activations.
   m = math_ops.reduce_mean(real_a, 0)
   m_v = math_ops.reduce_mean(gen_a, 0)
-  num_examples = math_ops.to_float(array_ops.shape(real_a)[0])
+  num_examples = math_ops.to_double(array_ops.shape(real_a)[0])
 
   # sigma = (1 / (n - 1)) * (X - mu) (X - mu)^T
   sigma = math_ops.matmul(
@@ -467,6 +474,8 @@ def frechet_classifier_distance(real_images,
   # Next the distance between means.
   mean = math_ops.square(linalg_ops.norm(m - m_v))  # This uses the L2 norm.
   fid = trace + mean
+  if activations_dtype != dtypes.float64:
+    fid = math_ops.cast(fid, activations_dtype)
 
   return fid
 

@@ -71,7 +71,9 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Neg",
                                           "RealDiv",
                                           "Relu",
+                                          "Relu6",
                                           "ReluGrad",
+                                          "Sigmoid",
                                           "Slice",
                                           "SquaredDifference",
                                           "Squeeze",
@@ -1231,7 +1233,8 @@ class DataLayoutOptimizer : GraphProcessor {
   Status Expand() {
     int node_size_original = graph_->node_size();
     std::unordered_map<const NodeDef*, std::vector<int>> frames;
-    IdentifyFrames(*graph_, &frames);
+    int num_frames;
+    TF_RETURN_IF_ERROR(IdentifyFrames(*graph_, &frames, &num_frames));
 
     // This is the first pass where we expand the nodes which support NCHW.
     std::set<string> ops_format_supported = GetOpsFormatSupported();

@@ -68,12 +68,20 @@ string HumanReadableProfileBuilder::ToString() const {
   };
 
   float optimal_seconds_sum = 0.0;
+  int64 total_flops = 0.;
+  int64 total_transcendentals = 0.;
+  int64 total_bytes = 0;
   for (const auto& op : op_infos_) {
     optimal_seconds_sum += op.optimal_seconds;
+    total_flops += op.flop_count;
+    total_transcendentals += op.transcendental_count;
+    total_bytes += op.bytes_accessed;
   }
 
-  append_op({"[total]", "[total]", /*category=*/"", total_cycles_, -1, -1, -1,
-             optimal_seconds_sum});
+  VLOG(1) << "Total floating point ops: " << total_flops;
+
+  append_op({"[total]", "[total]", /*category=*/"", total_cycles_, total_flops,
+             total_transcendentals, total_bytes, optimal_seconds_sum});
 
   // Sort ops in decreasing order of cycles.
   std::vector<OpInfo> sorted_ops(op_infos_);

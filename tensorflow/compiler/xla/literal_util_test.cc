@@ -122,7 +122,7 @@ TEST_F(LiteralUtilTest, R2ToString) {
   const string expected = R"(s32[3,2] {
   { 1, 2 },
   { 3, 4 },
-  { 5, 6 },
+  { 5, 6 }
 })";
   ASSERT_EQ(expected, literal->ToString());
 }
@@ -148,8 +148,8 @@ TEST_F(LiteralUtilTest, TupleToString) {
 1,
 f32[2,2] {
   { 1, 2 },
-  { 3, 4 },
-},
+  { 3, 4 }
+}
 ))";
   ASSERT_EQ(expected, tuple->ToString());
 }
@@ -191,18 +191,18 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   EXPECT_THAT(literal->shape().dimensions(), ElementsAre(1, 2, 3, 2));
   string result = literal->ToString();
   const string expected = R"(f32[1,2,3,2] {
-  {  // i0=0
-    {  // i1=0
+  {  /*i0=0*/
+    {  /*i1=0*/
       {1, 2},
       {1001, 1002},
-      {2001, 2002},
+      {2001, 2002}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {1, 2},
       {1001, 1002},
-      {2001, 2002},
-    },
-  },
+      {2001, 2002}
+    }
+  }
 })";
   ASSERT_EQ(expected, result);
 }
@@ -212,30 +212,30 @@ TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
               ElementsAre(2, 2, 3, 3));
   string result = literal_r4_2x2x3x3_dim0major_->ToString();
   const string expected = R"(f32[2,2,3,3] {
-  {  // i0=0
-    {  // i1=0
+  {  /*i0=0*/
+    {  /*i1=0*/
       {1, 2, 3},
       {4, 5, 6},
-      {7, 8, 9},
+      {7, 8, 9}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {11, 12, 13},
       {14, 15, 16},
-      {17, 18, 19},
-    },
+      {17, 18, 19}
+    }
   },
-  {  // i0=1
-    {  // i1=0
+  {  /*i0=1*/
+    {  /*i1=0*/
       {101, 102, 103},
       {104, 105, 106},
-      {107, 108, 109},
+      {107, 108, 109}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {201, 202, 203},
       {204, 205, 206},
-      {207, 208, 209},
-    },
-  },
+      {207, 208, 209}
+    }
+  }
 })";
   ASSERT_EQ(expected, result);
 }

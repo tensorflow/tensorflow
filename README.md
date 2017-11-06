@@ -73,11 +73,11 @@ $ python
 
 ## For more information
 
-* [TensorFlow website](https://www.tensorflow.org)
+* [TensorFlow Website](https://www.tensorflow.org)
 * [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 * [TensorFlow Model Zoo](https://github.com/tensorflow/models)
 * [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
-* [TensorFlow course at Stanford](https://web.stanford.edu/class/cs20si)
+* [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)
 
 Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/community) for a few ways to participate.
 
