@@ -35,8 +35,19 @@ tf_custom_op_library(
     ],
 )
 
+# TODO(mrry): Move the kernels out of the core library into this library.
+tf_custom_op_library(
+    name = "_dataset_ops.so",
+    srcs = [
+        "ops/dataset_ops.cc",
+    ],
+)
+
 tf_gen_op_libs(
-    op_lib_names = ["prefetching_ops"],
+    op_lib_names = [
+        "dataset_ops",
+        "prefetching_ops",
+    ],
 )
 
 filegroup(
