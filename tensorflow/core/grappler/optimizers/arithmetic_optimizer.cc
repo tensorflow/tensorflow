@@ -81,9 +81,20 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
 }
 
 bool IsInvolution(const NodeDef& node) {
-  const std::unordered_set<string> involution_ops = {"Conj", "Reciprocal",
-                                                     "Neg", "LogicalNot"};
+  const std::unordered_set<string> involution_ops = {
+      "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"};
   return involution_ops.count(node.op()) > 0;
+}
+
+// Returns true if the op in node only rearranges the order of elements in an
+// input tensor, or more specifically, if it commutes with all element-wise
+// operations on the values.
+bool IsValuePreserving(const NodeDef& node) {
+  const std::unordered_set<string> value_preserving_ops = {
+      "Transpose",  "Reshape",      "Identity",        "InvertPermutation",
+      "Reverse",    "StopGradient", "PreventGradient", "CheckNumerics",
+      "ExpandDims", "Squeeze"};
+  return value_preserving_ops.count(node.op()) > 0;
 }
 
 template <typename T>
@@ -174,8 +185,33 @@ bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
   return false;
 }
 
-bool SimplyReordersData(const NodeDef& node) {
-  return node.op() == "Transpose";
+// Follow a chain (through input(0)) of ops starting at `source->input(0)` as
+// long as they
+//  1. preserve the values of their first input,
+//  2. have a single output,
+//  3. are not in nodes_to_preserve.
+// Returns the last node in the chain satisfying these properties or source
+// itself if a chain of length zero was found.
+//
+// source <- vp <- vp <- vp <- non_vp
+//                       ^^
+//                   return value
+NodeDef* GetTailOfValuePreservingChain(
+    const NodeDef* source, const NodeMap* node_map,
+    const std::unordered_set<string>& nodes_to_preserve) {
+  const NodeDef* source_parent = source;
+  source = node_map->GetNode(source->input(0));
+  while (IsValuePreserving(*source) &&
+         node_map->GetOutputs(source->name()).size() == 1 &&
+         // Do not skip over preserved nodes, because folding will change
+         // the results of these skipped data-reordering nodes.
+         // TODO(jingyue): A more elegant way is to copy this chain of
+         // data-reordering nodes and modify only the copy.
+         !nodes_to_preserve.count(source->name())) {
+    source_parent = source;
+    source = node_map->GetNode(source->input(0));
+  }
+  return const_cast<NodeDef*>(source_parent);
 }
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
@@ -527,11 +563,26 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     std::vector<const NodeDef*>* new_nodes, FrameMap* frame_map) const {
   // Remove involutions applied twice.
   if (IsInvolution(*node)) {
-    // An involution is a function f(x) that is its own inverse,
-    // i.e. f(f(x)) = x.
-    const NodeDef* input = node_map->GetNode(node->input(0));
-    if (input->op() == node->op()) {
-      return input->input(0);
+    // An involution is an element-wise function f(x) that is its own inverse,
+    // i.e. f(f(x)) = x. If we can find a chain of ops
+    //   f->op1->op2->...opn->f
+    // where op1 through opn preserve the values of their inputs, we can remove
+    // the two instances of the involution from the graph, since they cancel
+    // each other.
+    NodeDef* tail =
+        GetTailOfValuePreservingChain(node, node_map, nodes_to_preserve_);
+    NodeDef* involution = node_map->GetNode(tail->input(0));
+    if (involution->op() == node->op()) {
+      // Skip both *node and *involution since they cancel each other.
+      if (tail == node) {
+        // The two nodes to eliminate are adjacent.
+        return involution->input(0);
+      } else {
+        tail->set_input(0, involution->input(0));
+        node_map->UpdateInput(tail->name(), involution->name(),
+                              involution->input(0));
+        return node->input(0);
+      }
     }
   }
 
@@ -726,16 +777,9 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // constant, this should also help performance a bit and memory usage a lot,
     // since the weights tend to be smaller than the activations.
     if (weights->op() == "Const") {
-      const NodeDef* source = node_map->GetNode(node->input(0));
-      while (SimplyReordersData(*source) &&
-             node_map->GetOutputs(source->name()).size() == 1 &&
-             // Do not skip over preserved nodes, because folding will change
-             // the results of these skipped data-reordering nodes.
-             // TODO(jingyue): A more elegant way is to copy this chain of
-             // data-reordering nodes and modify only the copy.
-             !nodes_to_preserve_.count(source->name())) {
-        source = node_map->GetNode(source->input(0));
-      }
+      const NodeDef* source = node_map->GetNode(
+          GetTailOfValuePreservingChain(node, node_map, nodes_to_preserve_)
+              ->input(0));
       if (source->op() == "Mul" &&
           node_map->GetOutputs(source->name()).size() == 1) {
         const NodeDef* mul = source;
