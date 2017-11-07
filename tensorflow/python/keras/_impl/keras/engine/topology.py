@@ -134,6 +134,7 @@ class Layer(tf_base_layers.Layer):
         'name',
         'trainable',
         'weights',
+        'reuse'
     }
     # Validate optional keyword arguments.
     for kwarg in kwargs:
@@ -155,7 +156,7 @@ class Layer(tf_base_layers.Layer):
     # and core TF layers.
     super(Layer, self).__init__(
         name=name, dtype=dtype, trainable=trainable,
-        activity_regularizer=kwargs.get('activity_regularizer'))
+        activity_regularizer=kwargs.get('activity_regularizer'), _reuse=kwargs.get('reuse'))
 
     # Add properties that are Keras-only for now.
     self.supports_masking = False
