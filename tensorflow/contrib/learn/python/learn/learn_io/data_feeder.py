@@ -361,13 +361,13 @@ class DataFeeder(object):
     self.random_state = np.random.RandomState(
         42) if random_state is None else random_state
 
-    num_samples = list(self._x.values())[0].shape[
-        0] if x_is_dict else self._x.shape[0]
-
-    # In case a Tensor is passed num_samples will be a Dimension
-    if hasattr(num_samples, 'value'):
-      num_samples = num_samples.value
-
+    if x_is_dict:
+      num_samples = list(self._x.values())[0].shape[0]
+    elif is_tensor(self._x)
+      num_samples = self._x.shape[0].value  # shape will be a Dimension, extract an int
+    else:
+      num_samples = self._x.shape[0]
+      
     if self._shuffle:
       self.indices = self.random_state.permutation(num_samples)
     else:
