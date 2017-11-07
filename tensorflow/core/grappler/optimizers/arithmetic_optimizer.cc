@@ -919,8 +919,9 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   }
 
   // Fold Transpose into matrix multiplication.
-  if (node->op() == "MatMul" || node->op() == "SparseMatMul" ||
-      node->op() == "BatchMatMul") {
+  if ((node->op() == "MatMul" || node->op() == "SparseMatMul" ||
+       node->op() == "BatchMatMul") &&
+      node_map->GetNode(node->name() + "_fused") == nullptr) {
     const NodeDef* a = node_map->GetNode(node->input(0));
     const NodeDef* b = node_map->GetNode(node->input(1));
     bool is_complex = false;
