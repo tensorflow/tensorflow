@@ -281,7 +281,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              save_summaries_secs=USE_DEFAULT,
                              config=None,
                              stop_grace_period_secs=120,
-                             log_step_count_steps=100):
+                             log_step_count_steps=100,
+                             checkpoint_saver_listeners=None):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -320,6 +321,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       `close()` has been called.
     log_step_count_steps: The frequency, in number of global steps, that the
       global step/sec is logged.
+    checkpoint_saver_listeners: Optinal list of `CheckpointSaverListener` passed 
+      to internal `CheckpointSaverHook`.
 
   Returns:
     A `MonitoredSession` object.
@@ -363,7 +366,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
           output_dir=checkpoint_dir))
     if save_checkpoint_secs and save_checkpoint_secs > 0:
       all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
-          checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
+          checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold, listeners=checkpoint_saver_listeners))
 
   if hooks:
     all_hooks.extend(hooks)
