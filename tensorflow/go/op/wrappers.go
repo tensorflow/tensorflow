@@ -7996,6 +7996,41 @@ func Cholesky(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// Computes the matrix exponential of one or more square matrices:
+//
+// exp(A) = \sum_{n=0}^\infty A^n/n!
+//
+// The exponential is computed using a combination of the scaling and squaring
+// method and the Pade approximation. Details can be founds in:
+// Nicholas J. Higham, "The scaling and squaring method for the matrix exponential
+// revisited," SIAM J. Matrix Anal. Applic., 26:1179-1193, 2005.
+//
+// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+// form square matrices. The output is a tensor of the same shape as the input
+// containing the exponential for all input submatrices `[..., :, :]`.
+//
+// Arguments:
+//	input: Shape is `[..., M, M]`.
+//
+// Returns Shape is `[..., M, M]`.
+//
+// @compatibility(scipy)
+// Equivalent to scipy.linalg.expm
+// @end_compatibility
+func MatrixExponential(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixExponential",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // MaxPool3DGradGradAttr is an optional argument to MaxPool3DGradGrad.
 type MaxPool3DGradGradAttr func(optionalAttr)
 
