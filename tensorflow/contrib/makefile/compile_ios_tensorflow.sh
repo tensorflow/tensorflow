@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash 
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,52 +46,47 @@ fi
 GENDIR=tensorflow/contrib/makefile/gen/
 LIBDIR=${GENDIR}lib
 LIB_PREFIX=libtensorflow-core
+ARCHS="ARMV7 ARMV7S ARM64 I386 X86_64"
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARMV7 LIB_NAME=${LIB_PREFIX}-armv7.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "armv7 compilation failed."
-  exit 1
-fi
+USAGE="usage: compile_ios_tensorflow.sh [-A architecture] [-F cxxflags]
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARMV7S LIB_NAME=${LIB_PREFIX}-armv7s.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "arm7vs compilation failed."
-  exit 1
-fi
+A script to build tensorflow for ios.
+This script can only be run on MacOS host platforms.
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARM64 LIB_NAME=${LIB_PREFIX}-arm64.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "arm64 compilation failed."
-  exit 1
-fi
+Options:
+-A architecture
+Target platforms to compile. The default is: $ARCHS.
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=I386 LIB_NAME=${LIB_PREFIX}-i386.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "i386 compilation failed."
-  exit 1
-fi
+-F 
+Specify the option flags appending to CXXFLAGS."
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=X86_64 LIB_NAME=${LIB_PREFIX}-x86_64.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "x86_64 compilation failed."
-  exit 1
-fi
+while
+  ARG="${1-}"
+  case "$ARG" in
+  -*)  case "$ARG" in -*A*) ARCHS="${2?"$USAGE"}"; shift; esac
+       case "$ARG" in -*F*) OPT="${2?"$USAGE"}"; shift; esac
+       case "$ARG" in -*[!AF]*) echo "$USAGE" >&2; exit 2;; esac;;
+  "")  break;;
+  *)   echo "$USAGE" >&2; exit 2;;
+  esac
+do
+  shift
+done
+
+for ARCH in ${ARCHS}; do
+  ARCH_LOWER=`echo "${ARCH}" | tr '[:upper:]' '[:lower:]'`
+  ARCH_LIB=${LIB_PREFIX}-${ARCH_LOWER}.a
+  make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
+  TARGET=IOS IOS_ARCH=${ARCH} LIB_NAME=${ARCH_LIB} OPTFLAGS="$OPT"
+  if [ $? -ne 0 ]
+  then
+    echo "${ARCH} compilation failed."
+    exit 1
+  fi
+  ARCH_LIBS="${ARCH_LIBS} ${LIBDIR}/ios_${ARCH}/${ARCH_LIB}"
+done
 
 lipo \
-${LIBDIR}/ios_ARMV7/${LIB_PREFIX}-armv7.a \
-${LIBDIR}/ios_ARMV7S/${LIB_PREFIX}-armv7s.a \
-${LIBDIR}/ios_ARM64/${LIB_PREFIX}-arm64.a \
-${LIBDIR}/ios_I386/${LIB_PREFIX}-i386.a \
-${LIBDIR}/ios_X86_64/${LIB_PREFIX}-x86_64.a \
+${ARCH_LIBS} \
 -create \
 -output ${LIBDIR}/${LIB_PREFIX}.a
