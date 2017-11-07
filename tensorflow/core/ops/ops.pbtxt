@@ -10077,8 +10077,18 @@ op {
     description: "Number of entries in the new vocab file to remap."
     has_minimum: true
   }
+  attr {
+    name: "old_vocab_size"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Number of entries in the old vocab file to consider.  If -1,\nuse the entire old vocabulary."
+    has_minimum: true
+    minimum: -1
+  }
   summary: "Given a path to new and old vocabulary files, returns a remapping Tensor of"
-  description: "length `num_new_vocab`, where `remapping[i]` contains the row number in the old\nvocabulary that corresponds to row `i` in the new vocabulary (starting at line\n`new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`\nin the new vocabulary is not in the old vocabulary.  `num_vocab_offset` enables\nuse in the partitioned variable case, and should generally be set through\nexamining partitioning info.  The format of the files should be a text file,\nwith each line containing a single entity within the vocabulary.\n\nFor example, with `new_vocab_file` a text file containing each of the following\nelements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],\n`num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be\n`[0, -1, 2]`.\n\nThe op also returns a count of how many entries in the new vocabulary\nwere present in the old vocabulary, which is used to calculate the number of\nvalues to initialize in a weight matrix remapping\n\nThis functionality can be used to remap both row vocabularies (typically,\nfeatures) and column vocabularies (typically, classes) from TensorFlow\ncheckpoints.  Note that the partitioning logic relies on contiguous vocabularies\ncorresponding to div-partitioned variables.  Moreover, the underlying remapping\nuses an IndexTable (as opposed to an inexact CuckooTable), so client code should\nuse the corresponding index_table_from_file() as the FeatureColumn framework\ndoes (as opposed to tf.feature_to_id(), which uses a CuckooTable)."
+  description: "length `num_new_vocab`, where `remapping[i]` contains the row number in the old\nvocabulary that corresponds to row `i` in the new vocabulary (starting at line\n`new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`\nin the new vocabulary is not in the old vocabulary.  The old vocabulary is\nconstrained to the first `old_vocab_size` entries if `old_vocab_size` is not the\ndefault value of -1.\n\n`num_vocab_offset` enables\nuse in the partitioned variable case, and should generally be set through\nexamining partitioning info.  The format of the files should be a text file,\nwith each line containing a single entity within the vocabulary.\n\nFor example, with `new_vocab_file` a text file containing each of the following\nelements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],\n`num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be\n`[0, -1, 2]`.\n\nThe op also returns a count of how many entries in the new vocabulary\nwere present in the old vocabulary, which is used to calculate the number of\nvalues to initialize in a weight matrix remapping\n\nThis functionality can be used to remap both row vocabularies (typically,\nfeatures) and column vocabularies (typically, classes) from TensorFlow\ncheckpoints.  Note that the partitioning logic relies on contiguous vocabularies\ncorresponding to div-partitioned variables.  Moreover, the underlying remapping\nuses an IndexTable (as opposed to an inexact CuckooTable), so client code should\nuse the corresponding index_table_from_file() as the FeatureColumn framework\ndoes (as opposed to tf.feature_to_id(), which uses a CuckooTable)."
 }
 op {
   name: "GetSessionHandle"
