@@ -55,13 +55,13 @@ class Dimension {
 class DimensionHandle {
  public:
   DimensionHandle() {}
+  bool SameHandle(DimensionHandle d) const { return ptr_ == d.ptr_; }
 
  private:
   DimensionHandle(const Dimension* dim) { ptr_ = dim; }
 
   const Dimension* operator->() { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
-  bool SameHandle(DimensionHandle d) const { return ptr_ == d.ptr_; }
 
   const Dimension* ptr_ = nullptr;
 
@@ -95,12 +95,12 @@ class Shape {
 class ShapeHandle {
  public:
   ShapeHandle() {}
+  bool SameHandle(ShapeHandle s) const { return ptr_ == s.ptr_; }
 
  private:
   ShapeHandle(const Shape* shape) { ptr_ = shape; }
   const Shape* operator->() { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
-  bool SameHandle(ShapeHandle s) const { return ptr_ == s.ptr_; }
 
   const Shape* ptr_ = nullptr;
 
