@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -57,6 +58,30 @@ class RemoteFusedGraphExecuteOpTestUtils {
  private:
   RemoteFusedGraphExecuteOpTestUtils() = delete;
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteFusedGraphExecuteOpTestUtils);
+};
+
+class TestRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
+ public:
+  TestRemoteFusedGraphExecutor(const std::unordered_set<string>& fused_op_types,
+                               const string& executor_name);
+
+  int GetVersion() final;
+  bool Init(const RemoteFusedGraphExecuteInfo&) final;
+  bool Finalize() final;
+  bool SetupGraph() final;
+  bool ExecuteGraph() final;
+  bool TeardownGraph() final;
+  bool FillInputNode(const string&, const Tensor&) final;
+  bool ReadOutputNode(const string&, TensorAllocatorFunc) final;
+  Status FuseRemoteGraph(const GraphDef& original_graph_def,
+                         const std::vector<string>& inputs,
+                         const std::vector<string>& outputs,
+                         GraphDef* fused_graph_def) final;
+  bool IsEnabled() const final;
+
+ private:
+  const std::unordered_set<string> fused_op_types_;
+  const string executor_name_;
 };
 
 }  // namespace tensorflow

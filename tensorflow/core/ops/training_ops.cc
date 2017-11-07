@@ -103,28 +103,6 @@ use_locking: If `True`, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
-REGISTER_OP("ApplyDelayCompensatedGradientDescent")
-    .Input("var: resource")
-    .Input("alpha: T")
-    .Input("delta: T")
-    .Input("lambda: T")
-    .Input("shadow: resource")
-    .Attr("T: numbertype")
-    .Attr("use_locking: bool = false")
-    .SetShapeFn(ApplyGradientDescentShapeFn)
-    .Doc(R"doc(
-var -= alpha * (delta + lambda * delta * (var - shadow))
-Update '*shadow' by changing it to the new value of 'var'
-
-var: Should be from a Variable().
-alpha: Scaling factor. Must be a scalar.
-delta: The change.
-lambda: The variance parameter.
-shadow: Same as "var".
-use_locking: If `True`, the subtraction will be protected by a lock;
-  otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
-
 static Status ApplyProximalGradientDescentShapeFn(InferenceContext* c,
                                                   bool sparse) {
   ShapeHandle unused;
@@ -399,7 +377,7 @@ static Status ApplyAdagradShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
@@ -464,9 +442,9 @@ static Status ApplyProximalAdagradShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // l1
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // l2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // l1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // l2
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 5 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
@@ -983,11 +961,183 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
   contention.
 )doc");
 
+REGISTER_OP("ApplyFtrlV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("linear: Ref(T)")
+    .Input("grad: T")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyFtrlShapeFn(c, false /* sparse */);
+    })
+    .Doc(R"doc(
+Update '*var' according to the Ftrl-proximal scheme.
+
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+linear: Should be from a Variable().
+grad: The gradient.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regulariation. Must be a scalar.
+l2: online L2 regulariation. Must be a scalar.
+l2: L2 shrinkage regulariation. Must be a scalar.
+lr_power: Scaling factor. Must be a scalar.
+out: Same as "var".
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
+REGISTER_OP("SparseApplyFtrlV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("linear: Ref(T)")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyFtrlShapeFn(c, true /* sparse */);
+    })
+    .Doc(R"doc(
+Update relevant entries in '*var' according to the Ftrl-proximal scheme.
+
+That is for rows we have grad for, we update var, accum and linear as follows:
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+linear: Should be from a Variable().
+grad: The gradient.
+indices: A vector of indices into the first dimension of var and accum.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regularization. Must be a scalar.
+l2: onine L2 regularization. Must be a scalar.
+l2: L2 shrinkage regulariation. Must be a scalar.
+lr_power: Scaling factor. Must be a scalar.
+out: Same as "var".
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
+REGISTER_OP("ResourceApplyFtrlV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("linear: resource")
+    .Input("grad: T")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyFtrlShapeFn(c, false /* sparse */);
+    })
+    .Doc(R"doc(
+Update '*var' according to the Ftrl-proximal scheme.
+
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+linear: Should be from a Variable().
+grad: The gradient.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regulariation. Must be a scalar.
+l2: onine L2 regularization. Must be a scalar.
+l2: L2 shrinkage regulariation. Must be a scalar.
+lr_power: Scaling factor. Must be a scalar.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
+REGISTER_OP("ResourceSparseApplyFtrlV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("linear: resource")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyFtrlShapeFn(c, true /* sparse */);
+    })
+    .Doc(R"doc(
+Update relevant entries in '*var' according to the Ftrl-proximal scheme.
+
+That is for rows we have grad for, we update var, accum and linear as follows:
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+linear: Should be from a Variable().
+grad: The gradient.
+indices: A vector of indices into the first dimension of var and accum.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regularization. Must be a scalar.
+l2: onine L2 regularization. Must be a scalar.
+l2: L2 shrinkage regulariation. Must be a scalar.
+lr_power: Scaling factor. Must be a scalar.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
 static Status ApplyMomentumShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
   int idx = sparse ? 5 : 4;
@@ -1145,12 +1295,12 @@ static Status ApplyAdamShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // m
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // v
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // beta1_power
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // beta2_power
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // beta1
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // beta2
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // beta1_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // beta2_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));       // beta1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));       // beta2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));       // epsilon
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 9 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
@@ -1248,10 +1398,10 @@ static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // ms
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // mom
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // rho
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // momentum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // momentum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));       // epsilon
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 7 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
@@ -1266,10 +1416,10 @@ static Status ApplyCenteredRMSPropShapeFn(InferenceContext* c, bool sparse) {
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // ms
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // mg
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 3), &s));  // mom
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // rho
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // momentum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));       // momentum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));       // epsilon
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 8 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {

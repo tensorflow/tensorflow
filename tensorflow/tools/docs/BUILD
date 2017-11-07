@@ -37,6 +37,7 @@ py_library(
     srcs = ["parser.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
+    deps = ["@com_github_andreif_codegen"],
 )
 
 py_test(
@@ -44,7 +45,6 @@ py_test(
     size = "small",
     srcs = ["parser_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
     deps = [
         ":parser",
         "//tensorflow/python:platform_test",
@@ -78,13 +78,10 @@ py_test(
     size = "small",
     srcs = ["generate_lib_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
     deps = [
         ":generate_lib",
         ":parser",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python/debug:debug_py",
     ],
 )
 
@@ -105,7 +102,12 @@ py_test(
     srcs = ["build_docs_test.py"],
     data = ["//tensorflow:docs_src"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = [
+        # No reason to run sanitizers for this test.
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":generate_lib",
         "//tensorflow:tensorflow_py",

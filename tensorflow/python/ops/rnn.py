@@ -27,6 +27,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -294,10 +295,6 @@ def _reverse_seq(input_seq, lengths):
     # Join into (time, batch_size, depth)
     s_joined = array_ops.stack(sequence)
 
-    # TODO(schuster, ebrevdo): Remove cast when reverse_sequence takes int32
-    if lengths is not None:
-      lengths = math_ops.to_int64(lengths)
-
     # Reverse along dimension 0
     s_reversed = array_ops.reverse_sequence(s_joined, lengths, 0, 1)
     # Split again into list
@@ -447,40 +444,59 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
   Performs fully dynamic unrolling of `inputs`.
 
-  `Inputs` may be a single `Tensor` where the maximum time is either the first
-  or second dimension (see the parameter
-  `time_major`).  Alternatively, it may be a (possibly nested) tuple of
-  Tensors, each of them having matching batch and time dimensions.
-  The corresponding output is either a single `Tensor` having the same number
-  of time steps and batch size, or a (possibly nested) tuple of such tensors,
-  matching the nested structure of `cell.output_size`.
+  Example:
 
-  The parameter `sequence_length` is optional and is used to copy-through state
-  and zero-out outputs when past a batch element's sequence length. So it's more
-  for correctness than performance.
+  ```python
+  # create a BasicRNNCell
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+
+  # 'outputs' is a tensor of shape [batch_size, max_time, cell_state_size]
+
+  # defining initial state
+  initial_state = rnn_cell.zero_state(batch_size, dtype=tf.float32)
+
+  # 'state' is a tensor of shape [batch_size, cell_state_size]
+  outputs, state = tf.nn.dynamic_rnn(rnn_cell, input_data,
+                                     initial_state=initial_state,
+                                     dtype=tf.float32)
+  ```
+
+  ```python
+  # create 2 LSTMCells
+  rnn_layers = [tf.nn.rnn_cell.LSTMCell(size) for size in [128, 256]]
+
+  # create a RNN cell composed sequentially of a number of RNNCells
+  multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(rnn_layers)
+
+  # 'outputs' is a tensor of shape [batch_size, max_time, 256]
+  # 'state' is a N-tuple where N is the number of LSTMCells containing a
+  # tf.contrib.rnn.LSTMStateTuple for each cell
+  outputs, state = tf.nn.dynamic_rnn(cell=multi_rnn_cell,
+                                     inputs=data,
+                                     dtype=tf.float32)
+  ```
+
 
   Args:
     cell: An instance of RNNCell.
     inputs: The RNN inputs.
-
       If `time_major == False` (default), this must be a `Tensor` of shape:
         `[batch_size, max_time, ...]`, or a nested tuple of such
         elements.
-
       If `time_major == True`, this must be a `Tensor` of shape:
         `[max_time, batch_size, ...]`, or a nested tuple of such
         elements.
-
       This may also be a (possibly nested) tuple of Tensors satisfying
       this property.  The first two dimensions must match across all the inputs,
       but otherwise the ranks and other shape components may differ.
       In this case, input to `cell` at each time-step will replicate the
       structure of these tuples, except for the time dimension (from which the
       time is taken).
-
       The input to `cell` at each time step will be a `Tensor` or (possibly
       nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
+      Used to copy-through state and zero-out outputs when past a batch
+      element's sequence length.  So it's more for correctness than performance.
     initial_state: (optional) An initial state for the RNN.
       If `cell.state_size` is an integer, this must be
       a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
@@ -510,24 +526,25 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   Returns:
     A pair (outputs, state) where:
 
-      outputs: The RNN output `Tensor`.
+    outputs: The RNN output `Tensor`.
 
-        If time_major == False (default), this will be a `Tensor` shaped:
-          `[batch_size, max_time, cell.output_size]`.
+      If time_major == False (default), this will be a `Tensor` shaped:
+        `[batch_size, max_time, cell.output_size]`.
 
-        If time_major == True, this will be a `Tensor` shaped:
-          `[max_time, batch_size, cell.output_size]`.
+      If time_major == True, this will be a `Tensor` shaped:
+        `[max_time, batch_size, cell.output_size]`.
 
-        Note, if `cell.output_size` is a (possibly nested) tuple of integers
-        or `TensorShape` objects, then `outputs` will be a tuple having the
-        same structure as `cell.output_size`, containing Tensors having shapes
-        corresponding to the shape data in `cell.output_size`.
+      Note, if `cell.output_size` is a (possibly nested) tuple of integers
+      or `TensorShape` objects, then `outputs` will be a tuple having the
+      same structure as `cell.output_size`, containing Tensors having shapes
+      corresponding to the shape data in `cell.output_size`.
 
-      state: The final state.  If `cell.state_size` is an int, this
-        will be shaped `[batch_size, cell.state_size]`.  If it is a
-        `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
-        If it is a (possibly nested) tuple of ints or `TensorShape`, this will
-        be a tuple having the corresponding shapes.
+    state: The final state.  If `cell.state_size` is an int, this
+      will be shaped `[batch_size, cell.state_size]`.  If it is a
+      `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
+      If it is a (possibly nested) tuple of ints or `TensorShape`, this will
+      be a tuple having the corresponding shapes. If cells are `LSTMCells`
+      `state` will be a tuple containing a `LSTMStateTuple` for each cell.
 
   Raises:
     TypeError: If `cell` is not an instance of RNNCell.
@@ -560,8 +577,9 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if varscope.caching_device is None:
-      varscope.set_caching_device(lambda op: op.device)
+    if context.in_graph_mode():
+      if varscope.caching_device is None:
+        varscope.set_caching_device(lambda op: op.device)
     batch_size = _best_effort_input_batch_size(flat_input)
 
     if initial_state is not None:
@@ -579,7 +597,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
           ["Expected shape for Tensor %s is " % x.name,
            packed_shape, " but saw shape: ", x_shape])
 
-    if sequence_length is not None:
+    if context.in_graph_mode() and sequence_length is not None:
       # Perform some shape validation
       with ops.control_dependencies(
           [_assert_has_shape(sequence_length, [batch_size])]):
@@ -702,14 +720,19 @@ def _dynamic_rnn_loop(cell,
                                         size=time_steps,
                                         tensor_array_name=base_name + name)
 
-  output_ta = tuple(_create_ta("output_%d" % i,
-                               _infer_state_dtype(dtype, state))
-                    for i in range(len(flat_output_size)))
-  input_ta = tuple(_create_ta("input_%d" % i, flat_input[i].dtype)
-                   for i in range(len(flat_input)))
-
-  input_ta = tuple(ta.unstack(input_)
-                   for ta, input_ in zip(input_ta, flat_input))
+  in_graph_mode = context.in_graph_mode()
+  if in_graph_mode:
+    output_ta = tuple(_create_ta("output_%d" % i,
+                                 _infer_state_dtype(dtype, state))
+                      for i in range(len(flat_output_size)))
+    input_ta = tuple(_create_ta("input_%d" % i, flat_input[i].dtype)
+                     for i in range(len(flat_input)))
+    input_ta = tuple(ta.unstack(input_)
+                     for ta, input_ in zip(input_ta, flat_input))
+  else:
+    output_ta = tuple([0 for _ in range(time_steps.numpy())]
+                      for i in range(len(flat_output_size)))
+    input_ta = flat_input
 
   def _time_step(time, output_ta_t, state):
     """Take a time step of the dynamic RNN.
@@ -723,10 +746,13 @@ def _dynamic_rnn_loop(cell,
       The tuple (time + 1, output_ta_t with updated flow, new_state).
     """
 
-    input_t = tuple(ta.read(time) for ta in input_ta)
-    # Restore some shape information
-    for input_, shape in zip(input_t, inputs_got_shape):
-      input_.set_shape(shape[1:])
+    if in_graph_mode:
+      input_t = tuple(ta.read(time) for ta in input_ta)
+      # Restore some shape information
+      for input_, shape in zip(input_t, inputs_got_shape):
+        input_.set_shape(shape[1:])
+    else:
+      input_t = tuple(ta[time.numpy()] for ta in input_ta)
 
     input_t = nest.pack_sequence_as(structure=inputs, flat_sequence=input_t)
     call_cell = lambda: cell(input_t, state)
@@ -748,8 +774,12 @@ def _dynamic_rnn_loop(cell,
     # Pack state if using state tuples
     output = nest.flatten(output)
 
-    output_ta_t = tuple(
-        ta.write(time, out) for ta, out in zip(output_ta_t, output))
+    if in_graph_mode:
+      output_ta_t = tuple(
+          ta.write(time, out) for ta, out in zip(output_ta_t, output))
+    else:
+      for ta, out in zip(output_ta_t, output):
+        ta[time.numpy()] = out
 
     return (time + 1, output_ta_t, new_state)
 
@@ -761,16 +791,20 @@ def _dynamic_rnn_loop(cell,
       swap_memory=swap_memory)
 
   # Unpack final output if not using output tuples.
-  final_outputs = tuple(ta.stack() for ta in output_final_ta)
-
-  # Restore some shape information
-  for output, output_size in zip(final_outputs, flat_output_size):
-    shape = _concat(
-        [const_time_steps, const_batch_size], output_size, static=True)
-    output.set_shape(shape)
+  if in_graph_mode:
+    final_outputs = tuple(ta.stack() for ta in output_final_ta)
+    # Restore some shape information
+    for output, output_size in zip(final_outputs, flat_output_size):
+      shape = _concat(
+          [const_time_steps, const_batch_size], output_size, static=True)
+      output.set_shape(shape)
+  else:
+    final_outputs = output_final_ta
 
   final_outputs = nest.pack_sequence_as(
       structure=cell.output_size, flat_sequence=final_outputs)
+  if not in_graph_mode:
+    final_outputs = array_ops.stack(final_outputs, axis=0)
 
   return (final_outputs, final_state)
 
@@ -890,7 +924,7 @@ def raw_rnn(cell, loop_fn,
       appropriate type and shape `[batch_size] + cell.state_size`.
       If `cell.state_size` is a (possibly nested) tuple of ints or
       `TensorShape`, this will be a tuple having the corresponding shapes.
-      The `emit_output` value may be  either `None` or a (possibly nested)
+      The `emit_output` value may be either `None` or a (possibly nested)
       tuple structure of tensors, e.g.,
       `(tf.zeros(shape_0, dtype=dtype_0), tf.zeros(shape_1, dtype=dtype_1))`.
       If this first `emit_output` return value is `None`,
@@ -951,8 +985,9 @@ def raw_rnn(cell, loop_fn,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if varscope.caching_device is None:
-      varscope.set_caching_device(lambda op: op.device)
+    if context.in_graph_mode():
+      if varscope.caching_device is None:
+        varscope.set_caching_device(lambda op: op.device)
 
     time = constant_op.constant(0, dtype=dtypes.int32)
     (elements_finished, next_input, initial_state, emit_structure,
@@ -1150,8 +1185,9 @@ def static_rnn(cell,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if varscope.caching_device is None:
-      varscope.set_caching_device(lambda op: op.device)
+    if context.in_graph_mode():
+      if varscope.caching_device is None:
+        varscope.set_caching_device(lambda op: op.device)
 
     # Obtain the first sequence of the input
     first_input = inputs

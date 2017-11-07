@@ -37,6 +37,7 @@ See the @{$python/contrib.framework} guide.
 
 @@arg_scope
 @@add_arg_scope
+@@current_arg_scope
 @@has_arg_scope
 @@arg_scoped_arguments
 
@@ -78,6 +79,8 @@ See the @{$python/contrib.framework} guide.
 @@load_embedding_initializer
 @@load_linear_multiclass_bias_initializer
 @@load_variable_slot_initializer
+
+@@sort
 """
 
 from __future__ import absolute_import

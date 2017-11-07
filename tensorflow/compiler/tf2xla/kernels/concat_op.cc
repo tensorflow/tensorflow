@@ -52,7 +52,7 @@ class ConcatBaseOp : public XlaOpKernel {
     xla::Literal literal;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(axis_index_, &literal));
     // TODO(annarev): add a helper to support int64 input.
-    const int32 concat_dim = xla::LiteralUtil::Get<int>(literal, {});
+    const int32 concat_dim = literal.Get<int>({});
 
     std::vector<xla::ComputationDataHandle> values;
     std::vector<TensorShape> shapes;
@@ -163,7 +163,7 @@ class ConcatOffsetOp : public XlaOpKernel {
 
     xla::Literal concat_dim_literal;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &concat_dim_literal));
-    const int64 cdim = xla::LiteralUtil::Get<int>(concat_dim_literal, {});
+    const int64 cdim = concat_dim_literal.Get<int>({});
 
     VLOG(1) << "ConcatOffset " << cdim << "," << dims;
     int32 axis = cdim < 0 ? cdim + dims : cdim;
@@ -185,12 +185,10 @@ class ConcatOffsetOp : public XlaOpKernel {
       for (int64 j = 0; j < dims; ++j) {
         if (j == axis) {
           out_vec(j) = offset;
-          offset += xla::LiteralUtil::Get<int>(inp_literal, {j});
+          offset += inp_literal.Get<int>({j});
         } else {
-          const int32 inp0_element =
-              xla::LiteralUtil::Get<int>(inp0_literal, {j});
-          const int32 inp_element =
-              xla::LiteralUtil::Get<int>(inp_literal, {j});
+          const int32 inp0_element = inp0_literal.Get<int>({j});
+          const int32 inp_element = inp_literal.Get<int>({j});
           OP_REQUIRES(
               ctx, (inp0_element == inp_element),
               errors::InvalidArgument("input[", i, ",", j, "] mismatch: ",

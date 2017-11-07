@@ -19,87 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions import student_t
 from tensorflow.python.ops.distributions import transformed_distribution
-from tensorflow.python.ops.distributions import util as distribution_util
-
-
-# TODO(jvdillon): Add unittests for this once we know where will put this code
-# and how it will generally be used. In the interim this code is tested via the
-# _VectorStudentT tests.
-def _infer_shapes(scale_oppd, shift):
-  """Helper which returns batch_shape, event_shape from `Affine` properties.
-
-  The `Affine` `Bijector` (roughly) computes `Y = scale @ X.T + shift`. This
-  function infers the `batch_shape` and `event_shape` from the `scale` and
-  `shift` terms.
-
-  Args:
-    scale_oppd: Instance of OperatorPDBase subclass representing the `Affine`
-      `Bijector` scale matrix.
-    shift: `Tensor` representing the `shift` vector.
-
-  Returns:
-    batch_shape: 1D, integer `Tensor` representing the shape of batch
-      dimensions.
-    event_shape: 1D, integer `Tensor` representing the shape of event
-      dimensions.
-
-  Raises:
-    ValueError: if we are not able to infer batch/event shapes from the args.
-  """
-  # Collect known static shape.
-  def _has_static_ndims(x):
-    return x is not None and x.get_shape().ndims is not None
-  if _has_static_ndims(scale_oppd) and _has_static_ndims(shift):
-    batch_shape = scale_oppd.get_batch_shape().merge_with(
-        shift.get_shape()[:-1])
-    event_shape = scale_oppd.get_shape()[-1:].merge_with(
-        shift.get_shape()[-1:])
-  elif _has_static_ndims(scale_oppd):
-    batch_shape = scale_oppd.get_batch_shape()
-    event_shape = scale_oppd.get_shape()[-1:]
-  elif _has_static_ndims(shift):
-    batch_shape = shift.get_shape()[:-1]
-    event_shape = shift.get_shape()[-1:]
-  else:
-    batch_shape = tensor_shape.TensorShape(None)
-    event_shape = tensor_shape.TensorShape(None)
-
-  # Convert TensorShape to Tensors and see if we're done.
-  if batch_shape.is_fully_defined():
-    batch_shape = constant_op.constant(batch_shape.as_list(),
-                                       dtype=dtypes.int32)
-  else:
-    batch_shape = None
-  if event_shape.is_fully_defined():
-    event_shape = constant_op.constant(event_shape.as_list(),
-                                       dtype=dtypes.int32)
-  else:
-    event_shape = None
-  if batch_shape is not None and event_shape is not None:
-    return batch_shape, event_shape
-
-  # Collect known dynamic shape.
-  if scale_oppd is not None:
-    shape = scale_oppd.shape()
-  elif shift is not None:
-    shape = array_ops.shape(shift)
-  else:
-    raise ValueError("unable to infer batch_shape, event_shape")
-
-  # Fill in what we don't know.
-  if batch_shape is None:
-    batch_shape = array_ops.identity(shape[:-1], name="batch_shape")
-  if event_shape is None:
-    event_shape = array_ops.identity(shape[-1:], name="event_shape")
-
-  return batch_shape, event_shape
 
 
 class _VectorStudentT(transformed_distribution.TransformedDistribution):
@@ -160,7 +86,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   #### Examples
 
   A single instance of a "Vector Student's t-distribution" is defined by a mean
-  vector of of length `k` and a scale matrix of shape `k x k`.
+  vector of length `k` and a scale matrix of shape `k x k`.
 
   Extra leading dimensions, if provided, allow for batches.
 
@@ -282,8 +208,9 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
             df=df,
             loc=array_ops.zeros([], dtype=affine.dtype),
             scale=array_ops.ones([], dtype=affine.dtype))
-        batch_shape, override_event_shape = _infer_shapes(
-            affine.scale, affine.shift)
+        batch_shape, override_event_shape = (
+            distribution_util.shapes_from_loc_and_scale(
+                affine.shift, affine.scale))
         override_batch_shape = distribution_util.pick_vector(
             distribution.is_scalar_batch(),
             batch_shape,

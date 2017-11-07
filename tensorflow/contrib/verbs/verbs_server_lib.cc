@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/verbs_server_lib.h"
 
+#include "grpc/support/alloc.h"
+
 #include "tensorflow/contrib/verbs/rdma_mgr.h"
 #include "tensorflow/contrib/verbs/rdma_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"

@@ -19,22 +19,200 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops.distributions import util
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions.util import *  # pylint: disable=wildcard-import
 
 
-# TODO(b/35290280): Add unit-tests.
-def make_diag_scale(loc, scale_diag, scale_identity_multiplier,
-                    validate_args, assert_positive, name=None):
-  """Creates a LinOp from `scale_diag`, `scale_identity_multiplier` kwargs."""
-  def _convert_to_tensor(x, name):
-    return None if x is None else ops.convert_to_tensor(x, name=name)
+def _convert_to_tensor(x, name):
+  return None if x is None else ops.convert_to_tensor(x, name=name)
+
+
+def mixture_stddev(mixture_weight_vector, mean_vector, stddev_vector):
+  """Computes the standard deviation of a mixture distribution.
+
+  This function works regardless of the component distribution, so long as
+  each component's mean and standard deviation can be provided.
+
+  Args:
+    mixture_weight_vector: A 2D tensor with shape [batch_size, num_components]
+    mean_vector: A 2D tensor of mixture component means. Has shape
+      `[batch_size, num_components]`.
+    stddev_vector: A 2D tensor of mixture component standard deviations. Has
+      shape `[batch_size, num_components]`.
+  Returns:
+    A 1D tensor of shape `[batch_size]` representing the standard deviation of
+    the mixture distribution with given weights and component means and standard
+    deviations.
+  Raises:
+    ValueError: If the shapes of the input tensors are not as expected.
+  """
+  mixture_weight_vector.shape.assert_has_rank(2)
+  if not mean_vector.shape.is_compatible_with(mixture_weight_vector.shape):
+    raise ValueError("Expecting means to have same shape as mixture weights.")
+  if not stddev_vector.shape.is_compatible_with(mixture_weight_vector.shape):
+    raise ValueError("Expecting stddevs to have same shape as mixture weights.")
+
+  # Reshape the distribution parameters for batched vectorized dot products.
+  pi_for_dot_prod = array_ops.expand_dims(mixture_weight_vector, axis=1)
+  mu_for_dot_prod = array_ops.expand_dims(mean_vector, axis=2)
+  sigma_for_dot_prod = array_ops.expand_dims(stddev_vector, axis=2)
+
+  # weighted average of component means under mixture distribution.
+  mean_wa = math_ops.matmul(pi_for_dot_prod, mu_for_dot_prod)
+  mean_wa = array_ops.reshape(mean_wa, (-1,))
+  # weighted average of component variances under mixture distribution.
+  var_wa = math_ops.matmul(pi_for_dot_prod,
+                           math_ops.square(sigma_for_dot_prod))
+  var_wa = array_ops.reshape(var_wa, (-1,))
+  # weighted average of component squared means under mixture distribution.
+  sq_mean_wa = math_ops.matmul(pi_for_dot_prod,
+                               math_ops.square(mu_for_dot_prod))
+  sq_mean_wa = array_ops.reshape(sq_mean_wa, (-1,))
+  mixture_variance = var_wa + sq_mean_wa - math_ops.square(mean_wa)
+  return math_ops.sqrt(mixture_variance)
+
+
+def make_tril_scale(
+    loc=None,
+    scale_tril=None,
+    scale_diag=None,
+    scale_identity_multiplier=None,
+    shape_hint=None,
+    validate_args=False,
+    assert_positive=False,
+    name=None):
+  """Creates a LinOp representing a lower triangular matrix.
+
+  Args:
+    loc: Floating-point `Tensor`. This is used for inferring shape in the case
+      where only `scale_identity_multiplier` is set.
+    scale_tril: Floating-point `Tensor` representing the diagonal matrix.
+      `scale_diag` has shape [N1, N2, ...  k, k], which represents a k x k
+      lower triangular matrix.
+      When `None` no `scale_tril` term is added to the LinOp.
+      The upper triangular elements above the diagonal are ignored.
+    scale_diag: Floating-point `Tensor` representing the diagonal matrix.
+      `scale_diag` has shape [N1, N2, ...  k], which represents a k x k
+      diagonal matrix.
+      When `None` no diagonal term is added to the LinOp.
+    scale_identity_multiplier: floating point rank 0 `Tensor` representing a
+      scaling done to the identity matrix.
+      When `scale_identity_multiplier = scale_diag = scale_tril = None` then
+      `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
+      to `scale`.
+    shape_hint: scalar integer `Tensor` representing a hint at the dimension of
+      the identity matrix when only `scale_identity_multiplier` is set.
+    validate_args: Python `bool` indicating whether arguments should be
+      checked for correctness.
+    assert_positive: Python `bool` indicating whether LinOp should be checked
+      for being positive definite.
+    name: Python `str` name given to ops managed by this object.
+
+  Returns:
+    `LinearOperator` representing a lower triangular matrix.
+
+  Raises:
+    ValueError:  If only `scale_identity_multiplier` is set and `loc` and
+      `shape_hint` are both None.
+  """
+
+  def _maybe_attach_assertion(x):
+    if not validate_args:
+      return x
+    if assert_positive:
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_positive(
+              array_ops.matrix_diag_part(x),
+              message="diagonal part must be positive"),
+      ], x)
+    return control_flow_ops.with_dependencies([
+        check_ops.assert_none_equal(
+            array_ops.matrix_diag_part(x),
+            array_ops.zeros([], x.dtype),
+            message="diagonal part must be non-zero"),
+    ], x)
+
+  with ops.name_scope(name, "make_tril_scale",
+                      values=[loc, scale_diag, scale_identity_multiplier]):
+
+    loc = _convert_to_tensor(loc, name="loc")
+    scale_tril = _convert_to_tensor(scale_tril, name="scale_tril")
+    scale_diag = _convert_to_tensor(scale_diag, name="scale_diag")
+    scale_identity_multiplier = _convert_to_tensor(
+        scale_identity_multiplier,
+        name="scale_identity_multiplier")
+
+  if scale_tril is not None:
+    scale_tril = array_ops.matrix_band_part(scale_tril, -1, 0)  # Zero out TriU.
+    tril_diag = array_ops.matrix_diag_part(scale_tril)
+    if scale_diag is not None:
+      tril_diag += scale_diag
+    if scale_identity_multiplier is not None:
+      tril_diag += scale_identity_multiplier[..., array_ops.newaxis]
+
+    scale_tril = array_ops.matrix_set_diag(scale_tril, tril_diag)
+
+    return linalg.LinearOperatorLowerTriangular(
+        tril=_maybe_attach_assertion(scale_tril),
+        is_non_singular=True,
+        is_self_adjoint=False,
+        is_positive_definite=assert_positive)
+
+  return make_diag_scale(
+      loc=loc,
+      scale_diag=scale_diag,
+      scale_identity_multiplier=scale_identity_multiplier,
+      shape_hint=shape_hint,
+      validate_args=validate_args,
+      assert_positive=assert_positive,
+      name=name)
+
+
+def make_diag_scale(
+    loc=None,
+    scale_diag=None,
+    scale_identity_multiplier=None,
+    shape_hint=None,
+    validate_args=False,
+    assert_positive=False,
+    name=None):
+  """Creates a LinOp representing a diagonal matrix.
+
+  Args:
+    loc: Floating-point `Tensor`. This is used for inferring shape in the case
+      where only `scale_identity_multiplier` is set.
+    scale_diag: Floating-point `Tensor` representing the diagonal matrix.
+      `scale_diag` has shape [N1, N2, ...  k], which represents a k x k
+      diagonal matrix.
+      When `None` no diagonal term is added to the LinOp.
+    scale_identity_multiplier: floating point rank 0 `Tensor` representing a
+      scaling done to the identity matrix.
+      When `scale_identity_multiplier = scale_diag = scale_tril = None` then
+      `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
+      to `scale`.
+    shape_hint: scalar integer `Tensor` representing a hint at the dimension of
+      the identity matrix when only `scale_identity_multiplier` is set.
+    validate_args: Python `bool` indicating whether arguments should be
+      checked for correctness.
+    assert_positive: Python `bool` indicating whether LinOp should be checked
+      for being positive definite.
+    name: Python `str` name given to ops managed by this object.
+
+  Returns:
+    `LinearOperator` representing a lower triangular matrix.
+
+  Raises:
+    ValueError:  If only `scale_identity_multiplier` is set and `loc` and
+      `shape_hint` are both None.
+  """
 
   def _maybe_attach_assertion(x):
     if not validate_args:
@@ -67,23 +245,24 @@ def make_diag_scale(loc, scale_diag, scale_identity_multiplier,
           is_self_adjoint=True,
           is_positive_definite=assert_positive)
 
-    # TODO(b/35290280): Consider inferring shape from scale_perturb_factor.
-    if loc is None:
+    if loc is None and shape_hint is None:
       raise ValueError(
-          "Cannot infer `event_shape` unless `loc` is specified.")
+          "Cannot infer `event_shape` unless `loc` or "
+          "`shape_hint` is specified.")
 
-    num_rows = util.dimension_size(loc, -1)
+    if shape_hint is None:
+      shape_hint = loc.shape[-1]
 
     if scale_identity_multiplier is None:
       return linalg.LinearOperatorIdentity(
-          num_rows=num_rows,
+          num_rows=shape_hint,
           dtype=loc.dtype.base_dtype,
           is_self_adjoint=True,
           is_positive_definite=True,
           assert_proper_shapes=validate_args)
 
     return linalg.LinearOperatorScaledIdentity(
-        num_rows=num_rows,
+        num_rows=shape_hint,
         multiplier=_maybe_attach_assertion(scale_identity_multiplier),
         is_non_singular=True,
         is_self_adjoint=True,
@@ -170,12 +349,57 @@ def prefer_static_broadcast_shape(
       statically), or as a `Tensor`.
   """
   with ops.name_scope(name, values=[shape1, shape2]):
-    if (tensor_util.constant_value(shape1) is not None and
-        tensor_util.constant_value(shape2) is not None):
-      return array_ops.broadcast_static_shape(
-          tensor_shape.TensorShape(tensor_util.constant_value(shape1)),
-          tensor_shape.TensorShape(tensor_util.constant_value(shape2)))
-    return array_ops.broadcast_dynamic_shape(shape1, shape2)
+    def make_shape_tensor(x):
+      return ops.convert_to_tensor(x, name="shape", dtype=dtypes.int32)
+
+    def get_tensor_shape(s):
+      if isinstance(s, tensor_shape.TensorShape):
+        return s
+      s_ = tensor_util.constant_value(make_shape_tensor(s))
+      if s_ is not None:
+        return tensor_shape.TensorShape(s_)
+      return None
+
+    def get_shape_tensor(s):
+      if not isinstance(s, tensor_shape.TensorShape):
+        return make_shape_tensor(s)
+      if s.is_fully_defined():
+        return make_shape_tensor(s.as_list())
+      raise ValueError("Cannot broadcast from partially "
+                       "defined `TensorShape`.")
+
+    shape1_ = get_tensor_shape(shape1)
+    shape2_ = get_tensor_shape(shape2)
+    if shape1_ is not None and shape2_ is not None:
+      return array_ops.broadcast_static_shape(shape1_, shape2_)
+
+    shape1_ = get_shape_tensor(shape1)
+    shape2_ = get_shape_tensor(shape2)
+    return array_ops.broadcast_dynamic_shape(shape1_, shape2_)
+
+
+def get_broadcast_shape(*tensors):
+  """Get broadcast shape as a Python list of integers (preferred) or `Tensor`.
+
+  Args:
+    *tensors:  One or more `Tensor` objects (already converted!).
+
+  Returns:
+    broadcast shape:  Python list (if shapes determined statically), otherwise
+      an `int32` `Tensor`.
+  """
+  # Try static.
+  s_shape = tensors[0].shape
+  for t in tensors[1:]:
+    s_shape = array_ops.broadcast_static_shape(s_shape, t.shape)
+  if s_shape.is_fully_defined():
+    return s_shape.as_list()
+
+  # Fallback on dynamic.
+  d_shape = array_ops.shape(tensors[0])
+  for t in tensors[1:]:
+    d_shape = array_ops.broadcast_dynamic_shape(d_shape, array_ops.shape(t))
+  return d_shape
 
 
 def is_diagonal_scale(scale):
@@ -196,3 +420,70 @@ def is_diagonal_scale(scale):
   return (isinstance(scale, linalg.LinearOperatorIdentity) or
           isinstance(scale, linalg.LinearOperatorScaledIdentity) or
           isinstance(scale, linalg.LinearOperatorDiag))
+
+
+def maybe_check_scalar_distribution(
+    distribution, expected_base_dtype, validate_args):
+  """Helper which checks validity of a scalar `distribution` init arg.
+
+  Valid here means:
+
+  * `distribution` has scalar batch and event shapes.
+  * `distribution` is `FULLY_REPARAMETERIZED`
+  * `distribution` has expected dtype.
+
+  Args:
+    distribution:  `Distribution`-like object.
+    expected_base_dtype:  `TensorFlow` `dtype`.
+    validate_args:  Python `bool`.  Whether to do additional checks:
+      (i)  check that reparameterization_type is `FULLY_REPARAMETERIZED`.
+      (ii) add `tf.Assert` ops to the graph to enforce that distribution
+           is scalar in the event that this cannot be determined statically.
+
+  Returns:
+    List of `tf.Assert` ops to run to enforce validity checks that could not
+      be statically determined.  Empty if `not validate_args`.
+
+  Raises:
+    ValueError:  If validate_args and distribution is not FULLY_REPARAMETERIZED
+    ValueError:  If distribution is statically determined to not have both
+      scalar batch and scalar event shapes.
+  """
+  if distribution.dtype != expected_base_dtype:
+    raise TypeError("dtype mismatch; "
+                    "distribution.dtype=\"{}\" is not \"{}\"".format(
+                        distribution.dtype.name, expected_base_dtype.name))
+
+  # Although `reparameterization_type` is a static property, we guard it by
+  # `validate_args`. This allows users to use a `distribution` which is not
+  # reparameterized itself. However, we tacitly assume that although the
+  # distribution is not reparameterized, it only depends on non-trainable
+  # variables.
+  if validate_args and (distribution.reparameterization_type
+                        != distribution_lib.FULLY_REPARAMETERIZED):
+    raise ValueError("Base distribution should be reparameterized or be "
+                     "a function of non-trainable variables; "
+                     "distribution.reparameterization_type = \"{}\" "
+                     "!= \"FULLY_REPARAMETERIZED\".".format(
+                         distribution.reparameterization_type))
+  with ops.name_scope(name="check_distribution"):
+    assertions = []
+    def check_is_scalar(is_scalar, name):
+      is_scalar_ = static_value(is_scalar)
+      if is_scalar_ is not None:
+        if not is_scalar_:
+          raise ValueError("distribution must be scalar; "
+                           "distribution.{}=False is not True".format(name))
+      elif validate_args:
+        assertions.append(check_ops.assert_equal(
+            is_scalar, True,
+            message=("distribution must be scalar; "
+                     "distribution.{}=False is not True".format(name))))
+    check_is_scalar(distribution.is_scalar_event(), "is_scalar_event")
+    check_is_scalar(distribution.is_scalar_batch(), "is_scalar_batch")
+    return assertions
+
+
+def static_value(x):
+  """Returns the static value of a `Tensor` or `None`."""
+  return tensor_util.constant_value(ops.convert_to_tensor(x))

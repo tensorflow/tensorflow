@@ -237,7 +237,7 @@ One way to reduce this code duplication would be via a `for` loop:
 ```python
 net = ...
 for i in range(3):
-  net = slim.conv2d(net, 256, [3, 3], scope='conv3_' % (i+1))
+  net = slim.conv2d(net, 256, [3, 3], scope='conv3_%d' % (i+1))
 net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
@@ -574,7 +574,7 @@ with tf.Graph().as_default():
   images, labels = ...
 
   # Define the model:
-  predictions = vgg.vgg16(images, is_training=True)
+  predictions = vgg.vgg_16(images, is_training=True)
 
   # Specify the loss function:
   slim.losses.softmax_cross_entropy(predictions, labels)
@@ -775,7 +775,7 @@ images, labels = LoadTestData(...)
 predictions = MyModel(images)
 
 mae_value_op, mae_update_op = slim.metrics.streaming_mean_absolute_error(predictions, labels)
-mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels, labels)
+mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels)
 pl_value_op, pl_update_op = slim.metrics.percentage_less(mean_relative_errors, 0.3)
 ```
 
@@ -836,7 +836,7 @@ with tf.Session() as sess:
   for batch_id in range(num_batches):
     sess.run(names_to_updates.values())
 
-  metric_values = sess.run(name_to_values.values())
+  metric_values = sess.run(names_to_values.values())
   for metric, value in zip(names_to_values.keys(), metric_values):
     print('Metric %s has value: %f' % (metric, value))
 ```

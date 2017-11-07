@@ -15,25 +15,14 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/verbs_util.h"
 
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-namespace tensorflow {
+#include <vector>
 
-// static sync wrapper:
-Status VerbsUtil::SetProtoFromGPUSync(const Tensor& tensor, Device* dev,
-                                      const DeviceContext* device_context,
-                                      TensorProto* proto, bool is_dead) {
-  Notification n;
-  Status status;
-  GPUUtil::SetProtoFromGPU(tensor, dev, device_context, proto, is_dead,
-                           [&n, &status](const Status& s) {
-                             status = s;
-                             n.Notify();
-                           });
-  n.WaitForNotification();
-  return status;
-}
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+
+namespace tensorflow {
 
 // static
 string VerbsUtil::AppendStepidToKey(const string& key, int64 step_id) {

@@ -20,8 +20,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -68,6 +66,24 @@ TEST_F(ConvertTest, ConvertR1S32ToR1F32) {
 
   std::vector<float> expected = {42.0f, 64.0f};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+}
+
+TEST_F(ConvertTest, ConvertR1PREDToR1S32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<bool>({true, false, true});
+  builder.ConvertElementType(a, S32);
+
+  std::vector<int32> expected = {1, 0, 1};
+  ComputeAndCompareR1<int32>(&builder, expected, {});
+}
+
+TEST_F(ConvertTest, ConvertR1PREDToR1F32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<bool>({true, false, true});
+  builder.ConvertElementType(a, F32);
+
+  std::vector<float> expected = {1., 0., 1.};
+  ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1S0S32ToR1S0F32) {
@@ -160,7 +176,7 @@ TEST_F(ConvertTest, ConvertMapToS32) {
   auto param = b->Parameter(0, ShapeUtil::MakeShape(F32, {}), "in");
   b->ConvertElementType(param, S32);
   auto a = builder.ConstantR1<float>({42.0f, 64.0f});
-  builder.Map({a}, b->BuildAndNoteError());
+  builder.Map({a}, b->BuildAndNoteError(), {0});
 
   std::vector<int32> expected = {42, 64};
   ComputeAndCompareR1<int32>(&builder, expected, {});
@@ -172,7 +188,7 @@ TEST_F(ConvertTest, ConvertMapToF32) {
   auto param = b->Parameter(0, ShapeUtil::MakeShape(S32, {}), "in");
   b->ConvertElementType(param, F32);
   auto a = builder.ConstantR1<int32>({42, 64});
-  builder.Map({a}, b->BuildAndNoteError());
+  builder.Map({a}, b->BuildAndNoteError(), {0});
 
   std::vector<float> expected = {42.0f, 64.0f};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -194,21 +210,3 @@ TEST_F(ConvertTest, ConvertReshape) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

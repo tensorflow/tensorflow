@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for ODE solvers."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -165,11 +166,9 @@ class OdeIntTest(test.TestCase):
 
     with self.test_session() as sess:
       y_solved_0, info_0 = sess.run(
-          odes.odeint(
-              self.func, self.y0, times0, full_output=True))
+          odes.odeint(self.func, self.y0, times0, full_output=True))
       y_solved_1, info_1 = sess.run(
-          odes.odeint(
-              self.func, self.y0, times1, full_output=True))
+          odes.odeint(self.func, self.y0, times1, full_output=True))
 
     self.assertAllClose(y_solved_0, y_solved_1[::10])
     self.assertEqual(info_0['num_func_evals'], info_1['num_func_evals'])
@@ -182,11 +181,9 @@ class OdeIntTest(test.TestCase):
         full_output=True, method='dopri5', options=dict(max_num_steps=2000))
     with self.test_session() as sess:
       _, info_0 = sess.run(
-          odes.odeint(
-              self.func, self.y0, t, rtol=0, atol=1e-6, **kwargs))
+          odes.odeint(self.func, self.y0, t, rtol=0, atol=1e-6, **kwargs))
       _, info_1 = sess.run(
-          odes.odeint(
-              self.func, self.y0, t, rtol=0, atol=1e-9, **kwargs))
+          odes.odeint(self.func, self.y0, t, rtol=0, atol=1e-9, **kwargs))
     self.assertAllClose(
         info_0['integrate_points'].size * 1000**0.2,
         float(info_1['integrate_points'].size),
@@ -241,6 +238,50 @@ class InterpolationTest(test.TestCase):
     with self.test_session() as sess:
       with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(y_invalid)
+
+
+class OdeIntFixedTest(test.TestCase):
+
+  def _test_integrate_sine(self, method):
+
+    def evol_func(y, t):
+      del t
+      return array_ops.stack([y[1], -y[0]])
+
+    y0 = [0., 1.]
+    time_grid = np.linspace(0., 10., 200)
+    y_grid = odes.odeint_fixed(evol_func, y0, time_grid, method=method)
+
+    with self.test_session() as sess:
+      y_grid_array = sess.run(y_grid)
+
+    np.testing.assert_allclose(
+        y_grid_array[:, 0], np.sin(time_grid), rtol=1e-2, atol=1e-2)
+
+  def _test_integrate_gaussian(self, method):
+
+    def evol_func(y, t):
+      return -math_ops.cast(t, dtype=y.dtype) * y[0]
+
+    y0 = [1.]
+    time_grid = np.linspace(0., 2., 100)
+    y_grid = odes.odeint_fixed(evol_func, y0, time_grid, method=method)
+
+    with self.test_session() as sess:
+      y_grid_array = sess.run(y_grid)
+
+    np.testing.assert_allclose(
+        y_grid_array[:, 0], np.exp(-time_grid**2 / 2), rtol=1e-2, atol=1e-2)
+
+  def _test_everything(self, method):
+    self._test_integrate_sine(method)
+    self._test_integrate_gaussian(method)
+
+  def test_midpoint(self):
+    self._test_everything('midpoint')
+
+  def test_rk4(self):
+    self._test_everything('rk4')
 
 
 if __name__ == '__main__':

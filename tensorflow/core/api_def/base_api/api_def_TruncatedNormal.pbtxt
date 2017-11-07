@@ -1,0 +1,42 @@
+op {
+  graph_op_name: "TruncatedNormal"
+  in_arg {
+    name: "shape"
+    description: <<END
+The shape of the output tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A tensor of the specified shape filled with random truncated normal
+values.
+END
+  }
+  attr {
+    name: "seed"
+    description: <<END
+If either `seed` or `seed2` are set to be non-zero, the random number
+generator is seeded by the given seed.  Otherwise, it is seeded by a
+random seed.
+END
+  }
+  attr {
+    name: "seed2"
+    description: <<END
+A second seed to avoid seed collision.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the output.
+END
+  }
+  summary: "Outputs random values from a truncated normal distribution."
+  description: <<END
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+END
+}

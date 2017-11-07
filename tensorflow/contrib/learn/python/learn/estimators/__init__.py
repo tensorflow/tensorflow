@@ -303,6 +303,7 @@ from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import
 from tensorflow.contrib.learn.python.learn.estimators.dynamic_rnn_estimator import DynamicRnnEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
+from tensorflow.contrib.learn.python.learn.estimators.estimator import GraphRewriteSpec
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input_fn
 from tensorflow.contrib.learn.python.learn.estimators.estimator import SKCompat

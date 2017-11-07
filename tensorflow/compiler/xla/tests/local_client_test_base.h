@@ -83,12 +83,10 @@ class LocalClientTestBase : public ::testing::Test {
       perftools::gputools::Platform* platform);
 
   // Copy the given literal onto the default device and return a
-  // ScopedShapedBuffer.
-  std::unique_ptr<ScopedShapedBuffer> LiteralToScopedShapedBuffer(
+  // ScopedShapedBuffer. Convenience wrapper around
+  // LocalClient::LiteralToShapedBuffer.
+  std::unique_ptr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const Literal& literal);
-  // As above, but copy to a specific device.
-  std::unique_ptr<ScopedShapedBuffer> LiteralToScopedShapedBuffer(
-      const Literal& literal, int device_ordinal);
 
   // Construct and return a literal containing the array represented by
   // shaped_buffer.
@@ -126,18 +124,12 @@ class LocalClientTestBase : public ::testing::Test {
   // as the allocator.
   ExecutableRunOptions DefaultExecutableRunOptions() const;
 
-  // Convert a ShapedBuffer into a ScopedShaped buffer so that all buffers are
-  // deallocated when the object is destructed.
-  std::unique_ptr<ScopedShapedBuffer> ShapedBufferToScopedShapedBuffer(
-      std::unique_ptr<ShapedBuffer> shaped_buffer,
-      DeviceMemoryAllocator* allocator);
-
   string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  // The allocator must live as long as the service which lives until the end of
-  // the process, so make the allocator static.
+  // The allocator must live as long as the service, which lives until the end
+  // of the process. So make the allocator static.
   static TestAllocator* allocator_;
 
   perftools::gputools::StreamExecutor* stream_executor_;

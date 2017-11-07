@@ -12,11 +12,10 @@ py_library(
 
 py_test(
     name = "k8s_tensorflow_test",
-    size = "small",
     srcs = ["k8s_tensorflow_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":k8s_tensorflow_lib",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
     ],
 )

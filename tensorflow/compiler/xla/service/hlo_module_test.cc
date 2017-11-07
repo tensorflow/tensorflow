@@ -38,7 +38,7 @@ class HloModuleTest : public HloTestBase {
   std::unique_ptr<HloComputation> CreateConstantComputation() {
     auto builder = HloComputation::Builder("Constant");
     builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
     return builder.Build();
   }
 
@@ -81,6 +81,30 @@ TEST_F(HloModuleTest, TwoComputationsPostOrder) {
   EXPECT_EQ(computation2->name(), "Constant.1");
 }
 
+TEST_F(HloModuleTest, CloneTest) {
+  // Create and copy a module with a diamond call graph of computations.
+  auto module = CreateNewModule();
+  auto computation1 =
+      module->AddEmbeddedComputation(CreateConstantComputation());
+  auto computation2 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  auto computation3 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  module->AddEntryComputation(
+      CreateCallComputation({computation2, computation3}));
+
+  auto post_order = module->MakeComputationPostOrder();
+  auto cloned_module = module->Clone("copy");
+  auto post_order_copied = cloned_module->MakeComputationPostOrder();
+
+  EXPECT_EQ(post_order.size(), post_order_copied.size());
+  for (auto origin = post_order.begin(), copied = post_order_copied.begin();
+       origin != post_order.end() && copied != post_order_copied.end();
+       ++origin, ++copied) {
+    EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+  }
+}
+
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   // Create a module with a diamond call graph of computations.
   auto module = CreateNewModule();
@@ -101,10 +125,26 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   EXPECT_EQ(post_order.front(), computation1);
 }
 
+TEST_F(HloModuleTest, LargeConstantToString) {
+  // Create a module with a single computation.
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder("Constant");
+  std::vector<float> values(16, 42.0);
+  builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>(values)));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      "HloModule LargeConstantToString:\n\nENTRY %Constant () -> f32[16] {\n  "
+      "ROOT %constant = f32[16]{0} constant({...})\n}\n\n",
+      module->ToString(/*include_large_constants=*/false));
+  EXPECT_EQ(
+      "HloModule LargeConstantToString:\n\nENTRY %Constant () -> f32[16] {\n  "
+      "ROOT %constant = f32[16]{0} constant({42, 42, 42, 42, 42, 42, 42, 42, "
+      "42, 42, 42, 42, 42, 42, 42, 42})\n}\n\n",
+      module->ToString(/*include_large_constants=*/true));
+}
+
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

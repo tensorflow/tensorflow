@@ -49,8 +49,8 @@ class CpuExecutable : public Executable {
  public:
   CpuExecutable(
       std::unique_ptr<SimpleOrcJIT> jit,
-      std::unique_ptr<BufferAssignment> assignment,
-      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<const HloModule> hlo_module,
       const string& entry_function_name,
       std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx);
   ~CpuExecutable() override {}
@@ -78,7 +78,25 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
+  const Status EqualOrFail(const Executable& executable) {
+    // TODO(b/62952745) Implement equality test on CPU executable.
+    return Unimplemented("Equality test on CPU executable is not implemented.");
+  }
+
   static int64 ShapeSizeBytes(const Shape& shape);
+
+  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
+
+  // Type of the computation function we expect in the JIT.
+  using ComputeFunctionType = void (*)(
+      void* /*result*/, const ExecutableRunOptions* /*run_options*/,
+      const void** /*args*/, void** /*temps*/, uint64* /*profile_counters*/);
+
+  const ComputeFunctionType& compute_function() const {
+    return compute_function_;
+  }
+
+  const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
  private:
   // Allocate buffers required for execution and assign them to the elements of
@@ -111,10 +129,10 @@ class CpuExecutable : public Executable {
   const PointsToSet& GetRootPointsToSet() const;
 
   // The JIT containing compiled modules.
-  std::unique_ptr<SimpleOrcJIT> jit_;
+  const std::unique_ptr<SimpleOrcJIT> jit_;
 
   // Buffer assignment for the buffers we need to allocate.
-  std::unique_ptr<BufferAssignment> assignment_;
+  const std::unique_ptr<const BufferAssignment> assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
@@ -122,11 +140,6 @@ class CpuExecutable : public Executable {
   // positives.
   string ir_module_string_;
 
-  // Type of the computation function we expect in the JIT.
-  //    void function(void* result, const void* run_options,
-  //                  const void** args_array, void** temps_array)
-  using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
-                                       uint64*);
   ComputeFunctionType compute_function_;
 
   // Entry function name for the computation.

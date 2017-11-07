@@ -189,6 +189,53 @@ class CallGraph {
   Status VisitNodes(const VisitorFunction& visitor_func,
                     bool visit_unreachable_nodes = true) const;
 
+  // Returns true if 'a' dominates 'b' in the call graph. Computation 'a'
+  // dominates computation 'b' iff all callgraph paths in the caller-to-callee
+  // direction from a root computation to 'b' pass through computation
+  // 'a'. Trivially, a computation dominates itself.
+  bool Dominates(const HloComputation* a, const HloComputation* b) const;
+
+  // Returns whether 'instruction' is contained in 'computation' either directly
+  // ('instruction->parent' is 'computation') or indirectly ('computation'
+  // dominates 'instruction->parent' in the call graph).
+  bool InstructionIsNestedIn(const HloInstruction* instruction,
+                             const HloComputation* computation) const {
+    return Dominates(computation, instruction->parent());
+  }
+
+  // Returns the nearest call graph ancestors of instructions 'a' and 'b' for
+  // which the ancestors are in the same computation. An instruction is an call
+  // graph ancestor of 'a' if the instruction calls the computation containing
+  // 'a' either directly or transitively. Degeneratively an instruction is an
+  // ancestor of itself. nullptr is returned if there is no common ancestor or
+  // if the caller chain of 'a' or 'b' diverges (has multiple callers) before
+  // the nearest common ancestor.
+  //
+  // Example:
+  //
+  // Entry computation:
+  //   %x = Call(A, {Constant(42.0)})
+  //   %y = Call(B, {%x})
+  //
+  // Computation A:
+  //   %a = Negate(Param())
+  //
+  // Computation B:
+  //   %b = Exp(Param());
+  //
+  // If called with %a and %b, this function would return (%x, %y). %x is an
+  // ancestor of %a, and %y is an ancestor of %b, and %x and %y are in the same
+  // computation.
+  std::pair<HloInstruction*, HloInstruction*> NearestAncestorsInSameComputation(
+      HloInstruction* a, HloInstruction* b) const;
+
+  // Returns whether the call graph is flattened. A call graph is flattened if
+  // every computation called in a sequential context (eg, kWhile or kCall) has
+  // zero or one callsite, and no computation is called from both a parallel and
+  // sequential context. The call graph of a module can be flattened with
+  // FlattenCallGraph.
+  bool IsFlattened() const;
+
   string ToString() const;
 
  private:
@@ -204,6 +251,13 @@ class CallGraph {
   Status VisitNodesInternal(
       const VisitorFunction& visitor_func, const CallGraphNode& node,
       tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const;
+
+  // Recursive helper for computing whether 'a' dominates 'b' in the call
+  // graph. 'b_ancestor' is the currently visited node (which starts at 'b'),
+  // and 'visited' is the set of computations which have been visited.
+  bool DominatesHelper(
+      const HloComputation* a, const HloComputation* b,
+      tensorflow::gtl::FlatSet<const HloComputation*>* visited) const;
 
   // The HLO module represented by this call graph.
   const HloModule* module_ = nullptr;

@@ -1,0 +1,37 @@
+op {
+  graph_op_name: "FixedLengthRecordDataset"
+  in_arg {
+    name: "filenames"
+    description: <<END
+A scalar or a vector containing the name(s) of the file(s) to be
+read.
+END
+  }
+  in_arg {
+    name: "header_bytes"
+    description: <<END
+A scalar representing the number of bytes to skip at the
+beginning of a file.
+END
+  }
+  in_arg {
+    name: "record_bytes"
+    description: <<END
+A scalar representing the number of bytes in each record.
+END
+  }
+  in_arg {
+    name: "footer_bytes"
+    description: <<END
+A scalar representing the number of bytes to skip at the end
+of a file.
+END
+  }
+  in_arg {
+    name: "buffer_size"
+    description: <<END
+A scalar representing the number of bytes to buffer. Must be > 0.
+END
+  }
+  summary: "Creates a dataset that emits the records from one or more binary files."
+}

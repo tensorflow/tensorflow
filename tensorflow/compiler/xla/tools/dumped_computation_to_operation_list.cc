@@ -86,15 +86,15 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
       layouts.push_back(&program_shape->parameters(i));
     }
     StatusOr<std::unique_ptr<Executable>> executable =
-        local_service->CompileExecutable(
-            computation.handle(), layouts, &program_shape->result(),
-            /*device_ordinal=*/0, /*has_hybrid_result=*/true);
+        local_service->CompileExecutable(computation.handle(), layouts,
+                                         &program_shape->result(),
+                                         /*device_ordinal=*/0);
 
     const HloModule& module = executable.ValueOrDie()->module();
 
     OperationDumper dumper(arg);
-    for (auto& computation : module.computations()) {
-      TF_CHECK_OK(computation->root_instruction()->Accept(&dumper));
+    for (auto* computation : module.computations()) {
+      TF_CHECK_OK(computation->Accept(&dumper));
     }
   }
 }

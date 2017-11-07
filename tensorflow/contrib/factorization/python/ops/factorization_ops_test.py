@@ -31,7 +31,6 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
-
 INPUT_MATRIX = factorization_ops_test_utils.INPUT_MATRIX
 np_matrix_to_tf_sparse = factorization_ops_test_utils.np_matrix_to_tf_sparse
 
@@ -53,16 +52,20 @@ class WalsModelTest(test.TestCase):
 
   def calculate_loss_from_wals_model(self, wals_model, sp_inputs):
     current_rows = embedding_ops.embedding_lookup(
-        wals_model.row_factors, math_ops.range(wals_model._input_rows),
+        wals_model.row_factors,
+        math_ops.range(wals_model._input_rows),
         partition_strategy="div")
     current_cols = embedding_ops.embedding_lookup(
-        wals_model.col_factors, math_ops.range(wals_model._input_cols),
+        wals_model.col_factors,
+        math_ops.range(wals_model._input_cols),
         partition_strategy="div")
     row_wts = embedding_ops.embedding_lookup(
-        wals_model._row_weights, math_ops.range(wals_model._input_rows),
+        wals_model._row_weights,
+        math_ops.range(wals_model._input_rows),
         partition_strategy="div")
     col_wts = embedding_ops.embedding_lookup(
-        wals_model._col_weights, math_ops.range(wals_model._input_cols),
+        wals_model._col_weights,
+        math_ops.range(wals_model._input_cols),
         partition_strategy="div")
     return factorization_ops_test_utils.calculate_loss(
         sp_inputs, current_rows, current_cols, wals_model._regularization,
@@ -71,9 +74,11 @@ class WalsModelTest(test.TestCase):
   def setUp(self):
     self.col_init = [
         # shard 0
-        [[-0.36444709, -0.39077035, -0.32528427],
-         [1.19056475, 0.07231052, 2.11834812],
-         [0.93468881, -0.71099287, 1.91826844]],
+        [
+            [-0.36444709, -0.39077035, -0.32528427],  # pyformat line break
+            [1.19056475, 0.07231052, 2.11834812],
+            [0.93468881, -0.71099287, 1.91826844]
+        ],
         # shard 1
         [[1.18160152, 1.52490723, -0.50015002],
          [1.82574749, -0.57515913, -1.32810032]],
@@ -87,18 +92,71 @@ class WalsModelTest(test.TestCase):
 
     # Values of factor shards after running one iteration of row and column
     # updates.
-    self._row_factors_0 = [[0.097689, -0.219293, -0.020780],
-                           [0.50842, 0.64626, 0.22364],
-                           [0.401159, -0.046558, -0.192854]]
+    self._row_factors_0 = [
+        [0.097689, -0.219293, -0.020780],  # pyformat line break
+        [0.50842, 0.64626, 0.22364],
+        [0.401159, -0.046558, -0.192854]
+    ]
     self._row_factors_1 = [[1.20597, -0.48025, 0.35582],
                            [1.5564, 1.2528, 1.0528]]
-    self._col_factors_0 = [[2.4725, -1.2950, -1.9980],
-                           [0.44625, 1.50771, 1.27118],
-                           [1.39801, -2.10134, 0.73572]]
+    self._col_factors_0 = [
+        [2.4725, -1.2950, -1.9980],  # pyformat line break
+        [0.44625, 1.50771, 1.27118],
+        [1.39801, -2.10134, 0.73572]
+    ]
     self._col_factors_1 = [[3.36509, -0.66595, -3.51208],
                            [0.57191, 1.59407, 1.33020]]
     self._col_factors_2 = [[3.3459, -1.3341, -3.3008],
                            [0.57366, 1.83729, 1.26798]]
+
+  def _run_test_sum_weights(self, test_rows):
+    # test_rows: True to test row weights, False to test column weights.
+
+    num_rows = 5
+    num_cols = 5
+    unobserved_weight = 0.1
+    row_weights = [[8., 18., 28., 38., 48.]]
+    col_weights = [[90., 91., 92., 93., 94.]]
+    sparse_indices = [[0, 1], [2, 3], [4, 1]]
+    sparse_values = [666., 777., 888.]
+
+    unobserved = unobserved_weight * num_rows * num_cols
+    observed = 8. * 91. + 28. * 93. + 48. * 91.
+    # sparse_indices has three unique rows and two unique columns
+    observed *= num_rows / 3. if test_rows else num_cols / 2.
+    want_weight_sum = unobserved + observed
+
+    with ops.Graph().as_default(), self.test_session() as sess:
+      wals_model = factorization_ops.WALSModel(
+          input_rows=num_rows,
+          input_cols=num_cols,
+          n_components=5,
+          unobserved_weight=unobserved_weight,
+          row_weights=row_weights,
+          col_weights=col_weights,
+          use_factors_weights_cache=False)
+
+      wals_model.initialize_op.run()
+      wals_model.worker_init.run()
+
+      update_factors = (wals_model.update_row_factors
+                        if test_rows else wals_model.update_col_factors)
+
+      (_, _, _, _, sum_weights) = update_factors(
+          sp_input=sparse_tensor.SparseTensor(
+              indices=sparse_indices,
+              values=sparse_values,
+              dense_shape=[num_rows, num_cols]),
+          transpose_input=False)
+
+      got_weight_sum = sess.run(sum_weights)
+
+      self.assertNear(
+          got_weight_sum,
+          want_weight_sum,
+          err=.001,
+          msg="got weight sum [{}], want weight sum [{}]".format(
+              got_weight_sum, want_weight_sum))
 
   def _run_test_process_input(self,
                               use_factors_weights_cache,
@@ -138,8 +196,10 @@ class WalsModelTest(test.TestCase):
       # Here we feed in scattered rows of the input.
       wals_model.row_update_prep_gramian_op.run()
       wals_model.initialize_row_update_op.run()
-      _, process_input_op, factor_loss = wals_model.update_row_factors(
-          sp_input=sp_feeder, transpose_input=False)
+      (_, process_input_op, unregularized_loss, regularization,
+       _) = wals_model.update_row_factors(
+           sp_input=sp_feeder, transpose_input=False)
+      factor_loss = unregularized_loss + regularization
       for inp in input_scattered_rows:
         feed_dict = {sp_feeder: inp}
         process_input_op.run(feed_dict=feed_dict)
@@ -163,8 +223,8 @@ class WalsModelTest(test.TestCase):
           sp_input=sp_feeder, transpose_input=False)
       feed_dict = {
           sp_feeder:
-              np_matrix_to_tf_sparse(
-                  INPUT_MATRIX, [1, 4], shuffle=False).eval()
+              np_matrix_to_tf_sparse(INPUT_MATRIX, [1, 4], shuffle=False)
+              .eval()
       }
       self.assertAllClose(
           projected_rows.eval(feed_dict=feed_dict),
@@ -178,15 +238,17 @@ class WalsModelTest(test.TestCase):
       if compute_loss:
         # Test loss computation after the row update
         loss = sum(
-            sess.run(factor_loss * self.count_rows(inp) / num_rows,
-                     feed_dict={sp_feeder: inp})
-            for inp in input_scattered_rows)
-        true_loss = self.calculate_loss_from_wals_model(
-            wals_model, self._wals_inputs)
+            sess.run(
+                factor_loss * self.count_rows(inp) / num_rows,
+                feed_dict={sp_feeder: inp}) for inp in input_scattered_rows)
+        true_loss = self.calculate_loss_from_wals_model(wals_model,
+                                                        self._wals_inputs)
         self.assertNear(
-            loss, true_loss, err=.001,
-            msg="""After row update, computed loss = {}, does not match
-            the true loss = {}.""".format(loss, true_loss))
+            loss,
+            true_loss,
+            err=.001,
+            msg="After row update, computed loss [{}] does not match"
+            " true loss [{}]".format(loss, true_loss))
 
       # Split input into multiple sparse tensors with scattered columns. Note
       # that here the elements in the sparse tensors are not ordered and also
@@ -206,8 +268,10 @@ class WalsModelTest(test.TestCase):
       # Here we feed in scattered columns of the input.
       wals_model.col_update_prep_gramian_op.run()
       wals_model.initialize_col_update_op.run()
-      _, process_input_op, factor_loss = wals_model.update_col_factors(
-          sp_input=sp_feeder, transpose_input=False)
+      (_, process_input_op, unregularized_loss, regularization,
+       _) = wals_model.update_col_factors(
+           sp_input=sp_feeder, transpose_input=False)
+      factor_loss = unregularized_loss + regularization
       for inp in input_scattered_cols:
         feed_dict = {sp_feeder: inp}
         process_input_op.run(feed_dict=feed_dict)
@@ -243,25 +307,28 @@ class WalsModelTest(test.TestCase):
           atol=1e-3)
       self.assertAllClose(
           projected_cols_no_weights.eval(feed_dict=feed_dict),
-          [[3.471045, -1.250835, -3.598917],
-           [3.585139, -0.487476, -3.852232],
+          [[3.471045, -1.250835, -3.598917], [3.585139, -0.487476, -3.852232],
            [0.346433, 1.360644, 1.677121]],
           atol=1e-3)
 
       if compute_loss:
         # Test loss computation after the column update.
         loss = sum(
-            sess.run(factor_loss * self.count_cols(inp) / num_cols,
-                     feed_dict={sp_feeder: inp})
+            sess.run(
+                factor_loss * self.count_cols(inp) / num_cols,
+                feed_dict={sp_feeder: inp})
             for inp in input_scattered_cols_non_duplicate)
-        true_loss = self.calculate_loss_from_wals_model(
-            wals_model, self._wals_inputs)
+        true_loss = self.calculate_loss_from_wals_model(wals_model,
+                                                        self._wals_inputs)
         self.assertNear(
-            loss, true_loss, err=.001,
-            msg="""After col update, computed loss = {}, does not match the true
-            loss = {}.""".format(loss, true_loss))
+            loss,
+            true_loss,
+            err=.001,
+            msg="After col update, computed loss [{}] does not match"
+            " true loss [{}]".format(loss, true_loss))
 
-  def _run_test_process_input_transposed(self, use_factors_weights_cache,
+  def _run_test_process_input_transposed(self,
+                                         use_factors_weights_cache,
                                          compute_loss=False):
     with ops.Graph().as_default(), self.test_session() as sess:
       self._wals_inputs = self.sparse_input()
@@ -304,8 +371,10 @@ class WalsModelTest(test.TestCase):
       # they appear.
       wals_model.row_update_prep_gramian_op.run()
       wals_model.initialize_row_update_op.run()
-      _, process_input_op, factor_loss = wals_model.update_row_factors(
-          sp_input=sp_feeder, transpose_input=True)
+      (_, process_input_op, unregularized_loss, regularization,
+       _) = wals_model.update_row_factors(
+           sp_input=sp_feeder, transpose_input=True)
+      factor_loss = unregularized_loss + regularization
       for inp in input_scattered_rows:
         feed_dict = {sp_feeder: inp}
         process_input_op.run(feed_dict=feed_dict)
@@ -344,15 +413,18 @@ class WalsModelTest(test.TestCase):
       if compute_loss:
         # Test loss computation after the row update
         loss = sum(
-            sess.run(factor_loss * self.count_cols(inp) / num_rows,
-                     feed_dict={sp_feeder: inp})
+            sess.run(
+                factor_loss * self.count_cols(inp) / num_rows,
+                feed_dict={sp_feeder: inp})
             for inp in input_scattered_rows_non_duplicate)
-        true_loss = self.calculate_loss_from_wals_model(
-            wals_model, self._wals_inputs)
+        true_loss = self.calculate_loss_from_wals_model(wals_model,
+                                                        self._wals_inputs)
         self.assertNear(
-            loss, true_loss, err=.001,
-            msg="""After row update, computed loss = {}, does not match the true
-            loss = {}.""".format(loss, true_loss))
+            loss,
+            true_loss,
+            err=.001,
+            msg="After row update, computed loss [{}] does not match"
+            " true loss [{}]".format(loss, true_loss))
 
       # Split input into multiple SparseTensors with scattered columns.
       # Here the inputs are transposed. But the same constraints as described in
@@ -375,8 +447,10 @@ class WalsModelTest(test.TestCase):
       # Here we feed in scattered columns of the input.
       wals_model.col_update_prep_gramian_op.run()
       wals_model.initialize_col_update_op.run()
-      _, process_input_op, factor_loss = wals_model.update_col_factors(
-          sp_input=sp_feeder, transpose_input=True)
+      (_, process_input_op, unregularized_loss, regularization,
+       _) = wals_model.update_col_factors(
+           sp_input=sp_feeder, transpose_input=True)
+      factor_loss = unregularized_loss + regularization
       for inp in input_scattered_cols:
         feed_dict = {sp_feeder: inp}
         process_input_op.run(feed_dict=feed_dict)
@@ -406,21 +480,23 @@ class WalsModelTest(test.TestCase):
           atol=1e-3)
       self.assertAllClose(
           projected_cols_no_weights.eval(feed_dict=feed_dict),
-          [[3.585139, -0.487476, -3.852232],
-           [0.557937, 1.813907, 1.331171]],
+          [[3.585139, -0.487476, -3.852232], [0.557937, 1.813907, 1.331171]],
           atol=1e-3)
       if compute_loss:
         # Test loss computation after the col update
         loss = sum(
-            sess.run(factor_loss * self.count_rows(inp) / num_cols,
-                     feed_dict={sp_feeder: inp})
+            sess.run(
+                factor_loss * self.count_rows(inp) / num_cols,
+                feed_dict={sp_feeder: inp})
             for inp in input_scattered_cols_non_duplicate)
-        true_loss = self.calculate_loss_from_wals_model(
-            wals_model, self._wals_inputs)
+        true_loss = self.calculate_loss_from_wals_model(wals_model,
+                                                        self._wals_inputs)
         self.assertNear(
-            loss, true_loss, err=.001,
-            msg="""After col update, computed loss = {}, does not match the true
-            loss = {}.""".format(loss, true_loss))
+            loss,
+            true_loss,
+            err=.001,
+            msg="After col update, computed loss [{}] does not match"
+            " true loss [{}]".format(loss, true_loss))
 
   # Note that when row_weights and col_weights are 0, WALS gives identical
   # results as ALS (Alternating Least Squares). However our implementation does
@@ -503,8 +579,7 @@ class WalsModelTest(test.TestCase):
       for c1, c2 in zip(col_factors1, col_factors2):
         self.assertAllClose(c1, c2, rtol=5e-3, atol=1e-2)
       self.assertAllClose(
-          als_projected_col_factors1,
-          [col_factors2[0][2], col_factors2[0][0]],
+          als_projected_col_factors1, [col_factors2[0][2], col_factors2[0][0]],
           atol=1e-2)
 
   def _run_test_als_transposed(self, use_factors_weights_cache):
@@ -599,8 +674,8 @@ class WalsModelTest(test.TestCase):
     cols = 11
     dims = 3
     with ops.Graph().as_default(), self.test_session():
-      data = np.dot(np.random.rand(rows, 3),
-                    np.random.rand(3, cols)).astype(np.float32) / 3.0
+      data = np.dot(np.random.rand(rows, 3), np.random.rand(
+          3, cols)).astype(np.float32) / 3.0
       indices = [[i, j] for i in xrange(rows) for j in xrange(cols)]
       values = data.reshape(-1)
       inp = sparse_tensor.SparseTensor(indices, values, [rows, cols])
@@ -629,8 +704,8 @@ class WalsModelTest(test.TestCase):
     dims = 3
 
     with ops.Graph().as_default(), self.test_session():
-      data = np.dot(np.random.rand(rows, 3),
-                    np.random.rand(3, cols)).astype(np.float32) / 3.0
+      data = np.dot(np.random.rand(rows, 3), np.random.rand(
+          3, cols)).astype(np.float32) / 3.0
       indices = [[i, j] for i in xrange(rows) for j in xrange(cols)]
       values = data.reshape(-1)
       inp = sparse_tensor.SparseTensor(indices, values, [rows, cols])
@@ -664,8 +739,8 @@ class WalsModelTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session():
       row_wts = 0.1 + np.random.rand(rows)
       col_wts = 0.1 + np.random.rand(cols)
-      data = np.dot(np.random.rand(rows, 3),
-                    np.random.rand(3, cols)).astype(np.float32) / 3.0
+      data = np.dot(np.random.rand(rows, 3), np.random.rand(
+          3, cols)).astype(np.float32) / 3.0
       indices = np.array(
           list(
               filter(keep_index,
@@ -740,6 +815,13 @@ class WalsModelTest(test.TestCase):
 
   def test_loss_without_cache(self):
     self._run_test_process_input(False, compute_loss=True)
+
+  def test_sum_row_weights(self):
+    self._run_test_sum_weights(True)
+
+  def test_sum_col_weights(self):
+    self._run_test_sum_weights(False)
+
 
 if __name__ == "__main__":
   test.main()

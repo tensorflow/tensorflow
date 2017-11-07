@@ -18,19 +18,11 @@ limitations under the License.
 namespace tensorflow {
 REGISTER2(UnaryOp, CPU, "Atan", functor::atan, float, double);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Atan")                                \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          UnaryOp<SYCLDevice, functor::atan<TYPE>>);
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-#undef REGISTER_SYCL_KERNEL
-#endif // TENSORFLOW_USE_SYCL
-
 #if GOOGLE_CUDA
 REGISTER2(UnaryOp, GPU, "Atan", functor::atan, float, double);
 #endif
+
+#if TENSORFLOW_USE_SYCL
+REGISTER2(UnaryOp, SYCL, "Atan", functor::atan, float, double);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

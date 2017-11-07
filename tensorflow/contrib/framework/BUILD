@@ -10,9 +10,8 @@ package(default_visibility = [
     "//tensorflow:__subpackages__",
 ])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -25,31 +24,33 @@ tf_custom_op_py_library(
         "python/framework/__init__.py",
         "python/framework/checkpoint_utils.py",
         "python/framework/experimental.py",
+        "python/framework/graph_util.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
+        "python/ops/accumulate_n_v2.py",
         "python/ops/arg_scope.py",
+        "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
+        "python/ops/sort_ops.py",
         "python/ops/variables.py",
     ],
     dso = [
         ":python/ops/_variable_ops.so",
-        ":python/ops/_checkpoint_ops.so",
     ],
     kernels = [
-        ":checkpoint_ops_op_lib",
-        ":generate_vocab_remapping_kernel",
-        ":load_and_remap_matrix_kernel",
         ":variable_kernels",
         ":variable_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":gen_checkpoint_ops",
         ":gen_variable_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:audio_ops_gen",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:checkpoint_ops_gen",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -58,13 +59,17 @@ tf_custom_op_py_library(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:state_ops_gen",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -87,32 +92,6 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-tf_kernel_library(
-    name = "generate_vocab_remapping_kernel",
-    srcs = ["kernels/generate_vocab_remapping_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:lookup_table_init_op",
-        "//tensorflow/core/kernels:lookup_table_op",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-tf_kernel_library(
-    name = "load_and_remap_matrix_kernel",
-    srcs = ["kernels/load_and_remap_matrix_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/util/tensor_bundle",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
 tf_custom_op_library(
     name = "python/ops/_variable_ops.so",
     srcs = [
@@ -126,22 +105,8 @@ tf_custom_op_library(
     ],
 )
 
-tf_custom_op_library(
-    name = "python/ops/_checkpoint_ops.so",
-    srcs = [
-        "kernels/generate_vocab_remapping_op.cc",
-        "kernels/load_and_remap_matrix_op.cc",
-        "ops/checkpoint_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/core/kernels:lookup_headers_lib",
-        "//tensorflow/core/util/tensor_bundle:tensor_bundle_headers_lib",
-    ],
-)
-
 tf_gen_op_libs(
     op_lib_names = [
-        "checkpoint_ops",
         "variable_ops",
     ],
 )
@@ -149,7 +114,6 @@ tf_gen_op_libs(
 cc_library(
     name = "all_ops",
     deps = [
-        ":checkpoint_ops_op_lib",
         ":variable_ops_op_lib",
     ],
 )
@@ -162,14 +126,6 @@ tf_gen_op_wrapper_py(
     ],
 )
 
-tf_gen_op_wrapper_py(
-    name = "gen_checkpoint_ops",
-    out = "python/ops/gen_checkpoint_ops.py",
-    deps = [
-        ":checkpoint_ops_op_lib",
-    ],
-)
-
 py_test(
     name = "arg_scope_test",
     size = "small",
@@ -178,7 +134,6 @@ py_test(
     deps = [
         ":framework_py",
         "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -198,6 +153,42 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "accumulate_n_v2_test",
+    size = "small",
+    srcs = ["python/ops/accumulate_n_v2_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "accumulate_n_v2_eager_test",
+    size = "small",
+    srcs = ["python/ops/accumulate_n_v2_eager_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
     ],
 )
@@ -211,7 +202,6 @@ py_test(
         ":framework_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -223,9 +213,9 @@ py_test(
     deps = [
         ":framework_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -234,20 +224,28 @@ py_test(
 
 py_test(
     name = "experimental_test",
-    size = "small",
     srcs = ["python/framework/experimental_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
-        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "graph_util_test",
+    srcs = ["python/framework/graph_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
     ],
 )
 
 py_test(
     name = "tensor_util_test",
-    size = "small",
     srcs = ["python/framework/tensor_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -255,8 +253,8 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -271,7 +269,6 @@ py_test(
     deps = [
         ":framework_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -279,6 +276,7 @@ py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:platform",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -295,7 +293,6 @@ filegroup(
         "testdata/bundle_checkpoint_vocab_with_oov.txt",
         "testdata/keyword.txt",
         "testdata/keyword_new.txt",
-        "testdata/keyword_shifted.txt",
     ],
 )
 
@@ -312,13 +309,27 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "sort_ops_test",
+    size = "medium",
+    srcs = ["python/ops/sort_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
 )

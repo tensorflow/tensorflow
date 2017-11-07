@@ -18,6 +18,11 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+bool IsAddN(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "AddN";
+}
+
 bool IsConcat(const NodeDef& node) {
   const auto op = node.op();
   return op == "Concat" || op == "ConcatV2";
@@ -35,19 +40,34 @@ bool IsDequeueOp(const NodeDef& node) {
          op == "QueueDequeueUpToV2" || op == "QueueDequeueUpTo";
 }
 
+bool IsEnter(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Enter" || op == "RefEnter";
+}
+
+bool IsExit(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Exit" || op == "RefExit";
+}
+
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Identity";
+  return op == "Identity" || op == "RefIdentity";
 }
 
 bool IsMerge(const NodeDef& node) {
   const auto op = node.op();
-  return op == "Merge";
+  return op == "Merge" || op == "RefMerge";
 }
 
 bool IsNoOp(const NodeDef& node) {
   const auto op = node.op();
   return op == "NoOp";
+}
+
+bool IsNextIteration(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "NextIteration" || op == "RefNextIteration";
 }
 
 bool IsPlaceholder(const NodeDef& node) {
@@ -67,14 +87,26 @@ bool IsReduction(const NodeDef& node) {
          op == "Mean" || op == "Any" || op == "All";
 }
 
+bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
+
+bool IsRestore(const NodeDef& node) {
+  return (node.op() == "Restore" || node.op() == "RestoreV2" ||
+          node.op() == "RestoreSlice");
+}
+
 bool IsSend(const NodeDef& node) {
   const auto op = node.op();
   return op == "_Send";
 }
 
+bool IsStopGradient(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "StopGradient" || op == "PreventGradient";
+}
+
 bool IsSwitch(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Switch";
+  return op == "Switch" || op == "RefSwitch";
 }
 
 bool IsTranspose(const NodeDef& node) {
@@ -85,7 +117,7 @@ bool IsTranspose(const NodeDef& node) {
 bool IsVariable(const NodeDef& node) {
   const auto op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
-         op == "VarHandleOp" || op == "TemporaryVariable";
+         op == "VarHandleOp" || op == "ReadVariableOp";
 }
 
 }  // end namespace grappler

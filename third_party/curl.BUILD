@@ -477,7 +477,6 @@ genrule(
         "#  define HAVE_RAND_EGD 1",
         "#  define HAVE_RAND_STATUS 1",
         "#  define HAVE_SSL_GET_SHUTDOWN 1",
-        "#  define HAVE_STROPTS_H 1",
         "#  define HAVE_TERMIOS_H 1",
         "#  define OS \"x86_64-pc-linux-gnu\"",
         "#  define RANDOM_FILE \"/dev/urandom\"",

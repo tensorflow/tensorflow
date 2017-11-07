@@ -84,6 +84,20 @@ bool IsDim0SliceAligned(const TensorShape& s, int64 start, int64 end_or_size) {
 // Returns <suffix> sanitized to have only [a-zA-Z0-9-_].
 string SanitizeThreadSuffix(string suffix);
 
+// Helper to compute 'strides' given a tensor 'shape'. I.e.,
+// strides[i] = prod(shape.dim_size[(i+1):])
+template <typename T>
+gtl::InlinedVector<T, 8> ComputeStride(const TensorShape& shape) {
+  const int ndims = shape.dims();
+  gtl::InlinedVector<T, 8> strides(ndims);
+  T stride = 1;
+  for (int i = ndims - 1; i >= 0; --i) {
+    strides[i] = stride;
+    stride *= static_cast<T>(shape.dim_size(i));
+  }
+  return strides;
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_OPS_UTIL_H_

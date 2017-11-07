@@ -21,14 +21,15 @@ limitations under the License.
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -43,17 +44,22 @@ limitations under the License.
 
 namespace xla {
 
+using llvm_ir::AsStringRef;
 using llvm_ir::IrArray;
+using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
+using tensorflow::strings::StrCat;
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) const {
   if (op->opcode() == HloOpcode::kCopy) {
     return operand_value;
+  } else if (operand_value->getType()->isIntegerTy()) {
+    return EmitIntegerUnaryOp(op, operand_value);
+  } else if (ShapeUtil::ElementIsComplex(op->operand(0)->shape())) {
+    return EmitComplexUnaryOp(op, operand_value);
   } else {
-    return operand_value->getType()->isIntegerTy()
-               ? EmitIntegerUnaryOp(op, operand_value)
-               : EmitFloatUnaryOp(op, operand_value);
+    return EmitFloatUnaryOp(op, operand_value);
   }
 }
 
@@ -63,25 +69,41 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
-      CHECK(primitive_util::IsIntegralType(from_type));
+      CHECK(primitive_util::IsIntegralType(from_type) || from_type == PRED);
       if (from_type == to_type) {
         return operand_value;
       }
       if (primitive_util::IsIntegralType(to_type)) {
         return ir_builder_->CreateIntCast(
-            operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_),
+            operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_),
             primitive_util::IsSignedIntegralType(to_type));
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
         if (primitive_util::IsSignedIntegralType(from_type)) {
           return ir_builder_->CreateSIToFP(
-              operand_value,
-              llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
+              operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_));
         }
-        if (primitive_util::IsUnsignedIntegralType(from_type)) {
+        if (primitive_util::IsUnsignedIntegralType(from_type) ||
+            from_type == PRED) {
           return ir_builder_->CreateUIToFP(
-              operand_value,
-              llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
+              operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_));
+        }
+      }
+      if (primitive_util::IsComplexType(to_type)) {
+        auto to_ir_component_type = llvm_ir::PrimitiveTypeToIrType(
+            primitive_util::ComplexComponentType(to_type), module_);
+        if (primitive_util::IsSignedIntegralType(from_type)) {
+          return ComposeComplex(
+              op,
+              ir_builder_->CreateSIToFP(operand_value, to_ir_component_type),
+              nullptr);
+        }
+        if (primitive_util::IsUnsignedIntegralType(from_type) ||
+            from_type == PRED) {
+          return ComposeComplex(
+              op,
+              ir_builder_->CreateUIToFP(operand_value, to_ir_component_type),
+              nullptr);
         }
       }
       return Unimplemented("conversion from primitive type %s to %s",
@@ -92,8 +114,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       bool is_signed =
           primitive_util::IsSignedIntegralType(op->shape().element_type());
       if (is_signed) {
-        auto type = llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(),
-                                                   ir_builder_);
+        auto type =
+            llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
         auto zero = llvm::ConstantInt::get(type, 0);
         auto cmp = ir_builder_->CreateICmpSGE(operand_value, zero);
         return ir_builder_->CreateSelect(cmp, operand_value,
@@ -105,8 +127,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     case HloOpcode::kSign: {
       bool is_signed =
           primitive_util::IsSignedIntegralType(op->shape().element_type());
-      auto type = llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(),
-                                                 ir_builder_);
+      auto type =
+          llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
       auto zero = llvm::ConstantInt::get(type, 0);
       auto cmp = ir_builder_->CreateICmpEQ(operand_value, zero);
       if (is_signed) {
@@ -121,14 +143,21 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     }
     case HloOpcode::kNegate:
       return ir_builder_->CreateNeg(operand_value);
-    case HloOpcode::kLogicalNot:
-      // It is not sufficient to just call CreateNot() here because a PRED is
-      // represented as an i8 and the truth value is stored only in the bottom
-      // bit.
-      return ir_builder_->CreateZExt(
-          ir_builder_->CreateNot(ir_builder_->CreateTrunc(
-              operand_value, ir_builder_->getInt1Ty())),
-          llvm_ir::PrimitiveTypeToIrType(PRED, ir_builder_));
+    case HloOpcode::kNot: {
+      auto type = op->shape().element_type();
+      if (type == PRED) {
+        // It is not sufficient to just call CreateNot() here because a PRED
+        // is represented as an i8 and the truth value is stored only in the
+        // bottom bit.
+        return ir_builder_->CreateZExt(
+            ir_builder_->CreateNot(ir_builder_->CreateTrunc(
+                operand_value, ir_builder_->getInt1Ty())),
+            llvm_ir::PrimitiveTypeToIrType(PRED, module_));
+      } else if (primitive_util::IsIntegralType(type)) {
+        return ir_builder_->CreateNot(operand_value);
+      }
+      return Unimplemented("unary op Not is not defined for type '%d'", type);
+    }
     default:
       return Unimplemented("unary integer op '%s'",
                            HloOpcodeString(op->opcode()).c_str());
@@ -145,20 +174,30 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == to_type) {
         return operand_value;
       }
+      if (primitive_util::IsComplexType(to_type)) {
+        PrimitiveType to_component_type =
+            primitive_util::ComplexComponentType(to_type);
+        if (from_type == to_component_type) {
+          return ComposeComplex(op, operand_value, nullptr);
+        }
+        return ComposeComplex(
+            op,
+            ir_builder_->CreateFPCast(
+                operand_value,
+                llvm_ir::PrimitiveTypeToIrType(to_component_type, module_)),
+            nullptr);
+      }
       if (primitive_util::IsFloatingPointType(to_type)) {
         return ir_builder_->CreateFPCast(
-            operand_value,
-            llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
+            operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_));
       }
       if (primitive_util::IsSignedIntegralType(to_type)) {
         return ir_builder_->CreateFPToSI(
-            operand_value,
-            llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
+            operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_));
       }
       if (primitive_util::IsUnsignedIntegralType(to_type)) {
         return ir_builder_->CreateFPToUI(
-            operand_value,
-            llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
+            operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_));
       }
       return Unimplemented("unhandled conversion operation: %s => %s",
                            PrimitiveType_Name(from_type).c_str(),
@@ -172,6 +211,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::log, {operand_value},
                                           {operand_value->getType()},
                                           ir_builder_);
+    case HloOpcode::kCos:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {operand_value},
+                                          {operand_value->getType()},
+                                          ir_builder_);
+    case HloOpcode::kSin:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {operand_value},
+                                          {operand_value->getType()},
+                                          ir_builder_);
     case HloOpcode::kFloor:
       return llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::floor, {operand_value}, {operand_value->getType()},
@@ -183,6 +230,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     case HloOpcode::kAbs:
       return llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::fabs, {operand_value}, {operand_value->getType()},
+          ir_builder_);
+    case HloOpcode::kRoundNearestAfz:
+      return llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::round, {operand_value}, {operand_value->getType()},
           ir_builder_);
     case HloOpcode::kSign: {
       // TODO(b/32151903): Ensure consistent sign behavior for -0.0
@@ -206,7 +257,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       auto not_infinite = ir_builder_->CreateFCmpONE(abs_value, infinity);
       auto result_i1 = ir_builder_->CreateAnd(equal_self, not_infinite);
       return ir_builder_->CreateZExt(
-          result_i1, llvm_ir::PrimitiveTypeToIrType(PRED, ir_builder_));
+          result_i1, llvm_ir::PrimitiveTypeToIrType(PRED, module_));
     }
     case HloOpcode::kNegate:
       return ir_builder_->CreateFNeg(operand_value);
@@ -216,20 +267,164 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
   }
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
+    const HloInstruction* op, llvm::Value* operand_value) const {
+  auto real = [&](llvm::Value* x) {
+    return ir_builder_->CreateExtractValue(x, {0});
+  };
+  auto imag = [&](llvm::Value* x) {
+    return ir_builder_->CreateExtractValue(x, {1});
+  };
+  switch (op->opcode()) {
+    // TODO(b/65209142): Angle/Log require atan2.
+    // case HloOpcode::kAngle:
+    // case HloOpcode::kLog:  // log(a+bi) = .5*log(a^2+b^2) + i*atan2(b, a)
+    case HloOpcode::kConvert: {
+      PrimitiveType from_type = op->operand(0)->shape().element_type();
+      TF_RET_CHECK(primitive_util::IsComplexType(from_type));
+      PrimitiveType to_type = op->shape().element_type();
+      TF_RET_CHECK(primitive_util::IsComplexType(to_type));
+      if (from_type == to_type) {
+        return operand_value;
+      }
+      PrimitiveType to_component_type =
+          primitive_util::ComplexComponentType(to_type);
+      auto to_ir_component_type =
+          llvm_ir::PrimitiveTypeToIrType(to_component_type, module_);
+      return ComposeComplex(
+          op,
+          ir_builder_->CreateFPCast(real(operand_value), to_ir_component_type),
+          ir_builder_->CreateFPCast(imag(operand_value), to_ir_component_type));
+    }
+    case HloOpcode::kExp: {
+      // e^(a+bi) = e^a*(cos(b)+sin(b)i)
+      auto exp_a = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::exp, {real(operand_value)},
+          {real(operand_value)->getType()}, ir_builder_);
+      auto cos_b = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::cos, {imag(operand_value)},
+          {imag(operand_value)->getType()}, ir_builder_);
+      auto sin_b = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::sin, {imag(operand_value)},
+          {imag(operand_value)->getType()}, ir_builder_);
+      return ComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
+                            ir_builder_->CreateFMul(exp_a, sin_b));
+    }
+    case HloOpcode::kCos: {
+      // cos(z) = .5(e^(iz) + e^(-iz))
+      // cos(a+bi) = .5(e^(-b+ai) + e^(b-ai))
+      // now, e^(x+yi) = e^x*(cos(y)+sin(y)i), so we have
+      // cos(a+bi) = .5(e^-b*(cos(a)+sin(a)i) + e^b*(cos(-a)+sin(-a)i))
+      // cos(-x) = cos(x) and sin(-x) = -sin(x), so
+      // cos(a+bi) = .5(e^-b*(cos(a)+sin(a)i) + e^b*(cos(a)-sin(a)i))
+      //           = .5(cos(a)*(e^-b+e^b) + i*sin(a)*(e^-b-e^b))
+      auto a = real(operand_value);
+      auto b = imag(operand_value);
+      auto type = a->getType();
+      auto exp_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {b},
+                                                {type}, ir_builder_);
+      auto half_exp_b =
+          ir_builder_->CreateFMul(llvm::ConstantFP::get(type, 0.5), exp_b);
+      auto half_exp_neg_b =
+          ir_builder_->CreateFDiv(llvm::ConstantFP::get(type, 0.5), exp_b);
+      auto cos_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {a},
+                                                {type}, ir_builder_);
+      auto sin_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {a},
+                                                {type}, ir_builder_);
+      return ComposeComplex(
+          op,
+          ir_builder_->CreateFMul(
+              cos_a, ir_builder_->CreateFAdd(half_exp_neg_b, half_exp_b)),
+          ir_builder_->CreateFMul(
+              sin_a, ir_builder_->CreateFSub(half_exp_neg_b, half_exp_b)));
+    }
+    case HloOpcode::kSin: {
+      // sin(z) = .5i(e^(-iz) - e^(iz))
+      // sin(a+bi) = .5i(e^(-i(a+bi)) - e^(i(a+bi)))
+      //           = .5i(e^(b-ai) - e^(-b+ai))
+      // now, e^(x+yi) = e^x*(cos(y)+sin(y)i), so we have
+      // sin(a+bi) = 0.5i(e^b*(cos(-a)+sin(-a)i) - e^-b*(cos(a)+sin(a)i))
+      //           = 0.5(e^b*(cos(-a)i-sin(-a)) - e^-b*(cos(a)i-sin(a)))
+      // cos(-x) = cos(x) and sin(-x) = -sin(x), so
+      //           = 0.5(e^b*(cos(a)i+sin(a)) - e^-b*(cos(a)i-sin(a)))
+      //           = 0.5(sin(a)*(e^b+e^-b) + i*cos(a)*(e^b-e^-b)
+      auto a = real(operand_value);
+      auto b = imag(operand_value);
+      auto type = a->getType();
+      auto exp_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {b},
+                                                {type}, ir_builder_);
+      auto half_exp_b =
+          ir_builder_->CreateFMul(llvm::ConstantFP::get(type, 0.5), exp_b);
+      auto half_exp_neg_b =
+          ir_builder_->CreateFDiv(llvm::ConstantFP::get(type, 0.5), exp_b);
+      auto cos_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {a},
+                                                {type}, ir_builder_);
+      auto sin_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {a},
+                                                {type}, ir_builder_);
+      return ComposeComplex(
+          op,
+          ir_builder_->CreateFMul(
+              sin_a, ir_builder_->CreateFAdd(half_exp_b, half_exp_neg_b)),
+          ir_builder_->CreateFMul(
+              cos_a, ir_builder_->CreateFSub(half_exp_b, half_exp_neg_b)));
+    }
+    case HloOpcode::kAbs: {
+      auto sum_sq = ir_builder_->CreateFAdd(
+          ir_builder_->CreateFMul(real(operand_value), real(operand_value)),
+          ir_builder_->CreateFMul(imag(operand_value), imag(operand_value)));
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {sum_sq},
+                                          {sum_sq->getType()}, ir_builder_);
+    }
+    case HloOpcode::kSign: {  // Sign(c) = c / |c|
+      auto sum_sq = ir_builder_->CreateFAdd(
+          ir_builder_->CreateFMul(real(operand_value), real(operand_value)),
+          ir_builder_->CreateFMul(imag(operand_value), imag(operand_value)));
+      auto cplx_abs = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::sqrt, {sum_sq}, {sum_sq->getType()}, ir_builder_);
+      auto type = cplx_abs->getType();
+      auto zero = llvm::ConstantFP::get(type, 0.0);
+      auto oeq = ir_builder_->CreateFCmpOEQ(cplx_abs, zero);
+      return ir_builder_->CreateSelect(
+          oeq, ComposeComplex(op, zero, zero),
+          ComposeComplex(
+              op, ir_builder_->CreateFDiv(real(operand_value), cplx_abs),
+              ir_builder_->CreateFDiv(imag(operand_value), cplx_abs)));
+    }
+    case HloOpcode::kNegate:
+      return ComposeComplex(op, ir_builder_->CreateFNeg(real(operand_value)),
+                            ir_builder_->CreateFNeg(imag(operand_value)));
+    case HloOpcode::kReal:
+      return real(operand_value);
+    case HloOpcode::kImag:
+      return imag(operand_value);
+    default:
+      return Unimplemented("unary complex op '%s'",
+                           HloOpcodeString(op->opcode()).c_str());
+  }
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value,
     llvm::Value* rhs_value) const {
-  return lhs_value->getType()->isIntegerTy()
-             ? EmitIntegerBinaryOp(op, lhs_value, rhs_value,
-                                   primitive_util::IsSignedIntegralType(
-                                       op->operand(0)->shape().element_type()))
-             : EmitFloatBinaryOp(op, lhs_value, rhs_value);
+  PrimitiveType operand_type = op->operand(0)->shape().element_type();
+  if (lhs_value->getType()->isIntegerTy()) {
+    return EmitIntegerBinaryOp(
+        op, lhs_value, rhs_value,
+        primitive_util::IsSignedIntegralType(operand_type));
+  } else if (primitive_util::IsComplexType(operand_type)) {
+    return EmitComplexBinaryOp(op, lhs_value, rhs_value);
+  } else {
+    return EmitFloatBinaryOp(op, lhs_value, rhs_value);
+  }
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value,
     llvm::Value* rhs_value) const {
   switch (op->opcode()) {
+    // case HloOpcode::kAtan2:  // TODO(b/65209142): CPU atan2 support
+    case HloOpcode::kComplex:
+      return ComposeComplex(op, lhs_value, rhs_value);
     case HloOpcode::kAdd:
       return ir_builder_->CreateFAdd(lhs_value, rhs_value);
     case HloOpcode::kSubtract:
@@ -281,18 +476,96 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
   }
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
+    const HloInstruction* op, llvm::Value* lhs_value,
+    llvm::Value* rhs_value) const {
+  auto real = [&](llvm::Value* x) {
+    return ir_builder_->CreateExtractValue(x, {0});
+  };
+  auto imag = [&](llvm::Value* x) {
+    return ir_builder_->CreateExtractValue(x, {1});
+  };
+  switch (op->opcode()) {
+    case HloOpcode::kAdd:
+      return ComposeComplex(
+          op, ir_builder_->CreateFAdd(real(lhs_value), real(rhs_value)),
+          ir_builder_->CreateFAdd(imag(lhs_value), imag(rhs_value)));
+    case HloOpcode::kSubtract:
+      return ComposeComplex(
+          op, ir_builder_->CreateFSub(real(lhs_value), real(rhs_value)),
+          ir_builder_->CreateFSub(imag(lhs_value), imag(rhs_value)));
+    case HloOpcode::kMultiply:
+      return ComposeComplex(
+          op,
+          ir_builder_->CreateFSub(
+              ir_builder_->CreateFMul(real(lhs_value), real(rhs_value)),
+              ir_builder_->CreateFMul(imag(lhs_value), imag(rhs_value))),
+          ir_builder_->CreateFAdd(
+              ir_builder_->CreateFMul(real(lhs_value), imag(rhs_value)),
+              ir_builder_->CreateFMul(imag(lhs_value), real(rhs_value))));
+    case HloOpcode::kDivide: {
+      // (a+bi) / (c+di) = ((a+bi)(c-di)) / ((c+di)(c-di))
+      // = ((ac + bd) + (bc - ad)i) / (c^2 + d^2)
+      auto rhs_sum_sq = ir_builder_->CreateFAdd(
+          ir_builder_->CreateFMul(real(rhs_value), real(rhs_value)),
+          ir_builder_->CreateFMul(imag(rhs_value), imag(rhs_value)));
+      auto type = rhs_sum_sq->getType();
+      auto zero = llvm::ConstantFP::get(type, 0.0);
+      auto oeq = ir_builder_->CreateFCmpOEQ(rhs_sum_sq, zero);
+      return ir_builder_->CreateSelect(
+          oeq, ComposeComplex(op, llvm::ConstantFP::getInfinity(type), zero),
+          ComposeComplex(
+              op,
+              ir_builder_->CreateFDiv(
+                  ir_builder_->CreateFAdd(
+                      ir_builder_->CreateFMul(real(lhs_value), real(rhs_value)),
+                      ir_builder_->CreateFMul(imag(lhs_value),
+                                              imag(rhs_value))),
+                  rhs_sum_sq),
+              ir_builder_->CreateFDiv(
+                  ir_builder_->CreateFSub(
+                      ir_builder_->CreateFMul(imag(lhs_value), real(rhs_value)),
+                      ir_builder_->CreateFMul(real(lhs_value),
+                                              imag(rhs_value))),
+                  rhs_sum_sq)));
+    }
+    // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
+    // comparisons always return false when one of the operands is NaN, whereas
+    // unordered comparisons return true.
+    //
+    // We use ordered comparisons for everything except kNe, where we use an
+    // unordered comparison.  This makes x != y equivalent to !(x == y), and
+    // matches C++'s semantics.
+    case HloOpcode::kEq:
+      return ir_builder_->CreateAnd(
+          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, real(lhs_value),
+                                  real(rhs_value), ir_builder_),
+          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, imag(lhs_value),
+                                  imag(rhs_value), ir_builder_));
+    case HloOpcode::kNe:
+      return ir_builder_->CreateOr(
+          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, real(lhs_value),
+                                  real(rhs_value), ir_builder_),
+          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, imag(lhs_value),
+                                  imag(rhs_value), ir_builder_));
+
+    // TODO(b/65209142): requires arg(z) -> requires atan|atan2 intrinsic
+    // case HloOpcode::kPower:
+    // // (a+bi)^(c+di) = exp(i(c+di)*arg(a+bi)) * (a*a+b*b)^(c/2+di/2)
+    default:
+      return Unimplemented("binary complex op '%s'",
+                           HloOpcodeString(op->opcode()).c_str());
+  }
+}
+
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
-                                      {lhs_value, rhs_value},
-                                      {lhs_value->getType()}, ir_builder_);
+  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, ir_builder_);
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
-                                      {lhs_value, rhs_value},
-                                      {lhs_value->getType()}, ir_builder_);
+  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, ir_builder_);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
@@ -376,9 +649,121 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfcInv(
     PrimitiveType prim_type, llvm::Value* value) const {
   // Compute erfcinv(value) by calculating erfinv(1.0 - value).
-  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, ir_builder_);
+  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
   auto one = llvm::ConstantFP::get(type, 1.0);
   return EmitErfInv(prim_type, ir_builder_->CreateFSub(one, value));
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
+    const HloInstruction* hlo, llvm::Value* x) const {
+  if (hlo->operand(0)->shape().element_type() != F32) {
+    return Unimplemented("reduce-precision only implemented for F32");
+  }
+
+  // Integer and float types for casting and constant generation.
+  llvm::Type* float_type = x->getType();
+  llvm::IntegerType* int_type = ir_builder_->getInt32Ty();
+
+  // Cast the input value to an integer for bitwise manipulation.
+  llvm::Value* x_as_int = ir_builder_->CreateBitCast(x, int_type);
+
+  if (hlo->mantissa_bits() < 23) {
+    // Last remaining mantissa bit.
+    const uint32_t last_mantissa_bit_mask = 1u << (23 - hlo->mantissa_bits());
+
+    // Compute rounding bias for round-to-nearest with ties to even.  This is
+    // equal to a base value of 0111... plus one bit if the last remaining
+    // mantissa bit is 1.
+    const uint32_t base_rounding_bias = (last_mantissa_bit_mask >> 1) - 1;
+    llvm::Value* x_last_mantissa_bit = ir_builder_->CreateLShr(
+        ir_builder_->CreateAnd(
+            x_as_int, llvm::ConstantInt::get(int_type, last_mantissa_bit_mask)),
+        (23 - hlo->mantissa_bits()));
+    llvm::Value* x_rounding_bias = ir_builder_->CreateAdd(
+        x_last_mantissa_bit,
+        llvm::ConstantInt::get(int_type, base_rounding_bias));
+
+    // Add rounding bias, and mask out truncated bits.  Note that the case
+    // where adding the rounding bias overflows into the exponent bits is
+    // correct; the non-masked mantissa bits will all be zero, and the
+    // exponent will be incremented by one.
+    const uint32_t truncation_mask = ~(last_mantissa_bit_mask - 1);
+    x_as_int = ir_builder_->CreateAdd(x_as_int, x_rounding_bias);
+    x_as_int = ir_builder_->CreateAnd(
+        x_as_int, llvm::ConstantInt::get(int_type, truncation_mask));
+  }
+
+  if (hlo->exponent_bits() < 8) {
+    // Masks for f32 values.
+    const uint32_t f32_sign_bit_mask = 1u << 31;
+    const uint32_t f32_exp_bits_mask = 0xffu << 23;
+
+    // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
+    // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
+    // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
+    // size of n, and subtracting 2^(n-1)-1 from this gives us the lowest'
+    // exponent (corresponding to 0.0f).
+    //
+    // Thus, the f32 exponent corresponding to the highest non-infinite
+    // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
+    // exponent corresponding to the lowest exponent for a bit size of n is
+    // (2^7-1) - 2^(n-1)-1.
+    //
+    // Note that we have already checked that exponents_bits >= 1.
+    const uint32_t f32_exponent_bias = (1 << 7) - 1;
+    const uint32_t reduced_exponent_bias =
+        (1 << (hlo->exponent_bits() - 1)) - 1;
+    const uint32_t reduced_max_exponent =
+        f32_exponent_bias + reduced_exponent_bias;
+    const uint32_t reduced_min_exponent =
+        f32_exponent_bias - reduced_exponent_bias;
+
+    // Do we overflow or underflow?
+    llvm::Value* x_exponent = ir_builder_->CreateAnd(
+        x_as_int, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+    llvm::Value* x_overflows = ir_builder_->CreateICmpUGT(
+        x_exponent,
+        llvm::ConstantInt::get(int_type, reduced_max_exponent << 23));
+    llvm::Value* x_underflows = ir_builder_->CreateICmpULE(
+        x_exponent,
+        llvm::ConstantInt::get(int_type, reduced_min_exponent << 23));
+
+    // Compute appropriately-signed values of zero and infinity.
+    llvm::Value* x_signed_zero = ir_builder_->CreateAnd(
+        x_as_int, llvm::ConstantInt::get(int_type, f32_sign_bit_mask));
+    llvm::Value* x_signed_inf = ir_builder_->CreateOr(
+        x_signed_zero, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+
+    // Force to zero or infinity if overflow or underflow.  (Note that this
+    // truncates all denormal values to zero, rather than rounding them.)
+    x_as_int = ir_builder_->CreateSelect(x_overflows, x_signed_inf, x_as_int);
+    x_as_int = ir_builder_->CreateSelect(x_underflows, x_signed_zero, x_as_int);
+  }
+
+  // Cast the result back to a floating-point type.
+  llvm::Value* result = ir_builder_->CreateBitCast(x_as_int, float_type);
+
+  // Correct result for NaN inputs.
+  //
+  // The exponent handling will "normalize" NaN values to infinities, which is
+  // undesirable (except in the case with no mantissa bits, in which case it
+  // is mandatory).  This logic also handles cases where mantissa-rounding
+  // causes a NaN's mantissa to overflow into the exponent bits, which would
+  // otherwise create an erroneous zero value.
+  //
+  // If the fast-math flags are set to assume no NaNs, the comparison is likely
+  // to be optimized away, so there's no point in even emitting it.
+  if (!ir_builder_->getFastMathFlags().noNaNs()) {
+    llvm::Value* x_is_nan = ir_builder_->CreateFCmpUNO(x, x);
+
+    if (hlo->mantissa_bits() > 0) {
+      result = ir_builder_->CreateSelect(x_is_nan, x, result);
+    } else {
+      result = ir_builder_->CreateSelect(
+          x_is_nan, llvm::ConstantFP::getInfinity(float_type), result);
+    }
+  }
+  return result;
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
@@ -432,10 +817,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
               is_signed ? llvm::ICmpInst::ICMP_SGE : llvm::ICmpInst::ICMP_UGE,
               lhs_value, rhs_value),
           lhs_value, rhs_value);
-    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kAnd:
       return ir_builder_->CreateAnd(lhs_value, rhs_value);
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kOr:
       return ir_builder_->CreateOr(lhs_value, rhs_value);
+    case HloOpcode::kShiftLeft:
+      return ir_builder_->CreateShl(lhs_value, rhs_value);
+    case HloOpcode::kShiftRightArithmetic:
+      return ir_builder_->CreateAShr(lhs_value, rhs_value);
+    case HloOpcode::kShiftRightLogical:
+      return ir_builder_->CreateLShr(lhs_value, rhs_value);
     default:
       return Unimplemented("binary integer op '%s'",
                            HloOpcodeString(op->opcode()).c_str());
@@ -481,7 +872,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
     const {
   PrimitiveType param_prim_type = hlo->operand(0)->shape().element_type();
   llvm::Type* param_ir_type =
-      llvm_ir::PrimitiveTypeToIrType(param_prim_type, ir_builder_);
+      llvm_ir::PrimitiveTypeToIrType(param_prim_type, module_);
 
   // Same values as PCG library
   // https://github.com/imneme/pcg-c/blob/master/include/pcg_variants.h
@@ -492,7 +883,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
 
   auto random_value = [hlo]() {
     const HloModule* module =
-        hlo->IsFused() ? hlo->fusion_instruction()->parent()->parent()
+        hlo->IsFused() ? hlo->parent()->FusionInstruction()->parent()->parent()
                        : hlo->parent()->parent();
     return module->RandomNew64();
   };
@@ -585,23 +976,40 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
         } else {
           auto r = ir_builder_->CreateSub(q, p);
           auto leading_zeros = llvm_ir::EmitCallToIntrinsic(
-              llvm::Intrinsic::ctlz, {r, ir_builder_->getInt1(1)},
+              llvm::Intrinsic::ctlz, {r, ir_builder_->getInt1(true)},
               {param_ir_type}, ir_builder_);
           auto in_block = ir_builder_->GetInsertBlock();
-          auto body_block = in_block->splitBasicBlock(
-              ir_builder_->GetInsertPoint(), "rng_body");
-          SetToFirstInsertPoint(body_block, ir_builder_);
-          auto out_block = body_block->splitBasicBlock(
-              ir_builder_->GetInsertPoint(), "rng_out");
+
+          // A terminator should be present iff we're emitting code
+          // into the middle (as opposed to the end) of a basic block.
+          CHECK_EQ(ir_builder_->GetInsertPoint() == in_block->end(),
+                   in_block->getTerminator() == nullptr);
+
+          llvm::BasicBlock* body_block;
+          llvm::BasicBlock* out_block;
+
+          if (ir_builder_->GetInsertPoint() == in_block->end()) {
+            body_block = llvm_ir::CreateBasicBlock(
+                nullptr, IrName(hlo, "rng_body"), ir_builder_);
+            out_block = llvm_ir::CreateBasicBlock(
+                nullptr, IrName(hlo, "rng_out"), ir_builder_);
+            llvm::BranchInst::Create(body_block, in_block);
+          } else {
+            body_block = in_block->splitBasicBlock(
+                ir_builder_->GetInsertPoint(), "rng_body");
+            out_block = body_block->splitBasicBlock(
+                ir_builder_->GetInsertPoint(), "rng_out");
+            body_block->getTerminator()->eraseFromParent();
+          }
+
           SetToFirstInsertPoint(body_block, ir_builder_);
           auto random = ir_builder_->CreateAnd(
               ir_builder_->CreateZExtOrTrunc(get_next_i64(), param_ir_type),
               ir_builder_->CreateLShr(llvm::ConstantInt::get(param_ir_type, ~0),
                                       leading_zeros));
-          llvm::ReplaceInstWithInst(
-              body_block->getTerminator(),
-              llvm::BranchInst::Create(out_block, body_block,
-                                       ir_builder_->CreateICmpULT(random, r)));
+          llvm::BranchInst::Create(out_block, body_block,
+                                   ir_builder_->CreateICmpULT(random, r),
+                                   body_block);
           SetToFirstInsertPoint(out_block, ir_builder_);
           return ir_builder_->CreateAdd(
               p, ir_builder_->CreateSelect(
@@ -628,7 +1036,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
         return ir_builder_->CreateZExt(
             ir_builder_->CreateFCmpOLT(get_next_uniform_float(), p),
             llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
-                                           ir_builder_));
+                                           module_));
       }
       default:
         return InvalidArgument(
@@ -644,17 +1052,22 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     const {
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kNegate:
+    case HloOpcode::kReal:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kTanh:
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
@@ -663,6 +1076,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitUnaryOp(hlo, operand_value);
       };
     case HloOpcode::kAdd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kGe:
@@ -676,8 +1091,11 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         const HloInstruction* lhs = hlo->operand(0);
@@ -720,34 +1138,54 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                                 ElementwiseSourceIndex(index, *hlo, 2)));
         return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
       };
+    case HloOpcode::kReducePrecision:
+      return [this, hlo, &operand_to_generator](
+                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                            operand_to_generator.at(hlo->operand(0))(
+                                ElementwiseSourceIndex(index, *hlo, 0)));
+        return EmitReducePrecision(hlo, operand_value);
+      };
     case HloOpcode::kConcatenate:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index target_index) -> StatusOr<llvm::Value*> {
         const int64 concat_dim = hlo->dimensions(0);
         auto source_index = target_index;
 
-        llvm::PHINode* output = ir_builder_->CreatePHI(
-            llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
-                                           ir_builder_),
-            hlo->operands().size());
         llvm::BasicBlock* init_block = ir_builder_->GetInsertBlock();
+
+        // A terminator should be present iff we're emitting code
+        // into the middle (as opposed to the end) of a basic block.
+        CHECK_EQ(ir_builder_->GetInsertPoint() == init_block->end(),
+                 init_block->getTerminator() == nullptr);
+
+        llvm::BasicBlock* exit_block;
+        if (ir_builder_->GetInsertPoint() == init_block->end()) {
+          exit_block = llvm_ir::CreateBasicBlock(
+              /*insert_before=*/nullptr, IrName(hlo, "merge"), ir_builder_);
+        } else {
+          exit_block = init_block->splitBasicBlock(
+              ir_builder_->GetInsertPoint(), AsStringRef(IrName(hlo, "merge")));
+          init_block->getTerminator()->eraseFromParent();
+        }
+
+        llvm_ir::SetToFirstInsertPoint(exit_block, ir_builder_);
+        llvm::PHINode* output =
+            ir_builder_->CreatePHI(llvm_ir::PrimitiveTypeToIrType(
+                                       hlo->shape().element_type(), module_),
+                                   hlo->operands().size());
         auto prior_insert_point = ir_builder_->GetInsertPoint();
-        llvm::BasicBlock* exit_block =
-            init_block->splitBasicBlock(output, "concat_merge");
 
         ir_builder_->SetInsertPoint(init_block);
-        init_block->getTerminator()->eraseFromParent();
 
         for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
              ++operand_idx) {
           const HloInstruction* operand = hlo->operand(operand_idx);
           auto true_block = llvm_ir::CreateBasicBlock(
-              exit_block, tensorflow::strings::StrCat(
-                      "concat_index_from_operand", operand_idx),
+              exit_block, StrCat("concat_index_from_operand", operand_idx),
               ir_builder_);
           auto false_block = llvm_ir::CreateBasicBlock(
-              exit_block, tensorflow::strings::StrCat(
-                      "concat_index_not_from_operand", operand_idx),
+              exit_block, StrCat("concat_index_not_from_operand", operand_idx),
               ir_builder_);
           auto concat_dim_size =
               llvm::ConstantInt::get(source_index[concat_dim]->getType(),
@@ -805,23 +1243,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSlice:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        IrArray::Index sliced_index(index.size());
-        for (int i = 0; i < index.size(); ++i) {
-          int64 stride = hlo->slice_stride(i);
-          if (stride != 1) {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                ir_builder_->CreateMul(
-                    index[i], llvm::ConstantInt::get(index[i]->getType(),
-                                                     stride)),
-                llvm::ConstantInt::get(index[i]->getType(),
-                                       hlo->slice_starts(i)));
-          } else {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                    index[i],
-                    llvm::ConstantInt::get(index[i]->getType(),
-                                           hlo->slice_starts(i)));
-          }
-        }
+        IrArray::Index sliced_index = index.SourceIndexOfSlice(
+            /*shape=*/hlo->shape(), /*starts=*/hlo->slice_starts(),
+            /*strides=*/hlo->slice_strides(), /*builder=*/ir_builder_);
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };
     case HloOpcode::kDynamicSlice:
@@ -836,6 +1260,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           TF_ASSIGN_OR_RETURN(
               llvm::Value * start_index_value,
               operand_to_generator.at(hlo->operand(1))(dim_index));
+          start_index_value->setName(
+              AsStringRef(IrName(hlo, StrCat("start_idx", i))));
           slice_start_index[i] = start_index_value;
         }
 
@@ -868,6 +1294,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           llvm_ir::IrArray::Index dim_index(1, ir_builder_->getInt64(i));
           TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
                               operand_to_generator.at(start_hlo)(dim_index));
+          start_index_value->setName(
+              AsStringRef(IrName(hlo, StrCat("start_idx", i))));
           slice_start_index[i] = ir_builder_->CreateZExtOrBitCast(
               start_index_value, index[i]->getType());
           // Emit IR to compute: slice_limit_index = start_index + update_dim
@@ -904,7 +1332,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         // else                    -> return data from 'index'.
         llvm::Value* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
             llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
-                                           ir_builder_),
+                                           module_),
             "ret_value_addr", ir_builder_);
         llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
             slice_intersection, "slice_intersection", ir_builder_);
@@ -993,7 +1421,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         // }
         llvm::Value* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
             llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
-                                           ir_builder_),
+                                           module_),
             "pad_result_addr", ir_builder_);
         llvm_ir::LlvmIfData if_data =
             llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", ir_builder_);
@@ -1014,11 +1442,114 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         // if_data.after_block.
         return ir_builder_->CreateLoad(ret_value_addr);
       };
+
+    case HloOpcode::kDot:
+      return [=, &operand_to_generator](const IrArray::Index& dot_result_index)
+                 -> StatusOr<llvm::Value*> {
+        auto lhs_generator = operand_to_generator.at(hlo->operand(0));
+        auto rhs_generator = operand_to_generator.at(hlo->operand(1));
+        int64 contracted_dim_size = hlo->operand(0)->shape().dimensions(
+            hlo->operand(0)->shape().dimensions_size() - 1);
+        int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
+        int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
+
+        std::unique_ptr<llvm_ir::ForLoop> inner_loop =
+            llvm_ir::ForLoop::EmitForLoop(
+                IrName(hlo, "inner"), ir_builder_->getInt64(0),
+                ir_builder_->getInt64(contracted_dim_size),
+                ir_builder_->getInt64(1), ir_builder_);
+
+        SetToFirstInsertPoint(inner_loop->GetPreheaderBasicBlock(),
+                              ir_builder_);
+        PrimitiveType primitive_type = hlo->shape().element_type();
+        llvm::Type* primitive_type_llvm =
+            llvm_ir::PrimitiveTypeToIrType(primitive_type, module_);
+        llvm::Value* accumulator_alloca = llvm_ir::EmitAllocaAtFunctionEntry(
+            primitive_type_llvm, "dot_acc", ir_builder_);
+        ir_builder_->CreateStore(
+            llvm::Constant::getNullValue(primitive_type_llvm),
+            accumulator_alloca);
+
+        SetToFirstInsertPoint(inner_loop->GetBodyBasicBlock(), ir_builder_);
+
+        // This is the inner reduction loop for a dot operation that produces
+        // one element in the output.  If the operands to the dot operation have
+        // shapes [A,B,C,T] and [D,T,E], the result has a shape [A,B,C,D,E].
+        // Given an output index [a,b,c,d,e] in the result, we compute:
+        //   sum(lhs[a,b,c,t]*rhs[d,t,e] for t in [0, T))
+
+        IrArray::Index lhs_index, rhs_index;
+
+        for (int64 i = 0; i < lhs_dims - 1; i++) {
+          lhs_index.push_back(dot_result_index[i]);
+        }
+        lhs_index.push_back(inner_loop->GetIndVarValue());
+
+        for (int64 i = 0; i < rhs_dims - 2; i++) {
+          rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
+        }
+        rhs_index.push_back(inner_loop->GetIndVarValue());
+        rhs_index.push_back(dot_result_index.back());
+
+        llvm::Value* current_accumulator =
+            ir_builder_->CreateLoad(accumulator_alloca);
+        TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value, lhs_generator(lhs_index));
+        TF_ASSIGN_OR_RETURN(llvm::Value * rhs_value, rhs_generator(rhs_index));
+        llvm::Value* next_accumulator;
+        if (primitive_util::IsComplexType(primitive_type)) {
+          auto real = [&](llvm::Value* x) {
+            return ir_builder_->CreateExtractValue(x, {0});
+          };
+          auto imag = [&](llvm::Value* x) {
+            return ir_builder_->CreateExtractValue(x, {1});
+          };
+          llvm::Value* product_real = ir_builder_->CreateFSub(
+              ir_builder_->CreateFMul(real(lhs_value), real(rhs_value)),
+              ir_builder_->CreateFMul(imag(lhs_value), imag(rhs_value)));
+          llvm::Value* product_imag = ir_builder_->CreateFAdd(
+              ir_builder_->CreateFMul(real(lhs_value), imag(rhs_value)),
+              ir_builder_->CreateFMul(imag(lhs_value), real(rhs_value)));
+          next_accumulator = ir_builder_->CreateInsertValue(
+              current_accumulator,
+              ir_builder_->CreateFAdd(real(current_accumulator), product_real),
+              {0});
+          next_accumulator = ir_builder_->CreateInsertValue(
+              next_accumulator,
+              ir_builder_->CreateFAdd(imag(current_accumulator), product_imag),
+              {1});
+        } else if (primitive_util::IsFloatingPointType(primitive_type)) {
+          next_accumulator = ir_builder_->CreateFAdd(
+              current_accumulator,
+              ir_builder_->CreateFMul(lhs_value, rhs_value));
+        } else {
+          next_accumulator = ir_builder_->CreateAdd(
+              current_accumulator,
+              ir_builder_->CreateMul(lhs_value, rhs_value));
+        }
+        ir_builder_->CreateStore(next_accumulator, accumulator_alloca);
+
+        SetToFirstInsertPoint(inner_loop->GetExitBasicBlock(), ir_builder_);
+        return ir_builder_->CreateLoad(accumulator_alloca);
+      };
     default:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
-        return Unimplemented("%s", HloOpcodeString(hlo->opcode()).c_str());
+        return Unimplemented("Unhandled opcode for elemental IR emission: %s",
+                             HloOpcodeString(hlo->opcode()).c_str());
       };
   }
+}
+
+llvm::Value* ElementalIrEmitter::ComposeComplex(const HloInstruction* op,
+                                                llvm::Value* real,
+                                                llvm::Value* imag) const {
+  auto cplx_type =
+      llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
+  auto complex = ir_builder_->CreateInsertValue(
+      llvm::ConstantAggregateZero::get(cplx_type), real, {0});
+  if (imag != nullptr) {
+    complex = ir_builder_->CreateInsertValue(complex, imag, {1});
+  }
+  return complex;
 }
 
 }  // namespace xla

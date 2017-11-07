@@ -34,27 +34,7 @@ $(wildcard $(GTEST_DIR)/src/*.cc) \
 $(wildcard $(GTEST_DIR)/src/*.h) \
 $(GTEST_HEADERS)
 
-# CAVEAT: We should disable TENSORFLOW_DISABLE_META while running
-# quantized_matmul on Android because it crashes in
-# MultiThreadGemm in tensorflow/core/kernels/meta_support.cc
-# TODO(satok): Remove once it's fixed
-CXXFLAGS += -DTENSORFLOW_DISABLE_META
-
-# Declare __ANDROID_TYPES_FULL__ to enable required types for hvx
-CXXFLAGS += -D__ANDROID_TYPES_FULL__
-
 GRAPH_TRANSFER_SRCS := \
-tensorflow/cc/framework/scope.cc \
-tensorflow/cc/framework/ops.cc \
-tensorflow/cc/ops/const_op.cc \
-tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
-tensorflow/core/kernels/hexagon/graph_transferer.cc \
-tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
-tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
-tensorflow/core/kernels/hexagon/hexagon_remote_fused_graph_executor_build.cc \
-tensorflow/core/kernels/remote_fused_graph_execute_op.cc \
-tensorflow/core/kernels/remote_fused_graph_execute_utils.cc \
-tensorflow/core/ops/remote_fused_graph_ops.cc \
 tensorflow/core/platform/posix/test.cc
 
 GRAPH_EXECUTION_SRCS := \

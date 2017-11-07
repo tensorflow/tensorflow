@@ -47,6 +47,7 @@ _allowed_symbols = [
     "FinalBeamSearchDecoderOutput",
     "gather_tree",
     "GreedyEmbeddingHelper",
+    "InferenceHelper",
     "SampleEmbeddingHelper",
     "ScheduledEmbeddingTrainingHelper",
     "ScheduledOutputTrainingHelper",
@@ -57,7 +58,13 @@ _allowed_symbols = [
     "AttentionWrapperState",
     "AttentionWrapper",
     "AttentionMechanism",
-    "tile_batch"]
+    "tile_batch",
+    "safe_cumprod",
+    "monotonic_attention",
+    "monotonic_probability_fn",
+    "BahdanauMonotonicAttention",
+    "LuongMonotonicAttention",
+]
 
 
 remove_undocumented(__name__, _allowed_symbols)

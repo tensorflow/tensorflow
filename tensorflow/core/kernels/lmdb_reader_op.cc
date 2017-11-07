@@ -13,18 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "lmdb.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 #include <sys/stat.h>
+#include "lmdb.h"
 
 namespace tensorflow {
 
-inline void MDB_CHECK(int mdb_status) {
-  CHECK_EQ(mdb_status, MDB_SUCCESS) << mdb_strerror(mdb_status);
-}
+#define MDB_CHECK(val) CHECK_EQ(val, MDB_SUCCESS) << mdb_strerror(val)
 
 class LMDBReader : public ReaderBase {
  public:
@@ -38,7 +36,7 @@ class LMDBReader : public ReaderBase {
 
   Status OnWorkStartedLocked() override {
     MDB_CHECK(mdb_env_create(&mdb_env_));
-    int flags = MDB_RDONLY | MDB_NOTLS;
+    int flags = MDB_RDONLY | MDB_NOTLS | MDB_NOLOCK;
 
     // Check if the LMDB filename is actually a file instead of a directory.
     // If so, set appropriate flags so we can open it.
@@ -59,10 +57,13 @@ class LMDBReader : public ReaderBase {
     if (mdb_env_ != nullptr) {
       if (mdb_cursor_) {
         mdb_cursor_close(mdb_cursor_);
+        mdb_cursor_ = nullptr;
       }
-      mdb_txn_abort(mdb_txn_);
       mdb_dbi_close(mdb_env_, mdb_dbi_);
+      mdb_txn_abort(mdb_txn_);
       mdb_env_close(mdb_env_);
+      mdb_txn_ = nullptr;
+      mdb_dbi_ = 0;
       mdb_env_ = nullptr;
     }
     return Status::OK();
@@ -131,4 +132,4 @@ class LMDBReaderOp : public ReaderOpKernel {
 REGISTER_KERNEL_BUILDER(Name("LMDBReader").Device(DEVICE_CPU),
                         LMDBReaderOp);
 
-}
+}  // namespace tensorflow

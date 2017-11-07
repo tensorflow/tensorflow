@@ -127,10 +127,10 @@ py_test(
     name = "sdca_estimator_test",
     srcs = ["python/sdca_estimator_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
     deps = [
         ":sdca_estimator_py",
         "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_tensor",

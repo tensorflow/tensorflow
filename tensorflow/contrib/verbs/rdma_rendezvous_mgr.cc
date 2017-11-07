@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -30,7 +32,12 @@ namespace tensorflow {
 class RdmaRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   RdmaRemoteRendezvous(const WorkerEnv* env, int64 step_id, RdmaMgr* rdma_mgr)
-      : BaseRemoteRendezvous(env, step_id, true), rdma_mgr_(rdma_mgr) {}
+      : BaseRemoteRendezvous(env, step_id), rdma_mgr_(rdma_mgr) {}
+
+  void RecvPostCopyOps(const string& key, const string& key_with_step_id,
+                       const Rendezvous::Args& recv_args,
+                       const DoneCallback& done, const RdmaMessage& rm,
+                       RdmaChannel* rc, Tensor& val, const Status& s);
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -99,25 +106,50 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
     if (!rm.is_dead_) {
       void* input = static_cast<char*>(rb->buffer_) +
                     RdmaMessage::kTensorBufferStartIndex;
-      TensorProto proto;
-      CHECK(rm.tensor_bytes_ + RdmaMessage::kTensorBufferStartIndex <=
-            rb->size_);
-      CHECK(ParseProtoUnlimited(&proto, input, rm.tensor_bytes_))
-          << "fail to parse proto from array";
-      s = dst_dev->MakeTensorFromProto(proto, recv_args.alloc_attrs, &val);
-    }
+      bool can_memcpy = DataTypeCanUseMemcpy(rm.data_type_);
+      if (can_memcpy) {
+        if (dst_dev->tensorflow_gpu_device_info() &&
+            (!recv_args.alloc_attrs.on_host())) {
+          CHECK(recv_args.device_context)
+            << "send dev name: " << src_dev->name()
+            << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
+          Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+          Tensor copy(alloc, rm.data_type_, rm.tensor_shape_);
+          memcpy(DMAHelper::base(&copy), input, rm.tensor_bytes_);
 
-    rc->RemoveRecvCallback(key_with_step_id);
-    // create message
-    RdmaMessage br;
-    br.type_ = RDMA_MESSAGE_BUFFER_IDLE;
-    br.name_size_ = key.size();
-    br.name_ = key;
-    string message = RdmaMessage::CreateMessage(br);
-    RdmaBuffer* tb = rc->tx_message_buffer_;
-    tb->EnqueueItem(message);
-    tb->SendNextItem();
-    done(s, Args(), recv_args, val, rm.is_dead_);
+          Allocator* dst_alloc = dst_dev->GetAllocator(recv_args.alloc_attrs);
+          Tensor gpu_copy(dst_alloc, rm.data_type_, rm.tensor_shape_);
+
+          GPUUtil::CopyCPUTensorToGPU(
+              &copy, recv_args.device_context, dst_dev, &gpu_copy,
+              [this, gpu_copy, key, key_with_step_id, recv_args, done, rm,
+               rc](const Status& s) {
+                CHECK(s.ok()) << "copy tensor to gpu sync";
+                Tensor val;
+                val = std::move(gpu_copy);
+                RecvPostCopyOps(key, key_with_step_id, recv_args, done, rm, rc,
+                                val, s);
+              });
+          return;
+        } else {
+          AllocatorAttributes host_alloc_attrs;
+          host_alloc_attrs.set_gpu_compatible(true);
+          host_alloc_attrs.set_on_host(true);
+          Allocator* alloc = dst_dev->GetAllocator(host_alloc_attrs);
+          Tensor copy(alloc, rm.data_type_, rm.tensor_shape_);
+          memcpy(DMAHelper::base(&copy), input, rm.tensor_bytes_);
+          val = std::move(copy);
+        }
+      } else {
+        TensorProto proto;
+        CHECK(rm.tensor_bytes_ + RdmaMessage::kTensorBufferStartIndex <=
+              rb->size_);
+        CHECK(ParseProtoUnlimited(&proto, input, rm.tensor_bytes_))
+            << "fail to parse proto from array";
+        s = dst_dev->MakeTensorFromProto(proto, recv_args.alloc_attrs, &val);
+      }
+    }
+    RecvPostCopyOps(key, key_with_step_id, recv_args, done, rm, rc, val, s);
   });
   // append key to message queue
   RdmaBuffer* rb = rc->tx_message_buffer_;
@@ -129,6 +161,22 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
   string message = RdmaMessage::CreateMessage(rm);
   rb->EnqueueItem(message);
   rb->SendNextItem();
+}
+
+void RdmaRemoteRendezvous::RecvPostCopyOps(
+    const string& key, const string& key_with_step_id,
+    const Rendezvous::Args& recv_args, const DoneCallback& done,
+    const RdmaMessage& rm, RdmaChannel* rc, Tensor& val, const Status& s) {
+  rc->RemoveRecvCallback(key_with_step_id);
+  RdmaMessage br;
+  br.type_ = RDMA_MESSAGE_BUFFER_IDLE;
+  br.name_size_ = key.size();
+  br.name_ = key;
+  string message = RdmaMessage::CreateMessage(br);
+  RdmaBuffer* tb = rc->tx_message_buffer_;
+  tb->EnqueueItem(message);
+  tb->SendNextItem();
+  done(s, Args(), recv_args, val, rm.is_dead_);
 }
 
 RdmaRendezvousMgr::RdmaRendezvousMgr(const WorkerEnv* env)

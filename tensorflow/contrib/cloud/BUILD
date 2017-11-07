@@ -49,9 +49,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_bigquery_reader_ops",
-        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -63,11 +63,15 @@ tf_py_test(
         ":bigquery_reader_ops_op_lib",
         ":cloud_py",
         "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
     tags = ["manual"],
 )

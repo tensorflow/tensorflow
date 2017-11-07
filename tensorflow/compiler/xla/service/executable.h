@@ -19,11 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
@@ -43,15 +44,9 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<HloModule> hlo_module,
-                      HloCostAnalysis::ShapeSizeFunction shape_size_function)
-      : hlo_module_(std::move(hlo_module)),
-        shape_size_function_(std::move(shape_size_function)) {}
+  explicit Executable(std::unique_ptr<const HloModule> hlo_module)
+      : hlo_module_(std::move(hlo_module)) {}
   virtual ~Executable() {}
-
-  // Dumps the executed HLO according to service-associated flags.
-  static void DumpExecutedHlo(const HloModule& module, const string& label,
-                              const HloExecutionProfile* profile);
 
   // Enqueues the compilation result on the provided stream, passing the given
   // arguments. This call is blocking and returns after the execution is done.
@@ -93,6 +88,16 @@ class Executable {
           tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
           arguments);
 
+  // Populates `hlo_execution_profile` from `executor`. This is implicit in any
+  // Execute* API call that takes a hlo_execution_profile argument, but must be
+  // called explicitly for other (async, for example) variants after the stream
+  // has completed.
+  virtual Status PopulateExecutionProfile(
+      HloExecutionProfile* hlo_execution_profile,
+      perftools::gputools::StreamExecutor* executor) {
+    return Status::OK();
+  }
+
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.  The ExecuteOnStream overloads have
@@ -108,6 +113,14 @@ class Executable {
   ExecutionProfile execution_profile() const {
     tensorflow::mutex_lock lock(mutex_);
     return execution_profile_;
+  }
+
+  // Returns Status::ok() if the two executables are equal to each other.
+  //
+  // An error status is returned otherwise.
+  virtual const Status EqualOrFail(const Executable& executable) {
+    return Unimplemented(
+        "Equality test on this executable is not implemented.");
   }
 
   // Returns whether this executable was compiled with HLO profilings support
@@ -147,10 +160,9 @@ class Executable {
   static Status DumpToDirectory(const string& directory_path, string filename,
                                 const SessionModule& session_module);
 
-  // Return a reference to a function that computes the size of a given Shape.
-  const HloCostAnalysis::ShapeSizeFunction& shape_size_function() const {
-    return shape_size_function_;
-  }
+  // Returns a cost analysis object appropriate for the platform on which this
+  // executable can run.
+  virtual std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const = 0;
 
  protected:
   mutable tensorflow::mutex mutex_;
@@ -161,12 +173,7 @@ class Executable {
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
-  std::unique_ptr<HloModule> hlo_module_;
-
-  // Function to compute the size of a given Shape, in bytes.  This is
-  // provided to the Executable when it is constructed, and used to produce
-  // data for profiling the execution.
-  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
+  const std::unique_ptr<const HloModule> hlo_module_;
 
   // SessionModule this was compiled from. Null if not dumping executions.
   std::unique_ptr<SessionModule> session_module_;
@@ -191,10 +198,11 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
   // If the profiling flag isn't enabled, we pass nullptr as the profile to
   // indicate profiling is not requested.
   HloExecutionProfile hlo_execution_profile;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
   HloExecutionProfile* profile_ptr =
-      flags->xla_hlo_profile && hlo_profiling_enabled() ? &hlo_execution_profile
-                                                        : nullptr;
+      module_config().debug_options().xla_hlo_profile() &&
+              hlo_profiling_enabled()
+          ? &hlo_execution_profile
+          : nullptr;
 
   auto return_value = ExecuteOnStream(run_options, arguments, profile_ptr);
 
@@ -234,13 +242,14 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
       if (profiled_computations.count(computation) > 0) {
         string profile_string = profile_ptr->ToString(
             *computation, stream->parent()->GetDeviceDescription(),
-            shape_size_function_);
+            CreateCostAnalysis().get());
         if (!profile_string.empty()) {
           XLA_LOG_LINES(tensorflow::INFO, profile_string);
         }
       }
     }
-    DumpExecutedHlo(module(), "Service::Execute", profile_ptr);
+    hlo_graph_dumper::MaybeDumpHloModule(module(), "Service::Execute",
+                                         profile_ptr);
   }
 
   return return_value;

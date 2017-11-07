@@ -114,7 +114,7 @@ class MPIRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   MPIRemoteRendezvous(const WorkerEnv* env, int64 step_id, const MPIUtils* util,
                       BaseRendezvousMgr* mgr_)
-      : BaseRemoteRendezvous(env, step_id, false),
+      : BaseRemoteRendezvous(env, step_id),
         mpiutils_(util),
         rendezvous_mgr_(mgr_) {}
 
@@ -147,15 +147,8 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
                     MPIRequestTensorCall* rCall) {
     mutex_lock l(mrq_);
     request_queue_.push(RequestQueueEntry(key, std::move(request_call)));
-    recv_tensor_map_[step_id][key] =
-        std::shared_ptr<MPIRequestTensorCall>(rCall);
-  }
-
-  void RemoveStepID(const int64 step_id) {
-    mutex_lock l(mrq_);
-    CHECK(recv_tensor_map_[step_id].size() == 0) << "Removing unfinished step";
-    recv_tensor_map_.erase(step_id);
-    // TODO(jbedorf) Should we verify that the step_id is clear before remove?
+    const std::string key_id = strings::StrCat(key, "_", step_id);
+    recv_tensor_map_[key_id] = std::shared_ptr<MPIRequestTensorCall>(rCall);
   }
 
  protected:
@@ -181,9 +174,8 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
 
   std::queue<SendQueueEntry> send_queue_ GUARDED_BY(msq_);
   std::queue<RequestQueueEntry> request_queue_ GUARDED_BY(mrq_);
-  std::map<int64, std::unordered_map<std::string,
-                                     std::shared_ptr<MPIRequestTensorCall>>>
-      recv_tensor_map_ GUARDED_BY(mrq_);
+  std::map<std::string, std::shared_ptr<MPIRequestTensorCall>> recv_tensor_map_
+      GUARDED_BY(mrq_);
 
   void AddRequest(RecvTensorRequest, const int);
   void MPIBackgroundThread();
@@ -196,22 +188,19 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
   void GetRecvCall(const int64 step_id, const std::string& key,
                    std::shared_ptr<MPIRequestTensorCall>* call) {
     mutex_lock l(mrq_);
-    if (recv_tensor_map_.find(step_id) == recv_tensor_map_.end()) {
-      LOG(FATAL) << "Step not found in recv_tensor_map_, step: " << step_id
+
+    const std::string key_id = strings::StrCat(key, "_", step_id);
+    if (recv_tensor_map_.find(key_id) == recv_tensor_map_.end()) {
+      LOG(FATAL) << "Key/step not found in recv_tensor_map_, step: " << step_id
                  << " key:  " << key << std::endl;
     }
-    if (recv_tensor_map_[step_id].find(key) !=
-        recv_tensor_map_[step_id].end()) {
-      *call = recv_tensor_map_[step_id][key];
-    } else {
-      LOG(FATAL) << "Key not found in recv_tensor_map_, step: " << step_id
-                 << " key:  " << key << std::endl;
-    }
+    *call = recv_tensor_map_[key_id];
   }
 
   void RemoveRecvCall(const int64 step_id, const std::string& key) {
     mutex_lock l(mrq_);
-    recv_tensor_map_[step_id].erase(key);
+    const std::string key_id = strings::StrCat(key, "_", step_id);
+    recv_tensor_map_.erase(key_id);
   }
 
   bool GetRequest(RequestQueueEntry* req) {

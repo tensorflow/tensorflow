@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Lgamma"
+  summary: "Computes the log of the absolute value of `Gamma(x)` element-wise."
+}

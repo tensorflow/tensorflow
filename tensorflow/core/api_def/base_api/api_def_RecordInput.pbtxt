@@ -1,0 +1,47 @@
+op {
+  graph_op_name: "RecordInput"
+  out_arg {
+    name: "records"
+    description: <<END
+A tensor of shape [batch_size].
+END
+  }
+  attr {
+    name: "file_pattern"
+    description: <<END
+Glob pattern for the data files.
+END
+  }
+  attr {
+    name: "file_random_seed"
+    description: <<END
+Random seeds used to produce randomized records.
+END
+  }
+  attr {
+    name: "file_shuffle_shift_ratio"
+    description: <<END
+Shifts the list of files after the list is randomly
+shuffled.
+END
+  }
+  attr {
+    name: "file_buffer_size"
+    description: <<END
+The randomization shuffling buffer.
+END
+  }
+  attr {
+    name: "file_parallelism"
+    description: <<END
+How many sstables are opened and concurrently iterated over.
+END
+  }
+  attr {
+    name: "batch_size"
+    description: <<END
+The batch size.
+END
+  }
+  summary: "Emits randomized records."
+}

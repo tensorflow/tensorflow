@@ -67,11 +67,6 @@ class HloModuleConfig {
   bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
   void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
 
-  bool has_hybrid_result() const { return has_hybrid_result_; }
-  void set_has_hybrid_result(bool has_hybrid_result) {
-    has_hybrid_result_ = has_hybrid_result;
-  }
-
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
   uint64 seed() const { return seed_; }
@@ -90,6 +85,15 @@ class HloModuleConfig {
 
   void set_debug_options(const DebugOptions& debug_options) {
     debug_options_ = debug_options;
+  }
+
+  // Sets/returns the number of intra op threads for this module.
+  void set_intra_op_parallelism_threads(
+      const int intra_op_parallelism_threads) {
+    intra_op_parallelism_threads_ = intra_op_parallelism_threads;
+  }
+  int64 intra_op_parallelism_threads() const {
+    return intra_op_parallelism_threads_;
   }
 
  private:
@@ -115,6 +119,10 @@ class HloModuleConfig {
 
   // The number of replicas to compile this binary for.
   int64 replica_count_ = 1;
+
+  // The target maximum parallelism at which to partition HLOs for parallel
+  // execution on the CPU backend.
+  int64 intra_op_parallelism_threads_ = -1;
 
   DebugOptions debug_options_;
 };

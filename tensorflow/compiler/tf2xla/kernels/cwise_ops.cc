@@ -137,41 +137,4 @@ XlaBinaryOp::Broadcast(xla::ComputationBuilder* builder,
   return {lhs_output, rhs_output};
 }
 
-xla::ComputationDataHandle XlaBinaryMapOp::Computation(
-    XlaOpKernelContext* ctx, const xla::ComputationDataHandle& lhs,
-    const gtl::ArraySlice<int64>& lhs_shape,
-    const xla::ComputationDataHandle& rhs,
-    const gtl::ArraySlice<int64>& rhs_shape, const BCast& broadcast_helper,
-    const std::vector<int64>& extend_dimensions) {
-  xla::ComputationBuilder* builder = ctx->builder();
-
-  // Construct the builder for the lambda computation.
-  xla::ComputationBuilder l(builder->client(), ctx->op_kernel().name());
-  xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(input_type(0), &type));
-
-  // Make two scalar parameters of the desired type for the lambda.
-  xla::ComputationDataHandle x =
-      l.Parameter(0, xla::ShapeUtil::MakeShape(type, {}), "x");
-  xla::ComputationDataHandle y =
-      l.Parameter(1, xla::ShapeUtil::MakeShape(type, {}), "y");
-
-  // Call virtual method to build the lambda.
-  BuildMapLambda(&l, x, y);
-  xla::Computation computation = l.Build().ConsumeValueOrDie();
-
-  xla::ComputationDataHandle lhs_broadcast = lhs;
-  xla::ComputationDataHandle rhs_broadcast = rhs;
-  if (lhs_shape == rhs_shape) {
-    // There's no broadcasting to do.
-    CHECK_EQ(0, extend_dimensions.size());
-    return builder->Map({lhs, rhs}, computation);
-  } else {
-    std::tie(lhs_broadcast, rhs_broadcast) =
-        Broadcast(builder, lhs, rhs, broadcast_helper);
-  }
-  // Now the two sides are broadcast to the final shape we can do the map.
-  return builder->Map({lhs_broadcast, rhs_broadcast}, computation);
-}
-
 }  // namespace tensorflow

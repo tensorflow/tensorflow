@@ -157,6 +157,8 @@ REGISTER_PACK(string);
       PackOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
+REGISTER_GPU(bool);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.

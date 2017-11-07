@@ -1,6 +1,6 @@
 FROM ubuntu:14.04
 
-MAINTAINER Jan Prach <jendap@google.com>
+LABEL maintainer="Jan Prach <jendap@google.com>"
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
@@ -30,7 +30,7 @@ ENV ANDROID_SDK_FILENAME tools_r25.2.5-linux.zip
 ENV ANDROID_SDK_URL https://dl.google.com/android/repository/${ANDROID_SDK_FILENAME}
 ENV ANDROID_API_LEVEL 23
 # Build Tools Version liable to change.
-ENV ANDROID_BUILD_TOOLS_VERSION 25.0.2
+ENV ANDROID_BUILD_TOOLS_VERSION 26.0.1
 ENV ANDROID_SDK_HOME ${ANDROID_DEV_HOME}/sdk
 ENV PATH ${PATH}:${ANDROID_SDK_HOME}/tools:${ANDROID_SDK_HOME}/platform-tools
 RUN cd ${ANDROID_DEV_HOME} && \
@@ -41,7 +41,7 @@ RUN cd ${ANDROID_DEV_HOME} && \
     echo y | android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}
 
 # Install Android NDK.
-ENV ANDROID_NDK_FILENAME android-ndk-r12b-linux-x86_64.zip
+ENV ANDROID_NDK_FILENAME android-ndk-r14b-linux-x86_64.zip
 ENV ANDROID_NDK_URL https://dl.google.com/android/repository/${ANDROID_NDK_FILENAME}
 ENV ANDROID_NDK_HOME ${ANDROID_DEV_HOME}/ndk
 ENV PATH ${PATH}:${ANDROID_NDK_HOME}

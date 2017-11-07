@@ -73,12 +73,16 @@ tensorflow::ImportNumpy();
 // $input is a Python list of wrapped TF_Outputs
 %typemap(in) (const std::vector<TF_Output>& outputs)
     (std::vector<TF_Output> outputs) {
-  if (!PyList_Check($input)) {
-    SWIG_exception_fail(SWIG_TypeError, "$symname: expected list");
+  string error_msg;
+  if (!PyTensorListToVector($input, &outputs, &error_msg)) {
+    SWIG_exception_fail(SWIG_TypeError, ("$symname: " + error_msg).c_str());
   }
-  PyTensorListToVector($input, &outputs);
   $1 = &outputs;
 }
+
+// Apply the typemap above to inputs as well
+%typemap(in) (const std::vector<TF_Output>& inputs) =
+             (const std::vector<TF_Output>& outputs);
 
 // Create temporary py_outputs_vec variable to store return value
 %typemap(in, numinputs=0) (std::vector<PyObject*>* py_outputs)

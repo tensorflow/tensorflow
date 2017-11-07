@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "ZipDataset"
+  summary: "Creates a dataset that zips together `input_datasets`."
+}

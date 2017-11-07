@@ -36,7 +36,7 @@ namespace tensorflow {
 // It guarantees that:
 //   1) all records in tfrecords are yielded within every epoch;
 //   2) each record is yielded only once within every epoch;
-//   3) the order in which records are yielded are highly randomized.
+//   3) the order in which records are yielded is highly randomized.
 //   4) the peak memory usage is roughly avg record size *
 //      (opts.bufsize + opts.parellelism * 16).
 //
@@ -119,6 +119,7 @@ class RecordYielder {
   // True iff we are draining an epoch.
   bool epoch_end_ = false;
 
+  int64 num_records_added_in_epoch_ = 0;
   int64 num_records_yielded_in_epoch_ = 0;
 
   // Trigger when the main loop has exited.

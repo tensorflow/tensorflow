@@ -37,6 +37,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
+from tensorflow.python.util.deprecation import deprecated
 
 
 __all__ = ['add_model_variable',
@@ -82,7 +83,7 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
       resource_loader.get_path_to_datafile("_variable_ops.so"))
   return gen_variable_ops.zero_initializer(ref, name=name)
 
-
+@deprecated(None, "Please switch to tf.train.assert_global_step")
 def assert_global_step(global_step_tensor):
   training_util.assert_global_step(global_step_tensor)
 
@@ -110,11 +111,11 @@ def assert_or_get_global_step(graph=None, global_step_tensor=None):
     assert_global_step(global_step_tensor)
   return global_step_tensor
 
-
+@deprecated(None, "Please switch to tf.train.get_global_step")
 def get_global_step(graph=None):
   return training_util.get_global_step(graph)
 
-
+@deprecated(None, "Please switch to tf.train.create_global_step")
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
@@ -132,7 +133,7 @@ def create_global_step(graph=None):
   """
   return training_util.create_global_step(graph)
 
-
+@deprecated(None, "Please switch to tf.train.get_or_create_global_step")
 def get_or_create_global_step(graph=None):
   """Returns and create (if necessary) the global step tensor.
 
@@ -200,7 +201,7 @@ def variable(name, shape=None, dtype=None, initializer=None,
                      else [ops.GraphKeys.GLOBAL_VARIABLES])
 
   # Remove duplicates
-  collections = set(collections)
+  collections = list(set(collections))
   getter = variable_scope.get_variable
   if custom_getter is not None:
     getter = functools.partial(custom_getter,
@@ -416,7 +417,7 @@ def get_unique_variable(var_op_name):
   for candidate in candidates:
     if candidate.op.name == var_op_name:
       return candidate
-  raise ValueError('Variable %s does not uniquely identify a variable',
+  raise ValueError('Variable %s does not uniquely identify a variable' %
                    var_op_name)
 
 
@@ -444,7 +445,7 @@ def assign_from_values(var_names_to_values):
     var_value = var_names_to_values[var_name]
     var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, var_name)
     if not var:
-      raise ValueError('Variable %s wasnt found', var_name)
+      raise ValueError('Variable %s wasn\'t found' % var_name)
     elif len(var) > 1:
       # tf.get_collection is just a filter on the prefix: find the exact match:
       found = False
@@ -455,7 +456,7 @@ def assign_from_values(var_names_to_values):
           break
 
       if not found:
-        raise ValueError('Variable %s doesnt uniquely identify a variable',
+        raise ValueError('Variable %s doesn\'t uniquely identify a variable' %
                          var_name)
     else:
       var = var[0]
@@ -525,7 +526,7 @@ def get_variable_full_name(var):
 # TODO(sguada): Update docs in slim/g3doc/index.md to describe
 # the new feature where the var_list dictionary can have values that
 # are each a list of Variables.
-def assign_from_checkpoint(model_path, var_list):
+def assign_from_checkpoint(model_path, var_list, ignore_missing_vars=False):
   """Creates an operation to assign specific variables from a checkpoint.
 
   Args:
@@ -538,13 +539,15 @@ def assign_from_checkpoint(model_path, var_list):
         name in the checkpoint must be the full variable, not the
         name of the partitioned variable, eg. "my_var" rather than
         "my_var/part_4". If empty, returns no_op(), {}.
+    ignore_missing_vars: Boolean, if True ignore variables missing in the
+        checkpoint with a warning instead of failing.
 
   Returns:
     the restore_op and the feed_dict that need to be run to restore var_list.
 
   Raises:
-    ValueError: If the checkpoint specified at `model_path` is missing one of
-      the variables in `var_list`.
+    ValueError: If `ignore_missing_vars` is False and the checkpoint specified
+        at `model_path` is missing one of the variables in `var_list`.
   """
   # Normalize var_list into a dictionary mapping names in the
   # checkpoint to the list of variables to initialize from that
@@ -559,7 +562,7 @@ def assign_from_checkpoint(model_path, var_list):
       grouped_vars[ckpt_name].append(var)
 
   else:
-    for ckpt_name, value in var_list.iteritems():
+    for ckpt_name, value in var_list.items():
       if isinstance(value, (tuple, list)):
         grouped_vars[ckpt_name] = value
       else:
@@ -572,8 +575,12 @@ def assign_from_checkpoint(model_path, var_list):
   assign_ops = []
   for ckpt_name in grouped_vars:
     if not reader.has_tensor(ckpt_name):
-      raise ValueError(
-          'Checkpoint is missing variable [%s]' % ckpt_name)
+      log_str = 'Checkpoint is missing variable [%s]' % ckpt_name
+      if ignore_missing_vars:
+        logging.warning(log_str)
+        continue
+      else:
+        raise ValueError(log_str)
     ckpt_value = reader.get_tensor(ckpt_name)
 
     for var in grouped_vars[ckpt_name]:

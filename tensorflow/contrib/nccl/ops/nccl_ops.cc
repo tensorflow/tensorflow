@@ -45,7 +45,95 @@ num_devices: The number of devices participating in this reduction.
 shared_name: Identifier that shared between ops of the same reduction.
 )doc");
 
-REGISTER_OP("NcclBroadcastSend")
+// Note: This op has no kernel implementation, but is replaced by
+// _NcclReduceSend and _NcclReduceRecv during graph optimization stage.
+REGISTER_OP("NcclReduce")
+    .Input("input: num_devices * T")
+    .Output("data: T")
+    .Attr("reduction: {'min', 'max', 'prod', 'sum'}")
+    .Attr("T: {float, float64, int32, int64}")
+    .Attr("num_devices: int")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Reduces `input` from `num_devices` using `reduction` to a single device.
+
+The graph should be constructed so that all inputs have a valid device
+assignment, and the op itself is assigned one of these devices.
+
+input: The input to the reduction.
+data: the value of the reduction across all `num_devices` devices.
+reduction: the reduction operation to perform.
+    )doc");
+
+REGISTER_OP("_NcclReduceSend")
+    .Input("input: T")
+    .Attr("reduction: {'min', 'max', 'prod', 'sum'}")
+    .Attr("T: {float, float64, int32, int64}")
+    .Attr("num_devices: int")
+    .Attr("shared_name: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Replacement node for NcclReduce.
+
+Reduces `input` to the NcclReduceRecv op registered in the same `shared_name`.
+The graph should be constructed so that 'num_devices-1' devices run
+`_NcclReduceSend` and one device runs _NcclReduceRecv op with shared_name value
+`c`. Failure to do so will cause the graph execution to fail to complete.
+
+input: The input to the reduction.
+reduction: the reduction operation to perform.
+num_devices: The number of devices participating in this reduction.
+shared_name: Identifier that is shared between ops of the same reduce.
+    )doc");
+
+REGISTER_OP("_NcclReduceRecv")
+    .Input("input: T")
+    .Output("data: T")
+    .Attr("reduction: {'min', 'max', 'prod', 'sum'}")
+    .Attr("T: {float, float64, int32, int64}")
+    .Attr("num_devices: int")
+    .Attr("shared_name: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Replacement node for NcclReduce.
+
+Reduces 'input' from this op and the NcclReduceSend ops registered in the same
+`shared_name`.
+The graph should be constructed so that 'num_devices-1' devices run
+`_NcclReduceSend` and one device runs _NcclReduceRecv op with shared_name value
+`c`. Failure to do so will cause the graph execution to fail to complete.
+
+input: The input to the reduction.
+data: The reduced data received from this op and the NcclReduceSend op.
+reduction: the reduction operation to perform.
+num_devices: The number of devices participating in this reduction.
+shared_name: Identifier that is shared between ops of the same reduce.
+    )doc");
+
+// Note: This op has no kernel implementation, but is replaced by
+// _NcclBroadcastSend and _NcclBroadcastRecv during graph optimization stage.
+REGISTER_OP("NcclBroadcast")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {float, float64, int32, int64}")
+    .Attr("shape: shape")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Sends `input` to all devices that are connected to the output.
+
+The graph should be constructed so that all ops connected to the output have a
+valid device assignment, and the op itself is assigned one of these devices.
+
+input: The input to the broadcast.
+output: The same as input.
+shape: The shape of the input tensor.
+    )doc");
+
+REGISTER_OP("_NcclBroadcastSend")
     .Input("input: T")
     .Attr("T: {float, float64, int32, int64}")
     .Attr("num_devices: int")
@@ -53,19 +141,21 @@ REGISTER_OP("NcclBroadcastSend")
     .SetIsStateful()
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
-Sends `input` to the NcclBroadcastRecv ops registered in the same `shared_name`.
+Replacement node for NcclBroadcast.
 
-The graph should be constructed so that one device runs `NcclBroadcastSend` and
-`num_devices-1` devices run NcclBroadcastRecv ops with shared_name value `c`.
+Sends `input` to the _NcclBroadcastRecv ops registered in the same
+`shared_name`.
+The graph should be constructed so that one device runs `_NcclBroadcastSend` and
+`num_devices-1` devices run _NcclBroadcastRecv ops with shared_name value `c`.
 Failure to do so will cause the graph execution to fail to complete.
 
-input: The input to the broadcast
+input: The input to the broadcast.
 num_devices: The number of devices participating in this reduction.
 shared_name: Identifier that is shared between ops of the same broadcast.
     )doc");
 
-REGISTER_OP("NcclBroadcastRecv")
-    .Input("shape: int64")
+REGISTER_OP("_NcclBroadcastRecv")
+    .Input("shape: int32")
     .Output("output: T")
     .Attr("T: {float, float64, int32, int64}")
     .Attr("num_devices: int")
@@ -78,11 +168,12 @@ REGISTER_OP("NcclBroadcastRecv")
       return Status::OK();
     })
     .Doc(R"doc(
-Sends data of shape `shape` from the NcclBroadcastSend op registered in the
-same `shared_name`.
+Replacement node for NcclBroadcast.
 
-The graph should be constructed so that one device runs `NcclBroadcastSend` and
-`num_devices-1` devices run NcclBroadcastRecv ops with shared_name value `c`.
+Sends data of shape `shape` from the _NcclBroadcastSend op registered in the
+same `shared_name`.
+The graph should be constructed so that one device runs `_NcclBroadcastSend` and
+`num_devices-1` devices run _NcclBroadcastRecv ops with shared_name value `c`.
 Failure to do so will cause the graph execution to fail to complete.
 
 shape: The shape of the output.

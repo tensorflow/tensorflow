@@ -19,7 +19,12 @@ limitations under the License.
 #include <memory>
 
 #include "grpc++/grpc++.h"
+#include "grpc++/impl/codegen/proto_utils.h"
+#include "grpc++/support/byte_buffer.h"
+#include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -42,6 +47,65 @@ inline ::grpc::Status ToGrpcStatus(const ::tensorflow::Status& s) {
 }
 
 typedef std::shared_ptr<::grpc::Channel> SharedGrpcChannelPtr;
+
+inline string GrpcIdKey() { return "tf-rpc"; }
+
+// Serialize src and store in *dst.
+void GrpcMaybeUnparseProto(const protobuf::Message& src,
+                           ::grpc::ByteBuffer* dst);
+
+// Parse contents of src and initialize *dst with them.
+bool GrpcMaybeParseProto(const ::grpc::ByteBuffer& src, protobuf::Message* dst);
+
+// Specialization for TensorResponse
+bool GrpcMaybeParseProto(const ::grpc::ByteBuffer& src, TensorResponse* dst);
+
+// Copy string src to grpc buffer *dst.
+void GrpcMaybeUnparseProto(const string& src, ::grpc::ByteBuffer* dst);
+
+// Copy grpc buffer src to string *dst.
+bool GrpcMaybeParseProto(const ::grpc::ByteBuffer& src, string* dst);
+
+// A ZeroCopyInputStream that reads from a grpc::ByteBuffer.
+class GrpcByteBufferSource : public ::grpc::protobuf::io::ZeroCopyInputStream {
+ public:
+  GrpcByteBufferSource();
+  bool Init(const ::grpc::ByteBuffer& src);  // Can be called multiple times.
+  bool Next(const void** data, int* size) override;
+  void BackUp(int count) override;
+  bool Skip(int count) override;
+  ::grpc::protobuf::int64 ByteCount() const override;
+
+ private:
+  std::vector<::grpc::Slice> slices_;
+  int cur_;          // Current slice index.
+  int left_;         // Number of bytes in slices_[cur_] left to yield.
+  const char* ptr_;  // Address of next byte in slices_[cur_] to yield.
+  ::grpc::protobuf::int64 byte_count_;
+};
+
+// GrpcCounter is used to delay shutdown until all active RPCs are done.
+class GrpcCounter {
+ public:
+  GrpcCounter() {}
+
+  GrpcCounter(const GrpcCounter&) = delete;
+  GrpcCounter& operator=(const GrpcCounter&) = delete;
+
+  // Increment the count of live RPCs.
+  void Increment();
+
+  // Decrement the count of live RPCs.
+  void Decrement();
+
+  // Wait until count of live RPCs is zero.
+  void WaitUntilUnused();
+
+ private:
+  mutex mu_;
+  condition_variable empty_;
+  int counter_ = 0;
+};
 
 }  // namespace tensorflow
 

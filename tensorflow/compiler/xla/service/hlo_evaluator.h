@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -36,9 +37,17 @@ namespace xla {
 class HloEvaluator : public DfsHloVisitorWithDefault {
  public:
   HloEvaluator();
-  // Evaluates a HLO computation and an array of pointers to literals.
-  // Return the evaluated result as literal if successful.
-  // Precondition: argument literals are corresponds to the input computation's
+  // Evaluates an HLO module and an array of pointers to literals.
+  // Returns the evaluated result as a literal if successful.
+  // Precondition: argument literals correspond to each input computation's
+  // parameters in their post-ordering. See comment below for example.
+  StatusOr<std::unique_ptr<Literal>> Evaluate(
+      const HloModule& module,
+      tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+
+  // Evaluates an HLO computation and an array of pointers to literals.
+  // Returns the evaluated result as a literal if successful.
+  // Precondition: argument literals correspond to the input computation's
   // parameters in their post-ordering. For e.g., consider the following graph:
   //
   //                *
@@ -51,7 +60,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // The input literals array will have its first literal map to Parameter0 and
   // the second map to Parameter1.
   StatusOr<std::unique_ptr<Literal>> Evaluate(
-      HloComputation* computation,
+      const HloComputation& computation,
       tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
 
   // Evaluates a single HLO instruction and an array of pointers to literals.
@@ -75,6 +84,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Same as Evaluate, except returning nullptr on error.
   std::unique_ptr<Literal> TryEvaluate(HloInstruction* instruction);
 
+  // Evaluates a single HLO instruction, substituting the given literals for
+  // some of the instruction's operands.
+  //
+  // For example, given instruction = op(A, B, C) and the map
+  // {A = x, C = y}, this evaluates op(x, B, y).
+  StatusOr<std::unique_ptr<Literal>> EvaluateWithSubstitutions(
+      const HloInstruction* instruction,
+      const std::unordered_map<const HloInstruction*, const Literal*>&
+          substitutions);
+
  protected:
   // Templated DfsHloVisitor. Typically ReturnT here indicates the resulting
   // literal type of each evaluated Handle* method of a TypedVisitor.
@@ -92,28 +111,31 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     return hlo->Visit(typed_visitors_.at(hlo->shape().element_type()).get());
   }
 
-  // Operations that are type-agnostic.
+  Status Preprocess(HloInstruction* hlo) override;
+
+  Status Postprocess(HloInstruction* hlo) override;
+
+  // Operations that are type-agnostic or always return a specific type, such as
+  // HandleIsFinite where boolean is always returned.
   //
   Status HandleParameter(HloInstruction* parameter) override;
 
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override;
+  Status HandleConstant(HloInstruction* constant) override;
 
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleConcatenate(HloInstruction* concatenate) override;
 
   Status HandleReshape(HloInstruction* reshape) override;
 
-  Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
-
   Status HandleTranspose(HloInstruction* transpose) override;
 
-  Status HandleIsFinite(HloInstruction* is_finite,
-                        HloInstruction* operand) override;
+  Status HandleIsFinite(HloInstruction* is_finite) override;
 
-  Status HandleCompare(HloInstruction* compare, HloOpcode opcode,
-                       HloInstruction* lhs, HloInstruction* rhs) override;
+  Status HandleCompare(HloInstruction* compare) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+
+  Status HandleCopy(HloInstruction* copy) override;
 
  private:
   // Returns the already-evaluated literal result for the instruction.

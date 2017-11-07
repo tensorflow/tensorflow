@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import copy
 import os
 import tempfile
@@ -27,14 +28,13 @@ import tempfile
 import numpy as np
 import six
 
-from tensorflow.contrib import framework as contrib_framework
+from google.protobuf import message
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
@@ -49,6 +49,7 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedE
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
+from tensorflow.contrib.meta_graph_transform import meta_graph_transform
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -56,6 +57,7 @@ from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
@@ -64,11 +66,12 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary as core_summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
-from tensorflow.python.training import summary_io
+from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -94,8 +97,7 @@ def _verify_input_args(x, y, input_fn, feed_fn, batch_size):
     if x is None:
       raise ValueError('Either x or input_fn must be provided.')
 
-    if contrib_framework.is_tensor(x) or (y is not None and
-                                          contrib_framework.is_tensor(y)):
+    if tensor_util.is_tensor(x) or y is not None and tensor_util.is_tensor(y):
       raise ValueError('Inputs cannot be tensors. Please provide input_fn.')
 
     if feed_fn is not None:
@@ -313,12 +315,18 @@ def _dict_to_str(dictionary):
   Returns:
     A `str` representing the `dictionary`.
   """
-  return ', '.join('%s = %s' % (k, v) for k, v in sorted(dictionary.items()))
+  results = []
+  for k, v in sorted(dictionary.items()):
+    if isinstance(v, float) or isinstance(v, np.float32) or isinstance(
+        v, int) or isinstance(v, np.int64) or isinstance(v, np.int32):
+      results.append('%s = %s' % (k, v))
+    else:
+      results.append('Type of %s = %s' % (k, type(v)))
+
+  return ', '.join(results)
 
 
-def _write_dict_to_summary(output_dir,
-                           dictionary,
-                           current_global_step):
+def _write_dict_to_summary(output_dir, dictionary, current_global_step):
   """Writes a `dict` into summary file in given output directory.
 
   Args:
@@ -328,35 +336,48 @@ def _write_dict_to_summary(output_dir,
   """
   logging.info('Saving dict for global step %d: %s', current_global_step,
                _dict_to_str(dictionary))
-  summary_writer = summary_io.SummaryWriterCache.get(output_dir)
+  summary_writer = core_summary.FileWriterCache.get(output_dir)
   summary_proto = summary_pb2.Summary()
   for key in dictionary:
     if dictionary[key] is None:
       continue
     if key == 'global_step':
       continue
-    value = summary_proto.value.add()
-    value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
-      value.simple_value = float(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=float(dictionary[key]))
     elif (isinstance(dictionary[key], np.int64) or
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
-      value.simple_value = int(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
+    elif isinstance(dictionary[key], six.string_types):
+      try:
+        summ = summary_pb2.Summary.FromString(dictionary[key])
+        for i, _ in enumerate(summ.value):
+          summ.value[i].tag = key
+        summary_proto.value.extend(summ.value)
+      except message.DecodeError:
+        logging.warn('Skipping summary for %s, cannot parse string to Summary.',
+                     key)
+        continue
     else:
       logging.warn(
-          'Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
-          key)
+          'Skipping summary for %s, must be a float, np.float32, np.int64, '
+          'np.int32 or int or a serialized string of Summary.', key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
+
+
+GraphRewriteSpec = collections.namedtuple('GraphRewriteSpec',
+                                          ['tags', 'transforms'])
 
 
 class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-  Users should not instantiate or subclass this class. Instead, use `Estimator`.
+  Users should not instantiate or subclass this class. Instead, use an
+  `Estimator`.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -397,6 +418,7 @@ class BaseEstimator(
             "model_dir are set both in constructor and RunConfig, but with "
             "different values. In constructor: '{}', in RunConfig: "
             "'{}' ".format(model_dir, self._config.model_dir))
+        # pylint: enable=g-doc-exception
 
     self._model_dir = model_dir or self._config.model_dir
     if self._model_dir is None:
@@ -530,7 +552,7 @@ class BaseEstimator(
     """
     _verify_input_args(x, y, input_fn, feed_fn, batch_size)
     if x is not None:
-      return SKCompat(self).score(x, y, batch_size, steps, metrics)
+      return SKCompat(self).score(x, y, batch_size, steps, metrics, name)
 
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
@@ -825,7 +847,7 @@ class BaseEstimator(
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
+      global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
@@ -838,6 +860,10 @@ class BaseEstimator(
       hooks = hooks[:] if hooks else []
       if feed_fn:
         hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
+      if steps == 0:
+        logging.warning('evaluation steps are 0. If `input_fn` does not raise'
+                        'OutOfRangeError`, the evaluation will never stop.'
+                        'Use steps=None if intended.')
       if steps:
         hooks.append(
             evaluation.StopAfterNEvalsHook(
@@ -882,7 +908,7 @@ class BaseEstimator(
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      contrib_framework.create_global_step(g)
+      training_util.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       infer_ops = self._get_predict_ops(features)
       predictions = self._filter_predictions(infer_ops.predictions, outputs)
@@ -952,9 +978,10 @@ class BaseEstimator(
     self._graph = ops.Graph()
     with self._graph.as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
+      global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
+      training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
       model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend(hooks)
@@ -975,6 +1002,8 @@ class BaseEstimator(
             saver.Saver(
                 sharded=True,
                 max_to_keep=self._config.keep_checkpoint_max,
+                keep_checkpoint_every_n_hours=(
+                    self._config.keep_checkpoint_every_n_hours),
                 defer_build=True,
                 save_relative_paths=True))
 
@@ -1008,7 +1037,6 @@ class BaseEstimator(
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
-      summary_io.SummaryWriterCache.clear()
       return loss
 
 
@@ -1107,13 +1135,14 @@ class Estimator(BaseEstimator):
     self._feature_engineering_fn = (
         feature_engineering_fn or _identity_feature_engineering_fn)
 
-  def _call_model_fn(self, features, labels, mode):
+  def _call_model_fn(self, features, labels, mode, metrics=None):
     """Calls model function with support of 2, 3 or 4 arguments.
 
     Args:
       features: features dict.
       labels: labels dict.
       mode: ModeKeys
+      metrics: Dict of metrics.
 
     Returns:
       A `ModelFnOps` object. If model_fn returns a tuple, wraps them up in a
@@ -1136,17 +1165,24 @@ class Estimator(BaseEstimator):
     model_fn_results = self._model_fn(features, labels, **kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
-      return model_fn_results
+      model_fn_ops = model_fn_results
+    else:
+      # Here model_fn_results should be a tuple with 3 elements.
+      if len(model_fn_results) != 3:
+        raise ValueError('Unrecognized value returned by model_fn, '
+                         'please return ModelFnOps.')
+      model_fn_ops = model_fn_lib.ModelFnOps(
+          mode=mode,
+          predictions=model_fn_results[0],
+          loss=model_fn_results[1],
+          train_op=model_fn_results[2])
 
-    # Here model_fn_results should be a tuple with 3 elements.
-    if len(model_fn_results) != 3:
-      raise ValueError('Unrecognized value returned by model_fn, '
-                       'please return ModelFnOps.')
-    return model_fn_lib.ModelFnOps(
-        mode=mode,
-        predictions=model_fn_results[0],
-        loss=model_fn_results[1],
-        train_op=model_fn_results[2])
+    # Custom metrics should overwrite defaults.
+    if metrics:
+      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
+        metrics, features, labels, model_fn_ops.predictions))
+
+    return model_fn_ops
 
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
@@ -1190,13 +1226,7 @@ class Estimator(BaseEstimator):
       ValueError: if `metrics` don't match `labels`.
     """
     model_fn_ops = self._call_model_fn(
-        features, labels, model_fn_lib.ModeKeys.EVAL)
-
-    features, labels = self._feature_engineering_fn(features, labels)
-    # Custom metrics should overwrite defaults.
-    if metrics:
-      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
-          metrics, features, labels, model_fn_ops.predictions))
+        features, labels, model_fn_lib.ModeKeys.EVAL, metrics)
 
     if metric_key.MetricKey.LOSS not in model_fn_ops.eval_metric_ops:
       model_fn_ops.eval_metric_ops[metric_key.MetricKey.LOSS] = (
@@ -1225,7 +1255,8 @@ class Estimator(BaseEstimator):
       default_output_alternative_key=None,
       assets_extra=None,
       as_text=False,
-      checkpoint_path=None):
+      checkpoint_path=None,
+      graph_rewrite_specs=(GraphRewriteSpec((tag_constants.SERVING,), ()),)):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
@@ -1245,6 +1276,10 @@ class Estimator(BaseEstimator):
       as_text: whether to write the SavedModel proto in text format.
       checkpoint_path: The checkpoint path to export.  If None (the default),
         the most recent checkpoint found within the model directory is chosen.
+      graph_rewrite_specs: an iterable of `GraphRewriteSpec`.  Each element will
+        produce a separate MetaGraphDef within the exported SavedModel, tagged
+        and rewritten as specified.  Defaults to a single entry using the
+        default serving tag ("serve") and no rewriting.
 
     Returns:
       The string path to the exported directory.
@@ -1255,8 +1290,25 @@ class Estimator(BaseEstimator):
     if serving_input_fn is None:
       raise ValueError('serving_input_fn must be defined.')
 
+    if not checkpoint_path:
+      # Locate the latest checkpoint
+      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % self._model_dir)
+
+    export_dir = saved_model_export_utils.get_timestamped_export_dir(
+        export_dir_base)
+    # We'll write the SavedModel to a temporary directory and then atomically
+    # rename it at the end.  This helps to avoid corrupt / incomplete outputs,
+    # which could otherwise occur if the job is preempted or otherwise fails
+    # in the middle of SavedModel creation.
+    temp_export_dir = saved_model_export_utils.get_temp_export_dir(export_dir)
+    builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
+
+    # Build the base graph
     with ops.Graph().as_default() as g:
-      contrib_variables.create_global_step(g)
+      training_util.create_global_step(g)
 
       # Call the serving_input_fn and collect the input alternatives.
       input_ops = serving_input_fn()
@@ -1277,55 +1329,88 @@ class Estimator(BaseEstimator):
           saved_model_export_utils.get_output_alternatives(
               model_fn_ops, default_output_alternative_key))
 
+      init_op = control_flow_ops.group(
+          variables.local_variables_initializer(),
+          resources.initialize_resources(resources.shared_resources()),
+          lookup_ops.tables_initializer())
+
       # Build the SignatureDefs from all pairs of input and output alternatives
       signature_def_map = saved_model_export_utils.build_all_signature_defs(
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)
 
-      if not checkpoint_path:
-        # Locate the latest checkpoint
-        checkpoint_path = saver.latest_checkpoint(self._model_dir)
-      if not checkpoint_path:
-        raise NotFittedError("Couldn't find trained model at %s."
-                             % self._model_dir)
-
-      export_dir = saved_model_export_utils.get_timestamped_export_dir(
-          export_dir_base)
-
-      if (model_fn_ops.scaffold is not None and
-          model_fn_ops.scaffold.saver is not None):
-        saver_for_restore = model_fn_ops.scaffold.saver
-      else:
-        saver_for_restore = saver.Saver(sharded=True)
+      # Export the first MetaGraphDef with variables, assets etc.
       with tf_session.Session('') as session:
+
+        # pylint: disable=protected-access
+        saveables = variables._all_saveable_objects()
+        # pylint: enable=protected-access
+
+        if (model_fn_ops.scaffold is not None and
+            model_fn_ops.scaffold.saver is not None):
+          saver_for_restore = model_fn_ops.scaffold.saver
+        elif saveables:
+          saver_for_restore = saver.Saver(saveables, sharded=True)
+
         saver_for_restore.restore(session, checkpoint_path)
-        init_op = control_flow_ops.group(
-            variables.local_variables_initializer(),
-            resources.initialize_resources(resources.shared_resources()),
-            lookup_ops.tables_initializer())
 
         # Perform the export
-        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        if not graph_rewrite_specs or graph_rewrite_specs[0].transforms:
+          raise ValueError('The first element of graph_rewrite_specs '
+                           'must specify no transforms.')
+        untransformed_tags = graph_rewrite_specs[0].tags
+
+        # TODO(soergel): switch to main_op or otherwise update when dust settles
         builder.add_meta_graph_and_variables(
-            session, [tag_constants.SERVING],
+            session, untransformed_tags,
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
             legacy_init_op=init_op)
-        builder.save(as_text)
 
-      # Add the extra assets
-      if assets_extra:
-        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
-                                         compat.as_bytes('assets.extra'))
-        for dest_relative, source in assets_extra.items():
-          dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
-                                       compat.as_bytes(dest_relative))
-          dest_path = os.path.dirname(dest_absolute)
-          gfile.MakeDirs(dest_path)
-          gfile.Copy(source, dest_absolute)
+    # pylint: disable=protected-access
+    base_meta_graph_def = builder._saved_model.meta_graphs[0]
+    # pylint: enable=protected-access
 
-      return export_dir
+    if graph_rewrite_specs[1:]:
+      # Prepare the input_names and output_names needed for the
+      # meta_graph_transform call below.
+      input_names = [tensor.name
+                     for input_dict in input_alternatives.values()
+                     for tensor in input_dict.values()]
+      output_names = [tensor.name
+                      for output_alternative in output_alternatives.values()
+                      for tensor in output_alternative[1].values()]
+
+    # Write the additional MetaGraphDefs
+    for graph_rewrite_spec in graph_rewrite_specs[1:]:
+
+      # TODO(soergel) consider moving most of this to saved_model.builder_impl
+      # as e.g. builder.add_rewritten_meta_graph(rewritten_graph_def, tags)
+
+      transformed_meta_graph_def = meta_graph_transform.meta_graph_transform(
+          base_meta_graph_def, input_names, output_names,
+          graph_rewrite_spec.transforms, graph_rewrite_spec.tags)
+
+      # pylint: disable=protected-access
+      meta_graph_def = builder._saved_model.meta_graphs.add()
+      # pylint: enable=protected-access
+      meta_graph_def.CopyFrom(transformed_meta_graph_def)
+
+    # Add the extra assets
+    if assets_extra:
+      assets_extra_path = os.path.join(compat.as_bytes(temp_export_dir),
+                                       compat.as_bytes('assets.extra'))
+      for dest_relative, source in assets_extra.items():
+        dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
+                                     compat.as_bytes(dest_relative))
+        dest_path = os.path.dirname(dest_absolute)
+        gfile.MakeDirs(dest_path)
+        gfile.Copy(source, dest_absolute)
+
+    builder.save(as_text)
+    gfile.Rename(temp_export_dir, export_dir)
+    return export_dir
 
 
 # For time of deprecation x,y from Estimator allow direct access.
@@ -1353,7 +1438,7 @@ class SKCompat(sklearn.BaseEstimator):
                         monitors=all_monitors)
     return self
 
-  def score(self, x, y, batch_size=128, steps=None, metrics=None):
+  def score(self, x, y, batch_size=128, steps=None, metrics=None, name=None):
     input_fn, feed_fn = _get_input_fn(x, y, input_fn=None,
                                       feed_fn=None, batch_size=batch_size,
                                       shuffle=False, epochs=1)
@@ -1365,7 +1450,7 @@ class SKCompat(sklearn.BaseEstimator):
         feed_fn=feed_fn,
         steps=steps,
         metrics=metrics,
-        name='score')
+        name=name)
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results

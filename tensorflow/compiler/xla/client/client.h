@@ -45,6 +45,10 @@ class Client {
   // * If execution_options is not nullptr, these options are passed to the
   //   service to affect how it compiles our computation.  (The pointer does not
   //   need to live beyond this call.)
+  // * If execution_options.device_handles is not empty, the computation is
+  //   executed on the devices associated with the handles by partitioning the
+  //   computation based on the attached sharding attributes. Otherwise, a
+  //   device is chosen by the service.
   // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
   //   will be filled with profile data from the execution.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
@@ -54,12 +58,13 @@ class Client {
       ExecutionProfile* execution_profile = nullptr);
 
   // A struct to represent a computation instance to be executed.
-  // * If device_handle is not nullptr, the computation is executed on a device
-  //   associated with the handle. Otherwise, a device is chosen by the service.
+  // * If execution_options.device_handles is not empty, the computation is
+  //   executed on the devices associated with the handles by partitioning the
+  //   computation based on the attached sharding attributes. Otherwise, a
+  //   device is chosen by the service.
   struct ComputationInstance {
     const Computation& computation;
     std::vector<GlobalData*> arguments;
-    const DeviceHandle* device_handle;
     ExecutionOptions execution_options;
     ExecutionProfile* execution_profile;
   };
@@ -74,24 +79,6 @@ class Client {
   // (see ExecuteParallel) or to transfer data (see TransferToServer or
   // TransferToInfeed).
   StatusOr<std::vector<DeviceHandle>> GetDeviceHandles(int64 device_count);
-
-  // Executes the given computation as above Execute(), but launches the
-  // computation asynchronously and returns before the execution is complete.
-  // Returns an ExecutionHandle that represents the launched execution, which is
-  // used to call WaitForExecution() to wait for the execution's completion.
-  StatusOr<ExecutionHandle> ExecuteAsync(
-      const Computation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const ExecutionOptions* execution_options = nullptr);
-
-  // Waits until the given asynchronously launched execution of the computation
-  // is complete and returns the execution result. Once this is called, the
-  // given execution handle is no longer valid. If execution_profile is not
-  // nullptr then the pointed-to ExecutionProfile will be filled with profile
-  // data from the execution.
-  StatusOr<std::unique_ptr<GlobalData>> WaitForExecution(
-      const Computation& computation, const ExecutionHandle& execution,
-      ExecutionProfile* execution_profile = nullptr);
 
   // Transfer the global data provided to this client process, which is
   // returned in the provided literal. Use sparingly to avoid transfer
@@ -150,7 +137,7 @@ class Client {
 
   // Retrieves the statistics of the given computation.
   StatusOr<ComputationStats> GetComputationStats(
-      const Computation& computation) const;
+      const Computation& computation, const DebugOptions& debug_options) const;
 
   // Returns the Shape of the given array specified by 'data'. The shape
   // includes the Layout of the array as it is stored on the service.

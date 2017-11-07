@@ -3,7 +3,6 @@
 #   APIs are meant to change over time.
 package(
     default_visibility = ["//visibility:private"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -16,6 +15,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 tf_custom_op_library(
     name = "python/ops/_cudnn_rnn_ops.so",
@@ -31,10 +31,12 @@ tf_custom_op_library(
 tf_kernel_library(
     name = "cudnn_rnn_kernels",
     srcs = ["kernels/cudnn_rnn_ops.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//third_party/eigen3",
     ],
@@ -53,7 +55,7 @@ tf_gen_op_wrapper_py(
 )
 
 tf_custom_op_py_library(
-    name = "cudnn_rnn_py",
+    name = "cudnn_rnn_ops_py",
     srcs = [
         "__init__.py",
         "python/ops/cudnn_rnn_ops.py",
@@ -69,24 +71,69 @@ tf_custom_op_py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cudnn_rnn_ops",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:common_shapes",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+tf_custom_op_py_library(
+    name = "cudnn_rnn_py",
+    srcs = [
+        "__init__.py",
+        "python/layers/__init__.py",
+        "python/layers/cudnn_rnn.py",
+    ],
+    dso = [
+        ":python/ops/_cudnn_rnn_ops.so",
+    ],
+    kernels = [
+        ":cudnn_rnn_kernels",
+        ":cudnn_rnn_ops_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cudnn_rnn_ops",
+        ":cudnn_rnn_ops_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
 cuda_py_test(
     name = "cudnn_rnn_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_test.py"],
     additional_deps = [
-        ":cudnn_rnn_py",
+        ":cudnn_rnn_ops_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python/ops/losses:losses",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -99,6 +146,35 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    shard_count = 6,
+    tags = [
+        "manual",
+        "requires_cudnn5",
+    ],
+)
+
+cuda_py_test(
+    name = "cudnn_rnn_test",
+    size = "enormous",
+    srcs = ["python/kernel_tests/cudnn_rnn_test.py"],
+    additional_deps = [
+        ":cudnn_rnn_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python/ops/losses:losses",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+    shard_count = 6,
     tags = [
         "manual",
         "requires_cudnn5",
@@ -110,7 +186,7 @@ cuda_py_test(
     size = "large",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_benchmark.py"],
     additional_deps = [
-        ":cudnn_rnn_py",
+        ":cudnn_rnn_ops_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -133,7 +209,7 @@ cuda_py_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "cudnn_rnn_ops_test_cc",
     size = "small",
     srcs = [
@@ -143,7 +219,7 @@ cc_test(
         ":cudnn_rnn_ops_op_lib",
         "//tensorflow/core",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

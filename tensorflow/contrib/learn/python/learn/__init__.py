@@ -30,7 +30,6 @@ from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import ops
 from tensorflow.contrib.learn.python.learn import preprocessing
 from tensorflow.contrib.learn.python.learn import utils
-from tensorflow.contrib.learn.python.learn.dataframe import *
 from tensorflow.contrib.learn.python.learn.estimators import *
 from tensorflow.contrib.learn.python.learn.evaluable import Evaluable
 from tensorflow.contrib.learn.python.learn.experiment import Experiment

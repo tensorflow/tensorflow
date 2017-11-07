@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "RsqrtGrad"
+  visibility: HIDDEN
+  summary: "Computes the gradient for the rsqrt of `x` wrt its input."
+  description: <<END
+Specifically, `grad = dy * -0.5 * y^3`, where `y = rsqrt(x)`, and `dy`
+is the corresponding input gradient.
+END
+}

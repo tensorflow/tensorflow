@@ -1,0 +1,66 @@
+path: "tensorflow.distributions.bijectors.Identity"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.distributions.identity_bijector.Identity\'>"
+  is_instance: "<class \'tensorflow.python.ops.distributions.bijector_impl.Bijector\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "event_ndims"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "graph_parents"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_constant_jacobian"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "validate_args"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'validate_args\', \'event_ndims\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'0\', \'identity\'], "
+  }
+  member_method {
+    name: "forward"
+    argspec: "args=[\'self\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'forward\'], "
+  }
+  member_method {
+    name: "forward_event_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "forward_event_shape_tensor"
+    argspec: "args=[\'self\', \'input_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'forward_event_shape_tensor\'], "
+  }
+  member_method {
+    name: "forward_log_det_jacobian"
+    argspec: "args=[\'self\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'forward_log_det_jacobian\'], "
+  }
+  member_method {
+    name: "inverse"
+    argspec: "args=[\'self\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'inverse\'], "
+  }
+  member_method {
+    name: "inverse_event_shape"
+    argspec: "args=[\'self\', \'output_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "inverse_event_shape_tensor"
+    argspec: "args=[\'self\', \'output_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'inverse_event_shape_tensor\'], "
+  }
+  member_method {
+    name: "inverse_log_det_jacobian"
+    argspec: "args=[\'self\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'inverse_log_det_jacobian\'], "
+  }
+}

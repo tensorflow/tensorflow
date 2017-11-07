@@ -81,7 +81,7 @@ more summaries and call the evaluation_loop method:
 
   # Evaluate every 10 minutes:
   slim.evaluation_loop(
-      master='',
+      '',
       checkpoint_dir,
       logdir,
       num_evals=num_evals,

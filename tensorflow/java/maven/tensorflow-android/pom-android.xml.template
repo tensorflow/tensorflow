@@ -1,0 +1,29 @@
+<project
+    xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.tensorflow</groupId>
+  <artifactId>tensorflow-android</artifactId>
+  <version>${version}</version>
+  <packaging>aar</packaging>
+
+  <name>TensorFlow AAR for Android Inference Library and Java API</name>
+  <url>https://github.com/tensorflow/tensorflow/</url>
+  <parent>
+    <groupId>org.tensorflow</groupId>
+    <artifactId>parentpom</artifactId>
+    <version>${version}</version>
+    <relativePath>../</relativePath>
+  </parent>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.build.number>${build_number}</project.build.number>
+    <project.build.commitid>${build_commit_id}</project.build.commitid>
+    <project.build.type>${build_type}</project.build.type>
+    <project.build.url>${build_url}</project.build.url>
+  </properties>
+
+</project>

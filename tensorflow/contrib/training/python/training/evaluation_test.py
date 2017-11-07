@@ -329,7 +329,7 @@ class EvaluateRepeatedlyTest(test.TestCase):
     if not gfile.Exists(checkpoint_dir):
       gfile.MakeDirs(checkpoint_dir)
 
-    # We need a variable that that the saver will try to restore.
+    # We need a variable that the saver will try to restore.
     variables.get_or_create_global_step()
 
     # Run with placeholders. If we actually try to evaluate this, we'd fail
@@ -394,7 +394,7 @@ class EvaluateRepeatedlyTest(test.TestCase):
                                   'evaluate_with_eval_feed_dict')
     self._train_model(checkpoint_dir, num_steps=1)
 
-    # We need a variable that that the saver will try to restore.
+    # We need a variable that the saver will try to restore.
     variables.get_or_create_global_step()
 
     # Create a variable and an eval op that increments it with a placeholder.

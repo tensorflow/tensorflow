@@ -376,7 +376,7 @@ class PoolGradTest(XLATestCase):
       self.assertAllClose(
           expected_input_gradient_vals.flatten(),
           actual.flatten(),
-          rtol=1e-5,
+          rtol=1e-4,
           atol=1e-6)
       self.assertShapeEqual(actual, inputs)
 

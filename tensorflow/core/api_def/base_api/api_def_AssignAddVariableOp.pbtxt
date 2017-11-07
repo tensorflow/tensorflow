@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "AssignAddVariableOp"
+  in_arg {
+    name: "resource"
+    description: <<END
+handle to the resource in which to store the variable.
+END
+  }
+  in_arg {
+    name: "value"
+    description: <<END
+the value by which the variable will be incremented.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+the dtype of the value.
+END
+  }
+  summary: "Adds a value to the current value of a variable."
+  description: <<END
+Any ReadVariableOp which depends directly or indirectly on this assign is
+guaranteed to see the incremented value or a subsequent newer one.
+
+Outputs the incremented value, which can be used to totally order the
+increments to this variable.
+END
+}

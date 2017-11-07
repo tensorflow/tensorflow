@@ -10,25 +10,23 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-cuda_py_tests(
-    name = "linear_operator_test",
-    size = "small",
-    srcs = ["python/kernel_tests/linear_operator_test.py"],
-    additional_deps = [
-        ":linalg_py",
-        "//third_party/py/numpy",
+py_library(
+    name = "linalg_py",
+    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
+    srcs_version = "PY2AND3",
+    deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//tensorflow/python/ops/linalg",
+        "@six_archive//:six",
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "linear_operator_addition_test",
     size = "small",
     srcs = ["python/kernel_tests/linear_operator_addition_test.py"],
@@ -42,137 +40,6 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "linear_operator_composition_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_composition_test.py"],
-    additional_deps = [
-        ":linalg_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "linear_operator_diag_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_diag_test.py"],
-    additional_deps = [
-        ":linalg_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:random_ops",
-    ],
-)
-
-cuda_py_tests(
-    name = "linear_operator_identity_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_identity_test.py"],
-    additional_deps = [
-        ":linalg_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:random_ops",
-    ],
-)
-
-cuda_py_tests(
-    name = "linear_operator_full_matrix_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_full_matrix_test.py"],
-    additional_deps = [
-        ":linalg_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "linear_operator_tril_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_tril_test.py"],
-    additional_deps = [
-        ":linalg_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "linear_operator_udvh_update_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_udvh_update_test.py"],
-    additional_deps = [
-        ":linalg_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-    shard_count = 5,
-)
-
-cuda_py_tests(
-    name = "linear_operator_util_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_util_test.py"],
-    additional_deps = [
-        ":linalg_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_library(
-    name = "linalg_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

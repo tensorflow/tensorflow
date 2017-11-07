@@ -74,10 +74,10 @@ class DirichletMultinomialTest(test.TestCase):
       dist = ds.DirichletMultinomial(n, alpha, validate_args=True)
       dist.prob([2., 3, 0]).eval()
       dist.prob([3., 0, 2]).eval()
-      with self.assertRaisesOpError("counts must be non-negative"):
+      with self.assertRaisesOpError("must be non-negative"):
         dist.prob([-1., 4, 2]).eval()
       with self.assertRaisesOpError(
-          "counts last-dimension must sum to `self.total_count`"):
+          "last-dimension must sum to `self.total_count`"):
         dist.prob([3., 3, 0]).eval()
 
   def testPmfNonIntegerCounts(self):
@@ -91,7 +91,7 @@ class DirichletMultinomialTest(test.TestCase):
       # Both equality and integer checking fail.
       placeholder = array_ops.placeholder(dtypes.float32)
       with self.assertRaisesOpError(
-          "counts cannot contain fractional components"):
+          "cannot contain fractional components"):
         dist.prob(placeholder).eval(feed_dict={placeholder: [1.0, 2.5, 1.5]})
       dist = ds.DirichletMultinomial(n, alpha, validate_args=False)
       dist.prob([1., 2., 3.]).eval()
