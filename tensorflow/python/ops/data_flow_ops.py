@@ -1686,7 +1686,7 @@ class StagingArea(BaseStagingArea):
                         self._scope_vals(values)) as scope:
 
       if not isinstance(values, (list, tuple)):
-          values = [values]
+        values = [values]
       # Hard-code indices for this staging area
       indices = list(six.moves.range(len(values)))
       vals, _ = self._check_put_dtypes(values, indices)
