@@ -98,7 +98,7 @@ TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
     }
   } else {
     for (int i = 0; i < shape.dim_size(); i++) {
-      if (shape.dim(i).size() == -1) {
+      if (shape.dim(i).size() < 0) {
         *found_unknown_shapes = true;
         VLOG(2) << "Use minimum dim size 1 because the shape is unknown.";
         // The size of each dimension is at least 1, if unknown.

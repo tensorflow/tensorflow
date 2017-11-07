@@ -26,6 +26,7 @@ cc_library(
         "Eigen/Eigenvalues",
         "Eigen/QR",
         "Eigen/SVD",
+        "unsupported/Eigen/MatrixFunctions",
         "unsupported/Eigen/SpecialFunctions",
         "unsupported/Eigen/CXX11/ThreadPool",
         "unsupported/Eigen/CXX11/Tensor",

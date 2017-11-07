@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "MatrixDiag"
+  endpoint {
+    name: "linalg.diag"
+  }
+  endpoint {
+    name: "matrix_diag"
+  }
+}

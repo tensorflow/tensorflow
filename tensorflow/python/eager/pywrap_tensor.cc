@@ -720,8 +720,6 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensor_list, int slice_dim) {
             .c_str());
     return nullptr;
   }
-  // handle now owns the tensor. Release it from the smart pointer.
-  tensor.release();
 
   return EagerTensorFromHandle(handle);
 }

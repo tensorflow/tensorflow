@@ -40,8 +40,14 @@ class GraphProperties {
   Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
   // Stores `item_.graph` with the inferred output shapes to `output_graph_def`.
-  Status AnnotateOutputShapes(GraphDef* output_graph_def);
+  Status AnnotateOutputShapes(GraphDef* output_graph_def) const;
 
+  // Return the properties of node inputs/outputs, including data types and
+  // shapes. Note that the dimensions in the shapes can be negative. We use the
+  // -1 value to denote that we don't know anything about a dimension. We use
+  // values strictly less than -1 to encode symbolic dimensions: although we
+  // don't know the actual value of the symbolic dimension, we know that all the
+  // dimensions denoted by the same negative value are the equal.
   bool HasInputProperties(const string& name) const;
   bool HasOutputProperties(const string& name) const;
   const std::vector<OpInfo::TensorProperties>& GetInputProperties(
@@ -51,7 +57,9 @@ class GraphProperties {
 
   static void FillTensorPropertiesFromContext(
       const shape_inference::ShapeHandle&, const DataType&,
-      shape_inference::InferenceContext*, OpInfo::TensorProperties*);
+      shape_inference::InferenceContext*,
+      std::unordered_map<const shape_inference::Dimension*, int>* dim_ids,
+      OpInfo::TensorProperties*);
 
  private:
   // Inputs

@@ -354,6 +354,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party:six.BUILD")),
   )
 
+  native.http_archive(
+      name = "absl_py",
+      urls = [
+          "https://github.com/abseil/abseil-py/archive/231e3870b976c1dc61dce1749138661d21556028.tar.gz",
+      ],
+      sha256 = "8ea2b23bfdb9ae7622f3e5d95236bc600c8d8509a2f38c84732b3145585d4f73",
+      strip_prefix = "abseil-py-231e3870b976c1dc61dce1749138661d21556028",
+  )
+
   native.new_http_archive(
       name = "org_python_pypi_backports_weakref",
       urls = [
@@ -413,11 +422,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@protobuf_archive//:protobuf",
   )
 
-  native.bind(
-      name = "protobuf_headers",
-      actual = "@protobuf_archive//:protobuf_headers",
-  )
-
   # We need to import the protobuf library under the names com_google_protobuf
   # and com_google_protobuf_cc to enable proto_library support in bazel.
   # Unfortunately there is no way to alias http_archives at the moment.
@@ -444,11 +448,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "nsync",
       urls = [
-          "https://mirror.bazel.build/github.com/google/nsync/archive/839fcc53ff9be58218ed55397deb3f8376a1444e.tar.gz",
-          # "https://github.com/google/nsync/archive/839fcc53ff9be58218ed55397deb3f8376a1444e.tar.gz",
+          "https://mirror.bazel.build/github.com/google/nsync/archive/4fc8ff3e7626c5f24bc9674438d8257f0ffc226c.tar.gz",
+          # "https://github.com/google/nsync/archive/4fc8ff3e7626c5f24bc9674438d8257f0ffc226c.tar.gz",
       ],
-      sha256 = "124d105edb0313ef2d7f5bb86ec94d9f8de95479e55641c4254ffa8f795e9b37",
-      strip_prefix = "nsync-839fcc53ff9be58218ed55397deb3f8376a1444e",
+      sha256 = "ffbbe828f3d0bef75462e34801de5cea31d10aa63eaa42a4ed74c46521bdfd58",
+      strip_prefix = "nsync-4fc8ff3e7626c5f24bc9674438d8257f0ffc226c",
   )
 
   native.http_archive(
@@ -530,21 +534,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@grpc//third_party/nanopb:nanopb",
   )
 
-  native.http_archive(
+  patched_http_archive(
       name = "grpc",
       urls = [
-          # "https://mirror.bazel.build/github.com/grpc/grpc/archive/6da4f51e06f4077af5beb057ec5316c4ed5229ee.tar.gz",
-          "https://github.com/grpc/grpc/archive/6da4f51e06f4077af5beb057ec5316c4ed5229ee.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
+          # "https://github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
       ],
-     sha256 = "0247b999561d84042e9010a7d210185e013ec3b5be163b4b65012cd1c6e39589",
-     strip_prefix = "grpc-6da4f51e06f4077af5beb057ec5316c4ed5229ee",
-  )
-
-  # gRPC wants the existence of a cares dependence but its contents are not
-  # actually important since we have set GRPC_ARES=0 in tools/bazel.rc
-  native.bind(
-      name = "cares",
-      actual = "@grpc//third_party/nanopb:nanopb",
+      sha256 = "2004635e6a078acfac8ffa71738397796be4f8fb72f572cc44ecee5d99511d9f",
+      strip_prefix = "grpc-781fd6f6ea03645a520cd5c675da67ab61f87e4b",
+      patch_file = str(Label("//third_party/grpc:grpc.patch")),
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's

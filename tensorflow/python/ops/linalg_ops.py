@@ -30,6 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated_args
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -438,7 +439,10 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 
 # pylint: disable=redefined-builtin
-def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
+def norm(tensor, ord='euclidean', axis=None, keepdims=None, name=None,
+         keep_dims=None):
   r"""Computes the norm of vectors, matrices, and tensors.
 
   This function can compute several different vector norms (the 1-norm, the
@@ -471,13 +475,13 @@ def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
       can be either a matrix or a batch of matrices at runtime, pass
       `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
       computed.
-    keep_dims: If True, the axis indicated in `axis` are kept with size 1.
+    keepdims: If True, the axis indicated in `axis` are kept with size 1.
       Otherwise, the dimensions in `axis` are removed from the output shape.
     name: The name of the op.
 
   Returns:
     output: A `Tensor` of the same type as tensor, containing the vector or
-      matrix norms. If `keep_dims` is True then the rank of output is equal to
+      matrix norms. If `keepdims` is True then the rank of output is equal to
       the rank of `tensor`. Otherwise, if `axis` is none the output is a scalar,
       if `axis` is an integer, the rank of `output` is one less than the rank
       of `tensor`, if `axis` is a 2-tuple the rank of `output` is two less
@@ -496,6 +500,13 @@ def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
      higher order tensors.
   @end_compatibility
   """
+
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
 
   is_matrix_norm = ((isinstance(axis, tuple) or isinstance(axis, list)) and
                     len(axis) == 2)
@@ -528,25 +539,25 @@ def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
       # matrices.
       result = math_ops.sqrt(
           math_ops.reduce_sum(
-              tensor * math_ops.conj(tensor), axis, keep_dims=True))
+              tensor * math_ops.conj(tensor), axis, keepdims=True))
     else:
       result = math_ops.abs(tensor)
       if ord == 1:
         sum_axis = None if axis is None else axis[0]
-        result = math_ops.reduce_sum(result, sum_axis, keep_dims=True)
+        result = math_ops.reduce_sum(result, sum_axis, keepdims=True)
         if is_matrix_norm:
-          result = math_ops.reduce_max(result, axis[-1], keep_dims=True)
+          result = math_ops.reduce_max(result, axis[-1], keepdims=True)
       elif ord == np.inf:
         if is_matrix_norm:
-          result = math_ops.reduce_sum(result, axis[1], keep_dims=True)
+          result = math_ops.reduce_sum(result, axis[1], keepdims=True)
         max_axis = None if axis is None else axis[0]
-        result = math_ops.reduce_max(result, max_axis, keep_dims=True)
+        result = math_ops.reduce_max(result, max_axis, keepdims=True)
       else:
         # General p-norms (positive p only)
         result = math_ops.pow(
             math_ops.reduce_sum(
-                math_ops.pow(result, ord), axis, keep_dims=True), 1.0 / ord)
-    if not keep_dims:
+                math_ops.pow(result, ord), axis, keepdims=True), 1.0 / ord)
+    if not keepdims:
       result = array_ops.squeeze(result, axis)
     return result
 

@@ -104,8 +104,9 @@ PyObject* TF_OptimizeGraph(
     tensorflow::DeviceBase* cpu_device = nullptr;
     tensorflow::grappler::VirtualCluster cluster(device_map);
     tensorflow::GraphDef out_graph;
-    tensorflow::Status status = tensorflow::grappler::RunMetaOptimizer(
-        *grappler_item, rewriter_config, cpu_device, &cluster, &out_graph);
+    tensorflow::grappler::MetaOptimizer optimizer(cpu_device, rewriter_config);
+    tensorflow::Status status = optimizer.Optimize(&cluster, *grappler_item, &out_graph);
+    optimizer.PrintResult();
     tensorflow::Set_TF_Status_from_Status(out_status, status);
     string out_graph_str = out_graph.SerializeAsString();
     PyObject* ret = PyBytes_FromStringAndSize(out_graph_str.data(),

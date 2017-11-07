@@ -71,6 +71,7 @@ class DimensionHandle {
   friend class ShapeInferenceTestutil;
   friend class ::tensorflow::ShapeRefinerTest;
   friend class ShapeManager;
+  friend class ::tensorflow::grappler::GraphProperties;
 
   // Intentionally copyable.
 };
