@@ -363,7 +363,7 @@ class DataFeeder(object):
 
     if x_is_dict:
       num_samples = list(self._x.values())[0].shape[0]
-    elif is_tensor(self._x)
+    elif is_tensor(self._x):
       num_samples = self._x.shape[0].value  # shape will be a Dimension, extract an int
     else:
       num_samples = self._x.shape[0]
