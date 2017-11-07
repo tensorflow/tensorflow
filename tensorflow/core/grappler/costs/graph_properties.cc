@@ -394,6 +394,7 @@ Status GraphProperties::InferStatically() {
     } while (!done);
   }
 
+  std::unordered_map<const shape_inference::Dimension*, int> dim_ids;
   for (const Node* const node : graph.nodes()) {
     VLOG(1) << "<Node> " << node->name();
     auto ctx = shape_refiner.GetContext(node);
@@ -412,7 +413,7 @@ Status GraphProperties::InferStatically() {
       input_properties.resize(ctx->num_inputs());
       for (int i = 0; i < ctx->num_inputs(); ++i) {
         FillTensorPropertiesFromContext(ctx->input(i), node->input_type(i), ctx,
-                                        &input_properties[i]);
+                                        &dim_ids, &input_properties[i]);
       }
       for (const auto& edge : node->in_edges()) {
         if (!edge->src()->IsConstant()) {
@@ -439,7 +440,7 @@ Status GraphProperties::InferStatically() {
       output_properties.resize(ctx->num_outputs());
       for (int i = 0; i < ctx->num_outputs(); ++i) {
         FillTensorPropertiesFromContext(ctx->output(i), node->output_type(i),
-                                        ctx, &output_properties[i]);
+                                        ctx, &dim_ids, &output_properties[i]);
       }
     }
   }
@@ -458,7 +459,7 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return InferFromCostGraph(metadata.cost_graph());
 }
 
-Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) {
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
   *output_graph_def = item_.graph;
   for (int i = 0; i < output_graph_def->node_size(); i++) {
     auto node = output_graph_def->mutable_node(i);
@@ -533,6 +534,7 @@ GraphProperties::GetOutputProperties(const string& node_name) const {
 
 void GraphProperties::FillTensorPropertiesFromContext(
     const ShapeHandle& shape, const DataType& type, InferenceContext* ctx,
+    std::unordered_map<const shape_inference::Dimension*, int>* dim_ids,
     OpInfo::TensorProperties* properties) {
   properties->set_dtype(type);
   if (!ctx->RankKnown(shape)) {
@@ -541,6 +543,17 @@ void GraphProperties::FillTensorPropertiesFromContext(
     for (int j = 0; j < ctx->Rank(shape); ++j) {
       shape_inference::DimensionHandle dim = ctx->Dim(shape, j);
       int64 d = ctx->Value(dim);
+      // Assign a negative id to unknown dimensions, starting at -2 (the -1 id
+      // reserved by TensorFlow).
+      if (d < 0) {
+        auto it = dim_ids->find(dim.ptr_);
+        if (it != dim_ids->end()) {
+          d = it->second;
+        } else {
+          d = -(dim_ids->size() + 2);
+          dim_ids->emplace(dim.ptr_, d);
+        }
+      }
       properties->mutable_shape()->add_dim()->set_size(d);
     }
   }

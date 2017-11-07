@@ -242,28 +242,17 @@ class GraphDefBuilderWrapper {
 // TODO(mrry): We will probably need to support more of
 // OpKernelContext here. For example, should allocation be handled by
 // the IteratorContext?
-// TODO(mrry): We will need to fabricate step IDs for calls to ops
-// that are not nested within a particular step.
 // TODO(mrry): We're making some daring assumptions about the lifetime
-// of the FunctionLibraryRuntime and runner passed in here. Once
-// created, a FunctionLibraryRuntime should stay alive for the
-// remainder of a session, so we copy the pointer. A runner will be
-// deleted when the original step ends, but all existing runners only
-// close over session-lifetime (or longer-lived) state, so we can make
-// a copy of the function. There's nothing in the definition of either
-// class to guarantee that what we are doing is safe. We should
-// formalize the properties here.
+// of the runner passed in here. A runner will be deleted when the original
+// step ends, but all existing runners only close over session-lifetime (or
+// longer-lived) state, so we can make a copy of the function. There's nothing
+// in the definition of the API from which we took the runner to guarantee that
+// what we are doing is safe. We should formalize the properties here.
 class IteratorContext {
  public:
   struct Params {
     // Interface to operating system functionality.
     Env* env;
-
-    // The step being executed.
-    int64 step_id = 0;
-
-    // Shared resources accessible by this iterator invocation.
-    ResourceMgr* resource_manager = nullptr;
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
@@ -273,13 +262,9 @@ class IteratorContext {
 
   Env* env() const { return params_.env; }
 
-  int64 step_id() const { return params_.step_id; }
-
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
   }
-
-  ResourceMgr* resource_manager() const { return params_.resource_manager; }
 
  private:
   Params params_;
