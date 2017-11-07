@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -1215,21 +1214,11 @@ class SumProcessor : public AgnosticNodeProcessor {
   }
 };
 
-struct TuningConfig {
-  // If true, do not use the NHWC GEMM implementation. When filter size is
-  // one or filter size is equal to input image size,
-  // the NHWC implementation of Conv2D, Conv2DBackpropInput, and
-  // Conv2DBackpropFilter will use a specialized GEMM implementation, which is
-  // usually faster than the NCHW implementation. The downside is that this
-  // might result in more non-cancellable layout conversion nodes (implemented
-  // by the Transpose op).
-  bool no_gemm;
-};
-
 class DataLayoutOptimizer : GraphProcessor {
  public:
   explicit DataLayoutOptimizer(const string& default_device, GraphDef* graph,
-                               NodeMap* node_map, TuningConfig config)
+                               NodeMap* node_map,
+                               LayoutOptimizer::TuningConfig config)
       : GraphProcessor(graph, node_map),
         default_device_(default_device),
         config_(config) {}
@@ -1414,7 +1403,7 @@ class DataLayoutOptimizer : GraphProcessor {
   }
 
   string default_device_;
-  TuningConfig config_;
+  LayoutOptimizer::TuningConfig config_;
 };
 
 int GetNumTranspose(const GraphDef& graph) {
@@ -1426,6 +1415,22 @@ int GetNumTranspose(const GraphDef& graph) {
   }
   LOG(INFO) << "Number of Transpose nodes: " << number;
   return number;
+}
+
+Status LayoutOptimizer::Tune(const GrapplerItem& item,
+                             const GraphProperties& graph_properties,
+                             const string& default_device,
+                             const TuningConfig& config, GraphDef* output) {
+  auto status = graph_properties.AnnotateOutputShapes(output);
+  if (!status.ok()) {
+    *output = item.graph;
+    return status;
+  }
+  NodeMap node_map(output);
+  DataLayoutOptimizer layout_optimizer(default_device, output, &node_map,
+                                       config);
+  status = layout_optimizer.Optimize();
+  return status;
 }
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -1445,11 +1450,6 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     *output = item.graph;
     return status;
   }
-  status = graph_properties.AnnotateOutputShapes(output);
-  if (!status.ok()) {
-    *output = item.graph;
-    return status;
-  }
 
   TuningConfig config;
   config.no_gemm = false;
@@ -1459,19 +1459,14 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       default_device = cluster->GetDevices().begin()->first;
     }
   }
-  std::unique_ptr<NodeMap> node_map(new NodeMap(output));
-  std::unique_ptr<DataLayoutOptimizer> layout_optimizer(
-      new DataLayoutOptimizer(default_device, output, node_map.get(), config));
-  status = layout_optimizer->Optimize();
+
+  status = Tune(item, graph_properties, default_device, config, output);
   // This is based on an empirical observation that if the introduced Transpose
   // nodes is more than 30, not using GEMM implementation would result in better
   // performance.
   if (status.ok() && GetNumTranspose(*output) > 30) {
     config.no_gemm = true;
-    node_map.reset(new NodeMap(output));
-    layout_optimizer.reset(new DataLayoutOptimizer(default_device, output,
-                                                   node_map.get(), config));
-    status = layout_optimizer->Optimize();
+    status = Tune(item, graph_properties, default_device, config, output);
   }
 
   if (!status.ok()) {

@@ -40,7 +40,7 @@ class GraphProperties {
   Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
   // Stores `item_.graph` with the inferred output shapes to `output_graph_def`.
-  Status AnnotateOutputShapes(GraphDef* output_graph_def);
+  Status AnnotateOutputShapes(GraphDef* output_graph_def) const;
 
   // Return the properties of node inputs/outputs, including data types and
   // shapes. Note that the dimensions in the shapes can be negative. We use the
