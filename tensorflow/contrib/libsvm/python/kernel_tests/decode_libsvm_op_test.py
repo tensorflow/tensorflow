@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import sys
+
 from tensorflow.contrib.libsvm.python.ops import libsvm_ops
 from tensorflow.python.platform import test
 
@@ -32,6 +32,12 @@ class DecodeLibsvmOpTest(test.TestCase):
                  "1 2:2.5 3:0.1 5:0.503",
                  "2 3:2.5 2:0.1 1:0.105"]
       label, feature = libsvm_ops.decode_libsvm(content, num_features=6)
+
+      # shape inference
+      self.assertAllEqual(label.get_shape().as_list(), [3])
+      self.assertAllEqual(feature.get_shape().as_list(), [3, 6])
+
+      # sess.run()
       label, feature = sess.run([label, feature])
       self.assertAllEqual(label, [1, 1, 2])
       self.assertAllClose(feature, [[0, 3.4, 0.5, 0, 0.231, 0],
