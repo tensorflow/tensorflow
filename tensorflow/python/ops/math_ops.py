@@ -89,6 +89,7 @@ See the @{$python/math_ops} guide.
 @@matrix_inverse
 @@cholesky
 @@cholesky_solve
+@@matrix_exponential
 @@matrix_solve
 @@matrix_triangular_solve
 @@matrix_solve_ls

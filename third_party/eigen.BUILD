@@ -36,6 +36,7 @@ EIGEN_FILES = [
     "unsupported/Eigen/src/KroneckerProduct/**",
     "unsupported/Eigen/MatrixFunctions",
     "unsupported/Eigen/SpecialFunctions",
+    "unsupported/Eigen/src/MatrixFunctions/**",
     "unsupported/Eigen/src/SpecialFunctions/**",
 ]
 

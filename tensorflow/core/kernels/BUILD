@@ -2255,6 +2255,7 @@ cc_library(
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
+        ":matrix_exponential_op",
         ":matrix_inverse_op",
         ":matrix_solve_ls_op",
         ":matrix_solve_op",
@@ -2319,6 +2320,12 @@ tf_kernel_library(
     deps = if_cuda([
         ":fill_functor",
     ]) + LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "matrix_exponential_op",
+    prefix = "matrix_exponential_op",
+    deps = LINALG_DEPS,
 )
 
 tf_kernel_library(
