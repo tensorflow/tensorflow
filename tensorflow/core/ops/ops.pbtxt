@@ -13129,6 +13129,33 @@ op {
   description: "This operation returns a tensor with the `diagonal` part\nof the batched `input`. The `diagonal` part is computed as follows:\n\nAssume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a\ntensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:\n\n`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.\n\nThe input must be at least a matrix.\n\nFor example:\n\n```\n# \'input\' is [[[1, 0, 0, 0]\n               [0, 2, 0, 0]\n               [0, 0, 3, 0]\n               [0, 0, 0, 4]],\n              [[5, 0, 0, 0]\n               [0, 6, 0, 0]\n               [0, 0, 7, 0]\n               [0, 0, 0, 8]]]\n\nand input.shape = (2, 4, 4)\n\ntf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nwhich has shape (2, 4)\n```"
 }
 op {
+  name: "MatrixExponential"
+  input_arg {
+    name: "input"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M, M]`.\n\n@compatibility(scipy)\nEquivalent to scipy.linalg.expm\n@end_compatibility"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the matrix exponential of one or more square matrices:"
+  description: "exp(A) = \\sum_{n=0}^\\infty A^n/n!\n\nThe exponential is computed using a combination of the scaling and squaring\nmethod and the Pade approximation. Details can be founds in:\nNicholas J. Higham, \"The scaling and squaring method for the matrix exponential\nrevisited,\" SIAM J. Matrix Anal. Applic., 26:1179-1193, 2005.\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the exponential for all input submatrices `[..., :, :]`."
+}
+op {
   name: "MatrixInverse"
   input_arg {
     name: "input"
