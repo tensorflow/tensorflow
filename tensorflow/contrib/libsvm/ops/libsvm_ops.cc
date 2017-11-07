@@ -20,6 +20,7 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("DecodeLibsvm")
     .Input("input: string")
@@ -27,7 +28,19 @@ REGISTER_OP("DecodeLibsvm")
     .Output("feature: dtype")
     .Attr("dtype: {float, double, int32, int64} = DT_FLOAT")
     .Attr("num_features: int >= 1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(0));
+
+      int32 num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(c->input(0), c->Vector(num_features), &out));
+      c->set_output(1, out);
+
+      return Status::OK();
+    })
+
     .Doc(R"doc(
 Convert LibSVM input to tensors. The output consists of
 a label and a feature tensor. The shape of the label tensor
