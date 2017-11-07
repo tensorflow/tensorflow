@@ -44,11 +44,15 @@ from tensorflow.python.keras._impl.keras.backend import conv1d
 from tensorflow.python.keras._impl.keras.backend import conv2d
 from tensorflow.python.keras._impl.keras.backend import conv2d_transpose
 from tensorflow.python.keras._impl.keras.backend import conv3d
+from tensorflow.python.keras._impl.keras.backend import conv3d_transpose
 from tensorflow.python.keras._impl.keras.backend import cos
 from tensorflow.python.keras._impl.keras.backend import count_params
 from tensorflow.python.keras._impl.keras.backend import ctc_batch_cost
 from tensorflow.python.keras._impl.keras.backend import ctc_decode
 from tensorflow.python.keras._impl.keras.backend import ctc_label_dense_to_sparse
+from tensorflow.python.keras._impl.keras.backend import cumprod
+from tensorflow.python.keras._impl.keras.backend import cumsum
+from tensorflow.python.keras._impl.keras.backend import depthwise_conv2d
 from tensorflow.python.keras._impl.keras.backend import dot
 from tensorflow.python.keras._impl.keras.backend import dropout
 from tensorflow.python.keras._impl.keras.backend import dtype
@@ -72,6 +76,7 @@ from tensorflow.python.keras._impl.keras.backend import gradients
 from tensorflow.python.keras._impl.keras.backend import greater
 from tensorflow.python.keras._impl.keras.backend import greater_equal
 from tensorflow.python.keras._impl.keras.backend import hard_sigmoid
+from tensorflow.python.keras._impl.keras.backend import identity
 from tensorflow.python.keras._impl.keras.backend import image_data_format
 from tensorflow.python.keras._impl.keras.backend import in_test_phase
 from tensorflow.python.keras._impl.keras.backend import in_top_k
@@ -82,7 +87,10 @@ from tensorflow.python.keras._impl.keras.backend import l2_normalize
 from tensorflow.python.keras._impl.keras.backend import learning_phase
 from tensorflow.python.keras._impl.keras.backend import less
 from tensorflow.python.keras._impl.keras.backend import less_equal
+from tensorflow.python.keras._impl.keras.backend import local_conv1d
+from tensorflow.python.keras._impl.keras.backend import local_conv2d
 from tensorflow.python.keras._impl.keras.backend import log
+from tensorflow.python.keras._impl.keras.backend import logsumexp
 from tensorflow.python.keras._impl.keras.backend import manual_variable_initialization
 from tensorflow.python.keras._impl.keras.backend import map_fn
 from tensorflow.python.keras._impl.keras.backend import max
@@ -147,6 +155,7 @@ from tensorflow.python.keras._impl.keras.backend import sum
 from tensorflow.python.keras._impl.keras.backend import switch
 from tensorflow.python.keras._impl.keras.backend import tanh
 from tensorflow.python.keras._impl.keras.backend import temporal_padding
+from tensorflow.python.keras._impl.keras.backend import tile
 from tensorflow.python.keras._impl.keras.backend import to_dense
 from tensorflow.python.keras._impl.keras.backend import transpose
 from tensorflow.python.keras._impl.keras.backend import truncated_normal
