@@ -115,7 +115,6 @@ void RdmaMgr::SetupChannels() {
   }
 }
 
-
 // Check connectivity by pinging every channel
 bool RdmaMgr::ConnectivityCheck() {
   int i, rcnt = 0, scnt = 0;

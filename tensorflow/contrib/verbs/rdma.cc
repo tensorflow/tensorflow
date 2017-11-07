@@ -577,7 +577,7 @@ int RdmaChannel::PingPostRecv() {
 int RdmaChannel::PingPostSend() {
   struct ibv_send_wr wr, *bad_wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr_id = (uint64_t)this;
+  wr.wr_id = (uint64_t) this;
   wr.sg_list = &ping_sge_list_;
   wr.num_sge = 1;
   wr.opcode = IBV_WR_SEND;
@@ -593,7 +593,7 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
   struct ibv_sge list;
 
   mr_ = ibv_reg_mr(adapter_->pd_, ping_buff_, PingBuffSize,
-                                 IBV_ACCESS_LOCAL_WRITE);
+                   IBV_ACCESS_LOCAL_WRITE);
   CHECK(mr_) << "Failed to register memory region";
 
   memset(&list, 0, sizeof(list));
@@ -675,9 +675,8 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
       buffer_name_index_table_.insert({buffer_names[i], index});
     }
   }
-  CHECK(PingPostRecv() == 0) << "Couldn't post receive from "
-                             << remote_name_ << " with error "
-                             << std::strerror(errno);
+  CHECK(PingPostRecv() == 0) << "Couldn't post receive from " << remote_name_
+                             << " with error " << std::strerror(errno);
 }
 
 RdmaChannel::~RdmaChannel() {
