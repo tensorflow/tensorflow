@@ -119,6 +119,7 @@ def input_fn(data_file, num_epochs, shuffle, batch_size):
   assert tf.gfile.Exists(data_file), (
       '%s not found. Please make sure you have either run data_download.py or '
       'set both arguments --train_data and --test_data.' % data_file)
+
   def parse_csv(value):
     print('Parsing', data_file)
     columns = tf.decode_csv(value, record_defaults=_CSV_COLUMN_DEFAULTS)
@@ -127,24 +128,21 @@ def input_fn(data_file, num_epochs, shuffle, batch_size):
     return features, tf.equal(labels, '>50K')
 
   # Extract lines from input files using the Dataset API.
-  dataset = tf.contrib.data.TextLineDataset(data_file)
-  dataset = dataset.map(parse_csv, num_threads=5)
+  dataset = tf.data.TextLineDataset(data_file)
 
-  # Apply transformations to the Dataset
-  dataset = dataset.batch(batch_size)
+  if shuffle:
+    dataset = dataset.shuffle(buffer_size=_SHUFFLE_BUFFER)
+
+  dataset = dataset.map(parse_csv, num_parallel_calls=5)
+
+  # We call repeat after shuffling, rather than before, to prevent separate
+  # epochs from blending together.
   dataset = dataset.repeat(num_epochs)
+  dataset = dataset.batch(batch_size)
 
-  # Input function that is called by the Estimator
-  def _input_fn():
-    if shuffle:
-      # Apply shuffle transformation to re-shuffle the dataset in each call.
-      shuffled_dataset = dataset.shuffle(buffer_size=100000)
-      iterator = shuffled_dataset.make_one_shot_iterator()
-    else:
-      iterator = dataset.make_one_shot_iterator()
-    features, labels = iterator.get_next()
-    return features, labels
-  return _input_fn
+  iterator = dataset.make_one_shot_iterator()
+  features, labels = iterator.get_next()
+  return features, labels
 ```
 
 ## Selecting and Engineering Features for the Model
@@ -331,7 +329,7 @@ crossed_columns = [
 
 model_dir = tempfile.mkdtemp()
 model = tf.estimator.LinearClassifier(
-        model_dir=model_dir, feature_columns=base_columns + crossed_columns)
+    model_dir=model_dir, feature_columns=base_columns + crossed_columns)
 ```
 
 The model also automatically learns a bias term, which controls the prediction
@@ -346,30 +344,22 @@ train the model. Training a model is just a single command using the
 tf.estimator API:
 
 ```python
-model.train(input_fn=input_fn(
-      data_file=train_data,
-      num_epochs=num_epochs,
-      shuffle=True,
-      batch_size=batch_size))
+model.train(input_fn=lambda: input_fn(train_data, num_epochs, True, batch_size))
 ```
 
 After the model is trained, we can evaluate how good our model is at predicting
 the labels of the holdout data:
 
 ```python
-results = model.evaluate(input_fn=input_fn(
-      data_file=test_data,
-      num_epochs=1,
-      shuffle=False,
-      batch_size=batch_size))
-print('model directory = %s' % model_dir)
+results = model.evaluate(input_fn=lambda: input_fn(
+    test_data, 1, False, batch_size))
 for key in sorted(results):
   print('%s: %s' % (key, results[key]))
 ```
 
-The first line of the output should be something like `accuracy: 0.83557522`,
-which means the accuracy is 83.6%. Feel free to try more features and
-transformations and see if you can do even better!
+The first line of the final output should be something like
+`accuracy: 0.83557522`, which means the accuracy is 83.6%. Feel free to try more
+features and transformations and see if you can do even better!
 
 If you'd like to see a working end-to-end example, you can download our
 [example code](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py)
@@ -415,17 +405,17 @@ you a desirable model size.
 Finally, let's take a minute to talk about what the Logistic Regression model
 actually looks like in case you're not already familiar with it. We'll denote
 the label as \\(Y\\), and the set of observed features as a feature vector
-\\(\mathbf{x}=[x_1, x_2, ..., x_d]\\). We define \\(Y=1\\) if an individual earned >
-50,000 dollars and \\(Y=0\\) otherwise. In Logistic Regression, the probability of
-the label being positive (\\(Y=1\\)) given the features \\(\mathbf{x}\\) is given
-as:
+\\(\mathbf{x}=[x_1, x_2, ..., x_d]\\). We define \\(Y=1\\) if an individual
+earned > 50,000 dollars and \\(Y=0\\) otherwise. In Logistic Regression, the
+probability of the label being positive (\\(Y=1\\)) given the features
+\\(\mathbf{x}\\) is given as:
 
 $$ P(Y=1|\mathbf{x}) = \frac{1}{1+\exp(-(\mathbf{w}^T\mathbf{x}+b))}$$
 
-where \\(\mathbf{w}=[w_1, w_2, ..., w_d]\\) are the model weights for the features
-\\(\mathbf{x}=[x_1, x_2, ..., x_d]\\). \\(b\\) is a constant that is often called
-the **bias** of the model. The equation consists of two parts—A linear model and
-a logistic function:
+where \\(\mathbf{w}=[w_1, w_2, ..., w_d]\\) are the model weights for the
+features \\(\mathbf{x}=[x_1, x_2, ..., x_d]\\). \\(b\\) is a constant that is
+often called the **bias** of the model. The equation consists of two parts—A
+linear model and a logistic function:
 
 *   **Linear Model**: First, we can see that \\(\mathbf{w}^T\mathbf{x}+b = b +
     w_1x_1 + ... +w_dx_d\\) is a linear model where the output is a linear
@@ -433,16 +423,17 @@ a logistic function:
     prediction one would make without observing any features. The model weight
     \\(w_i\\) reflects how the feature \\(x_i\\) is correlated with the positive
     label. If \\(x_i\\) is positively correlated with the positive label, the
-    weight \\(w_i\\) increases, and the probability \\(P(Y=1|\mathbf{x})\\) will be
-    closer to 1. On the other hand, if \\(x_i\\) is negatively correlated with the
-    positive label, then the weight \\(w_i\\) decreases and the probability
-    \\(P(Y=1|\mathbf{x})\\) will be closer to 0.
+    weight \\(w_i\\) increases, and the probability \\(P(Y=1|\mathbf{x})\\) will
+    be closer to 1. On the other hand, if \\(x_i\\) is negatively correlated
+    with the positive label, then the weight \\(w_i\\) decreases and the
+    probability \\(P(Y=1|\mathbf{x})\\) will be closer to 0.
 
 *   **Logistic Function**: Second, we can see that there's a logistic function
-    (also known as the sigmoid function) \\(S(t) = 1/(1+\exp(-t))\\) being applied
-    to the linear model. The logistic function is used to convert the output of
-    the linear model \\(\mathbf{w}^T\mathbf{x}+b\\) from any real number into the
-    range of \\([0, 1]\\), which can be interpreted as a probability.
+    (also known as the sigmoid function) \\(S(t) = 1/(1+\exp(-t))\\) being
+    applied to the linear model. The logistic function is used to convert the
+    output of the linear model \\(\mathbf{w}^T\mathbf{x}+b\\) from any real
+    number into the range of \\([0, 1]\\), which can be interpreted as a
+    probability.
 
 Model training is an optimization problem: The goal is to find a set of model
 weights (i.e. model parameters) to minimize a **loss function** defined over the
