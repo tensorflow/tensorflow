@@ -73,7 +73,7 @@ template<typename T> \
 class NAME : public Vertex { \
 public: \
   Input<Vector<T>> a; \
-  Input<Vector<T>> b; \
+  Input<T> b; \
   Output<Vector<T>> out; \
   T initval; \
 \
@@ -85,7 +85,7 @@ public: \
       } \
     } \
     for (unsigned i = 0; i < out.size(); ++i) { \
-      out[i] = (i == selected) ? b[0] : initval; \
+      out[i] = (i == selected) ? b : initval; \
     } \
     return true; \
   } \
