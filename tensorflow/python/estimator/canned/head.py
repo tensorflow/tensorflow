@@ -193,59 +193,6 @@ class _Head(object):
     raise NotImplementedError('Calling an abstract method.')
 
 
-def _maybe_expand_dim(tensor):
-  """Expand the dim of `tensor` with static rank 1."""
-  with ops.name_scope(None, 'maybe_expand_dim', (tensor,)):
-    static_shape = tensor.shape
-    if static_shape is None:
-      return tensor
-
-    return (array_ops.expand_dims(tensor, -1) if static_shape.ndims == 1
-            else tensor)
-
-
-def _check_and_reshape_dense_labels(labels, expected_labels_dimension):
-  """Checks dense labels type and shape and reshapes to 2D Tensor."""
-  if labels is None:
-    raise ValueError(
-        'You must provide a labels Tensor. Given: None. '
-        'Suggested troubleshooting steps: Check that your data contain '
-        'your label feature. Check that your input_fn properly parses and '
-        'returns labels.')
-  with ops.name_scope(None, 'labels', (labels,)) as scope:
-    labels = sparse_tensor.convert_to_tensor_or_sparse_tensor(labels)
-    if isinstance(labels, sparse_tensor.SparseTensor):
-      raise ValueError(
-          'SparseTensor labels are not supported. '
-          'labels must be a Tensor of shape [batch_size, %s]. '
-          'Suggested Fix (1): Check the label feature in your data. '
-          'Each example must contain %s value(s). If not, your choice of label '
-          'was probably incorrect. '
-          'Suggested Fix (2): In your input_fn, use '
-          'tf.sparse_tensor_to_dense() to turn labels into a Tensor.'
-          '' % (expected_labels_dimension, expected_labels_dimension))
-    labels = _maybe_expand_dim(labels)
-    labels_shape = array_ops.shape(labels)
-    err_msg = 'labels shape must be [batch_size, {}]'.format(
-        expected_labels_dimension)
-    assert_rank = check_ops.assert_rank(labels, 2, message=err_msg)
-    with ops.control_dependencies([assert_rank]):
-      static_shape = labels.shape
-      if static_shape is not None:
-        dim1 = static_shape[1]
-        if (dim1 is not None) and (dim1 != expected_labels_dimension):
-          raise ValueError(
-              'Mismatched label shape. '
-              'Classifier configured with n_classes=%s.  Received %s. '
-              'Suggested Fix: check your n_classes argument to the estimator '
-              'and/or the shape of your label.' %
-              (expected_labels_dimension, dim1))
-      assert_dimension = check_ops.assert_equal(
-          expected_labels_dimension, labels_shape[1], message=err_msg)
-      with ops.control_dependencies([assert_dimension]):
-        return array_ops.identity(labels, name=scope)
-
-
 def _check_dense_labels_match_logits_and_reshape(
     labels, logits, expected_labels_dimension):
   """Checks that labels shape matches logits and reshapes if needed.
@@ -360,6 +307,7 @@ def _check_weights_match_logits_and_reshape(weights, logits):
       return array_ops.identity(weights, name=scope)
 
 
+# TODO(roumposg): Delete once all heads support multi-dim input.
 def _check_logits(logits, expected_logits_dimension):
   """Check logits type and shape."""
   with ops.name_scope(None, 'logits', (logits,)) as scope:
@@ -736,7 +684,20 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
 
   This head uses `sigmoid_cross_entropy_with_logits` loss.
 
-  This head expects to be fed float labels of shape `(batch_size, 1)`.
+  The head expects `logits` with shape `[D0, D1, ... DN, 1]`.
+  In many applications, the shape is `[batch_size, 1]`.
+
+  `labels` must be a dense `Tensor` with shape matching `logits`, namely
+  `[D0, D1, ... DN, 1]`. If `label_vocabulary` given, `labels` must be a string
+  `Tensor` with values from the vocabulary. If `label_vocabulary` is not given,
+  `labels` must be float `Tensor` with values in the interval `[0, 1]`.
+
+  If `weight_column` is specified, weights must be of shape
+  `[D0, D1, ... DN]`, or `[D0, D1, ... DN, 1]`.
+
+  The loss is the weighted sum over the input dimensions. Namely, if the input
+  labels have shape `[batch_size, 1]`, the loss is the weighted sum over
+  `batch_size`.
 
   Args:
     weight_column: A string or a `_NumericColumn` created by
@@ -880,7 +841,9 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode  # Unused for this head.
-    labels = _check_and_reshape_dense_labels(labels, self.logits_dimension)
+    logits = ops.convert_to_tensor(logits)
+    labels = _check_dense_labels_match_logits_and_reshape(
+        labels=labels, logits=logits, expected_labels_dimension=1)
     if self._label_vocabulary is not None:
       labels = lookup_ops.index_table_from_tensor(
           vocabulary_list=tuple(self._label_vocabulary),
@@ -890,6 +853,9 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
     unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
         labels=labels, logits=logits)
     weights = _weights(features, self._weight_column)
+    if self._weight_column is not None:
+      weights = _check_weights_match_logits_and_reshape(
+          weights=weights, logits=logits)
     weighted_sum_loss = losses.compute_weighted_loss(
         unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
     # _weights() can return 1.
@@ -907,14 +873,16 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
     with ops.name_scope(self._name, 'head'):
       with ops.name_scope(None, 'predictions', (logits,)):
         pred_keys = prediction_keys.PredictionKeys
-        logits = _check_logits(logits, self.logits_dimension)
+        logits = _check_logits_final_dim(logits, self.logits_dimension)
         logistic = math_ops.sigmoid(logits, name=pred_keys.LOGISTIC)
         two_class_logits = array_ops.concat(
-            (array_ops.zeros_like(logits), logits), 1, name='two_class_logits')
+            (array_ops.zeros_like(logits), logits),
+            axis=-1, name='two_class_logits')
         probabilities = nn.softmax(
             two_class_logits, name=pred_keys.PROBABILITIES)
-        class_ids = array_ops.reshape(
-            math_ops.argmax(two_class_logits, axis=1), (-1, 1), name='classes')
+        class_ids = math_ops.argmax(
+            two_class_logits, axis=-1, name=pred_keys.CLASS_IDS)
+        class_ids = array_ops.expand_dims(class_ids, axis=-1)
         if self._label_vocabulary:
           table = lookup_ops.index_to_string_table_from_tensor(
               vocabulary_list=self._label_vocabulary,
@@ -950,6 +918,12 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
+        weights = _weights(features, self._weight_column)
+        # TODO(roumposg): Merge this logic inside _weights once all heads
+        # support multi-dimensional inputs.
+        if self._weight_column is not None:
+          weights = _check_weights_match_logits_and_reshape(
+              weights=weights, logits=logits)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
@@ -959,7 +933,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                 logits=logits,
                 logistic=logistic,
                 class_ids=class_ids,
-                weights=_weights(features, self._weight_column),
+                weights=weights,
                 weighted_sum_loss=weighted_sum_loss,
                 example_weight_sum=example_weight_sum))
 
