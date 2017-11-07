@@ -39,9 +39,17 @@ __global__ void BucketizeCustomKernel(const int32 size_in, const T* in,
   CUDA_1D_KERNEL_LOOP(i, size_in) {
     T value = in[i];
     int32 bucket = 0;
-    while (bucket < size_boundaries &&
-           value >= static_cast<T>(boundaries[bucket])) {
-      bucket++;
+    int32 count = size_boundaries;
+    while (count > 0) {
+      int32 l = bucket;
+      int32 step = count / 2;
+      l += step;
+      if (!(value < static_cast<T>(boundaries[l]))) {
+        bucket = ++l;
+        count -= step + 1;
+      } else {
+        count = step;
+      }
     }
     out[i] = bucket;
   }
