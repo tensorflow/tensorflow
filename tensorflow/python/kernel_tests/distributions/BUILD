@@ -183,6 +183,7 @@ cuda_py_test(
 cuda_py_test(
     name = "multinomial_test",
     srcs = ["multinomial_test.py"],
+    tags = ["manual"],  # b/69001419
     additional_deps = [
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
