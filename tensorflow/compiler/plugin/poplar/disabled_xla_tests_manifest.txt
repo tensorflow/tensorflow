@@ -131,3 +131,7 @@ LocalClientExecuteTest.NestedTupleResult POPLAR // Doesn't cope with aliasing
 LocalClientExecuteTest.TupleResultWithLayout POPLAR // Doesn't cope with aliasing
 
 LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
+
+DynamicUpdateSliceTest.Int32R1 POPLAR // Tests for invalid wrapping behaviour
+DynamicUpdateSliceTest.Int32R2 POPLAR // Tests for invalid wrapping behaviour
+DynamicUpdateSliceTest.Int32R3 POPLAR // Tests for invalid wrapping behaviour
