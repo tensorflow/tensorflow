@@ -537,30 +537,33 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
                                    " but array size is: ", tensors_.size());
   }
   size_t index_t = static_cast<size_t>(index);
-  if (is_grad_ && (index_t >= tensors_.size() || !tensors_[index].written)) {
+  if ((is_grad_ && (index_t >= tensors_.size() || !tensors_[index].written)) ||
+      (!is_grad_ && (index_t < tensors_.size() && !tensors_[index].written))) {
     // Special case returning zeros if this is a gradient read that happens
     // after a stop_gradients call with dynamic forward TensorArrays.
     // There is sometimes a race condition where the gradient is not
     // written due to stop_gradients, but is later read.
     TensorShape element_shape;
-    if (index_t < tensors_.size() && tensors_[index].shape.dims() > 0) {
+    if (is_grad_ && index_t < tensors_.size() &&
+        tensors_[index].shape.dims() > 0) {
+      // A gradient TensorArray has more specific gradient information
+      // available for each entry.  A forward TensorArray must rely on
+      // the global element_shape_ to fill in zeros on read.
       element_shape = tensors_[index].shape;
     } else if (!element_shape_.IsFullyDefined()) {
       return errors::InvalidArgument(
           "TensorArray ", handle_.vec<string>()(1),
-          ": Could not read from gradient TensorArray index ", index,
+          ": Could not read from TensorArray index ", index,
           ".  Furthermore, the element shape is not fully defined: ",
           element_shape_.DebugString(),
-          ".  "
-          "It is likely you are working with a resizeable TensorArray and "
-          "stop_gradients "
-          "is not allowing the gradients to be written.  If you set the full "
-          "element_shape "
-          "property on the forward TensorArray, the proper all-zeros tensor "
-          "will be "
-          "returned instead of incurring this error.");
+          ".  It is possible you are working with a resizeable TensorArray and "
+          "stop_gradients is not allowing the gradients to be written.  If you "
+          "set the full "
+          "element_shape property on the forward TensorArray, the proper "
+          "all-zeros tensor "
+          "will be returned instead of incurring this error.");
     } else {
-      DCHECK(element_shape_.AsTensorShape(&element_shape));
+      element_shape_.AsTensorShape(&element_shape);  // Always succeeds.
     }
     if (index_t >= tensors_.size()) {
       // Fill in tensors_ up to index to have known shape.
@@ -577,13 +580,6 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
   }
 
   TensorAndState& t = tensors_[index];
-
-  if (!t.written) {
-    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
-                                   ": Could not read from TensorArray index ",
-                                   index,
-                                   " because it has not yet been written to.");
-  }
 
   if (t.cleared) {
     return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
