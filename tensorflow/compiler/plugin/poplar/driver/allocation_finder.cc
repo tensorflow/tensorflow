@@ -36,12 +36,12 @@ public:
     return Status::OK();
   }
 
-  Status HandleConstant(HloInstruction* inst, const Literal& literal) override {
+  Status HandleConstant(HloInstruction* inst) override {
     allocating_instructions.push_back(inst);
     return Status::OK();
   }
 
-  Status HandleRng(HloInstruction* inst, RandomDistribution) override {
+  Status HandleRng(HloInstruction* inst) override {
     allocating_instructions.push_back(inst);
     return Status::OK();
   }
@@ -51,19 +51,12 @@ public:
     return Status::OK();
   }
 
-  Status HandleReduce(HloInstruction* inst,
-                      HloInstruction* /*arg*/,
-                      HloInstruction* /*init_value*/,
-                      tensorflow::gtl::ArraySlice<int64> /*dimensions*/,
-                      HloComputation* /*function*/) override {
+  Status HandleReduce(HloInstruction* inst) override {
     allocating_instructions.push_back(inst);
     return Status::OK();
   }
 
-  Status HandleReduceWindow(HloInstruction* inst,
-                            HloInstruction* /*operand*/,
-                            const Window& /*window*/,
-                            HloComputation* /*function*/) override {
+  Status HandleReduceWindow(HloInstruction* inst) override {
     allocating_instructions.push_back(inst);
     return Status::OK();
   }

@@ -54,9 +54,7 @@ FullVisitor::FullVisitor(poplar::Graph* graph,
                          CompilerResources& res)
         : BaseVisitor(graph, res) {}
 
-Status FullVisitor::HandleConcatenate(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   int64 dimension(inst->concatenate_dimension());
   poplar::Tensor out;
@@ -70,10 +68,7 @@ Status FullVisitor::HandleConcatenate(
   return Status::OK();
 }
 
-Status FullVisitor::HandleDot(
-        HloInstruction* inst,
-        HloInstruction* lhs,
-        HloInstruction* rhs) {
+Status FullVisitor::HandleDot(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -86,11 +81,7 @@ Status FullVisitor::HandleDot(
   return Status::OK();
 }
 
-Status FullVisitor::HandleConvolution(
-        HloInstruction* inst,
-        HloInstruction* lhs,
-        HloInstruction* rhs,
-        const Window& window) {
+Status FullVisitor::HandleConvolution(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -103,9 +94,7 @@ Status FullVisitor::HandleConvolution(
   return Status::OK();
 }
 
-Status FullVisitor::HandleReverse(
-        HloInstruction* inst,
-        HloInstruction* operand) {
+Status FullVisitor::HandleReverse(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
@@ -114,14 +103,9 @@ Status FullVisitor::HandleReverse(
   return Status::OK();
 }
 
-Status FullVisitor::HandleReduce(
-        HloInstruction* inst,
-        HloInstruction* arg,
-        HloInstruction* init_value,
-        tensorflow::gtl::ArraySlice<int64> dimensions,
-        HloComputation* function) {
+Status FullVisitor::HandleReduce(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  if (IsReducableArtithmetic(function)) {
+  if (IsReducableArtithmetic(inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleReduction(*graph_,
@@ -179,9 +163,7 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status FullVisitor::HandleSlice(
-        HloInstruction* inst,
-        HloInstruction* operand) {
+Status FullVisitor::HandleSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
@@ -213,10 +195,7 @@ Status FullVisitor::HandleSlice(
   return Status::OK();
 }
 
-Status FullVisitor::HandleDynamicSlice(
-        HloInstruction* inst,
-        HloInstruction* operand,
-        HloInstruction* start_indices) {
+Status FullVisitor::HandleDynamicSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -229,11 +208,7 @@ Status FullVisitor::HandleDynamicSlice(
   return Status::OK();
 }
 
-Status FullVisitor::HandleDynamicUpdateSlice(
-        HloInstruction* inst,
-        HloInstruction* operand,
-        HloInstruction* update,
-        HloInstruction* start_indices) {
+Status FullVisitor::HandleDynamicUpdateSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -246,13 +221,9 @@ Status FullVisitor::HandleDynamicUpdateSlice(
   return Status::OK();
 }
 
-Status FullVisitor::HandleReduceWindow(
-        HloInstruction* inst,
-        HloInstruction* operand,
-        const Window& window,
-        HloComputation* function) {
+Status FullVisitor::HandleReduceWindow(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  if (IsPoplibsPool(inst, function)) {
+  if (IsPoplibsPool(inst, inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreatePoplibsWindowReduction(*graph_,
@@ -263,7 +234,7 @@ Status FullVisitor::HandleReduceWindow(
     sequence.add(prog);
     return Status::OK();
   }
-  if (IsReducableArtithmetic(function)) {
+  if (IsReducableArtithmetic(inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleWindowReduction(*graph_,

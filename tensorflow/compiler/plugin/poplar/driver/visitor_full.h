@@ -36,27 +36,15 @@ class FullVisitor : public BaseVisitor {
 public:
   FullVisitor(poplar::Graph* graph, CompilerResources&);
 
-  Status HandleConcatenate(
-          HloInstruction* inst,
-          tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleConcatenate(HloInstruction* inst) override;
 
-  Status HandleDot(HloInstruction* inst,
-                   HloInstruction* lhs,
-                   HloInstruction* rhs) override;
+  Status HandleDot(HloInstruction* inst) override;
 
-  Status HandleConvolution(HloInstruction* inst,
-                           HloInstruction* lhs,
-                           HloInstruction* rhs,
-                           const Window& window) override;
+  Status HandleConvolution(HloInstruction* inst) override;
 
-  Status HandleReverse(HloInstruction* inst,
-                       HloInstruction* operand) override;
+  Status HandleReverse(HloInstruction* inst) override;
 
-  Status HandleReduce(HloInstruction* inst,
-                      HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override;
+  Status HandleReduce(HloInstruction* inst) override;
 
   Status HandleBitcast(HloInstruction* inst) override;
 
@@ -66,22 +54,13 @@ public:
 
   Status HandleTranspose(HloInstruction* inst) override;
 
-  Status HandleSlice(HloInstruction* inst,
-                     HloInstruction* operand) override;
+  Status HandleSlice(HloInstruction* inst) override;
 
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* operand,
-                            HloInstruction* start_indices) override;
+  Status HandleDynamicSlice(HloInstruction* inst) override;
 
-  Status HandleDynamicUpdateSlice(HloInstruction* inst,
-                                  HloInstruction* operand,
-                                  HloInstruction* update,
-                                  HloInstruction* start_indices) override;
+  Status HandleDynamicUpdateSlice(HloInstruction* inst) override;
 
-  Status HandleReduceWindow(HloInstruction* inst,
-                            HloInstruction* operand,
-                            const Window& window,
-                            HloComputation* function) override;
+  Status HandleReduceWindow(HloInstruction* inst) override;
 
   Status HandleSelectAndScatter(HloInstruction* inst) override;
 

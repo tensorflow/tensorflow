@@ -45,53 +45,31 @@ public:
 
   Status HandleConvert(HloInstruction* inst) override;
 
-  Status HandleClamp(HloInstruction* inst,
-                     HloInstruction* min,
-                     HloInstruction* arg,
-                     HloInstruction* max) override;
+  Status HandleClamp(HloInstruction* inst) override;
 
-  Status HandleSelect(HloInstruction* inst,
-                      HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
+  Status HandleSelect(HloInstruction* inst) override;
 
-  Status HandleConcatenate(
-          HloInstruction* inst,
-          tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleConcatenate(HloInstruction* inst) override;
 
   Status HandleCopy(HloInstruction* inst) override;
 
-  Status HandleDot(HloInstruction* inst,
-                   HloInstruction* lhs,
-                   HloInstruction* rhs) override;
+  Status HandleDot(HloInstruction* inst) override;
 
-  Status HandleConvolution(HloInstruction* inst,
-                           HloInstruction* lhs,
-                           HloInstruction* rhs,
-                           const Window& window) override;
+  Status HandleConvolution(HloInstruction* inst) override;
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
 
-  Status HandleRng(HloInstruction* inst,
-                   RandomDistribution distribution) override;
+  Status HandleRng(HloInstruction* inst) override;
 
-  Status HandleReverse(HloInstruction* inst,
-                       HloInstruction* operand) override;
+  Status HandleReverse(HloInstruction* inst) override;
 
-  Status HandleSort(HloInstruction* inst,
-                    HloInstruction* operand) override;
+  Status HandleSort(HloInstruction* inst) override;
 
-  Status HandleConstant(HloInstruction* inst,
-                        const Literal& literal) override;
+  Status HandleConstant(HloInstruction* inst) override;
 
-  Status HandleGetTupleElement(HloInstruction* inst,
-                               HloInstruction* operand) override;
+  Status HandleGetTupleElement(HloInstruction* inst) override;
 
-  Status HandleReduce(HloInstruction* inst,
-                      HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override;
+  Status HandleReduce(HloInstruction* inst) override;
 
   Status HandleBitcast(HloInstruction* inst) override;
 
@@ -105,34 +83,19 @@ public:
 
   Status HandleCall(HloInstruction* inst) override;
 
-  Status HandleCustomCall(HloInstruction* inst,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override;
+  Status HandleCustomCall(HloInstruction* inst) override;
 
-  Status HandleSlice(HloInstruction* inst,
-                     HloInstruction* operand) override;
+  Status HandleSlice(HloInstruction* inst) override;
 
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* operand,
-                            HloInstruction* start_indices) override;
+  Status HandleDynamicSlice(HloInstruction* inst) override;
 
-  Status HandleDynamicUpdateSlice(HloInstruction* inst,
-                                  HloInstruction* operand,
-                                  HloInstruction* update,
-                                  HloInstruction* start_indices) override;
+  Status HandleDynamicUpdateSlice(HloInstruction* inst) override;
 
-  Status HandleTuple(HloInstruction* inst,
-                     tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleTuple(HloInstruction* inst) override;
 
-  Status HandleMap(HloInstruction* inst,
-                   tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                   HloComputation* function,
-                   tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
+  Status HandleMap(HloInstruction* inst) override;
 
-  Status HandleReduceWindow(HloInstruction* inst,
-                            HloInstruction* operand,
-                            const Window& window,
-                            HloComputation* function) override;
+  Status HandleReduceWindow(HloInstruction* inst) override;
 
   Status HandleSelectAndScatter(HloInstruction* inst) override;
 
@@ -140,7 +103,7 @@ public:
 
   Status HandlePad(HloInstruction* inst) override;
 
-  Status HandleReducePrecision(HloInstruction* reduce_precision) override;
+  Status HandleReducePrecision(HloInstruction* inst) override;
 
   Status HandleInfeed(HloInstruction* inst) override;
 
@@ -150,11 +113,11 @@ public:
 
   Status HandleRecv(HloInstruction* inst) override;
 
-  Status HandleBatchNormInference(HloInstruction* batchNormInference) override;
+  Status HandleBatchNormInference(HloInstruction* inst) override;
 
-  Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override;
+  Status HandleBatchNormTraining(HloInstruction* inst) override;
 
-  Status HandleBatchNormGrad(HloInstruction* batchNormGrad) override;
+  Status HandleBatchNormGrad(HloInstruction* inst) override;
 
   TensorMap tensor_map;
 

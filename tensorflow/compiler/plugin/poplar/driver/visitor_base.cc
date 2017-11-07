@@ -91,8 +91,7 @@ Status BaseVisitor::HandleElementwiseBinary(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status BaseVisitor::HandleConvert(
-        HloInstruction* inst) {
+Status BaseVisitor::HandleConvert(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -116,11 +115,7 @@ Status BaseVisitor::HandleCopy(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status BaseVisitor::HandleClamp(
-        HloInstruction* inst,
-        HloInstruction* min,
-        HloInstruction* arg,
-        HloInstruction* max) {
+Status BaseVisitor::HandleClamp(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -133,11 +128,7 @@ Status BaseVisitor::HandleClamp(
   return Status::OK();
 }
 
-Status BaseVisitor::HandleSelect(
-        HloInstruction* inst,
-        HloInstruction* pred,
-        HloInstruction* on_true,
-        HloInstruction* on_false) {
+Status BaseVisitor::HandleSelect(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -150,24 +141,15 @@ Status BaseVisitor::HandleSelect(
   return Status::OK();
 }
 
-Status BaseVisitor::HandleConcatenate(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status BaseVisitor::HandleConcatenate(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleDot(
-        HloInstruction* inst,
-        HloInstruction* lhs,
-        HloInstruction* rhs) {
+Status BaseVisitor::HandleDot(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleConvolution(
-        HloInstruction* inst,
-        HloInstruction* lhs,
-        HloInstruction* rhs,
-        const Window& window) {
+Status BaseVisitor::HandleConvolution(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
@@ -175,27 +157,19 @@ Status BaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleRng(
-        HloInstruction* inst,
-        RandomDistribution distribution) {
+Status BaseVisitor::HandleRng(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleReverse(
-        HloInstruction* inst,
-        HloInstruction* operand) {
+Status BaseVisitor::HandleReverse(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleSort(
-        HloInstruction* inst,
-        HloInstruction* operand) {
+Status BaseVisitor::HandleSort(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleConstant(
-        HloInstruction* inst,
-        const Literal& literal) {
+Status BaseVisitor::HandleConstant(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, AddConstantTensor(*graph_,
@@ -206,9 +180,7 @@ Status BaseVisitor::HandleConstant(
   return Status::OK();
 }
 
-Status BaseVisitor::HandleGetTupleElement(
-        HloInstruction* inst,
-        HloInstruction* operand) {
+Status BaseVisitor::HandleGetTupleElement(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   ArgVector inputs =
           FindTupleInInstructionInput(tensor_map, inst, 0, inst->tuple_index());
@@ -218,12 +190,7 @@ Status BaseVisitor::HandleGetTupleElement(
   return Status::OK();
 }
 
-Status BaseVisitor::HandleReduce(
-        HloInstruction* inst,
-        HloInstruction* arg,
-        HloInstruction* init_value,
-        tensorflow::gtl::ArraySlice<int64> dimensions,
-        HloComputation* function) {
+Status BaseVisitor::HandleReduce(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
@@ -465,37 +432,23 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status BaseVisitor::HandleCustomCall(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-        tensorflow::StringPiece custom_call_target) {
+Status BaseVisitor::HandleCustomCall(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleSlice(
-        HloInstruction* inst,
-        HloInstruction* operand) {
+Status BaseVisitor::HandleSlice(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleDynamicSlice(
-        HloInstruction* inst,
-        HloInstruction* operand,
-        HloInstruction* start_indices) {
+Status BaseVisitor::HandleDynamicSlice(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleDynamicUpdateSlice(
-        HloInstruction* inst,
-        HloInstruction* operand,
-        HloInstruction* update,
-        HloInstruction* start_indices) {
+Status BaseVisitor::HandleDynamicUpdateSlice(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleTuple(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status BaseVisitor::HandleTuple(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   uint64 operand_count(inst->operand_count());
   int64 n=0;
@@ -509,15 +462,15 @@ Status BaseVisitor::HandleTuple(
   return Status::OK();
 }
 
-Status BaseVisitor::HandleMap(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-        HloComputation* function,
-        tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) {
+Status BaseVisitor::HandleReduceWindow(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleMap(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   bool simple_parallel;
   TF_ASSIGN_OR_RETURN(simple_parallel,
-                      IsParallelMap(inst, function));
+                      IsParallelMap(inst, inst->to_apply()));
   if (simple_parallel) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
@@ -529,14 +482,6 @@ Status BaseVisitor::HandleMap(
     sequence.add(prog);
     return Status::OK();
   }
-  return Unimplemented(inst);
-}
-
-Status BaseVisitor::HandleReduceWindow(
-        HloInstruction* inst,
-        HloInstruction* operand,
-        const Window& window,
-        HloComputation* function) {
   return Unimplemented(inst);
 }
 
