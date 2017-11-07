@@ -85,8 +85,8 @@ TF_LFLAGS=( $("${PYTHON_BIN_PATH}" \
 if [[ -z "${TF_CFLAGS}" || -z "${TF_LFLAGS}" ]]; then
   die "FAILED to determine TensorFlow compilation or linking flags"
 else
-  echo "TensorFlow compile flags: ${TF_CFLAGS}"
-  echo "TensorFlow link flags: ${TF_LFLAGS}"
+  echo "TensorFlow compile flags: ${TF_CFLAGS[@]}"
+  echo "TensorFlow link flags: ${TF_LFLAGS[@]}"
 fi
 
 # Check g++ availability
