@@ -26,11 +26,9 @@ from onnx.backend.base import (
     namedtupledict,
 )
 
-from onnx import onnx_pb2, helper
+from onnx import helper
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import script_ops
@@ -232,11 +230,13 @@ class TensorflowBackend(Backend):
   # TODO: Remove this.
   @classmethod
   def guess_tf_pad(cls, pads):
-    tf_pad = "VALID" if pads == None or pads[-1] == 0 or (pads[0] != pads[2]) else "SAME"
+    tf_pad = "VALID" if pads == None \
+              or pads[-1] == 0 \
+              or (pads[0] != pads[2]) else "SAME"
     warnings.warn("Unsupported pads attribute by Tensorflow in "
-                    "pool operator. Your padding is {}, we guess "
-                    "you want {} padding.".format(str(pads), tf_pad),
-                    UserWarning)
+                  "pool operator. Your padding is {}, we guess "
+                  "you want {} padding.".format(str(pads), tf_pad),
+                  UserWarning)
     return tf_pad
 
   @classmethod
@@ -247,8 +247,9 @@ class TensorflowBackend(Backend):
     tf_pads = [0, 0, 0, 0] + tf_pads.flatten().tolist()
 
     padding = constant_op.constant(np.array(tf_pads)
-                          .reshape([num_dim + 2, 2])
-                          .astype(np.int32)) # tf requires int32 paddings
+                                   .reshape([num_dim + 2, 2])
+                                   # tf requires int32 paddings
+                                   .astype(np.int32))
     return array_ops.pad(x, padding)
 
   # TODO: better broadcast
@@ -258,7 +259,7 @@ class TensorflowBackend(Backend):
       return tensor
     warnings.warn("Currently, support for broadcasting is limited "
                   "and may result in unexpected results",
-                    UserWarning)
+                  UserWarning)
     tensor = array_ops.expand_dims(tensor, 0)
     tensor = array_ops.expand_dims(tensor, 2)
     tensor = array_ops.expand_dims(tensor, 3)
@@ -277,9 +278,10 @@ class TensorflowBackend(Backend):
       num_ones_to_append = len(x.get_shape()) - \
                            len(y.get_shape()) - \
                            node.attrs["axis"]
-      if (num_ones_to_append > 0):
+      if num_ones_to_append > 0:
         ones = array_ops.ones([num_ones_to_append], dtypes.int32)
-        broadcasted_shape = array_ops.concat([gen_array_ops.shape(y), ones], axis=0)
+        broadcasted_shape = array_ops.concat([gen_array_ops.shape(y), ones],
+                                             axis=0)
         y = gen_array_ops.reshape(y, broadcasted_shape)
 
     return op_func(x, y)
@@ -290,7 +292,7 @@ class TensorflowBackend(Backend):
     # a given tensor.
     # initialized: A list of names of the initialized tensors.
     if graph_def.initializer:
-      input_dict_items = cls.onnx_initializer_to_input_dict_items(
+      input_dict_items = cls.onnx_initializer_to_input_dict_items( \
         graph_def.initializer)
       initialized = {init.name for init in graph_def.initializer}
     else:
@@ -300,19 +302,20 @@ class TensorflowBackend(Backend):
     predict_net.name = graph_def.name
 
     predict_net.external_input.extend(
-      value_info.name for value_info in graph_def.input)
+        value_info.name for value_info in graph_def.input)
     predict_net.external_output.extend(
-      value_info.name for value_info in graph_def.output)
+        value_info.name for value_info in graph_def.output)
 
     # creating placeholders for currently unkown inputs
     for value_info in graph_def.input:
       if value_info.name in initialized:
-          continue
+        continue
 
       shape = list(d.dim_value for d in \
         value_info.type.tensor_type.shape.dim)
-      x = array_ops.placeholder(cls.tensor_type_enum[value_info.type.tensor_type.elem_type],
-                         name=value_info.name, shape=shape)
+      x = array_ops.placeholder(
+          cls.tensor_type_enum[value_info.type.tensor_type.elem_type],
+          name=value_info.name, shape=shape)
       input_dict_items.append([value_info.name, x])
 
     # input dict: this dictionary is a map from variable names
@@ -347,13 +350,15 @@ class TensorflowBackend(Backend):
   def prepare(cls, model, device='CPU', **kwargs):
     super(TensorflowBackend, cls).prepare(model, device, **kwargs)
 
-    original_input_dict, predict_net = cls.onnx_graph_to_tensorflow_net(model.graph)
+    original_input_dict, predict_net = \
+      cls.onnx_graph_to_tensorflow_net(model.graph)
 
     initialized = {init.name for init in model.graph.initializer}
     uninitialized = [x for x in predict_net.external_input
                      if not x in initialized]
 
-    original_input_dict = dict([(key, original_input_dict[key]) for key in uninitialized])
+    original_input_dict = dict([(key, original_input_dict[key]) \
+      for key in uninitialized])
 
     return original_input_dict, predict_net.output_dict
 
@@ -362,9 +367,11 @@ class TensorflowBackend(Backend):
     def tensor2list(onnx_tensor):
       # Use the onnx.numpy_helper because the data may be raw
       return onnx.numpy_helper.to_array(onnx_tensor).flatten().tolist()
-    input_dict = [(tp.name, constant_op.constant(tensor2list(tp),
+    input_dict = [(tp.name,
+                   constant_op.constant(tensor2list(tp),
                                         shape=tp.dims,
-                                        dtype=cls.tensor_type_to_tf_type[tp.data_type]))
+                                        dtype=cls. \
+                                        tensor_type_to_tf_type[tp.data_type]))
                   for tp in initializer]
     return input_dict
 
@@ -434,6 +441,7 @@ class TensorflowBackend(Backend):
                     UserWarning)
     return [math_ops.argmin(data, axis=axis)]
 
+  # pylint: disable=line-too-long
   @classmethod
   def _compatibility_pool(cls, node, input_dict, pool_func, guess_or_manual_pad):
     from math import ceil
@@ -444,7 +452,7 @@ class TensorflowBackend(Backend):
     kernel_shape = node.attrs["kernel_shape"]
     strides = node.attrs["strides"]
 
-    pads = node.attrs.get("pads", [0,0,0,0])
+    pads = node.attrs.get("pads", [0, 0, 0, 0])
 
     def py_pool(x, kernel_shape, strides, pad):
       out_h = int((x.shape[2] + pads[0] + pads[2] - kernel_shape[0]) // strides[0]) + 1
@@ -465,10 +473,10 @@ class TensorflowBackend(Backend):
                 for kw in range(0, kernel_shape[1]):
                   current_h = h+kh
                   current_w = w+kw
-                  if (current_h >= 0) and (current_w >= 0 ) and \
+                  if (current_h >= 0) and (current_w >= 0) and \
                      (current_h < x.shape[2]) and (current_w < x.shape[3]):
-                     count += 1
-                     val += x[n][c][current_h][current_w]
+                    count += 1
+                    val += x[n][c][current_h][current_w]
               out[n][c][int((h + pad[0])//strides[0])][int((w + pad[1])//strides[1])] = val/count
       return out
 
@@ -481,6 +489,7 @@ class TensorflowBackend(Backend):
 
     return [pooled]
 
+  # pylint: enable=line-too-long
   @classmethod
   def _pool(cls, node, input_dict, pool_func, guess_or_manual_pad):
     from math import ceil
@@ -497,7 +506,7 @@ class TensorflowBackend(Backend):
     # By default, do not pad
     pad = "VALID"
     if "pads" in node.attrs.keys():
-      if (guess_or_manual_pad == 0):
+      if guess_or_manual_pad == 0:
         pad = cls.guess_tf_pad(node.attrs["pads"])
       else:
         x = cls.get_padding_as_op(x, node.attrs["pads"])
@@ -539,7 +548,7 @@ class TensorflowBackend(Backend):
     variance_epsilon = node.attrs.get("epsilon", 0.00001)
     if node.attrs.get("is_test", 0):
       return [nn_impl.batch_normalization(x, mean, variance, bias, scale,
-                                       variance_epsilon)]
+                                          variance_epsilon)]
     if "momentum" in node.attrs.keys():
       warnings.warn("Unsupported momentum attribute by Tensorflow in "
                     "batch_normalization. This attribute will be ignored.",
@@ -550,7 +559,7 @@ class TensorflowBackend(Backend):
                     UserWarning)
     # TODO: need to conform to the documentation here
     return [nn_impl.batch_normalization(x, mean, variance, bias, scale,
-                                      variance_epsilon)]
+                                        variance_epsilon)]
 
   @classmethod
   def handle_concat(cls, node, input_dict):
@@ -613,7 +622,8 @@ class TensorflowBackend(Backend):
 
     if "group" in node.attrs:
 
-      weight_groups = array_ops.split(weights, num_or_size_splits=node.attrs["group"], axis=3)
+      weight_groups = array_ops.split(weights, \
+        num_or_size_splits=node.attrs["group"], axis=3)
 
       if support_cuda:
         xs = array_ops.split(x, num_or_size_splits=node.attrs["group"], axis=1)
@@ -622,8 +632,9 @@ class TensorflowBackend(Backend):
         xs = array_ops.split(x, num_or_size_splits=node.attrs["group"], axis=3)
 
       convolved = [nn_ops.convolution(x, weight, "VALID", strides=strides,
-                              dilation_rate=dilations,
-                              data_format=data_format) for (x, weight) in zip(xs, weight_groups)]
+                                      dilation_rate=dilations,
+                                      data_format=data_format)
+                   for (x, weight) in zip(xs, weight_groups)]
 
       if len(node.inputs) == 2:
         if support_cuda:
@@ -648,8 +659,8 @@ class TensorflowBackend(Backend):
       x = array_ops.transpose(x, perm=[0, 2, 3, 1])
 
     convolved = nn_ops.convolution(x, weights, "VALID", strides=strides,
-                                dilation_rate=dilations,
-                                data_format=data_format)
+                                   dilation_rate=dilations,
+                                   data_format=data_format)
 
     if not support_cuda:
       convolved = array_ops.transpose(convolved, perm=[0, 3, 1, 2])
@@ -692,7 +703,7 @@ class TensorflowBackend(Backend):
     x = input_dict[node.inputs[0]]
     if "alpha" in node.attrs.keys():
       warnings.warn("Unsupported alpha attribute by Tensorflow in Elu."
-        "This attribute will be ignored.", UserWarning)
+                    "This attribute will be ignored.", UserWarning)
     return [gen_nn_ops.elu(x)]
 
   @classmethod
@@ -700,7 +711,8 @@ class TensorflowBackend(Backend):
     tensor = input_dict[node.inputs[0]]
     axis = node.attrs["axis"] if "axis" in node.attrs.keys() else 1
     shape = array_ops.shape(tensor)
-    split0, split1 = array_ops.split(shape, [axis, array_ops.size(shape) - axis])
+    split0, split1 = array_ops.split(shape,
+                                     [axis, array_ops.size(shape) - axis])
     split0 = math_ops.reduce_prod(split0)
     split1 = math_ops.reduce_prod(split1)
     output_shape = array_ops.stack([split0, split1])
@@ -748,7 +760,7 @@ class TensorflowBackend(Backend):
     # This could be a problem.
     x_t = array_ops.transpose(x, perm=[0, 2, 3, 1])
     normed = gen_nn_ops.lrn(x_t, depth_radius=depth_radius,
-      bias=bias, alpha=tf_alpha, beta=beta)
+                            bias=bias, alpha=tf_alpha, beta=beta)
     normed = array_ops.transpose(normed, perm=[0, 3, 1, 2])
     return [normed]
 
@@ -858,8 +870,8 @@ class TensorflowBackend(Backend):
 
     value = node.attrs.get("value", 0)
     padding = constant_op.constant(np.array(node.attrs["paddings"])
-                          .reshape([num_dim, 2])
-                          .astype(np.int32)) # tf requires int32 paddings
+                                   .reshape([num_dim, 2])
+                                   .astype(np.int32)) # tf requires int32 paddings
 
     x = input_dict[node.inputs[0]]
     if mode.lower() == "edge":
@@ -894,7 +906,7 @@ class TensorflowBackend(Backend):
   @classmethod
   def handle_selu(cls, node, input_dict):
     warnings.warn("Definition of Selu is different "
-      "between onnx and tensorflow.", UserWarning)
+                  "between onnx and tensorflow.", UserWarning)
     return [gen_nn_ops.selu(input_dict[node.inputs[0]])]
 
   @classmethod
@@ -916,8 +928,8 @@ class TensorflowBackend(Backend):
       full_begin[axes[i]] = starts[i]
 
     return [array_ops.slice(input_dict[node.inputs[0]],
-                     constant_op.constant(full_begin),
-                     constant_op.constant(full_sizes))]
+                            constant_op.constant(full_begin),
+                            constant_op.constant(full_sizes))]
 
   @classmethod
   def handle_softmax(cls, node, input_dict):
@@ -929,7 +941,9 @@ class TensorflowBackend(Backend):
 
   @classmethod
   def handle_split(cls, node, input_dict):
-    split = constant_op.constant(node.attrs["split"]) if "split" in node.attrs else input_dict[node.inputs[1]]
+    split = constant_op.constant(node.attrs["split"]) \
+      if "split" in node.attrs else \
+      input_dict[node.inputs[1]]
     axis = node.attrs["axis"]
     # return value is naturally a list
     return array_ops.split(input_dict[node.inputs[0]], split, axis)
@@ -946,13 +960,14 @@ class TensorflowBackend(Backend):
   @classmethod
   def handle_mat_mul(cls, node, input_dict):
     return [math_ops.matmul(input_dict[node.inputs[0]],
-                      input_dict[node.inputs[1]])]
+                            input_dict[node.inputs[1]])]
 
   @classmethod
   def supports_device(cls, device):
     if device == "CUDA":
       local_device_protos = device_lib.list_local_devices()
-      return len([x.name for x in local_device_protos if x.device_type == 'GPU']) > 0
+      return len([x.name for x in \
+        local_device_protos if x.device_type == 'GPU']) > 0
     elif device == "CPU":
       return True
     return False
