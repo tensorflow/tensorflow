@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras._impl.keras.applications.inception_resnet_v2 import InceptionResNetV2
 from tensorflow.python.keras._impl.keras.applications.inception_v3 import InceptionV3
 from tensorflow.python.keras._impl.keras.applications.mobilenet import MobileNet
 from tensorflow.python.keras._impl.keras.applications.resnet50 import ResNet50

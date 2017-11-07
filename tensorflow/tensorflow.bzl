@@ -672,6 +672,11 @@ def tf_cuda_only_cc_test(name,
       }),
       tags=tags + tf_cuda_tests_tags())
 
+register_extension_info(
+    extension_name="tf_cuda_only_cc_test",
+    label_regex_for_dep="{extension_name}_gpu")
+
+
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
                 deps,
@@ -746,6 +751,11 @@ def tf_java_test(name,
       *args,
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_java_test",
+    label_regex_for_dep="{extension_name}")
+
+
 def _cuda_copts():
   """Gets the appropriate set of copts for (maybe) CUDA compilation.
 
@@ -789,6 +799,10 @@ def tf_gpu_kernel_library(srcs,
       ]),
       alwayslink=1,
       **kwargs)
+
+register_extension_info(
+    extension_name="tf_gpu_kernel_library",
+    label_regex_for_dep="{extension_name}")
 
 
 def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
@@ -936,6 +950,10 @@ def tf_mkl_kernel_library(name,
           copts=copts,
           nocopts=nocopts
       ))
+
+register_extension_info(
+    extension_name="tf_mkl_kernel_library",
+    label_regex_for_dep="{extension_name}")
 
 
 # Bazel rules for building swig files.
@@ -1505,3 +1523,7 @@ def cc_library_with_android_deps(deps,
                                  **kwargs):
   deps = if_not_android(deps) + if_android(android_deps) + common_deps
   native.cc_library(deps=deps, **kwargs)
+
+register_extension_info(
+    extension_name="cc_library_with_android_deps",
+    label_regex_for_dep="{extension_name}")

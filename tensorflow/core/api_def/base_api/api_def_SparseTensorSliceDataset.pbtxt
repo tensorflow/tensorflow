@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "SparseTensorSliceDataset"
+  summary: "Creates a dataset that splits a SparseTensor into elements row-wise."
+}

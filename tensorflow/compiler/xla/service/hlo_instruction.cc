@@ -1901,12 +1901,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (has_sharding()) {
     extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
-  if (!control_successors_.empty()) {
-    extra.push_back(StrCat(
-        "control-successors=",
-        Join(control_successors_, ", ", [](string* out, HloInstruction* succ) {
-          StrAppend(out, succ->name());
-        })));
+  if (!control_predecessors_.empty()) {
+    extra.push_back(StrCat("control-predecessors={",
+                           Join(control_predecessors_, ", ",
+                                [](string* out, HloInstruction* pre) {
+                                  StrAppend(out, pre->name());
+                                }),
+                           "}"));
   }
   return extra;
 }

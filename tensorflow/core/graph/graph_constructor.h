@@ -54,12 +54,19 @@ extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
 
 // Options for calling ImportGraphDef().
 struct ImportGraphDefOptions {
-  ImportGraphDefOptions() : skip_mapped_nodes(false) {}
+  ImportGraphDefOptions() : uniquify_names(false), skip_mapped_nodes(false) {}
 
   // Name prefix to use for nodes imported from the GraphDef.  For example, if
   // prefix="animals" and GraphDef contains a node "bunny" then the node will be
-  // named "animals/bunny" in *g.
+  // named "animals/bunny" in *g. Must not be already used as a node name or
+  // prefix in the graph.
   string prefix;
+
+  // If true, imported node names will be modified if their name already exists
+  // in the graph. If false, conflicting names will be treated as an error. Note
+  // that this option has no effect if `prefix` is specified, since `prefix`
+  // will guarantee all node names are unique.
+  bool uniquify_names;
 
   // Maps tensors in `gdef` to existing tensors in `g`. Inputs in `gdef`
   // corresponding to `input_map` keys will be remapped to the nodes in `g`

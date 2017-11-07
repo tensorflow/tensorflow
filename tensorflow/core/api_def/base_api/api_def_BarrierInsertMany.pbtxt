@@ -1,0 +1,35 @@
+op {
+  graph_op_name: "BarrierInsertMany"
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a barrier.
+END
+  }
+  in_arg {
+    name: "keys"
+    description: <<END
+A one-dimensional tensor of keys, with length n.
+END
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+An any-dimensional tensor of values, which are associated with the
+respective keys. The 0th dimension must have length n.
+END
+  }
+  attr {
+    name: "component_index"
+    description: <<END
+The component of the barrier elements that is being assigned.
+END
+  }
+  summary: "For each key, assigns the respective value to the specified component."
+  description: <<END
+If a key is not found in the barrier, this operation will create a new
+incomplete element. If a key is found in the barrier, and the element
+already has a value at component_index, this operation will fail with
+INVALID_ARGUMENT, and leave the barrier in an undefined state.
+END
+}
