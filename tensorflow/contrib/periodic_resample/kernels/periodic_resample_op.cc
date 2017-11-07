@@ -20,8 +20,7 @@
 namespace tensorflow {
 
 REGISTER_KERNEL_BUILDER(Name("PeriodicResample")
-                            .Device(DEVICE_CPU)
-                            .HostMemory("desired_shape"),
+                            .Device(DEVICE_CPU),
                         PeriodicResampleOp);
 
 }  // namespace tensorflow

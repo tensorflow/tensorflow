@@ -99,7 +99,8 @@ namespace {
 
     bool found = false;
     for (int i = 0; i < rank; ++i) {
-      if (desired_shape(i) < 1) {
+      // if (desired_shape(i) < 1) {
+      if (desired_shape[i] < 1) {
         // only one index can be adjustable
         OP_REQUIRES(context, !found,
                     tensorflow::errors::InvalidArgument(
@@ -108,7 +109,8 @@ namespace {
         adjustable_dimension = i;
         found = true;
       } else {
-        target_dimensions[i] = desired_shape(i);
+        // target_dimensions[i] = desired_shape(i);
+        target_dimensions[i] = desired_shape[i];
         new_sliced_size *= target_dimensions[i];
       }
     }
@@ -157,7 +159,7 @@ namespace {
     auto output = output_tensor->flat<InputDataT>();
 
     // memory is allocated for these variables outside the inner loop for
-    // efficiency (yes, I know, I could create a separate class scope for
+    // efficiency (although, I could create a separate class scope for
     // this purpose instead)
     tensorflow::int64 result = 0;
     std::vector<tensorflow::int64> output_indices(target_dimensions.size());
@@ -173,12 +175,11 @@ namespace {
     }
   }
 
-  template <class IndexDataT>
   void create_output_tensor(tensorflow::OpKernelContext* context,
                             const tensorflow::Tensor& input_tensor,
                             const tensorflow::DataType& input_tensor_type,
-                            const tensorflow::Tensor& desired_shape_tensor) {
-    auto desired_shape = desired_shape_tensor.flat<IndexDataT>();
+                            const tensorflow::PartialTensorShape& desired_shape_tensor) {
+    auto desired_shape = desired_shape_tensor.dim_sizes();
 
     // obligatory type switch
     switch (input_tensor_type) {
@@ -201,35 +202,22 @@ namespace {
 class PeriodicResampleOp : public tensorflow::OpKernel {
  public:
   explicit PeriodicResampleOp(tensorflow::OpKernelConstruction* context)
-      : tensorflow::OpKernel(context) {}
+      : tensorflow::OpKernel(context) {
+    // Get the desired shape
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("shape", &desired_shape));
+  }
 
   void Compute(tensorflow::OpKernelContext* context) override {
-    // Grab the input tensor and desired shape
+    // Grab the input tensor
     const tensorflow::Tensor& input_tensor = context->input(0);
     const tensorflow::DataType input_tensor_type = context->input_dtype(0);
-    const tensorflow::Tensor& desired_shape_tensor = context->input(1);
-    const tensorflow::DataType desired_shape_tensor_type =
-        context->input_dtype(1);
 
-    // requires that the desired shape is a vector
-    OP_REQUIRES(
-        context,
-        tensorflow::TensorShapeUtils::IsVector(desired_shape_tensor.shape()),
-        tensorflow::errors::InvalidArgument(
-            "periodic_resample expects a 1D vector for the desired shape."));
-
-    // obligatory type switch
-    switch (desired_shape_tensor_type) {
-      case tensorflow::DataTypeToEnum<tensorflow::int32>::value:
-        create_output_tensor<tensorflow::int32>(
-            context, input_tensor, input_tensor_type, desired_shape_tensor);
-      case tensorflow::DataTypeToEnum<tensorflow::int64>::value:
-        create_output_tensor<tensorflow::int64>(
-            context, input_tensor, input_tensor_type, desired_shape_tensor);
-      default:
-        ;
-    }
+    create_output_tensor(context, input_tensor, input_tensor_type, desired_shape);
   }
+
+private:
+  tensorflow::PartialTensorShape desired_shape;
 };
 
 #endif  // TENSORFLOW_KERNELS_PERIODICRESAMPLE_OP_H_
