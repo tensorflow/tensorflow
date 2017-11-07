@@ -77,10 +77,10 @@ echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}"
 pushd "${TMP_DIR}"
 
 # Obtain compilation and linking flags
-TF_CFLAGS=$("${PYTHON_BIN_PATH}" \
-	 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))')
-TF_LFLAGS=$("${PYTHON_BIN_PATH}" \
-	 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))')
+TF_CFLAGS=( $("${PYTHON_BIN_PATH}" \
+	      -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )
+TF_LFLAGS=( $("${PYTHON_BIN_PATH}" \
+	      -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
 
 if [[ -z "${TF_CFLAGS}" || -z "${TF_LFLAGS}" ]]; then
   die "FAILED to determine TensorFlow compilation or linking flags"
@@ -143,9 +143,9 @@ if [[ ${IS_GPU} == "0" ]]; then
 
   USER_OP_SO="zero_out.so"
 
-  eval "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
+  "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
     -shared "${SRC_FILE}" -o "${USER_OP_SO}" \
-    -fPIC ${TF_CFLAGS} ${TF_LFLAGS}  || \
+    -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]}  || \
     die "g++ compilation of ${SRC_FILE} FAILED"
 
 else
@@ -182,9 +182,9 @@ else
   cp "${OP_KERNEL_CC}" ./
 
   OP_KERNEL_O=$(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.o/')
-  eval "${NVCC_BIN}" -std=c++11 \
+  "${NVCC_BIN}" -std=c++11 \
       -c -o "${OP_KERNEL_O}" "${OP_KERNEL_CU}" \
-      ${TF_CFLAGS} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
+      ${TF_CFLAGS[@]} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
       die "nvcc compilation of ${OP_KERNEL_CC} FAILED"
 
   CUDA_LIB_DIR="/usr/local/cuda/lib64"
@@ -201,9 +201,9 @@ else
 
   # USER_OP_SO=$(basename $(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.so/'))
   USER_OP_SO="add_one.so"
-  eval "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
+  "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" ${TF_CFLAGS} -L "${CUDA_LIB_DIR}" ${TF_LFLAGS} \
+      "${OP_KERNEL_O}" ${TF_CFLAGS[@]} -L "${CUDA_LIB_DIR}" ${TF_LFLAGS[@]} \
       -fPIC -lcudart || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi
