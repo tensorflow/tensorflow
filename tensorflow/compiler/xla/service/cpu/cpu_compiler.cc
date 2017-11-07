@@ -322,7 +322,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     // binary size (and most AOT applications are single-threaded).
     // TODO(29630486) Support multi-threaded AOT.
     pipeline.AddPass<ParallelTaskAssigner>(max_parallelism,
-                                           ShapeSizeBytesFunction(), module);
+                                           ShapeSizeBytesFunction());
   }
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
