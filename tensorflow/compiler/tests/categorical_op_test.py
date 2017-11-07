@@ -99,7 +99,7 @@ class CategoricalTest(XLATestCase):
     self._testRngIsNotConstant(rng, dtype)
 
   def testCategoricalIsInRange(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
+    for dtype in self.float_types:
       with self.test_session() as sess:
         with self.test_scope():
           x = random_ops.multinomial(
