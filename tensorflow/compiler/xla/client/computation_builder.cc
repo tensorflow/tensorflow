@@ -1309,7 +1309,7 @@ Status ComputationBuilder::SetReturnValue(
 }
 
 StatusOr<bool> ComputationBuilder::IsConstant(
-    const ComputationDataHandle& operand) {
+    const ComputationDataHandle& operand, int64 num_parameters) {
   if (!first_error_.ok()) {
     return first_error_;
   }
@@ -1317,6 +1317,7 @@ StatusOr<bool> ComputationBuilder::IsConstant(
   IsConstantRequest request;
   *request.mutable_computation() = computation_.handle();
   *request.mutable_operand() = operand;
+  request.set_num_parameters(num_parameters);
   IsConstantResponse response;
 
   VLOG(2) << "making IsConstant request";
@@ -1330,7 +1331,8 @@ StatusOr<bool> ComputationBuilder::IsConstant(
 }
 
 StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
-    const ComputationDataHandle& operand, const Layout* output_layout) {
+    const ComputationDataHandle& operand, const Layout* output_layout,
+    tensorflow::gtl::ArraySlice<Literal> parameters) {
   if (!first_error_.ok()) {
     return first_error_;
   }
@@ -1340,6 +1342,9 @@ StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
   *request.mutable_operand() = operand;
   if (output_layout != nullptr) {
     *request.mutable_output_layout() = *output_layout;
+  }
+  for (const auto& param : parameters) {
+    *request.add_parameters() = param.ToProto();
   }
 
   ComputeConstantResponse response;

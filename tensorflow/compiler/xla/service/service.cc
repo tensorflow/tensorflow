@@ -1172,8 +1172,9 @@ tensorflow::Status Service::IsConstant(const IsConstantRequest* arg,
     return InvalidArgument("computations may not be empty");
   }
 
-  TF_ASSIGN_OR_RETURN(bool is_constant,
-                      user_computation->IsConstant(arg->operand()));
+  TF_ASSIGN_OR_RETURN(
+      bool is_constant,
+      user_computation->IsConstant(arg->operand(), arg->num_parameters()));
 
   result->set_is_constant(is_constant);
   return tensorflow::Status::OK();
@@ -1191,8 +1192,9 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
     return InvalidArgument("computations may not be empty");
   }
 
-  TF_ASSIGN_OR_RETURN(bool is_constant,
-                      user_computation->IsConstant(arg->operand()));
+  TF_ASSIGN_OR_RETURN(
+      bool is_constant,
+      user_computation->IsConstant(arg->operand(), arg->parameters_size()));
   if (!is_constant) {
     return InvalidArgument("Operand to ComputeConstant depends on parameter.");
   }
@@ -1231,8 +1233,18 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
                                           /*include_unreachable_instructions=*/
                                           false));
 
+  std::vector<Literal> parameters(arg->parameters_size());
+  for (int64 i = 0; i < arg->parameters_size(); ++i) {
+    parameters[i] = Literal(arg->parameters(i));
+  }
+  std::vector<const Literal*> parameter_ptrs;
+  std::transform(parameters.begin(), parameters.end(),
+                 std::back_inserter(parameter_ptrs),
+                 [](const Literal& literal) { return &literal; });
+
   HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
+  TF_ASSIGN_OR_RETURN(auto result_literal,
+                      evaluator.Evaluate(*module, parameter_ptrs));
   // Since the shape_with_output_layout option in ExecutionOption is
   // non-effective to the Evaluator results, explicit relayout here.
   if (arg->has_output_layout()) {
