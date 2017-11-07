@@ -55,12 +55,6 @@ class GraphProperties {
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
       const string& node_name) const;
 
-  static void FillTensorPropertiesFromContext(
-      const shape_inference::ShapeHandle&, const DataType&,
-      shape_inference::InferenceContext*,
-      std::unordered_map<const shape_inference::Dimension*, int>* dim_ids,
-      OpInfo::TensorProperties*);
-
  private:
   // Inputs
   GrapplerItem item_;
