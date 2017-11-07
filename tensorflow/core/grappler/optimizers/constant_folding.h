@@ -32,6 +32,10 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
+  static NodeDef CreateNodeDef(const string& name, const TensorValue& tensor);
+  static string AddControlDependency(const string& input_name, GraphDef* graph,
+                                     NodeMap* node_map);
+
   ConstantFolding(DeviceBase* cpu_device);
 
   ~ConstantFolding() override {}
@@ -45,13 +49,10 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  string AddControlDependency(const string& input_name);
   Status MaterializeShapes(const GrapplerItem& item,
                            const GraphProperties& properties);
 
   bool IsFoldable(const NodeDef& node) const;
-
-  NodeDef CreateNodeDef(const string& name, const TensorValue& tensor);
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,

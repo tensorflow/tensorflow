@@ -3792,6 +3792,7 @@ py_library(
         ":summary_op_util",
         ":summary_ops",
         ":util",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -4032,6 +4033,12 @@ filegroup(
             "**/OWNERS",
         ],
     ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "hidden_ops",
+    srcs = ["ops/hidden_ops.txt"],
     visibility = ["//tensorflow:__subpackages__"],
 )
 

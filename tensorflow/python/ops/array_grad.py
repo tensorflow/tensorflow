@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from math import ceil
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -102,32 +103,46 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   concat_dim = op.inputs[dim_index]
   input_values = op.inputs[start_value_index:end_value_index]
-  # Using mod here for convenience since concat_dim is already verified
-  # in concat implementation to be within the allowed [-rank, rank) range.
-  non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
 
   out_grads = []
   if isinstance(grad, ops.Tensor):
-    # Get the inputs' tensor shapes
-    sizes = _ExtractInputShapes(input_values)
-    # The magic number of 16 was found through benchmarking a range of sizes
-    # on CPUs and a Maxwell TitanX.  A speedup was seen in a large majority of
-    # cases when switching implementations at N=16, but it is possible that
-    # there will be a small number of performance regressions.
-    # pylint: disable=protected-access
-    if len(sizes) > 16:
-      # extract the size of each input along the concat dimension
-      sizes = array_ops.squeeze(
-          array_ops.slice(
-              array_ops.stack(
-                  sizes, axis=1), [non_neg_concat_dim, 0], [1, -1]))
+    if context.in_eager_mode():
+      # Using mod here for convenience since concat_dim is already verified
+      # in concat implementation to be within the allowed [-rank, rank) range.
+      non_neg_concat_dim = (
+          concat_dim._numpy().item(0) % input_values[0]._rank())  # pylint: disable=protected-access
+      # All inputs are guaranteed to be EagerTensors in eager mode
+      sizes = pywrap_tensorflow.TFE_Py_TensorShapeSlice(input_values,
+                                                        non_neg_concat_dim)
       out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
     else:
-      offset = gen_array_ops._concat_offset(non_neg_concat_dim, sizes)
-      for (begin, size) in zip(offset, sizes):
-        out_grads.append(array_ops.slice(grad, begin, size))
-    # pylint: enable=protected-access
+      # Using mod here for convenience since concat_dim is already verified
+      # in concat implementation to be within the allowed [-rank, rank) range.
+      non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
+
+      # Get the inputs' tensor shapes
+      sizes = _ExtractInputShapes(input_values)
+      # The magic number of 16 was found through benchmarking a range of sizes
+      # on CPUs and a Maxwell TitanX.  A speedup was seen in a large majority of
+      # cases when switching implementations at N=16, but it is possible that
+      # there will be a small number of performance regressions.
+      # pylint: disable=protected-access
+      if len(sizes) > 16:
+        # extract the size of each input along the concat dimension
+        sizes = array_ops.squeeze(
+            array_ops.slice(
+                array_ops.stack(
+                    sizes, axis=1), [non_neg_concat_dim, 0], [1, -1]))
+        out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
+      else:
+        offset = gen_array_ops._concat_offset(non_neg_concat_dim, sizes)
+        for (begin, size) in zip(offset, sizes):
+          out_grads.append(array_ops.slice(grad, begin, size))
+      # pylint: enable=protected-access
   elif isinstance(grad, ops.IndexedSlices):
+    # Using mod here for convenience since concat_dim is already verified
+    # in concat implementation to be within the allowed [-rank, rank) range.
+    non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
     concat_dim_static = tensor_util.constant_value(concat_dim)
     if concat_dim_static is None:
       raise ValueError("Can only compute IndexedSlices gradient with "

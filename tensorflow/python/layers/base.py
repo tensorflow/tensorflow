@@ -220,7 +220,7 @@ class Layer(object):
 
     Weight updates (for instance, the updates of the moving mean and variance
     in a BatchNormalization layer) may be dependent on the inputs passed
-    when calling a layer. Hence, when reusing a same layer on
+    when calling a layer. Hence, when reusing the same layer on
     different inputs `a` and `b`, some entries in `layer.updates` may be
     dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
@@ -294,9 +294,9 @@ class Layer(object):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
     Some losses (for instance, activity regularization losses) may be dependent
-    on the inputs passed when calling a layer. Hence, when reusing a same layer
-    on different inputs `a` and `b`, some entries in `layer.losses` may be
-    dependent on `a` and some on `b`. This method automatically keeps track
+    on the inputs passed when calling a layer. Hence, when reusing the same
+    layer on different inputs `a` and `b`, some entries in `layer.losses` may
+    be dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
 
     The `get_losses_for` method allows to retrieve the losses relevant to a
@@ -434,6 +434,9 @@ class Layer(object):
       trainable: whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases)
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
+        Note, if the current variable scope is marked as non-trainable
+        then this parameter is ignored and any added variables are also
+        marked as non-trainable.
       constraint: constraint instance (callable).
       partitioner: (optional) partitioner instance (callable).  If
         provided, when the requested variable is created it will be split
@@ -476,6 +479,10 @@ class Layer(object):
                                    constraint=constraint,
                                    trainable=trainable and self.trainable,
                                    partitioner=partitioner)
+        if (context.in_graph_mode() and trainable and self.trainable
+            and variable not in tf_variables.trainable_variables()):
+          # A custom getter / variable scope overrode the trainable flag.
+          trainable = False
         if variable in existing_variables:
           return variable
         if regularizer:

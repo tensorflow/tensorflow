@@ -198,9 +198,10 @@ Status HloTfGraphBuilder::AddInstruction(const HloInstruction* instruction) {
   NodeDef* node_def = graph_def_.add_node();
   node_def->set_name(GetNodeNameForInstruction(instruction));
   node_def->set_op(GetOpDefName(instruction));
-  if (instruction->device_assignment().has_device()) {
-    node_def->set_device(
-        GetDeviceName(instruction->device_assignment().device()));
+  if (instruction->has_sharding() &&
+      instruction->sharding().HasUniqueDevice()) {
+    TF_ASSIGN_OR_RETURN(int64 device, instruction->sharding().UniqueDevice());
+    node_def->set_device(GetDeviceName(device));
   }
   SetNodeAttrs(instruction, node_def);
   if (instruction->opcode() == HloOpcode::kFusion) {

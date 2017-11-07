@@ -51,6 +51,7 @@ from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
 from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
+from tensorflow.contrib import model_pruning
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt

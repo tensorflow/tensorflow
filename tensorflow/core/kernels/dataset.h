@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -47,6 +49,7 @@ class IteratorStateReader {
  public:
   virtual Status ReadScalar(StringPiece key, int64* val) = 0;
   virtual Status ReadScalar(StringPiece key, string* val) = 0;
+  virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
   virtual bool Contains(StringPiece key) = 0;
 
   virtual ~IteratorStateReader() {}
@@ -56,8 +59,9 @@ class IteratorStateReader {
 // Used for saving iterator state.
 class IteratorStateWriter {
  public:
-  virtual Status WriteScalar(StringPiece key, const int64& val) = 0;
+  virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
   virtual Status WriteScalar(StringPiece key, const string& val) = 0;
+  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
 };
@@ -75,10 +79,7 @@ class GraphDefBuilderWrapper {
   Status AddScalar(const T& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
     val_t.scalar<T>()() = val;
-    *output =
-        ops::SourceOp("Const", b_->opts()
-                                   .WithAttr("dtype", DataTypeToEnum<T>::v())
-                                   .WithAttr("value", val_t));
+    AddTensorInternal(val_t, output);
     if (*output == nullptr) {
       return errors::Internal("AddScalar: Failed to build Const op.");
     }
@@ -96,14 +97,30 @@ class GraphDefBuilderWrapper {
     for (int i = 0; i < val.size(); i++) {
       val_t.flat<T>()(i) = val[i];
     }
-    *output =
-        ops::SourceOp("Const", b_->opts()
-                                   .WithAttr("dtype", DataTypeToEnum<T>::v())
-                                   .WithAttr("value", val_t));
+    AddTensorInternal(val_t, output);
     if (*output == nullptr) {
       return errors::Internal("AddVector: Failed to build Const op.");
     }
     return Status::OK();
+  }
+
+  // Adds a Const node with Tensor value to the Graph.
+  // `*output` contains a pointer to the output `Node`. It is guaranteed to be
+  // non-null if the method returns with an OK status.
+  // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  Status AddTensor(const Tensor& val, Node** output) {
+    AddTensorInternal(val, output);
+    if (*output == nullptr) {
+      return errors::Internal("AddTesor: Failed to build Const op.");
+    }
+    return Status::OK();
+  }
+
+  template <class DatasetType>
+  Status AddDataset(const DatasetType* dataset,
+                    const std::vector<NodeBuilder::NodeOut>& inputs,
+                    Node** output) {
+    return AddDataset(dataset, inputs, {}, output);
   }
 
   // Adds a node corresponding to the `DatasetType` to the Graph.
@@ -116,7 +133,9 @@ class GraphDefBuilderWrapper {
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
   template <class DatasetType>
   Status AddDataset(const DatasetType* dataset,
-                    std::vector<NodeBuilder::NodeOut> inputs, Node** output) {
+                    const std::vector<NodeBuilder::NodeOut>& inputs,
+                    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+                    Node** output) {
     const string& op_type_name = dataset->op_name();
     std::unique_ptr<const GraphDefBuilder::Options> opts(
         new GraphDefBuilder::Options(b_->opts()));
@@ -131,6 +150,10 @@ class GraphDefBuilderWrapper {
     if (has_output_types_attr) {
       opts.reset(new GraphDefBuilder::Options(
           opts->WithAttr("output_types", dataset->output_dtypes())));
+    }
+    for (auto attr : attrs) {
+      opts.reset(new GraphDefBuilder::Options(
+          opts->WithAttr(attr.first, attr.second)));
     }
     if (opts->HaveError()) {
       return errors::Internal("AddDataset: Error building Options.");
@@ -148,7 +171,51 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
+  // TODO(shivaniagrawal): Single method for AddDataset for
+  // NodeOut/ArrraySlice<NodeOut>
+  template <class DatasetType>
+  Status AddDatasetWithInputAsList(const DatasetType* dataset,
+                                   gtl::ArraySlice<NodeBuilder::NodeOut> input,
+                                   Node** output) {
+    const string& op_type_name = dataset->op_name();
+    std::unique_ptr<const GraphDefBuilder::Options> opts(
+        new GraphDefBuilder::Options(b_->opts()));
+    bool has_output_types_attr = HasAttr(op_type_name, "output_types");
+    bool has_output_shapes_attr = HasAttr(op_type_name, "output_shapes");
+    if (has_output_shapes_attr) {
+      opts.reset(new GraphDefBuilder::Options(
+          opts->WithAttr("output_shapes", dataset->output_shapes())));
+    }
+    if (has_output_types_attr) {
+      opts.reset(new GraphDefBuilder::Options(
+          opts->WithAttr("output_types", dataset->output_dtypes())));
+    }
+    if (opts->HaveError()) {
+      return errors::Internal("AddDataset: Error building Options.");
+    }
+    NodeBuilder node_builder(opts->GetNameForOp(op_type_name), op_type_name,
+                             opts->op_registry());
+    node_builder.Input(input);
+    *output = opts->FinalizeBuilder(&node_builder);
+    if (*output == nullptr) {
+      return errors::Internal("AddDataset: Failed to build ", op_type_name,
+                              " op.");
+    }
+    return Status::OK();
+  }
+
+  template <typename T>
+  void BuildAttrValue(const T& value, AttrValue* attr) {
+    SetAttrValue(value, attr);
+  }
+
  private:
+  void AddTensorInternal(const Tensor& val, Node** output) {
+    *output = ops::SourceOp(
+        "Const",
+        b_->opts().WithAttr("dtype", val.dtype()).WithAttr("value", val));
+  }
+
   bool HasAttr(const string& op_type_name, const string& attr_name) {
     const OpDef* op_def = nullptr;
     Status s = b_->opts().op_registry()->LookUpOpDef(op_type_name, &op_def);

@@ -329,7 +329,7 @@ described below.
 * **`graph`.** By default, a new @{tf.Session} will be bound to---and only able
   to run operations in---the current default graph. If you are using multiple
   graphs in your program (see [Programming with multiple
-  graphs](programming-with-multiple-graphs) for more details), you can specify
+  graphs](#programming_with_multiple_graphs) for more details), you can specify
   an explicit @{tf.Graph} when you construct the session.
 
 * **`config`.** This argument allows you to specify a @{tf.ConfigProto} that

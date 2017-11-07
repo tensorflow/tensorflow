@@ -29,6 +29,7 @@ from tensorflow.contrib.summary.summary_ops import all_summary_ops
 from tensorflow.contrib.summary.summary_ops import always_record_summaries
 from tensorflow.contrib.summary.summary_ops import audio
 from tensorflow.contrib.summary.summary_ops import create_summary_file_writer
+from tensorflow.contrib.summary.summary_ops import eval_dir
 from tensorflow.contrib.summary.summary_ops import generic
 from tensorflow.contrib.summary.summary_ops import histogram
 from tensorflow.contrib.summary.summary_ops import image

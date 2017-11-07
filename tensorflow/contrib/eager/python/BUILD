@@ -41,6 +41,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:summary",
     ],
 )
 
@@ -163,6 +164,7 @@ py_test(
     deps = [
         ":metrics",
         "//tensorflow/contrib/summary:summary_ops",
+        "//tensorflow/contrib/summary:summary_test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -184,6 +186,7 @@ py_library(
     deps = [
         ":datasets",
         ":metrics",
+        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -200,6 +203,10 @@ py_test(
     deps = [
         ":evaluator",
         ":metrics",
+        "//tensorflow/contrib/summary:summary_test_util",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",

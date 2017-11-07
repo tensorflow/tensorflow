@@ -321,7 +321,9 @@ class Network(base.Layer):
         raise ValueError(
             ("The parent of a Layer added to Network %s was garbage collected "
              "before the Layer was built. If this limitation bothers you "
-             "please, file a feature request.") % (self.name,))
+             "please, comment on "
+             "https://github.com/tensorflow/tensorflow/issues/14164.") %
+            (self.name,))
       with variable_scope.variable_scope(parent_scope):
         # Horrid hack to make Layer variable names which are direct
         # sub-layers of Networks conform to the Network variable naming

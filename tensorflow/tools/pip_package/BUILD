@@ -153,6 +153,7 @@ sh_binary(
             "//tensorflow:tensorflow_py",
             "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
             "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
+            "//tensorflow/contrib/eager/python/examples:examples_pip",
             "//tensorflow/contrib/gan:gan",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
             "//tensorflow/contrib/keras:keras",

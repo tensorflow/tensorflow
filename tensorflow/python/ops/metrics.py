@@ -34,6 +34,7 @@
 @@precision_at_thresholds
 @@recall
 @@recall_at_k
+@@recall_at_top_k
 @@recall_at_thresholds
 @@root_mean_squared_error
 @@sensitivity_at_specificity

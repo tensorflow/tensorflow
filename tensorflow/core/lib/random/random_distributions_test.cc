@@ -280,6 +280,72 @@ TEST(PhiloxRandomTest, RandomParametersDoubleMomentsTest) {
   RandomParametersMomentsTest<double>(1 << 20, 40, strides, kZLimit);
 }
 
+class MockGenerator {
+ public:
+  explicit MockGenerator(uint64 seed) : counter_(seed) {}
+  using ResultType = std::vector<uint32>;
+  using ResultElementType = uint32;
+  static const int kResultElementCount = 1;
+  ResultType operator()() {
+    ResultType result;
+    result.push_back(counter_++);
+    return result;
+  }
+
+ private:
+  uint32 counter_;
+};
+
+template <typename T>
+void SingleSampleAdapterSkipTest() {
+  std::vector<uint64> skips(10);
+  std::vector<uint64> skip_afters(10);
+  std::iota(skips.begin(), skips.end(), 0);
+  std::iota(skip_afters.begin(), skip_afters.end(), 0);
+  uint64 total_samples = 100;
+  uint64 seed = GetTestSeed();
+
+  for (uint64 skip : skips) {
+    for (uint64 skip_after : skip_afters) {
+      // Baseline rngs.
+      T parent_gen(seed);
+      SingleSampleAdapter<T> gen(&parent_gen);
+
+      // Rng on which Skip() is performed.
+      T parent_gen_to_skip(seed);
+      SingleSampleAdapter<T> gen_to_skip(&parent_gen_to_skip);
+
+      // Skip over `skip_after` samples from both `gen` and `gen_to_skip`.
+      int cur = 0;
+      for (; cur < skip_after; cur++) {
+        gen();
+        gen_to_skip();
+      }
+
+      // Skip over `skip_` samples from `gen` iteratively.
+      for (; cur < skip_after + skip; cur++) {
+        gen();
+      }
+
+      // Skip over `skip_` samples from `gen_to_skip` by calling `Skip()`.
+      gen_to_skip.Skip(skip);
+
+      // Assert that they produce same outputs afterwards.
+      for (; cur < total_samples; cur++) {
+        ASSERT_EQ(gen(), gen_to_skip());
+      }
+    }
+  }
+}
+
+TEST(SingleSampleAdapterTest, PhiloxRandomSkip) {
+  SingleSampleAdapterSkipTest<PhiloxRandom>();
+}
+
+TEST(SingleSampleAdapterTest, MockGeneratorSkip) {
+  SingleSampleAdapterSkipTest<MockGenerator>();
+}
+
 }  // namespace
 }  // namespace random
 }  // namespace tensorflow

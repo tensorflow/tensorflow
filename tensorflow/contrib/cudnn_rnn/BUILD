@@ -95,6 +95,7 @@ tf_custom_op_py_library(
     name = "cudnn_rnn_py",
     srcs = [
         "__init__.py",
+        "python/layers/__init__.py",
         "python/layers/cudnn_rnn.py",
     ],
     dso = [
@@ -154,7 +155,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "cudnn_rnn_test",
-    size = "large",
+    size = "enormous",
     srcs = ["python/kernel_tests/cudnn_rnn_test.py"],
     additional_deps = [
         ":cudnn_rnn_py",

@@ -447,6 +447,43 @@ op {
   is_stateful: true
 }
 op {
+  name: "AddV2"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Returns x + y element-wise."
+  description: "*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+  is_aggregate: true
+  is_commutative: true
+}
+op {
   name: "AdjustContrast"
   input_arg {
     name: "images"
@@ -5224,6 +5261,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5290,6 +5328,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5345,6 +5384,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5410,6 +5450,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5465,6 +5506,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -6375,6 +6417,7 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
         type: DT_STRING
@@ -19328,17 +19371,14 @@ op {
   name: "RandomPoisson"
   input_arg {
     name: "shape"
-    description: "1-D integer tensor. Shape of independent samples to draw from each\ndistribution described by the shape parameters given in rate."
     type_attr: "S"
   }
   input_arg {
     name: "rate"
-    description: "A tensor in which each scalar is a \"rate\" parameter describing the\nassociated poisson distribution."
     type_attr: "dtype"
   }
   output_arg {
     name: "output"
-    description: "A tensor with shape `shape + shape(rate)`. Each slice\n`[:, ..., :, i0, i1, ...iN]` contains the samples drawn for\n`rate[i0, i1, ...iN]`. The dtype of the output matches the dtype of\nrate."
     type_attr: "dtype"
   }
   attr {
@@ -19347,7 +19387,6 @@ op {
     default_value {
       i: 0
     }
-    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
   }
   attr {
     name: "seed2"
@@ -19355,7 +19394,6 @@ op {
     default_value {
       i: 0
     }
-    description: "A second seed to avoid seed collision."
   }
   attr {
     name: "S"
@@ -19378,8 +19416,11 @@ op {
       }
     }
   }
-  summary: "Outputs random values from the Poisson distribution(s) described by rate."
-  description: "This op uses two algorithms, depending on rate. If rate >= 10, then\nthe algorithm by Hormann is used to acquire samples via\ntransformation-rejection.\nSee http://www.sciencedirect.com/science/article/pii/0167668793909974.\n\nOtherwise, Knuth\'s algorithm is used to acquire samples via multiplying uniform\nrandom variables.\nSee Donald E. Knuth (1969). Seminumerical Algorithms. The Art of Computer\nProgramming, Volume 2. Addison Wesley"
+  summary: "Use RandomPoissonV2 instead."
+  deprecation {
+    version: 25
+    explanation: "Replaced by RandomPoissonV2"
+  }
   is_stateful: true
 }
 op {
@@ -22300,7 +22341,62 @@ op {
     }
   }
   summary: "Adds sparse updates to the variable referenced by `resource`."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/ScatterAdd.png\" alt>\n</div>"
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\'https://www.tensorflow.org/images/ScatterAdd.png\' alt>\n</div>"
+  is_stateful: true
+}
+op {
+  name: "ResourceScatterUpdate"
+  input_arg {
+    name: "resource"
+    description: "Should be from a `Variable` node."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    description: "A tensor of indices into the first dimension of `ref`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A tensor of updated values to add to `ref`."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Assigns sparse updates to the variable referenced by `resource`."
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]"
   is_stateful: true
 }
 op {

@@ -2027,7 +2027,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
 
   const string expected = R"(pred[2,2] {
   { 00 },
-  { 01 },
+  { 01 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2041,7 +2041,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
 
   const string expected = R"(pred[2,4] {
   { 1100 },
-  { 0001 },
+  { 0001 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2055,7 +2055,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
 
   const string expected = R"(pred[2,4] {
   { 0100 },
-  { 0000 },
+  { 0000 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2069,7 +2069,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
 
   const string expected = R"(pred[2,4] {
   { 1011 },
-  { 1111 },
+  { 1111 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2083,7 +2083,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
 
   const string expected = R"(pred[2,4] {
   { 0011 },
-  { 1110 },
+  { 1110 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }

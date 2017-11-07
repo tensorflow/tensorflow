@@ -249,6 +249,14 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+# Minimal lib to detect plafrom
+cc_library(
+    name = "lib_platform",
+    hdrs = [
+        "platform/platform.h",
+    ],
+)
+
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on lib/platformlib.
 cc_library(
@@ -2698,6 +2706,7 @@ tf_cc_test_mkl(
     srcs = [
         "graph/mkl_layout_pass_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
+        "util/mkl_util_test.cc",
     ],
     linkstatic = 1,
     deps = [

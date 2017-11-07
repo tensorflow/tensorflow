@@ -33,6 +33,14 @@ from tensorflow.python.ops import random_ops
 POSDEF_INV_METHOD = "cholesky"
 
 
+def set_global_constants(posdef_inv_method=None):
+  """Sets various global constants used by the classes in this module."""
+  global POSDEF_INV_METHOD
+
+  if posdef_inv_method is not None:
+    POSDEF_INV_METHOD = posdef_inv_method
+
+
 class SequenceDict(object):
   """A dict convenience wrapper that allows getting/setting with sequences."""
 

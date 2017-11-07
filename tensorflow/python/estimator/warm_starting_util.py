@@ -23,7 +23,6 @@ import six
 
 from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -125,7 +124,7 @@ def _infer_var_name(var):
     Name of the `var`
   """
   name_to_var_dict = saver.BaseSaverBuilder.OpListToDict(var)
-  if len(name_to_var_dict.keys()) > 1:
+  if len(name_to_var_dict) > 1:
     raise TypeError("`var` passed as arg violates the constraints.")
   return list(name_to_var_dict.keys())[0]
 
@@ -138,26 +137,69 @@ def _warmstart_var(var, prev_ckpt, prev_tensor_name=None):
       Can be either of the following:
       (i) `Variable`
       (ii) `ResourceVariable`
-      (iii) list of `Variable`: The list must contain slices of the same larger
-        variable.
-      (iv) `PartitionedVariable`
+      (iii) `PartitionedVariable`
+      (iv) list of `Variable` and/or `PartitionedVariable`: The list may
+        contain one or more variables that has been sharded.  For example:
+        [Variable('a/part_0'), Variable('b/part_0'), Variable('a/part_1'),
+         PartitionedVariable([Variable('c/part_0'), Variable('c/part_1')])]
+        where we have three whole Variables represented ('a', 'b', and 'c').
     prev_ckpt: A string specifying the directory with checkpoint file(s) or path
       to checkpoint. The given checkpoint must have tensor with name
       `prev_tensor_name` (if not None) or tensor with name same as given `var`.
     prev_tensor_name: Name of the tensor to lookup in provided `prev_ckpt`. If
       None, we lookup tensor with same name as given `var`.
+
+  Raises:
+    ValueError: If prev_tensor_name is not None, but the given var represents
+      more than one Variable.
+    TypeError: If var is not one of the allowed types.
   """
   if _is_variable(var):
     current_var_name = _infer_var_name([var])
-  elif isinstance(var, list) and all(_is_variable(v) for v in var):
-    current_var_name = _infer_var_name(var)
   elif isinstance(var, variables.PartitionedVariable):
     current_var_name = _infer_var_name([var])
     var = var._get_variable_list()  # pylint: disable=protected-access
+  elif (isinstance(var, list) and all(
+      _is_variable(v) or isinstance(v, variables.PartitionedVariable)
+      for v in var)):
+    # Convert length-1 lists of vars to single tf.Variables.  This ensures that
+    # checkpoint_utils.init_from_checkpoint() doesn't incorrectly assume
+    # slice info is present.
+    if len(var) == 1:
+      current_var_name = _infer_var_name(var)
+      var = var[0]
+    else:
+      # If we have multiple elements in var, we cannot assume they all
+      # represent the same Variable.
+      name_to_var_dict = saver.BaseSaverBuilder.OpListToDict(
+          var, convert_variable_to_tensor=False)
+      if prev_tensor_name:
+        # Providing a prev_tensor_name is only viable if var representes a
+        # single Variable.
+        if len(name_to_var_dict) > 1:
+          raise ValueError("var represented more than one Variable, but "
+                           "prev_tensor_name was provided.")
+        checkpoint_utils.init_from_checkpoint(prev_ckpt, {
+            prev_tensor_name: var
+        })
+      else:
+        # OpListToDict gives us roughly what we need, but
+        # the values in the dict may be PartitionedVariables (which
+        # init_from_checkpoint does not expect) that we need to convert to
+        # lists.
+        name_to_var_dict_fixed = {}
+        for name, var in six.iteritems(name_to_var_dict):
+          if isinstance(var, variables.PartitionedVariable):
+            name_to_var_dict_fixed[name] = var._get_variable_list()  # pylint: disable=protected-access
+          else:
+            name_to_var_dict_fixed[name] = var
+        checkpoint_utils.init_from_checkpoint(prev_ckpt, name_to_var_dict_fixed)
+      return
   else:
     raise TypeError(
-        "var MUST be one of the following: a Variable, list of Variable or "
-        "PartitionedVariable, but is {}".format(type(var)))
+        "var MUST be one of the following: a Variable, PartitionedVariable, or "
+        "list of Variable's and/or PartitionedVariable's, but is {}".format(
+            type(var)))
   if not prev_tensor_name:
     # Assume tensor name remains the same.
     prev_tensor_name = current_var_name
@@ -173,7 +215,8 @@ def _warmstart_var_with_vocab(var,
                               prev_ckpt,
                               prev_vocab_path,
                               current_oov_buckets=0,
-                              prev_tensor_name=None):
+                              prev_tensor_name=None,
+                              initializer=None):
   """Warm-starts given variable from `prev_tensor_name` tensor in `prev_ckpt`.
 
   Use this method when the `var` is backed by vocabulary. This method stitches
@@ -200,6 +243,8 @@ def _warmstart_var_with_vocab(var,
       buckets used for given `var`.
     prev_tensor_name: Name of the tensor to lookup in provided `prev_ckpt`. If
       None, we lookup tensor with same name as given `var`.
+    initializer: Variable initializer to be used for missing entries.  If None,
+      missing entries will be zero-initialized.
 
   Raises:
     ValueError: If required args are not provided.
@@ -232,18 +277,6 @@ def _warmstart_var_with_vocab(var,
           full_shape=slice_info.full_shape,
           var_offset=slice_info.var_offset)
 
-    # TODO(vihanjain): This is brittle. Can we instead infer actual initializer
-    # used originally for the variable or use a fixed initializer?
-    def _missing_ids_init(shape, dtype=None):
-      # pylint: disable=cell-var-from-loop
-      if dtype and dtype.base_dtype != v.dtype.base_dtype:
-        raise ValueError("Trying to initialize missing ids with a different "
-                         "dtype `{}` than variable's dtype `{}`".format(
-                             dtype, v.dtype))
-      return array_ops.slice(v.initial_value, [0, 0], shape)
-
-      # pylint: enable=cell-var-from-loop
-
     # TODO(vihanjain): Support _WarmstartSettings where class vocabularies need
     # remapping too.
     init = checkpoint_ops._load_and_remap_matrix_initializer(
@@ -257,7 +290,7 @@ def _warmstart_var_with_vocab(var,
         new_col_vocab_file=None,
         num_row_oov_buckets=current_oov_buckets,
         num_col_oov_buckets=0,
-        initializer=_missing_ids_init)
+        initializer=initializer)
     new_init_val = ops.convert_to_tensor(
         init(shape=v_shape, partition_info=partition_info))
     v._initializer_op = state_ops.assign(v, new_init_val)
@@ -305,6 +338,11 @@ def _warmstart_input_layer(cols_to_vars, warmstart_settings):
     ```
 
     The above example effectively warm-starts full linear model.
+
+  Raises:
+    ValueError: If a column in cols_to_vars has an entry in
+      warmstart_settings.cols_to_prev_vocab, but is not an instance of
+      _VocabularyFileCategoricalColumn or _EmbeddingColumn.
   """
   for col, var in six.iteritems(cols_to_vars):
     if not isinstance(col, feature_column._FeatureColumn):  # pylint: disable=protected-access
@@ -316,21 +354,43 @@ def _warmstart_input_layer(cols_to_vars, warmstart_settings):
       continue
 
     prev_tensor_name = warmstart_settings.col_to_prev_tensor.get(col)
-    if isinstance(col, feature_column._VocabularyFileCategoricalColumn):  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    is_sparse_vocab_column = isinstance(
+        col, feature_column._VocabularyFileCategoricalColumn)
+    is_embedding_vocab_column = (
+        isinstance(col, feature_column._EmbeddingColumn) and
+        isinstance(col.categorical_column,
+                   feature_column._VocabularyFileCategoricalColumn))
+    if is_sparse_vocab_column or is_embedding_vocab_column:
+      # pylint: enable=protected-access
+      initializer = None
+      if is_embedding_vocab_column:
+        initializer = col.initializer
+        vocabulary_file = col.categorical_column.vocabulary_file
+        vocabulary_size = col.categorical_column.vocabulary_size
+        num_oov_buckets = col.categorical_column.num_oov_buckets
+      else:
+        vocabulary_file = col.vocabulary_file
+        vocabulary_size = col.vocabulary_size
+        num_oov_buckets = col.num_oov_buckets
       prev_vocab_path = warmstart_settings.col_to_prev_vocab.get(
-          col, col.vocabulary_file)
+          col, vocabulary_file)
       logging.info("Warm-starting column: {}; prev_vocab: {}; prev_tensor: {}".
                    format(col.name, prev_vocab_path, (
                        prev_tensor_name or "Unchanged")))
       _warmstart_var_with_vocab(
           var,
-          current_vocab_path=col.vocabulary_file,
-          current_vocab_size=col.vocabulary_size,
+          current_vocab_path=vocabulary_file,
+          current_vocab_size=vocabulary_size,
           prev_ckpt=warmstart_settings.ckpt_to_initialize_from,
           prev_vocab_path=prev_vocab_path,
-          current_oov_buckets=col.num_oov_buckets,
-          prev_tensor_name=prev_tensor_name)
+          current_oov_buckets=num_oov_buckets,
+          prev_tensor_name=prev_tensor_name,
+          initializer=initializer)
     else:
+      if col in warmstart_settings.col_to_prev_vocab:
+        raise ValueError("Vocabulary provided for column %s which is not a "
+                         "_VocabularyFileCategoricalColumn or _EmbeddingColumn")
       logging.info("Warm-starting column: {}; prev_tensor: {}".format(
           col.name, prev_tensor_name or "Unchanged"))
       _warmstart_var(var, warmstart_settings.ckpt_to_initialize_from,
