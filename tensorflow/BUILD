@@ -414,6 +414,7 @@ filegroup(
         "//tensorflow/contrib/nearest_neighbor:all_files",
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
+        "//tensorflow/contrib/onnx:all_files",
         "//tensorflow/contrib/predictor:all_files",
         "//tensorflow/contrib/quantize:all_files",
         "//tensorflow/contrib/receptive_field:all_files",

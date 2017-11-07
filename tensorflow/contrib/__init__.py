@@ -54,6 +54,7 @@ from tensorflow.contrib import metrics
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
+from tensorflow.contrib import onnx
 from tensorflow.contrib import predictor
 from tensorflow.contrib import quantization
 from tensorflow.contrib import quantize

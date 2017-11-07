@@ -61,6 +61,7 @@ py_library(
         "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
+        "//tensorflow/contrib/onnx:onnx_interface_py",
         "//tensorflow/contrib/opt:opt_py",
         "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
