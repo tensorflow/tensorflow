@@ -1,0 +1,31 @@
+op {
+  graph_op_name: "EncodeWav"
+  in_arg {
+    name: "audio"
+    description: <<END
+2-D with shape `[length, channels]`.
+END
+  }
+  in_arg {
+    name: "sample_rate"
+    description: <<END
+Scalar containing the sample frequency.
+END
+  }
+  out_arg {
+    name: "contents"
+    description: <<END
+0-D. WAV-encoded file contents.
+END
+  }
+  summary: "Encode audio data using the WAV file format."
+  description: <<END
+This operation will generate a string suitable to be saved out to create a .wav
+audio file. It will be encoded in the 16-bit PCM format. It takes in float
+values in the range -1.0f to 1.0f, and any outside that value will be clamped to
+that range.
+
+`audio` is a 2-D float Tensor of shape `[length, channels]`.
+`sample_rate` is a scalar Tensor holding the rate to use (e.g. 44100).
+END
+}

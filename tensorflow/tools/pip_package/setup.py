@@ -32,6 +32,7 @@ from setuptools.dist import Distribution
 _VERSION = '1.4.0-rc1'
 
 REQUIRED_PACKAGES = [
+    'absl-py',
     'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',

@@ -1,0 +1,44 @@
+op {
+  graph_op_name: "SelfAdjointEigV2"
+  endpoint {
+    name: "SelfAdjointEig"
+  }
+  in_arg {
+    name: "input"
+    description: <<END
+`Tensor` input of shape `[N, N]`.
+END
+  }
+  out_arg {
+    name: "e"
+    description: <<END
+Eigenvalues. Shape is `[N]`.
+END
+  }
+  out_arg {
+    name: "v"
+    description: <<END
+Eigenvectors. Shape is `[N, N]`.
+END
+  }
+  attr {
+    name: "compute_v"
+    description: <<END
+If `True` then eigenvectors will be computed and returned in `v`.
+Otherwise, only the eigenvalues will be computed.
+END
+  }
+  summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
+  description: <<END
+Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
+`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
+
+```python
+# a is a tensor.
+# e is a tensor of eigenvalues.
+# v is a tensor of eigenvectors.
+e, v = self_adjoint_eig(a)
+e = self_adjoint_eig(a, compute_v=False)
+```
+END
+}

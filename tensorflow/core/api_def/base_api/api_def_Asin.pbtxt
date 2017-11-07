@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Asin"
+  summary: "Computes asin of x element-wise."
+}

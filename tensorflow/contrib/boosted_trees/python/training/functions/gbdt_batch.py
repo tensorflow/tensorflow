@@ -208,7 +208,7 @@ def extract_features(features, feature_columns):
       if tensor.dtype == dtypes.float32:
         if len(tensor.shape) > 1 and tensor.shape[1] > 1:
           unstacked = array_ops.unstack(tensor, axis=1)
-          for i in xrange(len(unstacked)):
+          for i in range(len(unstacked)):
             dense_float_names.append(_FEATURE_NAME_TEMPLATE % (key, i))
             dense_floats.append(array_ops.reshape(unstacked[i], [-1, 1]))
         else:

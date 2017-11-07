@@ -214,7 +214,7 @@ R"(HloModule TwoSendRecvBothWayRecvFist_module:
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
   %recv = f32[] recv(), channel_id=15, sharding={maximal device=1}
   ROOT %constant = f32[] constant(2.1), sharding={maximal device=0}
-  %send = () send(f32[] %constant), channel_id=16, sharding={maximal device=0}
+  %send = () send(f32[] %constant), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
 }
 
 )"

@@ -169,18 +169,22 @@ class TensorArrayTest(test.TestCase):
     self._testTensorArrayWriteConcat(dtypes.complex128)
     self._testTensorArrayWriteConcat(dtypes.string)
 
-  def _testTensorArrayPackNotAllValuesAvailableFails(self):
+  def _testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros(self):
     with self.test_session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
-          dtype=dtypes.float32, tensor_array_name="foo", size=3)
-
-      with self.assertRaisesOpError("Could not read from TensorArray index 1 "
-                                    "because it has not yet been written to."):
-        self.evaluate(ta.write(0, [[4.0, 5.0]]).stack())
+          dtype=dtypes.float32,
+          tensor_array_name="foo",
+          size=3,
+          element_shape=tensor_shape.TensorShape([1, 2]))
+      self.assertAllEqual([[0.0, 0.0]], self.evaluate(ta.read(0)))
+      self.assertAllEqual([[[0.0, 0.0]], [[4.0, 5.0]], [[0.0, 0.0]]],
+                          self.evaluate(ta.write(1, [[4.0, 5.0]]).stack()))
+      self.assertAllEqual([[0.0, 0.0], [4.0, 5.0], [0.0, 0.0]],
+                          self.evaluate(ta.write(1, [[4.0, 5.0]]).concat()))
 
   @test_util.run_in_graph_and_eager_modes()
-  def testTensorArrayPackNotAllValuesAvailableFails(self):
-    self._testTensorArrayPackNotAllValuesAvailableFails()
+  def testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros(self):
+    self._testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros()
 
   def _testTensorArrayUnpackRead(self, tf_dtype):
     with self.test_session(use_gpu=True):
@@ -422,12 +426,6 @@ class TensorArrayTest(test.TestCase):
         with self.assertRaisesOpError(
             "TensorArray dtype is float but Op requested dtype double."):
           r0_bad.eval()
-
-      # Test reading from a different index than the one we wrote to
-      with self.assertRaisesOpError(
-          "Could not read from TensorArray index 1 because "
-          "it has not yet been written to."):
-        self.evaluate(w0.read(1))
 
       # Test reading from a negative index, which is not allowed
       if context.in_graph_mode():

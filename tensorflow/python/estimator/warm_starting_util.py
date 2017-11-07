@@ -46,10 +46,13 @@ class _WarmStartSettings(
     ckpt_to_initialize_from: [Required] A string specifying the directory with
       checkpoint file(s) or path to checkpoint from which to warm-start the
       model parameters.
-    col_to_prev_vocab: [Optional] Dict of `FeatureColumn` to path of the
-      vocabulary used for the `FeatureColumn` in `ckpt_to_initialize_from`. If
-      not explicitly provided, the vocabularies are assumed to be same between
-      previous and present checkpoints.
+    col_to_prev_vocab: [Optional] Dict of `FeatureColumn` to vocabularies used
+      for the `FeatureColumn` in `ckpt_to_initialize_from`.  Vocabularies can
+      be represented either by a string (path to vocabulary), or tuple of
+      (string, int), representing (path of the vocabulary, vocab_size) if only
+      `vocab_size` entries of the old vocabulary were used in the checkpoint. If
+      the dict is not explicitly provided, the vocabularies are assumed to be
+      same between previous and present checkpoints.
     col_to_prev_tensor: [Optional] Dict of `FeatureColumn` to name of the
       variable (corresponding to the `FeatureColumn`) in
       `ckpt_to_initialize_from`. If not explicitly provided, the name of the
@@ -74,6 +77,13 @@ class _WarmStartSettings(
   # have a different vocab from the one used in current checkpoint.
   ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp",
                           col_to_prev_vocab={sc_vocab_file: "old_vocab.txt"})
+
+  # Warm-start all weights but the parameters corresponding to "sc_vocab_file"
+  # have a different vocab from the one used in current checkpoint, and only
+  # 100 of those entries were used.
+  ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp",
+                          col_to_prev_vocab={sc_vocab_file:
+                                             ("old_vocab.txt", 100)})
 
   # Warm-start all weights but the parameters corresponding to "sc_vocab_file"
   # have a different vocab from the one used in current checkpoint and the
@@ -214,6 +224,7 @@ def _warmstart_var_with_vocab(var,
                               current_vocab_size,
                               prev_ckpt,
                               prev_vocab_path,
+                              previous_vocab_size=-1,
                               current_oov_buckets=0,
                               prev_tensor_name=None,
                               initializer=None):
@@ -239,6 +250,8 @@ def _warmstart_var_with_vocab(var,
       to checkpoint. The given checkpoint must have tensor with name
       `prev_tensor_name` (if not None) or tensor with name same as given `var`.
     prev_vocab_path: Path to the vocab file used for the tensor in `prev_ckpt`.
+    previous_vocab_size: If provided, will constrain previous vocab to the first
+      `previous_vocab_size` entries.  -1 means use the entire previous vocab.
     current_oov_buckets: An `int` specifying the number of out-of-vocabulary
       buckets used for given `var`.
     prev_tensor_name: Name of the tensor to lookup in provided `prev_ckpt`. If
@@ -284,6 +297,7 @@ def _warmstart_var_with_vocab(var,
         old_tensor_name=prev_tensor_name,
         new_row_vocab_size=current_vocab_size,
         new_col_vocab_size=v_shape[1],
+        old_row_vocab_size=previous_vocab_size,
         old_row_vocab_file=prev_vocab_path,
         new_row_vocab_file=current_vocab_path,
         old_col_vocab_file=None,
@@ -373,17 +387,30 @@ def _warmstart_input_layer(cols_to_vars, warmstart_settings):
         vocabulary_file = col.vocabulary_file
         vocabulary_size = col.vocabulary_size
         num_oov_buckets = col.num_oov_buckets
-      prev_vocab_path = warmstart_settings.col_to_prev_vocab.get(
+      prev_vocab = warmstart_settings.col_to_prev_vocab.get(
           col, vocabulary_file)
-      logging.info("Warm-starting column: {}; prev_vocab: {}; prev_tensor: {}".
-                   format(col.name, prev_vocab_path, (
-                       prev_tensor_name or "Unchanged")))
+      if isinstance(prev_vocab, str):
+        prev_vocab_path = prev_vocab
+        previous_vocab_size = -1
+        logging.info(
+            "Warm-starting column: {}; prev_vocab: {}; "
+            "prev_tensor: {}".format(col.name, prev_vocab_path,
+                                     (prev_tensor_name or "Unchanged")))
+      elif isinstance(prev_vocab, tuple):
+        prev_vocab_path = prev_vocab[0]
+        previous_vocab_size = prev_vocab[1]
+        logging.info("Warm-starting column: {}; prev_vocab: {} (first {} "
+                     "entries); prev_tensor: {}".format(
+                         col.name, prev_vocab_path, previous_vocab_size,
+                         (prev_tensor_name or "Unchanged")))
+
       _warmstart_var_with_vocab(
           var,
           current_vocab_path=vocabulary_file,
           current_vocab_size=vocabulary_size,
           prev_ckpt=warmstart_settings.ckpt_to_initialize_from,
           prev_vocab_path=prev_vocab_path,
+          previous_vocab_size=previous_vocab_size,
           current_oov_buckets=num_oov_buckets,
           prev_tensor_name=prev_tensor_name,
           initializer=initializer)

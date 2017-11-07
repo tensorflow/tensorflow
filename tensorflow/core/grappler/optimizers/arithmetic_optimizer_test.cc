@@ -145,7 +145,6 @@ TEST_F(ArithmeticOptimizerTest, SimplifyReplaceTrivialSums) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  //  VLOG(2) << output.DebugString();
   EXPECT_EQ(5, output.node_size());
   const NodeDef& new_const = output.node(3);
   EXPECT_EQ("add_const", new_const.name());
@@ -176,7 +175,6 @@ TEST_F(ArithmeticOptimizerTest, SimplifyHoistFactor) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  LOG(INFO) << output.DebugString();
   EXPECT_EQ(9, output.node_size());
   const NodeDef& new_add = output.node(8);
   EXPECT_EQ("add_hoist", new_add.name());
@@ -206,7 +204,6 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(7, output.node_size());
   EXPECT_EQ("trans_fused", output.node(6).name());
@@ -231,7 +228,6 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndConjugateTranspose) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(7, output.node_size());
   EXPECT_EQ("conjugate_trans_fused", output.node(6).name());
@@ -255,13 +251,83 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(7, output.node_size());
   EXPECT_EQ("conj_fused", output.node(6).name());
   EXPECT_EQ("ConjugateTranspose", output.node(6).op());
   EXPECT_EQ("z", output.node(6).input(0));
   EXPECT_EQ("perm", output.node(6).input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
+  for (const string matmul_type : {"MatMul", "SparseMatMul", "BatchMatMul"}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const(s.WithOpName("a"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+    Output b = ops::Const(s.WithOpName("b"), {5.0f, 6.0f, 7.0f, 8.0f}, {2, 2});
+    Output perm = ops::Const(s.WithOpName("perm"), {1, 0}, {2});
+    Output trans_a = ops::Transpose(s.WithOpName("trans_a"), a, perm);
+    Output trans_b = ops::Transpose(s.WithOpName("trans_b"), b, perm);
+    if (matmul_type == "MatMul") {
+      Output matmul = ops::MatMul(s.WithOpName("matmul"), trans_a, trans_b);
+    } else if (matmul_type == "SparseMatMul") {
+      Output matmul =
+          ops::SparseMatMul(s.WithOpName("matmul"), trans_a, trans_b);
+    } else if (matmul_type == "BatchMatMul") {
+      Output matmul =
+          ops::BatchMatMul(s.WithOpName("matmul"), trans_a, trans_b);
+    }
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    ArithmeticOptimizer optimizer;
+    GraphDef output;
+    Status status = optimizer.Optimize(nullptr, item, &output);
+    TF_EXPECT_OK(status);
+
+    EXPECT_EQ(7, output.node_size());
+    EXPECT_EQ("matmul_fused", output.node(6).name());
+    EXPECT_EQ("a", output.node(6).input(0));
+    EXPECT_EQ("b", output.node(6).input(1));
+    if (matmul_type == "BatchMatMul") {
+      EXPECT_TRUE(output.node(6).attr().at("adj_x").b());
+      EXPECT_TRUE(output.node(6).attr().at("adj_y").b());
+    } else {
+      EXPECT_TRUE(output.node(6).attr().at("transpose_a").b());
+      EXPECT_TRUE(output.node(6).attr().at("transpose_b").b());
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output re_a =
+      ops::Const(s.WithOpName("re_a"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+  Output im_a =
+      ops::Const(s.WithOpName("im_a"), {-1.0f, -2.0f, -3.0f, -4.0f}, {2, 2});
+  Output re_b =
+      ops::Const(s.WithOpName("re_b"), {5.0f, 6.0f, 7.0f, 8.0f}, {2, 2});
+  Output im_b =
+      ops::Const(s.WithOpName("im_b"), {-5.0f, -6.0f, -7.0f, -8.0f}, {2, 2});
+  Output a = ops::Complex(s.WithOpName("a"), re_a, im_a);
+  Output b = ops::Complex(s.WithOpName("b"), re_b, im_b);
+  Output perm = ops::Const(s.WithOpName("perm"), {1, 0}, {2});
+  Output trans_a = ops::ConjugateTranspose(s.WithOpName("trans_a"), a, perm);
+  Output trans_b = ops::ConjugateTranspose(s.WithOpName("trans_b"), b, perm);
+  Output matmul = ops::BatchMatMul(s.WithOpName("matmul"), trans_a, trans_b);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(11, output.node_size());
+  EXPECT_EQ("matmul_fused", output.node(10).name());
+  EXPECT_EQ("a", output.node(10).input(0));
+  EXPECT_EQ("b", output.node(10).input(1));
+  EXPECT_TRUE(output.node(10).attr().at("adj_x").b());
+  EXPECT_TRUE(output.node(10).attr().at("adj_y").b());
 }
 
 TEST_F(ArithmeticOptimizerTest, IdentityReshape) {

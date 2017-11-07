@@ -61,6 +61,7 @@ fi
 
 set -e
 # Install six.
+pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.

@@ -25,10 +25,12 @@ import re
 import subprocess
 import sys
 
+# pylint: disable=g-import-not-at-top
 try:
   from shutil import which
 except ImportError:
   from distutils.spawn import find_executable as which
+# pylint: enable=g-import-not-at-top
 
 _TF_BAZELRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            '.tf_configure.bazelrc')
@@ -485,7 +487,10 @@ def set_cc_opt_flags(environ_cp):
   cc_opt_flags = get_from_env_or_user_or_default(environ_cp, 'CC_OPT_FLAGS',
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
-    write_to_bazelrc('build:opt --cxxopt=%s --copt=%s' % (opt, opt))
+    host_opt = '-march=native'  # It should be safe on the same build host.
+    write_to_bazelrc(
+        'build:opt --cxxopt=%s --copt=%s' % (opt, opt) +
+        ' --host_cxxopt=%s --host_copt=%s' % (host_opt, host_opt))
 
 
 def set_tf_cuda_clang(environ_cp):
