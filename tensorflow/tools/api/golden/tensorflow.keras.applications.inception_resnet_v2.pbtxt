@@ -1,7 +1,7 @@
-path: "tensorflow.keras.applications.resnet50"
+path: "tensorflow.keras.applications.inception_resnet_v2"
 tf_module {
   member_method {
-    name: "ResNet50"
+    name: "InceptionResNetV2"
     argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\'], "
   }
   member_method {
@@ -10,6 +10,6 @@ tf_module {
   }
   member_method {
     name: "preprocess_input"
-    argspec: "args=[\'x\', \'data_format\', \'mode\'], varargs=None, keywords=None, defaults=[\'None\', \'caffe\'], "
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
 }

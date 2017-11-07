@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras Applications: models with automatic loading of pre-trained weights.
-"""
+"""InceptionResNetV2 Keras application."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras._impl.keras.applications.inception_resnet_v2 import decode_predictions
 from tensorflow.python.keras._impl.keras.applications.inception_resnet_v2 import InceptionResNetV2
-from tensorflow.python.keras._impl.keras.applications.inception_v3 import InceptionV3
-from tensorflow.python.keras._impl.keras.applications.mobilenet import MobileNet
-from tensorflow.python.keras._impl.keras.applications.resnet50 import ResNet50
-from tensorflow.python.keras._impl.keras.applications.vgg16 import VGG16
-from tensorflow.python.keras._impl.keras.applications.vgg19 import VGG19
-from tensorflow.python.keras._impl.keras.applications.xception import Xception
+from tensorflow.python.keras._impl.keras.applications.inception_resnet_v2 import preprocess_input
+
+del absolute_import
+del division
+del print_function
