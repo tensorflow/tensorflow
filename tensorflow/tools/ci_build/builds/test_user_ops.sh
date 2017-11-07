@@ -78,11 +78,11 @@ pushd "${TMP_DIR}"
 
 # Obtain compilation and linking flags
 TF_CFLAGS=$("${PYTHON_BIN_PATH}" \
-         -c 'import tensorflow as tf; print(tf.sysconfig.get_compile_flags())')
+	 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))')
 TF_LFLAGS=$("${PYTHON_BIN_PATH}" \
-         -c 'import tensorflow as tf; print(tf.sysconfig.get_link_flags())')
+	 -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))')
 
-if [[ -z "${TF_CFLAGS}" -or -z "${TF_LFLAGS}" ]]; then
+if [[ -z "${TF_CFLAGS}" || -z "${TF_LFLAGS}" ]]; then
   die "FAILED to determine TensorFlow compilation or linking flags"
 else
   echo "TensorFlow compile flags: ${TF_CFLAGS}"
