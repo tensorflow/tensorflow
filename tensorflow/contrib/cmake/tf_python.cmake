@@ -1007,9 +1007,9 @@ if(WIN32)
     # include contrib/periodic_resample as .so
     #
     set(tf_periodic_resample_srcs
-       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/kernels/periodic_resample_op.cc"
-       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/kernels/periodic_resample_op.h"
-       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/ops/array_ops.cc"
+       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/kernels/periodic_resample_op.cc"
+       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/kernels/periodic_resample_op.h"
+       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/ops/array_ops.cc"
     )
 
     AddUserOps(TARGET _periodic_resample_op
