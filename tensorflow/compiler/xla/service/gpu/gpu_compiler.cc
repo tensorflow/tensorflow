@@ -61,11 +61,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -77,14 +80,13 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
+/* static */ const char* GpuCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
+/* static */ const char* GpuCompiler::kDataLayout =
+    "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+
 namespace {
 
-// The triple that represents our target.
-const char* kTargetTriple = "nvptx64-nvidia-cuda";
-
-// The data layout of the emitted module. Copied from computeDataLayout in
-// NVPTXTargetMachine.cpp.
-const char* kDataLayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+using tensorflow::strings::StrCat;
 
 // Any address of a variable residing in global memory or returned by one of the
 // memory allocation routines from the driver or runtime API is always aligned
@@ -93,15 +95,13 @@ const char* kDataLayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 // http://docs.nvidia.com/cuda/cuda-c-programming-guide/#device-memory-accesses
 constexpr int64 kMemoryAlignment = 256;
 
-// Returns the directory containing nvvm libdevice files. This function is
-// called in GpuCompiler's constructor, so can't return an error. But
-// GpuCompiler::Compile will return an error when the wanted libdevice file
-// doesn't exist in the folder this function returns.
-string GetLibdeviceDir(const HloModuleConfig& config) {
+// Returns the directory containing nvvm libdevice files.  config_cuda_data_dir
+// should be equal to config().debug_options().xla_gpu_cuda_data_dir() of the
+// HloModule being compiled.
+string GetLibdeviceDir(const string& config_cuda_data_dir) {
   std::vector<string> potential_libdevice_dirs;
-  const string datadir = config.debug_options().xla_gpu_cuda_data_dir();
-  if (!datadir.empty()) {
-    potential_libdevice_dirs.push_back(datadir);
+  if (!config_cuda_data_dir.empty()) {
+    potential_libdevice_dirs.push_back(config_cuda_data_dir);
   }
   potential_libdevice_dirs.push_back(tensorflow::LibdeviceRoot());
 
@@ -149,6 +149,9 @@ tensorflow::Status OptimizeHloModule(
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
+      pass.AddPass<TupleSimplifier>();
+      pass.AddPass<WhileLoopSimplifier>();
+      pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
     }
@@ -224,7 +227,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
 }
 
 // Invokes the ptxas tool on the given PTX string, and dumps its output.
-void DumpPtxasInfo(const string& ptx) {
+void DumpPtxasInfo(const string& ptx, int cc_major, int cc_minor) {
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin/ptxas");
   // Do not log PTX stats if ptxas is not found at the given path.
@@ -246,17 +249,22 @@ void DumpPtxasInfo(const string& ptx) {
 
   // Invoke ptxas and collect its output.
   tensorflow::SubProcess ptxas_info_dumper;
-  ptxas_info_dumper.SetProgram(ptxas_path, {ptxas_path, ptx_path, "-o",
-                                            "/dev/null", "-v", "-arch=sm_35"});
+  ptxas_info_dumper.SetProgram(ptxas_path,
+                               {ptxas_path, ptx_path, "-o", "/dev/null", "-v",
+                                StrCat("-arch=sm_", cc_major, cc_minor)});
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);
-  CHECK(ptxas_info_dumper.Start());
+  if (!ptxas_info_dumper.Start()) {
+    LOG(ERROR) << "Failed to launch ptxas.";
+    return;
+  }
   string stderr_output;
   int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   XLA_LOG_LINES(tensorflow::INFO, stderr_output);
   if (exit_status != 0) {
-    LOG(FATAL) << "Invalid PTX. See the error message above for reasons.";
+    LOG(ERROR) << "ptxas exited with non-zero error code " << exit_status
+               << ".";
   }
 }
 
@@ -311,12 +319,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // print one ourselves.
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
 
-  const string dump_debug_json_to =
-      module->config().debug_options().xla_dump_debug_json_to();
-  if (!dump_debug_json_to.empty()) {
+  const string xla_dump_hlo_proto_to =
+      module->config().debug_options().xla_dump_hlo_proto_to();
+  if (!xla_dump_hlo_proto_to.empty()) {
     HloProto proto = MakeHloProto(*module, *buffer_assignment);
-    TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-        proto, dump_debug_json_to, module->name()));
+    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+        proto, xla_dump_hlo_proto_to, module->name()));
   }
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
@@ -325,7 +333,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
-                               module->config().has_hybrid_result(),
                                &ir_emitter_context);
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));
@@ -342,12 +349,36 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     XLA_VLOG_LINES(2, ir_module_string_before_opt);
   }
 
-  // Reserve space for the PTX to be generated for this module.
+  const string& ir_dump_directory =
+      module->config().debug_options().xla_dump_ir_to();
+
+  if (!ir_dump_directory.empty()) {
+    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
+        /*directory_name=*/ir_dump_directory,
+        /*hlo_module_name=*/module->name(), llvm_module,
+        /*optimized=*/false));
+  }
+
   string* ptx;
+  string libdevice_dir;
   {
     tensorflow::mutex_lock lock(mutex_);
+
+    // Reserve space for the PTX to be generated for this module.
     generated_ptxes_.emplace_back(MakeUnique<string>());
     ptx = generated_ptxes_.back().get();
+
+    // Find the directory containing libdevice.  To avoid searching for it every
+    // time, we have a one-element cache, keyed on the module's config's
+    // cuda_data_dir.
+    const auto& config_cuda_data_dir =
+        module->config().debug_options().xla_gpu_cuda_data_dir();
+    if (cached_libdevice_dir_.empty() ||
+        cached_cuda_data_dir_ != config_cuda_data_dir) {
+      cached_cuda_data_dir_ = config_cuda_data_dir;
+      cached_libdevice_dir_ = GetLibdeviceDir(config_cuda_data_dir);
+    }
+    libdevice_dir = cached_libdevice_dir_;
   }
   int cc_major, cc_minor;
   if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
@@ -357,12 +388,16 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     cc_major = 2;
     cc_minor = 0;
   }
-  if (libdevice_dir_.empty()) {
-    // Compute libdevice_dir_ just once and cache it in this member.
-    libdevice_dir_ = GetLibdeviceDir(module->config());
-  }
+
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
-                                         module->config(), libdevice_dir_));
+                                         module->config(), libdevice_dir));
+
+  if (!ir_dump_directory.empty()) {
+    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
+        /*directory_name=*/ir_dump_directory,
+        /*hlo_module_name=*/module->name(), llvm_module,
+        /*optimized=*/true));
+  }
 
   if (user_post_optimization_hook_) {
     TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
@@ -372,7 +407,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   VLOG(2) << "PTX:";
   XLA_VLOG_LINES(2, *ptx);
   if (VLOG_IS_ON(2)) {
-    DumpPtxasInfo(*ptx);
+    DumpPtxasInfo(*ptx, cc_major, cc_minor);
   }
 
   auto thunk_schedule = MakeUnique<ThunkSchedule>(
@@ -393,7 +428,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }

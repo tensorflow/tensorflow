@@ -84,15 +84,6 @@ PlatformUtil::GetSupportedPlatforms() {
     return NotFound("no platforms found");
   } else if (platforms.size() == 1) {
     return platforms[0];
-  } else if (platforms.size() == 2) {
-    // In the service we always link the cpu backend for ComputeConstant. So if
-    // one of the two platforms is CPU then pick the other (non-cpu) platform as
-    // the default.
-    if (platforms[0]->id() == se::host::kHostPlatformId) {
-      return platforms[1];
-    } else if (platforms[1]->id() == se::host::kHostPlatformId) {
-      return platforms[0];
-    }
   }
 
   // Multiple platforms present and we can't pick a reasonable default.

@@ -105,7 +105,7 @@ TEST(ImageOpsTest, DecodeAndCropJpeg_ShapeFn) {
                    .Input({"img", 0, DT_STRING})
                    .Input({"crop_window", 1, DT_INT32})
                    .Finalize(&op.node_def));
-  INFER_OK(op, "[];[]", "[?,?,?]");
+  INFER_OK(op, "[];[?]", "[?,?,?]");
 
   // Set the channel, so that part of output shape is known.
   TF_ASSERT_OK(NodeDefBuilder("test", op_name)
@@ -113,7 +113,7 @@ TEST(ImageOpsTest, DecodeAndCropJpeg_ShapeFn) {
                    .Input({"crop_window", 1, DT_INT32})
                    .Attr("channels", 4)
                    .Finalize(&op.node_def));
-  INFER_OK(op, "[];[]", "[?,?,4]");
+  INFER_OK(op, "[];[?]", "[?,?,4]");
 
   // Negative channel value is rejected.
   TF_ASSERT_OK(NodeDefBuilder("test", op_name)
@@ -139,7 +139,7 @@ TEST(ImageOpsTest, DecodeAndCropJpeg_InvalidCropWindow) {
                    .Input({"img", 0, DT_STRING})
                    .Input({"crop_window", 1, DT_INT32})
                    .Finalize(&op.node_def));
-  INFER_OK(op, "[];[]", "[?,?,?]");
+  INFER_OK(op, "[];[?]", "[?,?,?]");
 }
 
 TEST(ImageOpsTest, EncodeImage_ShapeFn) {

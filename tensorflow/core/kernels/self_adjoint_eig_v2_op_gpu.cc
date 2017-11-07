@@ -81,6 +81,8 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
     }
 
     // Allocate workspace.
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
     Tensor eigenvalues_real;
     using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
     if (std::is_same<Scalar, RealScalar>::value) {
@@ -88,15 +90,15 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
     } else {
       OP_REQUIRES_OK_ASYNC(
           context,
-          context->allocate_temp(DataTypeToEnum<RealScalar>::value,
-                                 eigenvalues_shape, &eigenvalues_real),
+          solver->allocate_scoped_tensor(DataTypeToEnum<RealScalar>::value,
+                                         eigenvalues_shape, &eigenvalues_real),
           done);
     }
 
     Tensor input_copy;
     OP_REQUIRES_OK_ASYNC(
         context,
-        context->forward_input_or_allocate_temp(
+        solver->forward_input_or_allocate_scoped_tensor(
             {0}, DataTypeToEnum<Scalar>::value, input.shape(), &input_copy),
         done);
     // For real symmetric matrices, row-major and column-major are the same. For
@@ -120,21 +122,21 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
     }
 
     // Compute eigen decomposition in-place in input_copy.
-    CudaSolver solver(context);
     std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "heevd");
+    dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "heevd"));
     auto input_copy_reshaped = input_copy.flat_inner_dims<Scalar, 3>();
     auto eigenvalues_real_reshaped =
         eigenvalues_real.flat_inner_dims<RealScalar, 2>();
     for (int batch = 0; batch < batch_size; ++batch) {
-      OP_REQUIRES_OK_ASYNC(context,
-                           solver.Heevd(compute_v_ ? CUSOLVER_EIG_MODE_VECTOR
-                                                   : CUSOLVER_EIG_MODE_NOVECTOR,
-                                        CUBLAS_FILL_MODE_UPPER, n,
-                                        &input_copy_reshaped(batch, 0, 0), n,
-                                        &eigenvalues_real_reshaped(batch, 0),
-                                        dev_info.back().mutable_data() + batch),
-                           done);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          solver->Heevd(compute_v_ ? CUSOLVER_EIG_MODE_VECTOR
+                                   : CUSOLVER_EIG_MODE_NOVECTOR,
+                        CUBLAS_FILL_MODE_UPPER, n,
+                        &input_copy_reshaped(batch, 0, 0), n,
+                        &eigenvalues_real_reshaped(batch, 0),
+                        dev_info.back().mutable_data() + batch),
+          done);
     }
 
     if (!std::is_same<Scalar, RealScalar>::value) {
@@ -146,29 +148,13 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
     if (compute_v_) {
       // Transpose eigenvectors now stored in input_copy in column-major form to
       // output in row-major form.
-      std::vector<int> perm(ndims);
-      std::iota(perm.begin(), perm.end(), 0);
-      std::swap(perm[ndims - 2], perm[ndims - 1]);
       OP_REQUIRES_OK_ASYNC(
-          context, DoTranspose(device, input_copy, perm, eigenvectors), done);
+          context, DoMatrixTranspose(device, input_copy, eigenvectors), done);
     }
 
     // Asynchronously check return status from cuSolver kernels.
-    TensorReference input_copy_ref(input_copy);
-    TensorReference eigenvalues_real_ref(eigenvalues_real);
-    auto info_checker = [context, dev_info, input_copy_ref,
-                         eigenvalues_real_ref,
-                         done](const Status& status,
-                               const std::vector<HostLapackInfo>& host_infos) {
-      input_copy_ref.Unref();
-      eigenvalues_real_ref.Unref();
-      OP_REQUIRES_OK_ASYNC(context, status, done);
-      done();
-    };
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
-        done);
+    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                    std::move(done));
   }
 
  private:

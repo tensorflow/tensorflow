@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import grouping
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -35,10 +36,12 @@ class GroupByWindowTest(test.TestCase):
 
   def testSimple(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
-    iterator = dataset_ops.Iterator.from_dataset(
+    iterator = (
         dataset_ops.Dataset.from_tensor_slices(components).map(lambda x: x * x)
-        .apply(dataset_ops.group_by_window(lambda x: x % 2,
-                                           lambda _, xs: xs.batch(4), 4)))
+        .apply(
+            grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
+                                     4))
+        .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -61,10 +64,10 @@ class GroupByWindowTest(test.TestCase):
   def testImmediateOutput(self):
     components = np.array(
         [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
-    iterator = dataset_ops.Iterator.from_dataset(
+    iterator = (
         dataset_ops.Dataset.from_tensor_slices(components).repeat(-1).apply(
-            dataset_ops.group_by_window(lambda x: x % 3,
-                                        lambda _, xs: xs.batch(4), 4)))
+            grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4),
+                                     4)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -82,10 +85,10 @@ class GroupByWindowTest(test.TestCase):
 
   def testSmallGroups(self):
     components = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], dtype=np.int64)
-    iterator = dataset_ops.Iterator.from_dataset(
+    iterator = (
         dataset_ops.Dataset.from_tensor_slices(components).apply(
-            dataset_ops.group_by_window(lambda x: x % 2,
-                                        lambda _, xs: xs.batch(4), 4)))
+            grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
+                                     4)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -109,10 +112,11 @@ class GroupByWindowTest(test.TestCase):
           padded_shapes=(tensor_shape.TensorShape([]),
                          constant_op.constant([5], dtype=dtypes.int64) * -1))
 
-    iterator = dataset_ops.Iterator.from_dataset(
+    iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: (x, ops.convert_to_tensor([x * x]))).apply(
-            dataset_ops.group_by_window(lambda x, _: x % 2, reduce_func, 32)))
+            grouping.group_by_window(lambda x, _: x % 2, reduce_func, 32))
+        .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -133,12 +137,13 @@ class GroupByWindowTest(test.TestCase):
           window.padded_batch(
               4, padded_shapes=ops.convert_to_tensor([(key + 1) * 10])),))
 
-    iterator = dataset_ops.Iterator.from_dataset(
+    iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([math_ops.cast(x, dtypes.int32)], x))
-        .apply(dataset_ops.group_by_window(
+        .apply(grouping.group_by_window(
             lambda x: math_ops.cast(array_ops.shape(x)[0] // 10, dtypes.int64),
-            reduce_func, 4)))
+            reduce_func, 4))
+        .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -180,11 +185,11 @@ class BucketTest(test.TestCase):
         dataset_ops.Dataset.from_tensor_slices(math_ops.range(32)).map(_map_fn))
 
     bucketed_dataset = input_dataset.apply(
-        dataset_ops.group_by_window(
+        grouping.group_by_window(
             lambda x, y, z: 0,
             lambda k, bucket: self._dynamicPad(k, bucket, 32), 32))
 
-    iterator = dataset_ops.Iterator.from_dataset(bucketed_dataset)
+    iterator = bucketed_dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -215,11 +220,11 @@ class BucketTest(test.TestCase):
         dataset_ops.Dataset.from_tensor_slices(math_ops.range(64)).map(_map_fn))
 
     bucketed_dataset = input_dataset.apply(
-        dataset_ops.group_by_window(
+        grouping.group_by_window(
             lambda x, y, z: math_ops.cast(x % 2, dtypes.int64),
             lambda k, bucket: self._dynamicPad(k, bucket, 32), 32))
 
-    iterator = dataset_ops.Iterator.from_dataset(bucketed_dataset)
+    iterator = bucketed_dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -285,11 +290,11 @@ class BucketTest(test.TestCase):
         .filter(lambda d: math_ops.equal(d["x"] % 2, 0)))
 
     bucketed_dataset = input_dataset.apply(
-        dataset_ops.group_by_window(
+        grouping.group_by_window(
             lambda d: math_ops.cast(d["x"] % 2, dtypes.int64),
             lambda k, bucket: _dynamic_pad_fn(k, bucket, 32), 32))
 
-    iterator = dataset_ops.Iterator.from_dataset(bucketed_dataset)
+    iterator = bucketed_dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -320,10 +325,9 @@ class BucketTest(test.TestCase):
       return window_sizes[key]
 
     dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
-        dataset_ops.group_by_window(
-            lambda x: x % 2, lambda _, xs: xs.batch(20), None,
-            window_size_func))
-    iterator = dataset_ops.Iterator.from_dataset(dataset)
+        grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(20),
+                                 None, window_size_func))
+    iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

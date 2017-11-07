@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
@@ -69,15 +71,6 @@ Status Executable::DumpSessionModule() {
                                      *session_module_);
 }
 
-// Removes illegal characters from filenames.
-static void SanitizeFilename(string* name) {
-  for (char& c : *name) {
-    if (c == '/' || c == '\\' || c == '[' || c == ']') {
-      c = '_';
-    }
-  }
-}
-
 /* static */ Status Executable::DumpToDirectory(
     const string& directory_path, string filename,
     const SessionModule& session_module) {
@@ -89,9 +82,13 @@ static void SanitizeFilename(string* name) {
     // "directory already exists" error.
     TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
   }
-  SanitizeFilename(&filename);
+  filename = SanitizeFileName(std::move(filename));
   string file_path = tensorflow::io::JoinPath(directory_path, filename);
-  return tensorflow::WriteBinaryProto(env, file_path, session_module);
+  string result;
+  TF_RET_CHECK(
+      tensorflow::SerializeToStringDeterministic(session_module, &result));
+  return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
+                                       result);
 }
 
 }  // namespace xla

@@ -44,6 +44,10 @@ limitations under the License.
 
 %include "tensorflow/python/util/transform_graph.i"
 
+%include "tensorflow/python/util/util.i"
+
+%include "tensorflow/python/grappler/cluster.i"
+%include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
 %include "tensorflow/python/grappler/model_analyzer.i"

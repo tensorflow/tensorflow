@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -241,6 +242,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
     opts.stats_collector = ctx->stats_collector();
+    opts.step_container = ctx->step_container();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -292,7 +294,8 @@ class RemoteCallOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
     AttrValueMap attr_values = func_.attr();
     AttrValue v;
-    const string& target_device = target->scalar<string>()();
+    const string& target_device =
+        DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()());
     v.set_s(target_device);
     AddAttr("_target", v, &attr_values);
 
@@ -325,9 +328,10 @@ class RemoteCallOp : public AsyncOpKernel {
     lib->Run(opts, handle, args, rets, [rets, done, ctx](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
-      }
-      for (size_t i = 0; i < rets->size(); ++i) {
-        ctx->set_output(i, (*rets)[i]);
+      } else {
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
       }
       delete rets;
       done();

@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"

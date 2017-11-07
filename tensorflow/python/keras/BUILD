@@ -654,6 +654,7 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/models_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67509773
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -673,8 +674,10 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:run_config",
         "//third_party/py/numpy",
     ],
 )

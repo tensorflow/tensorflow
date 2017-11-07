@@ -14,28 +14,34 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
-Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
-                                    int64 stride, Padding padding_type,
-                                    int64* output_size, int64* padding_before,
-                                    int64* padding_after) {
+Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
+                                      int64 dilation_rate, int64 stride,
+                                      Padding padding_type, int64* output_size,
+                                      int64* padding_before,
+                                      int64* padding_after) {
   if (stride <= 0) {
     return errors::InvalidArgument("Stride must be > 0, but got ", stride);
   }
+  if (dilation_rate < 1) {
+    return errors::InvalidArgument("Dilation rate must be >= 1, but got ",
+                                   dilation_rate);
+  }
 
-  // See also the parallel implementation in GetWindowedOutputSizeFromDims.
+  // See also the parallel implementation in GetWindowedOutputSizeFromDimsV2.
+  int64 effective_filter_size = (filter_size - 1) * dilation_rate + 1;
   switch (padding_type) {
     case Padding::VALID:
-      *output_size = (input_size - filter_size + stride) / stride;
+      *output_size = (input_size - effective_filter_size + stride) / stride;
       *padding_before = *padding_after = 0;
       break;
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
       const int64 padding_needed =
-          std::max(0LL, (*output_size - 1) * stride + filter_size - input_size);
+          std::max(0LL, (*output_size - 1) * stride + effective_filter_size -
+                            input_size);
       // For odd values of total padding, add more padding at the 'right'
       // side of the given dimension.
       *padding_before = padding_needed / 2;
@@ -48,13 +54,33 @@ Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
   return Status::OK();
 }
 
+Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
+                                    int64 stride, Padding padding_type,
+                                    int64* output_size, int64* padding_before,
+                                    int64* padding_after) {
+  return GetWindowedOutputSizeVerboseV2(input_size, filter_size,
+                                        /*dilation_rate=*/1, stride,
+                                        padding_type, output_size,
+                                        padding_before, padding_after);
+}
+
 Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
                              Padding padding_type, int64* output_size,
-                             int64* padding) {
+                             int64* padding_size) {
   int64 padding_after_unused;
   return GetWindowedOutputSizeVerbose(input_size, filter_size, stride,
-                                      padding_type, output_size, padding,
+                                      padding_type, output_size, padding_size,
                                       &padding_after_unused);
+}
+
+Status GetWindowedOutputSizeV2(int64 input_size, int64 filter_size,
+                               int64 dilation_rate, int64 stride,
+                               Padding padding_type, int64* output_size,
+                               int64* padding_size) {
+  int64 padding_after_unused;
+  return GetWindowedOutputSizeVerboseV2(input_size, filter_size, dilation_rate,
+                                        stride, padding_type, output_size,
+                                        padding_size, &padding_after_unused);
 }
 
 Status Get3dOutputSize(const std::array<int64, 3>& input,
@@ -70,32 +96,75 @@ Status Get3dOutputSize(const std::array<int64, 3>& input,
   return Status::OK();
 }
 
+Status Get3dOutputSizeV2(const std::array<int64, 3>& input,
+                         const std::array<int64, 3>& window,
+                         const std::array<int64, 3>& dilations,
+                         const std::array<int64, 3>& strides,
+                         Padding padding_type, std::array<int64, 3>* output_ptr,
+                         std::array<int64, 3>* padding_ptr) {
+  for (size_t i = 0; i < input.size(); ++i) {
+    TF_RETURN_IF_ERROR(GetWindowedOutputSizeV2(
+        input[i], window[i], dilations[i], strides[i], padding_type,
+        &(*output_ptr)[i], &(*padding_ptr)[i]));
+  }
+  return Status::OK();
+}
+
 namespace shape_inference {
+
+// The V2 version computes windowed output size with arbitrary dilation_rate,
+// while the original version only handles the cases where dilation_rates equal
+// to 1.
+Status GetWindowedOutputSizeFromDimsV2(
+    shape_inference::InferenceContext* c,
+    shape_inference::DimensionHandle input_size,
+    shape_inference::DimensionOrConstant filter_size, int64 dilation_rate,
+    int64 stride, Padding padding_type,
+    shape_inference::DimensionHandle* output_size) {
+  if (stride <= 0) {
+    return errors::InvalidArgument("Stride must be > 0, but got ", stride);
+  }
+
+  if (dilation_rate < 1) {
+    return errors::InvalidArgument("Dilation rate must be >= 1, but got ",
+                                   dilation_rate);
+  }
+
+  // See also the parallel implementation in GetWindowedOutputSizeVerbose.
+  switch (padding_type) {
+    case Padding::VALID:
+      if (dilation_rate > 1) {
+        DimensionHandle window_size;
+        TF_RETURN_IF_ERROR(
+            c->Subtract(c->MakeDim(filter_size), 1, &window_size));
+        TF_RETURN_IF_ERROR(
+            c->Multiply(window_size, dilation_rate, &window_size));
+        TF_RETURN_IF_ERROR(c->Add(window_size, 1, &window_size));
+        TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
+      } else {
+        TF_RETURN_IF_ERROR(c->Subtract(input_size, filter_size, output_size));
+      }
+      TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
+      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
+                                   /*evenly_divisible=*/false, output_size));
+      break;
+    case Padding::SAME:
+      TF_RETURN_IF_ERROR(c->Add(input_size, stride - 1, output_size));
+      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
+                                   /*evenly_divisible=*/false, output_size));
+      break;
+  }
+  return Status::OK();
+}
 
 Status GetWindowedOutputSizeFromDims(
     shape_inference::InferenceContext* c,
     shape_inference::DimensionHandle input_size,
     shape_inference::DimensionOrConstant filter_size, int64 stride,
     Padding padding_type, shape_inference::DimensionHandle* output_size) {
-  if (stride <= 0) {
-    return errors::InvalidArgument("Stride must be > 0, but got ", stride);
-  }
-
-  // See also the parallel implementation in GetWindowedOutputSizeVerbose.
-  switch (padding_type) {
-    case Padding::VALID:
-      TF_RETURN_IF_ERROR(c->Subtract(input_size, filter_size, output_size));
-      TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
-      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
-                                   false /* evenly_divisible */, output_size));
-      break;
-    case Padding::SAME:
-      TF_RETURN_IF_ERROR(c->Add(input_size, stride - 1, output_size));
-      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
-                                   false /* evenly_divisible */, output_size));
-      break;
-  }
-  return Status::OK();
+  return GetWindowedOutputSizeFromDimsV2(c, input_size, filter_size,
+                                         /*dilation_rate=*/1, stride,
+                                         padding_type, output_size);
 }
 
 Status UnchangedShape(shape_inference::InferenceContext* c) {
@@ -218,27 +287,24 @@ Status CheckFormatConstraintsOnShape(const TensorFormat tensor_format,
   return Status::OK();
 }
 
-// Returns a new shape with the specified dims arranged in the specified
-// format. The returned value is owned by this context.
-// Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.
 Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
                            const std::vector<DimensionOrConstant>& spatial,
                            DimensionOrConstant C, ShapeHandle* out,
-                           shape_inference::InferenceContext* c) {
+                           shape_inference::InferenceContext* context) {
   const int num_dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
   std::vector<DimensionHandle> dims_actual(num_dims);
-  dims_actual[GetTensorBatchDimIndex(num_dims, format)] = c->MakeDim(N);
+  dims_actual[GetTensorBatchDimIndex(num_dims, format)] = context->MakeDim(N);
   int outer_c_index = GetTensorFeatureDimIndex(num_dims, format);
-  dims_actual[outer_c_index] = c->MakeDim(C);
+  dims_actual[outer_c_index] = context->MakeDim(C);
   if (format == FORMAT_NCHW_VECT_C) {
     dims_actual[GetTensorInnerFeatureDimIndex(num_dims, format)] =
-        c->MakeDim(4);
+        context->MakeDim(4);
   }
   for (int spatial_dim = 0; spatial_dim < spatial.size(); spatial_dim++) {
     dims_actual[GetTensorSpatialDimIndex(num_dims, format, spatial_dim)] =
-        c->MakeDim(spatial[spatial_dim]);
+        context->MakeDim(spatial[spatial_dim]);
   }
-  *out = c->MakeShape(dims_actual);
+  *out = context->MakeShape(dims_actual);
   return Status::OK();
 }
 
@@ -612,6 +678,87 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+  bool is_training;
+  TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
+  int number_inputs = (is_training) ? 3 : 5;
+  string data_format;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
+  DimensionHandle channel_dim =
+      (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
+
+  // covers scale, offset, and if is_training is false, mean, variance
+  for (int i = 1; i < number_inputs; ++i) {
+    ShapeHandle vec;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+  }
+
+  ShapeHandle y;
+  if (data_format == "NHWC") {
+    TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
+  } else {
+    TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
+  }
+  c->set_output(0, y);
+  ShapeHandle vector_shape = c->Vector(channel_dim);
+  c->set_output(1, vector_shape);
+  c->set_output(2, vector_shape);
+  c->set_output(3, vector_shape);
+  c->set_output(4, vector_shape);
+  return Status::OK();
+}
+
+Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
+  ShapeHandle y_backprop;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
+
+  bool is_training;
+  string data_format;
+  TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
+  DimensionHandle channel_dim =
+      (data_format == "NHWC") ? c->Dim(y_backprop, 3) : c->Dim(y_backprop, 1);
+  if (data_format == "NHWC") {
+    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 3), &channel_dim));
+  } else {
+    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 1), &channel_dim));
+  }
+
+  // covers scale, mean (reserve_space_1), variance (reserve_space_2)
+  for (int i = 2; i < 5; ++i) {
+    ShapeHandle vec;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+  }
+
+  ShapeHandle x_backprop;
+  if (data_format == "NHWC") {
+    TF_RETURN_IF_ERROR(c->ReplaceDim(y_backprop, 3, channel_dim, &x_backprop));
+  } else {
+    TF_RETURN_IF_ERROR(c->ReplaceDim(y_backprop, 1, channel_dim, &x_backprop));
+  }
+  c->set_output(0, x_backprop);
+  c->set_output(1, c->Vector(channel_dim));
+  c->set_output(2, c->Vector(channel_dim));
+  // Set the correct shapes for reserve_spaces
+  // so that gradients can be performed when
+  // the op is in a symbolic condition.
+  if (is_training) {
+    c->set_output(3, c->Vector(0));
+    c->set_output(4, c->Vector(0));
+  } else {
+    c->set_output(3, c->Vector(channel_dim));
+    c->set_output(4, c->Vector(channel_dim));
+  }
+  return Status::OK();
+}
+
 Status MaxPoolShape(shape_inference::InferenceContext* c) {
   string data_format_str;
   TensorFormat data_format;
@@ -873,6 +1020,29 @@ Status UnknownShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+template <typename T>
+Status ReductionShapeHelper(const Tensor* reduction_indices_t,
+                            const int32 input_rank,
+                            std::set<int64>& true_indices) {
+  auto reduction_indices = reduction_indices_t->flat<T>();
+  for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
+    const T reduction_index = reduction_indices(i);
+    if (reduction_index < -input_rank || reduction_index >= input_rank) {
+      return errors::InvalidArgument("Invalid reduction dimension ",
+                                     reduction_index, " for input with ",
+                                     input_rank, " dimensions.");
+    }
+
+    auto wrapped_index = reduction_index;
+    if (wrapped_index < 0) {
+      wrapped_index += input_rank;
+    }
+
+    true_indices.insert(wrapped_index);
+  }
+  return Status::OK();
+}
+
 Status ReductionShape(InferenceContext* c) {
   ShapeHandle input = c->input(0);
 
@@ -903,22 +1073,16 @@ Status ReductionShape(InferenceContext* c) {
   }
 
   const int32 input_rank = c->Rank(input);
-  std::set<int32> true_indices;
-  auto reduction_indices = reduction_indices_t->flat<int32>();
-  for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
-    int32 reduction_index = reduction_indices(i);
-    if (reduction_index < -input_rank || reduction_index >= input_rank) {
-      return errors::InvalidArgument("Invalid reduction dimension ",
-                                     reduction_index, " for input with ",
-                                     input_rank, " dimensions.");
-    }
-
-    int32 wrapped_index = reduction_index;
-    if (wrapped_index < 0) {
-      wrapped_index += input_rank;
-    }
-
-    true_indices.insert(wrapped_index);
+  std::set<int64> true_indices;
+  if (reduction_indices_t->dtype() == DataType::DT_INT32) {
+    TF_RETURN_IF_ERROR(ReductionShapeHelper<int32>(reduction_indices_t,
+                                                   input_rank, true_indices));
+  } else if (reduction_indices_t->dtype() == DataType::DT_INT64) {
+    TF_RETURN_IF_ERROR(ReductionShapeHelper<int64>(reduction_indices_t,
+                                                   input_rank, true_indices));
+  } else {
+    return errors::InvalidArgument(
+        "reduction_indices can only be int32 or int64");
   }
 
   std::vector<DimensionHandle> dims;
@@ -1172,11 +1336,10 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", num_outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", num_outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
+            "The outer ", num_outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ",
+            num_outer_dims, " dimensions of updates.shape=",
+            c->DebugString(updates_shape), ": ", s.error_message());
       }
 
       ShapeHandle input_suffix;

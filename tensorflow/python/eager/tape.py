@@ -22,7 +22,8 @@ import collections
 import contextlib
 import threading
 
-from tensorflow.python.util import tf_contextlib
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util import compat
 
 
 def tid(tensor):
@@ -32,7 +33,7 @@ def tid(tensor):
 class TapeEntry(
     collections.namedtuple("TapeEntry", [
         "op_type",
-        "output_ids", "input_ids", "side_outputs", "backward_function",
+        "output_ids", "input_ids", "backward_function",
         "output_shape_and_dtype",
     ])):
   """Entry in the gradient tape.
@@ -43,8 +44,6 @@ class TapeEntry(
   Args:
    output_ids: tensor_id(t) for each output tensor T
    input_ids: tensor_id(t) for each input tensor T
-   side_outputs: optional tensors (not IDs) which need to be provided to the
-    backward function.
    backward_function: function to be called with the downstream gradients and
     side outputs as arguments which computes the backward pass.
    output_shape_and_dtype: a list of (shape_tuple, dtype) for every output
@@ -60,18 +59,7 @@ class Tape(object):
   """Represents a gradient propagation trace."""
 
   def __init__(self):
-    # _tensor_tape maps from tensor IDs to their operation IDs
-    self._tensor_tape = {}
-    # maps from tensor ID to usage count. Triggers garbage collection when this
-    # goes to zero.
-    self._tensor_usage = {}
-    # maps from operation ID to TapeEntry
-    self._op_tape = {}
-    # next operation ID
-    self._next_op_id = 0
-    # List of directly watched tensors
-    self._watched = []
-    # Set of directly watched variables
+    self._tape = pywrap_tensorflow.TFE_Py_NewTape()
     self._watched_variables = set()
 
   def should_record(self, tensors):
@@ -83,61 +71,33 @@ class Tape(object):
     Returns:
       True if any of the tensors is in the tape.
     """
-    return any(x._id in self._tensor_tape for x in tensors)  # pylint: disable=protected-access
+    return pywrap_tensorflow.TFE_Py_TapeShouldRecord(
+        self._tape, [x._id  for x in tensors])  # pylint: disable=protected-access
 
   def watch(self, tensor):
     """Adds a tensor to the tape."""
-    i = tid(tensor)
-    if i not in self._tensor_tape:
-      self._tensor_tape[i] = None
-      self._tensor_usage[i] = 1
-      self._watched.append(tensor)
+    pywrap_tensorflow.TFE_Py_TapeWatch(self._tape, tid(tensor))
 
   def watch_variable(self, v):
     self._watched_variables.add(v)
     self.watch(v.handle)
 
   def record_operation(self, op_type, output_tensors, input_tensors,
-                       side_outputs, backward_function):
+                       backward_function):
     """Records an operation in the tape."""
-    if not self.should_record(input_tensors):
-      return output_tensors
-    for t in output_tensors:
-      i = tid(t)
-      self._tensor_tape[i] = self._next_op_id
-      self._tensor_usage[i] = 1
-    for t in input_tensors:
-      i = tid(t)
-      self._tensor_usage[i] = self._tensor_usage.get(i, 0) + 1
-    self._op_tape[self._next_op_id] = TapeEntry(
-        op_type,
-        [tid(t) for t in output_tensors],
-        [tid(t) for t in input_tensors],
-        side_outputs,
-        backward_function,
-        [(_tensor_shape(t), t.dtype) for t in output_tensors])
-    self._next_op_id += 1
+    pywrap_tensorflow.TFE_Py_TapeRecordOperation(
+        self._tape,
+        compat.as_bytes(op_type),
+        output_tensors,
+        [x._id for x in input_tensors],  # pylint: disable=protected-access
+        backward_function)
 
   def _delete_tensor_id(self, i):
-    if i in self._tensor_usage:
-      self._tensor_usage[i] -= 1
-      if self._tensor_usage[i] == 0:
-        del self._tensor_usage[i]
-        op_id = self._tensor_tape.pop(i, None)
-        if op_id is None:
-          return
-        op = self._op_tape[op_id]
-        if not any(tensor_id in self._tensor_usage
-                   for tensor_id in op.output_ids):
-          del self._op_tape[op_id]
-          for tensor_id in op.input_ids:
-            # TODO(apassos) this recursion might come to bite us. Consider
-            # adding an explicit stack if this ever gets out of hand
-            self._delete_tensor_id(tensor_id)
+    pywrap_tensorflow.TFE_Py_TapeDeleteTrace(self._tape, i)
 
-  def delete_trace(self, tensor):
+  def delete_trace(self, tensor_id):
     """Deletes any trace we have for this tensor."""
-    self._delete_tensor_id(tid(tensor))
+    self._delete_tensor_id(tensor_id)
 
   def export(self):
     """Exports the internal state of this tape.
@@ -147,7 +107,7 @@ class Tape(object):
        responsible for generating that tensor.
       op_tape: a map from <identifier for op> to TapeEntry for that op.
     """
-    return self._tensor_tape, self._op_tape
+    return pywrap_tensorflow.TFE_Py_TapeExport(self._tape)
 
 
 class _TapeStack(threading.local):
@@ -159,13 +119,6 @@ class _TapeStack(threading.local):
   @property
   def stack(self):
     return self._stack
-
-  @tf_contextlib.contextmanager
-  def replace_stack(self, new_stack):
-    old = self._stack
-    self._stack = new_stack
-    yield
-    self._stack = old
 
 
 # The global tape stack.
@@ -182,9 +135,6 @@ def watch(tensor):
 
   Args:
     tensor: tensor to be watched.
-
-  Returns:
-    The tensor, potentially wrapped by all tapes in the stack.
   """
   for t in _tape_stack.stack:
     t.watch(tensor)
@@ -195,9 +145,6 @@ def watch_variable(variable):
 
   Args:
     variable: variable to be watched.
-
-  Returns:
-    The tensor, potentially wrapped by all tapes in the stack.
   """
   for t in _tape_stack.stack:
     t.watch_variable(variable)
@@ -221,31 +168,24 @@ def stop_recording():
 
 
 def should_record(tensors):
-  """Returns true if any tape in the stach watches any of these tensors."""
+  """Returns true if any tape in the stack watches any of these tensors."""
   if not _tape_stack.stack:
     return False
   return any(x.should_record(tensors) for x in _tape_stack.stack)
 
 
-def record_operation(op_type, output_tensors, input_tensors, side_outputs,
-                     backward_function):
+def record_operation(op_type, output_tensors, input_tensors, backward_function):
   """Records the operation on all tapes in the stack."""
   for t in _tape_stack.stack:
     t.record_operation(op_type, output_tensors,
                        input_tensors,
-                       side_outputs,
                        backward_function)
 
 
-def delete_trace(tensor):
+def delete_trace(tensor_id):
   """Deletes traces for this Tensor from all tapes in the stack."""
   for t in _tape_stack.stack:
-    t.delete_trace(tensor)
-
-
-def top_tape_watched_tensors():
-  t = _tape_stack.stack[-1]
-  return t._watched  # pylint: disable=protected-access
+    t.delete_trace(tensor_id)
 
 
 def top_tape_watched_variables():

@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
+#include "tensorflow/compiler/xla/service/cpu/external_constant_pool.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -90,6 +91,10 @@ class SimpleOrcJIT {
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
 
+  ExternalConstantPool* external_constant_pool() {
+    return &external_constant_pool_;
+  }
+
  private:
   std::vector<ModuleHandleT> module_handles_;
   std::unique_ptr<llvm::TargetMachine> target_machine_;
@@ -97,6 +102,7 @@ class SimpleOrcJIT {
   const llvm::DataLayout data_layout_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
+  ExternalConstantPool external_constant_pool_;
 };
 
 }  // namespace cpu

@@ -709,6 +709,12 @@ def resize_images(images,
     https://en.wikipedia.org/wiki/Bicubic_interpolation)
   *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
 
+  The return value has the same type as `images` if `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
+  if the size of `images` can be statically determined to be the same as `size`,
+  because `images` is returned in this case. Otherwise, the return value has
+  type `float32`.
+
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or
             3-D Tensor of shape `[height, width, channels]`.
@@ -1507,7 +1513,8 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       # Generate a single distorted bounding box.
       begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
           tf.shape(image),
-          bounding_boxes=bounding_boxes)
+          bounding_boxes=bounding_boxes,
+          min_object_covered=0.1)
 
       # Draw the bounding box in an image summary.
       image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
@@ -1535,7 +1542,7 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       seed.
     seed2: An optional `int`. Defaults to `0`.
       A second seed to avoid seed collision.
-    min_object_covered: An optional `float`. Defaults to `0.1`.
+    min_object_covered: A Tensor of type `float32`. Defaults to `0.1`.
       The cropped area of the image must contain at least this
       fraction of any bounding box supplied. The value of this parameter should be
       non-negative. In the case of 0, the cropped area does not need to overlap

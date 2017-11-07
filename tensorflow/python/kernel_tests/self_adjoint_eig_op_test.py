@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -47,6 +48,28 @@ class SelfAdjointEigTest(test.TestCase):
     vector = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       linalg_ops.self_adjoint_eig(vector)
+
+  def testConcurrentExecutesWithoutError(self):
+    all_ops = []
+    with self.test_session(use_gpu=True) as sess:
+      for compute_v_ in True, False:
+        matrix1 = random_ops.random_normal([5, 5], seed=42)
+        matrix2 = random_ops.random_normal([5, 5], seed=42)
+        if compute_v_:
+          e1, v1 = linalg_ops.self_adjoint_eig(matrix1)
+          e2, v2 = linalg_ops.self_adjoint_eig(matrix2)
+          all_ops += [e1, v1, e2, v2]
+        else:
+          e1 = linalg_ops.self_adjoint_eigvals(matrix1)
+          e2 = linalg_ops.self_adjoint_eigvals(matrix2)
+          all_ops += [e1, e2]
+      val = sess.run(all_ops)
+      self.assertAllEqual(val[0], val[2])
+      # The algorithm is slightly different for compute_v being True and False,
+      # so require approximate equality only here.
+      self.assertAllClose(val[2], val[4])
+      self.assertAllEqual(val[4], val[5])
+      self.assertAllEqual(val[1], val[3])
 
 
 def SortEigenDecomposition(e, v):
@@ -167,13 +190,17 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
         tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)
         # (complex) Eigenvectors are only unique up to an arbitrary phase
         # We normalize the vectors such that the first component has phase 0.
-        reference = tf_v / linalg_ops.norm(
-            tf_v[..., 0:1, :], axis=-1, keep_dims=True)
-        tf_v *= math_ops.conj(reference)
+        top_rows = tf_v[..., 0:1, :]
+        if tf_a.dtype.is_complex:
+          angle = -math_ops.angle(top_rows)
+          phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
+        else:
+          phase = math_ops.sign(top_rows)
+        tf_v *= phase
         outputs = [tf_e, tf_v]
       else:
         tf_e = linalg_ops.self_adjoint_eigvals(tf_a)
-        outputs = [tf_e,]
+        outputs = [tf_e]
       for b in outputs:
         x_init = np.random.uniform(
             low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)

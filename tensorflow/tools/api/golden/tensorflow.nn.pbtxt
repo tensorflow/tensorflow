@@ -4,6 +4,10 @@ tf_module {
     name: "rnn_cell"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "swish"
+    mtype: "<class \'tensorflow.python.framework.function._OverloadedFunction\'>"
+  }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "

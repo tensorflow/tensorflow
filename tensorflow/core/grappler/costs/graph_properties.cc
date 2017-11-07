@@ -116,6 +116,21 @@ Status PropagateShapes(ShapeRefiner* shape_refiner, bool relax,
   return Status::OK();
 }
 
+bool IsQueue(const Node& node) {
+  StringPiece type(node.type_string());
+  return type.ends_with("QueueV2");
+}
+
+// Returns true if the node is an Enter op AND its input is a Queue.
+bool IsEnterWithQueue(const Node& node) {
+  if (node.IsEnter()) {
+    const Node* in_node;
+    TF_CHECK_OK(node.input_node(0, &in_node));
+    return IsQueue(*in_node);
+  }
+  return false;
+}
+
 }  // namespace
 
 void GraphProperties::Relax(InferenceContext* c, ShapeHandle s0, ShapeHandle s1,
@@ -180,9 +195,12 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
 
 Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
+  FunctionLibraryDefinition function_library(graph.op_registry(),
+                                             item_.graph.library());
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   shape_refiner.set_disable_constant_propagation(true);
+  shape_refiner.set_function_library_for_shape_inference(&function_library);
   ImportGraphDefOptions options;
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
@@ -285,8 +303,8 @@ Status GraphProperties::InferStatically() {
       new_shapes = std::queue<const Node*>();
       for (const auto& resource_data : resources) {
         const Node* qnode = resource_data.first;
-        StringPiece type(qnode->type_string());
-        if (!type.ends_with("QueueV2") && !qnode->IsEnter()) {
+        // Proceed only if qnode is a queue or an Enter with queue input.
+        if (!IsQueue(*qnode) && !IsEnterWithQueue(*qnode)) {
           continue;
         }
         auto qctx = shape_refiner.GetContext(qnode);
@@ -438,6 +456,20 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
       cluster->Run(item_.graph, item_.feed, item_.fetch, &metadata));
 
   return InferFromCostGraph(metadata.cost_graph());
+}
+
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) {
+  *output_graph_def = item_.graph;
+  for (int i = 0; i < output_graph_def->node_size(); i++) {
+    auto node = output_graph_def->mutable_node(i);
+    AttrValue attr_output_shape;
+    auto tensor_properties = GetOutputProperties(node->name());
+    for (const auto& tensor_property : tensor_properties) {
+      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+    }
+    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
+  }
+  return Status::OK();
 }
 
 Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {

@@ -43,7 +43,7 @@ class NameUniquer {
 
   // Map from name prefix to the number of names generated using that prefix
   // so far.
-  std::unordered_map<string, int> generated_names_;
+  std::unordered_map<string, int64> generated_names_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(NameUniquer);
 };

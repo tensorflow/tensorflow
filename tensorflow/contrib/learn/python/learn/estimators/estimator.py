@@ -981,6 +981,7 @@ class BaseEstimator(
       global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
+      training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
       model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend(hooks)

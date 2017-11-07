@@ -66,6 +66,8 @@ class ShapeIndex {
   std::vector<int64>::iterator begin() { return indices_.begin(); }
   std::vector<int64>::iterator end() { return indices_.end(); }
 
+  const int64* data() const { return indices_.data(); }
+
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }
 
@@ -81,20 +83,20 @@ class ShapeIndex {
 
  private:
   std::vector<int64> indices_;
-
-  friend class ShapeIndexView;
 };
 
 // A view into a ShapeIndex as above, with the cheap/easy ability to consume the
 // value at the front of the view.
+//
+// NB! ShapeIndexView does not own the memory backing the index array.
+// The memory backing the index array should be owned by an object
+// that lives longer than the ShapeIndexView instances pointing into
+// it.
 class ShapeIndexView {
  public:
-  ShapeIndexView(const ShapeIndex& shape_index)
-      : ShapeIndexView(shape_index.indices_.data(),
-                       shape_index.indices_.data() + shape_index.size()) {}
-  ShapeIndexView(const ShapeIndex& shape_index, int64 offset)
-      : ShapeIndexView(shape_index.indices_.data() + offset,
-                       shape_index.indices_.data() + shape_index.size()) {
+  ShapeIndexView(const ShapeIndex& shape_index, int64 offset = 0)
+      : ShapeIndexView(shape_index.data() + offset,
+                       shape_index.data() + shape_index.size()) {
     CHECK_LE(offset, shape_index.size());
   }
   ShapeIndexView(std::initializer_list<int64> indices)
@@ -288,6 +290,9 @@ class ShapeUtil {
 
   // Returns whether the element type of the shape is floating point.
   static bool ElementIsFloating(const Shape& shape);
+
+  // Returns whether the element type of the shape is complex.
+  static bool ElementIsComplex(const Shape& shape);
 
   // Returns whether the element type has the given bit width.
   static bool ElementHasBitWidth(const Shape& shape, int bits);

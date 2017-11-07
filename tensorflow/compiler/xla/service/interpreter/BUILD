@@ -8,6 +8,22 @@ load(
 )
 
 cc_library(
+    name = "interpreter_transfer_manager",
+    srcs = ["interpreter_transfer_manager.cc"],
+    hdrs = ["interpreter_transfer_manager.h"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:generic_transfer_manager",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/service/interpreter:platform_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+    alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
+cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
@@ -36,8 +52,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:inliner",
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/compiler/xla/service:reshape_mover",
+        "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
     ],
     alwayslink = True,  # Contains compiler registration
