@@ -90,7 +90,8 @@ def main(_):
       return activations
 
   hidden = nn_layer(x, IMAGE_SIZE**2, HIDDEN_SIZE, "hidden")
-  y = nn_layer(hidden, HIDDEN_SIZE, NUM_LABELS, "softmax", act=tf.nn.softmax)
+  logits = nn_layer(hidden, HIDDEN_SIZE, NUM_LABELS, "output", tf.identity)
+  y = tf.nn.softmax(logits)
 
   with tf.name_scope("cross_entropy"):
     # The following line is the culprit of the bad numerical values that appear
@@ -99,12 +100,13 @@ def main(_):
     # call. A multiplication of the inf values with zeros leads to nans,
     # which is first in "cross_entropy/mul:0".
     #
-    # You can use clipping to fix this issue, e.g.,
-    #   diff = y_ * tf.log(tf.clip_by_value(y, 1e-8, 1.0))
+    # You can use the built-in, numerically-stable implementation to fix this
+    # issue:
+    #   diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits)
 
-    diff = y_ * tf.log(y)
+    diff = -(y_ * tf.log(y))
     with tf.name_scope("total"):
-      cross_entropy = -tf.reduce_mean(diff)
+      cross_entropy = tf.reduce_mean(diff)
 
   with tf.name_scope("train"):
     train_step = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(
@@ -120,7 +122,6 @@ def main(_):
 
   if FLAGS.debug:
     sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
-    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
   # Add this point, sess is a debug wrapper around the actual Session if
   # FLAGS.debug is true. In that case, calling run() will launch the CLI.

@@ -31,6 +31,7 @@ from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -203,6 +204,45 @@ class FeatureColumnTest(test.TestCase):
     for i in range(len(d1_value)):
       self.assertAllClose(d1_value[i], e1_value[i])
 
+  def testSharedEmbeddingColumnWithWeightedSparseColumn(self):
+    # Tests creation of shared embeddings containing weighted sparse columns.
+    sparse_col = fc.sparse_column_with_keys("a1", ["marlo", "omar", "stringer"])
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    weighted_sparse_col = fc.weighted_sparse_column(ids, "weights")
+    self.assertEqual(weighted_sparse_col.name, "ids_weighted_by_weights")
+
+    b = fc.shared_embedding_columns([sparse_col, weighted_sparse_col],
+                                    dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(b[0].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+    self.assertEqual(b[1].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+
+    # Tries reversing order to check compatibility condition.
+    b = fc.shared_embedding_columns([weighted_sparse_col, sparse_col],
+                                    dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(b[0].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+    self.assertEqual(b[1].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+
+    # Tries adding two weighted columns to check compatibility between them.
+    weighted_sparse_col_2 = fc.weighted_sparse_column(ids, "weights_2")
+    b = fc.shared_embedding_columns([weighted_sparse_col,
+                                     weighted_sparse_col_2],
+                                    dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(
+        b[0].shared_embedding_name,
+        "ids_weighted_by_weights_ids_weighted_by_weights_2_shared_embedding"
+    )
+    self.assertEqual(
+        b[1].shared_embedding_name,
+        "ids_weighted_by_weights_ids_weighted_by_weights_2_shared_embedding"
+    )
+
   def testSharedEmbeddingColumnDeterminism(self):
     # Tests determinism in auto-generated shared_embedding_name.
     sparse_id_columns = tuple([
@@ -279,6 +319,35 @@ class FeatureColumnTest(test.TestCase):
     one_hot = fc.one_hot_column(weighted_ids)
     self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
     self.assertEqual(one_hot.length, 3)
+
+  def testMissingValueInOneHotColumnForWeightedSparseColumn(self):
+    # Github issue 12583
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    one_hot = fc.one_hot_column(weighted_ids)
+    features = {
+        'ids': constant_op.constant([['marlo', 'unknown', 'omar']]),
+        'weights': constant_op.constant([[2., 4., 6.]])
+    }
+    one_hot_tensor = feature_column_ops.input_from_feature_columns(
+      features, [one_hot])
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(lookup_ops.tables_initializer())
+      self.assertAllEqual([[2., 6., 0.]], one_hot_tensor.eval())
+
+  def testMissingValueInOneHotColumnForSparseColumnWithKeys(self):
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    one_hot = fc.one_hot_column(ids)
+    features = {
+      'ids': constant_op.constant([['marlo', 'unknown', 'omar']])
+    }
+    one_hot_tensor = feature_column_ops.input_from_feature_columns(
+      features, [one_hot])
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(lookup_ops.tables_initializer())
+      self.assertAllEqual([[1., 1., 0.]], one_hot_tensor.eval())
 
   def testOneHotColumnDeepCopy(self):
     a = fc.sparse_column_with_keys("a", ["a", "b", "c", "d"])
@@ -873,8 +942,7 @@ class FeatureColumnTest(test.TestCase):
             parsing_ops.VarLenFeature(dtype=dtypes.float32),
         "real_valued_var_len_dense_column":
             parsing_ops.FixedLenSequenceFeature(
-                shape=[], dtype=dtypes.float32, allow_missing=True,
-                default_value=4.0),
+                shape=[], dtype=dtypes.float32, allow_missing=True),
     }
 
     self.assertDictEqual(expected_feature_spec, feature_spec)

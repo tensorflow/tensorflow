@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import os
 import tempfile
 
@@ -30,6 +31,8 @@ from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.contrib.slim.python.slim import learning
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.wrappers import dumping_wrapper as dumping_wrapper_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -42,6 +45,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import saver as saver_lib
+
 
 class ClipGradientNormsTest(test.TestCase):
 
@@ -220,7 +224,7 @@ def LogisticClassifier(inputs):
 
 
 def BatchNormClassifier(inputs):
-  inputs = layers.batch_norm(inputs, decay=0.1)
+  inputs = layers.batch_norm(inputs, decay=0.1, fused=True)
   return layers.fully_connected(inputs, 1, activation_fn=math_ops.sigmoid)
 
 
@@ -267,6 +271,11 @@ class CreateTrainOpTest(test.TestCase):
     self._inputs = np.random.rand(16, 4).astype(np.float32)
     self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
 
+  def _addBesselsCorrection(self, sample_size, expected_var):
+    correction_factor = sample_size / (sample_size - 1)
+    expected_var *= correction_factor
+    return expected_var
+
   def testUseUpdateOps(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
@@ -275,6 +284,7 @@ class CreateTrainOpTest(test.TestCase):
 
       expected_mean = np.mean(self._inputs, axis=(0))
       expected_var = np.var(self._inputs, axis=(0))
+      expected_var = self._addBesselsCorrection(16, expected_var)
 
       tf_predictions = BatchNormClassifier(tf_inputs)
       loss_ops.log_loss(tf_predictions, tf_labels)
@@ -482,6 +492,43 @@ class TrainTest(test.TestCase):
           session_config=session_config)
     self.assertIsNotNone(loss)
     self.assertLess(loss, .015)
+
+  def testTrainWithSessionWrapper(self):
+    """Test that slim.learning.train can take `session_wrapper` args.
+
+    One of the applications of `session_wrapper` is the wrappers of TensorFlow
+    Debugger (tfdbg), which intercept methods calls to `tf.Session` (e.g., run)
+    to achieve debugging. `DumpingDebugWrapperSession` is used here for testing
+    purpose.
+    """
+    dump_root = tempfile.mkdtemp()
+    def dumping_wrapper(sess):  # pylint: disable=invalid-name
+      return dumping_wrapper_lib.DumpingDebugWrapperSession(sess, dump_root)
+
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(0)
+      tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
+      tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
+
+      tf_predictions = LogisticClassifier(tf_inputs)
+      loss_ops.log_loss(tf_predictions, tf_labels)
+      total_loss = loss_ops.get_total_loss()
+
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = learning.create_train_op(total_loss, optimizer)
+
+      loss = learning.train(
+          train_op,
+          None,
+          number_of_steps=1,
+          session_wrapper=dumping_wrapper)
+    self.assertIsNotNone(loss)
+
+    run_root = glob.glob(os.path.join(dump_root, 'run_*'))[-1]
+    dump = debug_data.DebugDumpDir(run_root)
+    self.assertAllEqual(
+        0, dump.get_tensors('global_step', 0, 'DebugIdentity')[0])
 
   def testTrainWithTrace(self):
     logdir = os.path.join(

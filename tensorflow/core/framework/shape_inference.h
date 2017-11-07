@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -26,6 +25,14 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+class ShapeRefiner;
+class ShapeRefinerTest;
+
+namespace grappler {
+class GraphProperties;
+}
+
 namespace shape_inference {
 
 struct DimensionOrConstant;
@@ -62,7 +69,9 @@ class DimensionHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
+  friend class ::tensorflow::ShapeRefinerTest;
   friend class ShapeManager;
+  friend class ::tensorflow::grappler::GraphProperties;
 
   // Intentionally copyable.
 };
@@ -98,6 +107,7 @@ class ShapeHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
+  friend class ::tensorflow::ShapeRefinerTest;
   friend class ShapeManager;
 
   // Intentionally copyable.
@@ -134,6 +144,8 @@ struct ShapeAndType {
 // is created by the framework and passed to a shape inference function.  The
 // shape inference function calls functions on the context, and should call
 // set_output() to set the shape on all outputs.
+//
+// To infer shapes for user-defined functions see ShapeRefiner.
 //
 // All Shape* and Dimension* returned by functions of InferenceContext are owned
 // by the InferenceContext.
@@ -180,6 +192,26 @@ class InferenceContext {
           std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>&
           input_handle_shapes_and_types);
 
+  // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
+  //
+  // Elements of <input_tensors_as_shapes> are used for when a shape
+  // function makes a call to MakeShapeFromShapeTensor; in particular, when
+  // the input_tensors[i] is nullptr but the shape represented by it is
+  // partially known from analysis of the graph. <input_tensors_as_shapes>
+  // can have fewer elements than <input_shapes>. Values of
+  // <input_tensors_as_shapes> do not need to outlive the context.
+  //
+  // REQUIRES: <node_def> is not NULL, and must outlive the
+  // InferenceContext.
+  InferenceContext(
+      int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
+      const std::vector<PartialTensorShape>& input_shapes,
+      const std::vector<const Tensor*>& input_tensors,
+      const std::vector<PartialTensorShape>& input_tensors_as_shapes,
+      const std::vector<std::unique_ptr<
+          std::vector<std::pair<PartialTensorShape, DataType>>>>&
+          input_handle_shapes_and_types);
+
   ~InferenceContext();
 
   // Runs the shape inference function 'fn' with 'this' as the
@@ -187,24 +219,27 @@ class InferenceContext {
   //
   // On error, additional context is provided in the error message.
   Status Run(
-      const std::function<Status(shape_inference::InferenceContext* c)>& fn) {
-    Status s = fn(this);
-    if (!s.ok()) {
-      return AttachContext(s);
-    }
-#ifndef NDEBUG
-    for (int i = 0; i < num_outputs(); ++i) {
-      DCHECK(output(i).IsSet())
-          << i << " for " << node_def_.name() << " of type " << node_def_.op();
-    }
-#endif  // NDEBUG
-    return s;
-  }
+      const std::function<Status(shape_inference::InferenceContext* c)>& fn);
 
-  // Merge the stored shape of the input in position idx with the specified
-  // shape. This requires idx to be in the [0, num_inputs) range. If the merge
-  // is successful and the new shape differs from the old one, store the new
-  // shape and return true. Return false otherwise.
+  // Merge the stored shape of the input in position idx with <shape> according
+  // to the following rules:
+  //
+  // - If the ShapeHandles are the same or <shape> is unknown, there will be no
+  //   change. Otherwise if the stored shape is unknown, the new shape will be
+  //   <shape>.
+  // - If both shapes are known, then they must have the same rank.
+  // - For any one dimension, if the values for that dimension in both shapes
+  //   are known, then the values must match.
+  // - If one shape has equal or more information than the other shape in every
+  //   dimension, the shape with more information will be returned. Otherwise a
+  //   new shape holding the combined information of the input shapes will be
+  //   returned.
+  // - Example: merging [2,?] and [?,2] results in [2,2]
+  // - Example: [2,2] cannot be merged with [1,2]
+  //
+  // This requires idx to be in the [0, num_inputs) range. If the merge is
+  // successful and the new shape differs from the old one, store the new shape
+  // and return true. Return false otherwise.
   bool MergeInput(int idx, ShapeHandle shape) {
     ShapeHandle new_shape;
     if (!Merge(inputs_[idx], shape, &new_shape).ok() ||
@@ -214,6 +249,41 @@ class InferenceContext {
     inputs_[idx] = new_shape;
     return true;
   }
+  // Relax the stored shape of the input in position idx with <shape> according
+  // to the following rules:
+  //
+  // - If the ShapeHandles are the same then the stored shape will be returned.
+  // - If either of the ShapeHandles are unknown, then a new UnknownShape will
+  //   be returned. A new shape must be returned because we cannot claim that
+  //   the resulting shape is necessarily the same as either of the input
+  //   shapes.
+  // - If the shapes both have known ranks but their ranks are different, a new
+  //   UnknownShape will be returned.
+  // - For any one dimension, if the value for that dimension in either of the
+  //   shapes is unknown, a new shape will be returned with a new UnknownDim in
+  //   that dimension.
+  // - For any one dimension, if the values for that dimension in both shapes
+  //   are known but do not match, a new shape will be returned with a new
+  //   UnknownDim in that dimension.
+  // - If both shapes have the same known rank and match in every dimension,
+  //   the stored shape will be returned.
+  // - Example: relaxing [2,?] and [?,2] results in [?,?]
+  // - Example: relaxing [2,2] and [3,2] results in [?,2]
+  // - Example: relaxing [2,2] with [1,2,3] results in ?
+  //
+  // This requires idx to be in the [0, num_inputs) range. If the relax is
+  // successful and the new shape differs from the old one, store the new
+  // shape and return true. Return false otherwise.
+  bool RelaxInput(int idx, ShapeHandle shape) {
+    ShapeHandle new_shape;
+    Relax(inputs_[idx], shape, &new_shape);
+    if (inputs_[idx].SameHandle(new_shape)) {
+      return false;
+    }
+    inputs_[idx] = new_shape;
+    return true;
+  }
+
   ShapeHandle input(int64 idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
@@ -255,7 +325,9 @@ class InferenceContext {
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
-  AttrSlice attrs() const { return AttrSlice(node_def_); }
+  AttrSlice attrs() const { return AttrSlice(*node_def_); }
+
+  string op() const;
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
@@ -281,6 +353,10 @@ class InferenceContext {
   inline bool ValueKnown(DimensionOrConstant d) const {
     return Value(d) != kUnknownDim;
   }
+
+  // Fills the output proto with the shape defined by the handle.
+  // "proto" is expected to be empty prior to the call.
+  void ShapeHandleToProto(ShapeHandle handle, TensorShapeProto* proto);
 
   // Returns true if the rank and all dimensions of the Shape are known.
   bool FullyDefined(ShapeHandle s);
@@ -313,12 +389,9 @@ class InferenceContext {
   Status WithValue(DimensionHandle dim, int64 value,
                    DimensionHandle* out) TF_MUST_USE_RESULT;
 
-  // Merges <in0> and <in1> and returns the merged shape in <*out>. If <in0> and
-  // <in1> are incompatible in rank, or in the value of any dimension, returns
-  // an error.
-  //
-  // Note that <*out> may be set to <in0> or <in1>.
-  Status Merge(ShapeHandle in0, ShapeHandle in1,
+  // Merges <s0> and <s1> and returns the merged shape in <*out>. See
+  // 'MergeInput' function for full details and examples.
+  Status Merge(ShapeHandle s0, ShapeHandle s1,
                ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Asserts that <s>'s rank >= <prefix>'s rank, and the first
@@ -471,13 +544,34 @@ class InferenceContext {
   // If the merge is successful and any of the new shapes differs from the old
   // one, or any of the old dtypes was DT_INVALID, store the new shapes and
   // return true.  Return false otherwise.
+  //
+  // See 'MergeInput' function for full details and examples.
   bool MergeInputHandleShapesAndTypes(
       int idx,
       const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
 
   // As MergeInputHandleShapesAndTypes, but for an output.
   bool MergeOutputHandleShapesAndTypes(
-      int idx, const std::vector<ShapeAndType>& shapes) TF_MUST_USE_RESULT;
+      int idx,
+      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+
+  // Relaxes the stored shapes and types corresponding to the input handle in
+  // position idx with the specified shapes and types. This requires idx to be
+  // in the [0, num_inputs) range.
+  //
+  // If the relax is successful and any of the new shapes differs from the old
+  // one, or any of the old dtypes was DT_INVALID, store the new shapes and
+  // return true.  Return false otherwise.
+  //
+  // See 'RelaxInput' function for full details and examples.
+  bool RelaxInputHandleShapesAndMergeTypes(
+      int idx,
+      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+
+  // As RelaxInputHandleShapesAndTypes, but for an output.
+  bool RelaxOutputHandleShapesAndMergeTypes(
+      int idx,
+      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
 
   // Returns the output handle shapes and types, for the resource tensor output
   // at index <idx>. Returns NULL if the shape and types were never set.
@@ -538,6 +632,12 @@ class InferenceContext {
     std::vector<Dimension*> all_dims_;  // values are owned.
   };
 
+  friend class ::tensorflow::grappler::GraphProperties;
+
+  // Friend for user-defined function shape inference purposes.
+  friend class ::tensorflow::ShapeRefiner;
+
+  friend class ShapeInferenceTest;      // For testing Relax functions.
   friend class ShapeInferenceTestutil;  // For testing shapes.
 
   // Shared initialization across the two constructors.  Remove
@@ -563,9 +663,23 @@ class InferenceContext {
   // Adds additional context to the given status.
   Status AttachContext(const Status& status);
 
+  // Relaxes <d0> and <d1> and returns the relaxed dimension in <*out>. If <d0>
+  // and <d1> have incompatible values, returns an error.
+  //
+  // Note that <*out> may be set to <d0> or <d1>.
+  void Relax(DimensionHandle d0, DimensionHandle d1, DimensionHandle* out);
+  // Relaxes <s0> and <s1> and returns the relaxed shape in <*out>. See
+  // 'RelaxInput' function for full details and examples.
+  void Relax(ShapeHandle s0, ShapeHandle s1, ShapeHandle* out);
+
   // Used to implement MergeInputHandleShapesAndTypes and
   // MergeOutputHandleShapesAndTypes.
   bool MergeHandleShapesAndTypes(
+      const std::vector<ShapeAndType>& shapes_and_types,
+      std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+  // Used to implement RelaxInputHandleShapesAndMergeTypes and
+  // RelaxOutputHandleShapesAndMergeTypes.
+  bool RelaxHandleShapesAndMergeTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
       std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
 
@@ -596,7 +710,7 @@ class InferenceContext {
       output_handle_shapes_and_types_;
 
   const int graph_def_version_;
-  const NodeDef& node_def_;
+  const NodeDef* node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
 
@@ -636,7 +750,7 @@ inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
 
 template <class T>
 Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
-  return GetNodeAttr(node_def_, attr_name, value);
+  return GetNodeAttr(*node_def_, attr_name, value);
 }
 
 }  // namespace shape_inference

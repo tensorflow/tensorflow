@@ -20,6 +20,7 @@ limitations under the License.
 #if (defined(__GNUC__) || defined(__APPLE__)) && !defined(SWIG)
 // Compiler supports GCC-style attributes
 #define TF_ATTRIBUTE_NORETURN __attribute__((noreturn))
+#define TF_ATTRIBUTE_ALWAYS_INLINE __attribute__((always_inline))
 #define TF_ATTRIBUTE_NOINLINE __attribute__((noinline))
 #define TF_ATTRIBUTE_UNUSED __attribute__((unused))
 #define TF_ATTRIBUTE_COLD __attribute__((cold))
@@ -33,6 +34,7 @@ limitations under the License.
 #elif defined(COMPILER_MSVC)
 // Non-GCC equivalents
 #define TF_ATTRIBUTE_NORETURN __declspec(noreturn)
+#define TF_ATTRIBUTE_ALWAYS_INLINE
 #define TF_ATTRIBUTE_NOINLINE
 #define TF_ATTRIBUTE_UNUSED
 #define TF_ATTRIBUTE_COLD
@@ -43,6 +45,7 @@ limitations under the License.
 #else
 // Non-GCC equivalents
 #define TF_ATTRIBUTE_NORETURN
+#define TF_ATTRIBUTE_ALWAYS_INLINE
 #define TF_ATTRIBUTE_NOINLINE
 #define TF_ATTRIBUTE_UNUSED
 #define TF_ATTRIBUTE_COLD

@@ -55,6 +55,7 @@ def numpy_input_fn(x,
   of numpy arrays. The dict `features` has the same keys as the `x`.
 
   Example:
+
   ```python
   age = np.arange(4) * 1.0
   height = np.arange(32, 36)

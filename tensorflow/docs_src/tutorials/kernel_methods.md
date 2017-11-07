@@ -14,7 +14,7 @@ Machines (SVMs). If you are new to kernel methods, refer to either of the
 following sources for an introduction:
 
 * If you have a strong mathematical background:
-[Kernel Methods in Machine Learning](http://www.kernel-machines.org/publications/pdfs/0701907.pdf)
+[Kernel Methods in Machine Learning](https://arxiv.org/pdf/math/0701907.pdf)
 * [Kernel method wikipedia page](https://en.wikipedia.org/wiki/Kernel_method)
 
 Currently, TensorFlow supports explicit kernel mappings for dense features only;
@@ -22,7 +22,7 @@ TensorFlow will provide support for sparse features at a later release.
 
 This tutorial uses [tf.contrib.learn](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn)
 (TensorFlow's high-level Machine Learning API) Estimators for our ML models.
-If you are not familiar with this API, [tf.contrib.learn Quickstart](https://www.tensorflow.org/get_started/tflearn)
+If you are not familiar with this API, [tf.estimator Quickstart](https://www.tensorflow.org/get_started/estimator)
 is a good place to start. We will use the MNIST dataset. The tutorial consists
 of the following steps:
 

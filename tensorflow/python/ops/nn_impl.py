@@ -22,6 +22,7 @@ import math
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
@@ -97,9 +98,11 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     return result
 
 
-def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid-name
-                                      labels=None, logits=None,
-                                      name=None):
+def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
+    _sentinel=None,
+    labels=None,
+    logits=None,
+    name=None):
   """Computes sigmoid cross entropy given `logits`.
 
   Measures the probability error in discrete classification tasks in which each
@@ -143,8 +146,8 @@ def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
     ValueError: If `logits` and `labels` do not have the same shape.
   """
   # pylint: disable=protected-access
-  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits",
-                           _sentinel, labels, logits)
+  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits", _sentinel,
+                           labels, logits)
   # pylint: enable=protected-access
 
   with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
@@ -153,8 +156,8 @@ def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
     try:
       labels.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)"
-                       % (logits.get_shape(), labels.get_shape()))
+      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
+                       (logits.get_shape(), labels.get_shape()))
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -168,9 +171,10 @@ def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
     cond = (logits >= zeros)
     relu_logits = array_ops.where(cond, logits, zeros)
     neg_abs_logits = array_ops.where(cond, -logits, logits)
-    return math_ops.add(relu_logits - logits * labels,
-                        math_ops.log1p(math_ops.exp(neg_abs_logits)),
-                        name=name)
+    return math_ops.add(
+        relu_logits - logits * labels,
+        math_ops.log1p(math_ops.exp(neg_abs_logits)),
+        name=name)
 
 
 def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
@@ -226,8 +230,9 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
     try:
       targets.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and targets must have the same shape (%s vs %s)"
-                       % (logits.get_shape(), targets.get_shape()))
+      raise ValueError(
+          "logits and targets must have the same shape (%s vs %s)" %
+          (logits.get_shape(), targets.get_shape()))
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -263,6 +268,47 @@ def relu_layer(x, weights, biases, name=None):
     biases = ops.convert_to_tensor(biases, name="biases")
     xw_plus_b = nn_ops.bias_add(math_ops.matmul(x, weights), biases)
     return nn_ops.relu(xw_plus_b, name=name)
+
+
+def _swish_shape(op):
+  """Shape helper function for swish and _swish_grad function below."""
+  return [op.inputs[0].shape]
+
+
+# Set noinline=True so that sigmoid(features) is re-computed during
+# backprop, and we can free the sigmoid(features) expression immediately
+# after use during the forward pass.
+@function.Defun(shape_func=_swish_shape, func_name="swish_grad", noinline=True)
+def _swish_grad(features, grad):
+  """Gradient of Swish function defined below."""
+  sigmoid_features = math_ops.sigmoid(features)
+  activation_grad = (
+      sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
+  return grad * activation_grad
+
+
+@function.Defun(
+    grad_func=_swish_grad,
+    shape_func=_swish_shape,
+    func_name="swish",
+    noinline=True)
+def swish(features):
+  # pylint: disable=g-doc-args
+  """Computes the Swish activation function: `x * sigmoid(x)`.
+
+  Source: "Swish: a Self-Gated Activation Function" (Ramachandran et al. 2017)
+  https://arxiv.org/abs/1710.05941
+
+  Args:
+    features: A `Tensor` representing preactivation values.
+    name: A name for the operation (optional).
+
+  Returns:
+    The activation value.
+  """
+  # pylint: enable=g-doc-args
+  features = ops.convert_to_tensor(features, name="features")
+  return features * math_ops.sigmoid(features)
 
 
 def l2_normalize(x, dim, epsilon=1e-12, name=None):
@@ -413,7 +459,7 @@ def separable_conv2d(input,
 
   In detail,
 
-      output[b, i, j, k] = sum_{di, dj, q, r]
+      output[b, i, j, k] = sum_{di, dj, q, r}
           input[b, strides[1] * i + di, strides[2] * j + dj, q] *
           depthwise_filter[di, dj, q, r] *
           pointwise_filter[0, 0, q * channel_multiplier + r, k]
@@ -569,21 +615,23 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
     else:  # no shift.
       shifted_mean = math_ops.multiply(mean_ss, divisor, name="mean")
       mean = shifted_mean
-    variance = math_ops.subtract(math_ops.multiply(variance_ss, divisor),
-                                 math_ops.square(shifted_mean),
-                                 name="variance")
+    variance = math_ops.subtract(
+        math_ops.multiply(variance_ss, divisor),
+        math_ops.square(shifted_mean),
+        name="variance")
   return (mean, variance)
 
 
-def moments(x, axes, shift=None, name=None, keep_dims=False):
+def moments(x, axes,
+            shift=None,  # pylint: disable=unused-argument
+            name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
-  Note: for numerical stability, when shift=None, the true mean
-  would be computed and used as shift.
+  Note: shift is currently not used, the true mean is computed and used.
 
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):
@@ -596,35 +644,26 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     x: A `Tensor`.
     axes: Array of ints.  Axes along which to compute mean and
       variance.
-    shift: A `Tensor` containing the value by which to shift the data for
-      numerical stability, or `None` in which case the true mean of the data is
-      used as shift. A shift close to the true mean provides the most
-      numerically stable results.
+    shift: Not used in the current implementation
     name: Name used to scope the operations that compute the moments.
     keep_dims: produce moments with the same dimensionality as the input.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.name_scope(name, "moments", [x, axes, shift]):
+  with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
     # on 32-bit floats before converting the mean and variance back to fp16
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
-    if shift is None:
-      # Compute true mean while keeping the dims for proper broadcasting.
-      shift = array_ops.stop_gradient(
-          math_ops.reduce_mean(y, axes, keep_dims=True))
-    else:
-      shift = math_ops.cast(shift, y.dtype)
-    shifted_mean = math_ops.reduce_mean(
-        math_ops.subtract(y, shift), axes, keep_dims=True, name="shifted_mean")
-    variance = math_ops.subtract(
-        math_ops.reduce_mean(
-            math_ops.squared_difference(y, shift), axes, keep_dims=True),
-        math_ops.square(shifted_mean),
+    # Compute true mean while keeping the dims for proper broadcasting.
+    mean = math_ops.reduce_mean(y, axes, keep_dims=True, name="mean")
+    # sample variance, not unbiased variance
+    variance = math_ops.reduce_mean(
+        math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
+        axes,
+        keep_dims=True,
         name="variance")
-    mean = math_ops.add(shifted_mean, shift, name="mean")
     if not keep_dims:
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
@@ -809,10 +848,20 @@ def fused_batch_norm(
     mean = constant_op.constant([])
   if variance is None:
     variance = constant_op.constant([])
-  # Add 1e-12 to epsilon when epsilon <= 1e-5 to prevent CUDNN exception.
-  epsilon = epsilon if epsilon > 1e-5 else epsilon + 1e-12
+  # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
+  # prevent exception (see cudnn.h).
+  min_epsilon = 1.001e-5
+  epsilon = epsilon if epsilon > min_epsilon else min_epsilon
+  # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
+  # currently only use the V2 version for float16 inputs, which is not supported
+  # by the V1 version.
   # pylint: disable=protected-access
-  y, batch_mean, batch_var, _, _ = gen_nn_ops._fused_batch_norm(
+  if x.dtype == dtypes.float16:
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm_v2
+  else:
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm
+  # pylint: enable=protected-access
+  y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
       x,
       scale,
       offset,
@@ -823,7 +872,6 @@ def fused_batch_norm(
       is_training=is_training,
       name=name)
   return y, batch_mean, batch_var
-  # pylint: enable=protected-access
 
 
 def batch_norm_with_global_normalization(t,
@@ -965,16 +1013,32 @@ def _compute_sampled_logits(weights,
     # sampled is a [num_sampled] int tensor
     all_ids = array_ops.concat([labels_flat, sampled], 0)
 
+    # Retrieve the true weights and the logits of the sampled weights.
+
     # weights shape is [num_classes, dim]
     all_w = embedding_ops.embedding_lookup(
         weights, all_ids, partition_strategy=partition_strategy)
+
+    # true_w shape is [batch_size * num_true, dim]
+    true_w = array_ops.slice(all_w, [0, 0],
+                             array_ops.stack(
+                                 [array_ops.shape(labels_flat)[0], -1]))
+
+    sampled_w = array_ops.slice(
+        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
+    # inputs has shape [batch_size, dim]
+    # sampled_w has shape [num_sampled, dim]
+    # Apply X*W', which yields [batch_size, num_sampled]
+    sampled_logits = math_ops.matmul(inputs, sampled_w, transpose_b=True)
+
+    # Retrieve the true and sampled biases, compute the true logits, and
+    # add the biases to the true and sampled logits.
     all_b = embedding_ops.embedding_lookup(
         biases, all_ids, partition_strategy=partition_strategy)
-    # true_w shape is [batch_size * num_true, dim]
     # true_b is a [batch_size * num_true] tensor
-    true_w = array_ops.slice(
-        all_w, [0, 0], array_ops.stack([array_ops.shape(labels_flat)[0], -1]))
+    # sampled_b is a [num_sampled] float tensor
     true_b = array_ops.slice(all_b, [0], array_ops.shape(labels_flat))
+    sampled_b = array_ops.slice(all_b, array_ops.shape(labels_flat), [-1])
 
     # inputs shape is [batch_size, dim]
     # true_w shape is [batch_size * num_true, dim]
@@ -991,20 +1055,7 @@ def _compute_sampled_logits(weights,
     true_logits = array_ops.reshape(_sum_rows(dots_as_matrix), [-1, num_true])
     true_b = array_ops.reshape(true_b, [-1, num_true])
     true_logits += true_b
-
-    # Lookup weights and biases for sampled labels.
-    #   sampled_w shape is [num_sampled, dim]
-    #   sampled_b is a [num_sampled] float tensor
-    sampled_w = array_ops.slice(
-        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
-    sampled_b = array_ops.slice(all_b, array_ops.shape(labels_flat), [-1])
-
-    # inputs has shape [batch_size, dim]
-    # sampled_w has shape [num_sampled, dim]
-    # sampled_b has shape [num_sampled]
-    # Apply X*W'+B, which yields [batch_size, num_sampled]
-    sampled_logits = math_ops.matmul(
-        inputs, sampled_w, transpose_b=True) + sampled_b
+    sampled_logits += sampled_b
 
     if remove_accidental_hits:
       acc_hits = candidate_sampling_ops.compute_accidental_hits(
@@ -1019,8 +1070,8 @@ def _compute_sampled_logits(weights,
                                         "sparse_indices")
       # Create sampled_logits_shape = [batch_size, num_sampled]
       sampled_logits_shape = array_ops.concat(
-          [array_ops.shape(labels)[:1], array_ops.expand_dims(num_sampled, 0)],
-          0)
+          [array_ops.shape(labels)[:1],
+           array_ops.expand_dims(num_sampled, 0)], 0)
       if sampled_logits.dtype != acc_weights.dtype:
         acc_weights = math_ops.cast(acc_weights, sampled_logits.dtype)
       sampled_logits += sparse_ops.sparse_to_dense(
@@ -1245,7 +1296,7 @@ def sampled_softmax_loss(weights,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
       name=name)
-  sampled_losses = nn_ops.softmax_cross_entropy_with_logits(labels=labels,
-                                                            logits=logits)
+  sampled_losses = nn_ops.softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses

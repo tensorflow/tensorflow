@@ -159,7 +159,8 @@ from tensorflow.python.util import nest
 def input_layer(features,
                 feature_columns,
                 weight_collections=None,
-                trainable=True):
+                trainable=True,
+                cols_to_vars=None):
   """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -195,6 +196,15 @@ def input_layer(features,
       `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    cols_to_vars: If not `None`, must be a dictionary that will be filled with a
+      mapping from `_FeatureColumn` to list of `Variable`s.  For example, after
+      the call, we might have cols_to_vars =
+      {_EmbeddingColumn(
+        categorical_column=_HashedCategoricalColumn(
+          key='sparse_feature', hash_bucket_size=5, dtype=tf.string),
+        dimension=10): [<tf.Variable 'some_variable:0' shape=(5, 10),
+                        <tf.Variable 'some_variable:1' shape=(5, 10)]}
+      If a column creates no variables, its value will be an empty list.
 
   Returns:
     A `Tensor` which represents input layer of a model. Its shape
@@ -204,7 +214,7 @@ def input_layer(features,
   Raises:
     ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   for column in feature_columns:
     if not isinstance(column, _DenseColumn):
       raise ValueError(
@@ -228,6 +238,12 @@ def input_layer(features,
             builder,
             weight_collections=weight_collections,
             trainable=trainable)
+        if cols_to_vars is not None:
+          # Retrieve any variables created (some _DenseColumn's don't create
+          # variables, in which case an empty list is returned).
+          cols_to_vars[column] = ops.get_collection(
+              ops.GraphKeys.GLOBAL_VARIABLES,
+              scope=variable_scope.get_variable_scope().name)
         num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
         batch_size = array_ops.shape(tensor)[0]
         tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
@@ -241,7 +257,8 @@ def linear_model(features,
                  units=1,
                  sparse_combiner='sum',
                  weight_collections=None,
-                 trainable=True):
+                 trainable=True,
+                 cols_to_vars=None):
   """Returns a linear prediction `Tensor` based on given `feature_columns`.
 
   This function generates a weighted sum based on output dimension `units`.
@@ -285,6 +302,19 @@ def linear_model(features,
       `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    cols_to_vars: If not `None`, must be a dictionary that will be filled with a
+      mapping from `_FeatureColumn` to associated list of `Variable`s.  For
+      example, after the call, we might have cols_to_vars = {
+        _NumericColumn(
+          key='numeric_feature1', shape=(1,):
+        [<tf.Variable 'linear_model/price2/weights:0' shape=(1, 1)>],
+        'bias': [<tf.Variable 'linear_model/bias_weights:0' shape=(1,)>],
+        _NumericColumn(
+          key='numeric_feature2', shape=(2,)):
+        [<tf.Variable 'linear_model/price1/weights:0' shape=(2, 1)>]}
+      If a column creates no variables, its value will be an empty list. Note
+      that cols_to_vars will also contain a string key 'bias' that maps to a
+      list of Variables.
 
   Returns:
     A `Tensor` which represents predictions/logits of a linear model. Its shape
@@ -294,7 +324,7 @@ def linear_model(features,
     ValueError: if an item in `feature_columns` is neither a `_DenseColumn`
       nor `_CategoricalColumn`.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   for column in feature_columns:
     if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
       raise ValueError('Items of feature_columns must be either a _DenseColumn '
@@ -313,12 +343,18 @@ def linear_model(features,
       with variable_scope.variable_scope(None, default_name=column.name):
         ordered_columns.append(column)
         if isinstance(column, _CategoricalColumn):
-          weighted_sums.append(_create_categorical_column_weighted_sum(
+          weighted_sum = _create_categorical_column_weighted_sum(
               column, builder, units, sparse_combiner, weight_collections,
-              trainable))
+              trainable)
         else:
-          weighted_sums.append(_create_dense_column_weighted_sum(
-              column, builder, units, weight_collections, trainable))
+          weighted_sum = _create_dense_column_weighted_sum(
+              column, builder, units, weight_collections, trainable)
+        weighted_sums.append(weighted_sum)
+        if cols_to_vars is not None:
+          # Retrieve the variables created.
+          cols_to_vars[column] = ops.get_collection(
+              ops.GraphKeys.GLOBAL_VARIABLES,
+              scope=variable_scope.get_variable_scope().name)
     _verify_static_batch_size_equality(weighted_sums, ordered_columns)
     predictions_no_bias = math_ops.add_n(
         weighted_sums, name='weighted_sum_no_bias')
@@ -330,7 +366,13 @@ def linear_model(features,
         collections=weight_collections)
     predictions = nn_ops.bias_add(
         predictions_no_bias, bias, name='weighted_sum')
-
+    if cols_to_vars is not None:
+      # Add the bias to cols_to_vars as well, converting the Variable or
+      # PartitionedVariable to a list of Variable's.
+      if isinstance(bias, variables.Variable):
+        cols_to_vars['bias'] = [bias]
+      else:  # Must be a PartitionedVariable.
+        cols_to_vars['bias'] = list(bias)
     return predictions
 
 
@@ -367,7 +409,7 @@ def _transform_features(features, feature_columns):
   Returns:
     A `dict` mapping `_FeatureColumn` to `Tensor` and `SparseTensor` values.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   outputs = {}
   with ops.name_scope(
       None, default_name='transform_features', values=features.values()):
@@ -400,11 +442,14 @@ def make_parse_example_spec(feature_columns):
   ```
 
   For the above example, make_parse_example_spec would return the dict:
+
+  ```python
   {
-    "feature_a": parsing_ops.VarLenFeature(tf.string),
-    "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
-    "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+      "feature_a": parsing_ops.VarLenFeature(tf.string),
+      "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+      "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
   }
+  ```
 
   Args:
     feature_columns: An iterable containing all feature columns. All items
@@ -594,15 +639,21 @@ def bucketized_column(source_column, boundaries):
   `[1., 2.)`, and `[2., +inf)`.
 
   For example, if the inputs are
-    `boundaries` = [0, 10, 100]
-    input tensor = [[-5, 10000]
-                    [150,   10]
-                    [5,    100]]
+
+  ```python
+  boundaries = [0, 10, 100]
+  input tensor = [[-5, 10000]
+                  [150,   10]
+                  [5,    100]]
+  ```
 
   then the output will be
-    output = [[0, 3]
-              [3, 2]
-              [1, 3]]
+
+  ```python
+  output = [[0, 3]
+            [3, 2]
+            [1, 3]]
+  ```
 
   Example:
 
@@ -621,6 +672,7 @@ def bucketized_column(source_column, boundaries):
 
   `bucketized_column` can also be crossed with another categorical column using
   `crossed_column`:
+
   ```python
   price = numeric_column('price')
   # bucketized_column converts numerical feature to a categorical one.
@@ -745,6 +797,7 @@ def categorical_column_with_vocabulary_file(
   abbreviation. All inputs with values in that file are assigned an ID 0-49,
   corresponding to its line number. All other values are hashed and assigned an
   ID 50-54.
+
   ```python
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
@@ -759,6 +812,7 @@ def categorical_column_with_vocabulary_file(
   other 50 each have a 2-character U.S. state abbreviation. Both a literal 'XX'
   in input, and other values missing from the file, will be assigned ID 0. All
   others are assigned the corresponding line number 1-50.
+
   ```python
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
@@ -769,6 +823,7 @@ def categorical_column_with_vocabulary_file(
   ```
 
   And to make an embedding with either:
+
   ```python
   columns = [embedding_column(states, 3),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -799,7 +854,8 @@ def categorical_column_with_vocabulary_file(
   Raises:
     ValueError: `vocabulary_file` is missing.
     ValueError: `vocabulary_size` is missing or < 1.
-    ValueError: `num_oov_buckets` is not a non-negative integer.
+    ValueError: `num_oov_buckets` is a negative integer.
+    ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: `dtype` is neither string nor integer.
   """
   if not vocabulary_file:
@@ -826,27 +882,40 @@ def categorical_column_with_vocabulary_file(
 
 
 def categorical_column_with_vocabulary_list(
-    key, vocabulary_list, dtype=None, default_value=-1):
+    key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
   """A `_CategoricalColumn` with in-memory vocabulary.
-
-  Logic for feature f is:
-  id = vocabulary_list.index_of(f) if f in vocabulary_list else default_value
 
   Use this when your inputs are in string or integer format, and you have an
   in-memory vocabulary mapping each value to an integer ID. By default,
-  out-of-vocabulary values are ignored. Use `default_value` to specify how to
-  include out-of-vocabulary values.
+  out-of-vocabulary values are ignored. Use either (but not both) of
+  `num_oov_buckets` and `default_value` to specify how to include
+  out-of-vocabulary values.
 
   For input dictionary `features`, `features[key]` is either `Tensor` or
   `SparseTensor`. If `Tensor`, missing values can be represented by `-1` for int
   and `''` for string. Note that these values are independent of the
   `default_value` argument.
 
-  In the following examples, each input in `vocabulary_list` is assigned an ID
-  0-4 corresponding to its index (e.g., input 'B' produces output 2). All other
+  Example with `num_oov_buckets`:
+  In the following example, each input in `vocabulary_list` is assigned an ID
+  0-3 corresponding to its index (e.g., input 'B' produces output 2). All other
+  inputs are hashed and assigned an ID 4-5.
+
+  ```python
+  colors = categorical_column_with_vocabulary_list(
+      key='colors', vocabulary_list=('R', 'G', 'B', 'Y'),
+      num_oov_buckets=2)
+  columns = [colors, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction, _, _ = linear_model(features, columns)
+  ```
+
+  Example with `default_value`:
+  In the following example, each input in `vocabulary_list` is assigned an ID
+  0-4 corresponding to its index (e.g., input 'B' produces output 3). All other
   inputs are assigned `default_value` 0.
 
-  Linear model:
+
   ```python
   colors = categorical_column_with_vocabulary_list(
       key='colors', vocabulary_list=('X', 'R', 'G', 'B', 'Y'), default_value=0)
@@ -855,7 +924,8 @@ def categorical_column_with_vocabulary_list(
   linear_prediction, _, _ = linear_model(features, columns)
   ```
 
-  Embedding for a DNN model:
+  And to make an embedding with either:
+
   ```python
   columns = [embedding_column(colors, 3),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -871,13 +941,22 @@ def categorical_column_with_vocabulary_list(
       Must be castable to `dtype`.
     dtype: The type of features. Only string and integer types are supported.
       If `None`, it will be inferred from `vocabulary_list`.
-    default_value: The value to use for values not in `vocabulary_list`.
+    default_value: The integer ID value to return for out-of-vocabulary feature
+      values, defaults to `-1`. This can not be specified with a positive
+      `num_oov_buckets`.
+    num_oov_buckets: Non-negative integer, the number of out-of-vocabulary
+      buckets. All out-of-vocabulary inputs will be assigned IDs in the range
+      `[len(vocabulary_list), len(vocabulary_list)+num_oov_buckets)` based on a
+      hash of the input value. A positive `num_oov_buckets` can not be specified
+      with `default_value`.
 
   Returns:
     A `_CategoricalColumn` with in-memory vocabulary.
 
   Raises:
     ValueError: if `vocabulary_list` is empty, or contains duplicate keys.
+    ValueError: `num_oov_buckets` is a negative integer.
+    ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: if `dtype` is not integer or string.
   """
   if (vocabulary_list is None) or (len(vocabulary_list) < 1):
@@ -889,6 +968,14 @@ def categorical_column_with_vocabulary_list(
         'Duplicate keys in vocabulary_list {}, column_name: {}'.format(
             vocabulary_list, key))
   vocabulary_dtype = dtypes.as_dtype(np.array(vocabulary_list).dtype)
+  if num_oov_buckets:
+    if default_value != -1:
+      raise ValueError(
+          'Can\'t specify both num_oov_buckets and default_value in {}.'.format(
+              key))
+    if num_oov_buckets < 0:
+      raise ValueError('Invalid num_oov_buckets {} in {}.'.format(
+          num_oov_buckets, key))
   _assert_string_or_int(
       vocabulary_dtype, prefix='column_name: {} vocabulary'.format(key))
   if dtype is None:
@@ -901,7 +988,7 @@ def categorical_column_with_vocabulary_list(
 
   return _VocabularyListCategoricalColumn(
       key=key, vocabulary_list=tuple(vocabulary_list), dtype=dtype,
-      default_value=default_value)
+      default_value=default_value, num_oov_buckets=num_oov_buckets)
 
 
 def categorical_column_with_identity(key, num_buckets, default_value=None):
@@ -926,6 +1013,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   literal 0 in inputs will result in the same default ID.
 
   Linear model:
+
   ```python
   video_id = categorical_column_with_identity(
       key='video_id', num_buckets=1000000, default_value=0)
@@ -935,6 +1023,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   ```
 
   Embedding for a DNN model:
+
   ```python
   columns = [embedding_column(video_id, 9),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -976,8 +1065,8 @@ def indicator_column(categorical_column):
   `embedding_column` if the inputs are sparse.
 
   ```python
-  name = indicator_column(categorical_column_with_vocabulary_list('name',
-      ['bob', 'george', 'wanda'])
+  name = indicator_column(categorical_column_with_vocabulary_list(
+      'name', ['bob', 'george', 'wanda'])
   columns = [name, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = input_layer(features, columns)
@@ -1009,6 +1098,8 @@ def weighted_categorical_column(
   Example:
 
   Input `tf.Example` objects:
+
+  ```proto
   [
     features {
       feature {
@@ -1031,6 +1122,7 @@ def weighted_categorical_column(
       }
     }
   ]
+  ```
 
   ```python
   categorical_column = categorical_column_with_hash_bucket(
@@ -1076,22 +1168,41 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
     Hash(cartesian product of features) % `hash_bucket_size`
 
   For example, if the input features are:
-  * SparseTensor referred by first key: shape = [2, 2]
-      [0, 0]: "a"
-      [1, 0]: "b"
-      [1, 1]: "c"
 
-  * SparseTensor referred by second key: shape = [2, 1]
-      [0, 0]: "d"
-      [1, 0]: "e"
+  * SparseTensor referred by first key:
+
+    ```python
+    shape = [2, 2]
+    {
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+    }
+    ```
+
+  * SparseTensor referred by second key:
+
+    ```python
+    shape = [2, 1]
+    {
+        [0, 0]: "d"
+        [1, 0]: "e"
+    }
+    ```
 
   then crossed feature will look like:
-      shape = [2, 2]
+
+  ```python
+   shape = [2, 2]
+  {
       [0, 0]: Hash64("d", Hash64("a")) % hash_bucket_size
       [1, 0]: Hash64("e", Hash64("b")) % hash_bucket_size
       [1, 1]: Hash64("e", Hash64("c")) % hash_bucket_size
+  }
+  ```
 
   Here is an example to create a linear model with crosses of string features:
+
   ```python
   keywords_x_doc_terms = crossed_column(['keywords', 'doc_terms'], 50K)
   columns = [keywords_x_doc_terms, ...]
@@ -1100,6 +1211,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   ```
 
   You could also use vocabulary lookup before crossing:
+
   ```python
   keywords = categorical_column_with_vocabulary_file(
       'keywords', '/path/to/vocabulary/file', vocabulary_size=1K)
@@ -1111,6 +1223,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
 
   If an input feature is of numeric type, you can use
   `categorical_column_with_identity`, or `bucketized_column`, as in the example:
+
   ```python
   # vertical_id is an integer categorical feature.
   vertical_id = categorical_column_with_identity('vertical_id', 10K)
@@ -1125,6 +1238,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
 
   To use crossed column in DNN model, you need to add it in an embedding column
   as in this example:
+
   ```python
   vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
   vertical_id_x_price_embedded = embedding_column(vertical_id_x_price, 10)
@@ -1396,11 +1510,11 @@ class _LazyBuilder(object):
   We're trying to use the following `_FeatureColumn`s:
 
   ```python
-    bucketized_age = fc.bucketized_column(fc.numeric_column("age"), ...)
-    keywords = fc.categorical_column_with_hash_buckets("keywords", ...)
-    age_X_keywords = fc.crossed_column([bucketized_age, "keywords"])
-    ... = linear_model(features,
-                            [bucketized_age, keywords, age_X_keywords]
+  bucketized_age = fc.bucketized_column(fc.numeric_column("age"), ...)
+  keywords = fc.categorical_column_with_hash_buckets("keywords", ...)
+  age_X_keywords = fc.crossed_column([bucketized_age, "keywords"])
+  ... = linear_model(features,
+                          [bucketized_age, keywords, age_X_keywords]
   ```
 
   If we transform each column independently, then we'll get duplication of
@@ -1575,10 +1689,17 @@ def _to_sparse_input(input_tensor, ignore_value=None):
     return sparse_tensor_lib.SparseTensor(indices, values, dense_shape)
 
 
-def _check_feature_columns(feature_columns):
-  """Verifies feature_columns input."""
+def _clean_feature_columns(feature_columns):
+  """Verifies and normalizes `feature_columns` input."""
+  if isinstance(feature_columns, _FeatureColumn):
+    feature_columns = [feature_columns]
+
+  if isinstance(feature_columns, collections.Iterator):
+    feature_columns = list(feature_columns)
+
   if isinstance(feature_columns, dict):
     raise ValueError('Expected feature_columns to be iterable, found dict.')
+
   for column in feature_columns:
     if not isinstance(column, _FeatureColumn):
       raise ValueError('Items of feature_columns must be a _FeatureColumn. '
@@ -1595,6 +1716,8 @@ def _check_feature_columns(feature_columns):
                        'features dict.'.format(column,
                                                name_to_column[column.name]))
     name_to_column[column.name] = column
+
+  return feature_columns
 
 
 class _NumericColumn(_DenseColumn,
@@ -1990,7 +2113,7 @@ class _VocabularyFileCategoricalColumn(
 class _VocabularyListCategoricalColumn(
     _CategoricalColumn,
     collections.namedtuple('_VocabularyListCategoricalColumn', (
-        'key', 'vocabulary_list', 'dtype', 'default_value'
+        'key', 'vocabulary_list', 'dtype', 'default_value', 'num_oov_buckets'
     ))):
   """See `categorical_column_with_vocabulary_list`."""
 
@@ -2024,13 +2147,14 @@ class _VocabularyListCategoricalColumn(
     return lookup_ops.index_table_from_tensor(
         vocabulary_list=tuple(self.vocabulary_list),
         default_value=self.default_value,
+        num_oov_buckets=self.num_oov_buckets,
         dtype=key_dtype,
         name='{}_lookup'.format(self.key)).lookup(input_tensor)
 
   @property
   def _num_buckets(self):
     """Returns number of buckets in this sparse feature."""
-    return len(self.vocabulary_list)
+    return len(self.vocabulary_list) + self.num_oov_buckets
 
   def _get_sparse_tensors(
       self, inputs, weight_collections=None, trainable=None):
@@ -2400,7 +2524,10 @@ class _IndicatorColumn(_DenseColumn,
       weighted_column = sparse_ops.sparse_merge(
           sp_ids=id_tensor,
           sp_values=weight_tensor,
-          vocab_size=self._variable_shape[-1])
+          vocab_size=int(self._variable_shape[-1]))
+      # Remove (?, -1) index
+      weighted_column = sparse_ops.sparse_slice(weighted_column, [0, 0],
+                                                weighted_column.dense_shape)
       return sparse_ops.sparse_tensor_to_dense(weighted_column)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(

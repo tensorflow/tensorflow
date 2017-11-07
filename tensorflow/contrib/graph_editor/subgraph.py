@@ -630,7 +630,7 @@ def make_view(*args, **kwargs):
   """Create a SubGraphView from selected operations and passthrough tensors.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Operation` 3) (array of) `tf.Tensor`. Those objects will be converted
       into a list of operations and a list of candidate for passthrough tensors.
     **kwargs: keyword graph is used 1) to check that the ops and ts are from

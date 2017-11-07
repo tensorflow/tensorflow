@@ -40,22 +40,24 @@ class TensorDatasetOp : public DatasetOpKernel {
     for (const Tensor& t : inputs) {
       components.push_back(t);
     }
-    *output = new Dataset(std::move(components));
+    *output = new Dataset(ctx, std::move(components));
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    explicit Dataset(std::vector<Tensor> tensors)
-        : tensors_(std::move(tensors)) {
+    Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
+        : GraphDatasetBase(ctx), tensors_(std::move(tensors)) {
       for (const Tensor& t : tensors_) {
         dtypes_.push_back(t.dtype());
         shapes_.emplace_back(t.shape().dim_sizes());
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::FromTensor")}));
     }
 
     const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -65,14 +67,30 @@ class TensorDatasetOp : public DatasetOpKernel {
 
     string DebugString() override { return "TensorDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      std::vector<NodeBuilder::NodeOut> components;
+      components.reserve(tensors_.size());
+      for (const Tensor& t : tensors_) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        components.emplace_back(node);
+      }
+      TF_RETURN_IF_ERROR(
+          b->AddDatasetWithInputAsList(this, components, output));
+      return Status::OK();
+    }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset), produced_(false) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params), produced_(false) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (!produced_) {
           *out_tensors = dataset()->tensors_;
@@ -83,6 +101,21 @@ class TensorDatasetOp : public DatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (produced_)
+          TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("produced"), ""));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        produced_ = reader->Contains(full_name("produced"));
+        return Status::OK();
       }
 
      private:

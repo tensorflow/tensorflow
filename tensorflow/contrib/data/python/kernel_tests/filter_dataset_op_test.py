@@ -23,6 +23,7 @@ from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -71,6 +72,57 @@ class FilterDatasetTest(test.TestCase):
 
       # Test an empty dataset.
       do_test(0, 1)
+
+  def testFilterRange(self):
+    dataset = dataset_ops.Dataset.range(100).filter(
+        lambda x: math_ops.not_equal(math_ops.mod(x, 3), 2))
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      self.assertEqual(0, sess.run(get_next))
+      self.assertEqual(1, sess.run(get_next))
+      self.assertEqual(3, sess.run(get_next))
+
+  def testFilterDict(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
+                .filter(lambda d: math_ops.equal(d["bar"] % 2, 0))
+                .map(lambda d: d["foo"] + d["bar"])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        if (i ** 2) % 2 == 0:
+          self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testUseStepContainerInFilter(self):
+    input_data = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int64)
+
+    # Define a predicate that returns true for the first element of
+    # the sequence and not the second, and uses `tf.map_fn()`.
+    def _predicate(xs):
+      squared_xs = functional_ops.map_fn(lambda x: x * x, xs)
+      summed = math_ops.reduce_sum(squared_xs)
+      return math_ops.equal(summed, 1 + 4 + 9)
+
+    iterator = (
+        dataset_ops.Dataset.from_tensor_slices([[1, 2, 3], [4, 5, 6]])
+        .filter(_predicate)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual(input_data[0], sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
 
 if __name__ == "__main__":

@@ -16,10 +16,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -33,19 +32,19 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 
-
-extern "C" void TF_EXPORT R0F32Add2(float* out, float** in) {
+namespace {
+void R0F32Add2(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
   *out = **in + 2.0f;
 }
 
-extern "C" void TF_EXPORT R2F32ReduceSum(float* out, float** in) {
+void R2F32ReduceSum(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
   *out = array[0] + array[1] + array[2] + array[3];
 }
 
-extern "C" void TF_EXPORT Add1ToValues(float* out, float** in) {
+void Add1ToValues(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
   out[0] = array[0] + 1;
@@ -53,6 +52,11 @@ extern "C" void TF_EXPORT Add1ToValues(float* out, float** in) {
   out[2] = array[2] + 1;
   out[3] = array[3] + 1;
 }
+}  // namespace
+
+REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
+REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
+REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
 
 namespace xla {
 namespace {
@@ -68,7 +72,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"));
 
@@ -89,7 +93,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
   array(1, 1) = 4.0f;
 
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
+      HloInstruction::CreateConstant(Literal::CreateR2FromArray2D(array)));
   builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R2F32ReduceSum"));
 
@@ -105,7 +109,7 @@ XLA_TEST_F(CustomCallTest,
   auto b = HloComputation::Builder(TestName());
 
   auto input = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(
+      HloInstruction::CreateConstant(Literal::CreateR2FromArray2D(
           Array2D<float>{{1.0f, 2.0f}, {3.0f, 4.0f}})));
   auto incremented = b.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1, 2, 2}), {input}, "Add1ToValues"));
@@ -126,21 +130,3 @@ XLA_TEST_F(CustomCallTest,
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

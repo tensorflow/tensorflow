@@ -245,12 +245,12 @@ class GrpcWorkerService : public AsyncServiceInterface {
     Schedule([this, call]() {
       CallOptions* call_opts = new CallOptions;
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      worker_->RecvTensorAsync(call_opts, &call->request, &call->response,
-                               [call, call_opts](const Status& s) {
-                                 call->ClearCancelCallback();
-                                 delete call_opts;
-                                 call->SendResponse(ToGrpcStatus(s));
-                               });
+      worker_->GrpcRecvTensorAsync(call_opts, &call->request, &call->response,
+                                   [call, call_opts](const Status& s) {
+                                     call->ClearCancelCallback();
+                                     delete call_opts;
+                                     call->SendResponse(ToGrpcStatus(s));
+                                   });
     });
     EnqueueRecvTensorRequestRaw();
   }
@@ -301,13 +301,13 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
 GrpcWorker::GrpcWorker(WorkerEnv* worker_env) : Worker(worker_env) {}
 
-// RecvTensorAsync: unlike the other Worker methods, which use protocol buffers
-// for a response object, to avoid extra protocol buffer serialization overhead
-// we generate our response directly into a ::grpc::ByteBuffer object
-void GrpcWorker::RecvTensorAsync(CallOptions* opts,
-                                 const RecvTensorRequest* request,
-                                 ::grpc::ByteBuffer* response,
-                                 StatusCallback done) {
+// GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
+// buffers for a response object, to avoid extra protocol buffer serialization
+// overhead we generate our response directly into a ::grpc::ByteBuffer object
+void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
+                                     const RecvTensorRequest* request,
+                                     ::grpc::ByteBuffer* response,
+                                     StatusCallback done) {
   const int64 step_id = request->step_id();
   const string& key = request->rendezvous_key();
   TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
@@ -347,32 +347,25 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
             if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
 #if GOOGLE_CUDA
               const DeviceContext* send_dev_context = send_args.device_context;
-              RecvTensorResponse* tmp = new RecvTensorResponse;
-              tmp->set_is_dead(is_dead);
+              AllocatorAttributes alloc_attrs;
+              alloc_attrs.set_gpu_compatible(true);
+              alloc_attrs.set_on_host(true);
+              Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
+              Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
               CHECK(send_dev_context)
                   << "send dev name: " << src_dev->name()
                   << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
-              // "val" is on a GPU. Uses GPUUtil to fill the response proto.
-              StatusCallback response_ready = [response, done,
-                                               tmp](const Status& s) {
+              // "val" is on a GPU. Uses GPUUtil to fill the copy on host.
+              StatusCallback copy_ready = [response, done, copy,
+                                           is_dead](const Status& s) {
                 // The value is now ready to be returned on the wire.
-                tmp->set_send_start_micros(Env::Default()->NowMicros());
-
-                grpc::EncodeRecvTensorResponseToByteBuffer(*tmp, response);
+                grpc::EncodeTensorToByteBuffer(is_dead, *copy, response);
                 done(s);
-                delete tmp;
+                delete copy;
               };
 
-              // TODO (jeff,sanjay,mrry): Avoid copy on GPU path by
-              // modifying GPUUtil::SetProtoFromGPU to accept a
-              // ::grpc::ByteBuffer to serialize to, rather than
-              // encoding into a protocol buffer and then
-              // serializing that (i.e. figure out how to use
-              // EncodeTensorToByteBuffer on this path rather than
-              // EncodeRecvTensorResponseToByteBuffer)
-              GPUUtil::SetProtoFromGPU(val, src_dev, send_dev_context,
-                                       tmp->mutable_tensor(), is_dead,
-                                       response_ready);
+              GPUUtil::CopyGPUTensorToCPU(src_dev, send_dev_context, &val, copy,
+                                          copy_ready);
 #else
               done(errors::Internal("No GPU device in process"));
 #endif  // GOOGLE_CUDA

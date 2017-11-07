@@ -245,7 +245,9 @@ class DNNClassifier(estimator.Estimator):
   def input_fn_eval: # returns x, y (where y represents label's class index).
     pass
   estimator.evaluate(input_fn=input_fn_eval)
+
   def input_fn_predict: # returns x, None
+    pass
   # predict_classes returns class indices.
   estimator.predict_classes(input_fn=input_fn_predict)
   ```

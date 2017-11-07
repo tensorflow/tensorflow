@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REFERENCE_GEMM_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REFERENCE_GEMM_H_
 
+#include <stdlib.h>
+
+#include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/platform/types.h"
+
 // This is an unoptimized but debuggable implementation of the GEMM matrix
 // multiply function, used to compare to faster but more opaque versions, or
 // for bit depths or argument combinations that aren't supported by optimized

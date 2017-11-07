@@ -251,10 +251,21 @@ cc_library(
         "LLVM_ENABLE_STATS",
         "__STDC_LIMIT_MACROS",
         "__STDC_CONSTANT_MACROS",
+        "__STDC_FORMAT_MACROS",
         "_DEBUG",
         "LLVM_BUILD_GLOBAL_ISEL",
     ],
     includes = ["include"],
+)
+
+# A creator of an empty file include/llvm/Support/VCSRevision.h.
+# This is usually populated by the upstream build infrastructure, but in this
+# case we leave it blank. See upstream revision r300160.
+genrule(
+    name = "vcs_revision_gen",
+    srcs = [],
+    outs = ["include/llvm/Support/VCSRevision.h"],
+    cmd = "echo '' > \"$@\"",
 )
 
 # Rules that apply the LLVM tblgen tool.
@@ -376,6 +387,7 @@ llvm_target_list = [
         "tbl_outs": [
             ("-gen-register-bank", "lib/Target/ARM/ARMGenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/ARM/ARMGenRegisterInfo.inc"),
+            ("-gen-searchable-tables", "lib/Target/ARM/ARMGenSystemRegister.inc"),
             ("-gen-instr-info", "lib/Target/ARM/ARMGenInstrInfo.inc"),
             ("-gen-emitter", "lib/Target/ARM/ARMGenMCCodeEmitter.inc"),
             ("-gen-pseudo-lowering", "lib/Target/ARM/ARMGenMCPseudoLowering.inc"),
@@ -453,6 +465,7 @@ llvm_target_list = [
             "include/llvm/IR/Intrinsics*.td",
             "include/llvm/TableGen/*.td",
             "include/llvm/Target/*.td",
+            "include/llvm/Target/GlobalISel/*.td",
         ]),
     )
     for target in llvm_target_list
@@ -466,6 +479,15 @@ cc_library(
         "lib/Target/X86/*.def",
     ]),
     visibility = ["//visibility:private"],
+)
+
+# This filegroup provides the docker build script in LLVM repo
+filegroup(
+    name = "docker",
+    srcs = glob([
+        "utils/docker/build_docker_image.sh",
+    ]),
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -868,6 +890,7 @@ cc_library(
     deps = [
         ":arm_desc",
         ":arm_info",
+        ":arm_utils",
         ":config",
         ":mc",
         ":mc_parser",
@@ -886,12 +909,14 @@ cc_library(
         "include/llvm/Target/ARM/InstPrinter/*.h",
         "include/llvm/Target/ARM/InstPrinter/*.def",
         "include/llvm/Target/ARM/InstPrinter/*.inc",
+        "lib/Target/ARM/*.h",
         "lib/Target/ARM/InstPrinter/*.h",
     ]),
     copts = ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_info",
         ":arm_target_gen",
+        ":arm_utils",
         ":config",
         ":mc",
         ":support",
@@ -917,6 +942,7 @@ cc_library(
         ":arm_asm_printer",
         ":arm_desc",
         ":arm_info",
+        ":arm_utils",
         ":asm_printer",
         ":code_gen",
         ":config",
@@ -937,7 +963,7 @@ cc_library(
         "lib/Target/ARM/MCTargetDesc/*.cpp",
         "lib/Target/ARM/MCTargetDesc/*.inc",
         "lib/Target/ARM/*.h",
-        "include/llvm/CodeGen/GlobalISel/GISelAccessor.h",
+        "include/llvm/CodeGen/GlobalISel/*.h",
     ]),
     hdrs = glob([
         "include/llvm/Target/ARM/MCTargetDesc/*.h",
@@ -1006,6 +1032,29 @@ cc_library(
 )
 
 cc_library(
+    name = "arm_utils",
+    srcs = glob([
+        "lib/Target/ARM/Utils/*.c",
+        "lib/Target/ARM/Utils/*.cpp",
+        "lib/Target/ARM/Utils/*.inc",
+        "lib/Target/ARM/MCTargetDesc/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/ARM/Utils/*.h",
+        "include/llvm/Target/ARM/Utils/*.def",
+        "include/llvm/Target/ARM/Utils/*.inc",
+        "lib/Target/ARM/Utils/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    deps = [
+        ":arm_target_gen",
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "asm_parser",
     srcs = glob([
         "lib/AsmParser/*.c",
@@ -1067,6 +1116,8 @@ cc_library(
         "include/llvm/BinaryFormat/*.h",
         "include/llvm/BinaryFormat/*.def",
         "include/llvm/BinaryFormat/*.inc",
+        "include/llvm/BinaryFormat/ELFRelocs/*.def",
+        "include/llvm/BinaryFormat/WasmRelocs/*.def",
     ]),
     deps = [
         ":config",
@@ -1116,6 +1167,7 @@ cc_library(
         ":config",
         ":core",
         ":mc",
+        ":object",
         ":support",
     ],
 )
@@ -1169,6 +1221,7 @@ cc_library(
         "include/llvm/IR/*.def",
         "include/llvm/IR/*.inc",
         "include/llvm/*.h",
+        "include/llvm/Analysis/*.def",
     ]),
     deps = [
         ":attributes_compat_gen",
@@ -1194,6 +1247,7 @@ cc_library(
         "include/llvm/DebugInfo/CodeView/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_msf",
         ":support",
@@ -1426,6 +1480,7 @@ cc_library(
         "include/llvm/MC/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_code_view",
         ":support",
@@ -1921,6 +1976,8 @@ cc_library(
         "lib/Support/Unix/*.h",
         "include/llvm-c/*.h",
         "include/llvm/CodeGen/MachineValueType.h",
+        "include/llvm/BinaryFormat/COFF.h",
+        "include/llvm/BinaryFormat/MachO.h",
         "lib/Support/*.h",
     ]),
     hdrs = glob([
@@ -1931,7 +1988,9 @@ cc_library(
         "include/llvm/Support/ELFRelocs/*.def",
         "include/llvm/Support/WasmRelocs/*.def",
     ]) + [
+        "include/llvm/BinaryFormat/MachO.def",
         "include/llvm/Support/DataTypes.h",
+        "include/llvm/Support/VCSRevision.h",
         "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],
     deps = [
@@ -1978,6 +2037,7 @@ cc_library(
         "include/llvm/Target/*.h",
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
+        "include/llvm/CodeGen/*.def",
     ]),
     deps = [
         ":analysis",
@@ -2055,6 +2115,7 @@ cc_library(
         ":mc",
         ":mc_parser",
         ":support",
+        ":x86_asm_printer",
         ":x86_desc",
         ":x86_info",
     ],

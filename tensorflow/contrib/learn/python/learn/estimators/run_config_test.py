@@ -35,6 +35,12 @@ RANDOM_SEED = 123
 patch = test.mock.patch
 
 
+def _create_run_config_with_cluster_spec(tf_config_str):
+  with patch.dict("os.environ", {"TF_CONFIG": tf_config_str}):
+    return run_config_lib.RunConfig(
+        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
+
+
 class RunConfigTest(test.TestCase):
 
   def test_instance_of_core_run_config(self):
@@ -328,17 +334,64 @@ class RunConfigTest(test.TestCase):
             "index": 1
         }
     }
-    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config_lib.RunConfig(
-          tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
-    self.assertEqual(config.cluster_spec.as_dict(), tf_config["cluster"])
 
-    config = run_config_lib.RunConfig(
-        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
-
+    config = _create_run_config_with_cluster_spec(json.dumps(tf_config))
     expected_uid = config.uid()
+    self.assertEqual(tf_config["cluster"], config.cluster_spec.as_dict())
+
     new_config = copy.deepcopy(config)
+    self.assertEqual(tf_config["cluster"], new_config.cluster_spec.as_dict())
     self.assertEqual(expected_uid, new_config.uid())
+
+  def test_uid_for_different_cluster_spec_order(self):
+    tf_config_1_str = (
+        "{\"cluster\": {\"ps\": [\"host1:1\", \"host2:2\"], "
+        "\"worker\": [\"host3:3\", \"host4:4\", \"host5:5\"]}}")
+
+    tf_config_2_str = (
+        "{\"cluster\": {\"worker\": [\"host3:3\", \"host4:4\", \"host5:5\"],"
+        "\"ps\": [\"host1:1\", \"host2:2\"]}}")
+
+    # Wraps in a loop to check flakiness.
+    for _ in range(100):
+      uid_1 = _create_run_config_with_cluster_spec(tf_config_1_str).uid()
+      uid_2 = _create_run_config_with_cluster_spec(tf_config_2_str).uid()
+      self.assertEqual(uid_1, uid_2)
+
+  def test_uid_for_different_cluster_specs(self):
+    tf_config_1 = {
+        "cluster": {
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
+        },
+    }
+
+    tf_config_2 = {
+        "cluster": {
+            run_config_lib.TaskType.PS: ["host1:1"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
+        },
+    }
+
+    uid_1 = _create_run_config_with_cluster_spec(json.dumps(tf_config_1)).uid()
+    uid_2 = _create_run_config_with_cluster_spec(json.dumps(tf_config_2)).uid()
+    self.assertNotEqual(uid_1, uid_2)
+
+  def test_num_worker_replicas_counts_in_master_too(self):
+    tf_config = {
+        "cluster": {
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.MASTER: ["host6:6"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"],
+        },
+        "task": {
+            "type": run_config_lib.TaskType.WORKER,
+            "index": 1
+        }
+    }
+
+    config = _create_run_config_with_cluster_spec(json.dumps(tf_config))
+    self.assertEqual(config.num_worker_replicas, 4)
 
 
 if __name__ == "__main__":

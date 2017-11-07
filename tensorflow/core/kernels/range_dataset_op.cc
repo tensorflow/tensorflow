@@ -40,17 +40,19 @@ class RangeDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, step != 0,
                 errors::InvalidArgument("step must be a non-zero integer."));
 
-    *output = new Dataset(start, stop, step);
+    *output = new Dataset(ctx, start, stop, step);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 start, int64 stop, int64 step)
-        : start_(start), stop_(stop), step_(step) {}
+    Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step)
+        : GraphDatasetBase(ctx), start_(start), stop_(stop), step_(step) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Range")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -69,20 +71,35 @@ class RangeDatasetOp : public DatasetOpKernel {
                              step_, ")::Dataset");
     }
 
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* start = nullptr;
+      Node* stop = nullptr;
+      Node* step = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(start_, &start));
+      TF_RETURN_IF_ERROR(b->AddScalar(stop_, &stop));
+      TF_RETURN_IF_ERROR(b->AddScalar(step_, &step));
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {start, stop, step}, output));
+      return Status::OK();
+    }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {
-        next_ = dataset->start_;
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {
+        next_ = params.dataset->start_;
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if ((dataset()->step_ > 0 && next_ >= dataset()->stop_) ||
             (dataset()->step_ < 0 && next_ <= dataset()->stop_)) {
           *end_of_sequence = true;
+          is_exhausted_ = true;
           return Status::OK();
         }
         Tensor value_tensor(cpu_allocator(), DT_INT64, {});
@@ -94,9 +111,23 @@ class RangeDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("next"), next_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("next"), &next_));
+        return Status::OK();
+      }
+
      private:
       mutex mu_;
-      int64 next_;
+      int64 next_ GUARDED_BY(mu_);
     };
 
     const int64 start_;

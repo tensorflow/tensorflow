@@ -91,7 +91,7 @@ TEST_F(HloTfGraphBuilderTest, CheckConcatenateDimsAndShapes) {
 TEST_F(HloTfGraphBuilderTest, CheckScalarValue) {
   auto builder = HloComputation::Builder("Const");
   HloInstruction *instruction = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(123)));
+      HloInstruction::CreateConstant(Literal::CreateR0(123)));
   OpMetadata metadata;
   metadata.set_op_name("x");
   metadata.set_op_type("y");
@@ -182,7 +182,3 @@ TEST_F(HloTfGraphBuilderTest, EmbeddedComputationsDiamond) {
 }  // namespace
 }  // namespace hlo_graph_dumper
 }  // namespace xla
-
-int main(int argc, char **argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

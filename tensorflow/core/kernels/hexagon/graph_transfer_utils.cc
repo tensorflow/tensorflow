@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
@@ -95,7 +96,7 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
 }
 
 /* static */ GraphDef GraphTransferUtils::BuildFusedGraphDef(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
     const std::vector<std::pair<string, Tensor>>& inputs,
     const std::vector<string>& outputs, GraphDef* original_def) {

@@ -31,6 +31,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as test_lib
 
+# TODO(yangzihao): Currently matmul autotuning is disabled by default. Use
+# os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
+
 
 def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])

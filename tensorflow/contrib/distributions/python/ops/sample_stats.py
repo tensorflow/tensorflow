@@ -47,7 +47,7 @@ def percentile(x,
   """Compute the `q`-th percentile of `x`.
 
   Given a vector `x`, the `q`-th percentile of `x` is the value `q / 100` of the
-  way from the minimum to the maximum in in a sorted copy of `x`.
+  way from the minimum to the maximum in a sorted copy of `x`.
 
   The values and distances of the two nearest neighbors as well as the
   `interpolation` parameter will determine the percentile if the normalized

@@ -49,11 +49,14 @@ void DelayedNumpyDecref(void* data, size_t len, void* obj) {
 // Actually dereferences cached numpy arrays. REQUIRES being called while
 // holding the GIL.
 void ClearDecrefCache() {
-  mutex_lock ml(*DelayedDecrefLock());
-  for (void* obj : *DecrefCache()) {
+  std::vector<void*> cache_copy;
+  {
+    mutex_lock ml(*DelayedDecrefLock());
+    cache_copy.swap(*DecrefCache());
+  }
+  for (void* obj : cache_copy) {
     Py_DECREF(reinterpret_cast<PyObject*>(obj));
   }
-  DecrefCache()->clear();
 }
 
 // Structure which keeps a reference to a Tensor alive while numpy has a pointer
@@ -117,6 +120,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_INT32:
       *out_pyarray_type = NPY_INT32;
       break;
+    case TF_UINT32:
+      *out_pyarray_type = NPY_UINT32;
+      break;
     case TF_UINT8:
       *out_pyarray_type = NPY_UINT8;
       break;
@@ -131,6 +137,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       break;
     case TF_INT64:
       *out_pyarray_type = NPY_INT64;
+      break;
+    case TF_UINT64:
+      *out_pyarray_type = NPY_UINT64;
       break;
     case TF_BOOL:
       *out_pyarray_type = NPY_BOOL;

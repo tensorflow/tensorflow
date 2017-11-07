@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -83,15 +84,6 @@ PlatformUtil::GetSupportedPlatforms() {
     return NotFound("no platforms found");
   } else if (platforms.size() == 1) {
     return platforms[0];
-  } else if (platforms.size() == 2) {
-    // In the service we always link the cpu backend for ComputeConstant. So if
-    // one of the two platforms is CPU then pick the other (non-cpu) platform as
-    // the default.
-    if (platforms[0]->id() == se::host::kHostPlatformId) {
-      return platforms[1];
-    } else if (platforms[1]->id() == se::host::kHostPlatformId) {
-      return platforms[0];
-    }
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
@@ -140,21 +132,32 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     device_count = 1;
   }
   std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
-  for (int i = 0; i < device_count; ++i) {
-    se::StreamExecutorConfig config;
-    config.ordinal = i;
-    auto executor_status = platform->GetExecutor(config);
-    if (executor_status.ok()) {
-      se::StreamExecutor* executor = executor_status.ValueOrDie();
-      if (IsDeviceSupported(executor)) {
-        stream_executors[i] = executor;
-      }
-    } else {
-      LOG(WARNING) << "unable to create StreamExecutor for " << platform->Name()
-                   << ":" << i << ": "
-                   << executor_status.status().error_message();
+  VLOG(1) << "Initializing devices";
+  {
+    tensorflow::thread::ThreadPool thread_pool(
+        tensorflow::Env::Default(), "device_initialization", device_count);
+    for (int i = 0; i < device_count; ++i) {
+      thread_pool.Schedule([platform, i, &stream_executors]() {
+        VLOG(1) << "Started device init " << i;
+        se::StreamExecutorConfig config;
+        config.ordinal = i;
+        auto executor_status = platform->GetExecutor(config);
+        if (executor_status.ok()) {
+          se::StreamExecutor* executor = executor_status.ValueOrDie();
+          if (IsDeviceSupported(executor)) {
+            stream_executors[i] = executor;
+          }
+        } else {
+          LOG(WARNING) << "unable to create StreamExecutor for "
+                       << platform->Name() << ":" << i << ": "
+                       << executor_status.status().error_message();
+        }
+        VLOG(1) << "Finished device init " << i;
+      });
     }
+    // Block here in thread_pool destructor until all devices are initialized.
   }
+  VLOG(1) << "Device initialization complete";
   if (std::all_of(stream_executors.begin(), stream_executors.end(),
                   [](se::StreamExecutor* s) { return s == nullptr; })) {
     return InternalError("no supported devices found for platform %s",

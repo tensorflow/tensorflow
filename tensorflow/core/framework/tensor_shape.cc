@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -351,13 +352,18 @@ void TensorShapeBase<Shape>::set_dim(int d, int64 size) {
 }
 
 template <class Shape>
-void TensorShapeBase<Shape>::RemoveDim(int d) {
+void TensorShapeBase<Shape>::RemoveDimRange(int begin, int end) {
   if (unknown_rank()) return;
-  CHECK_GE(d, 0);
-  CHECK_LT(d, dims());
+  begin = begin < 0 ? dims() + begin + 1 : begin;
+  end = end < 0 ? dims() + end + 1 : end;
+  CHECK_GE(begin, 0);
+  CHECK_LE(begin, dims());
+  CHECK_GE(end, 0);
+  CHECK_LE(end, dims());
+  if (begin >= end) return;
   gtl::InlinedVector<int64, 8> vals;
   AppendTo(*this, &vals);
-  vals.erase(vals.begin() + d);
+  vals.erase(vals.begin() + begin, vals.begin() + end);
   ClearAllButDataType();
   for (auto dval : vals) {
     AddDim(dval);

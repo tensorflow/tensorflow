@@ -24,8 +24,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Convert an XLA Shape into the equivalent TensorFlow shape.
-TensorShape XLAShapeToTensorShape(const xla::Shape& shape);
+// Convert an XLA Shape into the equivalent TensorFlow shape. May fail since
+// not all XLA shapes can be represented as TensorShapes.
+Status XLAShapeToTensorShape(const xla::Shape& shape,
+                             TensorShape* tensor_shape);
 
 // Convert a TensorShape into the equivalent XLA Shape proto. Unlike Tensorflow,
 // XLA shapes include the type. Not all `dtype` values can be represented by

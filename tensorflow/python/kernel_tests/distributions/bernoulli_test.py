@@ -172,7 +172,7 @@ class BernoulliTest(test.TestCase):
       dist = bernoulli.Bernoulli(probs=p, validate_args=True)
       with self.assertRaisesOpError("must be non-negative."):
         dist.prob([1, 1, -1]).eval()
-      with self.assertRaisesOpError("is not less than or equal to 1."):
+      with self.assertRaisesOpError("Elements cannot exceed 1."):
         dist.prob([2, 0, 1]).eval()
 
   def testPmfWithP(self):

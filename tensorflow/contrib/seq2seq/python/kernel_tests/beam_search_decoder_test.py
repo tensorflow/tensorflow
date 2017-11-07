@@ -54,15 +54,18 @@ class TestGatherTree(test.TestCase):
          [[0, 0, 0], [1, 2, 0], [2, 1, 1]]],
         dtype=np.int32).transpose([1, 0, 2])
 
-    # sequence_lengths is shaped (batch_size = 2, beam_width = 3)
-    sequence_lengths = [[3, 3, 3], [3, 3, 3]]
+    # sequence_lengths is shaped (batch_size = 3)
+    max_sequence_lengths = [3, 3]
 
     expected_result = np.array(
         [[[2, 2, 2], [6, 5, 6], [7, 8, 9]],
          [[2, 4, 4], [7, 6, 6], [8, 9, 10]]]).transpose([1, 0, 2])
 
     res = beam_search_ops.gather_tree(
-        predicted_ids, parent_ids, sequence_lengths)
+        predicted_ids,
+        parent_ids,
+        max_sequence_lengths=max_sequence_lengths,
+        end_token=11)
 
     with self.test_session() as sess:
       res_ = sess.run(res)
@@ -80,8 +83,7 @@ class TestEosMasking(test.TestCase):
     ])
 
     eos_token = 0
-    previously_finished = constant_op.constant(
-        [[0, 1, 0], [0, 1, 1]], dtype=dtypes.float32)
+    previously_finished = np.array([[0, 1, 0], [0, 1, 1]], dtype=bool)
     masked = beam_search_decoder._mask_probs(probs, eos_token,
                                              previously_finished)
 
@@ -121,7 +123,7 @@ class TestBeamStep(test.TestCase):
         log_probs=nn_ops.log_softmax(
             array_ops.ones([self.batch_size, self.beam_width])),
         lengths=constant_op.constant(
-            2, shape=[self.batch_size, self.beam_width], dtype=dtypes.int32),
+            2, shape=[self.batch_size, self.beam_width], dtype=dtypes.int64),
         finished=array_ops.zeros(
             [self.batch_size, self.beam_width], dtype=dtypes.bool))
 
@@ -176,7 +178,7 @@ class TestBeamStep(test.TestCase):
         log_probs=nn_ops.log_softmax(
             array_ops.ones([self.batch_size, self.beam_width])),
         lengths=ops.convert_to_tensor(
-            [[2, 1, 2], [2, 2, 1]], dtype=dtypes.int32),
+            [[2, 1, 2], [2, 2, 1]], dtype=dtypes.int64),
         finished=ops.convert_to_tensor(
             [[False, True, False], [False, False, True]], dtype=dtypes.bool))
 

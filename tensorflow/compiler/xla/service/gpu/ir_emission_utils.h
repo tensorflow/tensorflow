@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -52,10 +52,6 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
 // http://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl
 llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
                              llvm::IRBuilder<>* builder);
-
-// Resolves GetTupleElement instruction operands starting with 'hlo'.
-// Returns the first ancestor instruction which is not a GetTupleElement.
-const HloInstruction* LatestNonGteAncestor(const HloInstruction* hlo);
 
 }  // namespace gpu
 }  // namespace xla

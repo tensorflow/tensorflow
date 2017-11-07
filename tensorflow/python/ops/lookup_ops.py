@@ -21,11 +21,13 @@ from __future__ import print_function
 import collections
 import functools
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_lookup_ops
@@ -39,8 +41,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
 
-# TODO(yleon): Remove this function.
-@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
+@deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -152,9 +153,13 @@ class InitializableLookupTableBase(LookupInterface):
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
+    if context.in_graph_mode():
+      name = table_ref.op.name.split("/")[-1]
+    else:
+      name = context.context().scope_name
     super(InitializableLookupTableBase,
           self).__init__(initializer.key_dtype, initializer.value_dtype,
-                         table_ref.op.name.split("/")[-1])
+                         name)
     self._table_ref = table_ref
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
@@ -236,11 +241,11 @@ class HashTable(InitializableLookupTableBase):
   Example usage:
 
   ```python
-  table = tf.contrib.lookup.HashTable(
-      tf.contrib.lookup.KeyValueTensorInitializer(keys, values), -1)
-  out = table.lookup(input_tensor).
+  table = tf.HashTable(
+      tf.KeyValueTensorInitializer(keys, values), -1)
+  out = table.lookup(input_tensor)
   table.init.run()
-  print out.eval()
+  print(out.eval())
   ```
   """
 
@@ -691,8 +696,8 @@ class IdTableWithHashBuckets(LookupInterface):
   - emerson -> 0
   - lake -> 1
   - palmer -> 2
-  - <other term> -> bucket id between 3 and 3 + num_oov_buckets, calculated by:
-    hash(<term>) % num_oov_buckets + vocab_size
+  - <other term> -> bucket id between 3 and 3 + num_oov_buckets - 1, calculated
+    by: hash(<term>) % num_oov_buckets + vocab_size
 
   If input_tensor is ["emerson", "lake", "palmer", "king", "crimson"],
   the lookup result is [0, 1, 2, 4, 7]
@@ -709,7 +714,7 @@ class IdTableWithHashBuckets(LookupInterface):
       num_oov_buckets)
   out = table.lookup(input_tensor).
   table.init.run()
-  print out.eval()
+  print(out.eval())
   ```
 
   The hash function used for generating out-of-vocabulary buckets ID is handled
@@ -870,7 +875,8 @@ def index_table_from_file(vocabulary_file=None,
   Any lookup of an out-of-vocabulary token will return a bucket ID based on its
   hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
   `default_value`.
-  The bucket ID range is `[vocabulary size, vocabulary size + num_oov_buckets]`.
+  The bucket ID range is
+  `[vocabulary size, vocabulary size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
@@ -922,7 +928,11 @@ def index_table_from_file(vocabulary_file=None,
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
                      % num_oov_buckets)
   if vocab_size is not None and vocab_size < 1:
-    raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
+    vocab_file_value = vocabulary_file
+    if isinstance(vocabulary_file, ops.Tensor):
+      vocab_file_value = tensor_util.constant_value(vocabulary_file) or "?"
+    raise ValueError("vocab_size must be greater than 0, got %d. "
+                     "vocabulary_file: %s" % (vocab_size, vocab_file_value))
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
     raise TypeError("Only integer and string keys are supported.")
 
@@ -977,7 +987,7 @@ def index_table_from_tensor(vocabulary_list,
   Any lookup of an out-of-vocabulary token will return a bucket ID based on its
   hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
   `default_value`.
-  The bucket ID range is `[mapping size, mapping size + num_oov_buckets]`.
+  The bucket ID range is `[mapping size, mapping size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
@@ -988,9 +998,9 @@ def index_table_from_tensor(vocabulary_list,
   Sample Usages:
 
   ```python
-  vocabulary_list = t.constant(["emerson", "lake", "palmer")
+  vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
   table = tf.contrib.lookup.index_table_from_tensor(
-      vocabulary_list=vocabulary_list, num_oov_buckets=1, default_value=-1)
+      mapping=vocabulary_list, num_oov_buckets=1, default_value=-1)
   features = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = table.lookup(features)
   ...
@@ -1001,7 +1011,7 @@ def index_table_from_tensor(vocabulary_list,
 
   Args:
     vocabulary_list: A 1-D `Tensor` that specifies the mapping of keys to
-      indices. Thetype of this object must be castable to `dtype`.
+      indices. The type of this object must be castable to `dtype`.
     num_oov_buckets: The number of out-of-vocabulary buckets.
     default_value: The value to use for out-of-vocabulary feature values.
       Defaults to -1.
@@ -1160,7 +1170,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
   Sample Usages:
 
   ```python
-  vocabulary_list = t.constant(["emerson", "lake", "palmer")
+  vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
   indices = tf.constant([1, 5], tf.int64)
   table = tf.contrib.lookup.index_to_string_table_from_tensor(
       vocabulary_list, default_value="UNKNOWN")

@@ -196,7 +196,7 @@ class Binomial(distribution.Distribution):
 
   @property
   def probs(self):
-    """Probability of of drawing a `1`."""
+    """Probability of drawing a `1`."""
     return self._probs
 
   def _batch_shape_tensor(self):
@@ -272,13 +272,11 @@ class Binomial(distribution.Distribution):
             message="total_count cannot contain fractional components."),
     ], total_count)
 
-  def _maybe_assert_valid_sample(self, counts, check_integer=True):
+  def _maybe_assert_valid_sample(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
-
-    counts = distribution_util.embed_check_nonnegative_discrete(
-        counts, check_integer=check_integer)
+    counts = distribution_util.embed_check_nonnegative_integer_form(counts)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less_equal(
             counts, self.total_count,

@@ -1,0 +1,7 @@
+path: "tensorflow.keras.datasets.cifar10"
+tf_module {
+  member_method {
+    name: "load_data"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

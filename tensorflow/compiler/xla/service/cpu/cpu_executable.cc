@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -51,10 +51,11 @@ namespace cpu {
 
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
-    std::unique_ptr<BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<const HloModule> hlo_module,
+    const string& entry_function_name,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx)
-    : Executable(std::move(hlo_module), CpuExecutable::ShapeSizeBytes),
+    : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)) {
@@ -66,7 +67,8 @@ CpuExecutable::CpuExecutable(
   CHECK(sym) << "Symbol " << entry_function_name << " not found.";
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ = reinterpret_cast<ComputeFunctionType>(sym.getAddress());
+  compute_function_ =
+      reinterpret_cast<ComputeFunctionType>(cantFail(sym.getAddress()));
 }
 
 // Given a pointer to an output buffer (following the CPU JIT calling
@@ -146,7 +148,6 @@ Status CpuExecutable::ExecuteComputeFunction(
     HloExecutionProfile* hlo_execution_profile) {
   std::vector<se::DeviceMemoryBase> argument_buffers;
   for (int i = 0; i < arguments.size(); ++i) {
-    TF_RET_CHECK(!ShapeUtil::IsTuple(arguments[i]->shape()));
     argument_buffers.push_back(arguments[i]->buffer(/*index=*/{}));
   }
   return ExecuteComputeFunction(run_options, argument_buffers, buffers,
@@ -233,7 +234,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     for (auto hlo_prof_idx : hlo_to_profile_idx_) {
       const HloInstruction* hlo = hlo_prof_idx.first;
       uint64 cycles_taken = profile_counters[hlo_prof_idx.second];
-      hlo_execution_profile->AddProfileResult(hlo, cycles_taken);
+      hlo_execution_profile->SetCyclesTakenBy(hlo, cycles_taken);
     }
   }
   return Status::OK();
@@ -297,10 +298,10 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result_buffer,
-                      ShapedBuffer::MakeShapedBuffer(
-                          result_shape(), stream->parent()->platform(),
-                          stream->parent()->device_ordinal()));
+  auto result_buffer =
+      MakeUnique<ShapedBuffer>(result_shape(), stream->parent()->platform(),
+                               stream->parent()->device_ordinal());
+
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
   TF_RETURN_IF_ERROR(ExecuteComputeFunction(
@@ -314,32 +315,29 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
           ->ForEachMutableElementWithStatus(
               [&buffers, &buffers_in_result, &result_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
-                if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
-                  const std::vector<const LogicalBuffer*>& sources =
-                      this->GetRootPointsToSet().element(index);
-                  // The points to set is unambiguous so the set should be a
-                  // singleton.
-                  CHECK_EQ(1, sources.size());
-                  const LogicalBuffer* buffer_source = sources[0];
-                  HloInstruction* src = buffer_source->instruction();
+                const auto& sources = this->GetRootPointsToSet().element(index);
+                // The points to set is unambiguous so the set should be a
+                // singleton.
+                CHECK_EQ(1, sources.size());
+                const LogicalBuffer* buffer_source = sources[0];
+                HloInstruction* src = buffer_source->instruction();
 
-                  // The source for this result buffer can be a nested buffer
-                  // such as a tuple element.
+                // The source for this result buffer can be a nested buffer
+                // such as a tuple element.
 
-                  // The source instruction should have a non-parameter buffer
-                  // assigned.
-                  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                                      this->assignment_->GetUniqueSlice(
-                                          src, buffer_source->index()));
-                  CHECK(!slice.allocation()->is_entry_computation_parameter());
+                // The source instruction should have a non-parameter buffer
+                // assigned.
+                TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                                    this->assignment_->GetUniqueSlice(
+                                        src, buffer_source->index()));
+                CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-                  const BufferAllocation::Index buffer_index = slice.index();
-                  const se::DeviceMemoryBase& buffer = buffers[buffer_index];
-                  CHECK(!buffer.is_null() || buffer.size() == 0);
-                  *buffer_entry = result_buffer->mutable_buffers()->size();
-                  result_buffer->mutable_buffers()->push_back(buffer);
-                  buffers_in_result[buffer_index] = true;
-                }
+                const BufferAllocation::Index buffer_index = slice.index();
+                const se::DeviceMemoryBase& buffer = buffers[buffer_index];
+                CHECK(!buffer.is_null() || buffer.size() == 0);
+                *buffer_entry = result_buffer->mutable_buffers()->size();
+                result_buffer->mutable_buffers()->push_back(buffer);
+                buffers_in_result[buffer_index] = true;
                 return Status::OK();
               }));
 
@@ -377,6 +375,10 @@ CpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& CpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
+}
+
+std::unique_ptr<HloCostAnalysis> CpuExecutable::CreateCostAnalysis() const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace cpu

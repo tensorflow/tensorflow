@@ -1,0 +1,53 @@
+op {
+  graph_op_name: "SaveSlices"
+  in_arg {
+    name: "filename"
+    description: <<END
+Must have a single element. The name of the file to which we write the
+tensor.
+END
+  }
+  in_arg {
+    name: "tensor_names"
+    description: <<END
+Shape `[N]`. The names of the tensors to be saved.
+END
+  }
+  in_arg {
+    name: "shapes_and_slices"
+    description: <<END
+Shape `[N]`.  The shapes and slice specifications to use when
+saving the tensors.
+END
+  }
+  in_arg {
+    name: "data"
+    description: <<END
+`N` tensors to save.
+END
+  }
+  summary: "Saves input tensors slices to disk."
+  description: <<END
+This is like `Save` except that tensors can be listed in the saved file as being
+a slice of a larger tensor.  `shapes_and_slices` specifies the shape of the
+larger tensor and the slice that this tensor covers. `shapes_and_slices` must
+have as many elements as `tensor_names`.
+
+Elements of the `shapes_and_slices` input must either be:
+
+*  The empty string, in which case the corresponding tensor is
+   saved normally.
+*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the
+   `dimI` are the dimensions of the larger tensor and `slice-spec`
+   specifies what part is covered by the tensor to save.
+
+`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`
+where each `sliceI` is either:
+
+*  The string `-` meaning that the slice covers all indices of this dimension
+*  `start,length` where `start` and `length` are integers.  In that
+   case the slice covers `length` indices starting at `start`.
+
+See also `Save`.
+END
+}

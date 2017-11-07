@@ -28,8 +28,9 @@ limitations under the License.
 // clang-format on
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -72,6 +73,28 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 TF_EXPORT extern const char* const DEVICE_CPU;   // "CPU"
 TF_EXPORT extern const char* const DEVICE_GPU;   // "GPU"
 TF_EXPORT extern const char* const DEVICE_SYCL;  // "SYCL"
+
+template <typename Device>
+struct DeviceName {};
+
+template <>
+struct DeviceName<Eigen::ThreadPoolDevice> {
+  static const std::string value;
+};
+
+#if GOOGLE_CUDA
+template <>
+struct DeviceName<Eigen::GpuDevice> {
+  static const std::string value;
+};
+#endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+template <>
+struct DeviceName<Eigen::SyclDevice> {
+  static const std::string value;
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
@@ -164,6 +187,7 @@ struct EnumToDataType {};  // Specializations below
 MATCH_TYPE_AND_ENUM(float, DT_FLOAT);
 MATCH_TYPE_AND_ENUM(double, DT_DOUBLE);
 MATCH_TYPE_AND_ENUM(int32, DT_INT32);
+MATCH_TYPE_AND_ENUM(uint32, DT_UINT32);
 MATCH_TYPE_AND_ENUM(uint16, DT_UINT16);
 MATCH_TYPE_AND_ENUM(uint8, DT_UINT8);
 MATCH_TYPE_AND_ENUM(int16, DT_INT16);
@@ -172,6 +196,7 @@ MATCH_TYPE_AND_ENUM(string, DT_STRING);
 MATCH_TYPE_AND_ENUM(complex64, DT_COMPLEX64);
 MATCH_TYPE_AND_ENUM(complex128, DT_COMPLEX128);
 MATCH_TYPE_AND_ENUM(int64, DT_INT64);
+MATCH_TYPE_AND_ENUM(uint64, DT_UINT64);
 MATCH_TYPE_AND_ENUM(bool, DT_BOOL);
 MATCH_TYPE_AND_ENUM(qint8, DT_QINT8);
 MATCH_TYPE_AND_ENUM(quint8, DT_QUINT8);
@@ -181,6 +206,7 @@ MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
+MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
 
 #undef MATCH_TYPE_AND_ENUM
 
@@ -200,6 +226,9 @@ bool DataTypeIsQuantized(DataType dt);
 
 // Is the dtype nonquantized integral?
 bool DataTypeIsInteger(DataType dt);
+
+// Is the dtype an unsigned integral type?
+bool DataTypeIsUnsigned(DataType dt);
 
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);

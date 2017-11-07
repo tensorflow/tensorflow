@@ -43,8 +43,8 @@ class CheckpointConvertTest(test.TestCase):
       os.remove(file_name)
 
   def testReplacementDictsContainUniqueAndNonEmptyVariableNames(self):
-    for old_name in checkpoint_convert._RNN_NAME_REPLACEMENTS:
-      new_name = checkpoint_convert._RNN_NAME_REPLACEMENTS[old_name]
+    for old_name in checkpoint_convert.RNN_NAME_REPLACEMENTS:
+      new_name = checkpoint_convert.RNN_NAME_REPLACEMENTS[old_name]
       self.assertTrue(old_name)
       self.assertTrue(new_name)
       self.assertNotEqual(old_name, new_name)
@@ -56,7 +56,7 @@ class CheckpointConvertTest(test.TestCase):
 
   def testConversionFromV2WithConvertedVariableNamesSucceeds(self):
     variables.Variable(10.0, name="a")
-    for old_name in checkpoint_convert._RNN_NAME_REPLACEMENTS:
+    for old_name in checkpoint_convert.RNN_NAME_REPLACEMENTS:
       variables.Variable(20.0, name=old_name)
     with session.Session() as sess:
       saver = saver_lib.Saver()
@@ -67,9 +67,9 @@ class CheckpointConvertTest(test.TestCase):
         self._old_ckpt_path, self._new_ckpt_path)
     self.assertTrue(glob.glob(self._new_ckpt_path + "*"))
     self.assertItemsEqual(
-        ["a"] + list(checkpoint_convert._RNN_NAME_REPLACEMENTS.values()),
+        ["a"] + list(checkpoint_convert.RNN_NAME_REPLACEMENTS.values()),
         new_var_map.keys())
-    self.assertEqual(checkpoint_convert._RNN_NAME_REPLACEMENTS, conversion_map)
+    self.assertEqual(checkpoint_convert.RNN_NAME_REPLACEMENTS, conversion_map)
 
   def testConversionFromV2WithoutConvertedVariableNamesSucceeds(self):
     variables.Variable(10.0, name="a")
@@ -86,7 +86,7 @@ class CheckpointConvertTest(test.TestCase):
   def testConversionToV1Succeeds(self):
     variables.Variable(10.0, name="a")
     variables.Variable(
-        20.0, name=list(checkpoint_convert._RNN_NAME_REPLACEMENTS.keys())[-1])
+        20.0, name=list(checkpoint_convert.RNN_NAME_REPLACEMENTS.keys())[-1])
 
     with session.Session() as sess:
       saver = saver_lib.Saver()
@@ -96,11 +96,11 @@ class CheckpointConvertTest(test.TestCase):
     new_var_map, conversion_map = checkpoint_convert.convert_names(
         self._old_ckpt_path, self._new_ckpt_path, write_v1_checkpoint=True)
     self.assertItemsEqual(
-        ["a", list(checkpoint_convert._RNN_NAME_REPLACEMENTS.values())[-1]],
+        ["a", list(checkpoint_convert.RNN_NAME_REPLACEMENTS.values())[-1]],
         new_var_map.keys())
     self.assertEqual(
-        {list(checkpoint_convert._RNN_NAME_REPLACEMENTS.keys())[-1]:
-         list(checkpoint_convert._RNN_NAME_REPLACEMENTS.values())[-1]},
+        {list(checkpoint_convert.RNN_NAME_REPLACEMENTS.keys())[-1]:
+         list(checkpoint_convert.RNN_NAME_REPLACEMENTS.values())[-1]},
         conversion_map)
 
 

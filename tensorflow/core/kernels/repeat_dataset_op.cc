@@ -36,27 +36,30 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     // container, and return it as the output.
     int64 count;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "count", &count));
-
-    *output = new Dataset(count, input);
+    *output = new Dataset(ctx, count, input);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 count, const DatasetBase* input)
-        : count_(count), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
+        : GraphDatasetBase(ctx), count_(count), input_(input) {
       input_->Ref();
     }
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
       if (count_ < 0) {
-        return std::unique_ptr<IteratorBase>(new ForeverIterator(this));
+        return std::unique_ptr<IteratorBase>(new ForeverIterator(
+            {this, strings::StrCat(prefix, "::ForeverRepeat")}));
       } else if (count_ == 0) {
-        return std::unique_ptr<IteratorBase>(new EmptyIterator(this));
+        return std::unique_ptr<IteratorBase>(new EmptyIterator(
+            {this, strings::StrCat(prefix, "::EmptyRepeat")}));
       } else {
-        return std::unique_ptr<IteratorBase>(new FiniteIterator(this));
+        return std::unique_ptr<IteratorBase>(new FiniteIterator(
+            {this, strings::StrCat(prefix, "::FiniteRepeat")}));
       }
     }
 
@@ -69,13 +72,26 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() override { return "RepeatDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(input_, &input_graph_node));
+      Node* count = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, count}, output));
+      return Status::OK();
+    }
+
    private:
     class EmptyIterator : public DatasetIterator<Dataset> {
      public:
-      explicit EmptyIterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      explicit EmptyIterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         *end_of_sequence = true;
         return Status::OK();
       }
@@ -83,13 +99,14 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
 
     class FiniteIterator : public DatasetIterator<Dataset> {
      public:
-      explicit FiniteIterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
+      explicit FiniteIterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
             i_(0),
-            input_impl_(dataset->input_->MakeIterator()) {}
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
         while (i_ < dataset()->count_) {
           TF_RETURN_IF_ERROR(
@@ -98,10 +115,27 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
           ++i_;
-          input_impl_ = dataset()->input_->MakeIterator();
+          input_impl_ = dataset()->input_->MakeIterator(prefix());
         }
         *end_of_sequence = true;
+        is_exhausted_ = true;
         input_impl_.reset();
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
         return Status::OK();
       }
 
@@ -113,15 +147,16 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
 
     class ForeverIterator : public DatasetIterator<Dataset> {
      public:
-      explicit ForeverIterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset), input_impl_(nullptr) {}
+      explicit ForeverIterator(const Params& params)
+          : DatasetIterator<Dataset>(params), input_impl_(nullptr) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
         do {
           if (!input_impl_) {
-            input_impl_ = dataset()->input_->MakeIterator();
+            input_impl_ = dataset()->input_->MakeIterator(prefix());
             TF_RETURN_IF_ERROR(
                 input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
             // If the first call to GetNext() fails because the end of

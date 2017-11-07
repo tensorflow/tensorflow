@@ -69,7 +69,7 @@ class QueueBase : public QueueInterface {
 
   int32 capacity() const { return capacity_; }
 
-  bool closed() {
+  bool is_closed() const override {
     mutex_lock lock(mu_);
     return closed_;
   }

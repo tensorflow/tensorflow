@@ -22,12 +22,12 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/buffer_assignment_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -66,6 +66,7 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
 
 void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
                                      int64 size) {
+  VLOG(4) << "Trying to add " << buffer << " to " << this;
   CHECK(assigned_buffers_.count(&buffer) == 0)
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
@@ -100,6 +101,11 @@ BufferAllocationProto BufferAllocation::ToProto() const {
     proto_assigned->set_offset(buffer_offset_size.second.offset);
     proto_assigned->set_size(buffer_offset_size.second.size);
   }
+  std::sort(proto.mutable_assigned()->begin(), proto.mutable_assigned()->end(),
+            [](const BufferAllocationProto::Assigned& assign1,
+               const BufferAllocationProto::Assigned& assign2) {
+              return assign1.logical_buffer_id() < assign2.logical_buffer_id();
+            });
   return proto;
 }
 
@@ -199,10 +205,10 @@ BufferAllocation* BufferAssignment::GetMutableAllocation(
   return const_cast<BufferAllocation*>(&GetAllocation(index));
 }
 
-bool BufferAssignment::HasTopLevelAllocation(
-    const HloInstruction* instruction) const {
+bool BufferAssignment::HasAllocationAt(const HloInstruction* instruction,
+                                       const ShapeIndex& index) const {
   for (const LogicalBuffer* buffer :
-       GetPointsToSet(instruction).element(/*index=*/{})) {
+       GetPointsToSet(instruction).element(index)) {
     if (allocation_index_for_buffer_.count(buffer) > 0) {
       return true;
     }
@@ -210,12 +216,21 @@ bool BufferAssignment::HasTopLevelAllocation(
   return false;
 }
 
+bool BufferAssignment::HasTopLevelAllocation(
+    const HloInstruction* instruction) const {
+  return HasAllocationAt(instruction, /*index=*/{});
+}
+
 StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
     const HloInstruction* instruction, const ShapeIndex& index) const {
+  VLOG(3) << "Trying to find unique slice for " << instruction->name() << " ["
+          << index << "]";
   BufferAllocation::Slice result;
   for (const LogicalBuffer* buffer :
        GetPointsToSet(instruction).element(index)) {
+    VLOG(3) << "Examining buffer " << *buffer;
     if (HasAllocation(*buffer)) {
+      VLOG(3) << "Has allocation";
       const BufferAllocation::Slice slice =
           GetAssignedAllocation(*buffer).GetSlice(*buffer);
       if (result.allocation() == nullptr) {
@@ -226,6 +241,8 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
             "be determined at compile-time.",
             instruction->name().c_str(), index.ToString().c_str());
       }
+    } else {
+      VLOG(3) << "No allocation";
     }
   }
   if (result.allocation() == nullptr) {
@@ -320,8 +337,9 @@ void BufferAssignment::CombineTempAllocations() {
       // Each temp allocation is placed end-to-end, accounting for alignment.
       // The offset of each buffer in the combined allocation is computed from
       // the base offset of the allocation.
+      int64 alignment = color_alignment_(color);
       const int64 base =
-          RoundUpToNearest(combined_allocation->size(), alignment_);
+          RoundUpToNearest(combined_allocation->size(), alignment);
       combined_allocation->set_size(base + temp_allocation.size());
       for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
         const LogicalBuffer* buffer = buffer_offset_size.first;
@@ -375,10 +393,10 @@ Status BufferAssignment::ComputeSummaryStats() {
     const std::vector<const HloInstruction*>* sequence =
         liveness_->hlo_ordering().SequentialOrder(*computation);
     if (sequence != nullptr) {
-      module_sequence.emplace(computation.get(), *sequence);
+      module_sequence.emplace(computation, *sequence);
     }
   }
-  if (module_sequence.size() == module_->computations().size()) {
+  if (module_sequence.size() == module_->computation_count()) {
     TF_ASSIGN_OR_RETURN(
         const int64 min_size,
         MinimumMemoryForSequence(module_sequence, buffer_size_));
@@ -432,23 +450,25 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   // the buffer_size_ call might fail for some backends.
   const TuplePointsToAnalysis& points_to_analysis =
       liveness_->points_to_analysis();
-  for (const auto& buffer : points_to_analysis.logical_buffers()) {
-    if (HasAllocation(*buffer)) {
-      LogicalBufferProto proto_buffer = buffer->ToProto(buffer_size_);
+  for (LogicalBuffer::Id id = 0; id < points_to_analysis.num_logical_buffers();
+       id++) {
+    auto& buffer = points_to_analysis.logical_buffer(id);
+    if (HasAllocation(buffer)) {
+      LogicalBufferProto proto_buffer = buffer.ToProto(buffer_size_);
       proto.add_logical_buffers()->Swap(&proto_buffer);
 
       // Fill buffer aliases.
       for (const BufferAlias& alias :
-           points_to_analysis.GetBufferAliases(*buffer)) {
-        if (alias.instruction() == buffer->instruction() &&
-            alias.index() == buffer->index()) {
+           points_to_analysis.GetBufferAliases(buffer)) {
+        if (alias.instruction() == buffer.instruction() &&
+            alias.index() == buffer.index()) {
           continue;  // skip self-aliases
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
             proto.add_buffer_aliases();
         LogicalBufferProto::Location proto_alias_location =
             LogicalBuffer::ToLocationProto(*alias.instruction(), alias.index());
-        proto_alias->set_source_buffer_id(buffer->id());
+        proto_alias->set_source_buffer_id(buffer.id());
         proto_alias->mutable_location()->Swap(&proto_alias_location);
       }
     }
@@ -520,7 +540,7 @@ Status GatherComputationsByAllocationType(
       global_set.insert(computation);
     }
 
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       for (HloComputation* subcomputation :
            instruction->called_computations()) {
         switch (instruction->opcode()) {
@@ -575,12 +595,13 @@ Status GatherComputationsByAllocationType(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-    bool allow_input_output_aliasing, TuplePointsToAnalysis::Colorer colorer) {
-  BufferAssigner assigner(alignment, allow_input_output_aliasing,
-                          std::move(colorer));
+    LogicalBuffer::SizeFunction buffer_size,
+    LogicalBuffer::AlignmentFunction color_alignment,
+    bool allow_input_output_aliasing, BufferLiveness::Colorer colorer) {
+  BufferAssigner assigner(allow_input_output_aliasing, std::move(colorer));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
-                                   std::move(buffer_size));
+                                   std::move(buffer_size),
+                                   std::move(color_alignment));
 }
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
@@ -662,7 +683,8 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 }
 
 Status BufferAssigner::AssignBuffersForComputation(
-    const HloComputation* computation, bool is_thread_local,
+    const HloComputation* computation, const DebugOptions& debug_options,
+    bool is_thread_local,
     const FlatSet<const LogicalBuffer*>& colocated_buffers,
     const FlatSet<BufferAllocation::Index>& colocated_allocations,
     FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>*
@@ -671,13 +693,13 @@ Status BufferAssigner::AssignBuffersForComputation(
   // Buffers are sorted and assigned to BufferAllocations in decreasing order of
   // size.
   std::vector<const LogicalBuffer*> sorted_buffers;
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     // Add all buffers which this instruction defines. Instruction which don't
     // define buffers (eg, bitcast which just forwards a pointer) don't need
     // any allocations.
     for (const LogicalBuffer* buffer :
          assignment->points_to_analysis().GetBuffersDefinedByInstruction(
-             instruction.get())) {
+             instruction)) {
       sorted_buffers.push_back(buffer);
     }
   }
@@ -786,10 +808,7 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    legacy_flags::BufferAssignmentFlags* flags =
-        legacy_flags::GetBufferAssignmentFlags();
-    if (!flags->xla_enable_buffer_reuse || is_thread_local ||
-        instruction->opcode() == HloOpcode::kCustomCall) {
+    if (is_thread_local || instruction->opcode() == HloOpcode::kCustomCall) {
       // Custom call operations never have reusable buffers. Also we do not
       // reuse thread-local buffers for now, because they are dynamically
       // allocated and their lifetimes are hard to compute.
@@ -797,6 +816,17 @@ Status BufferAssigner::AssignBuffersForComputation(
           *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
       VLOG(3) << "New allocation #" << allocation->index()
               << " for thread-local/CustomCall: " << *buffer;
+      continue;
+    }
+
+    if (instruction->opcode() == HloOpcode::kRecv) {
+      // Make sure that recv operations get a new unique allocation so that
+      // don't share their buffer with any other operations.
+      BufferAllocation* allocation = assignment->NewAllocation(
+          *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
+      allocation_indices.push_back(allocation->index());
+      VLOG(3) << "New allocation #" << allocation->index()
+              << " for recv: " << *buffer;
       continue;
     }
 
@@ -938,11 +968,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     }
     auto color_map = SplitBuffersByColor(all_buffers_to_assign);
     for (auto& single_colored_set : color_map) {
-      VLOG(2) << "Simulating heap for color " << single_colored_set.first;
+      auto color = single_colored_set.first;
+      VLOG(2) << "Simulating heap for color " << color;
+      int64 alignment = assignment->color_alignment_(color);
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
           HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                 MakeUnique<LazyBestFitHeap>(alignment_)),
+                                 MakeUnique<LazyBestFitHeap>(alignment)),
                              assignment->module(), module_sequence,
                              assignment->points_to_analysis(),
                              assignment->buffer_size_,
@@ -963,11 +995,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       CHECK(instruction_sequence != nullptr) << computation->name();
       auto color_map = SplitBuffersByColor(buffers_to_assign);
       for (auto& single_colored_set : color_map) {
-        VLOG(2) << "Simulating heap for color " << single_colored_set.first;
+        auto color = single_colored_set.first;
+        VLOG(2) << "Simulating heap for color " << color;
+        int64 alignment = assignment->color_alignment_(color);
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                   MakeUnique<LazyBestFitHeap>(alignment_)),
+                                   MakeUnique<LazyBestFitHeap>(alignment)),
                                *computation, *instruction_sequence,
                                assignment->points_to_analysis(),
                                assignment->buffer_size_,
@@ -1074,7 +1108,8 @@ void BufferAssigner::AddSetToColocatedBufferSets(
 // different while instructions.
 void BufferAssigner::AddWhileSetToColocatedBufferSets(
     const std::vector<const LogicalBuffer*>& colocated_set,
-    const LogicalBuffer* while_init_buffer, const HloInstruction* while_hlo,
+    const LogicalBuffer* while_init_buffer,
+    const LogicalBuffer* while_result_buffer, const HloInstruction* while_hlo,
     const HloComputation& computation, const BufferLiveness& buffer_liveness,
     const LogicalBuffer::SizeFunction& buffer_size,
     std::vector<ColocatedBufferSet>* colocated_buffer_sets) {
@@ -1091,6 +1126,7 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
   // Scan 'colocated_buffer_sets' in reverse order for locality; colocated sets
   // are added in postorder over computations and instructions.
   const int64 init_buffer_size = buffer_size(*while_init_buffer);
+  const bool is_live_out = buffer_liveness.MaybeLiveOut(*while_result_buffer);
   for (int i = colocated_buffer_sets->size() - 1; i >= 0; --i) {
     const ColocatedBufferSet& predecessor_set = (*colocated_buffer_sets)[i];
 
@@ -1111,6 +1147,20 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
       continue;
     }
 
+    // Skip predecessor sets with entry parameter if the while result is live
+    // out.
+    if (is_live_out &&
+        std::any_of(predecessor_set.begin(), predecessor_set.end(),
+                    [](const LogicalBuffer* buffer) {
+                      auto* instruction = buffer->instruction();
+                      auto* computation = instruction->parent();
+                      auto* module = computation->parent();
+                      return instruction->opcode() == HloOpcode::kParameter &&
+                             computation == module->entry_computation();
+                    })) {
+      continue;
+    }
+
     // Build vector of predecessor while result and init buffers, which are
     // checked for liveness interference below. We must check both the result
     // and init buffers because they're aliased together, but
@@ -1126,8 +1176,7 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
         // predecessor set, and must be unambiguous.
         const PointsToSet& init_points_to =
             points_to_analysis.GetPointsToSet(instruction->operand(0));
-        const std::vector<const LogicalBuffer*>& init_buffers =
-            init_points_to.element(buffer->index());
+        const auto& init_buffers = init_points_to.element(buffer->index());
         CHECK_EQ(init_buffers.size(), 1);
         CHECK_GT(predecessor_set.count(init_buffers[0]), 0);
         predecessor_while_buffers.push_back(init_buffers[0]);
@@ -1137,16 +1186,30 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
       continue;
     }
 
-    // Skip predecessor set if the live range of any predecessor buffers
-    // overlaps with 'while_init_buffer'. Note that tuple element buffer
-    // forwarding can cause the same buffer to appear on both sides of the
-    // interference comparison below.
-    if (std::any_of(
-            predecessor_while_buffers.begin(), predecessor_while_buffers.end(),
-            [while_init_buffer, &buffer_liveness](const LogicalBuffer* buffer) {
-              return while_init_buffer->id() != buffer->id() &&
-                     buffer_liveness.MayInterfere(*while_init_buffer, *buffer);
-            })) {
+    // Skip predecessor set if the live range of any predecessor
+    // buffers overlaps with 'while_init_buffer' or
+    // 'while_result_buffer' (we need to check both since they're
+    // aliased together, but the points-to analysis is unaware of this
+    // aliasing). Note that tuple element buffer forwarding can cause
+    // the same buffer to appear on both sides of the interference
+    // comparison below.
+    auto may_interfere_with_init_or_result = [&](const LogicalBuffer* buffer) {
+      if (while_init_buffer->id() != buffer->id() &&
+          buffer_liveness.MayInterfere(*while_init_buffer, *buffer)) {
+        return true;
+      }
+
+      if (while_result_buffer->id() != buffer->id() &&
+          buffer_liveness.MayInterfere(*while_result_buffer, *buffer)) {
+        return true;
+      }
+
+      return false;
+    };
+
+    if (std::any_of(predecessor_while_buffers.begin(),
+                    predecessor_while_buffers.end(),
+                    may_interfere_with_init_or_result)) {
       continue;
     }
 
@@ -1176,8 +1239,8 @@ const LogicalBuffer* AddBufferToColocatedSet(
     std::vector<const LogicalBuffer*>* colocated_set) {
   // CopyInsertion ensures root points-to set is unambiguous and distinct.
   const auto& points_to = points_to_analysis.GetPointsToSet(instruction);
-  CHECK(!points_to.IsAmbiguous());
-  CHECK(points_to.IsDistinct());
+  DCHECK(!points_to.IsAmbiguous());
+  DCHECK(points_to.IsDistinct());
   colocated_set->push_back(points_to.element(index)[0]);
   return colocated_set->back();
 }
@@ -1193,6 +1256,9 @@ void BufferAssigner::BuildColocatedBufferSets(
   const TuplePointsToAnalysis& points_to_analysis =
       buffer_liveness.points_to_analysis();
   for (const HloComputation* computation : module->MakeComputationPostOrder()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       const HloOpcode opcode = instruction->opcode();
@@ -1209,8 +1275,8 @@ void BufferAssigner::BuildColocatedBufferSets(
                   AddBufferToColocatedSet(while_hlo->operand(0), index,
                                           points_to_analysis, &colocated_set);
               // Add while.result.
-              AddBufferToColocatedSet(while_hlo, index, points_to_analysis,
-                                      &colocated_set);
+              auto* result_buffer = AddBufferToColocatedSet(
+                  while_hlo, index, points_to_analysis, &colocated_set);
               // Add while.cond.parameter.
               AddBufferToColocatedSet(
                   while_hlo->while_condition()->parameter_instruction(0), index,
@@ -1224,8 +1290,9 @@ void BufferAssigner::BuildColocatedBufferSets(
                   while_hlo->while_body()->root_instruction(), index,
                   points_to_analysis, &colocated_set);
               AddWhileSetToColocatedBufferSets(
-                  colocated_set, init_buffer, while_hlo, *computation,
-                  buffer_liveness, buffer_size, colocated_buffer_sets);
+                  colocated_set, init_buffer, result_buffer, while_hlo,
+                  *computation, buffer_liveness, buffer_size,
+                  colocated_buffer_sets);
             });
       } else if (opcode == HloOpcode::kCall) {
         const HloInstruction* call_hlo = instruction;
@@ -1300,10 +1367,10 @@ void BufferAssigner::AssignColocatedBufferSets(
 
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size) {
+    LogicalBuffer::SizeFunction buffer_size,
+    LogicalBuffer::AlignmentFunction color_alignment) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
-                      BufferLiveness::Run(module, std::move(hlo_ordering),
-                                          std::move(colorer_)));
+                      BufferLiveness::Run(module, std::move(hlo_ordering)));
 
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
@@ -1311,8 +1378,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
 
   // Can't use MakeUnique because BufferAssignment constructor is private.
-  std::unique_ptr<BufferAssignment> assignment(new BufferAssignment(
-      module, std::move(liveness), alignment_, std::move(buffer_size)));
+  std::unique_ptr<BufferAssignment> assignment(
+      new BufferAssignment(module, std::move(liveness), std::move(buffer_size),
+                           std::move(color_alignment)));
 
   // Assign buffers with the tightest constraints first (colocated buffer sets).
   // Once b/32491382 enables module-level liveness analysis, we may be able
@@ -1323,6 +1391,10 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   std::vector<ColocatedBufferSet> colocated_buffer_sets;
   BuildColocatedBufferSets(module, assignment->liveness(),
                            assignment->buffer_size_, &colocated_buffer_sets);
+  TF_RETURN_IF_ERROR(colorer_(assignment->liveness()));
+  VLOG(3) << "After coloring:";
+  XLA_VLOG_LINES(3, assignment->points_to_analysis().ToString());
+
   AssignColocatedBufferSets(colocated_buffer_sets, assignment.get(),
                             &colocated_buffers, &colocated_allocations);
 
@@ -1337,9 +1409,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, /*is_thread_local=*/false, colocated_buffers,
-        colocated_allocations, &buffers_to_assign_sequentially,
-        assignment.get()));
+        computation, module->config().debug_options(),
+        /*is_thread_local=*/false, colocated_buffers, colocated_allocations,
+        &buffers_to_assign_sequentially, assignment.get()));
   }
   // Assign buffers with sequential ordering, if any. If all global computations
   // are sequential, we can run heap simuation on the whole module, which
@@ -1354,10 +1426,13 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // their own BufferAllocation.
   for (auto* computation : thread_local_computations) {
     TF_RET_CHECK(computation != module->entry_computation());
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, /*is_thread_local=*/true, colocated_buffers,
-        colocated_allocations, /*buffers_to_assign_sequentially=*/nullptr,
-        assignment.get()));
+        computation, module->config().debug_options(),
+        /*is_thread_local=*/true, colocated_buffers, colocated_allocations,
+        /*buffers_to_assign_sequentially=*/nullptr, assignment.get()));
   }
 
   // Mark all buffers which may be live out of the entry computation as

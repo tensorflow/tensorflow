@@ -28,6 +28,15 @@ limitations under the License.
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
 
 namespace grpc {
+
+// ensure internal namespace exists
+namespace internal {
+// bring in contents of external namespace
+using namespace ::grpc;
+}  // namespace internal
+// bring in contents of internal namespace
+using namespace internal;
+
 class CompletionQueue;
 class Channel;
 class RpcService;

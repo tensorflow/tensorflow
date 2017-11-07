@@ -29,8 +29,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::Status;
-
 class Base1 {
  public:
   virtual ~Base1() {}
@@ -59,6 +57,14 @@ class CopyNoAssign {
   const CopyNoAssign& operator=(const CopyNoAssign&);
 };
 
+class NoDefaultConstructor {
+ public:
+  explicit NoDefaultConstructor(int foo);
+};
+
+static_assert(!std::is_default_constructible<NoDefaultConstructor>(),
+              "Should not be default-constructible.");
+
 StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
   // Uses implicit constructor from T&&
   return std::unique_ptr<int>(new int(0));
@@ -67,6 +73,18 @@ StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
 TEST(StatusOr, ElementType) {
   static_assert(std::is_same<StatusOr<int>::element_type, int>(), "");
   static_assert(std::is_same<StatusOr<char>::element_type, char>(), "");
+}
+
+TEST(StatusOr, TestNoDefaultConstructorInitialization) {
+  // Explicitly initialize it with an error code.
+  StatusOr<NoDefaultConstructor> statusor(tensorflow::errors::Cancelled(""));
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_EQ(statusor.status().code(), tensorflow::error::CANCELLED);
+
+  // Default construction of StatusOr initializes it with an UNKNOWN error code.
+  StatusOr<NoDefaultConstructor> statusor2;
+  EXPECT_FALSE(statusor2.ok());
+  EXPECT_EQ(statusor2.status().code(), tensorflow::error::UNKNOWN);
 }
 
 TEST(StatusOr, TestMoveOnlyInitialization) {

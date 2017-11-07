@@ -81,9 +81,8 @@ class ConvolutionThunk : public Thunk {
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
 
-  // Does the convolution for the thunk on "stream". If the
-  // xla_gpu_autotune_convolution_algorithm is turned on, auto-tuning happens on
-  // the first run of this function.
+  // Does the convolution for the thunk on "stream". Auto-tuning happens on the
+  // first run of this function.
   tensorflow::Status ExecuteOnStream(
       const BufferAllocations& buffer_allocations,
       perftools::gputools::Stream* stream) override;
@@ -116,7 +115,7 @@ class ConvolutionThunk : public Thunk {
       perftools::gputools::dnn::ProfileResult* profile_result);
 
   // Returns the convolve algorithms that can be used for this ConvolutionThunk.
-  std::vector<perftools::gputools::dnn::AlgorithmType> GetAlgorithms(
+  std::vector<perftools::gputools::dnn::AlgorithmDesc> GetAlgorithms(
       perftools::gputools::StreamExecutor* stream_exec) const;
 
   // Fastest cuDNN convolution algorithm for this thunk learned from

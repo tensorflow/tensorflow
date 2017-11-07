@@ -28,6 +28,8 @@ namespace ops {
 
 Output Const(const Scope& scope, const Input::Initializer& val);
 
+Output ConstFromProto(const Scope& scope, const TensorProto& proto);
+
 NodeBuilder::NodeOut AsNodeOut(const Scope& scope, const Input& inp);
 
 template <typename T>
@@ -56,6 +58,8 @@ Output Const(const Scope& scope, const Input::Initializer& val) {
   scope.UpdateBuilder(&cast_builder);
   Node* ret;
   scope.UpdateStatus(cast_builder.Finalize(scope.graph(), &ret));
+  if (!scope.ok()) return Output();
+  scope.UpdateStatus(scope.DoShapeInference(ret));
   return Output(ret, 0);
 }
 

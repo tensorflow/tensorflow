@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Vectorized Laplace distribution class, directly using LinearOpeartor."""
+"""Vectorized Laplace distribution class, directly using LinearOperator."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
@@ -28,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import laplace
 from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.linalg import linalg
 
 
 __all__ = [
@@ -110,7 +110,7 @@ class VectorLaplaceLinearOperator(
 
   ```python
   ds = tf.contrib.distributions
-  la = tf.contrib.linalg
+  la = tf.linalg
 
   # Initialize a single 3-variate VectorLaplace with some desired covariance.
   mu = [1., 2, 3]
@@ -126,7 +126,7 @@ class VectorLaplaceLinearOperator(
   # Divide scale by sqrt(2) so that the final covariance will be what we want.
   vla = ds.VectorLaplaceLinearOperator(
       loc=mu,
-      scale=la.LinearOperatorTriL(scale / tf.sqrt(2)))
+      scale=la.LinearOperatorLowerTriangular(scale / tf.sqrt(2)))
 
   # Covariance agrees with cholesky(cov) parameterization.
   vla.covariance().eval()
@@ -271,8 +271,8 @@ class VectorLaplaceLinearOperator(
   def _variance(self):
     if distribution_util.is_diagonal_scale(self.scale):
       return 2. * math_ops.square(self.scale.diag_part())
-    elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate)
-          and self.scale.is_self_adjoint):
+    elif (isinstance(self.scale, linalg.LinearOperatorLowRankUpdate) and
+          self.scale.is_self_adjoint):
       return array_ops.matrix_diag_part(
           2. * self.scale.matmul(self.scale.to_dense()))
     else:
@@ -282,8 +282,8 @@ class VectorLaplaceLinearOperator(
   def _stddev(self):
     if distribution_util.is_diagonal_scale(self.scale):
       return np.sqrt(2) * math_ops.abs(self.scale.diag_part())
-    elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate)
-          and self.scale.is_self_adjoint):
+    elif (isinstance(self.scale, linalg.LinearOperatorLowRankUpdate) and
+          self.scale.is_self_adjoint):
       return np.sqrt(2) * math_ops.sqrt(array_ops.matrix_diag_part(
           self.scale.matmul(self.scale.to_dense())))
     else:

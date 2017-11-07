@@ -213,7 +213,7 @@ def InvokeNvcc(argv, log=False):
            ' --compiler-options "' + host_compiler_options + '"' +
            ' --compiler-bindir=' + GCC_HOST_COMPILER_PATH +
            ' -I .' +
-           ' -x cu ' + includes + ' ' + srcs + ' -M -o ' + depfile)
+           ' -x cu ' + opt + includes + ' ' + srcs + ' -M -o ' + depfile)
     if log: Log(cmd)
     exit_status = os.system(cmd)
     if exit_status != 0:

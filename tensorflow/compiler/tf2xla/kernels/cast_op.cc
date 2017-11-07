@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -38,19 +39,13 @@ class CastOp : public XlaOpKernel {
 
     if (src_dtype_ == dst_dtype_) {
       output = input;
-    } else if (src_dtype_ == DT_BOOL) {
-      // XLA's ConvertElementType doesn't support casting to/from
-      // bools. So we need to handle those cases separately.
-      // Builds the equivalent of (input ? 1 : 0)
-      xla::ComputationBuilder l(builder->client(), "PredCast");
-      xla::ComputationDataHandle x =
-          l.Parameter(0, xla::ShapeUtil::MakeShape(src_type_, {}), "x");
-      l.Select(x, XlaHelpers::One(&l, dst_dtype_),
-               XlaHelpers::Zero(&l, dst_dtype_));
-      xla::Computation computation = l.Build().ConsumeValueOrDie();
-      output = builder->Map({input}, computation);
     } else if (dst_dtype_ == DT_BOOL) {
       output = builder->Ne(input, XlaHelpers::Zero(builder, src_dtype_));
+    } else if (xla::primitive_util::IsComplexType(src_type_) &&
+               !xla::primitive_util::IsComplexType(dst_type_)) {
+      // As in cast_op.h, we replicate the numpy behavior of truncating the
+      // imaginary part.
+      output = builder->ConvertElementType(builder->Real(input), dst_type_);
     } else {
       output = builder->ConvertElementType(input, dst_type_);
     }

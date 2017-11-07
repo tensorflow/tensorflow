@@ -37,6 +37,8 @@ class DType(object):
   * `tf.int8`: 8-bit signed integer.
   * `tf.uint8`: 8-bit unsigned integer.
   * `tf.uint16`: 16-bit unsigned integer.
+  * `tf.uint32`: 32-bit unsigned integer.
+  * `tf.uint64`: 64-bit unsigned integer.
   * `tf.int16`: 16-bit signed integer.
   * `tf.int32`: 32-bit signed integer.
   * `tf.int64`: 64-bit signed integer.
@@ -48,6 +50,7 @@ class DType(object):
   * `tf.quint16`: Quantized 16-bit unsigned integer.
   * `tf.qint32`: Quantized 32-bit signed integer.
   * `tf.resource`: Handle to a mutable resource.
+  * `tf.variant`: Values of arbitrary types.
 
   In addition, variants of these types with the `_ref` suffix are
   defined for reference-typed tensors.
@@ -113,8 +116,11 @@ class DType(object):
 
   @property
   def is_numpy_compatible(self):
-    return (self._type_enum != types_pb2.DT_RESOURCE and
-            self._type_enum != types_pb2.DT_RESOURCE_REF)
+    numpy_incompatible = [types_pb2.DT_VARIANT,
+                          types_pb2.DT_VARIANT_REF,
+                          types_pb2.DT_RESOURCE,
+                          types_pb2.DT_RESOURCE_REF]
+    return self._type_enum not in numpy_incompatible
 
   @property
   def as_numpy_dtype(self):
@@ -135,13 +141,13 @@ class DType(object):
   def is_integer(self):
     """Returns whether this is a (non-quantized) integer type."""
     return (self.is_numpy_compatible and not self.is_quantized and
-            issubclass(self.as_numpy_dtype, np.integer))
+            np.issubdtype(self.as_numpy_dtype, np.integer))
 
   @property
   def is_floating(self):
     """Returns whether this is a (non-quantized, real) floating point type."""
-    return self.is_numpy_compatible and issubclass(self.as_numpy_dtype,
-                                                   np.floating)
+    return self.is_numpy_compatible and np.issubdtype(self.as_numpy_dtype,
+                                                      np.floating)
 
   @property
   def is_complex(self):
@@ -284,7 +290,8 @@ class DType(object):
 
   @property
   def size(self):
-    if self._type_enum == types_pb2.DT_RESOURCE:
+    if (self._type_enum == types_pb2.DT_VARIANT or
+        self._type_enum == types_pb2.DT_RESOURCE):
       return 1
     return np.dtype(self.as_numpy_dtype).itemsize
 
@@ -304,6 +311,7 @@ dtype_range = {np.bool_: (False, True),
 
 # Define standard wrappers for the types_pb2.DataType enum.
 resource = DType(types_pb2.DT_RESOURCE)
+variant = DType(types_pb2.DT_VARIANT)
 float16 = DType(types_pb2.DT_HALF)
 half = float16
 float32 = DType(types_pb2.DT_FLOAT)
@@ -312,6 +320,8 @@ double = float64
 int32 = DType(types_pb2.DT_INT32)
 uint8 = DType(types_pb2.DT_UINT8)
 uint16 = DType(types_pb2.DT_UINT16)
+uint32 = DType(types_pb2.DT_UINT32)
+uint64 = DType(types_pb2.DT_UINT64)
 int16 = DType(types_pb2.DT_INT16)
 int8 = DType(types_pb2.DT_INT8)
 string = DType(types_pb2.DT_STRING)
@@ -325,6 +335,7 @@ qint16 = DType(types_pb2.DT_QINT16)
 quint16 = DType(types_pb2.DT_QUINT16)
 qint32 = DType(types_pb2.DT_QINT32)
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
+variant_ref = DType(types_pb2.DT_VARIANT_REF)
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
 float16_ref = DType(types_pb2.DT_HALF_REF)
 half_ref = float16_ref
@@ -332,6 +343,7 @@ float32_ref = DType(types_pb2.DT_FLOAT_REF)
 float64_ref = DType(types_pb2.DT_DOUBLE_REF)
 double_ref = float64_ref
 int32_ref = DType(types_pb2.DT_INT32_REF)
+uint32_ref = DType(types_pb2.DT_UINT32_REF)
 uint8_ref = DType(types_pb2.DT_UINT8_REF)
 uint16_ref = DType(types_pb2.DT_UINT16_REF)
 int16_ref = DType(types_pb2.DT_INT16_REF)
@@ -340,6 +352,7 @@ string_ref = DType(types_pb2.DT_STRING_REF)
 complex64_ref = DType(types_pb2.DT_COMPLEX64_REF)
 complex128_ref = DType(types_pb2.DT_COMPLEX128_REF)
 int64_ref = DType(types_pb2.DT_INT64_REF)
+uint64_ref = DType(types_pb2.DT_UINT64_REF)
 bool_ref = DType(types_pb2.DT_BOOL_REF)
 qint8_ref = DType(types_pb2.DT_QINT8_REF)
 quint8_ref = DType(types_pb2.DT_QUINT8_REF)
@@ -358,6 +371,8 @@ _INTERN_TABLE = {
     types_pb2.DT_INT32: int32,
     types_pb2.DT_UINT8: uint8,
     types_pb2.DT_UINT16: uint16,
+    types_pb2.DT_UINT32: uint32,
+    types_pb2.DT_UINT64: uint64,
     types_pb2.DT_INT16: int16,
     types_pb2.DT_INT8: int8,
     types_pb2.DT_STRING: string,
@@ -372,10 +387,12 @@ _INTERN_TABLE = {
     types_pb2.DT_QINT32: qint32,
     types_pb2.DT_BFLOAT16: bfloat16,
     types_pb2.DT_RESOURCE: resource,
+    types_pb2.DT_VARIANT: variant,
     types_pb2.DT_HALF_REF: float16_ref,
     types_pb2.DT_FLOAT_REF: float32_ref,
     types_pb2.DT_DOUBLE_REF: float64_ref,
     types_pb2.DT_INT32_REF: int32_ref,
+    types_pb2.DT_UINT32_REF: uint32_ref,
     types_pb2.DT_UINT8_REF: uint8_ref,
     types_pb2.DT_UINT16_REF: uint16_ref,
     types_pb2.DT_INT16_REF: int16_ref,
@@ -384,6 +401,7 @@ _INTERN_TABLE = {
     types_pb2.DT_COMPLEX64_REF: complex64_ref,
     types_pb2.DT_COMPLEX128_REF: complex128_ref,
     types_pb2.DT_INT64_REF: int64_ref,
+    types_pb2.DT_UINT64_REF: uint64_ref,
     types_pb2.DT_BOOL_REF: bool_ref,
     types_pb2.DT_QINT8_REF: qint8_ref,
     types_pb2.DT_QUINT8_REF: quint8_ref,
@@ -392,6 +410,7 @@ _INTERN_TABLE = {
     types_pb2.DT_QINT32_REF: qint32_ref,
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
+    types_pb2.DT_VARIANT_REF: variant_ref,
 }
 
 
@@ -403,6 +422,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_INT32: "int32",
     types_pb2.DT_UINT8: "uint8",
     types_pb2.DT_UINT16: "uint16",
+    types_pb2.DT_UINT32: "uint32",
+    types_pb2.DT_UINT64: "uint64",
     types_pb2.DT_INT16: "int16",
     types_pb2.DT_INT8: "int8",
     types_pb2.DT_STRING: "string",
@@ -417,10 +438,12 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QINT32: "qint32",
     types_pb2.DT_BFLOAT16: "bfloat16",
     types_pb2.DT_RESOURCE: "resource",
+    types_pb2.DT_VARIANT: "variant",
     types_pb2.DT_HALF_REF: "float16_ref",
     types_pb2.DT_FLOAT_REF: "float32_ref",
     types_pb2.DT_DOUBLE_REF: "float64_ref",
     types_pb2.DT_INT32_REF: "int32_ref",
+    types_pb2.DT_UINT32_REF: "uint32_ref",
     types_pb2.DT_UINT8_REF: "uint8_ref",
     types_pb2.DT_UINT16_REF: "uint16_ref",
     types_pb2.DT_INT16_REF: "int16_ref",
@@ -429,6 +452,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_COMPLEX64_REF: "complex64_ref",
     types_pb2.DT_COMPLEX128_REF: "complex128_ref",
     types_pb2.DT_INT64_REF: "int64_ref",
+    types_pb2.DT_UINT64_REF: "uint64_ref",
     types_pb2.DT_BOOL_REF: "bool_ref",
     types_pb2.DT_QINT8_REF: "qint8_ref",
     types_pb2.DT_QUINT8_REF: "quint8_ref",
@@ -437,6 +461,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QINT32_REF: "qint32_ref",
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
     types_pb2.DT_RESOURCE_REF: "resource_ref",
+    types_pb2.DT_VARIANT_REF: "variant_ref",
 }
 _STRING_TO_TF = {value: _INTERN_TABLE[key]
                  for key, value in _TYPE_TO_STRING.items()}
@@ -473,6 +498,8 @@ _NP_TO_TF = frozenset([
     (np.int64, int64),
     (np.uint8, uint8),
     (np.uint16, uint16),
+    (np.uint32, uint32),
+    (np.uint64, uint64),
     (np.int16, int16),
     (np.int8, int8),
     (np.complex64, complex64),
@@ -493,6 +520,8 @@ _TF_TO_NP = {
     types_pb2.DT_INT32: np.int32,
     types_pb2.DT_UINT8: np.uint8,
     types_pb2.DT_UINT16: np.uint16,
+    types_pb2.DT_UINT32: np.uint32,
+    types_pb2.DT_UINT64: np.uint64,
     types_pb2.DT_INT16: np.int16,
     types_pb2.DT_INT8: np.int8,
     # NOTE(touts): For strings we use np.object as it supports variable length
@@ -514,6 +543,7 @@ _TF_TO_NP = {
     types_pb2.DT_FLOAT_REF: np.float32,
     types_pb2.DT_DOUBLE_REF: np.float64,
     types_pb2.DT_INT32_REF: np.int32,
+    types_pb2.DT_UINT32_REF: np.uint32,
     types_pb2.DT_UINT8_REF: np.uint8,
     types_pb2.DT_UINT16_REF: np.uint16,
     types_pb2.DT_INT16_REF: np.int16,
@@ -522,6 +552,7 @@ _TF_TO_NP = {
     types_pb2.DT_COMPLEX64_REF: np.complex64,
     types_pb2.DT_COMPLEX128_REF: np.complex128,
     types_pb2.DT_INT64_REF: np.int64,
+    types_pb2.DT_UINT64_REF: np.uint64,
     types_pb2.DT_BOOL_REF: np.bool,
     types_pb2.DT_QINT8_REF: _np_qint8,
     types_pb2.DT_QUINT8_REF: _np_quint8,

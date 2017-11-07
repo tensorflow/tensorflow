@@ -25,6 +25,7 @@ import threading
 
 import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -122,6 +123,11 @@ class QueueBase(object):
   @{tf.RandomShuffleQueue} for concrete
   implementations of this class, and instructions on how to create
   them.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -145,7 +151,12 @@ class QueueBase(object):
 
     Raises:
       ValueError: If one of the arguments is invalid.
+      RuntimeError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "Queues are not supported when eager execution is enabled. "
+          "Instead, please use tf.data to get data into your model.")
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
@@ -160,7 +171,10 @@ class QueueBase(object):
     else:
       self._names = None
     self._queue_ref = queue_ref
-    self._name = self._queue_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._queue_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @staticmethod
   def from_list(index, queues):
@@ -208,7 +222,9 @@ class QueueBase(object):
   @property
   def name(self):
     """The name of the underlying queue."""
-    return self._queue_ref.op.name
+    if context.in_graph_mode():
+      return self._queue_ref.op.name
+    return self._name
 
   @property
   def dtypes(self):
@@ -248,7 +264,7 @@ class QueueBase(object):
     if isinstance(vals, dict):
       if not self._names:
         raise ValueError("Queue must have names to enqueue a dictionary")
-      if sorted(self._names) != sorted(vals.keys()):
+      if sorted(self._names, key=str) != sorted(vals.keys(), key=str):
         raise ValueError("Keys in dictionary to enqueue do not match "
                          "names of Queue.  Dictionary: (%s), Queue: (%s)" %
                          (sorted(vals.keys()), sorted(self._names)))
@@ -419,9 +435,10 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the `QueueBase` object.
-    op = ret[0].op
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(shape)
+    if context.in_graph_mode():
+      op = ret[0].op
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(shape)
 
     return self._dequeue_return_value(ret)
 
@@ -458,10 +475,13 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    op = ret[0].op
-    batch_dim = tensor_shape.Dimension(tensor_util.constant_value(op.inputs[1]))
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(tensor_shape.TensorShape([batch_dim]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      batch_dim = tensor_shape.Dimension(
+          tensor_util.constant_value(op.inputs[1]))
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(
+            tensor_shape.TensorShape([batch_dim]).concatenate(shape))
 
     return self._dequeue_return_value(ret)
 
@@ -499,9 +519,10 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    op = ret[0].op
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
 
     return self._dequeue_return_value(ret)
 
@@ -512,8 +533,9 @@ class QueueBase(object):
     the given queue. Subsequent `enqueue` and `enqueue_many`
     operations will fail. Subsequent `dequeue` and `dequeue_many`
     operations will continue to succeed if sufficient elements remain
-    in the queue. Subsequent `dequeue` and `dequeue_many` operations
-    that would block will fail immediately.
+    in the queue. Subsequently dequeue and dequeue_many operations
+    that would otherwise block waiting for more elements (if close
+    hadn't been called) will now fail immediately.
 
     If `cancel_pending_enqueues` is `True`, all pending requests will also
     be canceled.
@@ -537,6 +559,25 @@ class QueueBase(object):
           self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
           name=name)
 
+  def is_closed(self, name=None):
+    """ Returns true if queue is closed.
+
+    This operation returns true if the queue is closed and false if the queue
+    is open.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      True if the queue is closed and false if the queue is open.
+    """
+    if name is None:
+      name = "%s_Is_Closed" % self._name
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops.queue_is_closed_v2(self._queue_ref,name=name)
+    else:
+      return gen_data_flow_ops.queue_is_closed_(self._queue_ref,name=name)
+
   def size(self, name=None):
     """Compute the number of elements in this queue.
 
@@ -559,6 +600,11 @@ class RandomShuffleQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, min_after_dequeue, dtypes, shapes=None,
@@ -632,6 +678,11 @@ class FIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, dtypes, shapes=None, names=None,
@@ -683,6 +734,11 @@ class PaddingFIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, dtypes, shapes, names=None, shared_name=None,
@@ -745,6 +801,11 @@ class PriorityQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, types, shapes=None, names=None, shared_name=None,
@@ -877,7 +938,10 @@ class Barrier(object):
     self._barrier_ref = gen_data_flow_ops._barrier(
         component_types=self._types, shapes=self._shapes,
         shared_name=shared_name, name=name)
-    self._name = self._barrier_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._barrier_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @property
   def barrier_ref(self):
@@ -887,7 +951,9 @@ class Barrier(object):
   @property
   def name(self):
     """The name of the underlying barrier."""
-    return self._barrier_ref.op.name
+    if context.in_graph_mode():
+      return self._barrier_ref.op.name
+    return self._name
 
   def insert_many(self, component_index, keys, values, name=None):
     """For each key, assigns the respective value to the specified component.
@@ -964,16 +1030,19 @@ class Barrier(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Barrier object.
-    op = ret[0].op
-    if allow_small_batch:
-      batch_dim = None
-    else:
-      batch_dim = tensor_shape.Dimension(
-          tensor_util.constant_value(op.inputs[1]))
-    op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
-    op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
-    for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
-      output.set_shape(tensor_shape.TensorShape([batch_dim]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      if allow_small_batch:
+        batch_dim = None
+      else:
+        batch_dim = tensor_shape.Dimension(
+            tensor_util.constant_value(op.inputs[1]))
+      op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
+      op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
+      for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
+        output.set_shape(
+            tensor_shape.TensorShape([batch_dim]).concatenate(
+                shape))
 
     return ret
 
@@ -1061,7 +1130,10 @@ class ConditionalAccumulatorBase(object):
     else:
       self._shape = tensor_shape.unknown_shape()
     self._accumulator_ref = accumulator_ref
-    self._name = self._accumulator_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._accumulator_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @property
   def accumulator_ref(self):
@@ -1472,7 +1544,7 @@ class BaseStagingArea(object):
     # Sanity check number of values
     if not len(vals) <= len(self._dtypes):
       raise ValueError("Unexpected number of inputs '%s' vs '%s'" % (
-                          len(values), len(self._dtypes)))
+                          len(vals), len(self._dtypes)))
 
     tensors = []
 
@@ -1532,10 +1604,7 @@ class BaseStagingArea(object):
       # The returned values in `tensors` are in the same order as
       # the names in `self._names`.
       return {self._names[i]: t for t, i in zip(tensors, indices)}
-    elif len(tensors) == 1:
-      return tensors[0]
-    else:
-      return tensors
+    return tensors
 
   def _scope_vals(self, vals):
     """Return a list of values to pass to `name_scope()`.

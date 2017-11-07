@@ -39,7 +39,7 @@ namespace {
 class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   RpcRemoteRendezvous(const WorkerEnv* env, int64 step_id)
-      : BaseRemoteRendezvous(env, step_id, false) {}
+      : BaseRemoteRendezvous(env, step_id) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,

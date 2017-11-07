@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Paramterized build and test for TensorFlow Docker images.
+# Parameterized build and test for TensorFlow Docker images.
 #
 # Usage:
 #   parameterized_docker_build.sh
@@ -57,6 +57,23 @@
 #     If set to a valid binary/script path, will call the script with the final
 #     tagged image name with an argument, to push the image to a central repo
 #     such as gcr.io or Docker Hub.
+#
+#   TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS
+#     (Optional)
+#     Do not set this along with TF_DOCKER_BUILD_PUSH_CMD. We will push with the
+#     direct commands as opposed to a script.
+#
+#   TF_DOCKER_USERNAME
+#     (Optional)
+#     Dockerhub username for pushing a package.
+#
+#   TF_DOCKER_EMAIL
+#     (Optional)
+#     Dockerhub email for pushing a package.
+#
+#   TF_DOCKER_PASSWORD
+#     (Optional)
+#     Dockerhub password for pushing a package.
 #
 #   TF_DOCKER_BUILD_PYTHON_VERSION
 #     (Optional)
@@ -154,7 +171,7 @@ fi
 # Verify that the original Dockerfile exists
 ORIG_DOCKERFILE="${SCRIPT_DIR}/${ORIG_DOCKERFILE}"
 if [[ ! -f "${ORIG_DOCKERFILE}" ]]; then
-  die "ERROR: Cannot find Dockerilfe at: ${ORIG_DOCKERFILE}"
+  die "ERROR: Cannot find Dockerfile at: ${ORIG_DOCKERFILE}"
 fi
 
 echo ""
@@ -378,13 +395,32 @@ fi
 echo ""
 echo "Successfully tagged docker image: ${FINAL_IMG}"
 
-
 # Optional: call command specified by TF_DOCKER_BUILD_PUSH_CMD to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_CMD}" ]]; then
   ${TF_DOCKER_BUILD_PUSH_CMD} ${FINAL_IMG}
   if [[ $? == "0" ]]; then
     echo "Successfully pushed Docker image ${FINAL_IMG}"
   else
+    die "FAIL: Failed to push Docker image ${FINAL_IMG}"
+  fi
+fi
+
+# Optional: set TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS to push image
+if [[ ! -z "${TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS}" ]]; then
+
+  docker login --username "${TF_DOCKER_USERNAME}" \
+  --email "${TF_DOCKER_EMAIL}" \
+  --password "${TF_DOCKER_PASSWORD}"
+
+  if [[ $? != "0" ]]; then
+    die "FAIL: Unable to login. Invalid credentials."
+  fi
+  docker push $1
+  if [[ $? == "0" ]]; then
+    docker logout
+    echo "Successfully pushed Docker image ${FINAL_IMG}"
+  else
+    docker logout
     die "FAIL: Failed to push Docker image ${FINAL_IMG}"
   fi
 fi

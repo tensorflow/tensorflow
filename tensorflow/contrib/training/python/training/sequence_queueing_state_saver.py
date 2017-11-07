@@ -1596,7 +1596,7 @@ def _padding(sequences, num_unroll):
   else:  # Only have SparseTensors
     sparse_lengths = [value.dense_shape[0] for value in sequences_dict.values()
                       if isinstance(value, sparse_tensor.SparseTensor)]
-    length = math_ops.maximum(sparse_lengths)
+    length = math_ops.reduce_max(math_ops.to_int32(sparse_lengths))
 
   unroll = array_ops.constant(num_unroll)
   padded_length = length + ((unroll - (length % unroll)) % unroll)
@@ -1652,7 +1652,8 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
   if input_sequences:
     seq = list(input_sequences.values())[0]
     if isinstance(seq, ops.Tensor):
-      value_length = array_ops.shape(seq)[0]
+      with ops.control_dependencies([seq]):
+        value_length = array_ops.shape(seq)[0]
     else:
       value_length = seq.dense_shape[0]
   value_length = math_ops.cast(value_length, dtype=dtypes.int64)
@@ -1814,7 +1815,7 @@ def _reconstruct_sparse_tensor_seq(sequence,
 
     Counter-part of `_flatten_tensor` which is called on the input of
     `_restore_sparse` while this method is called on the output of it.
-    Together they  work around the limitation of `_restore_sparse` to only
+    Together they work around the limitation of `_restore_sparse` to only
     accept 1D handles.
 
     The `indices` in `sp_tensor` is a 2D `Tensor` of `shape [N, ndims]`, where

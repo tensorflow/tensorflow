@@ -48,6 +48,10 @@ struct WorkerEnv {
 
   // device_mgr manages local devices (cpu and gpu). The WorkerService
   // is the network interface for managed devices.
+  //
+  // Note: Please use the device_mgr associated with your session if appropriate
+  // instead of this one. Using this device_mgr does not support ClusterSpec
+  // propagated sessions.
   DeviceMgr* device_mgr = nullptr;
 
   // A set of rendezvous keyed by step ids.

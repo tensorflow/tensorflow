@@ -215,6 +215,9 @@ class Env {
   /// symlinks if there is any.
   string GetExecutablePath();
 
+  /// Creates a local unique temporary file name. Returns true if success.
+  bool LocalTempFilename(string* filename);
+
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
@@ -279,6 +282,9 @@ class Env {
       const string& version) = 0;
 
  private:
+  // Returns a possible list of local temporary directories.
+  void GetLocalTempDirectories(std::vector<string>* list);
+
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
   EnvTime* envTime = EnvTime::Default();

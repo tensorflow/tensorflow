@@ -61,6 +61,42 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## Clamp
+
+See also
+[`ComputationBuilder::Clamp`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Clamps an operand to within the range between a minimum and maximum value.
+
+<b> `Clamp(computation, args...)` </b>
+
+| Arguments     | Type                    | Semantics                        |
+| ------------- | ----------------------- | -------------------------------- |
+| `computation` | `Computation`           | computation of type `T_0, T_1,   |
+:               :                         : ..., T_N -> S` with N parameters :
+:               :                         : of arbitrary type                :
+| `operand`     | `ComputationDataHandle` | array of type T                  |
+| `min`         | `ComputationDataHandle` | array of type T                  |
+| `max`         | `ComputationDataHandle` | array of type T                  |
+
+Given an operand and minimum and maximum values, returns the operand if it is in
+the range between the minimum and maximum, else returns the minimum value if the
+operand is below this range or the maximum value if the operand is above this
+range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+
+All three arrays must be the same shape. Alternately, as a restricted form of
+[broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
+
+Example with scalar `min` and `max`:
+
+```
+let operand: s32[3] = {-1, 5, 9};
+let min: s32 = 0;
+let max: s32 = 6;
+==>
+Clamp(operand, min, max) = s32[3]{0, 5, 6};
+```
+
 ## Collapse
 
 See also
@@ -292,9 +328,9 @@ placed between each of the entries in that dimension, increasing the size of the
 array. The holes are filled with a no-op value, which for convolution means
 zeroes.
 
-Dilation of the rhs is also called atrous convolution. For more details, see the
-@{tf.nn.atrous_conv2d}. Dilation of the lhs is
-also called deconvolution.
+Dilation of the rhs is also called atrous convolution. For more details, see
+@{tf.nn.atrous_conv2d}. Dilation of the lhs is also called transposed
+convolution. For more details, see @{tf.nn.conv2d_transpose}.
 
 The output shape has these dimensions, in this order:
 
@@ -511,7 +547,7 @@ floating-point types.
 <b> `Op(lhs, rhs)` </b>
 
 Where `Op` is one of `Eq` (equal-to), `Ne` (not equal-to), `Ge`
-(greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Le`
+(greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Lt`
 (less-than).
 
 Arguments | Type                    | Semantics
@@ -546,6 +582,8 @@ ComputationBuilder supports these element-wise unary functions:
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
 
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
+
+<b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
 
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
 
@@ -586,7 +624,7 @@ See also
 [`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented on GPU backend yet. </b>
 
 Normalizes an array across batch and spatial dimensions.
 
@@ -643,7 +681,7 @@ spatial dimensions using the formulars above.
 See also
 [`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented yet. </b>
 
 Normalizes an array across batch and spatial dimensions.
 
@@ -680,11 +718,11 @@ The output is a n dimensional, normalized array with the same shape as input
 See also
 [`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented yet. </b>
 
 Calculates gradients of batch norm.
 
-<b> `BatchNormGrad(x, scale, mean, variance, epsilon, grad_y, feature_index)` </b>
+<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
 
 | Arguments       | Type                    | Semantics                        |
 | --------------  | ----------------------- | -------------------------------- |
@@ -806,6 +844,7 @@ See also
 :                   :                          : T_1, ..., T_{N + M -1} -> S`  :
 :                   :                          : with N parameters of type T   :
 :                   :                          : and M of arbitrary type       :
+| `dimensions`       | `int64` array           | array of map dimensions    |
 | `static_operands` | sequence of M            | M arrays of arbitrary type    |
 :                   : `ComputationDataHandle`s :                               :
 
@@ -980,6 +1019,41 @@ We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
 the 1D array `| 20 28 36 |`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
+
+## ReducePrecision
+
+See also
+[`ComputationBuilder::ReducePrecision`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Models the effect of converting floating-point values to a lower-precision
+format (such as IEEE-FP16) and back to the original format.  The number of
+exponent and mantissa bits in the lower-precision format can be specified
+arbitrarily, although all bit sizes may not be supported on all hardware
+implementations.
+
+<b> `ReducePrecision(operand, mantissa_bits, exponent_bits)` </b>
+
+| Arguments           | Type                    | Semantics                    |
+| ------------------- | ----------------------- | ---------------------------- |
+| `operand`           | `ComputationDataHandle` | array of floating-point type |
+:                     :                         : `T`.                         :
+| `exponent_bits`     | `int32`                 | number of exponent bits in   |
+:                     :                         : lower-precision format       :
+| `mantissa_bits`     | `int32`                 | number of mantissa bits in   |
+:                     :                         : lower-precision format       :
+
+The result is an array of type `T`.  The input values are rounded to the nearest
+value representable with the given number of mantissa bits (using "ties to even"
+semantics), and any values that exceed the range specified by the number of
+exponent bits are clamped to positive or negative infinity.  `NaN` values are
+retained, although they may be converted to canonical `NaN` values.
+
+The lower-precision format must have at least one exponent bit (in order to
+distinguish a zero value from an infinity, since both have a zero mantissa), and
+must have a non-negative number of mantissa bits.  The number of exponent or
+mantissa bits may exceed the corresponding value for type `T`; the corresponding
+portion of the conversion is then simply a no-op.
+
 
 ## ReduceWindow
 

@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module for deprecated ops in tf.nn.
+"""Module for variants of ops in tf.nn.
 
+@@alpha_dropout
 @@deprecated_flipped_softmax_cross_entropy_with_logits
 @@deprecated_flipped_sparse_softmax_cross_entropy_with_logits
 @@deprecated_flipped_sigmoid_cross_entropy_with_logits
+@@nth_element
+@@rank_sampled_softmax_loss
+@@scaled_softplus
 """
 
 from __future__ import absolute_import
@@ -24,7 +28,11 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
+from tensorflow.contrib.nn.python.ops.alpha_dropout import *
 from tensorflow.contrib.nn.python.ops.cross_entropy import *
+from tensorflow.contrib.nn.python.ops.sampling_ops import *
+from tensorflow.contrib.nn.python.ops.scaled_softplus import *
+from tensorflow.python.ops.nn_ops import nth_element
 # pylint: enable=unused-import,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented

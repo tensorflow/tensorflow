@@ -50,6 +50,10 @@ COSINE_DISTANCE = 'cosine'
 
 RANDOM_INIT = 'random'
 KMEANS_PLUS_PLUS_INIT = 'kmeans_plus_plus'
+KMC2_INIT = 'kmc2'
+
+# The name of the variable holding the cluster centers. Used by the Estimator.
+CLUSTERS_VAR_NAME = 'clusters'
 
 
 class KMeans(object):
@@ -63,7 +67,8 @@ class KMeans(object):
                use_mini_batch=False,
                mini_batch_steps_per_iteration=1,
                random_seed=0,
-               kmeans_plus_plus_num_retries=2):
+               kmeans_plus_plus_num_retries=2,
+               kmc2_chain_length=200):
     """Creates an object for generating KMeans clustering graph.
 
     This class implements the following variants of K-means algorithm:
@@ -92,16 +97,27 @@ class KMeans(object):
     exactly like a full-batch version.
 
     Args:
-      inputs: An input tensor or list of input tensors
-      num_clusters: number of clusters.
-      initial_clusters: Specifies the clusters used during initialization.  Can
-        be a tensor or numpy array, or a function that generates the clusters.
-        Can also be "random" to specify that clusters should be chosen randomly
-        from input data.
-      distance_metric: distance metric used for clustering.
+      inputs: An input tensor or list of input tensors. It is assumed that the
+        data points have been previously randomly permuted.
+      num_clusters: An integer tensor specifying the number of clusters. This
+        argument is ignored if initial_clusters is a tensor or numpy array.
+      initial_clusters: Specifies the clusters used during initialization. One
+        of the following:
+        - a tensor or numpy array with the initial cluster centers.
+        - a function f(inputs, k) that returns up to k centers from `inputs`.
+        - "random": Choose centers randomly from `inputs`.
+        - "kmeans_plus_plus": Use kmeans++ to choose centers from `inputs`.
+        - "kmc2": Use the fast k-MC2 algorithm to choose centers from `inputs`.
+        In the last three cases, one batch of `inputs` may not yield
+        `num_clusters` centers, in which case initialization will require
+        multiple batches until enough centers are chosen. In the case of
+        "random" or "kmeans_plus_plus", if the input size is <= `num_clusters`
+        then the entire batch is chosen to be cluster centers.
+      distance_metric: Distance metric used for clustering. Supported options:
+        "squared_euclidean", "cosine".
       use_mini_batch: If true, use the mini-batch k-means algorithm. Else assume
         full batch.
-      mini_batch_steps_per_iteration: number of steps after which the updated
+      mini_batch_steps_per_iteration: Number of steps after which the updated
         cluster centers are synced back to a master copy.
       random_seed: Seed for PRNG used to initialize seeds.
       kmeans_plus_plus_num_retries: For each point that is sampled during
@@ -109,19 +125,31 @@ class KMeans(object):
         additional points to draw from the current distribution before selecting
         the best. If a negative value is specified, a heuristic is used to
         sample O(log(num_to_sample)) additional points.
+      kmc2_chain_length: Determines how many candidate points are used by the
+        k-MC2 algorithm to produce one new cluster centers. If a (mini-)batch
+        contains less points, one new cluster center is generated from the
+        (mini-)batch.
+
+    Raises:
+      ValueError: An invalid argument was passed to initial_clusters or
+        distance_metric.
     """
+    if isinstance(initial_clusters, str) and initial_clusters not in [
+        RANDOM_INIT, KMEANS_PLUS_PLUS_INIT, KMC2_INIT
+    ]:
+      raise ValueError(
+          "Unsupported initialization algorithm '%s'" % initial_clusters)
+    if distance_metric not in [SQUARED_EUCLIDEAN_DISTANCE, COSINE_DISTANCE]:
+      raise ValueError("Unsupported distance metric '%s'" % distance_metric)
     self._inputs = inputs if isinstance(inputs, list) else [inputs]
-    assert num_clusters > 0, num_clusters
     self._num_clusters = num_clusters
-    if initial_clusters is None:
-      initial_clusters = RANDOM_INIT
     self._initial_clusters = initial_clusters
-    assert distance_metric in [SQUARED_EUCLIDEAN_DISTANCE, COSINE_DISTANCE]
     self._distance_metric = distance_metric
     self._use_mini_batch = use_mini_batch
     self._mini_batch_steps_per_iteration = int(mini_batch_steps_per_iteration)
     self._random_seed = random_seed
     self._kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
+    self._kmc2_chain_length = kmc2_chain_length
 
   @classmethod
   def _distance_graph(cls, inputs, clusters, distance_metric):
@@ -144,8 +172,7 @@ class KMeans(object):
       return cls._compute_cosine_distance(
           inputs, clusters, inputs_normalized=True)
     else:
-      assert False, ('Unsupported distance metric passed to Kmeans %s' %
-                     str(distance_metric))
+      assert False, str(distance_metric)
 
   @classmethod
   def _compute_euclidean_distance(cls, inputs, clusters):
@@ -161,7 +188,7 @@ class KMeans(object):
     """
     output = []
     for inp in inputs:
-      with ops.colocate_with(inp):
+      with ops.colocate_with(inp, ignore_existing=True):
         # Computes Euclidean distance. Note the first and third terms are
         # broadcast additions.
         squared_distance = (
@@ -191,10 +218,10 @@ class KMeans(object):
     """
     output = []
     if not inputs_normalized:
-      with ops.colocate_with(clusters):
+      with ops.colocate_with(clusters, ignore_existing=True):
         clusters = nn_impl.l2_normalize(clusters, dim=1)
     for inp in inputs:
-      with ops.colocate_with(inp):
+      with ops.colocate_with(inp, ignore_existing=True):
         if not inputs_normalized:
           inp = nn_impl.l2_normalize(inp, dim=1)
         output.append(1 - math_ops.matmul(inp, clusters, transpose_b=True))
@@ -226,10 +253,10 @@ class KMeans(object):
       # nearest_neighbors op.
       # TODO(ands): Support COSINE distance in nearest_neighbors and remove
       # this.
-      with ops.colocate_with(clusters):
+      with ops.colocate_with(clusters, ignore_existing=True):
         clusters = nn_impl.l2_normalize(clusters, dim=1)
     for inp, score in zip(inputs, scores):
-      with ops.colocate_with(inp):
+      with ops.colocate_with(inp, ignore_existing=True):
         (indices, distances) = gen_clustering_ops.nearest_neighbors(
             inp, clusters, 1)
         if self._distance_metric == COSINE_DISTANCE:
@@ -238,94 +265,33 @@ class KMeans(object):
                        array_ops.squeeze(indices)))
     return zip(*output)
 
-  def _init_clusters_random(self):
-    """Does random initialization of clusters.
-
-    Returns:
-      Tensor of randomly initialized clusters.
-    """
-    num_data = math_ops.add_n([array_ops.shape(inp)[0] for inp in self._inputs])
-    # Note that for mini-batch k-means, we should ensure that the batch size of
-    # data used during initialization is sufficiently large to avoid duplicated
-    # clusters.
-    with ops.control_dependencies(
-        [check_ops.assert_less_equal(self._num_clusters, num_data)]):
-      indices = random_ops.random_uniform(
-          array_ops.reshape(self._num_clusters, [-1]),
-          minval=0,
-          maxval=math_ops.cast(num_data, dtypes.int64),
-          seed=self._random_seed,
-          dtype=dtypes.int64)
-      clusters_init = embedding_lookup(
-          self._inputs, indices, partition_strategy='div')
-      return clusters_init
-
   def _clusters_l2_normalized(self):
     """Returns True if clusters centers are kept normalized."""
     return (self._distance_metric == COSINE_DISTANCE and
             (not self._use_mini_batch or
              self._mini_batch_steps_per_iteration > 1))
 
-  def _initialize_clusters(self, cluster_centers, cluster_centers_initialized,
-                           cluster_centers_updated):
-    """Returns an op to initialize the cluster centers."""
-
-    init = self._initial_clusters
-    if init == RANDOM_INIT:
-      clusters_init = self._init_clusters_random()
-    elif init == KMEANS_PLUS_PLUS_INIT:
-      # Points from only the first shard are used for initializing centers.
-      # TODO(ands): Use all points.
-      inp = self._inputs[0]
-      if self._distance_metric == COSINE_DISTANCE:
-        inp = nn_impl.l2_normalize(inp, dim=1)
-      clusters_init = gen_clustering_ops.kmeans_plus_plus_initialization(
-          inp, self._num_clusters, self._random_seed,
-          self._kmeans_plus_plus_num_retries)
-    elif callable(init):
-      clusters_init = init(self._inputs, self._num_clusters)
-    elif not isinstance(init, str):
-      clusters_init = init
-    else:
-      assert False, 'Unsupported init passed to Kmeans %s' % str(init)
-    if self._distance_metric == COSINE_DISTANCE and clusters_init is not None:
-      clusters_init = nn_impl.l2_normalize(clusters_init, dim=1)
-
-    with ops.colocate_with(cluster_centers_initialized):
-      initialized = control_flow_ops.with_dependencies(
-          [clusters_init], array_ops.identity(cluster_centers_initialized))
-    with ops.colocate_with(cluster_centers):
-      assign_centers = state_ops.assign(
-          cluster_centers, clusters_init, validate_shape=False)
-      if cluster_centers_updated != cluster_centers:
-        assign_centers = control_flow_ops.group(assign_centers,
-                                                state_ops.assign(
-                                                    cluster_centers_updated,
-                                                    clusters_init,
-                                                    validate_shape=False))
-    assign_centers = control_flow_ops.with_dependencies(
-        [assign_centers], state_ops.assign(cluster_centers_initialized, True))
-    return control_flow_ops.cond(initialized, control_flow_ops.no_op,
-                                 lambda: assign_centers).op
-
-  def _create_variables(self):
+  def _create_variables(self, num_clusters):
     """Creates variables.
 
+    Args:
+      num_clusters: an integer Tensor providing the number of clusters.
+
     Returns:
-    Tuple with following elements:
-      cluster_centers: a Tensor for storing cluster centers
-      cluster_centers_initialized: bool Variable indicating whether clusters
-        are initialized.
-      cluster_counts: a Tensor for storing counts of points assigned to this
-        cluster. This is used by mini-batch training.
-      cluster_centers_updated: Tensor representing copy of cluster centers that
-        are updated every step.
-      update_in_steps: numbers of steps left before we sync
-        cluster_centers_updated back to cluster_centers.
+      Tuple with following elements:
+      - cluster_centers: a Tensor for storing cluster centers
+      - cluster_centers_initialized: bool Variable indicating whether clusters
+            are initialized.
+      - cluster_counts: a Tensor for storing counts of points assigned to this
+            cluster. This is used by mini-batch training.
+      - cluster_centers_updated: Tensor representing copy of cluster centers
+            that are updated every step.
+      - update_in_steps: numbers of steps left before we sync
+            cluster_centers_updated back to cluster_centers.
     """
     init_value = array_ops.constant([], dtype=dtypes.float32)
     cluster_centers = variable_scope.variable(
-        init_value, name='clusters', validate_shape=False)
+        init_value, name=CLUSTERS_VAR_NAME, validate_shape=False)
     cluster_centers_initialized = variable_scope.variable(
         False, dtype=dtypes.bool, name='initialized')
 
@@ -341,13 +307,14 @@ class KMeans(object):
           name='update_in_steps')
       # Count of points assigned to cluster_centers_updated.
       cluster_counts = variable_scope.variable(
-          array_ops.zeros([self._num_clusters], dtype=dtypes.int64))
+          array_ops.zeros([num_clusters], dtype=dtypes.int64))
     else:
       cluster_centers_updated = cluster_centers
       update_in_steps = None
-      cluster_counts = (variable_scope.variable(
-          array_ops.ones([self._num_clusters], dtype=dtypes.int64))
-                        if self._use_mini_batch else None)
+      cluster_counts = (
+          variable_scope.variable(
+              array_ops.ones([num_clusters], dtype=dtypes.int64))
+          if self._use_mini_batch else None)
     return (cluster_centers, cluster_centers_initialized, cluster_counts,
             cluster_centers_updated, update_in_steps)
 
@@ -356,12 +323,20 @@ class KMeans(object):
     """Normalized the input data."""
     output = []
     for inp in inputs:
-      with ops.colocate_with(inp):
+      with ops.colocate_with(inp, ignore_existing=True):
         output.append(nn_impl.l2_normalize(inp, dim=1))
     return output
 
   def training_graph(self):
     """Generate a training graph for kmeans algorithm.
+
+    This returns, among other things, an op that chooses initial centers
+    (init_op), a boolean variable that is set to True when the initial centers
+    are chosen (cluster_centers_initialized), and an op to perform either an
+    entire Lloyd iteration or a mini-batch of a Lloyd iteration (training_op).
+    The caller should use these components as follows. A single worker should
+    execute init_op multiple times until cluster_centers_initialized becomes
+    True. Then multiple workers may execute training_op any number of times.
 
     Returns:
       A tuple consisting of:
@@ -379,12 +354,23 @@ class KMeans(object):
       training_op: an op that runs an iteration of training.
     """
     # Implementation of kmeans.
+    if (isinstance(self._initial_clusters, str) or
+        callable(self._initial_clusters)):
+      initial_clusters = self._initial_clusters
+      num_clusters = ops.convert_to_tensor(self._num_clusters)
+    else:
+      initial_clusters = ops.convert_to_tensor(self._initial_clusters)
+      num_clusters = array_ops.shape(initial_clusters)[0]
+
     inputs = self._inputs
     (cluster_centers_var, cluster_centers_initialized, total_counts,
-     cluster_centers_updated, update_in_steps) = self._create_variables()
-    init_op = self._initialize_clusters(cluster_centers_var,
-                                        cluster_centers_initialized,
-                                        cluster_centers_updated)
+     cluster_centers_updated,
+     update_in_steps) = self._create_variables(num_clusters)
+    init_op = _InitializeClustersOpFactory(
+        self._inputs, num_clusters, initial_clusters, self._distance_metric,
+        self._random_seed, self._kmeans_plus_plus_num_retries,
+        self._kmc2_chain_length, cluster_centers_var, cluster_centers_updated,
+        cluster_centers_initialized).op()
     cluster_centers = cluster_centers_var
 
     if self._distance_metric == COSINE_DISTANCE:
@@ -403,8 +389,8 @@ class KMeans(object):
             inputs, cluster_idx, cluster_centers_updated, total_counts)
     else:
       assert cluster_centers == cluster_centers_var
-      training_op = self._full_batch_training_op(inputs, cluster_idx,
-                                                 cluster_centers_var)
+      training_op = self._full_batch_training_op(
+          inputs, num_clusters, cluster_idx, cluster_centers_var)
 
     return (all_scores, cluster_idx, scores, cluster_centers_initialized,
             init_op, training_op)
@@ -413,7 +399,7 @@ class KMeans(object):
                                   cluster_centers_updated, total_counts):
     if self._use_mini_batch and self._mini_batch_steps_per_iteration > 1:
       assert update_in_steps is not None
-      with ops.colocate_with(update_in_steps):
+      with ops.colocate_with(update_in_steps, ignore_existing=True):
 
         def _f():
           # Note that there is a race condition here, so we do a best effort
@@ -433,11 +419,10 @@ class KMeans(object):
                     cluster_centers_updated, dim=1)
               else:
                 cluster_centers = cluster_centers_updated
-            with ops.colocate_with(cluster_centers_var):
+            with ops.colocate_with(cluster_centers_var, ignore_existing=True):
               with ops.control_dependencies(
                   [state_ops.assign(cluster_centers_var, cluster_centers)]):
-                with ops.colocate_with(
-                    cluster_centers_var, ignore_existing=True):
+                with ops.colocate_with(None, ignore_existing=True):
                   with ops.control_dependencies([
                       state_ops.assign(total_counts,
                                        array_ops.zeros_like(total_counts))
@@ -467,7 +452,7 @@ class KMeans(object):
     """
     update_ops = []
     for inp, cluster_idx in zip(inputs, cluster_idx_list):
-      with ops.colocate_with(inp):
+      with ops.colocate_with(inp, ignore_existing=True):
         assert total_counts is not None
         cluster_idx = array_ops.reshape(cluster_idx, [-1])
         # Dedupe the unique ids of cluster_centers being updated so that updates
@@ -516,11 +501,13 @@ class KMeans(object):
       update_ops.extend([update_counts, update_cluster_centers])
     return control_flow_ops.group(*update_ops)
 
-  def _full_batch_training_op(self, inputs, cluster_idx_list, cluster_centers):
+  def _full_batch_training_op(self, inputs, num_clusters, cluster_idx_list,
+                              cluster_centers):
     """Creates an op for training for full batch case.
 
     Args:
       inputs: list of input Tensors.
+      num_clusters: an integer Tensor providing the number of clusters.
       cluster_idx_list: A vector (or list of vectors). Each element in the
         vector corresponds to an input row in 'inp' and specifies the cluster id
         corresponding to the input.
@@ -535,16 +522,253 @@ class KMeans(object):
     for inp, cluster_idx in zip(inputs, cluster_idx_list):
       with ops.colocate_with(inp, ignore_existing=True):
         cluster_sums.append(
-            math_ops.unsorted_segment_sum(inp, cluster_idx, self._num_clusters))
+            math_ops.unsorted_segment_sum(inp, cluster_idx, num_clusters))
         cluster_counts.append(
             math_ops.unsorted_segment_sum(
                 array_ops.reshape(
                     array_ops.ones(
                         array_ops.reshape(array_ops.shape(inp)[0], [-1])),
-                    [-1, 1]), cluster_idx, self._num_clusters))
+                    [-1, 1]), cluster_idx, num_clusters))
     with ops.colocate_with(cluster_centers, ignore_existing=True):
-      new_clusters_centers = math_ops.add_n(cluster_sums) / (math_ops.cast(
-          math_ops.add_n(cluster_counts), cluster_sums[0].dtype) + epsilon)
+      new_clusters_centers = math_ops.add_n(cluster_sums) / (
+          math_ops.cast(math_ops.add_n(cluster_counts), cluster_sums[0].dtype) +
+          epsilon)
       if self._clusters_l2_normalized():
         new_clusters_centers = nn_impl.l2_normalize(new_clusters_centers, dim=1)
     return state_ops.assign(cluster_centers, new_clusters_centers)
+
+
+class _InitializeClustersOpFactory(object):
+  """Internal class to create the op to initialize the clusters.
+
+    The op performs this algorithm (see constructor args):
+
+    num_remaining = num_clusters - length(cluster_centers)
+    if num_remaining == 0:
+      assert that cluster_centers_initialized is true
+    else:
+      assert that num_remaining > 0
+      new_centers = choose up to num_remaining initial centers
+      l2-normalize new_centers if using cosine distance
+      all_centers = concat(cluster_centers, new_centers)
+      cluster_centers := all_centers
+      if there is a cluster_centers_updated variable:
+        cluster_centers_updated := cluster_centers
+      num_now_remaining = num_clusters - length(cluster_centers)
+      if num_now_remaining == 0:
+        cluster_centers_initialized := true
+  """
+
+  # TODO(ccolby): Refactor this class so that kmc2 isn't so much a special case.
+
+  def __init__(self, inputs, num_clusters, initial_clusters, distance_metric,
+               random_seed, kmeans_plus_plus_num_retries, kmc2_chain_length,
+               cluster_centers, cluster_centers_updated,
+               cluster_centers_initialized):
+    """Creates an op factory.
+
+    Args:
+      inputs: See KMeans constructor.
+      num_clusters: An integer Tensor providing the number of clusters.
+      initial_clusters: See KMeans constructor.
+      distance_metric: See KMeans constructor.
+      random_seed: See KMeans constructor.
+      kmeans_plus_plus_num_retries: See KMeans constructor.
+      kmc2_chain_length: See KMeans constructor.
+      cluster_centers: The TF variable holding the initial centers. It may
+          already contain some centers when the op is executed.
+      cluster_centers_updated: A second TF variable to hold a copy of the
+          initial centers, used for full-batch mode. In mini-batch mode,
+          cluster_centers_updated is the same variable as cluster_centers.
+      cluster_centers_initialized: A boolean TF variable that will be set
+          to true when all the initial centers have been chosen.
+    """
+    # All of these instance variables are constants.
+    self._inputs = inputs
+    self._num_clusters = num_clusters
+    self._initial_clusters = initial_clusters
+    self._distance_metric = distance_metric
+    self._random_seed = random_seed
+    self._kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
+    self._kmc2_chain_length = kmc2_chain_length
+    self._cluster_centers = cluster_centers
+    self._cluster_centers_updated = cluster_centers_updated
+    self._cluster_centers_initialized = cluster_centers_initialized
+
+    self._num_selected = array_ops.shape(self._cluster_centers)[0]
+    self._num_remaining = self._num_clusters - self._num_selected
+    self._num_data = math_ops.add_n(
+        [array_ops.shape(i)[0] for i in self._inputs])
+
+  def _random(self):
+    indices = random_ops.random_uniform(
+        array_ops.reshape(self._num_remaining, [-1]),
+        minval=0,
+        maxval=math_ops.cast(self._num_data, dtypes.int64),
+        seed=self._random_seed,
+        dtype=dtypes.int64)
+    return embedding_lookup(self._inputs, indices, partition_strategy='div')
+
+  def _kmeans_plus_plus(self):
+    # Points from only the first shard are used for initializing centers.
+    # TODO(ands): Use all points.
+    inp = self._inputs[0]
+    if self._distance_metric == COSINE_DISTANCE:
+      inp = nn_impl.l2_normalize(inp, dim=1)
+    return gen_clustering_ops.kmeans_plus_plus_initialization(
+        inp,
+        math_ops.to_int64(self._num_remaining), self._random_seed,
+        self._kmeans_plus_plus_num_retries)
+
+  def _kmc2_multiple_centers(self):
+    """Adds new initial cluster centers using the k-MC2 algorithm.
+
+    In each call to the op, the provided batch is split into subsets based on
+    the specified `kmc2_chain_length`. On each subset, a single Markov chain of
+    the k-MC2 algorithm is used to add *one* new center cluster center. If there
+    are less than `kmc2_chain_length` points in the subset, a single center is
+    added using one Markov chain on the full input. It is assumed that the
+    provided batch has previously been randomly permuted. Otherwise, k-MC2 may
+    return suboptimal centers.
+
+    Returns:
+      An op that adds new cluster centers.
+    """
+    # The op only operates on the first shard of data.
+    first_shard = self._inputs[0]
+    # Number of points in the input that can be used.
+    batch_size = array_ops.shape(first_shard)[0]
+    # Maximum number of subsets such that the size of each subset is at least
+    # `kmc2_chain_length`. Final subsets may be larger.
+    max_to_sample = math_ops.cast(
+        batch_size / self._kmc2_chain_length, dtype=dtypes.int32)
+    # We sample at least one new center and at most all remaining centers.
+    num_to_sample = math_ops.maximum(
+        math_ops.minimum(self._num_remaining, max_to_sample), 1)
+
+    def _cond(i, _):
+      """Stopping condition for the while loop."""
+      return math_ops.less(i, num_to_sample)
+
+    def _body(i, _):
+      """Body that adds a single new center based on a subset."""
+
+      def _sample_random():
+        """Returns a random point as a cluster center."""
+        # By assumption the batch is reshuffled and _sample_random is always
+        # called for i=0. Hence, we simply return the first point.
+        new_center = array_ops.reshape(first_shard[0], [1, -1])
+        if self._distance_metric == COSINE_DISTANCE:
+          new_center = nn_impl.l2_normalize(new_center, dim=1)
+        return new_center
+
+      def _sample_kmc2_chain():
+        """Returns previous centers as well as a new center sampled using k-MC2.
+        """
+        # Extract the subset from the underlying batch.
+        start = i * self._kmc2_chain_length
+        end = start + self._kmc2_chain_length
+        subset = first_shard[start:end]
+        # Compute the distances from points in the subset to previous centers.
+        _, distances = gen_clustering_ops.nearest_neighbors(
+            subset, self._cluster_centers, 1)
+        # Sample index of new center using k-MC2 Markov chain.
+        new_center_index = gen_clustering_ops.kmc2_chain_initialization(
+            array_ops.squeeze(distances), self._random_seed)
+        # Extract actual new center.
+        newly_sampled_center = array_ops.reshape(subset[new_center_index],
+                                                 [1, -1])
+        # Return concatenation with previously sampled centers.
+        if self._distance_metric == COSINE_DISTANCE:
+          newly_sampled_center = nn_impl.l2_normalize(
+              newly_sampled_center, dim=1)
+        return array_ops.concat([self._cluster_centers, newly_sampled_center],
+                                0)
+
+      # Obtain a random point if there are no previously sampled centers.
+      # Otherwise, construct a k-MC2 Markov chain.
+      new_centers = control_flow_ops.cond(
+          math_ops.equal(self._num_selected, 0), _sample_random,
+          _sample_kmc2_chain)
+      # Assign new cluster centers to underlying variable.
+      assigned_centers = state_ops.assign(
+          self._cluster_centers, new_centers, validate_shape=False)
+      if self._cluster_centers_updated is not self._cluster_centers:
+        assigned_centers = state_ops.assign(
+            self._cluster_centers_updated,
+            assigned_centers,
+            validate_shape=False)
+      return i + 1, self._num_clusters - array_ops.shape(assigned_centers)[0]
+
+    # Add num_to_sample new data points.
+    _, num_remaining = control_flow_ops.while_loop(_cond, _body, [0, 0])
+    return num_remaining
+
+  def _greedy_batch_sampler(self, sampler):
+    # If the input dataset size is smaller than the number of centers
+    # remaining, choose the entire input dataset as centers. This can happen
+    # with mini-batch. Otherwise, sample the batch according to the provided
+    # sampler.
+    return control_flow_ops.cond(self._num_data <= self._num_remaining,
+                                 lambda: array_ops.concat(self._inputs, 0),
+                                 sampler)
+
+  def _single_batch_sampler(self, sampler):
+    # Enforce that there are at least as many data points as centers
+    # remaining. This gives the provided sampler the chance to select all
+    # remaining centers from a single batch.
+    with ops.control_dependencies(
+        [check_ops.assert_greater_equal(self._num_data, self._num_remaining)]):
+      return sampler()
+
+  def _choose_initial_centers(self):
+    if isinstance(self._initial_clusters, str):
+      if self._initial_clusters == RANDOM_INIT:
+        return self._greedy_batch_sampler(self._random)
+      else:  # self._initial_clusters == KMEANS_PLUS_PLUS_INIT
+        return self._single_batch_sampler(self._kmeans_plus_plus)
+    elif callable(self._initial_clusters):
+      return self._initial_clusters(self._inputs, self._num_remaining)
+    else:
+      with ops.control_dependencies([
+          check_ops.assert_equal(self._num_remaining,
+                                 array_ops.shape(self._initial_clusters)[0])
+      ]):
+        return self._initial_clusters
+
+  def _add_new_centers(self):
+    """Adds some centers and returns the number of centers remaining."""
+    new_centers = self._choose_initial_centers()
+    if self._distance_metric == COSINE_DISTANCE:
+      new_centers = nn_impl.l2_normalize(new_centers, dim=1)
+    # If cluster_centers is empty, it doesn't have the right shape for concat.
+    all_centers = control_flow_ops.cond(
+        math_ops.equal(self._num_selected, 0), lambda: new_centers,
+        lambda: array_ops.concat([self._cluster_centers, new_centers], 0))
+    # TODO(ccolby): De-dupe all_centers?
+    a = state_ops.assign(
+        self._cluster_centers, all_centers, validate_shape=False)
+    if self._cluster_centers_updated is not self._cluster_centers:
+      a = state_ops.assign(
+          self._cluster_centers_updated, a, validate_shape=False)
+    return self._num_clusters - array_ops.shape(a)[0]
+
+  def _initialize(self):
+    with ops.control_dependencies([
+        check_ops.assert_positive(self._num_remaining),
+    ]):
+      if self._initial_clusters == KMC2_INIT:
+        num_now_remaining = self._kmc2_multiple_centers()
+      else:
+        num_now_remaining = self._add_new_centers()
+      return control_flow_ops.cond(
+          math_ops.equal(num_now_remaining, 0),
+          lambda: state_ops.assign(self._cluster_centers_initialized, True),
+          control_flow_ops.no_op)
+
+  def op(self):
+    """Returns the cluster initializer op."""
+    return control_flow_ops.cond(
+        math_ops.equal(self._num_remaining, 0),
+        lambda: check_ops.assert_equal(self._cluster_centers_initialized, True),
+        self._initialize)

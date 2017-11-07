@@ -75,10 +75,10 @@ def read_batch_examples(file_pattern,
       `tf.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples. In order to have
-      predicted and repeatable order of reading and enqueueing, such as in
+      predictable and repeatable order of reading and enqueueing, such as in
       prediction and evaluation mode, `num_threads` should be 1.
     read_batch_size: An int or scalar `Tensor` specifying the number of
-      records to read at once
+      records to read at once.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
@@ -142,10 +142,10 @@ def read_keyed_batch_examples(file_pattern,
       `tf.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples. In order to have
-      predicted and repeatable order of reading and enqueueing, such as in
+      predictable and repeatable order of reading and enqueueing, such as in
       prediction and evaluation mode, `num_threads` should be 1.
     read_batch_size: An int or scalar `Tensor` specifying the number of
-      records to read at once
+      records to read at once.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
@@ -217,7 +217,7 @@ def read_keyed_batch_examples_shared_queue(file_pattern,
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
-      records to read at once
+      records to read at once.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
@@ -335,7 +335,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
-      records to read at once
+      records to read at once.
     filter_fn: Filtering function, takes both keys as well `Example` Tensors
       and returns a boolean mask of the same shape as the input Tensors to
       be applied for filtering. If `None`, no filtering is done.
@@ -442,7 +442,8 @@ def read_keyed_batch_features(file_pattern,
                               feature_queue_capacity=100,
                               num_enqueue_threads=2,
                               parse_fn=None,
-                              name=None):
+                              name=None,
+                              read_batch_size=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -470,16 +471,20 @@ def read_keyed_batch_features(file_pattern,
       tf.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples. In order to have
-      predicted and repeatable order of reading and enqueueing, such as in
+      predictable and repeatable order of reading and enqueueing, such as in
       prediction and evaluation mode, `reader_num_threads` should be 1.
     feature_queue_capacity: Capacity of the parsed features queue.
     num_enqueue_threads: Number of threads to enqueue the parsed example queue.
       Using multiple threads to enqueue the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
-      parsing.
+      parsing. In order to have predictable and repeatable order of reading and
+      enqueueing, such as in prediction and evaluation mode,
+      `num_enqueue_threads` should be 1.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
+    read_batch_size: An int or scalar `Tensor` specifying the number of
+      records to read at once. If `None`, defaults to `batch_size`.
 
   Returns:
     Returns tuple of:
@@ -491,6 +496,7 @@ def read_keyed_batch_features(file_pattern,
   """
 
   with ops.name_scope(name, 'read_batch_features', [file_pattern]) as scope:
+    if read_batch_size is None: read_batch_size = batch_size
     keys, examples = read_keyed_batch_examples(
         file_pattern,
         batch_size,
@@ -499,7 +505,7 @@ def read_keyed_batch_features(file_pattern,
         num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         num_threads=reader_num_threads,
-        read_batch_size=batch_size,
+        read_batch_size=read_batch_size,
         parse_fn=parse_fn,
         name=scope)
     # Parse the example.
@@ -617,7 +623,9 @@ def queue_parsed_features(parsed_features,
     num_enqueue_threads: Number of threads to enqueue the parsed example queue.
       Using multiple threads to enqueue the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
-      parsing.
+      parsing. In order to have predictable and repeatable order of reading and
+      enqueueing, such as in prediction and evaluation mode,
+      `num_enqueue_threads` should be 1.
     name: Name of resulting op.
 
   Returns:
@@ -721,8 +729,10 @@ def read_batch_features(file_pattern,
                         queue_capacity=10000,
                         feature_queue_capacity=100,
                         reader_num_threads=1,
+                        num_enqueue_threads=2,
                         parse_fn=None,
-                        name=None):
+                        name=None,
+                        read_batch_size=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -752,11 +762,19 @@ def read_batch_features(file_pattern,
     feature_queue_capacity: Capacity of the parsed features queue. Set this
       value to a small number, for example 5 if the parsed features are large.
     reader_num_threads: The number of threads to read examples. In order to have
-      predicted and repeatable order of reading and enqueueing, such as in
+      predictable and repeatable order of reading and enqueueing, such as in
       prediction and evaluation mode, `reader_num_threads` should be 1.
+    num_enqueue_threads: Number of threads to enqueue the parsed example queue.
+      Using multiple threads to enqueue the parsed example queue helps maintain
+      a full queue when the subsequent computations overall are cheaper than
+      parsing. In order to have predictable and repeatable order of reading and
+      enqueueing, such as in prediction and evaluation mode,
+      `num_enqueue_threads` should be 1.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
+    read_batch_size: An int or scalar `Tensor` specifying the number of
+      records to read at once. If `None`, defaults to `batch_size`.
 
   Returns:
     A dict of `Tensor` or `SparseTensor` objects for each in `features`.
@@ -772,8 +790,10 @@ def read_batch_features(file_pattern,
       randomize_input=randomize_input,
       num_epochs=num_epochs,
       queue_capacity=queue_capacity,
-      feature_queue_capacity=feature_queue_capacity,
       reader_num_threads=reader_num_threads,
+      feature_queue_capacity=feature_queue_capacity,
+      num_enqueue_threads=num_enqueue_threads,
+      read_batch_size=read_batch_size,
       parse_fn=parse_fn,
       name=name)
   return features
@@ -804,7 +824,7 @@ def read_batch_record_features(file_pattern,
       tf.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples. In order to have
-      predicted and repeatable order of reading and enqueueing, such as in
+      predictable and repeatable order of reading and enqueueing, such as in
       prediction and evaluation mode, `reader_num_threads` should be 1.
     name: Name of resulting op.
 

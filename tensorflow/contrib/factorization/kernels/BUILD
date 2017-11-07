@@ -6,13 +6,15 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "all_kernels",
     deps = [
         ":clustering_ops",
         ":masked_matmul_ops",
         ":wals_solver_ops",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
@@ -22,7 +24,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
 )
@@ -33,7 +35,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
 )
@@ -43,15 +45,15 @@ cc_library(
     srcs = ["masked_matmul_ops.cc"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
 )
 
-cc_test(
+tf_cc_test(
     name = "clustering_ops_test",
-    size = "small",
     srcs = ["clustering_ops_test.cc"],
     deps = [
         ":clustering_ops",

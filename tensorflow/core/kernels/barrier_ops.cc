@@ -413,7 +413,7 @@ class Barrier : public ResourceBase {
     }
     queue_closed_ = true;
     if (cancel_pending_enqueues) queue_cancelled_ = true;
-    if (!ready_queue_->closed()) {
+    if (!ready_queue_->is_closed()) {
       ready_queue_->Close(ctx, cancel_pending_enqueues, callback);
     }
   }

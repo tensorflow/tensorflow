@@ -21,3 +21,5 @@ from __future__ import print_function
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import ClusterResolver
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import SimpleClusterResolver
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import UnionClusterResolver
+from tensorflow.contrib.cluster_resolver.python.training.gce_cluster_resolver import GceClusterResolver
+from tensorflow.contrib.cluster_resolver.python.training.tpu_cluster_resolver import TPUClusterResolver

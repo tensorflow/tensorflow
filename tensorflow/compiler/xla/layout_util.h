@@ -40,12 +40,17 @@ class LayoutUtil {
   static Layout GetDefaultLayoutForShape(const Shape& shape);
 
   // Helper functions that create default layouts for various ranks.
+  static Layout GetDefaultLayoutForRank(int64 rank);
   static Layout GetDefaultLayoutForR2();
   static Layout GetDefaultLayoutForR3();
   static Layout GetDefaultLayoutForR4();
 
   // Sets the default layout on the Shape.
   static void SetToDefaultLayout(Shape* shape);
+
+  // Returns a shape with the same dimensions as `shape` but with the default
+  // layout.
+  static Shape GetWithDefaultLayout(const Shape& shape);
 
   // Sets the layouts of all Shapes within the given ProgramShape to the
   // default.

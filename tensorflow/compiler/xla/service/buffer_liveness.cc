@@ -37,32 +37,33 @@ namespace xla {
 
 /* static */
 StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
-    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    TuplePointsToAnalysis::Colorer colorer) {
+    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering) {
   std::unique_ptr<BufferLiveness> liveness(
-      new BufferLiveness(module, std::move(hlo_ordering), std::move(colorer)));
+      new BufferLiveness(module, std::move(hlo_ordering)));
   TF_RETURN_IF_ERROR(liveness->Analyze());
   return std::move(liveness);
 }
 
 tensorflow::Status BufferLiveness::Analyze() {
-  TF_ASSIGN_OR_RETURN(points_to_analysis_,
-                      TuplePointsToAnalysis::Run(module_, colorer_));
-  for (auto& computation : module_->computations()) {
+  TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
+  for (auto* computation : module_->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     // Gather all instructions whose buffers might alias other instructions into
     // the set aliased_buffers_.  This includes those contained as a tuple
     // element in other instruction's output.
     for (const auto& instruction : computation->instructions()) {
       for (const LogicalBuffer* aliased_buffer :
-           points_to_analysis_->GetPointsToSet(instruction.get())
+           points_to_analysis_->GetPointsToSet(instruction)
                .CreateFlattenedSet()) {
-        if (aliased_buffer->instruction() != instruction.get()) {
+        if (aliased_buffer->instruction() != instruction) {
           aliased_buffers_.insert(aliased_buffer);
         }
       }
     }
 
-    if (computation.get() == module_->entry_computation()) {
+    if (computation == module_->entry_computation()) {
       const HloInstruction* root = computation->root_instruction();
       maybe_live_out_buffers_ =
           points_to_analysis_->GetPointsToSet(root).CreateFlattenedSet();

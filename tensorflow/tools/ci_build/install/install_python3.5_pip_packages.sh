@@ -61,10 +61,11 @@ fi
 
 set -e
 # Install six.
+pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.5 install --upgrade protobuf==3.2.0
+pip3.5 install --upgrade protobuf==3.3.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -80,7 +81,7 @@ pip3.5 install scipy==0.18.1
 
 pip3.5 install scikit-learn==0.18.1
 
-# pandas required by tf.learn/inflow
+# pandas required by `inflow`
 pip3 install pandas==0.19.2
 
 # Install recent-enough version of wheel for Python 3.5 wheel builds
@@ -90,5 +91,4 @@ pip3.5 install portpicker
 
 pip3.5 install werkzeug
 
-pip3.5 install backports.weakref==1.0rc1
-
+pip3.5 install grpcio

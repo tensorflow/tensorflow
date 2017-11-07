@@ -81,7 +81,7 @@ class CallGraphTest : public HloTestBase {
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, param0, zero));
     return builder.Build();
@@ -97,6 +97,8 @@ TEST_F(CallGraphTest, SingletonComputation) {
       module->AddEntryComputation(MakeScalarComputation());
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(1, call_graph->nodes().size());
+  EXPECT_TRUE(call_graph->IsFlattened());
+
   const CallGraphNode& node = call_graph->GetNode(computation);
   EXPECT_EQ(computation, node.computation());
   EXPECT_TRUE(node.callsites().empty());
@@ -169,6 +171,10 @@ TEST_F(CallGraphTest, SequentialComputations) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(2, call_graph->nodes().size());
 
+  // The called computation is only called from one other computation, but there
+  // are multiple callsites.
+  EXPECT_FALSE(call_graph->IsFlattened());
+
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
   EXPECT_EQ(entry_computation, entry_node.computation());
   EXPECT_EQ(CallContext::kSequential, entry_node.context());
@@ -205,6 +211,8 @@ TEST_F(CallGraphTest, ContextBothComputations) {
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(2, call_graph->nodes().size());
+
+  EXPECT_FALSE(call_graph->IsFlattened());
 
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
   EXPECT_EQ(entry_computation, entry_node.computation());
@@ -273,6 +281,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(5, call_graph->nodes().size());
+  EXPECT_FALSE(call_graph->IsFlattened());
 
   // Entry computation has one while instruction calling two computations
   // (cond_computation and a_computation).
@@ -314,6 +323,109 @@ TEST_F(CallGraphTest, ComplexGraph) {
   EXPECT_LT(index_of(cond_computation), index_of(a_computation));
   EXPECT_LT(index_of(c_computation), index_of(b_computation));
   EXPECT_LT(index_of(b_computation), index_of(a_computation));
+
+  // Verify dominance relations between computation in the graph.
+
+  // Entry dominates everybody, and is dominated by no one except itself.
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, entry_computation));
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, a_computation));
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, b_computation));
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, c_computation));
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, cond_computation));
+  EXPECT_FALSE(call_graph->Dominates(a_computation, entry_computation));
+  EXPECT_FALSE(call_graph->Dominates(b_computation, entry_computation));
+  EXPECT_FALSE(call_graph->Dominates(c_computation, entry_computation));
+  EXPECT_FALSE(call_graph->Dominates(cond_computation, entry_computation));
+
+  // 'a' only dominates 'b' and 'c'.
+  EXPECT_TRUE(call_graph->Dominates(a_computation, a_computation));
+  EXPECT_TRUE(call_graph->Dominates(a_computation, b_computation));
+  EXPECT_TRUE(call_graph->Dominates(a_computation, c_computation));
+  EXPECT_FALSE(call_graph->Dominates(b_computation, a_computation));
+  EXPECT_FALSE(call_graph->Dominates(c_computation, a_computation));
+  EXPECT_FALSE(call_graph->Dominates(a_computation, cond_computation));
+
+  EXPECT_TRUE(call_graph->Dominates(b_computation, b_computation));
+  EXPECT_FALSE(call_graph->Dominates(b_computation, c_computation));
+  EXPECT_FALSE(call_graph->Dominates(b_computation, cond_computation));
+
+  EXPECT_TRUE(call_graph->Dominates(c_computation, c_computation));
+  EXPECT_FALSE(call_graph->Dominates(c_computation, cond_computation));
+  EXPECT_FALSE(call_graph->Dominates(cond_computation, c_computation));
+
+  EXPECT_TRUE(call_graph->Dominates(cond_computation, cond_computation));
+}
+
+TEST_F(CallGraphTest, ComplexGraphNearestAncestors) {
+  // Test NearestAncestorsInSameComputation on a call graph of a module with
+  // several computation called in various contexts. The call graph looks like:
+  //
+  //      entry
+  //      /  |
+  //     a   |
+  //   / | \ |
+  //  b  |  cond
+  //   \ |
+  //    c
+  //
+  // Calls are made via kCall, kWhile, and kMap instructions.
+  auto module = CreateNewModule();
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(MakeConditionComputation());
+  HloComputation* c_computation =
+      module->AddEmbeddedComputation(MakeScalarComputation());
+  HloComputation* b_computation = module->AddEmbeddedComputation(
+      MakeMappingComputation(c_computation, /*callsites=*/1));
+  HloInstruction* b_map = b_computation->root_instruction();
+
+  HloComputation* a_computation;
+  HloInstruction* a_call;
+  HloInstruction* a_while;
+  {
+    HloComputation::Builder builder(TestName() + ".a");
+    HloInstruction* param0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, kScalarShape, "param0"));
+    a_call = builder.AddInstruction(
+        HloInstruction::CreateCall(kScalarShape, {param0}, c_computation));
+    a_while = builder.AddInstruction(HloInstruction::CreateWhile(
+        kScalarShape, cond_computation, b_computation, a_call));
+    a_computation = module->AddEmbeddedComputation(builder.Build());
+  }
+
+  HloComputation* entry_computation;
+  HloInstruction* entry_while;
+  {
+    HloComputation::Builder builder(TestName() + ".entry");
+    HloInstruction* param0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, kScalarShape, "param0"));
+    entry_while = builder.AddInstruction(HloInstruction::CreateWhile(
+        kScalarShape, cond_computation, a_computation, param0));
+    entry_computation = module->AddEntryComputation(builder.Build());
+  }
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_EQ(5, call_graph->nodes().size());
+
+  // Verify NearestAncestorsInSameComputation for various instructions in the
+  // module.
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(a_call, a_call),
+            std::make_pair(a_call, a_call));
+
+  // c_computation is called from more than one site, so
+  // NearestAncestorsInSameComputation bails and returns nullptrs.
+  std::pair<HloInstruction*, HloInstruction*> null_pair = {nullptr, nullptr};
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(
+                b_map, c_computation->root_instruction()),
+            null_pair);
+
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(b_map, entry_while),
+            std::make_pair(entry_while, entry_while));
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(b_map, a_call),
+            std::make_pair(a_while, a_call));
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(a_while, a_call),
+            std::make_pair(a_while, a_call));
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(a_while, b_map),
+            std::make_pair(a_while, a_while));
 }
 
 TEST_F(CallGraphTest, VisitSingletonComputation) {
@@ -385,7 +497,3 @@ TEST_F(CallGraphTest, VisitWithError) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

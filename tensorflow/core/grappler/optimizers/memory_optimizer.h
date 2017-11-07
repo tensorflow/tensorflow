@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_MEMORY_OPTIMIZER_H_
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_MEMORY_OPTIMIZER_H_
 
-#include <vector>
-
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -26,7 +25,16 @@ namespace grappler {
 // Swap tensors in and out of device memory.
 class MemoryOptimizer : public GraphOptimizer {
  public:
-  MemoryOptimizer() {}
+  // optimization_level: Controls the level of autonomy for the memory
+  //   optimizer. See RewriterConfig::memory_optimization.
+  // recomputation_targets_name_prefix: Name prefix for potential outputs of
+  //   recomputations. See
+  //   RewriterConfig::memory_optimizer_target_node_name_prefix.
+  explicit MemoryOptimizer(
+      RewriterConfig::MemOptType optimization_level,
+      const string& recomputation_targets_name_prefix = "gradients/")
+      : optimization_level_(optimization_level),
+        recomputation_targets_name_prefix_(recomputation_targets_name_prefix) {}
   ~MemoryOptimizer() override {}
 
   string name() const override { return "memory_optimizer"; };
@@ -36,15 +44,11 @@ class MemoryOptimizer : public GraphOptimizer {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& pruned_graph, double result) override;
-};
 
-// Helper function to recompute a sub-graph (recomputed_source_nodes) on a
-// trigger. Edges from recomputed_source_nodes to target_nodes are changed to
-// start from the recomputed nodes.
-void RecomputeSubgraph(
-    const std::vector<const NodeDef*>& recomputed_source_nodes,
-    const string& recompute_trigger_node_name,
-    const std::vector<NodeDef*>& target_nodes, GraphDef* graph);
+ private:
+  RewriterConfig::MemOptType optimization_level_;
+  string recomputation_targets_name_prefix_;
+};
 
 }  // end namespace grappler
 }  // end namespace tensorflow

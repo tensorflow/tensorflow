@@ -52,7 +52,7 @@ REGISTER_OP("UnpackPath")
       auto tree_depth = c->Dim(params, 1);
       int64 num_nodes = InferenceContext::kUnknownDim;
       if (c->ValueKnown(tree_depth)) {
-        num_nodes = (1 << c->Value(tree_depth)) - 1;
+        num_nodes = (static_cast<int64>(1) << c->Value(tree_depth)) - 1;
       }
 
       c->set_output(0, c->Matrix(num_points, num_nodes));

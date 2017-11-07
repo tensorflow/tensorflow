@@ -104,8 +104,11 @@ class XlaOpKernelContext {
   Status ConstantInputReshaped(int index, gtl::ArraySlice<int64> new_shape,
                                xla::Literal* constant_literal);
 
-  // Converts a constant 1D int32 or int64 tensor into an int64.
+  // Converts a constant scalar int32 or int64 tensor into an int64.
   Status ConstantInputAsIntScalar(int index, int64* out);
+
+  // Converts a constant scalar float32 or float64 tensor into a float64.
+  Status ConstantInputAsFloatScalar(int index, double* out);
 
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
@@ -143,10 +146,13 @@ class XlaOpKernelContext {
   void SetStatus(const Status& status) { context_->SetStatus(status); }
   Status status() { return context_->status(); }
 
-  // Mark the op has having side effects (i.e., via Send).
-  void SetOpHasSideEffects();
-
   // Variables
+
+  // Sets '*resource' to the resource associated with input `index`.
+  Status GetResourceInput(int index, XlaResource** resource);
+
+  // Sets output 'index' to be a reference to resource 'resource'.
+  void SetResourceOutput(int index, XlaResource* resource);
 
   // Sets `*type` and `*shape` to the current type and shape of a variable's
   // value.
@@ -158,19 +164,9 @@ class XlaOpKernelContext {
   Status ReadVariableInput(int index, xla::ComputationDataHandle* value);
 
   // Assigns the value `handle` to the variable referenced by input
-  // `variable_index`. Marks the operator as having side effects.
-  Status AssignVariable(int variable_index, DataType type,
+  // `input_index`. Marks the operator as having side effects.
+  Status AssignVariable(int input_index, DataType type,
                         const xla::ComputationDataHandle& handle);
-
-  // Sets '*variable' to the variable associated with input `index`.
-  Status GetVariableInput(int index, XlaVariable** variable);
-
-  // Sets output 'index' to be a reference to variable 'variable'. Used
-  // to propagate resource variables through the compilation.
-  void SetVariableOutput(int index, XlaVariable* variable);
-
-  // Returns a human-readable debug string describing 'variable_index'.
-  string VariableDebugString(int variable_index);
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);
@@ -195,20 +191,20 @@ class XlaOpKernelContext {
 
   // TODO(phawkins): find a better home for these helpers.
 
-  // Get an XLA lambda to compute Max. This is cached in the
+  // Gets an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateMax(const DataType type);
 
-  // Get an XLA lambda to compute Add. This is cached in the
+  // Gets an XLA lambda to compute Min. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMin(const DataType type);
+
+  // Gets an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
-
-  // Get an XLA lambda to compute Sigmoid. This is cached in the
-  // XlaContext since it may be used by multiple Ops. There is a
-  // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateSigmoid(const DataType type);
 
  private:
   OpKernelContext* const context_;

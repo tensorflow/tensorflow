@@ -36,6 +36,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     c = math_ops.add_n([a, b], name='c')
     d = math_ops.add_n([b, c], name='d')
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+    # Being a train_op will make 'd' to be added as a fetch node.
     train_op.append(d)
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
 
@@ -44,9 +45,8 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
-    self.assertEqual(len(graph.node), 5)
-    self.assertItemsEqual([node.name for node in graph.node],
-                          ['a', 'b', 'c', 'd', 'ConstantFolding/c'])
+    self.assertEqual(len(graph.node), 1)
+    self.assertItemsEqual([node.name for node in graph.node], ['d'])
 
 
 if __name__ == '__main__':
