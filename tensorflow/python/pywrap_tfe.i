@@ -29,7 +29,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeWatch;
 %rename("%s") TFE_Py_TapeDeleteTrace;
 %rename("%s") TFE_Py_TapeRecordOperation;
-%rename("%s") TFE_Py_TapeExport;
+%rename("%s") TFE_Py_TapeGradient;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
@@ -125,7 +125,7 @@ limitations under the License.
         SWIG_fail;
       }
       if (EagerTensor_CheckExact(elem)) {
-        (*$1)[i] = EagerTensorHandle(elem);
+        (*$1)[i] = EagerTensor_Handle(elem);
       } else {
         SWIG_exception_fail(SWIG_TypeError,
                             "provided list of inputs contains objects other "

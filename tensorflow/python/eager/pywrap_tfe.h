@@ -81,7 +81,7 @@ bool EagerTensor_CheckExact(const PyObject* o);
 PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
-TFE_TensorHandle* EagerTensorHandle(const PyObject* o);
+TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 
 // Creates the `EagerTensor` class by subclassing `base_class` and returns the
 // newly created type, or nullptr on error.
@@ -103,7 +103,16 @@ void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
                                 PyObject* output_tensors,
                                 PyObject* input_tensor_ids,
                                 PyObject* backward_function);
-PyObject* TFE_Py_TapeExport(PyObject* tape);
+
+// Computes a gradient based on information recorded on the tape.`tape` must
+// have been produced by TFE_Py_NewTape. `vspace` must be a
+// imperative_grad.py:VSpace named tuple. `target` and `sources` must be python
+// lists of Tensor objects. `output_gradients` is either None or a python list
+// of either Tensor or None, and if not None should have the same length as
+// target.
+PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
+                              PyObject* target, PyObject* sources,
+                              PyObject* output_gradients, TF_Status* status);
 
 // Returns an EagerTensor of dimension [len(`tensor_list`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensor_list`. In other words,
