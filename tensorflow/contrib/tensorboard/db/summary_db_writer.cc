@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
 
 #include "tensorflow/contrib/tensorboard/db/schema.h"
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -86,13 +88,19 @@ class SummaryDbWriter : public SummaryWriterInterface {
         TF_RETURN_IF_ERROR(BindTensor(t));
         break;
     }
-    TF_RETURN_IF_ERROR(insert_tensor_.StepAndReset());
-    return Status::OK();
+    return insert_tensor_.StepAndReset();
   }
 
   Status WriteEvent(std::unique_ptr<Event> e) override {
-    // TODO(@jart): This will be used to load event logs.
-    return errors::Unimplemented("WriteEvent");
+    mutex_lock ml(mu_);
+    TF_RETURN_IF_ERROR(InitializeParents());
+    if (e->what_case() == Event::WhatCase::kSummary) {
+      const Summary& summary = e->summary();
+      for (int i = 0; i < summary.value_size(); ++i) {
+        TF_RETURN_IF_ERROR(WriteSummary(e.get(), summary.value(i)));
+      }
+    }
+    return Status::OK();
   }
 
   Status WriteScalar(int64 global_step, Tensor t, const string& tag) override {
@@ -245,6 +253,24 @@ class SummaryDbWriter : public SummaryWriterInterface {
       TF_RETURN_IF_ERROR(insert.StepAndReset());
     }
     return Status::OK();
+  }
+
+  Status WriteSummary(const Event* e, const Summary::Value& summary)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    int64 tag_id;
+    TF_RETURN_IF_ERROR(GetTagId(run_id_, summary.tag(), &tag_id));
+    insert_tensor_.BindInt(1, tag_id);
+    insert_tensor_.BindInt(2, e->step());
+    insert_tensor_.BindDouble(3, e->wall_time());
+    switch (summary.value_case()) {
+      case Summary::Value::ValueCase::kSimpleValue:
+        insert_tensor_.BindDouble(4, summary.simple_value());
+        break;
+      default:
+        // TODO(@jart): Handle the rest.
+        return Status::OK();
+    }
+    return insert_tensor_.StepAndReset();
   }
 
   mutex mu_;

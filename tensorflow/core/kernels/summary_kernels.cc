@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/summary_interface.h"
+#include "tensorflow/core/lib/db/sqlite.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -45,6 +48,32 @@ class CreateSummaryFileWriterOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryFileWriter").Device(DEVICE_CPU),
                         CreateSummaryFileWriterOp);
+
+class CreateSummaryDbWriterOp : public OpKernel {
+ public:
+  explicit CreateSummaryDbWriterOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* tmp;
+    OP_REQUIRES_OK(ctx, ctx->input("db_uri", &tmp));
+    const string db_uri = tmp->scalar<string>()();
+    OP_REQUIRES_OK(ctx, ctx->input("experiment_name", &tmp));
+    const string experiment_name = tmp->scalar<string>()();
+    OP_REQUIRES_OK(ctx, ctx->input("run_name", &tmp));
+    const string run_name = tmp->scalar<string>()();
+    OP_REQUIRES_OK(ctx, ctx->input("user_name", &tmp));
+    const string user_name = tmp->scalar<string>()();
+    SummaryWriterInterface* s;
+    auto db = Sqlite::Open(db_uri);
+    OP_REQUIRES_OK(ctx, db.status());
+    OP_REQUIRES_OK(
+        ctx, CreateSummaryDbWriter(std::move(db.ValueOrDie()), experiment_name,
+                                   run_name, user_name, ctx->env(), &s));
+    OP_REQUIRES_OK(ctx, CreateResource(ctx, HandleFromInput(ctx, 0), s));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("CreateSummaryDbWriter").Device(DEVICE_CPU),
+                        CreateSummaryDbWriterOp);
 
 class FlushSummaryWriterOp : public OpKernel {
  public:
@@ -97,6 +126,27 @@ class WriteSummaryOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("WriteSummary").Device(DEVICE_CPU),
                         WriteSummaryOp);
+
+class ImportEventOp : public OpKernel {
+ public:
+  explicit ImportEventOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    SummaryWriterInterface* s;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
+    core::ScopedUnref unref(s);
+    const Tensor* t;
+    OP_REQUIRES_OK(ctx, ctx->input("event", &t));
+    std::unique_ptr<Event> event{new Event};
+    if (!ParseProtoUnlimited(event.get(), t->scalar<string>()())) {
+      ctx->CtxFailureWithWarning(
+          errors::DataLoss("Bad tf.Event binary proto tensor string"));
+      return;
+    }
+    OP_REQUIRES_OK(ctx, s->WriteEvent(std::move(event)));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("ImportEvent").Device(DEVICE_CPU), ImportEventOp);
 
 class WriteScalarSummaryOp : public OpKernel {
  public:
