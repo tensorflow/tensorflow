@@ -109,3 +109,12 @@ class RunConfig(run_config_lib.RunConfig):
   @property
   def tpu_config(self):
     return self._tpu_config
+
+  def replace(self, **kwargs):
+    if 'tpu_config' not in kwargs:
+      return super(RunConfig, self).replace(**kwargs)
+
+    tpu_config = kwargs.pop('tpu_config')
+    new_instance = super(RunConfig, self).replace(**kwargs)
+    new_instance._tpu_config = tpu_config  # pylint: disable=protected-access
+    return new_instance
