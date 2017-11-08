@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -37,6 +38,7 @@ class ConstantFolding : public GraphOptimizer {
                                      NodeMap* node_map);
 
   ConstantFolding(DeviceBase* cpu_device);
+  ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device);
 
   ~ConstantFolding() override {}
 
@@ -51,7 +53,8 @@ class ConstantFolding : public GraphOptimizer {
  private:
   Status MaterializeShapes(const GrapplerItem& item,
                            const GraphProperties& properties);
-
+  Status MaterializeConstants(const GrapplerItem& item,
+                              const GraphProperties& properties);
   bool IsFoldable(const NodeDef& node) const;
 
   Status EvaluateNode(const NodeDef& node,
@@ -74,6 +77,7 @@ class ConstantFolding : public GraphOptimizer {
                              GraphDef* output);
 
   // Points to an externally provided device or to owned_device_;
+  RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
   std::unique_ptr<DeviceBase> owned_device_;
 

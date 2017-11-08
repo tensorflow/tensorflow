@@ -95,10 +95,14 @@ class DeviceSimple : public DeviceBase {
 };
 
 }  // namespace
-ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
-    : cpu_device_(cpu_device) {
+ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
+                                 DeviceBase* cpu_device)
+    : opt_level_(opt_level), cpu_device_(cpu_device) {
   resource_mgr_.reset(new ResourceMgr());
 }
+
+ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
+    : ConstantFolding(RewriterConfig::ON, cpu_device) {}
 
 // static
 string ConstantFolding::AddControlDependency(const string& input_name,
@@ -278,6 +282,84 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
       }
     }
   }
+  return Status::OK();
+}
+
+bool ShapesEqual(const TensorShapeProto& shape1,
+                 const TensorShapeProto& shape2) {
+  if (shape1.unknown_rank() || shape2.unknown_rank()) {
+    return false;
+  }
+  if (shape1.dim_size() != shape2.dim_size()) {
+    return false;
+  }
+  for (int i = 0; i < shape1.dim_size(); ++i) {
+    if (shape1.dim(i).size() != shape2.dim(i).size()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Status ConstantFolding::MaterializeConstants(
+    const GrapplerItem& item, const GraphProperties& properties) {
+  const int node_count = graph_.node_size();
+  for (int i = 0; i < node_count; ++i) {
+    NodeDef& node = *graph_.mutable_node(i);
+    const string& op = node.op();
+    if (op != "BroadcastGradientArgs") {
+      continue;
+    }
+    const NodeDef* shape_node1 = node_map_->GetNode(node.input(0));
+    const NodeDef* shape_node2 = node_map_->GetNode(node.input(1));
+    if (shape_node1 == nullptr || shape_node1->op() != "Shape" ||
+        shape_node2 == nullptr || shape_node2->op() != "Shape") {
+      continue;
+    }
+    const std::vector<OpInfo::TensorProperties>& prop1 =
+        properties.GetInputProperties(shape_node1->name());
+    const std::vector<OpInfo::TensorProperties>& prop2 =
+        properties.GetInputProperties(shape_node2->name());
+    if (prop1.size() != 1 || prop2.size() != 1) {
+      continue;
+    }
+    const TensorShapeProto& shape1 = prop1[0].shape();
+    const TensorShapeProto& shape2 = prop2[0].shape();
+    if (ShapesEqual(shape1, shape2)) {
+      DataType type = node.attr().at("T").type();
+      Tensor empty(type, TensorShape());
+      NodeDef* out[2];
+      for (int i = 0; i < 2; ++i) {
+        string const_name = AddPrefixToNodeName(
+            strings::StrCat(node.name(), "-", i), kConstantFoldingConst);
+        out[i] = node_map_->GetNode(const_name);
+        if (!out[i]) {
+          out[i] = graph_.add_node();
+          *out[i] = CreateNodeDef(const_name, TensorValue(&empty));
+          out[i]->set_device(node.device());
+          node_map_->AddNode(const_name, out[i]);
+          string ctrl_dep =
+              AddControlDependency(node.name(), &graph_, node_map_.get());
+          *out[i]->add_input() = ctrl_dep;
+          node_map_->AddOutput(NodeName(ctrl_dep), const_name);
+        }
+      }
+
+      auto outputs = node_map_->GetOutputs(node.name());
+      for (const auto& output : outputs) {
+        for (int k = 0; k < output->input_size(); ++k) {
+          int port;
+          string node_name = ParseNodeName(output->input(k), &port);
+          if (node_name == node.name() && port >= 0 && port < 2) {
+            *output->mutable_input(k) = out[port]->name();
+            node_map_->UpdateInput(output->name(), node_name,
+                                   out[port]->name());
+          }
+        }
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -921,23 +1003,25 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   }
 
   GraphProperties properties(item);
+  Status s = properties.InferStatically();
   bool has_feed = !item.feed.empty();
-  if (!has_feed) {
+  // bool has_feed = false;
+  if (!has_feed && s.ok()) {
     // Only use static shape information when there is no feed in the
     // graph. That's because it's possible to feed a placeholder with a tensor
     // of any shape, which could make the static information inconsistent with
     // the shapes actually fed.
-    Status s = properties.InferStatically();
-    if (!s.ok()) {
-      VLOG(1) << "Failed to infer graph shapes: " << s;
-    } else {
+    if (s.ok()) {
       TF_RETURN_IF_ERROR(MaterializeShapes(item, properties));
     }
+  }
+  if (opt_level_ == RewriterConfig::AGGRESSIVE && s.ok()) {
+    TF_RETURN_IF_ERROR(MaterializeConstants(item, properties));
   }
 
   TF_RETURN_IF_ERROR(FoldGraph(output));
 
-  if (!has_feed) {
+  if (!has_feed && s.ok()) {
     TF_RETURN_IF_ERROR(SimplifyGraph(output, properties));
   }
   return Status::OK();
