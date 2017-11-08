@@ -25,6 +25,7 @@ namespace tools {
 namespace {
 
 using tensorflow::StringPiece;
+using tensorflow::strings::StrCat;
 
 struct TestData {
   string test_name;
@@ -248,6 +249,39 @@ ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
 }
 
 )"
+},
+// reduce window
+{
+"ReduceWindow",
+R"(HloModule R4UnitWindow_module:
+
+%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+ENTRY %R4UnitWindow.v3 (operand: f32[13,12,8,15]) -> f32[13,3,8,15] {
+  %operand = f32[13,12,8,15]{0,3,2,1} parameter(0)
+  %constant = f32[] constant(0)
+  ROOT %reduce-window = f32[13,3,8,15]{0,3,2,1} reduce-window(f32[13,12,8,15]{0,3,2,1} %operand, f32[] %constant), window={size=1x1x7x1 stride=1x4x1x1 pad=0_0x0_0x3_3x0_0}, to_apply=%add_F32.v3
+}
+
+)"
+},
+// convolution
+{
+"Convolution",
+R"(HloModule Convolve1D1Window_0_module:
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f
+}
+
+)"
 }
   });
   // clang-format on
@@ -425,6 +459,92 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
   // The string will be parsed successfully but the output strings are not
   // exactly the same, because "3e2" is parsed into value 300 and will be
   // printed as "300".
+}
+
+TEST_F(HloParserTest, AttibutesAnyOrder) {
+  const string original = R"(HloModule any_order_module:
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), sharding={maximal device=1}, dim_labels=b0f_0io->b0f, window={pad=1_1 size=2}
+}
+
+)";
+  TF_EXPECT_OK(Parse(original).status());
+}
+
+TEST_F(HloParserTest, InvalidDimLabels) {
+  string prefix = R"(HloModule invalid_dim_labels_module:
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1} )";
+  string suffix = R"(
+}
+
+)";
+
+  ExpectHasSubstr(Parse(StrCat(prefix, ",dim_labels=00_01_10", suffix))
+                      .status()
+                      .error_message(),
+                  "expects dim labels pattern");
+
+  ExpectHasSubstr(Parse(StrCat(prefix, ",dim_labels=010_1100->010", suffix))
+                      .status()
+                      .error_message(),
+                  "must have the same rank");
+
+  ExpectHasSubstr(Parse(StrCat(prefix, ",dim_labels=0bf_io0->b0f", suffix))
+                      .status()
+                      .error_message(),
+                  "output spatial dimensions should be the same as input "
+                  "spatial dimensions");
+}
+
+TEST_F(HloParserTest, UnexpectedAttribute) {
+  const string original = R"(HloModule unexpected_attr_module:
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
+  %recv = f32[] recv(), channel_id=15
+  ROOT %constant = f32[] constant(2.1)
+  %send = () send(f32[] %constant), channel_id=16, calls=%recv
+}
+
+)";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "unexpected attribute calls");
+}
+
+TEST_F(HloParserTest, MissingAttribute) {
+  const string original = R"(HloModule missing_attr_module:
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
+  %recv = f32[] recv(), channel_id=15
+  ROOT %constant = f32[] constant(-2.1)
+  %send = () send(f32[] %constant)
+}
+
+)";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "attribute channel_id is expected but not seen");
+}
+
+TEST_F(HloParserTest, PredecessorUndefined) {
+  const string original = R"(HloModule pre_not_found_module:
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
+  %recv = f32[] recv(), channel_id=15
+  ROOT %constant = f32[] constant(2.1)
+  %send = () send(f32[] %constant), channel_id=16, control-predecessors={%done}
+}
+
+)";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "'done' is not defined");
 }
 
 }  // namespace
