@@ -95,6 +95,15 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         *end_of_sequence = true;
         return Status::OK();
       }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        return Status::OK();
+      }
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        return Status::OK();
+      }
     };
 
     class FiniteIterator : public DatasetIterator<Dataset> {
@@ -181,6 +190,29 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
             }
           }
         } while (true);
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (input_impl_)
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        else
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("uninitialized"), ""));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        if (reader->Contains(full_name("uninitialized"))) {
+          input_impl_.reset();
+        } else {
+          input_impl_ = dataset()->input_->MakeIterator(prefix());
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        }
+        return Status::OK();
       }
 
      private:

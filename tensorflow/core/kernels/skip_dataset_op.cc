@@ -35,14 +35,14 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
     int64 count;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "count", &count));
 
-    *output = new Dataset(count, input);
+    *output = new Dataset(ctx, count, input);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 count, const DatasetBase* input)
-        : count_(count), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
+        : GraphDatasetBase(ctx), count_(count), input_(input) {
       input_->Ref();
     }
 
@@ -71,6 +71,18 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() override { return "SkipDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(input_, &input_graph_node));
+      Node* count = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, count}, output));
+      return Status::OK();
+    }
+
    private:
     class EmptyIterator : public DatasetIterator<Dataset> {
      public:
@@ -80,6 +92,16 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         *end_of_sequence = true;
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
         return Status::OK();
       }
     };
@@ -116,6 +138,22 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
         // Return GetNext() on the underlying iterator.
         TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors,
                                                 end_of_sequence));
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
         return Status::OK();
       }
 
