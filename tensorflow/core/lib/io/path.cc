@@ -26,7 +26,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 namespace io {
@@ -265,12 +267,13 @@ string GetTempFilename(const string& extension) {
       int fd;
       if (extension.length()) {
         tmp_filepath = io::JoinPath(
-            dir,
-            StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.", extension));
+            dir, strings::StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.",
+                                 extension));
         fd = mkstemps(&tmp_filepath[0], extension.length() + 1);
       } else {
         tmp_filepath = io::JoinPath(
-            dir, StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX."));
+            dir,
+            strings::StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX"));
         fd = mkstemp(&tmp_filepath[0]);
       }
       if (fd < 0) {
