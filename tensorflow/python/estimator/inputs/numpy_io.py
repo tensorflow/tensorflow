@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from six import string_types
 from tensorflow.python.estimator.inputs.queues import feeding_functions
 
 # Key name to pack the target into dict of `features`. See
@@ -51,8 +52,9 @@ def numpy_input_fn(x,
                    num_threads=1):
   """Returns input function that would feed dict of numpy arrays into the model.
 
-  This returns a function outputting `features` and `target` based on the dict
-  of numpy arrays. The dict `features` has the same keys as the `x`.
+  This returns a function outputting `features` and `targets` based on the dict
+  of numpy arrays. The dict `features` has the same keys as the `x`. The dict
+  `targets` has the same keys as the `y` if `y` is a dict.
 
   Example:
 
@@ -69,7 +71,7 @@ def numpy_input_fn(x,
 
   Args:
     x: dict of numpy array object.
-    y: numpy array object. `None` if absent.
+    y: numpy array object or dict of numpy array object. `None` if absent.
     batch_size: Integer, size of batches to return.
     num_epochs: Integer, number of epochs to iterate over data. If `None` will
       run forever.
@@ -81,11 +83,13 @@ def numpy_input_fn(x,
       such as in prediction and evaluation mode, `num_threads` should be 1.
 
   Returns:
-    Function, that has signature of ()->(dict of `features`, `target`)
+    Function, that has signature of ()->(dict of `features`, `targets`)
 
   Raises:
     ValueError: if the shape of `y` mismatches the shape of values in `x` (i.e.,
       values in `x` have same shape).
+    ValueError: if duplicate keys are in both `x` and `y` when `y` is a dict.
+    ValueError: if x or y is an empty dict.
     TypeError: `x` is not a dict or `shuffle` is not bool.
   """
 
@@ -97,43 +101,76 @@ def numpy_input_fn(x,
     """Numpy input function."""
     if not isinstance(x, dict):
       raise TypeError('x must be dict; got {}'.format(type(x).__name__))
+    if not x:
+      raise ValueError('x cannot be empty')
 
     # Make a shadow copy and also ensure the order of iteration is consistent.
-    ordered_dict_x = collections.OrderedDict(
+    ordered_dict_data = collections.OrderedDict(
         sorted(x.items(), key=lambda t: t[0]))
+    # Deep copy keys which is a view in python 3
+    feature_keys = list(ordered_dict_data.keys())
 
-    unique_target_key = _get_unique_target_key(ordered_dict_x)
-    if y is not None:
-      ordered_dict_x[unique_target_key] = y
+    if y is None:
+      target_keys = None
+    elif isinstance(y, dict):
+      if not y:
+        raise ValueError('y cannot be empty dict, use None instead.')
 
-    if len(set(v.shape[0] for v in ordered_dict_x.values())) != 1:
-      shape_dict_of_x = {k: ordered_dict_x[k].shape
-                         for k in ordered_dict_x.keys()}
-      shape_of_y = None if y is None else y.shape
+      ordered_dict_y = collections.OrderedDict(
+        sorted(y.items(), key=lambda t: t[0]))
+      target_keys = list(ordered_dict_y.keys())
+
+      duplicate_keys = set(feature_keys).intersection(set(target_keys))
+      if len(duplicate_keys):
+        raise ValueError('{} duplicate keys are found in both x and y: '
+                         '{}'.format(len(duplicate_keys), duplicate_keys))
+
+      ordered_dict_data.update(ordered_dict_y)
+    else:
+      target_keys = _get_unique_target_key(ordered_dict_data)
+      ordered_dict_data[target_keys] = y
+
+    if len(set(v.shape[0] for v in ordered_dict_data.values())) != 1:
+      shape_dict_of_x = {k: ordered_dict_data[k].shape
+                         for k in feature_keys}
+
+      if target_keys is None:
+        shape_of_y = None
+      elif isinstance(target_keys, string_types):
+        shape_of_y = y.shape
+      else:
+        shape_of_y = {k: ordered_dict_data[k].shape
+                      for k in target_keys}
+
       raise ValueError('Length of tensors in x and y is mismatched. All '
                        'elements in x and y must have the same length.\n'
                        'Shapes in x: {}\n'
-                       'Shape for y: {}\n'.format(shape_dict_of_x, shape_of_y))
+                       'Shapes in y: {}\n'.format(shape_dict_of_x, shape_of_y))
 
     queue = feeding_functions._enqueue_data(  # pylint: disable=protected-access
-        ordered_dict_x,
+        ordered_dict_data,
         queue_capacity,
         shuffle=shuffle,
         num_threads=num_threads,
         enqueue_size=batch_size,
         num_epochs=num_epochs)
 
-    features = (queue.dequeue_many(batch_size) if num_epochs is None
+    batch = (queue.dequeue_many(batch_size) if num_epochs is None
                 else queue.dequeue_up_to(batch_size))
 
-    # Remove the first `Tensor` in `features`, which is the row number.
-    if len(features) > 0:
-      features.pop(0)
+    # Remove the first `Tensor` in `batch`, which is the row number.
+    if len(batch) > 0:
+      batch.pop(0)
 
-    features = dict(zip(ordered_dict_x.keys(), features))
-    if y is not None:
-      target = features.pop(unique_target_key)
+    features = dict(zip(feature_keys, batch[:len(feature_keys)]))
+    if target_keys is None:
+      # TODO(martinwicke), return consistent result
+      return features
+    elif isinstance(target_keys, string_types):
+      target = batch[-1]
       return features, target
-    return features
+    else:
+      target = dict(zip(target_keys, batch[-len(target_keys):]))
+      return features, target
 
   return input_fn

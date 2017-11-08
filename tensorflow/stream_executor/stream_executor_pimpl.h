@@ -104,6 +104,9 @@ class StreamExecutor {
   // platform, false is returned.
   bool GetKernel(const MultiKernelLoaderSpec &spec, KernelBase *kernel);
 
+  // Releases any state associated with the previously loaded kernel.
+  void UnloadKernel(const KernelBase *kernel);
+
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>

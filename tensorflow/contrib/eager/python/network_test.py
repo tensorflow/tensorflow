@@ -67,7 +67,7 @@ class NetworkTest(test.TestCase):
         original_output,
         self.evaluate(net(input_value)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testTrainableAttribute(self):
     net = network.Network()
     self.assertTrue(net.trainable)
@@ -75,7 +75,7 @@ class NetworkTest(test.TestCase):
       net.trainable = False
     self.assertTrue(net.trainable)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNetworkCall(self):
     net = MyNetwork(name="abcd")
     net(constant_op.constant([[2.0]]))  # Force variables to be created.
@@ -85,6 +85,7 @@ class NetworkTest(test.TestCase):
     result = net(constant_op.constant([[2.0]]))
     self.assertEqual(34.0, self.evaluate(result))
 
+  # TODO(allenl): This test creates garbage in some Python versions
   @test_util.run_in_graph_and_eager_modes()
   def testNetworkSaveRestoreAlreadyBuilt(self):
     net = MyNetwork(name="abcd")
@@ -96,6 +97,7 @@ class NetworkTest(test.TestCase):
     self._save_modify_load_network_built(net, global_step=None)
     self._save_modify_load_network_built(net, global_step=10)
 
+  # TODO(allenl): This test creates garbage in some Python versions
   @test_util.run_in_graph_and_eager_modes()
   def testSaveRestoreDefaultGlobalStep(self):
     net = MyNetwork(name="abcd")
@@ -106,6 +108,7 @@ class NetworkTest(test.TestCase):
     save_path = net.save(self.get_temp_dir())
     self.assertIn("abcd-4242", save_path)
 
+  # TODO(allenl): This test creates garbage in some Python versions
   @test_util.run_in_graph_and_eager_modes()
   def testNetworkSaveAndRestoreIntoUnbuilt(self):
     save_dir = self.get_temp_dir()
@@ -377,25 +380,25 @@ class NetworkTest(test.TestCase):
     gc.set_debug(previous_gc_debug_flags)
     gc.enable()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testAnonymousNoNameInitially(self):
     net = MyNetwork()
     with self.assertRaisesRegexp(ValueError, "does not yet have a final name"):
       net.name  # pylint: disable=pointless-statement
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testExplicitHasNameInitially(self):
     net = MyNetwork(name="abcd")
     self.assertEqual("abcd", net.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testUsingResourceVariables(self):
     net = MyNetwork()
     net(constant_op.constant([[0.]]))
     self.assertIsInstance(net.trainable_weights[0],
                           resource_variable_ops.ResourceVariable)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDuplicateNameError(self):
     one = constant_op.constant([[1.]])
     net = MyNetwork(name="foo")
@@ -405,7 +408,7 @@ class NetworkTest(test.TestCase):
       net1 = MyNetwork(name="foo")
       net1(one)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testWrappingInVariableScope(self):
     with variable_scope.variable_scope("outside_scope"):
       net = MyNetwork()
@@ -440,7 +443,7 @@ class NetworkTest(test.TestCase):
                           actual=net.trainable_weights[0].name)
     self.assertEqual("explicit_name", net.first.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testWrappingInAnonymousVariableScope(self):
     # Named outside variable_scopes are not supported at the moment. However,
     # blank-named top level variable scopes do not change variable names, and so
@@ -455,20 +458,20 @@ class NetworkTest(test.TestCase):
       net(one)
     self.assertTrue(was_called[0])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testReasonableSlashError(self):
     with self.assertRaisesRegexp(
         ValueError, "not allowed in Network names"):
       MyNetwork(name="slash/slash")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNoVariableScopeNames(self):
     with self.assertRaisesRegexp(
         ValueError, "VariableScopes are not valid Network names"):
       with variable_scope.variable_scope("some_scope") as vs:
         MyNetwork(name=vs)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testVariableScopeNameCollision(self):
     with variable_scope.variable_scope("abcd"):
       pass
@@ -478,7 +481,7 @@ class NetworkTest(test.TestCase):
       one = constant_op.constant([[1.]])
       net(one)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNetworkVariablesDoNotInterfere(self):
     core.Dense(1, use_bias=True)  # Should not interfere with naming.
     net1 = MyNetwork()
@@ -1007,6 +1010,7 @@ class NetworkTest(test.TestCase):
 
 class SequentialTest(test.TestCase):
 
+  @test_util.assert_no_garbage_created
   def testTwoLayers(self):
     # Create a sequential network with one layer.
     net = network.Sequential([core.Dense(1, use_bias=False)])
@@ -1028,6 +1032,7 @@ class SequentialTest(test.TestCase):
     l2.trainable_variables[0].assign([[11.0]])
     self.assertEqual(231.0, net(constant_op.constant([[7.0]])).numpy())
 
+  @test_util.assert_no_garbage_created
   def testFunctions(self):
     # Create a sequential network with one function.
     net = network.Sequential([nn_ops.relu])
@@ -1038,6 +1043,7 @@ class SequentialTest(test.TestCase):
     net.add(math_ops.negative)
     self.assertEqual(-2.0, net(two).numpy())
 
+  @test_util.assert_no_garbage_created
   def testTrainingLayer(self):
     net = network.Sequential([core.Dropout(0.99999)])
     two = constant_op.constant(2.0)
@@ -1051,6 +1057,7 @@ class SequentialTest(test.TestCase):
     # Should only fail spuriously 1 in 10^100 runs.
     self.fail("Didn't see dropout happen after 20 tries.")
 
+  @test_util.assert_no_garbage_created
   def testTrainingFunction(self):
     # Output depends on value of "training".
     def add_training(input_value, training=None):

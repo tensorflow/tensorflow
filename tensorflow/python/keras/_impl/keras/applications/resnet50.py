@@ -56,7 +56,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
   Arguments:
       input_tensor: input tensor
       kernel_size: default 3, the kernel size of middle conv layer at main path
-      filters: list of integers, the filterss of 3 conv layer at main path
+      filters: list of integers, the filters of 3 conv layer at main path
       stage: integer, current stage label, used for generating layer names
       block: 'a','b'..., current block label, used for generating layer names
 
@@ -95,7 +95,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
   Arguments:
       input_tensor: input tensor
       kernel_size: default 3, the kernel size of middle conv layer at main path
-      filters: list of integers, the filterss of 3 conv layer at main path
+      filters: list of integers, the filters of 3 conv layer at main path
       stage: integer, current stage label, used for generating layer names
       block: 'a','b'..., current block label, used for generating layer names
       strides: Tuple of integers.

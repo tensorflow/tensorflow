@@ -2952,7 +2952,11 @@ class Graph(object):
         if previous._hash_str == function._hash_str:
           return
         else:
-          raise ValueError("Another function is already defined with that name")
+          raise ValueError("Cannot add function (%s, hash %s) to graph (%s). "
+                           "Another function (%s, hash %s) is already defined "
+                           "with that name (%s)" % (
+                               function, function._hash_str, self,
+                               previous, previous._hash_str, name))
     # pylint: enable=protected-access
 
     self._functions[name] = function

@@ -82,6 +82,7 @@ cc_library(
 tf_cc_test(
     name = "adaptive_shared_batch_scheduler_test",
     srcs = ["adaptive_shared_batch_scheduler_test.cc"],
+    tags = ["manual"],  # b/69013768
     deps = [
         ":adaptive_shared_batch_scheduler",
         "//tensorflow/contrib/batching/test_util:fake_clock_env",

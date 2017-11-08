@@ -161,12 +161,52 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
 
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
-    # TODO(roumposg): Implement it.
-    raise NotImplementedError('create_loss not yet implemented for MultiHead.')
+    # TODO(roumposg): Add support for logits as single Tensor (with
+    # _split_logits utility).
+    if not isinstance(logits, dict):
+      raise ValueError('logits must be a dict.  Single Tensor support coming '
+                       'soon.')
+    weighted_sum_losses = []
+    example_weight_sums = []
+    labels_by_head = {}
+    for head in self._heads:
+      (weighted_sum_loss,
+       example_weight_sum, processed_labels) = head.create_loss(
+           features, mode, logits[head.name], labels[head.name])
+      weighted_sum_losses.append(weighted_sum_loss)
+      example_weight_sums.append(example_weight_sum)
+      labels_by_head[head.name] = processed_labels
+
+    weighted_sum_losses = tuple(weighted_sum_losses)
+    with ops.name_scope('merge_losses',
+                        values=weighted_sum_losses + (self._head_weights or
+                                                      tuple())):
+      if self._head_weights:
+        head_weighted_losses = []
+        head_weighted_example_weight_sums = []
+        for loss, example_weight_sum, weight in zip(weighted_sum_losses,
+                                                    example_weight_sums,
+                                                    self._head_weights):
+          head_weighted_losses.append(math_ops.multiply(loss, weight))
+          head_weighted_example_weight_sums.append(math_ops.multiply(
+              example_weight_sum, weight))
+        merged_weighted_sum_loss = math_ops.add_n(head_weighted_losses)
+        merged_example_weight_sum = math_ops.add_n(
+            head_weighted_example_weight_sums)
+      else:
+        merged_weighted_sum_loss = math_ops.add_n(weighted_sum_losses)
+        merged_example_weight_sum = math_ops.add_n(example_weight_sums)
+
+    return head_lib.LossSpec(
+        weighted_sum_loss=merged_weighted_sum_loss,
+        example_weight_sum=merged_example_weight_sum,
+        processed_labels=labels_by_head)
 
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `_Head`."""
+    # TODO(roumposg): Add support for logits as single Tensor (with
+    # _split_logits utility).
     if not isinstance(logits, dict):
       raise ValueError('logits must be a dict. Given: {}'.format(logits))
     if labels and not isinstance(labels, dict):
@@ -183,6 +223,8 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
               labels=labels[head_name] if labels else None,
               train_op_fn=_no_op_train_fn))
 
+    # TODO(roumposg): Add LOSS and LOSS_MEAN summaries for the total head-
+    # combined loss.
     if mode == model_fn.ModeKeys.TRAIN:
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None in TRAIN mode.')

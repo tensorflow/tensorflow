@@ -1,0 +1,127 @@
+// This proto describes the format of tensorflow operation level stats for
+// profiling (in tensorboard) purpose.
+
+syntax = "proto2";
+
+package tensorflow.tpu;
+
+// Result proto for OpMetrics.
+message OpMetricsResult {
+  // True if this OP is executed on the device; False if it is executed on the
+  // host.
+  optional bool on_device = 1;
+  reserved 2;  // was uint32 id.
+  // Name of this OP.
+  optional string name = 3;
+  // Rank of this OP.
+  optional uint64 rank = 4;
+  // The starting time in cycles of the last instance of this OP executed.
+  optional double last_starttime_in_cycles = 5;
+  // The ending time in cycles of the last instance of this OP executed.
+  optional double last_endtime_in_cycles = 6;
+  // If this OP (say A), is an immediate child of another OP (say B), this field
+  // stores the sum of duration in microseconds of A inside B. If A appears more
+  // than once in B, the duration of all A's appearances will be added together.
+  // This sum will be reset after the self-time of B is calculated so that it
+  // can be reused for a new parent OP.
+  optional double sum_of_duration_in_us_as_children = 7;
+  // Number of instances that this OP occurred.
+  optional uint64 occurrences = 8;
+  // Total time in microseconds spent in this OP (accumulated
+  // over all of its occurrences).
+  optional double total_time_in_us = 9;
+  // Total self time in microseconds spent in this OP
+  // (accumulated over all of its occurrences).
+  optional double total_self_time_in_us = 10;
+  // The total self time as a fraction of sum of all OP's
+  // total self time on the host.
+  optional double host_total_self_time_as_fraction_of_all_op_time = 11;
+  // Cumulative total self time in fraction on the host.
+  optional double host_cumulative_total_self_time_as_fraction_of_all_op_time =
+      12;
+  // The total self time as a fraction of sum of all OP's
+  // total self time on the device.
+  optional double device_total_self_time_as_fraction_of_all_op_time = 13;
+  // Cumulative total self time in fraction on the device.
+  optional double device_cumulative_total_self_time_as_fraction_of_all_op_time =
+      14;
+  // Total number of FLOPs incurred by this OP.
+  optional double total_flops = 15;
+  // Total time in microseconds that the MXU is occupied by this OP.
+  optional double total_bytes_accessed = 16;
+  // Total time in microseconds that the MXU is occupied by this OP.
+  optional double mxu_occupancy_in_us = 17;
+  // Total time in microseconds that the XU is occupied by this OP.
+  optional double xu_occupancy_in_us = 18;
+  // Total DMA access stall time in microseconds.
+  optional double total_dma_stall_in_us = 19;
+}
+
+// Result proto for OpMetricsDb.
+message OpMetricsDbResult {
+  // A bunch of OpMetricsResults.
+  repeated OpMetricsResult metrics_db = 1;
+}
+
+// Result proto for StepInfo.
+message StepInfoResult {
+  // The (micro) step number.
+  optional uint32 step_num = 1;
+  // The step duration in picoseconds.
+  optional uint64 duration_ps = 2;
+  // The infeed duration in picoseconds.
+  // Can turn into a map if we want a variable number of ops.
+  optional uint64 infeed_duration_ps = 3;
+}
+
+// Result proto for a sequence of steps.
+message StepSequenceResult {
+  // A sequence of StepInfoResults.
+  repeated StepInfoResult step_sequence = 1;
+}
+
+// Result proto for a StepDatabase.
+message StepDatabaseResult {
+  // A map from core_id to StepSequenceResult.
+  map<uint32, StepSequenceResult> step_sequence_per_core = 1;
+}
+
+// Result proto for Dashboard data.
+message DashboardResult {
+  // The total iteration time in nanoseconds.
+  optional double iteration_time_ns = 1;
+  // The total number of iterations.
+  optional int32 num_iterations = 2;
+  // The total computation time in nanoseconds.
+  optional double computation_time_ns = 3;
+  // The total number of computations.
+  optional int32 num_computations = 4;
+}
+
+// Result proto for HloExtraInfo.
+message HloExtraInfoResult {
+  // Category of the HLO op given by the compiler.
+  optional string category = 1;
+  // The long name of the HLO that includes the dimensions.
+  optional string long_name = 2;
+}
+
+// Result proto for HloExtraInfoMap.
+message HloExtraInfoMapResult {
+  // A map from HLO name to HloExtraInfo.
+  map<string, HloExtraInfoResult> hlo_extrainfo_map = 1;
+}
+
+// Result proto for TfStatsHelper.
+message TfOpStats {
+  // The result for the TF-metric database.
+  optional OpMetricsDbResult tf_metrics_db = 1;
+  // The result for the HLO-metric database.
+  optional OpMetricsDbResult hlo_metrics_db = 2;
+  // The result for the step database.
+  optional StepDatabaseResult step_db = 3;
+  // The result for the TPU dashboard.
+  optional DashboardResult dashboard = 4;
+  // The result for the HloExtraInfoMap.
+  optional HloExtraInfoMapResult hlo_extrainfo_map = 5;
+}

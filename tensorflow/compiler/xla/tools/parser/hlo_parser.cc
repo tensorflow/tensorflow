@@ -58,6 +58,7 @@ class HloParser {
                             string* root_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
   bool ParseSharding(HloInstruction* instruction);
+  bool ParseControlPredecessors(HloInstruction* instruction);
   bool ParseLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
   bool ParseTupleLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
   bool ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
@@ -436,10 +437,35 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
   }
-  // Parse "sharding=".
-  if (lexer_.GetKind() == TokKind::kComma) {
-    if (!ParseSharding(instruction)) {
-      return false;
+
+  bool has_sharding = false;
+  bool has_control = false;
+  while (EatIfPresent(TokKind::kComma)) {
+    string attribute_name;
+    if (!ParseAttributeName(&attribute_name)) {
+      return TokenError("expects ', sharding=' or ', control-predecessors='");
+    }
+
+    if (attribute_name == "sharding") {
+      // Parse "sharding=".
+      if (has_sharding) {
+        return TokenError("expects at most 1 'sharding='");
+      }
+      has_sharding = true;
+      if (!ParseSharding(instruction)) {
+        return false;
+      }
+    } else if (attribute_name == "control-predecessors") {
+      // Parse "control-predecessors"
+      if (has_control) {
+        return TokenError("expects at most 1 'control-predecessors='");
+      }
+      has_control = true;
+      if (!ParseControlPredecessors(instruction)) {
+        return false;
+      }
+    } else {
+      return TokenError(StrCat("unexpected attribute: ", attribute_name));
     }
   }
 
@@ -449,15 +475,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
 // ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape? ('devices=' ('['
 // dims ']')* device_list)? '}' dims ::= int_list device_list ::= int_list
 bool HloParser::ParseSharding(HloInstruction* instruction) {
-  if (!ParseToken(TokKind::kComma,
-                  "expects ',' in front of an extra attribute")) {
-    return false;
-  }
-  string attribute_name;
-  if (!ParseAttributeName(&attribute_name) || attribute_name != "sharding") {
-    return TokenError("expects attribute name: sharding");
-  }
-
   if (!ParseToken(TokKind::kLbrace,
                   "expected '{' to start sharding attribute")) {
     return false;
@@ -575,6 +592,34 @@ bool HloParser::ParseSharding(HloInstruction* instruction) {
   instruction->set_sharding(HloSharding::FromProto(sharding).ValueOrDie());
   lexer_.Lex();
   return true;
+}
+
+// '{' name+ '}'
+bool HloParser::ParseControlPredecessors(HloInstruction* instruction) {
+  if (!ParseToken(TokKind::kLbrace,
+                  "expects '{' at the beginning of control predecessors")) {
+    return false;
+  }
+  do {
+    string name;
+    if (!ParseName(&name)) {
+      return TokenError("expects a control predecessor");
+    }
+    HloInstruction* pre =
+        tensorflow::gtl::FindPtrOrNull(instruction_pool_, name);
+    if (!pre) {
+      return TokenError(
+          StrCat("control predecessor ", name, " is not defined: "));
+    }
+    Status status = pre->AddControlDependencyTo(instruction);
+    if (!status.ok()) {
+      return TokenError(StrCat("error adding control dependency for: ", name,
+                               " status: ", status.ToString()));
+    }
+  } while (EatIfPresent(TokKind::kComma));
+
+  return ParseToken(TokKind::kRbrace,
+                    "expects '}' at the end of control predecessors");
 }
 
 bool HloParser::SetValueInLiteral(int64 value, int64 linear_index,
