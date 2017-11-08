@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace xla {
 namespace gpu {
@@ -488,6 +489,9 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
   string ptx;
   {
+    tensorflow::port::Tracing::TraceMe annotation(
+        "Compiling IR", llvm_ir::AsString(module->getName()),
+        /*is_expensive=*/true);
     ScopedLoggingTimer compilation_timer(
         "Compile module " + llvm_ir::AsString(module->getName()),
         /*vlog_level=*/2);
