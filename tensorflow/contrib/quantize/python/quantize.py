@@ -387,7 +387,7 @@ class _QuantizeContext(object):
 
     if delay_requested and self.quant_delay and self.quant_delay > 0:
       activate_quant = math_ops.greater_equal(
-          training_util.get_global_step(),
+          training_util.get_or_create_global_step(),
           self.quant_delay,
           name=scope + '/activate_quant')
       quant = control_flow_ops.cond(
