@@ -687,13 +687,8 @@ Status GraphProperties::InferStatically() {
 
       input_properties.resize(ctx->num_inputs());
       for (int i = 0; i < ctx->num_inputs(); ++i) {
-<<<<<<< HEAD
-        FillTensorPropertiesFromContext(ctx->input(i), node->input_type(i), ctx,
-                                        &dim_ids, &input_properties[i]);
-=======
         shape_manager.AsTensorProperties(ctx->input(i), node->input_type(i),
                                          ctx, &input_properties[i]);
->>>>>>> b565a1d563e4c05c7c8cd7e5e3a5f44733f55104
       }
       for (const auto& edge : node->in_edges()) {
         if (!edge->src()->IsConstant()) {
@@ -719,13 +714,8 @@ Status GraphProperties::InferStatically() {
 
       output_properties.resize(ctx->num_outputs());
       for (int i = 0; i < ctx->num_outputs(); ++i) {
-<<<<<<< HEAD
-        FillTensorPropertiesFromContext(ctx->output(i), node->output_type(i),
-                                        ctx, &dim_ids, &output_properties[i]);
-=======
         shape_manager.AsTensorProperties(ctx->output(i), node->output_type(i),
                                          ctx, &output_properties[i]);
->>>>>>> b565a1d563e4c05c7c8cd7e5e3a5f44733f55104
       }
     }
   }
@@ -817,35 +807,5 @@ GraphProperties::GetOutputProperties(const string& node_name) const {
   return missing_properties_;
 }
 
-<<<<<<< HEAD
-void GraphProperties::FillTensorPropertiesFromContext(
-    const ShapeHandle& shape, const DataType& type, InferenceContext* ctx,
-    std::unordered_map<const shape_inference::Dimension*, int>* dim_ids,
-    OpInfo::TensorProperties* properties) {
-  properties->set_dtype(type);
-  if (!ctx->RankKnown(shape)) {
-    properties->mutable_shape()->set_unknown_rank(true);
-  } else {
-    for (int j = 0; j < ctx->Rank(shape); ++j) {
-      shape_inference::DimensionHandle dim = ctx->Dim(shape, j);
-      int64 d = ctx->Value(dim);
-      // Assign a negative id to unknown dimensions, starting at -2 (the -1 id
-      // reserved by TensorFlow).
-      if (d < 0) {
-        auto it = dim_ids->find(dim.ptr_);
-        if (it != dim_ids->end()) {
-          d = it->second;
-        } else {
-          d = -(dim_ids->size() + 2);
-          dim_ids->emplace(dim.ptr_, d);
-        }
-      }
-      properties->mutable_shape()->add_dim()->set_size(d);
-    }
-  }
-}
-
-=======
->>>>>>> b565a1d563e4c05c7c8cd7e5e3a5f44733f55104
 }  // end namespace grappler
 }  // end namespace tensorflow
