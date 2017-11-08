@@ -61,13 +61,14 @@ generate_backend_test_macros()
 
 cc_library(
     name = "test_utils",
-    testonly = True,
+    srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
     ],
 )

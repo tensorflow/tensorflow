@@ -177,15 +177,15 @@ void DotOperationTest::TestSquareMatrixDot(bool lhs_row_major,
                                            bool rhs_row_major) {
   auto lhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
+          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
               {{1.0, 2.0}, {3.0, -4.0}},
-              MinorToMajorForIsRowMajor(lhs_row_major)))
+              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(lhs_row_major))))
           .ConsumeValueOrDie();
   auto rhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
+          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
               {{1.0, 6.0}, {7.0, -4.0}},
-              MinorToMajorForIsRowMajor(rhs_row_major)))
+              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(rhs_row_major))))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());
@@ -362,15 +362,15 @@ void DotOperationTest::TestNonsquareMatrixDot(bool lhs_row_major,
                                               bool rhs_row_major) {
   auto lhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
+          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
               {{1.0, 2.0, 3.0}, {3.0, -4.0, -1.0}},
-              MinorToMajorForIsRowMajor(lhs_row_major)))
+              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(lhs_row_major))))
           .ConsumeValueOrDie();
   auto rhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
+          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
               {{1.0, 6.0}, {2.0, 3.0}, {7.0, -4.0}},
-              MinorToMajorForIsRowMajor(rhs_row_major)))
+              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(rhs_row_major))))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());
@@ -420,13 +420,14 @@ XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64) {
 XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
   auto lhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<complex64>(
-              {{1.0, 2.0, 3.0, -4.0}}, {1, 0}))
+          ->TransferToServer(*Literal::CreateR2WithLayout<complex64>(
+              {{1.0, 2.0, 3.0, -4.0}}, LayoutUtil::MakeLayout({1, 0})))
           .ConsumeValueOrDie();
   auto rhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<complex64>(
-              {{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}, {-4.0, 4.0}}, {1, 0}))
+          ->TransferToServer(*Literal::CreateR2WithLayout<complex64>(
+              {{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}, {-4.0, 4.0}},
+              LayoutUtil::MakeLayout({1, 0})))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());

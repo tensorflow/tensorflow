@@ -469,8 +469,7 @@ template <typename NativeT>
 std::vector<NativeT> ClientLibraryTestBase::CreatePseudorandomR1(
     const int width, NativeT min_value, NativeT max_value, uint32 seed) {
   std::vector<NativeT> result(width);
-  test_utils::PseudorandomGenerator<NativeT> generator(min_value, max_value,
-                                                       seed);
+  PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int i = 0; i < width; ++i) {
     result[i] = generator.get();
   }
@@ -482,8 +481,7 @@ std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
     uint32 seed) {
   auto result = MakeUnique<Array2D<NativeT>>(rows, cols);
-  test_utils::PseudorandomGenerator<NativeT> generator(min_value, max_value,
-                                                       seed);
+  PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int y = 0; y < rows; ++y) {
     for (int x = 0; x < cols; ++x) {
       (*result)(y, x) = generator.get();

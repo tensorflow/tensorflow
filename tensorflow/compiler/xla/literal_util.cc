@@ -569,8 +569,16 @@ int64 Literal::LinearIndex(
   return IndexUtil::MultidimensionalIndexToLinearIndex(shape(), multi_index);
 }
 
-string Literal::ToString() const {
+string Literal::ToString(bool print_layout) const {
   std::vector<string> pieces;
+
+  auto shape_to_string = [print_layout](const Shape& shape) {
+    if (print_layout) {
+      return ShapeUtil::HumanStringWithLayout(shape);
+    } else {
+      return ShapeUtil::HumanString(shape);
+    }
+  };
 
   auto element_to_string =
       [this](tensorflow::gtl::ArraySlice<int64> indices) -> string {
@@ -585,7 +593,7 @@ string Literal::ToString() const {
 
   // TODO(b/32894291): refactor this code to reduce code duplication.
   if (ShapeUtil::IsTuple(shape())) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" (\n");
     pieces.push_back(tensorflow::str_util::Join(
         tuple_literals(), ",\n", [](string* out, const Literal& element) {
@@ -601,7 +609,7 @@ string Literal::ToString() const {
     }
     pieces.push_back("}");
   } else if (ShapeUtil::Rank(shape()) == 2) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {\n");
     for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back("  { ");
@@ -613,7 +621,7 @@ string Literal::ToString() const {
     }
     pieces.push_back("}");
   } else if (ShapeUtil::Rank(shape()) == 3) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {\n");
     for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back(i0 > 0 ? ",\n{" : "{");
@@ -628,7 +636,7 @@ string Literal::ToString() const {
     }
     pieces.push_back("\n}");
   } else if (ShapeUtil::Rank(shape()) == 4) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {\n");
     for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back(tensorflow::strings::Printf("  {  /*i0=%lld*/\n", i0));
@@ -649,7 +657,7 @@ string Literal::ToString() const {
     }
     pieces.push_back("}");
   } else if (ShapeUtil::Rank(shape()) == 5) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {\n");
     for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back(tensorflow::strings::Printf("  {  /*i0=%lld*/\n", i0));
@@ -676,7 +684,7 @@ string Literal::ToString() const {
     }
     pieces.push_back("}");
   } else {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {...}");
   }
 
