@@ -231,7 +231,7 @@ static void CopyOutputBackpropRegion(const DepthwiseArgs& args,
       }
       // Pad to vector-register width (if needed).
       for (int64 d = 0; d < pad_size; ++d) {
-        buffer[buf_base + vectorized_size + scalar_size + d] = 0;
+        buffer[buf_base + vectorized_size + scalar_size + d] = static_cast<T>(0);
       }
     }
   }
@@ -297,7 +297,7 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
 
   for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
     // Reset accumulator.
-    auto vaccum = Eigen::internal::pset1<Packet>(0);
+    auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
     for (int j = 0; j < filter_spatial_size; ++j) {
       // Calculate index.
       const int64 index = i + j * padded_filter_inner_dim_size;
@@ -318,7 +318,7 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
   }
 
   if (output_scalar_size > 0) {
-    auto vaccum = Eigen::internal::pset1<Packet>(0);
+    auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
     for (int j = 0; j < filter_spatial_size; ++j) {
       const int64 index =
           output_vectorized_size + j * padded_filter_inner_dim_size;
@@ -346,7 +346,7 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
   if (depth_multiplier > 1) {
     for (int64 d = 0; d < in_depth; ++d) {
       const int64 index = d * args.depth_multiplier;
-      T accum = 0;
+      T accum = static_cast<T>(0);
       for (int64 dm = 0; dm < dm_vectorized_size; dm += kPacketSize) {
         const auto v = Eigen::internal::ploadu<Packet>(out_buffer + index + dm);
         accum += Eigen::internal::predux(v);
@@ -510,6 +510,7 @@ static void DepthwiseConvBackpropInputReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
+extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
@@ -884,6 +885,7 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
+extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 
