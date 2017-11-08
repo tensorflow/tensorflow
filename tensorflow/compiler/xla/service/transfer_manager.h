@@ -119,7 +119,7 @@ class TransferManager {
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.
-  virtual int64 GetByteSizeRequirement(const Shape& shape) = 0;
+  virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
 
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.

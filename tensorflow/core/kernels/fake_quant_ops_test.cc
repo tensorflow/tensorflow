@@ -476,6 +476,12 @@ TEST_F(QuantOpsTest, WithArgsGradient_4Bits_NarrowRange) {
   ExpectClose(expected, *output);
 }
 
+TEST_F(QuantOpsTest, WithVars_ZeroMinAndMax) {
+  RunTestFakeQuantWithMinMaxVars(8, false, 0.0f, 0.0f, TensorShape({2, 3}),
+                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+}
+
 TEST_F(QuantOpsTest, WithVarsNoNudging_RegularRange) {
   // Original quantization range: [-10 + 0 / 4, -10 + 255 / 4], scale: 1/4.
   // Original zero point: 40, no nudging necessary.
@@ -635,6 +641,47 @@ TEST_F(QuantOpsTest, WithVarsNudgedZero15_4Bits_NarrowRange) {
   RunTestFakeQuantWithMinMaxVars(4, true, -6.8f, 0.2f, TensorShape({2, 3}),
                                  {-7.1f, -7.0f, -6.9f, -6.5f, 0.0f, 0.1f},
                                  {-7.0f, -7.0f, -7.0f, -6.5f, 0.0f, 0.0f});
+}
+
+TEST_F(QuantOpsTest, WithVarsGradient_ZeroMinAndMax) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsGradient")
+                   .Attr("narrow_range", false)
+                   .Input(FakeInput(DT_FLOAT))  // gradients
+                   .Input(FakeInput(DT_FLOAT))  // inputs
+                   .Input(FakeInput(DT_FLOAT))  // min
+                   .Input(FakeInput(DT_FLOAT))  // max
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  // Upstream gradients.
+  AddRandomInput(TensorShape({2, 3}));
+  // Downstream inputs.
+  AddInputFromArray<float>(TensorShape({2, 3}),
+                           {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  // Min.
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  // Max.
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+
+  // Tested code.
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output_bprop_wrt_input = GetOutput(0);
+  Tensor expected_bprop_wrt_input(allocator(), DT_FLOAT, TensorShape({2, 3}));
+  auto in_flat = GetInput(0).flat<float>();
+  FillValues<float>(
+      &expected_bprop_wrt_input,
+      {in_flat(0), in_flat(1), in_flat(2), in_flat(3), in_flat(4), in_flat(5)});
+  ExpectClose(expected_bprop_wrt_input, *output_bprop_wrt_input);
+
+  Tensor* output_bprop_wrt_min = GetOutput(1);
+  Tensor expected_bprop_wrt_min(allocator(), DT_FLOAT, TensorShape({}));
+  expected_bprop_wrt_min.flat<float>()(0) = 0.0f;
+  ExpectClose(expected_bprop_wrt_min, *output_bprop_wrt_min);
+
+  Tensor* output_bprop_wrt_max = GetOutput(2);
+  Tensor expected_bprop_wrt_max(allocator(), DT_FLOAT, TensorShape({}));
+  expected_bprop_wrt_max.flat<float>()(0) = 0.0f;
+  ExpectClose(expected_bprop_wrt_max, *output_bprop_wrt_max);
 }
 
 TEST_F(QuantOpsTest, WithVarsGradient_RegularRange) {
@@ -813,6 +860,13 @@ TEST_F(QuantOpsTest, WithVarsGradient_4Bits_NarrowRange) {
   Tensor expected_bprop_wrt_max(allocator(), DT_FLOAT, TensorShape({}));
   expected_bprop_wrt_max.flat<float>()(0) = in_flat(5);
   ExpectClose(expected_bprop_wrt_max, *output_bprop_wrt_max);
+}
+
+TEST_F(QuantOpsTest, WithVarsPerChannel_ZeroMinAndMax) {
+  RunTestFakeQuantWithMinMaxVarsPerChannel(
+      8, false, TensorShape({4}), {0.0f, 0.0f, 0.0f, 0.0f},
+      {0.0f, 0.0f, 0.0f, 0.0f}, TensorShape({4}), {0.0f, 0.0f, 0.0f, 0.0f},
+      {0.0f, 0.0f, 0.0f, 0.0f});
 }
 
 TEST_F(QuantOpsTest, WithVarsPerChannelDim1NudgedDown_RegularRange) {
@@ -1164,6 +1218,45 @@ TEST_F(QuantOpsTest, WithVarsPerChannelDim4NudgedUp_4Bits_NarrowRange) {
          5.5f,   6.0f,   6.5f,   6.5f,   6.5f,    6.5f,
          6.5f,   6.5f,   6.5f,   6.5f,   6.5f,    6.5f});
   // clang-format on
+}
+
+TEST_F(QuantOpsTest, WithVarsPerChannelDim1GradientNudgedDown_ZeroMinAndMax) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Attr("narrow_range", false)
+                   .Input(FakeInput(DT_FLOAT))  // gradients
+                   .Input(FakeInput(DT_FLOAT))  // inputs
+                   .Input(FakeInput(DT_FLOAT))  // min
+                   .Input(FakeInput(DT_FLOAT))  // max
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  // Upstream gradients.
+  AddRandomInput(TensorShape({4}));
+  // Downstream inputs.
+  AddInputFromArray<float>(TensorShape({4}), {0.0, 0.0, 0.0, 0.0f});
+  // Min.
+  AddInputFromArray<float>(TensorShape({4}), {0.0, 0.0, 0.0, 0.0f});
+  // Max.
+  AddInputFromArray<float>(TensorShape({4}), {0.0, 0.0, 0.0, 0.0f});
+
+  // Tested code.
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor* output_bprop_wrt_input = GetOutput(0);
+  Tensor expected_bprop_wrt_input(allocator(), DT_FLOAT, TensorShape({4}));
+  auto grad_flat = GetInput(0).flat<float>();
+  FillValues<float>(&expected_bprop_wrt_input,
+                    {grad_flat(0), grad_flat(1), grad_flat(2), grad_flat(3)});
+  ExpectClose(expected_bprop_wrt_input, *output_bprop_wrt_input);
+
+  Tensor* output_bprop_wrt_min = GetOutput(1);
+  Tensor expected_bprop_wrt_min(allocator(), DT_FLOAT, TensorShape({4}));
+  FillValues<float>(&expected_bprop_wrt_min, {0.0f, 0.0f, 0.0f, 0.0f});
+  ExpectClose(expected_bprop_wrt_min, *output_bprop_wrt_min);
+
+  Tensor* output_bprop_wrt_max = GetOutput(2);
+  Tensor expected_bprop_wrt_max(allocator(), DT_FLOAT, TensorShape({4}));
+  FillValues<float>(&expected_bprop_wrt_max, {0.0f, 0.0f, 0.0f, 0.0f});
+  ExpectClose(expected_bprop_wrt_max, *output_bprop_wrt_max);
 }
 
 TEST_F(QuantOpsTest, WithVarsPerChannelDim1GradientNudgedDown_RegularRange) {

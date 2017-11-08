@@ -101,11 +101,9 @@ class DefaultCostModel : public ParallelCostModel {
   const std::unique_ptr<HloCostAnalysis> cost_analysis_;
 };
 
-
 ParallelTaskAssignment::ParallelTaskAssignment(
     const int64 max_parallelism,
-    const HloCostAnalysis::ShapeSizeFunction& shape_size,
-    HloModule* module) {
+    const HloCostAnalysis::ShapeSizeFunction& shape_size, HloModule* module) {
   VLOG(1) << "ParallelTaskAssignment max_parallelism: " << max_parallelism;
   // Run cost analysis on 'module'.
   auto cost_analysis = MakeUnique<HloCostAnalysis>(shape_size);
@@ -153,7 +151,6 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
 StatusOr<bool> ParallelTaskAssigner::Run(HloModule* module) {
   XLA_VLOG_LINES(2, "ParallelTaskAssigner ENTRY");
   XLA_VLOG_LINES(3, module->ToString());
-
   // Compute target parallel task counts for all instructions in 'module'.
   HloToParallelTasks hlo_to_parallel_tasks;
   ComputeTargetParallelTasks(module, &hlo_to_parallel_tasks);
@@ -230,6 +227,9 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
 
 void ParallelTaskAssigner::ComputeTargetParallelTasks(
     HloModule* module, HloToParallelTasks* hlo_to_parallel_tasks) {
+  ParallelTaskAssignment parallel_task_assignment(max_parallelism_,
+                                                  shape_size_function_, module);
+
   // Compute parallel task counts for all instructions in 'module'.
   for (auto* computation : module->computations()) {
     if (computation->IsFusionComputation()) {
@@ -238,7 +238,7 @@ void ParallelTaskAssigner::ComputeTargetParallelTasks(
     for (auto* instruction : computation->instructions()) {
       // Query ParallelTaskAssignment for target parallel task count.
       const int64 target_parallel_task_count =
-          parallel_task_assignment_.GetTargetParallelTaskCount(instruction);
+          parallel_task_assignment.GetTargetParallelTaskCount(instruction);
       if (target_parallel_task_count > 1) {
         hlo_to_parallel_tasks->insert(
             {instruction, target_parallel_task_count});
