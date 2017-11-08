@@ -100,8 +100,8 @@ func (s *Session) ListDevices() ([]Device, error) {
 		}
 
 		device := Device{
-			Name: C.GoString(device_name),
-			Type: C.GoString(device_type),
+			Name:        C.GoString(device_name),
+			Type:        C.GoString(device_type),
 			MemoryLimit: int64(memory_limit),
 		}
 

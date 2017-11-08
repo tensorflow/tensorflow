@@ -303,10 +303,10 @@ func TestListDevices(t *testing.T) {
 
 	for _, d := range devices {
 		switch d.Type {
-			case "GPU":
-				gpus ++
-			case "CPU":
-				cpus ++
+		case "GPU":
+			gpus++
+		case "CPU":
+			cpus++
 		}
 	}
 }
