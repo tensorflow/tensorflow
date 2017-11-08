@@ -761,12 +761,22 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
 string HloDotDumper::GetInstructionNodeInlinedOperands(
     const HloInstruction* instr) {
   auto stringify_constant = [](const HloInstruction* constant) {
-    if (ShapeUtil::IsEffectiveScalar(constant->shape())) {
-      auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
-          constant->shape(), /*linear_index=*/0);
-      return Printf("%s (%s)", constant->literal().GetAsString(elem_idx),
+    const auto& shape = constant->shape();
+
+    // Print the literal value of constants with <= K elements.
+    optional<int64> elem_count;
+    if (!ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)) {
+      elem_count = 1;
+      for (int64 dim : shape.dimensions()) {
+        *elem_count *= dim;
+      }
+    }
+    if (elem_count.has_value() && *elem_count <= 8) {
+      return Printf("%s (%s)", constant->literal().ToString(),
                     ShapeUtil::HumanString(constant->shape()));
     }
+
+    // Otherwise, print e.g. "%constant.42 (s32[100])".
     string constant_name;
     if (tensorflow::StringPiece(constant->name()).starts_with("%constant")) {
       constant_name = constant->name();
