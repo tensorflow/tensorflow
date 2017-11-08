@@ -85,7 +85,11 @@ class HloModule {
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
   // Return a pointer to the entry computation of the module..
-  HloComputation* entry_computation() const {
+  const HloComputation* entry_computation() const {
+    CHECK_NE(nullptr, entry_computation_);
+    return entry_computation_;
+  }
+  HloComputation* entry_computation() {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
   }
