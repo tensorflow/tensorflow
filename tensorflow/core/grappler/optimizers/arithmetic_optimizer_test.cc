@@ -131,6 +131,27 @@ TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsReal) {
   EXPECT_EQ("c", output.node(5).input(0));
 }
 
+TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsWithChain) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  Output recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
+  Output id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  Output squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
+  Output recip2 = ops::Reciprocal(s.WithOpName("recip2"), squeeze);
+  Output id2 = ops::Identity(s.WithOpName("id2"), recip2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, output.node_size());
+  EXPECT_EQ("squeeze", output.node(5).input(0));
+  EXPECT_EQ("c", output.node(2).input(0));
+}
+
 TEST_F(ArithmeticOptimizerTest, SimplifyReplaceTrivialSums) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
