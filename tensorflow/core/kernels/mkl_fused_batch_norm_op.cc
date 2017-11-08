@@ -703,14 +703,20 @@ class MklFusedBatchNormOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     try {
       auto cpu_engine = engine(engine::cpu, 0);
-      const Tensor& src_tensor          = MklGetInput(context, 0);
-      const Tensor& scale_tensor        = MklGetInput(context, 1);
-      const Tensor& shift_tensor        = MklGetInput(context, 2);
-      const Tensor& est_mean_tensor     = MklGetInput(context, 3);
-      const Tensor& est_variance_tensor = MklGetInput(context, 4);
+      const size_t src_index = 0;    // index of src input tensor
+      const size_t scale_index = 1;  // index of scale tensor
+      const size_t shift_index = 2;  // index of shift tensor
+      const size_t mean_index = 3;   // index of est_mean tensor
+      const size_t var_index = 4;    // index of est_variance tensor
+
+      const Tensor& src_tensor          = MklGetInput(context, src_index);
+      const Tensor& scale_tensor        = MklGetInput(context, scale_index);
+      const Tensor& shift_tensor        = MklGetInput(context, shift_index);
+      const Tensor& est_mean_tensor     = MklGetInput(context, mean_index);
+      const Tensor& est_variance_tensor = MklGetInput(context, var_index);
 
       MklDnnShape dnn_shape_src;
-      GetMklShape(context, 0, &dnn_shape_src);
+      GetMklShape(context, src_index, &dnn_shape_src);
 
       if (dnn_shape_src.IsMklTensor()) {
         OP_REQUIRES(context, dnn_shape_src.GetDimension() == 4,
@@ -742,7 +748,7 @@ class MklFusedBatchNormOp : public OpKernel {
       if (is_training_) {
         OP_REQUIRES(context, est_mean_tensor.dim_size(0) == 0,
                     errors::InvalidArgument(
-                        "estimated_mean empty for training",
+                        "estimated_mean must be empty for training",
                         est_mean_tensor.shape().DebugString()));
         OP_REQUIRES(context, est_variance_tensor.dim_size(0) == 0,
                     errors::InvalidArgument(
@@ -751,15 +757,23 @@ class MklFusedBatchNormOp : public OpKernel {
       }
 
       if (dnn_shape_src.IsMklTensor())
-        depth_ = dnn_shape_src.DimSize(1);
+        depth_ = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
       else
         ExtractParams(context);
 
-      // Batch mean
+      // Indices of output tensors
+      const size_t dst_index = 0;
+      const size_t batch_mean_index = 1;
+      const size_t batch_variance_index = 2;
+      const size_t saved_mean_index = 3;
+      const size_t saved_variance_index = 4;
+
+      // allocate batch mean output tensor
       Tensor* batch_mean_tensor = nullptr;
       MklDnnShape mkl_shape_batch_mean;
       mkl_shape_batch_mean.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 1,
+      AllocateOutputSetMklShape(context,
+                                batch_mean_index,
                                 &batch_mean_tensor,
                                 scale_tensor.shape(),
                                 mkl_shape_batch_mean);
@@ -769,7 +783,8 @@ class MklFusedBatchNormOp : public OpKernel {
       Tensor* batch_variance_tensor = nullptr;
       MklDnnShape mkl_shape_batch_variance;
       mkl_shape_batch_variance.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 2,
+      AllocateOutputSetMklShape(context,
+                                batch_variance_index,
                                 &batch_variance_tensor,
                                 scale_tensor.shape(),
                                 mkl_shape_batch_variance);
@@ -794,7 +809,7 @@ class MklFusedBatchNormOp : public OpKernel {
         format_m = TFDataFormatToMklDnnDataFormat(tensor_format_);
       }
 
-      // src
+      // set src primitive
       memory::dims src_dims;
       if (dnn_shape_src.IsMklTensor()) {
         src_dims = TFShapeToMklDnnDimsInNCHW(dnn_shape_src.GetTfShape(),
@@ -807,14 +822,13 @@ class MklFusedBatchNormOp : public OpKernel {
       auto src_md = dnn_shape_src.IsMklTensor()
                     ? dnn_shape_src.GetMklLayout()
                     : memory::desc(src_dims, MklDnnType<T>(), format_m);
-
       src.SetUsrMem(src_md, &src_tensor);
 
-      // weights
+      // set weights primitive
       // MKL-DNN packs scale & shift as "weights":
       // <scale>...<scale><shift>...<shift>
       auto weights_desc = memory::desc({2, depth_},
-                                       memory::data_type::f32,
+                                       MklDnnType<T>(),
                                        memory::format::nc);
       auto weights_pd = memory::primitive_desc(weights_desc, cpu_engine);
       auto weights_m = memory(weights_pd);
@@ -824,6 +838,7 @@ class MklFusedBatchNormOp : public OpKernel {
                     const_cast<T*>(scale_tensor.flat<T>().data()));
       T* shift_tf = reinterpret_cast<T*>(
                     const_cast<T*>(shift_tensor.flat<T>().data()));
+
       for (int k=0; k < depth_; k++) {
         weights_data[k] = scale_tf[k];
         weights_data[k + depth_] = shift_tf[k];
@@ -834,7 +849,7 @@ class MklFusedBatchNormOp : public OpKernel {
       Tensor* saved_mean_tensor = nullptr;
       MklDnnShape mkl_shape_saved_mean;
       mkl_shape_saved_mean.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 3,
+      AllocateOutputSetMklShape(context, saved_mean_index,
                                 &saved_mean_tensor,
                                 scale_tensor.shape(),
                                 mkl_shape_saved_mean);
@@ -843,15 +858,15 @@ class MklFusedBatchNormOp : public OpKernel {
       Tensor* saved_variance_tensor = nullptr;
       MklDnnShape mkl_shape_saved_variance;
       mkl_shape_saved_variance.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 4,
+      AllocateOutputSetMklShape(context, saved_variance_index,
                                 &saved_variance_tensor,
                                 scale_tensor.shape(),
                                 mkl_shape_saved_variance);
       CHECK_NOTNULL(saved_variance_tensor);
 
-      // mean
+      // set mean primitive
       auto mean_desc = memory::desc({1, depth_},
-                                    memory::data_type::f32,
+                                    MklDnnType<T>(),
                                     memory::format::nc);
       auto mean_pd = memory::primitive_desc(mean_desc, cpu_engine);
       char* saved_mean_data_tf = reinterpret_cast<char*>
@@ -862,10 +877,10 @@ class MklFusedBatchNormOp : public OpKernel {
       auto mean_m = memory(mean_pd,
                            reinterpret_cast<void*>(saved_mean_data_tf));
 
-      // variance
+      // set variance primitive
       auto variance_desc = memory::desc({1, depth_},
-                                        memory::data_type::f32,
-                                        memory::format::nc);
+                                    MklDnnType<T>(),
+                                    memory::format::nc);
       auto variance_pd = memory::primitive_desc(variance_desc, cpu_engine);
       char* saved_variance_data_tf = reinterpret_cast<char*>
                   (saved_variance_tensor->flat<T>().data());
@@ -895,14 +910,12 @@ class MklFusedBatchNormOp : public OpKernel {
         dnn_shape_dst.SetElemType(MklDnnType<T>());
         dnn_shape_dst.SetTfLayout(dnn_shape_src.GetDimension(),
                                   src_dims, format_m);
-        dnn_shape_dst.SetTfDimOrder(dnn_shape_src.GetDimension(),
-                                    tensor_format_);
         tf_shape_dst.AddDim(dst_pd.get_size()/sizeof(T));
       } else {
         dnn_shape_dst.SetMklTensor(false);
         tf_shape_dst = src_tensor.shape();
       }
-      AllocateOutputSetMklShape(context, 0, &dst_tensor,
+      AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
                                 tf_shape_dst, dnn_shape_dst);
 
       // Output of batchnorm has same shape as input.
@@ -1000,14 +1013,22 @@ class MklFusedBatchNormGradOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     try {
       auto cpu_engine = engine(engine::cpu, 0);
-      const Tensor& diff_dst_tensor = MklGetInput(context, 0);
-      const Tensor& src_tensor = MklGetInput(context, 1);
-      const Tensor& scale_tensor = MklGetInput(context, 2);
-      const Tensor& saved_mean_tensor = MklGetInput(context, 3);
-      const Tensor& saved_variance_tensor = MklGetInput(context, 4);
+
+      const size_t diff_dst_index = 0;  // index of diff_dst tensor
+      const size_t src_index = 1;       // index of src input tensor
+      const size_t scale_index = 2;     // index of scale tensor
+      const size_t mean_index = 3;      // index of saved_mean tensor
+      const size_t variance_index = 4;  // index of saved_variance tensor
+      const Tensor& diff_dst_tensor = MklGetInput(context, diff_dst_index);
+      const Tensor& src_tensor = MklGetInput(context, src_index);
+      const Tensor& scale_tensor = MklGetInput(context, scale_index);
+      const Tensor& saved_mean_tensor = MklGetInput(context, mean_index);
+      const Tensor& saved_variance_tensor = MklGetInput(context,
+                                            variance_index);
+
       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
-      GetMklShape(context, 1, &dnn_shape_src);
-      GetMklShape(context, 0, &dnn_shape_diff_dst);
+      GetMklShape(context, src_index, &dnn_shape_src);
+      GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
 
       if (dnn_shape_diff_dst.IsMklTensor()) {
         OP_REQUIRES(context, dnn_shape_diff_dst.GetDimension() == 4,
@@ -1048,7 +1069,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
                       saved_variance_tensor.shape().DebugString()));
 
       if (dnn_shape_src.IsMklTensor())
-        depth_ = dnn_shape_src.DimSize(1);
+        depth_ = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
       else
         ExtractParams(context);
 
@@ -1085,7 +1106,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
                             diff_dst_tensor.shape(),
                             tensor_format_);
 
-      // src & diff_dst
+      // set src and diff_dst primitives
       memory::desc src_md({}, memory::data_undef, memory::format_undef);
       memory::desc diff_dst_md({}, memory::data_undef, memory::format_undef);
       if (dnn_shape_src.IsMklTensor() || dnn_shape_diff_dst.IsMklTensor()) {
@@ -1106,7 +1127,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       // weights -- DNN packs scales/shifts as weights in order of
       // scale, ..., scale, shift, ..., shift
       auto weights_desc = memory::desc({2, depth_},
-                                       memory::data_type::f32,
+                                       MklDnnType<T>(),
                                        memory::format::nc);
       auto weights_pd = memory::primitive_desc(weights_desc, cpu_engine);
       auto weights_m = memory(weights_pd);
@@ -1118,7 +1139,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
         weights_data[k + depth_] = 0;
       }
 
-      // mean
+      // set mean primitive
       memory::dims mv_dims = GetMeanVarianceDims();
       mean.SetUsrMem(mv_dims,
                      memory::format::nc,
@@ -1126,16 +1147,16 @@ class MklFusedBatchNormGradOp : public OpKernel {
                      (saved_mean_tensor.flat<T>().data())));
       mean.SetOpMemDesc(mv_dims, memory::format::nc);
 
-      // variance
+      // set variance primitive
       variance.SetUsrMem(mv_dims,  memory::format::nc,
                          const_cast<void*>(static_cast<const void*>
                          (saved_variance_tensor.flat<T>().data())));
       variance.SetOpMemDesc(mv_dims, memory::format::nc);
 
-      // diff_weight
+      // set diff_weight primitive
       auto diff_weights_desc = memory::desc(
                                  {2, depth_},
-                                 memory::data_type::f32,
+                                 MklDnnType<T>(),
                                  memory::format::nc);
       auto diff_weights_pd = memory::primitive_desc(
                                 diff_weights_desc,
@@ -1150,6 +1171,13 @@ class MklFusedBatchNormGradOp : public OpKernel {
       auto bnrm_fwd_pd = batch_normalization_forward::primitive_desc(
                                 bnrm_fwd_desc,
                                 cpu_engine);
+
+      // Indices of output tensors
+      const size_t diff_src_index = 0;    // index of diff_src tensor
+      const size_t diff_scale_index = 1;  // index of diff_scale tensor
+      const size_t diff_shift_index = 2;  // index of diff_shift tensor
+      const size_t p1_index = 3;  // index of 1st placeholder tensor
+      const size_t p2_index = 4;  // index of 2nd placeholder tensor
 
       // allocate diff_src tensor
       MklDnnShape dnn_shape_diff_src;
@@ -1172,7 +1200,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
         dnn_shape_diff_src.SetMklTensor(false);
         tf_shape_diff_src = src_tensor.shape();
       }
-      AllocateOutputSetMklShape(context, 0, &diff_src_tensor,
+      AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
                                 tf_shape_diff_src, dnn_shape_diff_src);
 
       diff_src.SetUsrMem(src_md, diff_src_tensor);
@@ -1208,13 +1236,13 @@ class MklFusedBatchNormGradOp : public OpKernel {
       Tensor* diff_scale_tensor = nullptr;
       MklDnnShape mkl_shape_diff_scale;
       mkl_shape_diff_scale.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 1, &diff_scale_tensor,
+      AllocateOutputSetMklShape(context, diff_scale_index, &diff_scale_tensor,
                                 tf_shape_scale_shift, mkl_shape_diff_scale);
 
       Tensor* diff_shift_tensor = nullptr;
       MklDnnShape mkl_shape_diff_shift;
       mkl_shape_diff_shift.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 2, &diff_shift_tensor,
+      AllocateOutputSetMklShape(context, diff_shift_index, &diff_shift_tensor,
                                 tf_shape_scale_shift, mkl_shape_diff_shift);
 
       // copy data: diff_scale and diff_shift
@@ -1234,9 +1262,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
       Tensor* p1_tensor = nullptr, *p2_tensor = nullptr;
       MklDnnShape mkl_shape_p;
       mkl_shape_p.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 3, &p1_tensor,
+      AllocateOutputSetMklShape(context, p1_index, &p1_tensor,
                                 TensorShape({}), mkl_shape_p);
-      AllocateOutputSetMklShape(context, 4, &p2_tensor,
+      AllocateOutputSetMklShape(context, p2_index, &p2_tensor,
                                 TensorShape({}), mkl_shape_p);
     } catch (mkldnn::error &e) {
       string error_msg = "Status: " + std::to_string(e.status) +
