@@ -1653,6 +1653,8 @@ def placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={x: rand_array}))  # Will succeed.
   ```
 
+  @compatibility{eager} Placeholders are not compatible with eager execution.
+
   Args:
     dtype: The type of elements in the tensor to be fed.
     shape: The shape of the tensor to be fed (optional). If the shape is not
@@ -1662,7 +1664,14 @@ def placeholder(dtype, shape=None, name=None):
   Returns:
     A `Tensor` that may be used as a handle for feeding a value, but not
     evaluated directly.
+
+  Raises:
+    RuntimeError: if eager execution is enabled
   """
+  if context.in_eager_mode():
+    raise RuntimeError("tf.placeholder() is not compatible with "
+                       "eager execution.")
+
   return gen_array_ops._placeholder(dtype=dtype, shape=shape, name=name)
 
 
@@ -1706,6 +1715,8 @@ def sparse_placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
   ```
 
+  @compatibility{eager} Placeholders are not compatible with eager execution.
+
   Args:
     dtype: The type of `values` elements in the tensor to be fed.
     shape: The shape of the tensor to be fed (optional). If the shape is not
@@ -1715,7 +1726,14 @@ def sparse_placeholder(dtype, shape=None, name=None):
   Returns:
     A `SparseTensor` that may be used as a handle for feeding a value, but not
     evaluated directly.
+
+  Raises:
+    RuntimeError: if eager execution is enabled
   """
+  if context.in_eager_mode():
+    raise RuntimeError("tf.placeholder() is not compatible with "
+                       "eager execution.")
+
   shape_name = (name + "/shape") if name is not None else None
   shape, rank = _normalize_sparse_shape(shape, shape_name)
   if shape is None:
