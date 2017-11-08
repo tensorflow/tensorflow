@@ -90,14 +90,11 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
     def optimizer_fn():
       return optimizers.get_optimizer_instance('Adagrad', learning_rate=0.05)
 
-    # TODO(isaprykin):  Switch Estimator to use allow_soft_placement=True
-    # during export_savedmodel and then switch this test to replicate over
-    # GPUs instead of CPUs.
     estimator = estimator_lib.Estimator(
         model_fn=replicate_model_fn.replicate_model_fn(
             estimator.model_fn,
             optimizer_fn,
-            devices=['/cpu:0', '/cpu:0', '/cpu:0']),
+            devices=['/gpu:0', '/gpu:1', '/gpu:2']),
         model_dir=estimator.model_dir,
         config=estimator.config,
         params=estimator.params)
