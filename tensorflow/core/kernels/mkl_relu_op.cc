@@ -16,8 +16,6 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
 
-#include <stdio.h>
-#include <memory.h>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -380,26 +378,20 @@ class MklReluOpBase : public OpKernel {
   explicit MklReluOpBase(OpKernelConstruction* context) : OpKernel(context) {
   }
 
+  virtual void Compute_Scalar(OpKernelContext* context) = 0;
+
   void Compute(OpKernelContext* context) override {
     try {
       auto cpu_engine = engine(engine::cpu, 0);
-      const Tensor& src_tensor = MklGetInput(context, 0);
+      const size_t src_index = 0;  // index of src input tensor
+      const size_t dst_index = 0;  // index of dst output tensor
+      const Tensor& src_tensor = MklGetInput(context, src_index);
       MklDnnShape dnn_shape_src;
-      GetMklShape(context, 0, &dnn_shape_src);
+      GetMklShape(context, src_index, &dnn_shape_src);
 
       Tensor* dst_tensor = nullptr;
-
-      // handle the case of a scalar
       if (src_tensor.dims() == 0) {
-        void* user_i = static_cast<void*>(const_cast<T*>(
-                           src_tensor.flat<T>().data()));
-        MklShape mkl_shape_dst;
-        mkl_shape_dst.SetMklTensor(false);
-        AllocateOutputSetMklShape(context, 0, &dst_tensor, src_tensor.shape(),
-                                  mkl_shape_dst);
-        void* out_o = static_cast<void*>(dst_tensor->flat<T>().data());
-        (static_cast<T*>(out_o))[0] =
-              std::max((static_cast<T*>(user_i))[0], static_cast<T>(0));
+        Compute_Scalar(context);
         return;
       }
 
@@ -407,10 +399,9 @@ class MklReluOpBase : public OpKernel {
       MklDnnData<T> src(&cpu_engine);
       MklDnnData<T> dst(&cpu_engine);
 
-      // src
+      // Set DNN primitive - src
       memory::desc src_md({}, memory::data_undef, memory::format_undef);
       if (dnn_shape_src.IsMklTensor()) {
-        // Get input Mkl layout.
         src_md = dnn_shape_src.GetMklLayout();
       } else {
         auto src_dims = TFShapeToMklDnnDims(src_tensor.shape());
@@ -445,7 +436,7 @@ class MklReluOpBase : public OpKernel {
         dnn_shape_dst.SetMklTensor(false);
         tf_shape_dst = src_tensor.shape();
       }
-      AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
+      AllocateOutputSetMklShape(context, dst_index, &dst_tensor, tf_shape_dst,
                                 dnn_shape_dst);
 
       // Destination memory descriptor is same as source memory descriptor.
@@ -479,38 +470,34 @@ class MklReluGradOpBase : public OpKernel {
   explicit MklReluGradOpBase(OpKernelConstruction* context) :
     OpKernel(context) {}
 
+  virtual void Compute_Scalar(OpKernelContext* context) = 0;
+
   void Compute(OpKernelContext* context)  {
     try {
-       auto cpu_engine = engine(engine::cpu, 0);
-       MklDnnData<T> src(&cpu_engine);
-       MklDnnData<T> diff_dst(&cpu_engine);
-       MklDnnData<T> diff_src(&cpu_engine);
+      auto cpu_engine = engine(engine::cpu, 0);
+      MklDnnData<T> src(&cpu_engine);
+      MklDnnData<T> diff_dst(&cpu_engine);
+      MklDnnData<T> diff_src(&cpu_engine);
 
-       const Tensor& src_tensor      = MklGetInput(context, 1);
-       const Tensor& diff_dst_tensor = MklGetInput(context, 0);
-       Tensor* diff_src_tensor       = nullptr;
+      const size_t diff_dst_index = 0;  // index of diff_dst input tensor
+      const size_t src_index = 1;       // index of src input tensor
+      const size_t diff_src_index = 0;  // index of diff_src output tensor
 
-       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
-       GetMklShape(context, 1, &dnn_shape_src);
-       GetMklShape(context, 0, &dnn_shape_diff_dst);
+      const Tensor& src_tensor      = MklGetInput(context, src_index);
+      const Tensor& diff_dst_tensor = MklGetInput(context, diff_dst_index);
+      Tensor* diff_src_tensor       = nullptr;
 
-       int src_dims_size = src_tensor.dims();
-       if (src_dims_size == 0) {  // handle the case of a scalar
-         MklShape mkl_shape_diff_src;
-         mkl_shape_diff_src.SetMklTensor(false);
-         AllocateOutputSetMklShape(context, 0, &diff_src_tensor,
-                                  diff_dst_tensor.shape(), mkl_shape_diff_src);
-         void* out_o = static_cast<void*>(diff_src_tensor->flat<T>().data());
-         void* user_i =
-            static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
-         void* user_g =
-           static_cast<void*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
-         (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0] *
-            ((static_cast<T*>(user_i))[0] > 0);
-         return;
-       }
+      MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
+      GetMklShape(context, src_index, &dnn_shape_src);
+      GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
 
-      // src & diff_dst
+      int src_dims_size = src_tensor.dims();
+      if (src_dims_size == 0) {
+        Compute_Scalar(context);
+        return;
+      }
+
+      // Set DNN primitives for src & diff_dst
       memory::desc src_md({}, memory::data_undef, memory::format_undef);
       memory::desc diff_dst_md({}, memory::data_undef, memory::format_undef);
       if (dnn_shape_src.IsMklTensor() || dnn_shape_diff_dst.IsMklTensor()) {
@@ -530,34 +517,34 @@ class MklReluGradOpBase : public OpKernel {
       src.SetUsrMem(src_md, &src_tensor);
       diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
 
-       T alpha = 0, beta = 0;
-       std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
-       auto relu_fwd_desc = relu_forward::desc(prop_kind::forward_training,
-                                               alg_kind, src_md, alpha, beta);
-       relu_fwd_pd.reset(new relu_forward::primitive_desc(relu_fwd_desc,
-                                                          cpu_engine));
-       auto relu_bwd_desc = relu_backward::desc(alg_kind, diff_dst_md, src_md,
+      T alpha = 0, beta = 0;
+      std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
+      auto relu_fwd_desc = relu_forward::desc(prop_kind::forward_training,
+                                              alg_kind, src_md, alpha, beta);
+      relu_fwd_pd.reset(new relu_forward::primitive_desc(relu_fwd_desc,
+                                                         cpu_engine));
+      auto relu_bwd_desc = relu_backward::desc(alg_kind, diff_dst_md, src_md,
                                                 alpha, beta);
-       auto relu_bwd_pd  = relu_backward::primitive_desc(relu_bwd_desc,
+      auto relu_bwd_pd  = relu_backward::primitive_desc(relu_bwd_desc,
                                                 cpu_engine, *relu_fwd_pd);
 
-       // allocate diff_src tensor
-       MklDnnShape dnn_shape_diff_src;
-       TensorShape tf_shape_diff_src;
-       if (dnn_shape_src.IsMklTensor()) {
-         dnn_shape_diff_src.SetMklTensor(true);
-         auto diff_src_pd = relu_bwd_pd.diff_src_primitive_desc();
-         dnn_shape_diff_src.SetMklLayout(&diff_src_pd);
-         dnn_shape_diff_src.SetElemType(MklDnnType<T>());
-         dnn_shape_diff_src.SetTfLayout(dnn_shape_src.GetDimension(),
-                                        dnn_shape_src.GetSizesAsMklDnnDims(),
-                                        dnn_shape_src.GetTfDataFormat());
-         tf_shape_diff_src.AddDim(diff_src_pd.get_size()/sizeof(T));
-       } else {
-         dnn_shape_diff_src.SetMklTensor(false);
-         tf_shape_diff_src = src_tensor.shape();
-       }
-       AllocateOutputSetMklShape(context, 0, &diff_src_tensor,
+      // allocate diff_src tensor
+      MklDnnShape dnn_shape_diff_src;
+      TensorShape tf_shape_diff_src;
+      if (dnn_shape_src.IsMklTensor()) {
+        dnn_shape_diff_src.SetMklTensor(true);
+        auto diff_src_pd = relu_bwd_pd.diff_src_primitive_desc();
+        dnn_shape_diff_src.SetMklLayout(&diff_src_pd);
+        dnn_shape_diff_src.SetElemType(MklDnnType<T>());
+        dnn_shape_diff_src.SetTfLayout(dnn_shape_src.GetDimension(),
+                                       dnn_shape_src.GetSizesAsMklDnnDims(),
+                                       dnn_shape_src.GetTfDataFormat());
+        tf_shape_diff_src.AddDim(diff_src_pd.get_size()/sizeof(T));
+      } else {
+        dnn_shape_diff_src.SetMklTensor(false);
+        tf_shape_diff_src = src_tensor.shape();
+      }
+      AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
                                  tf_shape_diff_src, dnn_shape_diff_src);
 
       // diff_src memory descriptor is same as diff_dst memory descriptor.
@@ -594,6 +581,26 @@ class MklReluOp : public MklReluOpBase<Device, T, eltwise_relu> {
 
   explicit MklReluOp(OpKernelConstruction* context) :
   MklReluOpBase<Device, T, eltwise_relu>(context) {}
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t src_index = 0;  // index of src input tensor
+    const size_t dst_index = 0;  // index of dst output tensor
+    const Tensor& src_tensor = MklGetInput(context, src_index);
+    MklDnnShape dnn_shape_src;
+    GetMklShape(context, src_index, &dnn_shape_src);
+
+    Tensor* dst_tensor = nullptr;
+    void* user_i = static_cast<void*>(const_cast<T*>(
+                         src_tensor.flat<T>().data()));
+    MklDnnShape dnn_shape_dst;
+    dnn_shape_dst.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
+                              src_tensor.shape(), dnn_shape_dst);
+    void* out_o = static_cast<void*>(dst_tensor->flat<T>().data());
+    (static_cast<T*>(out_o))[0] =
+              std::max((static_cast<T*>(user_i))[0], static_cast<T>(0));
+    return;
+  }
 };
 
 template <typename Device, typename T>
@@ -603,6 +610,32 @@ class MklReluGradOp : public MklReluGradOpBase<Device, T, eltwise_relu> {
 
   explicit MklReluGradOp(OpKernelConstruction* context) :
   MklReluGradOpBase<Device, T, eltwise_relu>(context) {}
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t diff_dst_index = 0;  // index of diff_dst input tensor
+    const size_t src_index = 1;       // index of src input tensor
+    const size_t diff_src_index = 0;  // index of diff_src output tensor
+    const Tensor& src_tensor    = MklGetInput(context, src_index);
+    const Tensor& diff_dst_tensor = MklGetInput(context, diff_dst_index);
+    Tensor* diff_src_tensor = nullptr;
+
+    MklDnnShape dnn_shape_diff_dst;
+    GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
+
+    int src_dims_size = src_tensor.dims();
+    MklDnnShape dnn_shape_diff_src;
+    dnn_shape_diff_src.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
+                              diff_dst_tensor.shape(), dnn_shape_diff_src);
+    void* out_o = static_cast<void*>(diff_src_tensor->flat<T>().data());
+    void* user_i =
+          static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
+    void* user_g =
+          static_cast<void*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
+    (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0] *
+                                  ((static_cast<T*>(user_i))[0] > 0);
+    return;
+  }
 };
 
 template <typename Device, typename T>
@@ -612,6 +645,30 @@ class MklEluOp : public MklReluOpBase<Device, T, eltwise_elu> {
 
   explicit MklEluOp(OpKernelConstruction* context) :
   MklReluOpBase<Device, T, eltwise_elu>(context) {}
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t src_index = 0;  // index of src input tensor
+    const size_t dst_index = 0;  // index of dst output tensor
+    const Tensor& src_tensor = MklGetInput(context, src_index);
+    MklDnnShape dnn_shape_src;
+    GetMklShape(context, src_index, &dnn_shape_src);
+
+    Tensor* dst_tensor = nullptr;
+    void* user_i = static_cast<void*>(const_cast<T*>(
+                         src_tensor.flat<T>().data()));
+    MklDnnShape dnn_shape_dst;
+    dnn_shape_dst.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
+                              src_tensor.shape(), dnn_shape_dst);
+    void* out_o = static_cast<void*>(dst_tensor->flat<T>().data());
+    // return exp(feature) - 1 if feature > 0; feature otherwise
+    T feature = (static_cast<T*>(user_i))[0];
+    if (feature < 0)
+      (static_cast<T*>(out_o))[0] = std::exp(feature);
+    else
+      (static_cast<T*>(out_o))[0] = feature;
+    return;
+  }
 };
 
 template <typename Device, typename T>
@@ -621,6 +678,37 @@ class MklEluGradOp : public MklReluGradOpBase<Device, T, eltwise_elu> {
 
   explicit MklEluGradOp(OpKernelConstruction* context) :
   MklReluGradOpBase<Device, T, eltwise_elu>(context) {}
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t diff_dst_index = 0;  // index of diff_dst input tensor
+    const size_t src_index = 1;       // index of src input tensor
+    const size_t diff_src_index = 0;  // index of diff_src output tensor
+    const Tensor& src_tensor    = MklGetInput(context, src_index);
+    const Tensor& diff_dst_tensor = MklGetInput(context, diff_dst_index);
+    Tensor* diff_src_tensor = nullptr;
+
+    MklDnnShape dnn_shape_diff_dst;
+    GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
+
+    int src_dims_size = src_tensor.dims();
+    MklDnnShape dnn_shape_diff_src;
+    dnn_shape_diff_src.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
+                              diff_dst_tensor.shape(), dnn_shape_diff_src);
+    void* out_o = static_cast<void*>(diff_src_tensor->flat<T>().data());
+    void* user_i =
+          static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
+    void* user_g =
+          static_cast<void*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
+    // gradient of elu(x) = 1 if x > 0; elu(x) + 1 otherwise
+    T feature = (static_cast<T*>(user_i))[0];
+    if (feature > 0) {
+      (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0];
+    } else {
+      T elu = std::exp(feature) - 1;
+      (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0] * (elu + 1);
+    }
+  }
 };
 
 template <typename Device, typename T>
@@ -630,6 +718,29 @@ class MklTanhOp : public MklReluOpBase<Device, T, eltwise_tanh> {
 
   explicit MklTanhOp(OpKernelConstruction* context) :
   MklReluOpBase<Device, T, eltwise_tanh>(context) {}
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t src_index = 0;  // index of src input tensor
+    const size_t dst_index = 0;  // index of dst output tensor
+    const Tensor& src_tensor = MklGetInput(context, src_index);
+    MklDnnShape dnn_shape_src;
+    GetMklShape(context, src_index, &dnn_shape_src);
+
+    Tensor* dst_tensor = nullptr;
+    void* user_i = static_cast<void*>(const_cast<T*>(
+                         src_tensor.flat<T>().data()));
+    MklDnnShape dnn_shape_dst;
+    dnn_shape_dst.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
+                              src_tensor.shape(), dnn_shape_dst);
+    void* out_o = static_cast<void*>(dst_tensor->flat<T>().data());
+    // tanh(x) = (e^x - e^(-x))/ (e^x + e^(-x))
+    T feature = (static_cast<T*>(user_i))[0];
+    T e1 = std::exp(feature);
+    T e2 = std::exp(-feature);
+    (static_cast<T*>(out_o))[0] = (e1 - e2)/(e1 + e2);
+    return;
+  }
 };
 
 template <typename Device, typename T>
@@ -639,6 +750,36 @@ class MklTanhGradOp : public MklReluGradOpBase<Device, T, eltwise_tanh> {
 
   explicit MklTanhGradOp(OpKernelConstruction* context) :
   MklReluGradOpBase<Device, T, eltwise_tanh>(context) {}
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t diff_dst_index = 0;  // index of diff_dst input tensor
+    const size_t src_index = 1;       // index of src input tensor
+    const size_t diff_src_index = 0;  // index of diff_src output tensor
+    const Tensor& src_tensor    = MklGetInput(context, src_index);
+    const Tensor& diff_dst_tensor = MklGetInput(context, diff_dst_index);
+    Tensor* diff_src_tensor = nullptr;
+
+    MklDnnShape dnn_shape_diff_dst;
+    GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
+
+    int src_dims_size = src_tensor.dims();
+    MklDnnShape dnn_shape_diff_src;
+    dnn_shape_diff_src.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
+                              diff_dst_tensor.shape(), dnn_shape_diff_src);
+    void* out_o = static_cast<void*>(diff_src_tensor->flat<T>().data());
+    void* user_i =
+          static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
+    // gradient of tanh(x) = 1 - tanh(x)^2
+    T feature = (static_cast<T*>(user_i))[0];
+    T e1 = std::exp(feature);
+    T e2 = std::exp(-feature);
+    T tanh = (e1 - e2)/(e1 + e2);
+    void* user_g =
+          static_cast<void*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
+    (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0] *
+                                  (1 - tanh * tanh);
+  }
 };
 
 #endif
