@@ -545,7 +545,6 @@ class MklConcatOp : public OpKernel {
     MklShape mkl_tensor_mkl_shape;
     mkl_tensor_mkl_shape.SetMklTensor(false);
     mkl_tensor_mkl_shape.SetDimensions(4);
-    mkl_tensor_mkl_shape.SetTfDimOrder(4);  // Dimensions
     Tensor* mkl_tensor = nullptr;
     TensorShape mkl_tensor_tf_shape;
     mkl_tensor_tf_shape.AddDim(
@@ -794,7 +793,7 @@ class MklConcatOp : public OpKernel {
     Tensor* output_tensor = nullptr;
     TensorShape tf_shape_output;
     tf_shape_output.AddDim(
-        SIZE_OF_MKL_SERIAL_DATA(dnn_shape_output.GetDimension()));
+        dnn_shape_output.GetSerializeBufferSize());
     context->allocate_output(
         GetTensorMetaDataIndex(0, context->num_outputs()),
         tf_shape_output, &output_tensor);
