@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -279,6 +280,13 @@ std::vector<AlgorithmDesc> ConvolutionThunk::GetAlgorithms(
   return algorithms;
 }
 
+static string AlgorithmToString(const se::dnn::AlgorithmDesc& algo) {
+  if (algo.tensor_ops_enabled()) {
+    return tensorflow::strings::StrCat(algo.algo_id(), "+TC");
+  }
+  return tensorflow::strings::StrCat(algo.algo_id());
+}
+
 tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     const BatchDescriptor& input_descriptor, se::DeviceMemory<float> input_data,
     const FilterDescriptor& filter_descriptor,
@@ -303,6 +311,8 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
           buffer_allocations.device_ordinal(),
           buffer_allocations.memory_allocator());
       se::dnn::ProfileResult profile_result;
+      VLOG(3) << "Trying algorithm " << AlgorithmToString(algorithm)
+              << " for ConvolutionThunk: " << this;
       bool launch_ok =
           Convolve(input_descriptor, input_data, filter_descriptor, filter_data,
                    output_descriptor, output_data, convolution_descriptor,
@@ -310,6 +320,11 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
                    &scratch_allocator, &profile_result)
               .ok();
       if (launch_ok && profile_result.is_valid()) {
+        VLOG(3) << "Run of algorithm " << AlgorithmToString(algorithm)
+                << " for ConvolutionThunk " << this << " succeeded, taking "
+                << profile_result.elapsed_time_in_ms()
+                << "ms. (Best result: " << best_result.elapsed_time_in_ms()
+                << "ms)";
         if (profile_result.elapsed_time_in_ms() <
             best_result.elapsed_time_in_ms()) {
           best_result = profile_result;
@@ -319,6 +334,9 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
                 best_result_without_scratch.elapsed_time_in_ms()) {
           best_result_without_scratch = profile_result;
         }
+      } else {
+        VLOG(3) << "Run of algorithm " << AlgorithmToString(algorithm)
+                << " for ConvolutionThunk " << this << " failed.";
       }
     }
 
@@ -343,8 +361,8 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
 
   {
     VLOG(2) << "Using convolution algorithm ("
-            << best_algorithm_.algorithm().algo_id() << ", "
-            << best_algorithm_.algorithm_no_scratch().algo_id()
+            << AlgorithmToString(best_algorithm_.algorithm()) << ", "
+            << AlgorithmToString(best_algorithm_.algorithm_no_scratch())
             << ") for ConvolutionThunk: " << this;
     ConvolveScratchAllocator scratch_allocator(
         buffer_allocations.device_ordinal(),
