@@ -182,6 +182,40 @@ def _make_custom_getter_for_deferred_restorations():
   return _custom_getter, deferred_restorations
 
 
+def _make_prefix_stripping_map_fn(scope_name):
+  """Closure for stripping the scope name of a Network.
+
+  Implemented as a closure rather than a member function to avoid reference
+  cycles in deferred restorations (this function should not have a reference to
+  the Network which created it).
+
+  Args:
+    scope_name: The Network.scope_name to strip from variables.
+  Returns:
+    A scope_name-stripping default `map_fn` for the Network.
+  """
+
+  def _strip_variable_prefix(original_variable_name):
+    """The default map_func for saving or restoring variables.
+
+    Strips the variable prefix for the Network on which save/restore was called,
+    and leaves other variable names fully qualified in the checkpoint.
+
+    Args:
+      original_variable_name: The _shared_name of the variable (no :0
+        suffix) to map.
+    Returns:
+      The checkpoint name of the variable.
+    """
+    scope_name_with_slash = scope_name + "/"
+    if original_variable_name.startswith(scope_name_with_slash):
+      return original_variable_name[len(scope_name_with_slash):]
+    else:
+      return original_variable_name
+
+  return _strip_variable_prefix
+
+
 class Network(base.Layer):
   """Represents the composition of a set of Layers.
 
@@ -488,24 +522,6 @@ class Network(base.Layer):
         "at https://github.com/tensorflow/tensorflow/issues/new if this is "
         "important to you")
 
-  def _strip_variable_prefix(self, original_variable_name):
-    """The default map_func for saving or restoring variables.
-
-    Strips the variable prefix for the Network on which save/restore was called,
-    and leaves other variable names fully qualified in the checkpoint.
-
-    Args:
-      original_variable_name: The _shared_name of the variable (no :0
-        suffix) to map.
-    Returns:
-      The checkpoint name of the variable.
-    """
-    scope_name_with_slash = self.scope_name + "/"
-    if original_variable_name.startswith(scope_name_with_slash):
-      return original_variable_name[len(scope_name_with_slash):]
-    else:
-      return original_variable_name
-
   def save(self, save_path, global_step=None, map_func=None):
     """Save variables from the Network to a checkpoint.
 
@@ -543,7 +559,7 @@ class Network(base.Layer):
       save_path = os.path.join(save_path, self.name)
     user_map_func = map_func
     if map_func is None:
-      map_func = self._strip_variable_prefix
+      map_func = _make_prefix_stripping_map_fn(self.scope_name)
     variable_map = {}
     for variable in self.variables:
       mapped_name = map_func(variable._shared_name)
@@ -737,7 +753,7 @@ class Network(base.Layer):
       save_path = os.path.join(save_path, self.name)
     user_map_func = map_func
     if map_func is None:
-      map_func = self._strip_variable_prefix
+      map_func = _make_prefix_stripping_map_fn(self.scope_name)
     # Step one is to restore any existing variables from the checkpoint.
     existing_variables_by_checkpoint_name = self._restore_existing_variables(
         save_path=save_path,

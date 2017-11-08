@@ -78,7 +78,7 @@ class GenericTransferManager : public TransferManager {
       const Shape& shape,
       perftools::gputools::DeviceMemoryBase* region) override;
 
-  int64 GetByteSizeRequirement(const Shape& shape) override;
+  int64 GetByteSizeRequirement(const Shape& shape) const override;
 
  private:
   // The platform this transfer manager targets.

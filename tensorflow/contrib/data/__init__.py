@@ -41,8 +41,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
 
+# pylint: disable=unused-import
 from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
 from tensorflow.contrib.data.python.ops.batching import unbatch

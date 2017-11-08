@@ -329,6 +329,30 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a_rand, b_rand)
 
 
+class GarbageCollectionTest(test_util.TensorFlowTestCase):
+
+  def test_no_reference_cycle_decorator(self):
+
+    class ReferenceCycleTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_garbage_created
+      def test_has_cycle(self):
+        a = []
+        a.append(a)
+
+      @test_util.assert_no_garbage_created
+      def test_has_no_cycle(self):
+        pass
+
+    with self.assertRaises(AssertionError):
+      ReferenceCycleTest().test_has_cycle()
+
+    ReferenceCycleTest().test_has_no_cycle()
+
+
 @test_util.with_c_api
 class IsolationTest(test_util.TensorFlowTestCase):
 
