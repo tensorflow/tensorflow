@@ -574,6 +574,13 @@ class BaseLayerTest(test.TestCase):
       self.assertEqual(3, result['label'].numpy())
       self.assertEqual(4.0, result['logits'].numpy())
 
+  def testActivityRegularizer(self):
+    regularizer = math_ops.reduce_sum
+    layer = base_layers.Layer(activity_regularizer=regularizer)
+    x = array_ops.placeholder('int32')
+    layer.apply(x)
+    self.assertEqual(len(layer.get_losses_for(x)), 1)
+
 
 class NetworkTest(test.TestCase):
 
