@@ -57,11 +57,57 @@ using TensorTape = std::unordered_map<int64, int64>;
 // Map from operation-id to tape entry.
 using OpTape = std::unordered_map<int64, OpTapeEntry>;
 
+// Operations the tape needs to perform on tensors to do backpropagation. Named
+// "vspace" because a subset of these are related to a vector space, such as
+// adding gradients, getting zeroes, etc. Currently cannot be implemented
+// without using tensorflow python code, hence left unspecified here.
+//
+// We currently use void* for tensors, backward functions, and gradients (which
+// can be but are not required to be tensors). TODO(apassos) replace this first
+// with templates to allow for pyobject specialization in the client followed by
+// a TFE_TensorHandle specialization, which is blocked by quite a few things
+// still.
+class VSpace {
+ public:
+  virtual ~VSpace() {}
+
+  // Returns the number of elements in the tensor.
+  virtual int64 NumElements(void* tensor) const = 0;
+
+  // Consumes references to the tensors in the gradient_tensors list and returns
+  // a tensor with the result.
+  virtual void* AggregateGradients(
+      gtl::ArraySlice<void*> gradient_tensors) const = 0;
+
+  // Returns a tensor of the right shape and dtype filled with zeros.
+  virtual void* Zeros(TensorShape shape, DataType dtype) const = 0;
+
+  // Returns a Tensor which is filled with ones and like the input.
+  virtual void* OnesLike(void*) const = 0;
+
+  // Returns an integer which is a unique-to-within-this-program handle for this
+  // tensor.
+  virtual int64 TensorId(void* tensor) const = 0;
+
+  // Calls the passed-in backward function.
+  virtual Status CallBackwardFunction(void* backward_function,
+                                      gtl::ArraySlice<void*> output_gradients,
+                                      std::vector<void*>* result) const = 0;
+
+  // Deletes the input tensor.
+  virtual void DeleteTensor(void* tensor) const = 0;
+};
+
 // Traces the execution of operations, doing eager garbage collection, and
 // exporting a full trace so other code can do backpropagation. Not thread-safe.
 class GradientTape {
  public:
   GradientTape() {}
+  ~GradientTape() {
+    for (const auto& pair : op_tape_) {
+      pair.second.backward_function_deleter();
+    }
+  }
 
   bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids);
 
@@ -75,10 +121,14 @@ class GradientTape {
 
   void DeleteTrace(int64 tensor_id);
 
-  // Note: it is only valid to call Export once per tape, and after calling
-  // export the tape is no longer valid (i.e. calls to ShouldRecord, Watch,
-  // Record, and Delete have undefined behavior).
-  std::pair<TensorTape, OpTape> Export();
+  // Consumes the internal state of the tape (so cannot be called more than
+  // once) and produces the gradient of the target tensors with respect to the
+  // source tensors. The output gradients are used if not empty and not
+  // null. The result is populated with one tensor per target element.
+  Status Gradient(const VSpace& vspace, gtl::ArraySlice<void*> target,
+                  gtl::ArraySlice<void*> sources,
+                  gtl::ArraySlice<void*> output_gradients,
+                  std::vector<void*>* result);
 
  private:
   TensorTape tensor_tape_;
