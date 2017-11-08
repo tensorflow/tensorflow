@@ -1948,7 +1948,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
-        "Reshape dimensions not a permutation of the operand dimensions.");
+        "Reshape dimensions [%s] are not a permutation of the operand "
+        "dimensions (operand shape is %s).",
+        tensorflow::str_util::Join(dimensions, ",").c_str(),
+        ShapeUtil::HumanString(operand).c_str());
   }
 
   return inferred_shape;

@@ -431,8 +431,9 @@ XLA_TEST_F(ReshapeTest, ToScalar) {
 XLA_TEST_F(ReshapeTest, BadDimensions) {
   ComputationBuilder b(client_, TestName());
   b.Reshape(b.ConstantR1<int32>({1}), {}, {});
-  EXPECT_THAT(ExecuteToString(&b, {}),
-              ::testing::HasSubstr("dimensions not a permutation"));
+  EXPECT_THAT(
+      ExecuteToString(&b, {}),
+      ::testing::HasSubstr("not a permutation of the operand dimensions"));
 }
 
 XLA_TEST_F(ReshapeTest, BadNewSizes) {
