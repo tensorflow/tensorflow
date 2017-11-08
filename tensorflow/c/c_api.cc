@@ -890,8 +890,8 @@ const tensorflow::AttrValue* GetAttrValue(TF_Operation* oper,
                                           TF_Status* status) {
   const tensorflow::AttrValue* attr = oper->node.attrs().Find(attr_name);
   if (attr == nullptr) {
-    status->status =
-        InvalidArgument("Operation has no attr named '", attr_name, "'.");
+    status->status = InvalidArgument("Operation '", oper->node.name(),
+                                     "' has no attr named '", attr_name, "'.");
   }
   return attr;
 }
