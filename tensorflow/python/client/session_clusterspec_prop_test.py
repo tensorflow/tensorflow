@@ -169,7 +169,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     # BaseRemoteRendezvous::SameWorkerRecvDone that means the test doesn't
     # actually capture the motivating bug unless run on a GPU machine.
     #
-    # Example error message (before bugfix -- linebreaks added because  lint):
+    # Example error message (before bugfix -- line breaks added because  lint):
     #
     # W0718 17:14:41.521534  190121 device_mgr.cc:107] Unknown device:
     #     /job:worker/replica:0/task:0/device:CPU:0 all devices:
