@@ -89,6 +89,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+    tags = ["manual"],  # b/69013768
 )
 
 cc_library(
