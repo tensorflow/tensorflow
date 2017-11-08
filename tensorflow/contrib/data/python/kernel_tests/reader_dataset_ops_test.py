@@ -21,7 +21,6 @@ import gzip
 import os
 import zlib
 
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.example import example_pb2
@@ -34,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test

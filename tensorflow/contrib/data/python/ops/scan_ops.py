@@ -19,11 +19,11 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_dataset_ops
 
 
 class _ScanDataset(dataset_ops.Dataset):

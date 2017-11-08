@@ -12,6 +12,20 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 py_library(
+    name = "dataset_ops",
+    srcs = [
+        "dataset_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":transformation_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+    ],
+)
+
+py_library(
     name = "iterator_ops",
     srcs = [
         "iterator_ops.py",
@@ -59,7 +73,6 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":gen_dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -112,31 +125,6 @@ tf_custom_op_py_library(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-    ],
-)
-
-tf_gen_op_wrapper_py(
-    name = "gen_dataset_ops",
-    out = "gen_dataset_ops.py",
-    deps = ["//tensorflow/contrib/data:dataset_ops_op_lib"],
-)
-
-tf_custom_op_py_library(
-    name = "dataset_ops",
-    srcs = ["dataset_ops.py"],
-    dso = ["//tensorflow/contrib/data:_dataset_ops.so"],
-    kernels = [
-        "//tensorflow/contrib/data:dataset_ops_op_lib",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":gen_dataset_ops",
-        ":transformation_ops",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
     ],
 )
 
