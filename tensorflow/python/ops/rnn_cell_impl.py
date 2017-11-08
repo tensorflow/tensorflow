@@ -335,19 +335,14 @@ class SRUCell(_LayerRNNCell):
     projection matrices.
     bias_initializer: (optional) The initializer to use for the bias.
   """
-
-  def __init__(self,
-               num_units,
-               activation=None,
-               reuse=None,
-               kernel_initializer=None,
-               bias_initializer=None):
-    super(SRUCell, self).__init__(_reuse=reuse)
+  def __init__(self, num_units,
+               activation=None, reuse=None, name=None):
+    super(SRUCell, self).__init__(_reuse=reuse, name=name)
     self._num_units = num_units
     self._activation = activation or math_ops.tanh
-    self._kernel_initializer = kernel_initializer
-    self._bias_initializer = bias_initializer
-    self._gate_linear = None
+
+    # Restrict inputs to be 2-dimensional matrices
+    self.input_spec = base_layer.InputSpec(ndim=2)
 
   @property
   def state_size(self):
@@ -363,30 +358,29 @@ class SRUCell(_LayerRNNCell):
                        % inputs_shape)
 
     input_depth = inputs_shape[1].value
+    assert input_depth == self._num_units, "SRU requires unit_num == input_size"
+
     self._kernel = self.add_variable(
         _WEIGHTS_VARIABLE_NAME,
-        shape=[input_depth, 3 * self._num_units],
-        initializer=self._kernel_initializer)
-
-    bias_initializer = self._bias_initializer or \
-                       init_ops.constant_initializer(0.0, dtype=self.dtype)
+        shape=[input_depth, 3 * self._num_units])
 
     self._bias = self.add_variable(
         _BIAS_VARIABLE_NAME,
         shape=[2 * self._num_units],
-        initializer=bias_initializer)
+        initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
 
     self._built = True
 
   def call(self, inputs, state):
-    """Simple recurrent unit (SRU) with nunits cells."""
+    """Simple recurrent unit (SRU) with num_units cells."""
 
     U = math_ops.matmul(inputs, self._kernel)
-    x_bar, f_intermediate, r_intermediate = \
-      array_ops.split(value=U, num_or_size_splits=3, axis=1)
+    x_bar, f_intermediate, r_intermediate = array_ops.split(value=U,
+                                                            num_or_size_splits=3,
+                                                            axis=1)
 
-    f_r = math_ops.sigmoid(nn_ops.bias_add(array_ops.concat([f_intermediate, \
-      r_intermediate], 1), self._bias))
+    f_r = math_ops.sigmoid(nn_ops.bias_add(array_ops.concat(
+      [f_intermediate, r_intermediate], 1), self._bias))
     f, r = array_ops.split(value=f_r, num_or_size_splits=2, axis=1)
 
     c = f * state + (1.0 - f) * x_bar
