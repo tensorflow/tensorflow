@@ -139,10 +139,9 @@ class BatchNormalization(base.Layer):
                virtual_batch_size=None,
                adjustment=None,
                name=None,
-               dtype=None,
                **kwargs):
     super(BatchNormalization, self).__init__(
-        name=name, trainable=trainable, dtype=dtype, **kwargs)
+        name=name, trainable=trainable, **kwargs)
     self.axis = axis
     self.momentum = momentum
     self.epsilon = epsilon
