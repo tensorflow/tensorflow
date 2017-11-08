@@ -19,16 +19,17 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
-import multiprocessing
 import os
 import re
 import shutil
+import threading
 
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.summary.writer import writer_cache
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -697,6 +698,9 @@ class KerasCallbacksTest(test.TestCase):
                             validation_steps=1,
                             callbacks=callbacks_factory(histogram_freq=1))
 
+      # Make sure file writer cache is clear to avoid failures during cleanup.
+      writer_cache.FileWriterCache.clear()
+
   def test_TensorBoard_multi_input_output(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -790,14 +794,15 @@ class KerasCallbacksTest(test.TestCase):
 
       # Start an arbitrary process that should run during model
       # training and be terminated after training has completed.
-      def target():
-        while True:
-          pass
+      e = threading.Event()
 
-      p = multiprocessing.Process(target=target)
-      p.start()
+      def target():
+        e.wait()
+
+      t = threading.Thread(target=target)
+      t.start()
       cleanup_callback = keras.callbacks.LambdaCallback(
-          on_train_end=lambda logs: p.terminate())
+          on_train_end=lambda logs: e.set())
 
       cbks = [cleanup_callback]
       model.fit(
@@ -808,8 +813,8 @@ class KerasCallbacksTest(test.TestCase):
           callbacks=cbks,
           epochs=5,
           verbose=0)
-      p.join()
-      assert not p.is_alive()
+      t.join()
+      assert not t.is_alive()
 
   def test_TensorBoard_with_ReduceLROnPlateau(self):
     with self.test_session():
