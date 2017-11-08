@@ -111,6 +111,20 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(repr(self.inc_v), dump.run_fetches_info)
     self.assertEqual(repr(None), dump.run_feed_keys_info)
 
+  def testDumpingOnASingleRunWorksWithRelativePathForDebugDumpDir(self):
+    sess = dumping_wrapper.DumpingDebugWrapperSession(
+        self.sess, session_root=self.session_root, log_usage=False)
+    sess.run(self.inc_v)
+    dump_dirs = glob.glob(os.path.join(self.session_root, "run_*"))
+    cwd = os.getcwd()
+    try:
+      os.chdir(self.session_root)
+      dump = debug_data.DebugDumpDir(
+          os.path.relpath(dump_dirs[0], self.session_root))
+      self.assertAllClose([10.0], dump.get_tensors("v", 0, "DebugIdentity"))
+    finally:
+      os.chdir(cwd)
+
   def testDumpingOnASingleRunWithFeedDictWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess, session_root=self.session_root, log_usage=False)
