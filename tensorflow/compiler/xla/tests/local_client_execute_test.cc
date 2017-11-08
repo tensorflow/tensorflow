@@ -136,16 +136,14 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Create x as a col-major array.
-  auto x_array = LiteralToShapedBuffer(
-      *test_utils::CreateR2LiteralWithLayout({{1.0f, 2.0f}, {3.0f, 4.0f}},
-                                             /*minor_to_major=*/{0, 1}));
+  auto x_array = LiteralToShapedBuffer(*Literal::CreateR2WithLayout(
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1})));
   EXPECT_TRUE(LayoutUtil::Equal(x_array->shape().layout(),
                                 LayoutUtil::MakeLayout({0, 1})));
 
   // Create y as a row-major array.
-  auto y_array = LiteralToShapedBuffer(
-      *test_utils::CreateR2LiteralWithLayout({{10.0f, 20.0f}, {30.0f, 40.0f}},
-                                             /*minor_to_major=*/{1, 0}));
+  auto y_array = LiteralToShapedBuffer(*Literal::CreateR2WithLayout(
+      {{10.0f, 20.0f}, {30.0f, 40.0f}}, LayoutUtil::MakeLayout({1, 0})));
   EXPECT_TRUE(LayoutUtil::Equal(y_array->shape().layout(),
                                 LayoutUtil::MakeLayout({1, 0})));
 

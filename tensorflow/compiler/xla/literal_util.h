@@ -450,7 +450,7 @@ class Literal {
   tensorflow::Status ValidateLiteral() const;
 
   // Returns a string representation of the literal value.
-  string ToString() const;
+  string ToString(bool print_layout = false) const;
 
   // Invokes the "per cell" callback for each element in the provided
   // literal with the element's indices and a string representation of
