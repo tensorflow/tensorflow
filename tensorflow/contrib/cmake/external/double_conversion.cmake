@@ -22,7 +22,7 @@ set(double_conversion_LIBRARIES ${double_conversion_BUILD}/double-conversion/lib
 set(double_conversion_INCLUDES ${double_conversion_BUILD})
 
 if(WIN32)
-  set(double_conversion_STATIC_LIBRARIES ${double_conversion_BUILD}/double-conversion/double-conversion.lib)
+  set(double_conversion_STATIC_LIBRARIES ${double_conversion_BUILD}/double-conversion/lib/double-conversion.lib)
 else()
   set(double_conversion_STATIC_LIBRARIES ${double_conversion_BUILD}/double-conversion/libdouble-conversion.a)
 endif()
