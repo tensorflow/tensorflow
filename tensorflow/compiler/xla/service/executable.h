@@ -44,7 +44,7 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<HloModule> hlo_module)
+  explicit Executable(std::unique_ptr<const HloModule> hlo_module)
       : hlo_module_(std::move(hlo_module)) {}
   virtual ~Executable() {}
 
@@ -87,6 +87,16 @@ class Executable {
       tensorflow::gtl::ArraySlice<
           tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
           arguments);
+
+  // Populates `hlo_execution_profile` from `executor`. This is implicit in any
+  // Execute* API call that takes a hlo_execution_profile argument, but must be
+  // called explicitly for other (async, for example) variants after the stream
+  // has completed.
+  virtual Status PopulateExecutionProfile(
+      HloExecutionProfile* hlo_execution_profile,
+      perftools::gputools::StreamExecutor* executor) {
+    return Status::OK();
+  }
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
@@ -163,7 +173,7 @@ class Executable {
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
-  std::unique_ptr<HloModule> hlo_module_;
+  const std::unique_ptr<const HloModule> hlo_module_;
 
   // SessionModule this was compiled from. Null if not dumping executions.
   std::unique_ptr<SessionModule> session_module_;

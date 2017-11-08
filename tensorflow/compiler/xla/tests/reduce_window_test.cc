@@ -76,6 +76,20 @@ class ReduceWindowTest : public ClientLibraryTestBase {
   ComputationBuilder builder_;
 };
 
+TEST_F(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
+  const auto input = builder_.ConstantR1<float>({1, 1, 1, 1});
+  const auto init_value = builder_.ConstantR0<float>(0);
+  TF_ASSERT_OK(builder_.first_error());
+  builder_.ReduceWindow(input, init_value,
+                        CreateScalarAddComputation(F32, &builder_),
+                        /*window_dimensions=*/{1, 2},
+                        /*window_strides=*/{1}, Padding::kValid);
+  ASSERT_EQ(builder_.first_error().code(), tensorflow::error::INVALID_ARGUMENT)
+      << builder_.first_error();
+  ASSERT_THAT(builder_.first_error().error_message(),
+              ::testing::HasSubstr("Want input dimensions size"));
+}
+
 TEST_F(ReduceWindowTest, Min3In5Stride2) {
   const auto input = builder_.ConstantR1<float>({10000, 1000, 100, 10, 1});
   ReduceWindowMin(input, {3}, {2}, Padding::kValid);

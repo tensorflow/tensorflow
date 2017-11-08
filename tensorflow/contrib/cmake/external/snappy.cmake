@@ -40,11 +40,15 @@ ExternalProject_Add(snappy
     LOG_CONFIGURE ON
     LOG_BUILD ON
     CMAKE_CACHE_ARGS
+		if(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
+			-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+		else()
+			-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=OFF
+		endif()
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DSNAPPY_BUILD_TESTS:BOOL=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 )
 
 # actually enables snappy in the source code
-add_definitions(-DSNAPPY)
+add_definitions(-DTF_USE_SNAPPY)

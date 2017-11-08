@@ -76,14 +76,15 @@ struct Relu6Grad {
   // Computes Relu6Grad backprops.
   //
   // gradients: gradients backpropagated to the Relu6 op.
-  // features: inputs that where passed to the Relu6 op.
+  // features: inputs that where passed to the Relu6 op, or its outputs.
   // backprops: gradients to backpropagate to the Relu6 inputs.
   void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
                   typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor backprops) {
     // NOTE: When the activation is exactly zero or six, we
-    // arbitrarily choose to not propagate the associated gradient
-    // value.
+    // make sure not to propagate the associated gradient
+    // value. This allows "features" to be either the input or the output of
+    // the relu6.
     backprops.device(d) =
         gradients *
         ((features > static_cast<T>(0)) * (features < static_cast<T>(6)))

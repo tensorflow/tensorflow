@@ -1,0 +1,65 @@
+op {
+  graph_op_name: "ApplyAdagradDA"
+  in_arg {
+    name: "var"
+    description: <<END
+Should be from a Variable().
+END
+  }
+  in_arg {
+    name: "gradient_accumulator"
+    description: <<END
+Should be from a Variable().
+END
+  }
+  in_arg {
+    name: "gradient_squared_accumulator"
+    description: <<END
+Should be from a Variable().
+END
+  }
+  in_arg {
+    name: "grad"
+    description: <<END
+The gradient.
+END
+  }
+  in_arg {
+    name: "lr"
+    description: <<END
+Scaling factor. Must be a scalar.
+END
+  }
+  in_arg {
+    name: "l1"
+    description: <<END
+L1 regularization. Must be a scalar.
+END
+  }
+  in_arg {
+    name: "l2"
+    description: <<END
+L2 regularization. Must be a scalar.
+END
+  }
+  in_arg {
+    name: "global_step"
+    description: <<END
+Training step number. Must be a scalar.
+END
+  }
+  out_arg {
+    name: "out"
+    description: <<END
+Same as "var".
+END
+  }
+  attr {
+    name: "use_locking"
+    description: <<END
+If True, updating of the var and accum tensors will be protected by
+a lock; otherwise the behavior is undefined, but may exhibit less contention.
+END
+  }
+  summary: "Update \'*var\' according to the proximal adagrad scheme."
+}

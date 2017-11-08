@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.signal.python.kernel_tests import test_util
 from tensorflow.contrib.signal.python.ops import mel_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 # mel spectrum constants and functions.
@@ -158,6 +160,15 @@ class LinearToMelTest(test.TestCase):
                                           upper_edge_hertz=10)
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(dtype=dtypes.int32)
+
+  def test_constant_folding(self):
+    """Mel functions should be constant foldable."""
+    for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      g = ops.Graph()
+      with g.as_default():
+        mel_matrix = mel_ops.linear_to_mel_weight_matrix(dtype=dtype)
+        rewritten_graph = test_util.grappler_optimize(g, [mel_matrix])
+        self.assertEqual(1, len(rewritten_graph.node))
 
 
 if __name__ == "__main__":

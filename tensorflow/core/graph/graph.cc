@@ -261,7 +261,6 @@ Status Node::input_node(int idx, const Node** const_n) const {
   return Status::OK();
 }
 
-
 // Graph
 
 Graph::Graph(const OpRegistryInterface* ops)
@@ -294,6 +293,11 @@ Graph::Graph(const OpRegistryInterface* ops)
 
 Graph::Graph(const FunctionLibraryDefinition& flib_def)
     : Graph(flib_def.default_registry()) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (flib_def.ToProto().function_size() > 0 &&
+      versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
   Status s = ops_.AddLibrary(flib_def);
   CHECK(s.ok()) << s.error_message();
 }
@@ -420,7 +424,83 @@ void Graph::RemoveEdge(const Edge* e) {
   --num_edges_;
 }
 
+const Edge* Graph::AddControlEdge(Node* source, Node* dest,
+                                  bool allow_duplicates) {
+  if (!allow_duplicates) {
+    for (const Edge* edge : dest->in_edges()) {
+      if (edge->IsControlEdge() && edge->src() == source) {
+        // The requested edge already exists.
+        return nullptr;
+      }
+    }
+  }
+  // Modify dest's NodeDef if necessary.
+  if (!source->IsSource() && !dest->IsSink() && !allow_duplicates) {
+    // Check if this input is already in dest's NodeDef.
+    const string new_input = strings::StrCat("^", source->name());
+    bool input_exists = false;
+    for (const string& input : dest->props_->node_def.input()) {
+      if (input == new_input) {
+        input_exists = true;
+        break;
+      }
+    }
+    if (!input_exists) {
+      dest->MaybeCopyOnWrite();
+      dest->props_->node_def.add_input(new_input);
+    }
+  }
+  return AddEdge(source, kControlSlot, dest, kControlSlot);
+}
+
+void Graph::RemoveControlEdge(const Edge* e) {
+  if (!e->src_->IsSource() && !e->dst_->IsSink()) {
+    e->dst_->MaybeCopyOnWrite();
+    std::string e_src_name = strings::StrCat("^", e->src_->name());
+    auto* inputs = e->dst_->props_->node_def.mutable_input();
+    for (auto it = inputs->begin(); it != inputs->end(); ++it) {
+      if (*it == e_src_name) {
+        inputs->erase(it);
+        break;
+      }
+    }
+  }
+  RemoveEdge(e);
+}
+
+Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
+                         int dst_index) {
+  TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
+  TF_RETURN_IF_ERROR(IsValidInputTensor(dst, dst_index));
+  const Edge* e = FindEdge(dst, dst_index);
+  if (e == nullptr) {
+    return errors::InvalidArgument("Couldn't find edge to ",
+                                   dst->DebugString());
+  }
+  RemoveEdge(e);
+  AddEdge(new_src, new_src_index, dst, dst_index);
+  dst->MaybeCopyOnWrite();
+  (*dst->props_->node_def.mutable_input())[dst_index] =
+      strings::StrCat(new_src->name(), ":", new_src_index);
+  return Status::OK();
+}
+
+const Edge* Graph::FindEdge(const Node* dst, int index) {
+  for (const Edge* e : edges_) {
+    // edges_ will contain null edges if RemoveEdge() was called.
+    if (e == nullptr) continue;
+    if (e->dst() == dst && e->dst_input() == index) {
+      return e;
+    }
+  }
+  return nullptr;
+}
+
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (fdef_lib.function_size() > 0 && versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
   return ops_.AddLibrary(fdef_lib);
 }
 
@@ -528,10 +608,10 @@ Status Graph::IsValidNode(const Node* node) const {
 Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
   if (idx >= node->num_outputs()) {
-    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
-                                   node->op_def().name(),
-                                   "', num of outputs: ", node->num_outputs(),
-                                   ") does not have ", "output ", idx);
+    return errors::OutOfRange("Node '", node->name(), "' (type: '",
+                              node->op_def().name(),
+                              "', num of outputs: ", node->num_outputs(),
+                              ") does not have ", "output ", idx);
   }
   return Status::OK();
 }
@@ -539,10 +619,10 @@ Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
 Status Graph::IsValidInputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
   if (idx >= node->num_inputs()) {
-    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
-                                   node->op_def().name(),
-                                   "', num of inputs: ", node->num_inputs(),
-                                   ") does not have ", "input ", idx);
+    return errors::OutOfRange("Node '", node->name(), "' (type: '",
+                              node->op_def().name(),
+                              "', num of inputs: ", node->num_inputs(),
+                              ") does not have ", "input ", idx);
   }
   return Status::OK();
 }

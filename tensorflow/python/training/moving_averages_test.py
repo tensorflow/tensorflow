@@ -27,6 +27,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import moving_averages
+from tensorflow.python.training import saver as saver_lib
 
 
 class MovingAveragesTest(test.TestCase):
@@ -391,6 +392,32 @@ class ExponentialMovingAverageTest(test.TestCase):
     # However, the colocation property is maintained.
     self.assertEqual([b"loc:@v1"], ema.average(v1).op.colocation_groups())
     self.assertDeviceEqual("/job:default", ema.average(tensor2).device)
+
+  def _ExportAndImportGraph(self, graph):
+    """Export and import graph into a new graph."""
+    meta_graph = saver_lib.export_meta_graph(
+        graph=graph, collection_list=graph.get_all_collection_keys())
+    graph_copy = ops.Graph()
+    with graph_copy.as_default():
+      _ = saver_lib.import_meta_graph(meta_graph)
+    return graph_copy
+
+  def testImportedGraphVariablesToRestore(self):
+    g = ops.Graph()
+    with g.as_default():
+      variables.Variable(10.0, name="v")
+    # Export and import the graph into a new graph.
+    g_copy = self._ExportAndImportGraph(g)
+    with g_copy.as_default():
+      ema = moving_averages.ExponentialMovingAverage(0.25, name="foo_avg")
+      vars_to_restore = ema.variables_to_restore()
+      # There should only be one variable in vars_to_restore. This is important
+      # to check because when importing from a GraphDef, TF makes duplicate
+      # python Variable objects referring to the same underlying variable. We
+      # need to be sure that two variables referring to the same variable don't
+      # both get added to vars_to_restore.
+      self.assertEqual(len(vars_to_restore), 1)
+      self.assertTrue("v/foo_avg" in vars_to_restore)
 
 
 if __name__ == "__main__":

@@ -69,7 +69,10 @@ Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
   }
   Channel& channel = opaque_to_channel_[handle.handle()];
   if (channel.has_sender) {
-    return FailedPrecondition("channel handle is already used by a sender");
+    return FailedPrecondition(
+        "when registering send, passed a channel handle that is already used "
+        "by a sender: %lld",
+        handle.handle());
   }
   channel.has_sender = true;
   return Status::OK();
@@ -82,7 +85,10 @@ Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
   Channel& channel = opaque_to_channel_[handle.handle()];
   // TODO(b/33942691): Allow more than 1 receivers for broadcast.
   if (channel.receiver_count >= 1) {
-    return FailedPrecondition("channel handle is already used by a receiver");
+    return FailedPrecondition(
+        "when registering recv, passed a channel handle that is already used "
+        "by a receiver: %lld",
+        handle.handle());
   }
   channel.receiver_count += 1;
   return Status::OK();

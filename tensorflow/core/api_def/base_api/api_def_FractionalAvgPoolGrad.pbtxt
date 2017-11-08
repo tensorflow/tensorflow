@@ -1,0 +1,59 @@
+op {
+  graph_op_name: "FractionalAvgPoolGrad"
+  visibility: HIDDEN
+  in_arg {
+    name: "orig_input_tensor_shape"
+    description: <<END
+Original input tensor shape for `fractional_avg_pool`
+END
+  }
+  in_arg {
+    name: "out_backprop"
+    description: <<END
+4-D with shape `[batch, height, width, channels]`.  Gradients
+w.r.t. the output of `fractional_avg_pool`.
+END
+  }
+  in_arg {
+    name: "row_pooling_sequence"
+    description: <<END
+row pooling sequence, form pooling region with
+col_pooling_sequence.
+END
+  }
+  in_arg {
+    name: "col_pooling_sequence"
+    description: <<END
+column pooling sequence, form pooling region with
+row_pooling sequence.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+4-D.  Gradients w.r.t. the input of `fractional_avg_pool`.
+END
+  }
+  attr {
+    name: "overlapping"
+    description: <<END
+When set to True, it means when pooling, the values at the boundary
+of adjacent pooling cells are used by both cells. For example:
+
+`index  0  1  2  3  4`
+
+`value  20 5  16 3  7`
+
+If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+The result would be [41/3, 26/3] for fractional avg pooling.
+END
+  }
+  summary: "Computes gradient of the FractionalAvgPool function."
+  description: <<END
+Unlike FractionalMaxPoolGrad, we don't need to find arg_max for
+FractionalAvgPoolGrad, we just need to evenly back-propagate each element of
+out_backprop to those indices that form the same pooling cell. Therefore, we
+just need to know the shape of original input tensor, instead of the whole
+tensor.
+END
+}

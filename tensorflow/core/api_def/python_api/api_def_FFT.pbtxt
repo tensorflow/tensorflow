@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "FFT"
+  endpoint {
+    name: "fft"
+  }
+  endpoint {
+    name: "spectral.fft"
+  }
+}

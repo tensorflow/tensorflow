@@ -277,8 +277,7 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
-      const ExecutionOptions* execution_options,
-      bool has_hybrid_result = false);
+      const ExecutionOptions* execution_options);
 
   // Builds an Executable for the given parameters.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
@@ -294,7 +293,7 @@ class Service : public ServiceInterface {
       std::vector<VersionedComputationHandle> versioned_handles,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend,
-      std::vector<perftools::gputools::StreamExecutor*> executors);
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors);
 
   // Similar to BuildExecutable, but look in the compilation cache for the
   // executable first. If the executable is not in the cache, it is built and
@@ -328,7 +327,8 @@ class Service : public ServiceInterface {
           arguments,
       Backend* backend,
       tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
-      tensorflow::gtl::ArraySlice<string> result_tags);
+      tensorflow::gtl::ArraySlice<string> result_tags,
+      ExecutionProfile* profile);
 
   // Convenience function for adding a function to a user computation.
   template <typename RequestT, typename ResponseT>

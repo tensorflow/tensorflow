@@ -329,5 +329,44 @@ TEST(InputBuffer, ReadVarint32) {
   }
 }
 
+TEST(InputBuffer, ReadVarint64) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/inputbuffer_test";
+
+  // Generates data.
+  std::vector<uint64> data;
+  uint64 i = 0;
+  for (; i < (1U << 10); i += 1) data.push_back(i);
+  for (; i < (1U << 15); i += 5) data.push_back(i);
+  for (; i < (1U << 31); i += 164817) data.push_back(i);
+  for (; i < (1ULL << 63); i += 16481797854795663UL) data.push_back(i);
+  data.push_back(std::numeric_limits<uint64>::max());
+
+  // Writes the varints.
+  {
+    std::unique_ptr<WritableFile> file;
+    TF_CHECK_OK(env->NewWritableFile(fname, &file));
+    string varint;
+    for (uint64 number : data) {
+      varint.clear();
+      core::PutVarint64(&varint, number);
+      TF_CHECK_OK(file->Append(StringPiece(varint)));
+    }
+  }
+
+  for (auto buf_size : BufferSizes()) {
+    std::unique_ptr<RandomAccessFile> file;
+    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    io::InputBuffer in(file.get(), buf_size);
+    uint64 result = 0;
+
+    for (uint64 expected : data) {
+      TF_ASSERT_OK(in.ReadVarint64(&result));
+      EXPECT_EQ(expected, result);
+    }
+    EXPECT_TRUE(errors::IsOutOfRange(in.ReadVarint64(&result)));
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

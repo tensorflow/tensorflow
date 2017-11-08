@@ -1,0 +1,36 @@
+op {
+  graph_op_name: "ShuffleDataset"
+  in_arg {
+    name: "buffer_size"
+    description: <<END
+The number of output elements to buffer in an iterator over
+this dataset. Compare with the `min_after_dequeue` attr when creating a
+`RandomShuffleQueue`.
+END
+  }
+  in_arg {
+    name: "seed"
+    description: <<END
+A scalar seed for the random number generator. If either seed or
+seed2 is set to be non-zero, the random number generator is seeded
+by the given seed.  Otherwise, a random seed is used.
+END
+  }
+  in_arg {
+    name: "seed2"
+    description: <<END
+A second scalar seed to avoid seed collision.
+END
+  }
+  attr {
+    name: "reshuffle_each_iteration"
+    description: <<END
+If true, each iterator over this dataset will be given
+a different pseudorandomly generated seed, based on a sequence seeded by the
+`seed` and `seed2` inputs. If false, each iterator will be given the same
+seed, and repeated iteration over this dataset will yield the exact same
+sequence of results.
+END
+  }
+  summary: "Creates a dataset that shuffles elements from `input_dataset` pseudorandomly."
+}

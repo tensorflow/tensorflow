@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "DebugGradientIdentity"
+  summary: "Identity op for gradient debugging."
+  description: <<END
+This op is hidden from public in Python. It is used by TensorFlow Debugger to
+register gradient tensors for gradient debugging.
+END
+}
