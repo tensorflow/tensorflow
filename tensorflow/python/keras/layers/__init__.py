@@ -134,6 +134,11 @@ from tensorflow.python.keras._impl.keras.layers.pooling import GlobalMaxPool2D
 from tensorflow.python.keras._impl.keras.layers.pooling import GlobalMaxPool3D
 
 # Recurrent layers.
+from tensorflow.python.keras._impl.keras.layers.recurrent import RNN
+from tensorflow.python.keras._impl.keras.layers.recurrent import StackedRNNCells
+from tensorflow.python.keras._impl.keras.layers.recurrent import SimpleRNNCell
+from tensorflow.python.keras._impl.keras.layers.recurrent import GRUCell
+from tensorflow.python.keras._impl.keras.layers.recurrent import LSTMCell
 from tensorflow.python.keras._impl.keras.layers.recurrent import SimpleRNN
 from tensorflow.python.keras._impl.keras.layers.recurrent import GRU
 from tensorflow.python.keras._impl.keras.layers.recurrent import LSTM

@@ -141,6 +141,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "GRUCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "GaussianDropout"
     mtype: "<type \'type\'>"
   }
@@ -209,6 +213,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LSTMCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Lambda"
     mtype: "<type \'type\'>"
   }
@@ -273,6 +281,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RNN"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RepeatVector"
     mtype: "<type \'type\'>"
   }
@@ -293,6 +305,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SimpleRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SpatialDropout1D"
     mtype: "<type \'type\'>"
   }
@@ -302,6 +318,10 @@ tf_module {
   }
   member {
     name: "SpatialDropout3D"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StackedRNNCells"
     mtype: "<type \'type\'>"
   }
   member {

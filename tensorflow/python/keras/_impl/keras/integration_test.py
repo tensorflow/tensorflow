@@ -93,7 +93,7 @@ class KerasIntegrationTest(test.TestCase):
       y_test = keras.utils.to_categorical(y_test)
 
       model = keras.models.Sequential()
-      model.add(keras.layers.LSTM(3, return_sequences=True,
+      model.add(keras.layers.LSTM(5, return_sequences=True,
                                   input_shape=x_train.shape[1:]))
       model.add(keras.layers.GRU(y_train.shape[-1], activation='softmax'))
       model.compile(loss='categorical_crossentropy',

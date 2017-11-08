@@ -29,6 +29,9 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
+from tensorflow.python.keras._impl.keras import constraints
+from tensorflow.python.keras._impl.keras import initializers
+from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras._impl.keras.utils.layer_utils import print_summary as print_layer_summary
@@ -209,9 +212,9 @@ class Layer(tf_base_layers.Layer):
       dtype = K.floatx()
     weight = self.add_variable(name, shape,
                                dtype=dtype,
-                               initializer=initializer,
-                               regularizer=regularizer,
-                               constraint=constraint,
+                               initializer=initializers.get(initializer),
+                               regularizer=regularizers.get(regularizer),
+                               constraint=constraints.get(constraint),
                                trainable=trainable)
     return weight
 

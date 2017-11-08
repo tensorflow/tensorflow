@@ -156,8 +156,10 @@ class SimpleRNNLayerTest(test.TestCase):
           activity_regularizer='l1')
       layer.build((None, None, 2))
       self.assertEqual(len(layer.losses), 3)
-      layer(keras.backend.variable(np.ones((2, 3, 2))))
-      self.assertEqual(len(layer.losses), 4)
+
+      x = keras.backend.variable(np.ones((2, 3, 2)))
+      layer(x)
+      self.assertEqual(len(layer.get_losses_for(x)), 1)
 
   def test_constraints_SimpleRNN(self):
     embedding_dim = 4
@@ -175,9 +177,9 @@ class SimpleRNNLayerTest(test.TestCase):
           recurrent_constraint=r_constraint,
           bias_constraint=b_constraint)
       layer.build((None, None, embedding_dim))
-      self.assertEqual(layer.kernel.constraint, k_constraint)
-      self.assertEqual(layer.recurrent_kernel.constraint, r_constraint)
-      self.assertEqual(layer.bias.constraint, b_constraint)
+      self.assertEqual(layer.cell.kernel.constraint, k_constraint)
+      self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
+      self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
   def test_with_masking_layer_SimpleRNN(self):
     layer_class = keras.layers.SimpleRNN

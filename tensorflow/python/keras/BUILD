@@ -499,6 +499,18 @@ py_test(
 )
 
 py_test(
+    name = "recurrent_test",
+    size = "small",
+    srcs = ["_impl/keras/layers/recurrent_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "serialization_test",
     size = "small",
     srcs = ["_impl/keras/layers/serialization_test.py"],

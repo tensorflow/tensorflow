@@ -642,7 +642,7 @@ class Layer(object):
             for output in output_list:
               with ops.name_scope('ActivityRegularizer'):
                 activity_regularization = self._activity_regularizer(output)
-              self.add_loss(activity_regularization)
+              self.add_loss(activity_regularization, inputs=inputs)
 
         if not in_deferred_mode:
           # TODO(fchollet): consider how masking will work with deferred mode.
