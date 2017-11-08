@@ -11,17 +11,17 @@ exports_files(["LICENSE.text"])
 
 config_setting(
     name = "using_sycl_ccpp",
-    values = {
-        "define": "using_sycl=true",
-        "define": "using_trisycl=false",
+    define_values = {
+        "using_sycl": "true",
+        "using_trisycl": "false",
     },
 )
 
 config_setting(
     name = "using_sycl_trisycl",
-    values = {
-        "define": "using_sycl=true",
-        "define": "using_trisycl=true",
+    define_values = {
+        "using_sycl": "true",
+        "using_trisycl": "false",
     },
 )
 
