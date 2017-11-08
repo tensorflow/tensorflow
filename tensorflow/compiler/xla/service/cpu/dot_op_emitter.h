@@ -59,6 +59,10 @@ class DotOpEmitter {
   // LHS and RHS) and store the results in the target.
   tensorflow::Status EmitScalarDot();
 
+  // Emit an LLVM IR implementation of the dot operation if we can.  Returns
+  // true if an LLVM IR implementation was emitted.
+  bool EmitLlvmIrDotIfProfitable();
+
   // Emits a call to the CPU runtime to perform the matrix multiply.
   tensorflow::Status EmitCallToRuntime();
 
@@ -76,6 +80,30 @@ class DotOpEmitter {
   // Our runtime operation requires that all arrays have the same layout,
   // no padding, and a rank of two.
   bool ShapesAreLegalForRuntimeDot() const;
+
+  // Represents the dimensions of a matrix-matrix multiply operation.
+  struct MatMultDims {
+    // The number of rows in the LHS.
+    int64 m;
+
+    // The number of columns in the LHS, which is also must be equal to the
+    // number of rows in the RHS.
+    int64 k;
+
+    // The number of columns on the RHS.
+    int64 n;
+
+    // True if the LHS matrix column major.
+    bool lhs_column_major;
+
+    // True if the RHS matrix column major.
+    bool rhs_column_major;
+  };
+
+  // Get the MatMultDims instance for the dot product this DotOpEmitter
+  // represents.  Precondition: the dot is of rank 2 (and thus its operands are
+  // of rank 2 as well).
+  MatMultDims GetMatMultDims() const;
 
   const HloInstruction& dot_;
   const bool transpose_lhs_;
