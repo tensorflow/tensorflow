@@ -255,6 +255,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer as tf_optimizer
+from tensorflow.python.training import training_util
 
 # TODO(nsilberman): move add_gradients_summaries, clip_gradient_norms and
 # multiply_gradients into contrib/summaries and contrib/optimizers.py
@@ -409,7 +410,7 @@ def create_train_op(total_loss,
       loss value.
   """
   if global_step is _USE_GLOBAL_STEP:
-    global_step = variables.get_or_create_global_step()
+    global_step = training_util.get_global_step()
 
   # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
   global_update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
