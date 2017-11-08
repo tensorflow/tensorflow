@@ -51,8 +51,16 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {2}, {3}, {2, 3, 4});
     // Slice at dimension boundaries.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {5}, {3}, {5, 6, 7});
+
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {6}, {4}, {6, 7, 0, 1});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {6}, {4}, {6, 7, 0, 1});
+
     // Zero element slice.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {2}, {0}, {});
   }
@@ -68,9 +76,17 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     // Slice at dimension boundaries.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {2, 1},
                          {{5}, {8}});
+
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {3, 3},
-                         {{5, 6, 4}, {8, 9, 7}, {2, 3, 1}});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {3, 3},
+    //                      {{5, 6, 4}, {8, 9, 7}, {2, 3, 1}});
+
     // Zero element slice: 2x0.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {0, 0}, {2, 0},
                          {{}, {}});
@@ -99,11 +115,17 @@ class DynamicSliceTest : public ClientLibraryTestBase {
       {{{4}, {6}}, {{10}, {12}}});
 
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR3<IndexT, DataT>(
-      {{{1, 2}, {3, 4}, {5, 6}},
-       {{7, 8}, {9, 10}, {11, 12}}},
-      {0, 2, 1}, {2, 1, 2},
-      {{{6, 5}}, {{12, 11}}});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR3<IndexT, DataT>(
+    //   {{{1, 2}, {3, 4}, {5, 6}},
+    //    {{7, 8}, {9, 10}, {11, 12}}},
+    //   {0, 2, 1}, {2, 1, 2},
+    //   {{{6, 5}}, {{12, 11}}});
 
     // clang-format on
   }
@@ -250,9 +272,17 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     // Slice at dimension boundaries.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {5},
                          {0, 1, 2, 3, 4, 8, 9, 10});
+
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {6},
-                         {0, 1, 2, 3, 4, 5, 8, 9});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {6},
+    //                      {0, 1, 2, 3, 4, 5, 8, 9});
+
     // Zero-sized update.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {}, {2},
                          {0, 1, 2, 3, 4, 5, 6, 7});
@@ -269,9 +299,17 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     // Slice at dimension boundaries.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{10, 11}}, {2, 1},
                          {{1, 2, 3}, {4, 5, 6}, {7, 10, 11}});
+
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{10, 11}}, {2, 2},
-                         {{1, 2, 3}, {4, 5, 6}, {7, 8, 10}});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{10, 11}}, {2, 2},
+    //                      {{1, 2, 3}, {4, 5, 6}, {7, 8, 10}});
+
     // Zero-sized update.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{}}, {2, 1},
                          {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
@@ -289,10 +327,17 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     RunR3<IndexT, DataT>(
         {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {{{13}, {15}}},
         {1, 1, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 13}, {11, 15}}});
+
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR3<IndexT, DataT>(
-        {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {{{13}, {15}}},
-        {1, 2, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 13}}});
+    //
+    // TODO(b/34128753): This test is disabled because the behaviour in this
+    // case has not yet been fully specified. See
+    //
+    //     https://groups.google.com/forum/#!topic/xla-dev/XQ7LbZOg9Nc
+    //
+    // RunR3<IndexT, DataT>(
+    //     {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {{{13}, {15}}},
+    //     {1, 2, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 13}}});
   }
 
   template <typename IndexT, typename DataT>
@@ -499,21 +544,21 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElements) {
 
 // TODO(b/34128753) CPU and GPU failed on 2016-01-06.  Appears not to handle
 // wrapping as expected.
-XLA_TEST_F(DynamicUpdateSliceTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(R3ContiguousMultipleWrapping))) {
-  // Multiple element, wrapping.
-  std::vector<int32> operand_shape({4, 5, 2});
-  RunR3Contiguous(operand_shape, /*index=*/3, /*size=*/2);
-}
+//
+//XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrapping) {
+//  // Multiple element, wrapping.
+//  std::vector<int32> operand_shape({4, 5, 2});
+//  RunR3Contiguous(operand_shape, /*index=*/3, /*size=*/2);
+//}
 
 // TODO(b/34128753) CPU and GPU failed on 2016-01-06.  Appears not to handle
 // wrapping as expected.
-XLA_TEST_F(DynamicUpdateSliceTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(R3ContiguousTooLarge))) {
-  // Multiple element, update size larger than operand.
-  std::vector<int32> operand_shape({4, 5, 2});
-  RunR3Contiguous(operand_shape, /*index=*/5, /*size=*/2);
-}
+//
+//XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLarge) {
+//  // Multiple element, update size larger than operand.
+//  std::vector<int32> operand_shape({4, 5, 2});
+//  RunR3Contiguous(operand_shape, /*index=*/5, /*size=*/2);
+//}
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnaligned) {
   std::vector<int32> operand_shape({3, 123, 247});
