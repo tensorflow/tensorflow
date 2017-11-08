@@ -22,8 +22,8 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 
-from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
 
 
@@ -38,7 +38,8 @@ def ctc_loss(labels, inputs, sequence_length,
 
   [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
   Connectionist Temporal Classification: Labeling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
+  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA,
+  pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
 
   Input requirements:
 
@@ -108,9 +109,9 @@ def ctc_loss(labels, inputs, sequence_length,
       See `core/ops/ctc_ops.cc` for more details.
     inputs: 3-D `float` `Tensor`.
       If time_major == False, this will be a `Tensor` shaped:
-        `[batch_size x max_time x num_classes]`.
+        `[batch_size, max_time, num_classes]`.
       If time_major == True (default), this will be a `Tensor` shaped:
-        `[max_time x batch_size x num_classes]`.
+        `[max_time, batch_size, num_classes]`.
       The logits.
     sequence_length: 1-D `int32` vector, size `[batch_size]`.
       The sequence lengths.
@@ -120,15 +121,18 @@ def ctc_loss(labels, inputs, sequence_length,
     ignore_longer_outputs_than_inputs: Boolean. Default: False.
       If True, sequences with longer outputs than inputs will be ignored.
     time_major: The shape format of the `inputs` Tensors.
-      If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
-      If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
-      Using `time_major = True` (default) is a bit more efficient because it avoids
-      transposes at the beginning of the ctc_loss calculation.  However, most
-      TensorFlow data is batch-major, so by this function also accepts inputs
-      in batch-major form.
+      If True, these `Tensors` must be shaped `[max_time, batch_size,
+      num_classes]`.
+      If False, these `Tensors` must be shaped `[batch_size, max_time,
+      num_classes]`.
+      Using `time_major = True` (default) is a bit more efficient because it
+      avoids transposes at the beginning of the ctc_loss calculation.  However,
+      most TensorFlow data is batch-major, so by this function also accepts
+      inputs in batch-major form.
 
   Returns:
-    A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
+    A 1-D `float` `Tensor`, size `[batch]`, containing the negative log
+      probabilities.
 
   Raises:
     TypeError: if labels is not a `SparseTensor`.
@@ -198,7 +202,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
 
   Args:
     inputs: 3-D `float` `Tensor` sized
-      `[max_time x batch_size x num_classes]`.  The logits.
+      `[max_time, batch_size, num_classes]`.  The logits.
     sequence_length: 1-D `int32` vector containing sequence lengths,
       having size `[batch_size]`.
     merge_repeated: Boolean.  Default: True.
@@ -207,7 +211,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
     A tuple `(decoded, neg_sum_logits)` where
     decoded: A single-element list. `decoded[0]`
       is an `SparseTensor` containing the decoded outputs s.t.:
-      `decoded.indices`: Indices matrix `(total_decoded_outputs x 2)`.
+      `decoded.indices`: Indices matrix `(total_decoded_outputs, 2)`.
         The rows store: `[batch, time]`.
       `decoded.values`: Values vector, size `(total_decoded_outputs)`.
         The vector stores the decoded classes.
