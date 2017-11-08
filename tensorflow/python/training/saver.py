@@ -1592,9 +1592,9 @@ class Saver(object):
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
-      A string: path prefix used for the checkpoint files.  If the saver is
-        sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
-        is the number of shards created.
+      A string: path prefix used for the checkpoint files. If checkpoint
+        format is V1 and the saver is sharded, this string ends with:
+         '-?????-of-nnnnn' where 'nnnnn' is the number of shards created.
       If the saver is empty, returns None.
 
     Raises:
@@ -1744,6 +1744,11 @@ class Saver(object):
       return
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
+    if (os.path.isfile(save_path) and
+        self._write_version != saver_pb2.SaverDef.V1):
+      raise ValueError("The specified path: %s is a file."
+                       " Please specify only the path prefix"
+                       " to the checkpoint files." % save_path)
     logging.info("Restoring parameters from %s", save_path)
     if context.in_graph_mode():
       sess.run(self.saver_def.restore_op_name,
