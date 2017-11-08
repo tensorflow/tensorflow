@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
+load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
 cc_library(
     name = "gtest",
@@ -194,17 +195,16 @@ cc_library(
 
 cc_library(
     name = "sycl",
-    data = [
+    data = if_ccpp([
         "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
-    ],
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-rpath,../local_config_sycl/sycl/lib",
-        ],
-    }),
-    deps = [
-        "@local_config_sycl//sycl:syclrt",
-    ],
+    ]),
+    linkopts = if_ccpp([
+        "-Wl,-rpath,../local_config_sycl/sycl/lib",
+    ]),
+    deps = if_ccpp(
+        ["@local_config_sycl//sycl:syclrt"],
+        ["@local_config_sycl//sycl:sycl_headers"],
+    ),
 )
 
 filegroup(

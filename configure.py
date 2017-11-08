@@ -43,6 +43,7 @@ _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
                           'Toolkit/CUDA/v%s' % _DEFAULT_CUDA_VERSION)
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
+_DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
 
 
 def is_windows():
@@ -886,6 +887,27 @@ def set_computecpp_toolkit_path(environ_cp):
   write_action_env_to_bazelrc('COMPUTECPP_TOOLKIT_PATH',
                               computecpp_toolkit_path)
 
+def set_trisycl_include_dir(environ_cp):
+  """Set TRISYCL_INCLUDE_DIR"""
+  ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
+                             'include directory. (Use --config=sycl_trisycl '
+                             'when building with Bazel) '
+                             '[Default is %s]: '
+                             ) % (_DEFAULT_TRISYCL_INCLUDE_DIR)
+  while True:
+    trisycl_include_dir = get_from_env_or_user_or_default(
+      environ_cp, 'TRISYCL_INCLUDE_DIR', ask_trisycl_include_dir,
+      _DEFAULT_TRISYCL_INCLUDE_DIR)
+    if os.path.exists(trisycl_include_dir):
+      break
+
+    print('Invalid triSYCL include directory, %s cannot be found'
+          % (trisycl_include_dir))
+
+  # Set TRISYCL_INCLUDE_DIR
+  environ_cp['TRISYCL_INCLUDE_DIR'] = trisycl_include_dir
+  write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR',
+                              trisycl_include_dir)
 
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
@@ -998,6 +1020,8 @@ def main():
     environ_cp['TF_NEED_GCP'] = '0'
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
+    environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
+    environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_NEED_S3'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
@@ -1020,11 +1044,15 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
                 False, 'verbs')
 
-  set_action_env_var(environ_cp, 'TF_NEED_OPENCL', 'OpenCL', False)
-  if environ_cp.get('TF_NEED_OPENCL') == '1':
+  set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
+  if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
     set_host_cxx_compiler(environ_cp)
     set_host_c_compiler(environ_cp)
-    set_computecpp_toolkit_path(environ_cp)
+    set_action_env_var(environ_cp, 'TF_NEED_COMPUTECPP', 'ComputeCPP', True)
+    if environ_cp.get('TF_NEED_COMPUTECPP') == '1':
+      set_computecpp_toolkit_path(environ_cp)
+    else:
+      set_trisycl_include_dir(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
