@@ -617,15 +617,16 @@ class _EagerTensorBase(Tensor):
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def numpy(self):
-    """Returns a numpy array with the same contents as the Tensor.
+    """Returns a numpy array or a scalar with the same contents as the Tensor.
 
     TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
     buffer but instead always explicitly copy? Note that currently it may or may
     not copy based on whether the numpy data is properly aligned or not.
 
     Returns:
-      A numpy array that may share memory with the Tensor object. Any changes
-      to one may be reflected in the other.
+      A numpy array or a scalar. Numpy array may share memory with the
+      Tensor object. Any changes to one may be reflected in the other. A scalar
+      value is returned when self has rank 0.
 
     Raises:
       ValueError: if the type of this Tensor is not representable in numpy.
