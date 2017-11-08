@@ -171,7 +171,12 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/keras/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/_impl/keras/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/_impl/keras/engine/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/_impl/keras/layers/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/_impl/keras/preprocessing/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/_impl/keras/utils/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/_impl/keras/wrappers/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/learn/*_test.py"
     )
