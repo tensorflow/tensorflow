@@ -65,6 +65,52 @@ func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
 	return s, nil
 }
 
+type Device struct {
+	Name, Type  string
+	MemoryLimit int64
+}
+
+// Return list of devices associated with a Session
+func (s *Session) ListDevices() ([]Device, error) {
+	var devices []Device
+
+	status := newStatus()
+	devices_list := C.TF_SessionListDevices(s.c, status.c)
+	if err := status.Err(); err != nil {
+		return nil, fmt.Errorf("TF_SessionListDevices() failed: %v", err)
+	}
+
+	for i := 0; i < int(C.TF_DeviceListCount(devices_list)); i++ {
+		status = newStatus()
+		device_name := C.TF_DeviceListName(devices_list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("TF_DeviceListName(index=%d) failed: %v", i, err)
+		}
+
+		status = newStatus()
+		device_type := C.TF_DeviceListType(devices_list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("TF_DeviceListType(index=%d) failed: %v", i, err)
+		}
+
+		status = newStatus()
+		memory_limit := C.TF_DeviceListMemoryBytes(devices_list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("TF_DeviceListMemoryBytes(index=%d) failed: %v", i, err)
+		}
+
+		device := Device{
+			Name: C.GoString(device_name),
+			Type: C.GoString(device_type),
+			MemoryLimit: int64(memory_limit),
+		}
+
+		devices = append(devices, device)
+	}
+
+	return devices, nil
+}
+
 // Run the graph with the associated session starting with the supplied feeds
 // to compute the value of the requested fetches. Runs, but does not return
 // Tensors for operations specified in targets.
