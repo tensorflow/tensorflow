@@ -35,8 +35,8 @@ speech-driven interface, and many of these require on-device processing. Most of
 the time a user isn’t giving commands, and so streaming audio continuously to a
 remote server would be a waste of bandwidth, since it would mostly be silence or
 background noises. To solve this problem it’s common to have a small neural
-network running on-device @{$tutorials/audio_recognition$listening out for a
-particular keyword}. Once that keyword has been spotted, the rest of the
+network running on-device @{$tutorials/audio_recognition$listening out for a particular keyword}.
+Once that keyword has been spotted, the rest of the
 conversation can be transmitted over to the server for further processing if
 more computing power is needed.
 
