@@ -145,14 +145,13 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 2])
-        g, _ = rnn_cell_impl.SRUCell(2, \
-          bias_initializer=init_ops.constant_initializer(0.5))(x, m)
+        g, _ = rnn_cell_impl.SRUCell(2)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
             [g], {x.name: np.array([[1., 1.]]),
                   m.name: np.array([[0.1, 0.1]])})
         # Smoke test
-        self.assertAllClose(res[0], [[0.39352643,  0.39352643]])
+        self.assertAllClose(res[0], [[0.509682,  0.509682]])
 
   def testBasicLSTMCell(self):
     for dtype in [dtypes.float16, dtypes.float32]:
