@@ -33,6 +33,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
 
 def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
@@ -335,10 +336,7 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     A `Tensor` with the same shape as `x`.
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
-    if dim is not None:
-      if axis is not None:
-        raise ValueError("Cannot specify both 'axis' and 'dim'")
-      axis = dim
+    axis = deprecated_argument_lookup("axis", axis, "dim", dim)
     x = ops.convert_to_tensor(x, name="x")
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keep_dims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))

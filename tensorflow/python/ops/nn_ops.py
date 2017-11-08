@@ -37,6 +37,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
 
 # Aliases for some automatically-generated names.
@@ -1666,10 +1667,7 @@ def softmax(logits, axis=None, name=None, dim=None):
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     axis = -1
   return _softmax(logits, gen_nn_ops._softmax, axis, name)
@@ -1697,10 +1695,7 @@ def log_softmax(logits, axis=None, name=None, dim=None):
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     axis = -1
   return _softmax(logits, gen_nn_ops._log_softmax, axis, name)
