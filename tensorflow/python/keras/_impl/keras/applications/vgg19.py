@@ -198,12 +198,14 @@ def VGG19(include_top=True,
       weights_path = get_file(
           'vgg19_weights_tf_dim_ordering_tf_kernels.h5',
           WEIGHTS_PATH,
-          cache_subdir='models')
+          cache_subdir='models',
+          file_hash='cbe5617147190e668d6c5d5026f83318')
     else:
       weights_path = get_file(
           'vgg19_weights_tf_dim_ordering_tf_kernels_notop.h5',
           WEIGHTS_PATH_NO_TOP,
-          cache_subdir='models')
+          cache_subdir='models',
+          file_hash='253f8cb515780f3b799900260a226db6')
     model.load_weights(weights_path)
     if K.backend() == 'theano':
       layer_utils.convert_all_kernels_in_model(model)

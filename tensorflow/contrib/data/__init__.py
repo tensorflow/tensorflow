@@ -30,6 +30,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@make_saveable_from_iterator
 @@read_batch_features
 @@unbatch
+@@parallel_interleave
 @@rejection_resample
 @@sloppy_interleave
 
@@ -40,8 +41,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
 
+# pylint: disable=unused-import
 from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
 from tensorflow.contrib.data.python.ops.batching import unbatch
@@ -50,6 +51,7 @@ from tensorflow.contrib.data.python.ops.dataset_ops import get_single_element
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
 from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.grouping import group_by_window
+from tensorflow.contrib.data.python.ops.interleave_ops import parallel_interleave
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.contrib.data.python.ops.readers import FixedLengthRecordDataset

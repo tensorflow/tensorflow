@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "QuantizeAndDequantizeV3"
+  summary: "Quantizes then dequantizes a tensor."
+  description: <<END
+This is almost identical to QuantizeAndDequantizeV2, except that num_bits is a
+tensor, so its value can change during training.
+END
+}

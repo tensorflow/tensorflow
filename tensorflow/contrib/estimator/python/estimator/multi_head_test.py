@@ -178,7 +178,7 @@ class MultiHeadTest(test.TestCase):
     #        (1 - labels) * (logits > 0) * logits =>
     # head1: expected_unweighted_loss = [[10., 10.], [15., 0.]]
     # head2: expected_unweighted_loss = [[20., 20., 20.], [30., 0., 0]]
-    # Average over classes, weighted sum ober batch and heads.
+    # Average over classes, weighted sum over batch and heads.
     expected_loss_head1 = 17.5
     expected_loss_head2 = 30.0
     expected_loss = 1. * expected_loss_head1 + 2. * expected_loss_head2
@@ -231,18 +231,25 @@ class MultiHeadTest(test.TestCase):
 
     logits = {'head1': np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)}
     labels = {'head1': np.array([[1, 0], [1, 1]], dtype=np.int64)}
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        r'create_loss not yet implemented for MultiHead\.'):
-      multi_head.create_loss(
-          features={'x': np.array(((42,),), dtype=np.int32)},
-          mode=model_fn.ModeKeys.TRAIN,
-          logits=logits,
-          labels=labels)
+    loss = multi_head.create_loss(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels)[0]
+    tol = 1e-3
+    with self.test_session():
+      # Unreduced loss of the head is [[(10 + 10) / 2], (15 + 0) / 2]
+      # (averaged over classes, sum-reduced over examples).
+      self.assertAllClose(17.5, loss.eval(), rtol=tol, atol=tol)
 
   def test_train_create_loss_two_heads_with_weights(self):
-    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
-    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
+    # Use different example weighting for each head weighting.
+    weights1 = np.array([[1.], [2.]], dtype=np.float32)
+    weights2 = np.array([[2.], [3.]])
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1',
+                                      weight_column='weights1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2',
+                                      weight_column='weights2')
     multi_head = multi_head_lib.multi_head(
         [head1, head2], head_weights=[1., 2.])
 
@@ -255,14 +262,27 @@ class MultiHeadTest(test.TestCase):
         'head1': np.array([[1, 0], [1, 1]], dtype=np.int64),
         'head2': np.array([[0, 1, 0], [1, 1, 0]], dtype=np.int64),
     }
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        r'create_loss not yet implemented for MultiHead\.'):
-      multi_head.create_loss(
-          features={'x': np.array(((42,),), dtype=np.int32)},
-          mode=model_fn.ModeKeys.TRAIN,
-          logits=logits,
-          labels=labels)
+    weighted_sum_loss, example_weight_sum, _ = multi_head.create_loss(
+        features={
+            'x': np.array(((42,),), dtype=np.int32),
+            'weights1': weights1,
+            'weights2': weights2
+        },
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels)
+    tol = 1e-3
+    with self.test_session():
+      # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
+      # = [10, 7.5]
+      # weighted_sum_loss = 1 * 10 + 2 * 7.5 = 25
+      # loss of the second head is [[(20 + 20 + 20) / 3], [(30 + 0 + 0) / 3]]
+      # = [20, 10]
+      # weighted_sum_loss = 2 * 20 + 3 * 10 = 70
+      # head-weighted merge = 1 * 25 + 2 * 70 = 165
+      self.assertAllClose(165, weighted_sum_loss.eval(), rtol=tol, atol=tol)
+      # example_weight_sum = 1 * (1 + 2) + 2 * (2 + 3) = 13
+      self.assertAllClose(13., example_weight_sum.eval(), rtol=tol, atol=tol)
 
   def test_train_one_head(self):
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
@@ -332,7 +352,7 @@ class MultiHeadTest(test.TestCase):
     #        (1 - labels) * (logits > 0) * logits =>
     # head1: expected_unweighted_loss = [[10., 10.], [15., 0.]]
     # head2: expected_unweighted_loss = [[20., 20., 20.], [30., 0., 0]]
-    # Average over classes, weighted sum ober batch and heads.
+    # Average over classes, weighted sum over batch and heads.
     expected_loss_head1 = 17.5
     expected_loss_head2 = 30.0
     expected_loss = 1. * expected_loss_head1 + 2. * expected_loss_head2

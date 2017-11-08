@@ -593,10 +593,7 @@ class _EagerTensorArray(object):
             "a previous read (perhaps try setting clear_after_read = false?)" %
             index)
       else:
-        raise errors_impl.InvalidArgumentError(
-            None, None,
-            "Could not read from TensorArray index %d because it has not yet "
-            "been written to." % index)
+        tensor = self._maybe_zero(index)
 
     if self._clear_after_read:
       self._tensor_array[index] = None
@@ -610,52 +607,36 @@ class _EagerTensorArray(object):
     _eager_write_no_copy(ta._implementation, index, value)  # pylint: disable=protected-access
     return ta
 
+  def _maybe_zero(self, ix):
+    val = self._tensor_array[ix]
+    if val is None:
+      val = self._tensor_array[ix] = array_ops.zeros(
+          shape=self._element_shape, dtype=self._dtype)
+    return val
+
   def stack(self, name=None):
     """See TensorArray."""
-    try:
-      return array_ops.stack(self._tensor_array, name=name)
-    except ValueError:
-      if None in self._tensor_array:
-        idx = self._tensor_array.index(None)
-        raise errors_impl.InvalidArgumentError(
-            None, None, "Could not read from TensorArray index %d because "
-            "it has not yet been written to." % idx)
-      else:
-        raise
+    if self._tensor_array:
+      for ix in range(len(self._tensor_array)):
+        self._maybe_zero(ix)
+    return array_ops.stack(self._tensor_array, name=name)
 
   def gather(self, indices, name=None):
     """See TensorArray."""
     del name  # not meaningful in Eager mode
-    return array_ops.stack([self._tensor_array[i] for i in indices.numpy()])
+    return array_ops.stack([self._maybe_zero(i) for i in indices.numpy()])
 
   def concat(self, name=None):
     """See TensorArray."""
     try:
-      return array_ops.concat(self._tensor_array, 0, name=name)
+      return array_ops.concat(
+          [self._maybe_zero(ix) for ix in range(len(self._tensor_array))],
+          0, name=name)
     except errors_impl.OpError:
       # Reproduce a subset of the error-handling for graph-mode TensorArrays.
       shapes = [t.shape for t in self._tensor_array]
       ndims = [s.ndims for s in shapes]
-      if None in self._tensor_array:
-        # Concatenating empty TensorArrays is permitted if the element
-        # shape is defined; the output is a tensor with shape
-        # [0] + self._element_shape[1:]
-        if all(t is None for t in self._tensor_array):
-          if self._element_shape is not None:
-            return constant_op.constant([], shape=[0] + self._element_shape[1:])
-          else:
-            raise errors_impl.UnimplementedError(
-                None, None, "TensorArray has size zero, but "
-                "element_shape_except0 %s is not fully defined. Currently only "
-                "static shapes are supported when concatenating zero-size "
-                "TensorArrays." % self._element_shape[1:])
-        # Concatenating a TensorArray in which some but not all entries have
-        # been written to is not allowed.
-        idx = self._tensor_array.index(None)
-        raise errors_impl.InvalidArgumentError(
-            None, None, "Could not read from TensorArray index %d because "
-            "it has not yet been written to." % idx)
-      elif 0 in ndims:
+      if 0 in ndims:
         idx = ndims.index(0)
         raise errors_impl.InvalidArgumentError(
             None, None, "Concat saw a scalar shape at index %d but requires "

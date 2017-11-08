@@ -361,6 +361,7 @@ message WaitForExecutionResponse {
 message IsConstantRequest {
   ComputationHandle computation = 1;
   ComputationDataHandle operand = 2;
+  int64 num_parameters = 3;
 }
 
 message IsConstantResponse {
@@ -371,6 +372,7 @@ message ComputeConstantRequest {
   ComputationHandle computation = 1;
   ComputationDataHandle operand = 2;
   Layout output_layout = 3;
+  repeated LiteralProto parameters = 4;
 }
 
 message ComputeConstantResponse {

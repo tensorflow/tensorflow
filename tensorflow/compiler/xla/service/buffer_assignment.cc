@@ -101,6 +101,11 @@ BufferAllocationProto BufferAllocation::ToProto() const {
     proto_assigned->set_offset(buffer_offset_size.second.offset);
     proto_assigned->set_size(buffer_offset_size.second.size);
   }
+  std::sort(proto.mutable_assigned()->begin(), proto.mutable_assigned()->end(),
+            [](const BufferAllocationProto::Assigned& assign1,
+               const BufferAllocationProto::Assigned& assign2) {
+              return assign1.logical_buffer_id() < assign2.logical_buffer_id();
+            });
   return proto;
 }
 

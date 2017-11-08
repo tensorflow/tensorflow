@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "FractionalAvgPool"
+  endpoint {
+    name: "nn.fractional_avg_pool"
+  }
+}

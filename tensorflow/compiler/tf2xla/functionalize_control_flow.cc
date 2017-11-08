@@ -130,7 +130,9 @@ Status CopySubgraph(const Graph& graph, const Frame* frame,
         stack.push_back(src);
       }
       Node* src_copy = (*node_map)[e->src()->id()];
-      int src_output = squash_src_outputs[e->src()->id()] ? 0 : e->src_output();
+      int src_output = squash_src_outputs[e->src()->id()] && !e->IsControlEdge()
+                           ? 0
+                           : e->src_output();
       Node* dst_copy = (*node_map)[e->dst()->id()];
       output->AddEdge(src_copy, src_output, dst_copy, e->dst_input());
     }

@@ -52,7 +52,7 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
   llvm::IRBuilder<> ir_builder(vector_tanh_body);
 
   llvm::FastMathFlags fast_math_flags;
-  fast_math_flags.setUnsafeAlgebra();
+  fast_math_flags.setFast();
   ir_builder.setFastMathFlags(fast_math_flags);
 
   llvm::Value* input = &*vector_tanh_function->arg_begin();

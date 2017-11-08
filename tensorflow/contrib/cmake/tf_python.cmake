@@ -224,6 +224,7 @@ add_python_module("tensorflow/python/grappler")
 add_python_module("tensorflow/python/keras")
 add_python_module("tensorflow/python/keras/activations")
 add_python_module("tensorflow/python/keras/applications")
+add_python_module("tensorflow/python/keras/applications/inception_resnet_v2")
 add_python_module("tensorflow/python/keras/applications/inception_v3")
 add_python_module("tensorflow/python/keras/applications/mobilenet")
 add_python_module("tensorflow/python/keras/applications/resnet50")
@@ -776,6 +777,8 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_cudnn_rnn_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cudnn_rnn/ops/gen_cudnn_rnn_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_data_dataset_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_dataset_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_data_prefetching_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_prefetching_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
