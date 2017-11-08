@@ -125,7 +125,10 @@ class StringSplitOp : public StringSplitOpBase {
     skip_empty_ = true;
     // By default skip_empty_ is true. We only get the value from attr if it is
     // available, so that it is backward compatible.
-    context->GetAttr("skip_empty", &skip_empty_);
+    bool skip_empty;
+    if (context->GetAttr("skip_empty", &skip_empty).ok()) {
+      skip_empty_ = skip_empty;
+    }
   }
 
   Status ValidateDelimiter(const string& delimiter) { return Status::OK(); }

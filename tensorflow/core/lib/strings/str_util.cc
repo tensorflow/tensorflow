@@ -444,7 +444,7 @@ Status SplitUTF8(StringPiece text, const string& delim, const bool skip_empty,
   //   4     11110xxx  10xxxxxx  10xxxxxx  10xxxxxx
   result->clear();
   size_t char_start = 0, char_len = 0;
-  bool advance = true;
+  bool last_char_was_a_delimiter = true;
   for (size_t i = 0; i < text.size(); ++i) {
     if (char_start == i) {
       if (!UTF8CharNumBytes(text, &char_len)) {
@@ -453,8 +453,7 @@ Status SplitUTF8(StringPiece text, const string& delim, const bool skip_empty,
       }
     }
     // Validate all intermediate bytes are valid UTF-8
-    if (TF_PREDICT_FALSE((char_len > 1) && (char_start != i) &&
-                         (text[i] & 0xC0) != 0x80)) {
+    if (TF_PREDICT_FALSE((char_start != i) && (text[i] & 0xC0) != 0x80)) {
       return errors::InvalidArgument("Invalid UTF8 encoding at byte ", i);
     }
     // Reached the end of a character
@@ -463,21 +462,19 @@ Status SplitUTF8(StringPiece text, const string& delim, const bool skip_empty,
       if (delim == "") {
         result->emplace_back(entry.ToString());
       } else if (delim == entry) {
-        advance = true;
-        if (!skip_empty) {
-          // Follow python style, if it is beginning or the end, always add ''
-          // >>> "##a##b##c##".split("#")
-          // ['', '', 'a', '', 'b', '', 'c', '', '']
-          if (result->size() == 0 || result->back() != "") {
-            result->emplace_back("");
-          } else if (result->size() == 1) {
-            result->emplace_back("");
-          } else if (TF_PREDICT_FALSE(i + 1 == text.size())) {
-            result->emplace_back("");
-          }
+        if (last_char_was_a_delimiter && !skip_empty) {
+          result->emplace_back("");
         }
-      } else if (advance) {
-        advance = false;
+        last_char_was_a_delimiter = true;
+        if (i + 1 == text.size() && !skip_empty) {
+          // If this is the last we always add an empty one
+          // to handle split(",",",") -> ["", ""]
+          result->emplace_back("");
+        }
+      } else if (last_char_was_a_delimiter) {
+        last_char_was_a_delimiter = false;
+        result->emplace_back(entry.ToString());
+      } else if (result->size() == 0) {
         result->emplace_back(entry.ToString());
       } else {
         result->back() = result->back() + entry.ToString();
