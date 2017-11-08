@@ -16,6 +16,29 @@
 
 set -e
 
+ARCHS="ARMV7 ARMV7S ARM64 I386 X86_64"
+
+USAGE="usage: build_all_ios.sh [-A architecture]
+
+A script to build tensorflow and all dependencies for ios.
+This script can only be run on MacOS host platforms.
+
+Options:
+-A architecture
+Target platforms to compile. The default is: $ARCHS."
+
+while
+  ARG="${1-}"
+  case "$ARG" in
+  -*)  case "$ARG" in -*A*) ARCHS="${2?"$USAGE"}"; shift; esac
+       case "$ARG" in -*[!A]*) echo "$USAGE" >&2; exit 2;; esac;;
+  "")  break;;
+  *)   echo "$USAGE" >&2; exit 2;;
+  esac
+do
+  shift
+done
+
 # Make sure we're on OS X.
 if [[ $(uname) != "Darwin" ]]; then
     echo "ERROR: This makefile build requires macOS, which the current system "\
@@ -45,12 +68,13 @@ fi
 tensorflow/contrib/makefile/download_dependencies.sh
 
 # Compile protobuf for the target iOS device architectures.
-tensorflow/contrib/makefile/compile_ios_protobuf.sh
+tensorflow/contrib/makefile/compile_ios_protobuf.sh -A "${ARCHS}"
 
 # Compile nsync for the target iOS device architectures.
 # Don't use  export var=`something` syntax; it swallows the exit status.
+NSYNC_ARCHS=`echo "${ARCHS}" | tr "[:upper:]" "[:lower:]"`
 HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
-TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
+TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios -a "${NSYNC_ARCHS}"`
 export HOST_NSYNC_LIB TARGET_NSYNC_LIB
 
 # Build the iOS TensorFlow libraries.
