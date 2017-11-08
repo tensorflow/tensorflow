@@ -169,16 +169,21 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
+StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutableRunOptions& options) {
   TF_RETURN_IF_ERROR(ValidateExecutionOptions(arguments, options, *backend_));
 
   ExecutableRunOptions actual_options = options;
+
+  Backend::StreamPtr stream;
   if (options.stream() == nullptr) {
+    // NB!  The lifetime of `stream` needs to match the lifetime of
+    // `actual_options` (otherwise we will end up using a returned stream in
+    // ExecuteOnStreamWrapper), which is why it isn't declared in the inner "if"
+    // scope.
     TF_ASSIGN_OR_RETURN(
-        Backend::StreamPtr stream,
-        BorrowStreamForDevice(options.device_ordinal(), backend_));
+        stream, BorrowStreamForDevice(options.device_ordinal(), backend_));
     actual_options.set_stream(stream.get());
   }
   if (options.allocator() == nullptr) {
@@ -197,11 +202,15 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
   if (executable_->dumping()) {
     return ExecuteAndDump(&service_options, arguments);
   }
-  return executable_->ExecuteOnStreamWrapper<std::unique_ptr<ShapedBuffer>>(
-      &service_options, options.execution_profile(), arguments);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ShapedBuffer> result,
+      executable_->ExecuteOnStreamWrapper<std::unique_ptr<ShapedBuffer>>(
+          &service_options, options.execution_profile(), arguments));
+  return ScopedShapedBuffer::MakeScoped(result.get(),
+                                        actual_options.allocator());
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::ExecuteAndDump(
+StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::ExecuteAndDump(
     const ServiceExecutableRunOptions* run_options,
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   executable_->session_module()->set_execution_platform(
@@ -213,7 +222,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::ExecuteAndDump(
                                    /*hlo_execution_profile=*/nullptr));
   TF_RETURN_IF_ERROR(RecordResult(result.get(), executable_->session_module()));
   TF_RETURN_IF_ERROR(executable_->DumpSessionModule());
-  return std::move(result);
+  return ScopedShapedBuffer::MakeScoped(result.get(), run_options->allocator());
 }
 
 tensorflow::Status LocalExecutable::RecordArguments(
@@ -279,11 +288,10 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   int device_ordinal = options.device_ordinal() == -1
                            ? default_device_ordinal()
                            : options.device_ordinal();
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      local_service_->CompileExecutable(computation.handle(), argument_layouts,
-                                        options.result_layout(), device_ordinal,
-                                        options.has_hybrid_result()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      local_service_->CompileExecutable(
+                          computation.handle(), argument_layouts,
+                          options.result_layout(), device_ordinal));
   return WrapUnique(new LocalExecutable(std::move(executable),
                                         local_service_->mutable_backend(),
                                         device_ordinal, options));
@@ -293,12 +301,14 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
 // ScopedShapedBuffer. The given memory allocator is used for device memory
 // allocation.
 StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-LocalClient::LiteralToShapedBuffer(const Literal& literal,
-                                   DeviceMemoryAllocator* allocator,
-                                   int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(auto scoped_buffer,
-                      ScopedShapedBuffer::MakeScopedShapedBuffer(
-                          literal.shape(), allocator, device_ordinal));
+LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
+                                   DeviceMemoryAllocator* allocator) {
+  if (allocator == nullptr) {
+    allocator = backend().memory_allocator();
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto scoped_buffer,
+      ScopedShapedBuffer::Allocate(literal.shape(), allocator, device_ordinal));
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(

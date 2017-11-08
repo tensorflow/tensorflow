@@ -198,6 +198,14 @@ string BuildWavFile(int32 samples_per_second, int32 channel_count,
   return data;
 }
 
+// Returns a unique number every time it is called.
+int64 UniqueId() {
+  static mutex mu(LINKER_INITIALIZED);
+  static int64 id = 0;
+  mutex_lock l(mu);
+  return ++id;
+}
+
 }  // namespace
 
 string GetTempFilename(const string& extension) {
@@ -208,7 +216,19 @@ string GetTempFilename(const string& extension) {
     }
     struct stat statbuf;
     if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
-      return io::JoinPath(dir, StrCat("tmp_file_", getpid(), ".", extension));
+      // UniqueId is added here because mkstemps is not as thread safe as it
+      // looks. https://github.com/tensorflow/tensorflow/issues/5804 shows
+      // the problem.
+      string tmp_filepath = io::JoinPath(
+          dir,
+          StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.", extension));
+      int fd = mkstemps(&tmp_filepath[0], extension.length() + 1);
+      if (fd < 0) {
+        LOG(FATAL) << "Failed to create temp file.";
+      } else {
+        close(fd);
+        return tmp_filepath;
+      }
     }
   }
   LOG(FATAL) << "No temp directory found.";

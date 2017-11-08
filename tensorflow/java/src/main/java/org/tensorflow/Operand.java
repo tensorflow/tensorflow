@@ -22,19 +22,19 @@ package org.tensorflow;
  *
  * <pre>{@code
  * // The "decodeJpeg" operation can be used as an operand to the "cast" operation
- * Operand decodeJpeg = ops.image().decodeJpeg(...);
+ * Operand<UInt8> decodeJpeg = ops.image().decodeJpeg(...);
  * ops.math().cast(decodeJpeg, DataType.FLOAT);
  *
  * // The output "y" of the "unique" operation can be used as an operand to the "cast" operation
- * Output y = ops.array().unique(...).y();
- * ops.math().cast(y, DataType.FLOAT);
+ * Output<Integer> y = ops.array().unique(...).y();
+ * ops.math().cast(y, Float.class);
  *
  * // The "split" operation can be used as operand list to the "concat" operation
- * Iterable<? extends Operand> split = ops.array().split(...);
+ * Iterable<? extends Operand<Float>> split = ops.array().split(...);
  * ops.array().concat(0, split);
  * }</pre>
  */
-public interface Operand {
+public interface Operand<T> {
 
   /**
    * Returns the symbolic handle of a tensor.
@@ -44,5 +44,5 @@ public interface Operand {
    *
    * @see OperationBuilder#addInput(Output)
    */
-  Output asOutput();
+  Output<T> asOutput();
 }

@@ -23,11 +23,11 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.linalg.python.ops import linear_operator_diag
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.linalg import linear_operator_diag
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -287,6 +287,26 @@ class ShapesFromLocAndScaleTest(test.TestCase):
       self.assertAllEqual([3], event_shape)
 
 
+class GetBroadcastShapeTest(test.TestCase):
+
+  def test_all_static_shapes_work(self):
+    x = array_ops.ones((2, 1, 3))
+    y = array_ops.ones((1, 5, 3))
+    z = array_ops.ones(())
+    self.assertAllEqual([2, 5, 3],
+                        distribution_util.get_broadcast_shape(x, y, z))
+
+  def test_with_some_dynamic_shapes_works(self):
+    x = array_ops.ones((2, 1, 3))
+    y = array_ops.placeholder(x.dtype)
+    z = array_ops.ones(())
+    with self.test_session() as sess:
+      bcast_shape = sess.run(
+          distribution_util.get_broadcast_shape(x, y, z),
+          feed_dict={y: np.ones((1, 5, 3)).astype(np.float32)})
+      self.assertAllEqual([2, 5, 3], bcast_shape)
+
+
 class TridiagTest(test.TestCase):
 
   def testWorksCorrectlyNoBatches(self):
@@ -373,6 +393,7 @@ class MixtureStddevTest(test.TestCase):
       actual_devs = sess.run(mix_dev)
 
     self.assertAllClose(actual_devs, expected_devs)
+
 
 if __name__ == "__main__":
   test.main()

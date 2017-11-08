@@ -34,6 +34,12 @@ option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
+if(HAIKU)
+	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" OFF)
+else()
+	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" ON)
+endif()
+
 
 if (NOT WIN32)
   # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
@@ -58,7 +64,12 @@ set (DOWNLOAD_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/downloads"
      CACHE PATH "Location where external projects will be downloaded.")
 mark_as_advanced(DOWNLOAD_LOCATION)
 
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+if (tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
+	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+else()
+	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+endif()
+
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC)
@@ -217,6 +228,9 @@ endif()
 if(UNIX)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
 endif()
+if(HAIKU)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES network)
+endif()
 
 if (tensorflow_ENABLE_GPU)
   if (WIN32)
@@ -245,7 +259,7 @@ if (tensorflow_ENABLE_GPU)
       "#define CUDA_CUDA_CONFIG_H_\n"
       "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.0\"),CudaVersion(\"3.5\"),CudaVersion(\"5.2\")\n"
       "#define TF_CUDA_VERSION \"64_80\"\n"
-      "#define TF_CUDNN_VERSION \"64_5\"\n"
+      "#define TF_CUDNN_VERSION \"64_6\"\n"
       "#define TF_CUDA_TOOLKIT_PATH \"${CUDA_TOOLKIT_ROOT_DIR}\"\n"
       "#endif  // CUDA_CUDA_CONFIG_H_\n"
     )
@@ -264,8 +278,23 @@ if (tensorflow_ENABLE_GPU)
     include_directories(${tensorflow_source_dir}/third_party/gpus)
     # add cuda libraries to tensorflow_EXTERNAL_LIBRARIES
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${CUDA_LIBRARIES})
-  endif()
-endif()
+
+    # NOTE(mrry): Update these flags when the version of CUDA or cuDNN used
+    # in the default build is upgraded.
+    set(tensorflow_BUILD_INFO_FLAGS --build_config cuda --key_value
+      msvcp_dll_name=msvcp140.dll
+      cudart_dll_name=cudart64_80.dll
+      cuda_version_number=8.0
+      nvcuda_dll_name=nvcuda.dll
+      cudnn_dll_name=cudnn64_6.dll
+      cudnn_version_number=6)
+  else(WIN32)
+    message(FATAL_ERROR "CMake GPU build is currently only supported on Windows.")
+  endif(WIN32)
+else(tensorflow_ENABLE_GPU)
+  set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
+    msvcp_dll_name=msvcp140.dll)
+endif(tensorflow_ENABLE_GPU)
 
 # Find python executable
 include(FindPythonInterp)

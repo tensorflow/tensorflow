@@ -23,21 +23,22 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import AffineLinearOperator
 from tensorflow.contrib.linalg.python.ops import linear_operator_addition as linop_add_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_diag as linop_diag_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_full_matrix as linop_full_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_identity as linop_identity_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_tril as linop_tril_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
+from tensorflow.python.ops.linalg import linear_operator_diag as linop_diag_lib
+from tensorflow.python.ops.linalg import linear_operator_full_matrix as linop_full_lib
+from tensorflow.python.ops.linalg import linear_operator_identity as linop_identity_lib
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular as linop_tril_lib
+
+static_value = distribution_util.static_value
 
 
 __all__ = [
@@ -72,8 +73,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   denotes matrix multiplication.  However, the non-approximate distribution does
   not have an analytical probability density function (pdf). Therefore the
   `VectorDiffeomixture` class implements an approximation based on
-  [Gauss-Hermite quadrature](
-  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature). I.e., in
+  [numerical quadrature](
+  https://en.wikipedia.org/wiki/Numerical_integration) (default:
+  [Gauss--Hermite quadrature](
+  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature)). I.e., in
   Note: although the `VectorDiffeomixture` is approximately the
   `SoftmaxNormal-Distribution` compound distribution, it is itself a valid
   distribution. It possesses a `sample`, `log_prob`, `mean`, `covariance` which
@@ -108,8 +111,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   The `VectorDiffeomixture` approximates a SoftmaxNormal-mixed ("prior")
   [compound distribution](
   https://en.wikipedia.org/wiki/Compound_probability_distribution).
-  Using variable-substitution and [Gauss-Hermite quadrature](
-  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature) we can
+  Using variable-substitution and [numerical quadrature](
+  https://en.wikipedia.org/wiki/Numerical_integration) (default:
+  [Gauss--Hermite quadrature](
+  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature)) we can
   redefine the distribution to be a parameter-less convex combination of `K`
   different affine combinations of a `d` iid samples from `distribution`.
 
@@ -140,7 +145,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   and,
 
   ```none
-  grid, weight = np.polynomial.hermite.hermgauss(quadrature_polynomial_degree)
+  grid, weight = np.polynomial.hermite.hermgauss(quadrature_size)
   prob[k]   = weight[k] / sqrt(pi)
   lambda[k; i] = sigmoid(mix_loc[k] + sqrt(2) mix_scale[k] grid[i])
   ```
@@ -184,7 +189,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
 
   ```python
   ds = tf.contrib.distributions
-  la = tf.contrib.linalg
+  la = tf.linalg
 
   # Create two batches of VectorDiffeomixtures, one with mix_loc=[0.] and
   # another with mix_loc=[1]. In both cases, `K=2` and the affine
@@ -218,7 +223,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                distribution,
                loc=None,
                scale=None,
-               quadrature_polynomial_degree=8,
+               quadrature_grid_and_probs=None,
                validate_args=False,
                allow_nan_stats=True,
                name="VectorDiffeomixture"):
@@ -247,7 +252,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         `k`-th element represents the `scale` used for the `k`-th affine
         transformation. `LinearOperator`s must have shape `[B1, ..., Bb, d, d]`,
         `b >= 0`, i.e., characterizes `b`-batches of `d x d` matrices
-      quadrature_polynomial_degree: Python `int`-like scalar.
+      quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
+        representing the sample points and the corresponding (possibly
+        normalized) weight.  When `None`, defaults to:
+        `np.polynomial.hermite.hermgauss(deg=8)`.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
@@ -261,7 +269,8 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     Raises:
       ValueError: if `not scale or len(scale) < 2`.
       ValueError: if `len(loc) != len(scale)`
-      ValueError: if `quadrature_polynomial_degree < 1`.
+      ValueError: if `quadrature_grid_and_probs is not None` and
+        `len(quadrature_grid_and_probs[0]) != len(quadrature_grid_and_probs[1])`
       ValueError: if `validate_args` and any not scale.is_positive_definite.
       TypeError: if any scale.dtype != scale[0].dtype.
       TypeError: if any loc.dtype != scale[0].dtype.
@@ -306,12 +315,6 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                                name="endpoint_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(loc, scale))]
 
-      if quadrature_polynomial_degree < 1:
-        raise ValueError("quadrature_polynomial_degree={} "
-                         "is not at least 1".format(
-                             quadrature_polynomial_degree))
-      self._degree = quadrature_polynomial_degree
-
       # TODO(jvdillon): Remove once we support k-mixtures.
       # We make this assertion here because otherwise `grid` would need to be a
       # vector not a scalar.
@@ -319,17 +322,17 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         raise NotImplementedError("Currently only bimixtures are supported; "
                                   "len(scale)={} is not 2.".format(len(scale)))
 
-      grid, prob = np.polynomial.hermite.hermgauss(
-          deg=quadrature_polynomial_degree)
-      grid = grid.astype(dtype.as_numpy_dtype)
-      prob = prob.astype(dtype.as_numpy_dtype)
-      prob /= np.linalg.norm(prob, ord=1)
+      grid, probs = distribution_util.process_quadrature_grid_and_probs(
+          quadrature_grid_and_probs, dtype, validate_args)
+      self._quadrature_grid = grid
+      self._quadrature_probs = probs
+      self._quadrature_size = distribution_util.dimension_size(probs, axis=0)
 
       # Note: by creating the logits as `log(prob)` we ensure that
       # `self.mixture_distribution.logits` is equivalent to
       # `math_ops.log(self.mixture_distribution.probs)`.
       self._mixture_distribution = categorical_lib.Categorical(
-          logits=np.log(prob),
+          logits=math_ops.log(probs),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats)
 
@@ -338,11 +341,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       mix_scale = maybe_check_mix_param(
           mix_scale, "mix_scale", dtype, validate_args)
 
-      distribution_assertions = maybe_check_distribution(
+      asserts = distribution_util.maybe_check_scalar_distribution(
           distribution, dtype, validate_args)
-      if distribution_assertions:
-        mix_loc = control_flow_ops.with_dependencies(
-            distribution_assertions, mix_loc)
+      if asserts:
+        mix_loc = control_flow_ops.with_dependencies(asserts, mix_loc)
       self._distribution = distribution
 
       # shape: [B, deg]
@@ -357,10 +359,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                                validate_args=validate_args,
                                name="interpolated_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(
-              interpolate_loc(quadrature_polynomial_degree,
+              interpolate_loc(self._quadrature_size,
                               self._interpolate_weight,
                               loc),
-              interpolate_scale(quadrature_polynomial_degree,
+              interpolate_scale(self._quadrature_size,
                                 self._interpolate_weight,
                                 scale)))]
 
@@ -416,9 +418,14 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     return self._interpolated_affine
 
   @property
-  def quadrature_polynomial_degree(self):
-    """Polynomial largest exponent used for Gauss-Hermite quadrature."""
-    return self._degree
+  def quadrature_grid(self):
+    """Quadrature grid points."""
+    return self._quadrature_grid
+
+  @property
+  def quadrature_probs(self):
+    """Quadrature normalized weights."""
+    return self._quadrature_probs
 
   def _batch_shape_tensor(self):
     return self._batch_shape_
@@ -454,10 +461,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         seed=distribution_util.gen_new_seed(
             seed, "vector_diffeomixture"))
 
-    # Stride `self._degree` for `batch_size` number of times.
+    # Stride `quadrature_size` for `batch_size` number of times.
     offset = math_ops.range(start=0,
-                            limit=batch_size * self._degree,
-                            delta=self._degree,
+                            limit=batch_size * self._quadrature_size,
+                            delta=self._quadrature_size,
                             dtype=ids.dtype)
 
     weight = array_ops.gather(
@@ -672,43 +679,6 @@ def maybe_check_mix_param(param, name, expected_base_dtype, validate_args):
     return param
 
 
-def maybe_check_distribution(distribution, expected_base_dtype, validate_args):
-  """Helper which checks validity of `distribution` init arg."""
-  if distribution.dtype != expected_base_dtype:
-    raise TypeError("dtype mismatch; "
-                    "distribution.dtype=\"{}\" is not \"{}\"".format(
-                        distribution.dtype.name, expected_base_dtype.name))
-
-  # Although `reparameterization_type` is a static property, we guard it by
-  # `validate_args`. This allows users to use a `distribution` which is not
-  # reparameterized itself. However, we tacitly assume that although the
-  # distribution is not reparameterized, it only depends on non-trainable
-  # variables.
-  if validate_args and (distribution.reparameterization_type
-                        != distribution_lib.FULLY_REPARAMETERIZED):
-    raise ValueError("Base distribution should be reparameterized or be "
-                     "a function of non-trainable variables; "
-                     "distribution.reparameterization_type = \"{}\" "
-                     "!= \"FULLY_REPARAMETERIZED\".".format(
-                         distribution.reparameterization_type))
-  with ops.name_scope(name="check_distribution"):
-    assertions = []
-    def check_is_scalar(is_scalar, name):
-      is_scalar_ = static_value(is_scalar)
-      if is_scalar_ is not None:
-        if not is_scalar_:
-          raise ValueError("distribution must be scalar; "
-                           "distribution.{}=False is not True".format(name))
-      elif validate_args:
-        assertions.append(check_ops.assert_equal(
-            is_scalar, True,
-            message=("distribution must be scalar; "
-                     "distribution.{}=False is not True".format(name))))
-    check_is_scalar(distribution.is_scalar_event(), "is_scalar_event")
-    check_is_scalar(distribution.is_scalar_batch(), "is_scalar_batch")
-    return assertions
-
-
 def determine_batch_event_shapes(mix_loc, mix_scale, endpoint_affine):
   """Helper to infer batch_shape and event_shape."""
   with ops.name_scope(name="determine_batch_event_shapes"):
@@ -809,19 +779,14 @@ def linop_scale(w, op):
           is_non_singular=op.is_non_singular,
           is_self_adjoint=op.is_self_adjoint,
           is_positive_definite=op.is_positive_definite)
-    if isinstance(op, linop_tril_lib.LinearOperatorTriL):
-      return linop_tril_lib.LinearOperatorTriL(
+    if isinstance(op, linop_tril_lib.LinearOperatorLowerTriangular):
+      return linop_tril_lib.LinearOperatorLowerTriangular(
           tril=w[..., array_ops.newaxis, array_ops.newaxis] * op.to_dense(),
           is_non_singular=op.is_non_singular,
           is_self_adjoint=op.is_self_adjoint,
           is_positive_definite=op.is_positive_definite)
     raise NotImplementedError(
         "Unsupported Linop type ({})".format(type(op).__name__))
-
-
-def static_value(x):
-  """Returns the static value of a `Tensor` or `None`."""
-  return tensor_util.constant_value(ops.convert_to_tensor(x))
 
 
 def concat_vectors(*args):

@@ -198,23 +198,23 @@ def avg_pool3d(inputs,
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
-def _fused_batch_norm(
-    inputs,
-    decay=0.999,
-    center=True,
-    scale=False,
-    epsilon=0.001,
-    activation_fn=None,
-    param_initializers=None,
-    updates_collections=ops.GraphKeys.UPDATE_OPS,
-    is_training=True,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    data_format=DATA_FORMAT_NHWC,
-    zero_debias_moving_mean=False,
-    scope=None):
+def _fused_batch_norm(inputs,
+                      decay=0.999,
+                      center=True,
+                      scale=False,
+                      epsilon=0.001,
+                      activation_fn=None,
+                      param_initializers=None,
+                      param_regularizers=None,
+                      updates_collections=ops.GraphKeys.UPDATE_OPS,
+                      is_training=True,
+                      reuse=None,
+                      variables_collections=None,
+                      outputs_collections=None,
+                      trainable=True,
+                      data_format=DATA_FORMAT_NHWC,
+                      zero_debias_moving_mean=False,
+                      scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -257,6 +257,7 @@ def _fused_batch_norm(
       maintain a linear activation.
     param_initializers: Optional initializers for beta, gamma, moving mean and
       moving variance.
+    param_regularizers: Optional regularizer for beta and gamma.
     updates_collections: Collections to collect the update ops for computation.
       The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
@@ -285,6 +286,7 @@ def _fused_batch_norm(
     ValueError: If the rank of `inputs` is neither 2 or 4.
     ValueError: If rank or `C` dimension of `inputs` is undefined.
   """
+  # TODO(reedwm): Add support for fp16 inputs.
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with variable_scope.variable_scope(
@@ -323,6 +325,11 @@ def _fused_batch_norm(
                                                       'beta')
     if not param_initializers:
       param_initializers = {}
+    if not param_regularizers:
+      param_regularizers = {}
+    beta_regularizer = param_regularizers.get('beta')
+    gamma_regularizer = param_regularizers.get('gamma')
+
     if center:
       beta_initializer = param_initializers.get('beta',
                                                 init_ops.zeros_initializer())
@@ -331,6 +338,7 @@ def _fused_batch_norm(
           shape=params_shape,
           dtype=dtype,
           initializer=beta_initializer,
+          regularizer=beta_regularizer,
           collections=beta_collections,
           trainable=trainable_beta)
     else:
@@ -346,6 +354,7 @@ def _fused_batch_norm(
           shape=params_shape,
           dtype=dtype,
           initializer=gamma_initializer,
+          regularizer=gamma_regularizer,
           collections=gamma_collections,
           trainable=trainable)
     else:
@@ -462,7 +471,8 @@ def batch_norm(inputs,
                scope=None,
                renorm=False,
                renorm_clipping=None,
-               renorm_decay=0.99):
+               renorm_decay=0.99,
+               adjustment=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -545,6 +555,17 @@ def batch_norm(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `decay` is still applied
       to get the means and variances for inference.
+    adjustment: A function taking the `Tensor` containing the (dynamic) shape of
+      the input tensor and returning a pair (scale, bias) to apply to the
+      normalized values (before gamma and beta), only during training. For
+      example,
+        `adjustment = lambda shape: (
+          tf.random_uniform(shape[-1:], 0.93, 1.07),
+          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+      will scale the normalized value by up to 7% up or down, then shift the
+      result by up to 0.1 (with independent scaling and bias for each feature
+      but shared across all examples), and finally apply gamma and/or beta. If
+      `None`, no adjustment is applied.
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -568,7 +589,10 @@ def batch_norm(inputs,
   #   implementation in normalization_layers.BatchNormalization.
   inputs = ops.convert_to_tensor(inputs)
   rank = inputs.get_shape().ndims
-  possible_to_fuse = batch_weights is None and not renorm and rank in [2, 4]
+  possible_to_fuse = (batch_weights is None and
+                      not renorm and
+                      rank in [2, 4] and
+                      adjustment is None)
   if fused and possible_to_fuse and (
       zero_debias_moving_mean or rank == 2 or
       updates_collections is not ops.GraphKeys.UPDATE_OPS):
@@ -580,6 +604,7 @@ def batch_norm(inputs,
         epsilon=epsilon,
         activation_fn=activation_fn,
         param_initializers=param_initializers,
+        param_regularizers=param_regularizers,
         updates_collections=updates_collections,
         is_training=is_training,
         reuse=reuse,
@@ -635,6 +660,7 @@ def batch_norm(inputs,
           renorm=renorm,
           renorm_clipping=renorm_clipping,
           renorm_momentum=renorm_decay,
+          adjustment=adjustment,
           name=sc.name,
           _scope=sc,
           _reuse=reuse,
@@ -1250,7 +1276,7 @@ def convolution2d_transpose(
 
     # Add variables to collections.
     _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
@@ -1359,7 +1385,7 @@ def convolution3d_transpose(
 
     # Add variables to collections.
     _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
@@ -1731,13 +1757,14 @@ class GDN(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(GDN, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(GDN, self).__init__(trainable=trainable, name=name,
+                              activity_regularizer=activity_regularizer,
+                              **kwargs)
     self.inverse = inverse
     self._beta_min = beta_min
     self._gamma_init = gamma_init
     self._reparam_offset = reparam_offset
     self.data_format = data_format
-    self.activity_regularizer = activity_regularizer
     self._channel_axis()  # trigger ValueError early
     self.input_spec = base.InputSpec(min_ndim=3, max_ndim=5)
 
@@ -1990,7 +2017,7 @@ def layer_norm(inputs,
 
   Given a tensor `inputs` of rank `R`, moments are calculated and normalization
   is performed over axes `begin_norm_axis ... R - 1`.  Scaling and centering,
-  if requested, is performed over axes `begin_shift_axis .. R - 1`.
+  if requested, is performed over axes `begin_params_axis .. R - 1`.
 
   By default, `begin_norm_axis = 1` and `begin_params_axis = -1`,
   meaning that normalization is performed over all but the first axis
@@ -2504,7 +2531,7 @@ def separable_convolution2d(
                                    variables_collections, 'weights')
       _add_variable_to_collections(layer.pointwise_kernel,
                                    variables_collections, 'weights')
-      if layer.bias:
+      if layer.bias is not None:
         _add_variable_to_collections(layer.bias,
                                      variables_collections, 'biases')
 

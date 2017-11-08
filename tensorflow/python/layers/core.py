@@ -107,7 +107,9 @@ class Dense(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(Dense, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(Dense, self).__init__(trainable=trainable, name=name,
+                                activity_regularizer=activity_regularizer,
+                                **kwargs)
     self.units = units
     self.activation = activation
     self.use_bias = use_bias
@@ -115,7 +117,6 @@ class Dense(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.activity_regularizer = activity_regularizer
     self.kernel_constraint = kernel_constraint
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(min_ndim=2)
@@ -230,6 +231,9 @@ def dense(
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Dense(units,
                 activation=activation,
@@ -332,6 +336,9 @@ def dropout(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
@@ -359,7 +366,8 @@ class Flatten(base.Layer):
 
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
-    outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+    if context.in_graph_mode():
+      outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
     return outputs
 
   def _compute_output_shape(self, input_shape):

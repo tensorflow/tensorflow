@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -27,15 +28,17 @@ const char ProcessFunctionLibraryRuntime::kDefaultFLRDevice[] = "null";
 ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options) {
+    const OptimizerOptions& optimizer_options,
+    DistributedFunctionLibraryRuntime* parent)
+    : device_mgr_(device_mgr), lib_def_(lib_def), parent_(parent) {
   if (device_mgr == nullptr) {
-    flr_map_[kDefaultFLRDevice] =
+    flr_map_[nullptr] =
         NewFunctionLibraryRuntime(nullptr, env, nullptr, graph_def_version,
                                   lib_def, optimizer_options, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d->name()] =
+    flr_map_[d] =
         NewFunctionLibraryRuntime(device_mgr, env, d, graph_def_version,
                                   lib_def, optimizer_options, this);
   }
@@ -45,18 +48,38 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator) {
+    CustomKernelCreator custom_kernel_creator,
+    DistributedFunctionLibraryRuntime* parent)
+    : device_mgr_(device_mgr), lib_def_(lib_def), parent_(parent) {
   if (device_mgr == nullptr) {
-    flr_map_[kDefaultFLRDevice] = NewFunctionLibraryRuntime(
+    flr_map_[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, nullptr, graph_def_version, lib_def, optimizer_options,
-        custom_kernel_creator, this);
+        std::move(custom_kernel_creator), this);
+    return;
   }
   for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d->name()] = NewFunctionLibraryRuntime(
+    flr_map_[d] = NewFunctionLibraryRuntime(
         device_mgr, env, d, graph_def_version, lib_def, optimizer_options,
         custom_kernel_creator, this);
   }
 }
+
+ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def,
+    const OptimizerOptions& optimizer_options)
+    : ProcessFunctionLibraryRuntime(device_mgr, env, graph_def_version, lib_def,
+                                    optimizer_options,
+                                    nullptr /* cluster_flr */) {}
+
+ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def,
+    const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator)
+    : ProcessFunctionLibraryRuntime(
+          device_mgr, env, graph_def_version, lib_def, optimizer_options,
+          std::move(custom_kernel_creator), nullptr /* cluster_flr */) {}
 
 /* static */
 string ProcessFunctionLibraryRuntime::ObtainFunctionTarget(
@@ -65,14 +88,15 @@ string ProcessFunctionLibraryRuntime::ObtainFunctionTarget(
   if (!attrs.Find("_target", &value).ok()) {
     return "";
   }
-  return value->s();
+  return DeviceNameUtils::CanonicalizeDeviceName(value->s());
 }
 
 /* static */
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64 src_incarnation,
-    gtl::ArraySlice<Tensor> tensors_to_send, const Rendezvous::Args& args,
+    gtl::ArraySlice<Tensor> tensors_to_send, DeviceContext* device_context,
+    const std::vector<AllocatorAttributes>& alloc_attrs,
     Rendezvous* rendezvous) {
   std::vector<string> keys;
   for (int i = 0; i < tensors_to_send.size(); ++i) {
@@ -81,8 +105,8 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
                                        target_device, name, FrameAndIter(0, 0));
     keys.push_back(key);
   }
-  TF_RETURN_IF_ERROR(
-      SendTensorsToRendezvous(rendezvous, args, keys, tensors_to_send));
+  TF_RETURN_IF_ERROR(SendTensorsToRendezvous(
+      rendezvous, device_context, alloc_attrs, keys, tensors_to_send));
   return Status::OK();
 }
 
@@ -90,7 +114,8 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
 void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64 src_incarnation, int64 num_tensors,
-    const Rendezvous::Args& args, Rendezvous* rendezvous,
+    DeviceContext* device_context,
+    const std::vector<AllocatorAttributes>& alloc_attrs, Rendezvous* rendezvous,
     std::vector<Tensor>* received_tensors, const StatusCallback& done) {
   std::vector<string> keys;
   for (int64 i = 0; i < num_tensors; ++i) {
@@ -100,7 +125,7 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     keys.push_back(key);
   }
   RecvOutputsFromRendezvousAsync(
-      rendezvous, args, keys, received_tensors,
+      rendezvous, device_context, alloc_attrs, keys, received_tensors,
       [done](const Status& status) { done(status); });
 }
 
@@ -138,11 +163,19 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 
 FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
     const string& device_name) {
-  if (flr_map_.find(device_name) == flr_map_.end()) {
+  Device* device = nullptr;
+  if (device_name != kDefaultFLRDevice) {
+    if (!device_mgr_->LookupDevice(device_name, &device).ok()) {
+      LOG(ERROR) << "Could not find device: " << device_name;
+      return nullptr;
+    }
+  }
+  const auto& iter = flr_map_.find(device);
+  if (iter == flr_map_.end()) {
     LOG(ERROR) << "Could not find device: " << device_name;
     return nullptr;
   }
-  return flr_map_[device_name].get();
+  return iter->second.get();
 }
 
 FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
@@ -176,33 +209,40 @@ ProcessFunctionLibraryRuntime::GetHandleOnDevice(
     const string& device_name, FunctionLibraryRuntime::Handle handle) {
   mutex_lock l(mu_);
   CHECK_LE(handle, function_data_.size());
-  std::pair<string, FunctionLibraryRuntime::LocalHandle> p =
-      function_data_[handle];
-  if (p.first != device_name) {
+  const FunctionData& function_data = function_data_[handle];
+  if (function_data.target_device != device_name) {
     return kInvalidLocalHandle;
   }
-  return p.second;
+  return function_data.local_handle;
 }
 
 string ProcessFunctionLibraryRuntime::GetDeviceName(
     FunctionLibraryRuntime::Handle handle) {
   mutex_lock l(mu_);
   CHECK_LE(handle, function_data_.size());
-  std::pair<string, FunctionLibraryRuntime::LocalHandle> p =
-      function_data_[handle];
-  return p.first;
+  const FunctionData& function_data = function_data_[handle];
+  return function_data.target_device;
 }
 
 Status ProcessFunctionLibraryRuntime::Instantiate(
     const string& function_name, AttrSlice attrs,
     FunctionLibraryRuntime::Handle* handle) {
+  *handle = kInvalidHandle;
   string target = ObtainFunctionTarget(attrs);
-
   FunctionLibraryRuntime* flr = GetFLR(target);
   if (flr != nullptr) {
     return flr->Instantiate(function_name, attrs, handle);
   }
-  return errors::InvalidArgument("Target: ", target, " is not supported");
+  if (parent_ == nullptr) {
+    return errors::Internal(
+        "Currently don't support instantiating functions on device: ", target);
+  }
+  FunctionLibraryRuntime::Handle cluster_handle;
+  TF_RETURN_IF_ERROR(
+      parent_->Instantiate(function_name, *lib_def_, attrs, &cluster_handle));
+  string function_key = Canonicalize(function_name, attrs);
+  *handle = AddHandle(function_key, target, cluster_handle);
+  return Status::OK();
 }
 
 void ProcessFunctionLibraryRuntime::Run(
@@ -218,19 +258,19 @@ void ProcessFunctionLibraryRuntime::Run(
 
   FunctionLibraryRuntime* flr = nullptr;
   string target_device;
+  FunctionLibraryRuntime::LocalHandle local_handle;
   {
     mutex_lock l(mu_);
     CHECK_LE(handle, function_data_.size());
-    std::pair<string, FunctionLibraryRuntime::LocalHandle> p =
-        function_data_[handle];
-    target_device = p.first;
-    flr = GetFLR(p.first);
+    target_device = function_data_[handle].target_device;
+    local_handle = function_data_[handle].local_handle;
   }
+  flr = GetFLR(target_device);
   if (flr != nullptr) {
     auto rendezvous = opts.rendezvous;
     string source_device = opts.source_device;
-    Rendezvous::Args rendez_args;
-    Status s = GetDeviceContext(source_device, &rendez_args.device_context);
+    DeviceContext* device_context;
+    Status s = GetDeviceContext(source_device, &device_context);
     if (!s.ok()) {
       done(s);
       return;
@@ -245,15 +285,18 @@ void ProcessFunctionLibraryRuntime::Run(
 
     // Send the args over to the target device.
     s = SendTensors(source_device, target_device, "arg_", src_incarnation, args,
-                    rendez_args, rendezvous);
+                    device_context, opts.args_alloc_attrs, rendezvous);
     if (!s.ok()) {
       done(s);
       return;
     }
+    const std::vector<AllocatorAttributes>& rets_alloc_attrs =
+        opts.rets_alloc_attrs;
     std::vector<Tensor>* remote_rets = new std::vector<Tensor>;
     flr->Run(opts, handle, args, remote_rets,
              [source_device, target_device, target_incarnation, rendezvous,
-              remote_rets, rets, done, rendez_args](const Status& status) {
+              device_context, rets_alloc_attrs, remote_rets, rets,
+              done](const Status& status) {
                if (!status.ok()) {
                  delete remote_rets;
                  done(status);
@@ -263,13 +306,17 @@ void ProcessFunctionLibraryRuntime::Run(
                delete remote_rets;
                // Now receive the return values from the target.
                ReceiveTensorsAsync(target_device, source_device, "ret_",
-                                   target_incarnation, num_returns, rendez_args,
-                                   rendezvous, rets, done);
+                                   target_incarnation, num_returns,
+                                   device_context, rets_alloc_attrs, rendezvous,
+                                   rets, done);
              });
-  } else {
-    done(errors::Internal("Could not find device"));
     return;
   }
+  if (parent_ != nullptr) {
+    parent_->Run(opts, local_handle, args, rets, done);
+    return;
+  }
+  done(errors::Internal("Could not find device"));
 }
 
 }  // namespace tensorflow

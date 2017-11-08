@@ -26,6 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+class ShapeRefiner;
 class ShapeRefinerTest;
 
 namespace grappler {
@@ -70,6 +71,7 @@ class DimensionHandle {
   friend class ShapeInferenceTestutil;
   friend class ::tensorflow::ShapeRefinerTest;
   friend class ShapeManager;
+  friend class ::tensorflow::grappler::GraphProperties;
 
   // Intentionally copyable.
 };
@@ -142,6 +144,8 @@ struct ShapeAndType {
 // is created by the framework and passed to a shape inference function.  The
 // shape inference function calls functions on the context, and should call
 // set_output() to set the shape on all outputs.
+//
+// To infer shapes for user-defined functions see ShapeRefiner.
 //
 // All Shape* and Dimension* returned by functions of InferenceContext are owned
 // by the InferenceContext.
@@ -321,7 +325,9 @@ class InferenceContext {
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
-  AttrSlice attrs() const { return AttrSlice(node_def_); }
+  AttrSlice attrs() const { return AttrSlice(*node_def_); }
+
+  string op() const;
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
@@ -347,6 +353,10 @@ class InferenceContext {
   inline bool ValueKnown(DimensionOrConstant d) const {
     return Value(d) != kUnknownDim;
   }
+
+  // Fills the output proto with the shape defined by the handle.
+  // "proto" is expected to be empty prior to the call.
+  void ShapeHandleToProto(ShapeHandle handle, TensorShapeProto* proto);
 
   // Returns true if the rank and all dimensions of the Shape are known.
   bool FullyDefined(ShapeHandle s);
@@ -623,6 +633,10 @@ class InferenceContext {
   };
 
   friend class ::tensorflow::grappler::GraphProperties;
+
+  // Friend for user-defined function shape inference purposes.
+  friend class ::tensorflow::ShapeRefiner;
+
   friend class ShapeInferenceTest;      // For testing Relax functions.
   friend class ShapeInferenceTestutil;  // For testing shapes.
 
@@ -696,7 +710,7 @@ class InferenceContext {
       output_handle_shapes_and_types_;
 
   const int graph_def_version_;
-  const NodeDef& node_def_;
+  const NodeDef* node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
 
@@ -736,7 +750,7 @@ inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
 
 template <class T>
 Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
-  return GetNodeAttr(node_def_, attr_name, value);
+  return GetNodeAttr(*node_def_, attr_name, value);
 }
 
 }  // namespace shape_inference

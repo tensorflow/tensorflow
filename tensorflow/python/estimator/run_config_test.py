@@ -39,6 +39,7 @@ _KEEP_CKPT_MAX_ERR = 'keep_checkpoint_max should be >= 0'
 _KEEP_CKPT_HOURS_ERR = 'keep_checkpoint_every_n_hours should be > 0'
 _TF_RANDOM_SEED_ERR = 'tf_random_seed must be integer'
 _ONE_CHIEF_ERR = 'The "cluster" in TF_CONFIG must have only one "chief" node.'
+_ONE_MASTER_ERR = 'The "cluster" in TF_CONFIG must have only one "master" node.'
 _MISSING_CHIEF_ERR = 'If "cluster" is set .* it must have one "chief" node'
 _MISSING_TASK_TYPE_ERR = 'If "cluster" is set .* task type must be set'
 _MISSING_TASK_ID_ERR = 'If "cluster" is set .* task index must be set'
@@ -49,6 +50,13 @@ _INVALID_TASK_TYPE_FOR_LOCAL_ERR = (
     'If "cluster" is not set in TF_CONFIG, task type must be WORKER.')
 _INVALID_TASK_INDEX_FOR_LOCAL_ERR = (
     'If "cluster" is not set in TF_CONFIG, task index must be 0.')
+_INVALID_EVALUATOR_IN_CLUSTER_WITH_MASTER_ERR = (
+    'If `master` node exists in `cluster`, task_type `evaluator` is not '
+    'supported.')
+_INVALID_CHIEF_IN_CLUSTER_WITH_MASTER_ERR = (
+    'If `master` node exists in `cluster`, job `chief` is not supported.')
+_INVALID_SERVICE_TYPE_ERR = (
+    'If "service" is set in TF_CONFIG, it must be a dict. Given')
 
 
 def _create_run_config_with_cluster_spec(tf_config, **kwargs):
@@ -62,12 +70,13 @@ class RunConfigTest(test.TestCase):
     config = run_config_lib.RunConfig()
     self.assertIsNone(config.model_dir)
     self.assertIsNone(config.session_config)
-    self.assertEqual(1, config.tf_random_seed)
+    self.assertIsNone(config.tf_random_seed)
     self.assertEqual(100, config.save_summary_steps)
     self.assertEqual(600, config.save_checkpoints_secs)
     self.assertIsNone(config.save_checkpoints_steps)
     self.assertEqual(5, config.keep_checkpoint_max)
     self.assertEqual(10000, config.keep_checkpoint_every_n_hours)
+    self.assertIsNone(config.service)
 
   def test_model_dir(self):
     empty_config = run_config_lib.RunConfig()
@@ -484,6 +493,230 @@ class RunConfigDistributedSettingTest(test.TestCase):
       _create_run_config_with_cluster_spec(tf_config)
 
 
+class RunConfigDistributedSettingWithMasterTest(test.TestCase):
+
+  def _assert_distributed_properties(self, run_config,
+                                     expected_cluster_spec,
+                                     expected_task_type,
+                                     expected_task_id,
+                                     expected_master,
+                                     expected_evaluation_master,
+                                     expected_is_chief,
+                                     expected_num_worker_replicas,
+                                     expected_num_ps_replicas):
+    self.assertEqual(expected_cluster_spec, run_config.cluster_spec.as_dict())
+    self.assertEqual(expected_task_type, run_config.task_type)
+    self.assertEqual(expected_task_id, run_config.task_id)
+    self.assertEqual(expected_master, run_config.master)
+    self.assertEqual(expected_evaluation_master, run_config.evaluation_master)
+    self.assertEqual(expected_is_chief, run_config.is_chief)
+    self.assertEqual(expected_num_worker_replicas,
+                     run_config.num_worker_replicas)
+    self.assertEqual(expected_num_ps_replicas, run_config.num_ps_replicas)
+
+  def test_invalid_task_type_for_local(self):
+    tf_config = {
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': 0
+        }
+    }
+    with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TYPE_FOR_LOCAL_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+  def test_master_tf_config(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': 0
+        }
+    }
+    self._assert_distributed_properties(
+        run_config=_create_run_config_with_cluster_spec(tf_config),
+        expected_cluster_spec=tf_config['cluster'],
+        expected_task_type=run_config_lib.TaskType.MASTER,
+        expected_task_id=0,
+        expected_master='grpc://host0:0',
+        expected_evaluation_master='',
+        expected_is_chief=True,
+        expected_num_worker_replicas=4,
+        expected_num_ps_replicas=2)
+
+  def test_fail_with_multiple_master_nodes(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0', 'host:6:6'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5']
+        },
+    }
+    with self.assertRaisesRegexp(ValueError, _ONE_MASTER_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+  def test_single_master_node(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': 0
+        }
+    }
+    self._assert_distributed_properties(
+        run_config=_create_run_config_with_cluster_spec(tf_config),
+        expected_cluster_spec=tf_config['cluster'],
+        expected_task_type=run_config_lib.TaskType.MASTER,
+        expected_task_id=0,
+        expected_master='grpc://host0:0',
+        expected_evaluation_master='',
+        expected_is_chief=True,
+        expected_num_worker_replicas=1,
+        expected_num_ps_replicas=0)
+
+  def test_fail_with_missing_task_type_for_distributed(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host3:3']
+        },
+    }
+    with self.assertRaisesRegexp(ValueError, _MISSING_TASK_TYPE_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+  def test_fail_with_missing_task_index_for_distributed(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host3:3']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+        }
+    }
+    with self.assertRaisesRegexp(ValueError, _MISSING_TASK_ID_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+  def test_fail_with_index_is_too_large(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host3:3']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': 1
+        }
+    }
+    with self.assertRaisesRegexp(ValueError, _INVALID_TASK_INDEX_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+  def test_fail_with_invalid_task_index(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host3:3']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': -1
+        }
+    }
+    with self.assertRaisesRegexp(ValueError, _NEGATIVE_TASK_INDEX_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+  def test_fail_with_invalid_task_type(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host3:3']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.WORKER,
+            'index': 0
+        }
+    }
+    with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TYPE_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+  def test_worker_tf_config(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.WORKER,
+            'index': 1
+        }
+    }
+    self._assert_distributed_properties(
+        run_config=_create_run_config_with_cluster_spec(tf_config),
+        expected_cluster_spec=tf_config['cluster'],
+        expected_task_type=run_config_lib.TaskType.WORKER,
+        expected_task_id=1,
+        expected_master='grpc://host4:4',
+        expected_evaluation_master='',
+        expected_is_chief=False,
+        expected_num_worker_replicas=4,
+        expected_num_ps_replicas=2)
+
+  def test_ps_tf_config(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.PS,
+            'index': 0
+        }
+    }
+    self._assert_distributed_properties(
+        run_config=_create_run_config_with_cluster_spec(tf_config),
+        expected_cluster_spec=tf_config['cluster'],
+        expected_task_type=run_config_lib.TaskType.PS,
+        expected_task_id=0,
+        expected_master='grpc://host1:1',
+        expected_evaluation_master='',
+        expected_is_chief=False,
+        expected_num_worker_replicas=4,
+        expected_num_ps_replicas=2)
+
+  def test_fail_with_evaluator(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.EVALUATOR,
+            'index': 1
+        }
+    }
+    with self.assertRaisesRegexp(ValueError,
+                                 _INVALID_EVALUATOR_IN_CLUSTER_WITH_MASTER_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+  def test_fail_with_chief(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+            run_config_lib.TaskType.CHIEF: ['host3:3', 'host4:4', 'host5:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.PS,
+            'index': 1
+        }
+    }
+    with self.assertRaisesRegexp(ValueError,
+                                 _INVALID_CHIEF_IN_CLUSTER_WITH_MASTER_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
+
+
 class RunConfigSaveCheckpointsTest(test.TestCase):
 
   def test_save_checkpoint(self):
@@ -530,6 +763,34 @@ class RunConfigSaveCheckpointsTest(test.TestCase):
     config_without_ckpt = config_with_steps.replace(save_checkpoints_steps=None)
     self.assertIsNone(config_without_ckpt.save_checkpoints_steps)
     self.assertIsNone(config_without_ckpt.save_checkpoints_secs)
+
+
+class RunConfigServiceKeyTest(test.TestCase):
+
+  def test_arbitrary_key_value_pairs(self):
+    tf_config = {
+        'service': {
+            'key1': [1, 2],
+            'key2': {'a': 3, 'b': 4},
+            'key3': 789,
+        },
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(tf_config['service'], run_config.service)
+
+  def test_missing_service_key(self):
+    tf_config = {
+        'model_dir': '/tmp/123',
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertIsNone(run_config.service)
+
+  def test_fail_with_non_dict(self):
+    tf_config = {
+        'service': 789,
+    }
+    with self.assertRaisesRegexp(TypeError, _INVALID_SERVICE_TYPE_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
 
 
 if __name__ == '__main__':

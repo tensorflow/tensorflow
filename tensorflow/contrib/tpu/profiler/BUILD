@@ -95,3 +95,10 @@ tf_proto_library_cc(
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
+
+tf_proto_library_cc(
+    name = "tf_op_stats_proto",
+    srcs = ["tf_op_stats.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)

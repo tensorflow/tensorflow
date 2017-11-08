@@ -44,7 +44,7 @@ class MomentumOptimizerTest(test.TestCase):
     var = var - accum * lr * momentum
     return var, accum
 
-  def doTestBasic(self, use_resource=False):
+  def doTestBasic(self, use_resource=False, use_callable_params=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       if use_resource:
         var0 = resource_variable_ops.ResourceVariable(
@@ -56,8 +56,13 @@ class MomentumOptimizerTest(test.TestCase):
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
       grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+      learning_rate = lambda: 2.0
+      momentum = lambda: 0.9
+      if not use_callable_params:
+        learning_rate = learning_rate()
+        momentum = momentum()
       mom_opt = momentum_lib.MomentumOptimizer(
-          learning_rate=2.0, momentum=0.9)
+          learning_rate=learning_rate, momentum=momentum)
       mom_update = mom_opt.apply_gradients(
           zip([grads0, grads1], [var0, var1]))
 
@@ -124,6 +129,43 @@ class MomentumOptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
+
+  def testBasicCallableParams(self):
+    with context.eager_mode():
+      self.doTestBasic(use_resource=True, use_callable_params=True)
+
+  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  def testVariablesAcrossGraphs(self):
+    optimizer = momentum_lib.MomentumOptimizer(0.01, 0.5)
+    with ops.Graph().as_default():
+      var0 = resource_variable_ops.ResourceVariable(
+          [1.0, 2.0], dtype=dtypes.float32, name="var0")
+      var1 = resource_variable_ops.ResourceVariable(
+          [3.0, 4.0], dtype=dtypes.float32, name="var1")
+      if context.in_eager_mode():
+        loss = lambda: math_ops.reduce_sum(var0 + var1)
+      else:
+        loss = math_ops.reduce_sum(var0 + var1)
+      optimizer.minimize(loss)
+      optimizer_variables = optimizer.variables()
+      self.assertStartsWith(optimizer_variables[0].name, "var0")
+      self.assertStartsWith(optimizer_variables[1].name, "var1")
+      self.assertEquals(2, len(optimizer_variables))
+
+    with ops.Graph().as_default():
+      var2 = resource_variable_ops.ResourceVariable(
+          [1.0, 2.0], dtype=dtypes.float32, name="var2")
+      var3 = resource_variable_ops.ResourceVariable(
+          [3.0, 4.0], dtype=dtypes.float32, name="var3")
+      if context.in_eager_mode():
+        loss = lambda: math_ops.reduce_sum(var2 + var3)
+      else:
+        loss = math_ops.reduce_sum(var2 + var3)
+      optimizer.minimize(loss)
+      optimizer_variables = optimizer.variables()
+      self.assertStartsWith(optimizer_variables[0].name, "var2")
+      self.assertStartsWith(optimizer_variables[1].name, "var3")
+      self.assertEquals(2, len(optimizer_variables))
 
   def testNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:

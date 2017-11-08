@@ -55,6 +55,15 @@ config_setting(
 )
 
 config_setting(
+    name = "raspberry_pi_armeabi",
+    values = {
+        "crosstool_top": "@local_config_arm_compiler//:toolchain",
+        "cpu": "armeabi",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
@@ -121,6 +130,15 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_x86_64",
+    values = {
+        "crosstool_top": "//tools/osx/crosstool:crosstool",
+        "cpu": "ios_x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -182,6 +200,12 @@ config_setting(
 config_setting(
     name = "with_hdfs_support",
     values = {"define": "with_hdfs_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_s3_support",
+    values = {"define": "with_s3_support=true"},
     visibility = ["//visibility:public"],
 )
 
@@ -273,11 +297,19 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Make a dummy rule that we can chaqnge "default" in select statements to.
+# to disable dependencies in copybara.
+config_setting(
+    name = "dummy_disabled_internal",
+    values = {"define": "with_dummy_disabled_internal=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
-        "//learning/protonn/llgtm/...",
         "//tensorflow/...",
+        "//tensorflow_fold/llgtm/...",
     ],
 )
 
@@ -316,6 +348,7 @@ filegroup(
         "//tensorflow/compiler/jit/kernels:all_files",
         "//tensorflow/compiler/jit/legacy_flags:all_files",
         "//tensorflow/compiler/jit/ops:all_files",
+        "//tensorflow/compiler/plugin:all_files",
         "//tensorflow/compiler/tests:all_files",
         "//tensorflow/compiler/tf2xla:all_files",
         "//tensorflow/compiler/tf2xla/cc:all_files",
@@ -333,6 +366,7 @@ filegroup(
         "//tensorflow/compiler/xla/service/llvm_ir:all_files",
         "//tensorflow/compiler/xla/tests:all_files",
         "//tensorflow/compiler/xla/tools:all_files",
+        "//tensorflow/compiler/xla/tools/parser:all_files",
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/all_reduce:all_files",
         "//tensorflow/contrib/android:all_files",
@@ -354,6 +388,7 @@ filegroup(
         "//tensorflow/contrib/crf:all_files",
         "//tensorflow/contrib/cudnn_rnn:all_files",
         "//tensorflow/contrib/data:all_files",
+        "//tensorflow/contrib/data/kernels:all_files",
         "//tensorflow/contrib/data/python/kernel_tests:all_files",
         "//tensorflow/contrib/data/python/ops:all_files",
         "//tensorflow/contrib/decision_trees/proto:all_files",
@@ -378,6 +413,11 @@ filegroup(
         "//tensorflow/contrib/integrate:all_files",
         "//tensorflow/contrib/keras:all_files",
         "//tensorflow/contrib/kernel_methods:all_files",
+        "//tensorflow/contrib/kfac:all_files",
+        "//tensorflow/contrib/kfac/examples:all_files",
+        "//tensorflow/contrib/kfac/examples/tests:all_files",
+        "//tensorflow/contrib/kfac/python/kernel_tests:all_files",
+        "//tensorflow/contrib/kfac/python/ops:all_files",
         "//tensorflow/contrib/labeled_tensor:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",
@@ -387,20 +427,22 @@ filegroup(
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
+        "//tensorflow/contrib/makefile:all_files",
         "//tensorflow/contrib/meta_graph_transform:all_files",
         "//tensorflow/contrib/metrics:all_files",
+        "//tensorflow/contrib/model_pruning:all_files",
         "//tensorflow/contrib/mpi_collectives:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nearest_neighbor:all_files",
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/predictor:all_files",
+        "//tensorflow/contrib/quantize:all_files",
         "//tensorflow/contrib/receptive_field:all_files",
         "//tensorflow/contrib/reduce_slice_ops:all_files",
         "//tensorflow/contrib/remote_fused_graph/pylib:all_files",
         "//tensorflow/contrib/resampler:all_files",
         "//tensorflow/contrib/rnn:all_files",
-        "//tensorflow/contrib/s3:all_files",
         "//tensorflow/contrib/saved_model:all_files",
         "//tensorflow/contrib/saved_model/cc/saved_model:all_files",
         "//tensorflow/contrib/seq2seq:all_files",
@@ -422,6 +464,7 @@ filegroup(
         "//tensorflow/contrib/tensor_forest/kernels/v4:all_files",
         "//tensorflow/contrib/tensor_forest/proto:all_files",
         "//tensorflow/contrib/tensorboard:all_files",
+        "//tensorflow/contrib/tensorboard/db:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/text:all_files",
         "//tensorflow/contrib/tfprof:all_files",
@@ -434,7 +477,6 @@ filegroup(
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/contrib/verbs:all_files",
-        "//tensorflow/contrib/xla_tf_graph:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
@@ -449,10 +491,12 @@ filegroup(
         "//tensorflow/core/kernels/fuzzing:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/kernels/neon:all_files",
+        "//tensorflow/core/lib/db:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
         "//tensorflow/core/platform/hadoop:all_files",
+        "//tensorflow/core/platform/s3:all_files",
         "//tensorflow/core/profiler:all_files",
         "//tensorflow/core/profiler/internal:all_files",
         "//tensorflow/core/profiler/internal/advisor:all_files",
@@ -486,7 +530,10 @@ filegroup(
         "//tensorflow/python/keras:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/kernel_tests/distributions:all_files",
+        "//tensorflow/python/kernel_tests/linalg:all_files",
+        "//tensorflow/python/kernel_tests/random:all_files",
         "//tensorflow/python/ops/distributions:all_files",
+        "//tensorflow/python/ops/linalg:all_files",
         "//tensorflow/python/profiler:all_files",
         "//tensorflow/python/profiler/internal:all_files",
         "//tensorflow/python/saved_model:all_files",
@@ -495,6 +542,7 @@ filegroup(
         "//tensorflow/tools/api/golden:all_files",
         "//tensorflow/tools/api/lib:all_files",
         "//tensorflow/tools/api/tests:all_files",
+        "//tensorflow/tools/benchmark:all_files",
         "//tensorflow/tools/build_info:all_files",
         "//tensorflow/tools/common:all_files",
         "//tensorflow/tools/compatibility:all_files",

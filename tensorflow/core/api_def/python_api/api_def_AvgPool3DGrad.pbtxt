@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "AvgPool3DGrad"
+  visibility: HIDDEN
+}

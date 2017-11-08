@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -41,6 +42,58 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+
+class ShardingBuilder {
+ public:
+  // A shaped array used to describe the assignment of tiles to devices.
+  using TileAssignment = Array<int64>;
+
+  // Creates a replicated sharding - replicate a tensor on every device.
+  static OpSharding Replicate() {
+    OpSharding result;
+    result.set_type(OpSharding::Type::OpSharding_Type_REPLICATED);
+    return result;
+  }
+  // Creates a sharding that assigns a tensor to just one device.
+  static OpSharding AssignDevice(int device) {
+    OpSharding result;
+    result.set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+    result.add_tile_assignment_dimensions(1);
+    result.add_tile_assignment_devices(device);
+    return result;
+  }
+  // Creates a tiled sharding with the given tile shape and assignment of tiles
+  // to devices.
+  static OpSharding Tile(Shape tile_shape,
+                         const TileAssignment& tile_assignment) {
+    OpSharding result;
+    result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    for (int64 dim : tile_assignment.dimensions()) {
+      result.add_tile_assignment_dimensions(dim);
+    }
+    for (uint32 device : tile_assignment) {
+      result.add_tile_assignment_devices(device);
+    }
+    return result;
+  }
+  // Creates a sharding in one dimension, with the given tile shape which must
+  // be rank 1 and using devices 0..num_tiles.
+  static OpSharding Tile1D(Shape tile_shape, int64 num_tiles) {
+    OpSharding result;
+    result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+
+    CHECK_EQ(ShapeUtil::Rank(tile_shape), 1);
+    std::vector<int64> dimensions(1, num_tiles);
+    auto& tile_dimension = (*tile_shape.mutable_dimensions())[0];
+    tile_dimension = CeilOfRatio(static_cast<int64>(tile_dimension), num_tiles);
+    *result.mutable_tile_shape() = tile_shape;
+    result.add_tile_assignment_dimensions(num_tiles);
+    for (int64 i = 0; i < num_tiles; ++i) {
+      result.add_tile_assignment_devices(i);
+    }
+    return result;
+  }
+};
 
 // Wraps an XLA client with a convenient interface for building up
 // computations. Any errors encountered in building up the computation are
@@ -76,13 +129,17 @@ class ComputationBuilder {
     metadata_.Clear();
   }
 
-  // Sets an OpDeviceAssignment that will be attached to all instructions
-  // until cleared.
-  void SetDeviceAssignment(const OpDeviceAssignment& assignment);
+  // Sets an OpSharding that will be attached to all instructions until cleared.
+  void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
 
-  // Clears the device assignment. Ops will be placed according to the default
-  // placement policy.
-  void ClearDeviceAssignment();
+  // Clears the sharding. Ops will be sharded according to the default placement
+  // policy.
+  void ClearSharding() { sharding_ = tensorflow::gtl::nullopt; }
+
+  // Returns the OpSharding that will be attached to all instructions.
+  const tensorflow::gtl::optional<OpSharding>& sharding() const {
+    return sharding_;
+  }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -137,6 +194,11 @@ class ComputationBuilder {
   template <typename NativeT>
   ComputationDataHandle ConstantR2(
       std::initializer_list<std::initializer_list<NativeT>> values);
+  template <typename NativeT>
+  ComputationDataHandle ConstantFromArrayWithLayout(
+      const Array<NativeT>& values, const Layout& layout);
+  template <typename NativeT>
+  ComputationDataHandle ConstantFromArray(const Array<NativeT>& values);
   template <typename NativeT>
   ComputationDataHandle ConstantR2FromArray2DWithLayout(
       const Array2D<NativeT>& values, const Layout& layout);
@@ -200,6 +262,16 @@ class ComputationBuilder {
   // operand with dimensions {x=256, y=2, z=2, p=32} can be collapsed to
   // {x=1024, y=32} by collapsing dims {0, 1, 2}. Collapsing dimensions must
   // be a consecutive, in-order subsequence of the operand dimensions.
+  //
+  // Note that collapsing a single dimension does nothing:
+  //
+  //    {256} collapsing {0} => {256}
+  //    {1} collapsing {0} => {1}
+  //
+  // Collapsing multiple dimensions produces a single result dimension:
+  //
+  //    {256, 2} collapsing {0,1} => {512}
+  //    {256, 2, 3} collapsing {0,1} => {512, 3}
   //
   // This could potentially cause data to be moved -- it provides a more
   // structured form of reshaping than an arbitrary Reshape operation.
@@ -344,7 +416,8 @@ class ComputationBuilder {
   // Creates a ConvolutionDimensionNumbers with the given arguments. Returns an
   // error if either the input or the weight dimension numbers have conflicts.
   static StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
-      int64 batch, int64 feature, int64 first_spatial, int64 second_spatial,
+      int64 input_batch, int64 input_feature, int64 output_batch,
+      int64 output_feature, int64 first_spatial, int64 second_spatial,
       int64 kernel_output_feature, int64 kernel_input_feature,
       int64 kernel_first_spatial, int64 kernel_second_spatial);
 
@@ -415,6 +488,14 @@ class ComputationBuilder {
   // of the operands is a scalar, or an explicit broadcast dimension is given
   // (see g3doc for more details).
 
+  // Enqueues a complex compose instruction onto the computation.
+  ComputationDataHandle Complex(
+      const ComputationDataHandle& real, const ComputationDataHandle& imag,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
+  // Enqueues a complex conjugate instruction onto the computation.
+  ComputationDataHandle Conj(const ComputationDataHandle& operand);
+
   // Enqueues an add instruction onto the computation.
   ComputationDataHandle Add(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
@@ -451,15 +532,25 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Element-wise logical operators
-  ComputationDataHandle LogicalAnd(
+  ComputationDataHandle And(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
-  ComputationDataHandle LogicalOr(
+  ComputationDataHandle Or(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
-  ComputationDataHandle LogicalNot(const ComputationDataHandle& lhs);
+  ComputationDataHandle Not(const ComputationDataHandle& operand);
+
+  ComputationDataHandle ShiftLeft(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+  ComputationDataHandle ShiftRightArithmetic(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+  ComputationDataHandle ShiftRightLogical(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Reduces an array among the provided dimensions, given "computation" as a
   // reduction operator.
@@ -516,6 +607,11 @@ class ComputationBuilder {
   // Enqueues an abs instruction onto the computation.
   ComputationDataHandle Abs(const ComputationDataHandle& operand);
 
+  // Enqueues a atan2 instruction onto the computation.
+  ComputationDataHandle Atan2(
+      const ComputationDataHandle& y, const ComputationDataHandle& x,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
   // Enqueues an exp instruction onto the computation.
   ComputationDataHandle Exp(const ComputationDataHandle& operand);
 
@@ -543,6 +639,12 @@ class ComputationBuilder {
 
   // Enqueues a tanh instruction onto the computation.
   ComputationDataHandle Tanh(const ComputationDataHandle& operand);
+
+  // Enqueues a real-part instruction onto the computation.
+  ComputationDataHandle Real(const ComputationDataHandle& operand);
+
+  // Enqueues an imaginary-part instruction onto the computation.
+  ComputationDataHandle Imag(const ComputationDataHandle& operand);
 
   // Enqueues a float32 sqrt instruction onto the computation.
   // (float32 is specified as there is an implicit float32 0.5f constant
@@ -604,6 +706,7 @@ class ComputationBuilder {
   ComputationDataHandle Map(
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       const Computation& computation,
+      tensorflow::gtl::ArraySlice<int64> dimensions,
       tensorflow::gtl::ArraySlice<ComputationDataHandle> static_operands = {});
 
   // Enqueues a N(mu, sigma) random number generation instruction onto the
@@ -643,11 +746,12 @@ class ComputationBuilder {
   ComputationDataHandle Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters, or on stateful operators such
-  // as `RngNormal` or `Infeed`. Unlike `ComputeConstant`, `IsConstant` tests
-  // whether a computation is a compile-time constant without evaluating the
-  // computation.
-  StatusOr<bool> IsConstant(const ComputationDataHandle& operand);
+  // constant does not depend on parameters with higher index then
+  // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
+  // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
+  // compile-time constant without evaluating the computation.
+  StatusOr<bool> IsConstant(const ComputationDataHandle& operand,
+                            int64 num_parameters = 0);
 
   // Normalizes operand across spatial and batch dimensions for each feature.
   //
@@ -692,7 +796,7 @@ class ComputationBuilder {
                                       float epsilon, int64 feature_index);
 
   // Computes the value of a constant indicated by a
-  // ComputationDataHandle.
+  // ComputationDataHandle using a non-optimized interpreter on the host.
   //
   // The operand must be from the computation currently being built -
   // i.e., returned from this builder with no intervening call to
@@ -700,8 +804,11 @@ class ComputationBuilder {
   // that may stop working at any time.
   //
   // The operand must represent a constant value, which in this case
-  // means that it must not statically depend on a parameter to the
-  // computation that is being built.
+  // means that it must not statically depend on any parameter of the
+  // computation that is being built other then the ones specified on the
+  // paramtere list. The parameters in the list will be indexed by their
+  // parameter id property so the number of parameters specified should be at
+  // least as many as the largest used parameter index.
   //
   // `IsConstant` can be used to test whether a computation is a compile-time
   // constant without evaluation it. `ComputeConstant` only succeeds for
@@ -719,7 +826,8 @@ class ComputationBuilder {
   // will be stored using that layout.
   StatusOr<std::unique_ptr<Literal>> ComputeConstant(
       const ComputationDataHandle& operand,
-      const Layout* output_layout = nullptr);
+      const Layout* output_layout = nullptr,
+      tensorflow::gtl::ArraySlice<Literal> parameters = {});
 
   // Returns a new ComputationBuilder whose resultant Computation is used only
   // by this ComputationBuilder. The sub-ComputationBuilder has the same
@@ -848,8 +956,9 @@ class ComputationBuilder {
   // throughout the TensorFlow op kernel implementations).
   OpMetadata metadata_;
 
-  // Device assignment for the operator.
-  OpDeviceAssignment device_assignment_;
+  // Sharding for this operator. This is structured as a "model"-like operation,
+  // in order to simplify client code, similar to metadata_.
+  tensorflow::gtl::optional<OpSharding> sharding_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationBuilder);
 };
@@ -888,49 +997,82 @@ ComputationDataHandle ComputationBuilder::ConstantR2(
 }
 
 template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantFromArrayWithLayout(
+    const Array<NativeT>& values, const Layout& layout) {
+  return ConstantOp([&values, &layout](Literal* literal) {
+    literal->PopulateFromArrayWithLayout(values, layout);
+  });
+}
+
+template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantFromArray(
+    const Array<NativeT>& values) {
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateFromArray(values); });
+}
+
+template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR2FromArray2DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR2FromArray2D(values); });
+  return ConstantFromArray(values);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR3FromArray3DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3D(
     const Array3D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR3FromArray3D(values); });
+  return ConstantFromArray(values);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR4FromArray4DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4D(
     const Array4D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR4FromArray4D(values); });
+  return ConstantFromArray(values);
 }
+
+// RAII-style object: sets the current sharding assignment in builder on
+// construction, and sets back to the previous assignment on destruction.
+class ScopedShardingAssignment {
+ public:
+  ScopedShardingAssignment(xla::ComputationBuilder* builder,
+                           tensorflow::gtl::optional<OpSharding> sharding)
+      : builder_(builder), prev_sharding_(builder->sharding()) {
+    SetSharding(sharding);
+  }
+
+  ~ScopedShardingAssignment() { SetSharding(prev_sharding_); }
+
+ private:
+  void SetSharding(const tensorflow::gtl::optional<OpSharding>& sharding) {
+    if (sharding.has_value()) {
+      builder_->SetSharding(sharding.value());
+    } else {
+      builder_->ClearSharding();
+    }
+  }
+
+  xla::ComputationBuilder* const builder_;
+  tensorflow::gtl::optional<OpSharding> prev_sharding_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedShardingAssignment);
+};
 
 }  // namespace xla
 

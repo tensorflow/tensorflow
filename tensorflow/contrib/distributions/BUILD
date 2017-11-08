@@ -2,11 +2,14 @@
 #   Contains ops for statistical distributions (with pdf, cdf, sample, etc...).
 #   APIs here are meant to evolve over time.
 
+package(default_visibility = [
+    "//learning/brain/contrib/bayesflow:__subpackages__",
+    "//tensorflow:__subpackages__",
+])
+
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -18,14 +21,20 @@ py_library(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:clip_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:template",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/linalg",
         "//third_party/py/numpy",
     ],
 )
@@ -55,7 +64,9 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/linalg",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -126,6 +137,23 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "cauchy_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/cauchy_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -299,6 +327,19 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "mixture_same_family_test",
+    size = "small",
+    srcs = ["python/kernel_tests/mixture_same_family_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "negative_binomial_test",
     size = "small",
     srcs = ["python/kernel_tests/negative_binomial_test.py"],
@@ -340,6 +381,34 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "sinh_arcsinh_test",
+    size = "small",
+    srcs = ["python/kernel_tests/sinh_arcsinh_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "independent_test",
+    size = "small",
+    srcs = ["python/kernel_tests/independent_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "sample_stats_test",
     size = "medium",
     srcs = ["python/kernel_tests/sample_stats_test.py"],
@@ -355,6 +424,20 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = ["nomsan"],  # disable to avoid false positives from scipy.
+)
+
+cuda_py_test(
+    name = "vector_sinh_arcsinh_diag_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/vector_sinh_arcsinh_diag_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
 )
 
 cuda_py_test(
@@ -628,6 +711,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "absolute_value_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/absolute_value_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "affine_test",
     size = "large",
     srcs = ["python/kernel_tests/bijectors/affine_test.py"],
@@ -725,6 +826,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "gumbel_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/gumbel_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "inline_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/inline_test.py"],
@@ -763,6 +883,38 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "masked_autoregressive_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/masked_autoregressive_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "permute_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/permute_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "power_transform_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/power_transform_test.py"],
@@ -777,6 +929,22 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "reshape_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/reshape_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -819,10 +987,12 @@ cuda_py_test(
     ],
 )
 
+# Tests for SinhArcSinh bijector.  The file name has the extra "_bijector" to
+# avoid BUILD rule name conflicts with the distribution by the same name.
 cuda_py_test(
-    name = "sinh_arcsinh_test",
+    name = "sinh_arcsinh_bijector_test",
     size = "small",
-    srcs = ["python/kernel_tests/bijectors/sinh_arcsinh_test.py"],
+    srcs = ["python/kernel_tests/bijectors/sinh_arcsinh_bijector_test.py"],
     additional_deps = [
         ":bijectors_py",
         ":distributions_py",

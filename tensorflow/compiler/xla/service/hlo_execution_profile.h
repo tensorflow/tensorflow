@@ -36,11 +36,11 @@ class HloExecutionProfile {
   using DeviceDescription = perftools::gputools::DeviceDescription;
 
   // Record how many cycles this HLO took to execute.
-  void AddProfileResult(const HloInstruction* hlo, uint64 cycles_taken);
+  void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
 
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
-  uint64 GetProfileResult(const HloInstruction& hlo) const;
+  uint64 GetCyclesTakenBy(const HloInstruction& hlo) const;
 
   // Return the number of cycles this computation took to execute.
   uint64 total_cycles_executed(const HloComputation& computation) const {

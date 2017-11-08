@@ -50,6 +50,8 @@ class LiteralTestUtil {
  public:
   // Asserts that the given shapes have the same rank, dimension sizes, and
   // primitive types.
+  static ::testing::AssertionResult EqualShapes(const Shape& expected,
+                                                const Shape& actual);
   static void AssertEqualShapes(const Shape& expected, const Shape& actual);
 
   // Asserts that the provided shapes are equal as defined in AssertEqualShapes

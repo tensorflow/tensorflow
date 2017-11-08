@@ -1,0 +1,39 @@
+op {
+  graph_op_name: "QueueEnqueueManyV2"
+  endpoint {
+    name: "QueueEnqueueMany"
+  }
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a queue.
+END
+  }
+  in_arg {
+    name: "components"
+    description: <<END
+One or more tensors from which the enqueued tensors should
+be taken.
+END
+  }
+  attr {
+    name: "timeout_ms"
+    description: <<END
+If the queue is too full, this operation will block for up
+to timeout_ms milliseconds.
+Note: This option is not supported yet.
+END
+  }
+  summary: "Enqueues zero or more tuples of one or more tensors in the given queue."
+  description: <<END
+This operation slices each component tensor along the 0th dimension to
+make multiple queue elements. All of the tuple components must have the
+same size in the 0th dimension.
+
+The components input has k elements, which correspond to the components of
+tuples stored in the given queue.
+
+N.B. If the queue is full, this operation will block until the given
+elements have been enqueued (or 'timeout_ms' elapses, if specified).
+END
+}

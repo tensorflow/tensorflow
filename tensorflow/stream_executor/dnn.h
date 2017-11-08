@@ -487,6 +487,10 @@ string PadAlignmentString(PadAlignment alignment);
 //    window is moved in the "y dimension" according to this stride value.
 // - horizontal_filter_stride: analogous to the vertical stride above, but in
 //    the "x dimension".
+// - vertical_dilation_rate: there will be (vertical_dilation_rate - 1) skipped
+//   cells between each filter element in the "y dimension".
+// - horizontal_dilation_rate: there will be (horizontal_dilation_rate - 1)
+//   skipped cells between each filter element in the "x dimension".
 class ConvolutionDescriptor {
  public:
   // By default construction, there is no zero-padding and the filter stride is
@@ -523,6 +527,18 @@ class ConvolutionDescriptor {
     SetDim(&filter_strides_, dim, value);
     return *this;
   }
+  ConvolutionDescriptor& set_vertical_dilation_rate(int64 value) {
+    SetDim(&dilation_rates_, DimIndex::Y, value);
+    return *this;
+  }
+  ConvolutionDescriptor& set_horizontal_dilation_rate(int64 value) {
+    SetDim(&dilation_rates_, DimIndex::X, value);
+    return *this;
+  }
+  ConvolutionDescriptor& set_dilation_rate(DimIndex dim, int64 value) {
+    SetDim(&dilation_rates_, dim, value);
+    return *this;
+  }
   ConvolutionDescriptor& set_pad_alignment(PadAlignment pad_alignment) {
     pad_alignment_ = pad_alignment;
     return *this;
@@ -539,19 +555,28 @@ class ConvolutionDescriptor {
   int64 horizontal_filter_stride() const {
     return GetDim(filter_strides_, DimIndex::X);
   }
+  int64 vertical_dilation_rate() const {
+    return GetDim(dilation_rates_, DimIndex::Y);
+  }
+  int64 horizontal_dilation_rate() const {
+    return GetDim(dilation_rates_, DimIndex::X);
+  }
 
   int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
+  int dilation_rate(DimIndex dim) const { return GetDim(dilation_rates_, dim); }
   PadAlignment pad_alignment() const { return pad_alignment_; }
   int ndims() const { return ndims_; }
 
   std::vector<int64> strides() const { return filter_strides_; }
+  std::vector<int64> dilations() const { return dilation_rates_; }
   std::vector<int64> padding() const { return zero_padding_; }
 
  private:
   // Stored as: .. y, x.
   std::vector<int64> zero_padding_;
   std::vector<int64> filter_strides_;
+  std::vector<int64> dilation_rates_;
   PadAlignment pad_alignment_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
@@ -636,6 +661,10 @@ class PoolingDescriptor {
     SetDim(&strides_, dim, value);
     return *this;
   }
+  PoolingDescriptor& set_propagate_nans(bool value) {
+    propagate_nans_ = value;
+    return *this;
+  }
 
   int ndims() const { return ndims_; }
   void CloneFrom(const PoolingDescriptor& other);
@@ -656,10 +685,12 @@ class PoolingDescriptor {
   std::vector<int64> window() const { return window_; }
   std::vector<int64> padding() const { return padding_; }
   std::vector<int64> strides() const { return strides_; }
+  bool propagate_nans() const { return propagate_nans_; }
 
  private:
   PoolingMode mode_;
   int ndims_;
+  bool propagate_nans_;
 
   // Stored as: ..., y, x.
   std::vector<int64> window_;
@@ -900,6 +931,23 @@ class DnnSupport {
     return false;
   }
 
+  // Performs a half-precision forwards batch normalization operation onto the
+  // stream. See DoBatchNormalizationForward above for argument details.
+  virtual bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceMemory<Eigen::half>& x,
+      const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
+      DeviceMemory<float>* batch_var, DeviceMemory<float>* reserve_space_1,
+      DeviceMemory<float>* reserve_space_2, bool is_training,
+      std::function<const DeviceMemory<float>&()> var_to_inv_var,
+      std::function<void()> inv_var_to_var) {
+    return false;
+  }
+
   // Performs a single-precision backward batch normalization gradient
   // computation operation onto the stream.
   //
@@ -923,6 +971,21 @@ class DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
+      DeviceMemory<float>* offset_backprop) {
+    return false;
+  }
+
+  // Performs a half-precision backward batch normalization gradient computation
+  // operation onto the stream. See DoBatchNormalizationBackward above for
+  // argument details.
+  virtual bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
+      const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<Eigen::half>* x_backprop,
+      DeviceMemory<float>* scale_backprop,
       DeviceMemory<float>* offset_backprop) {
     return false;
   }
@@ -1126,8 +1189,8 @@ class DnnSupport {
 
   // Return a list of algorithms supported by the forward convolution pass.
   virtual bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused,
-      std::vector<AlgorithmDesc::Index>* out_algorithms);
+      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      std::vector<AlgorithmDesc>* out_algorithms);
 
   // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
   // coefficient_scales specifies the scaling of each column of coefficients:
@@ -1206,8 +1269,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused,
-      std::vector<AlgorithmDesc::Index>* out_algorithms);
+      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual bool DoConvolveBackwardData(
       Stream* stream, const FilterDescriptor& filter_descriptor,
@@ -1255,8 +1318,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused,
-      std::vector<AlgorithmDesc::Index>* out_algorithms);
+      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual bool DoConvolveBackwardFilter(
       Stream* stream, const BatchDescriptor& input_descriptor,
@@ -1972,6 +2035,26 @@ class DnnSupport {
   //    enough for the lifespan of this operation, and recycles aftewards.
   virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                             const dnn::RnnSequenceTensorDescriptor& input_desc,
+                            const DeviceMemory<Eigen::half>& input_data,
+                            const dnn::RnnStateTensorDescriptor& input_h_desc,
+                            const DeviceMemory<Eigen::half>& input_h_data,
+                            const dnn::RnnStateTensorDescriptor& input_c_desc,
+                            const DeviceMemory<Eigen::half>& input_c_data,
+                            const DeviceMemory<Eigen::half>& params,
+                            const dnn::RnnSequenceTensorDescriptor& output_desc,
+                            DeviceMemory<Eigen::half>* output_data,
+                            const dnn::RnnStateTensorDescriptor& output_h_desc,
+                            DeviceMemory<Eigen::half>* output_h_data,
+                            const dnn::RnnStateTensorDescriptor& output_c_desc,
+                            DeviceMemory<Eigen::half>* output_c_data,
+                            bool is_training,
+                            ScratchAllocator* reserve_space_allocator,
+                            ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
+  virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                            const dnn::RnnSequenceTensorDescriptor& input_desc,
                             const DeviceMemory<float>& input_data,
                             const dnn::RnnStateTensorDescriptor& input_h_desc,
                             const DeviceMemory<float>& input_h_data,
@@ -2050,6 +2133,33 @@ class DnnSupport {
   //    workspace memory used by this operation. The caller is responsible for
   //    keeping the memory alive long enough for this operation, and recylces
   //    afterwards.
+  virtual bool DoRnnBackward(
+      Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+      const dnn::RnnSequenceTensorDescriptor& input_desc,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::RnnStateTensorDescriptor& input_h_desc,
+      const DeviceMemory<Eigen::half>& input_h_data,
+      const dnn::RnnStateTensorDescriptor& input_c_desc,
+      const DeviceMemory<Eigen::half>& input_c_data,
+      const DeviceMemory<Eigen::half>& params,
+      const dnn::RnnSequenceTensorDescriptor& output_desc,
+      const DeviceMemory<Eigen::half>& output_data,
+      const dnn::RnnStateTensorDescriptor& output_h_desc,
+      const DeviceMemory<Eigen::half>& output_h_data,
+      const dnn::RnnStateTensorDescriptor& output_c_desc,
+      const DeviceMemory<Eigen::half>& output_c_data,
+      const DeviceMemory<Eigen::half>& output_backprop_data,
+      const DeviceMemory<Eigen::half>& output_h_backprop_data,
+      const DeviceMemory<Eigen::half>& output_c_backprop_data,
+      DeviceMemory<Eigen::half>* input_backprop_data,
+      DeviceMemory<Eigen::half>* input_h_backprop_data,
+      DeviceMemory<Eigen::half>* input_c_backprop_data,
+      DeviceMemory<Eigen::half>* params_backprop_data,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
   virtual bool DoRnnBackward(
       Stream* stream, const dnn::RnnDescriptor& rnn_desc,
       const dnn::RnnSequenceTensorDescriptor& input_desc,

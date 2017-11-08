@@ -83,11 +83,14 @@ cc_library(
     hdrs = ["graph_memory.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_estimator",
         ":graph_properties",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )
 
@@ -97,6 +100,7 @@ tf_cc_test(
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
     deps = [
         ":graph_memory",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
@@ -195,12 +199,23 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "op_context",
+    hdrs = ["op_context.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":op_performance_data_cc",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "virtual_scheduler",
     srcs = ["virtual_scheduler.cc"],
     hdrs = ["virtual_scheduler.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":graph_properties",
+        ":op_context",
         ":utils",
         ":virtual_placer",
         "//tensorflow/core:framework",
@@ -256,6 +271,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cost_estimator",
+        ":op_context",
         ":op_performance_data_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

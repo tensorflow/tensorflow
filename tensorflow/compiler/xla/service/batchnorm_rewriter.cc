@@ -83,11 +83,11 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
   HloComputation* GetScalarBinaryComputation(PrimitiveType primitive_type,
                                              HloOpcode opcode) {
-    HloComputation::Builder b("scalar computation");
+    HloComputation::Builder b("scalar_computation");
     auto scalar_lhs = b.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {}), "scalar lhs"));
+        0, ShapeUtil::MakeShape(F32, {}), "scalar_lhs"));
     auto scalar_rhs = b.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {}), "scalar rhs"));
+        1, ShapeUtil::MakeShape(F32, {}), "scalar_rhs"));
     auto scalar_op = b.AddInstruction(
         HloInstruction::CreateBinary(ShapeUtil::MakeShape(primitive_type, {}),
                                      opcode, scalar_lhs, scalar_rhs));
@@ -531,16 +531,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
 StatusOr<bool> BatchNormRewriter::Run(HloModule* module) {
   XLA_VLOG_LINES(2, "BatchNormRewriter::Run(), before:\n" + module->ToString());
   bool changed = false;
-  // Make a copy of the computations because we may add computations to the
-  // module, invalidating iteration.
-  std::vector<HloComputation*> computations;
-  for (auto& comp : module->computations()) {
-    if (comp->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(comp.get());
-  }
-  for (auto& comp : computations) {
+  for (auto* comp : module->MakeNonfusionComputations()) {
     if (BatchNormRewriterVisitor::Run(comp, rewrite_training_op_,
                                       rewrite_inference_op_, rewrite_grad_op_,
                                       use_fusion_)) {

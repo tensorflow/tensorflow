@@ -73,5 +73,43 @@ void HloMatcher::DescribeTo(::std::ostream* os) const {
   }
 }
 
+bool HloParameterMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+  if (instruction->parameter_number() != parameter_number_) {
+    *listener << "has wrong parameter number (got "
+              << instruction->parameter_number() << ", want "
+              << parameter_number_ << ")";
+    return false;
+  }
+  return true;
+}
+
+bool HloGetTupleElementMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+  if (instruction->tuple_index() != tuple_index_) {
+    *listener << "has wrong tuple index (got " << instruction->tuple_index()
+              << ", want " << tuple_index_ << ")";
+    return false;
+  }
+  return true;
+}
+
 }  // namespace testing
+
+void PrintTo(const HloInstruction* inst, ::std::ostream* os) {
+  *os << (inst ? inst->ToString() : "nullptr");
+}
+
+void PrintTo(HloInstruction* inst, ::std::ostream* os) {
+  PrintTo(const_cast<const HloInstruction*>(inst), os);
+}
+
 }  // namespace xla

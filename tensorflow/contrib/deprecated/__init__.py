@@ -35,14 +35,14 @@ generated protobufs.
 
 Previously, the tag was allowed to be any unique string; it had no relation
 to the summary op generating it, and no relation to the TensorFlow name system.
-This behavior made it very difficult to write reusable  that would add 
+This behavior made it very difficult to write reusable  that would add
 summary ops to the graph. If you had a function to add summary ops, you would
-need to pass in a `tf.name_scope`, manually, to that function to create deduplicated
-tags. Otherwise your program would fail with a runtime error due to tag
-collision.
+need to pass in a `tf.name_scope`, manually, to that function to create
+deduplicated tags. Otherwise your program would fail with a runtime error due
+to tag collision.
 
 The new summary APIs under `tf.summary` throw away the "tag" as an independent
-concept; instead, the first argument is the node name. So summary tags now 
+concept; instead, the first argument is the node name. So summary tags now
 automatically inherit the surrounding `tf.name_scope`, and automatically
 are deduplicated if there is a conflict. Now however, the only allowed
 characters are alphanumerics, underscores, and forward slashes. To make
@@ -98,9 +98,10 @@ from tensorflow.python.ops.logging_ops import image_summary
 from tensorflow.python.ops.logging_ops import merge_all_summaries
 from tensorflow.python.ops.logging_ops import merge_summary
 from tensorflow.python.ops.logging_ops import scalar_summary
-# pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
+# pylint: enable=unused-import,line-too-long
+
 _allowed_symbols = ['audio_summary', 'histogram_summary',
                     'image_summary', 'merge_all_summaries',
                     'merge_summary', 'scalar_summary']

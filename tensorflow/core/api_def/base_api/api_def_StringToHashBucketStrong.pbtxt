@@ -1,0 +1,41 @@
+op {
+  graph_op_name: "StringToHashBucketStrong"
+  in_arg {
+    name: "input"
+    description: <<END
+The strings to assign a hash bucket.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A Tensor of the same shape as the input `string_tensor`.
+END
+  }
+  attr {
+    name: "num_buckets"
+    description: <<END
+The number of buckets.
+END
+  }
+  attr {
+    name: "key"
+    description: <<END
+The key for the keyed hash function passed as a list of two uint64
+elements.
+END
+  }
+  summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
+  description: <<END
+The hash function is deterministic on the content of the string within the
+process. The hash function is a keyed hash function, where attribute `key`
+defines the key of the hash function. `key` is an array of 2 elements.
+
+A strong hash is important when inputs may be malicious, e.g. URLs with
+additional components. Adversaries could try to make their inputs hash to the
+same bucket for a denial-of-service attack or to skew the results. A strong
+hash prevents this by making it difficult, if not infeasible, to compute inputs
+that hash to the same bucket. This comes at a cost of roughly 4x higher compute
+time than `tf.string_to_hash_bucket_fast`.
+END
+}

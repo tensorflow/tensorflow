@@ -116,6 +116,7 @@ def Assert(condition, data, summarize=None, name=None):
   Returns:
     assert_op: An `Operation` that, when executed, raises a
     `tf.errors.InvalidArgumentError` if `condition` is not true.
+    @compatibility{eager} returns None.
   """
   with ops.name_scope(name, "Assert", [condition, data]) as name:
     xs = ops.convert_n_to_tensor(data)
@@ -132,6 +133,8 @@ def Assert(condition, data, summarize=None, name=None):
             condition, data, summarize, name="Assert")
       guarded_assert = cond(
           condition, no_op, true_assert, name="AssertGuard")
+      if context.in_eager_mode():
+        return
       return guarded_assert.op
 
 
@@ -791,6 +794,8 @@ class GradLoopState(object):
         self._grad_sync = control_trigger(name="b_sync")
       self._grad_sync._set_control_flow_context(self._grad_context)
       self._grad_index.op._add_control_input(self._grad_sync)
+      if self._grad_context.outer_context:
+        self._grad_context.outer_context.AddInnerOp(self._grad_sync)
     return self._grad_sync
 
   @property
@@ -1496,7 +1501,8 @@ class ControlFlowContext(object):
 
   def AddInnerOp(self, op):
     """Notifies a scope about an operator added to an inner scope."""
-    pass
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
 
   def GetControlPivot(self):
     """Returns the pivot node for this context, or None."""
@@ -1633,6 +1639,9 @@ class CondContext(ControlFlowContext):
         self._values.add(result.name)
       with ops.control_dependencies(None):
         result = _SwitchRefOrTensor(result, self._pred)[self._branch]
+        if self._outer_context:
+          self._outer_context.AddInnerOp(result.op)
+
       result.op.graph.prevent_fetching(result.op)
       # pylint: disable=protected-access
       result.op._set_control_flow_context(self)
@@ -1674,6 +1683,9 @@ class CondContext(ControlFlowContext):
 
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
+
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
 
   def _ProcessOutputTensor(self, val):
     """Process an output tensor of a conditional branch."""
@@ -1823,12 +1835,12 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   if not callable(false_fn):
     raise TypeError("false_fn must be callable.")
 
-  if context.in_eager_mode():
-    if pred:
-      return true_fn()
-    return false_fn()
-
   with ops.name_scope(name, "cond", [pred]):
+    if context.in_eager_mode():
+      if pred:
+        return true_fn()
+      return false_fn()
+
     # Add the Switch to the graph.
     if isinstance(pred, bool):
       raise TypeError("pred must not be a Python bool")
@@ -2898,7 +2910,7 @@ def _GroupControlDeps(dev, deps, name=None):
 def group(*inputs, **kwargs):
   """Create an op that groups multiple operations.
 
-  When this op finishes, all ops in `input` have finished. This op has no
+  When this op finishes, all ops in `inputs` have finished. This op has no
   output.
 
   See also @{tf.tuple$tuple} and
@@ -2906,7 +2918,6 @@ def group(*inputs, **kwargs):
 
   Args:
     *inputs: Zero or more tensors to group.
-    **kwargs: Optional parameters to pass when constructing the NodeDef.
     name: A name for this operation (optional).
 
   Returns:
@@ -2927,7 +2938,16 @@ def group(*inputs, **kwargs):
 
     # Sorts *inputs according to their devices.
     ops_on_device = {}  # device -> operations specified on the device.
-    for inp in inputs:
+    for inp in nest.flatten(inputs):
+      if not hasattr(inp, "device"):
+        raise TypeError("Expected tf.group() expected Tensor arguments not "
+                        "'%s' with type '%s'" % (inp, type(inp)))
+      if not hasattr(inp, "device"):
+        if isinstance(inp, list):
+          raise TypeError("To call tf.group() with a list, use "
+                          "tf.group(*[...]) not tf.group([...]).")
+        raise TypeError("Expected tf.group() expected Tensor arguments not "
+                        "'%s' with type '%s'" % (inp, type(inp)))
       dev = inp.device
       if dev in ops_on_device:
         ops_on_device[dev].append(inp)

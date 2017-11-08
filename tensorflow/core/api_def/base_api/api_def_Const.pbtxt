@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Const"
+  attr {
+    name: "value"
+    description: <<END
+Attr `value` is the tensor to return.
+END
+  }
+  summary: "Returns a constant tensor."
+}
