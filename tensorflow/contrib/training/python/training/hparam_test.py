@@ -318,12 +318,41 @@ class HParamsTest(test.TestCase):
     self.assertEqual(3.0, hparams.b)
     self.assertEqual('relu4', hparams.c_c)
 
-  def testSetHParamTypeMismatch(self):
+  def testSetHParamListNonListMismatch(self):
     hparams = hparam.HParams(a=1, b=[2.0, 3.0])
     with self.assertRaisesRegexp(ValueError, r'Must not pass a list'):
       hparams.set_hparam('a', [1.0])
     with self.assertRaisesRegexp(ValueError, r'Must pass a list'):
       hparams.set_hparam('b', 1.0)
+
+  def testSetHParamTypeMismatch(self):
+    hparams = hparam.HParams(
+        int_=1, str_='str', bool_=True, float_=1.1, list_int=[1, 2], none=None)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('str_', 2.2)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('int_', False)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('bool_', 1)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('int_', 2.2)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('list_int', [2, 3.3])
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('int_', '2')
+
+    # Casting int to float is OK
+    hparams.set_hparam('float_', 1)
+
+    # Getting stuck with NoneType :(
+    hparams.set_hparam('none', '1')
+    self.assertEqual('1', hparams.none)
 
   def testNonProtoFails(self):
     with self.assertRaisesRegexp(AssertionError, ''):
