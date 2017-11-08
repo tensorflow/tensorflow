@@ -20,7 +20,7 @@ conv = tf.nn.conv2d(images, pruning.apply_mask(weights), stride, padding)
 
 This creates a convolutional layer with additional variables mask and threshold
 as shown below: ![Convolutional layer with mask and
-threshold](./mask.png "Convolutional layer with mask and threshold")
+threshold](https://storage.googleapis.com/download.tensorflow.org/example_images/mask.png "Convolutional layer with mask and threshold")
 
 Alternatively, the API also provides variant of tensorflow layers with these
 auxiliary variables built-in (see
@@ -37,82 +37,20 @@ auxiliary variables built-in (see
 
 The pruning library allows for specification of the following hyper parameters:
 
-| Hyperparameter               | Type    | Default       | Description    |
-| ---------------------------- | ------- | ------------- | -------------- |
-| name                         | string  | model_pruning | Name of the    |
-:                              :         :               : pruning        :
-:                              :         :               : specification. :
-:                              :         :               : Used for       :
-:                              :         :               : adding         :
-:                              :         :               : summaries and  :
-:                              :         :               : ops under a    :
-:                              :         :               : common         :
-:                              :         :               : tensorflow     :
-:                              :         :               : name_scope     :
-| begin_pruning_step           | integer | 0             | The global     |
-:                              :         :               : step at which  :
-:                              :         :               : to begin       :
-:                              :         :               : pruning        :
-| end_pruning_step             | integer | -1            | The global     |
-:                              :         :               : step at which  :
-:                              :         :               : to terminate   :
-:                              :         :               : pruning.       :
-:                              :         :               : Defaults to -1 :
-:                              :         :               : implying that  :
-:                              :         :               : pruning        :
-:                              :         :               : continues till :
-:                              :         :               : the training   :
-:                              :         :               : stops          :
-| do_not_prune                 | list of | [""]          | list of layers |
-:                              : strings :               : that are not   :
-:                              :         :               : pruned         :
-| threshold_decay              | float   | 0.9           | The decay      |
-:                              :         :               : factor to use  :
-:                              :         :               : for            :
-:                              :         :               : exponential    :
-:                              :         :               : decay of the   :
-:                              :         :               : thresholds     :
-| pruning_frequency            | integer | 10            | How often      |
-:                              :         :               : should the     :
-:                              :         :               : masks be       :
-:                              :         :               : updated? (in # :
-:                              :         :               : of             :
-:                              :         :               : global_steps). :
-| nbins                        | integer | 255           | Number of bins |
-:                              :         :               : to use for     :
-:                              :         :               : histogram      :
-:                              :         :               : computation    :
-| initial_sparsity             | float   | 0.0           | Initial        |
-:                              :         :               : sparsity value :
-| target_sparsity              | float   | 0.5           | Target         |
-:                              :         :               : sparsity value :
-| sparsity_function_begin_step | integer | 0             | The global     |
-:                              :         :               : step at this   :
-:                              :         :               : which the      :
-:                              :         :               : gradual        :
-:                              :         :               : sparsity       :
-:                              :         :               : function       :
-:                              :         :               : begins to take :
-:                              :         :               : effect         :
-| sparsity_function_end_step   | integer | 100           | The global     |
-:                              :         :               : step used as   :
-:                              :         :               : the end point  :
-:                              :         :               : for the        :
-:                              :         :               : gradual        :
-:                              :         :               : sparsity       :
-:                              :         :               : function       :
-| sparsity_function_exponent   | float   | 3.0           | exponent = 1   |
-:                              :         :               : is linearly    :
-:                              :         :               : varying        :
-:                              :         :               : sparsity       :
-:                              :         :               : between        :
-:                              :         :               : initial and    :
-:                              :         :               : final.         :
-:                              :         :               : exponent > 1   :
-:                              :         :               : varies more    :
-:                              :         :               : slowly towards :
-:                              :         :               : the end than   :
-:                              :         :               : the beginning  :
+|Hyperparameter               | Type    | Default       | Description |
+|:----------------------------|:-------:|:-------------:|:--------------|
+| name | string | model_pruning | Name of the pruning specification. Used for adding summaries and ops under a common tensorflow name_scope |
+| begin_pruning_step | integer | 0 | The global step at which to begin pruning |
+| end_pruning_step   | integer | -1 | The global step at which to terminate pruning. Defaults to -1 implying that pruning continues till  the training stops |
+| do_not_prune | list of strings | [""] | list of layers strings that are not pruned |
+| threshold_decay | float | 0.9 | The decay factor to use for exponential decay of the thresholds |
+| pruning_frequency | integer | 10 | How often should the masks be updated? (in # of global_steps) |
+| nbins | integer | 255 | Number of bins to use for histogram computation |
+| initial_sparsity | float | 0.0 | Initial sparsity value |
+| target_sparsity | float | 0.5 | Target sparsity value |
+| sparsity_function_begin_step | integer | 0 | The global step at this which the gradual sparsity function begins to take effect |
+| sparsity_function_end_step | integer | 100 | The global step used as the end point for the gradual sparsity function |
+| sparsity_function_exponent | float | 3.0 | exponent = 1 is linearly varying sparsity between initial and final. exponent > 1 varies more slowly towards the end than the beginning |
 
 The sparsity $$s_t$$ at global step $$t$$ is given by:
 
@@ -190,6 +128,3 @@ Eval:
 ```shell
 $ bazel-bin/$examples_dir/cifar10/cifar10_eval --run_once
 ```
-
-TODO(suyoggupta): Add figures showing the sparsity function, sparsity for
-different layers etc.
