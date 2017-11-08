@@ -732,6 +732,71 @@ class VariableScopeTest(test.TestCase):
           with ops.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
+  def testAuxiliaryNameScopeIsTrueByDefault(self):
+    with self.test_session():
+      with variable_scope.variable_scope(None, default_name="default"):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
+      with variable_scope.variable_scope("scope") as scope:
+        self.assertEqual(variable_scope.get_variable("w", []).name, "scope/w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "scope/c:0")
+      with variable_scope.variable_scope(scope):
+        self.assertEqual(variable_scope.get_variable("w1", []).name, "scope/w1:0")
+        self.assertEqual(constant_op.constant([], name="c1").name, "scope_1/c1:0")
+
+      with variable_scope.variable_scope("outer"):
+        with variable_scope.variable_scope(None, default_name="default"):
+          self.assertEqual(variable_scope.get_variable("w", []).name, "outer/default/w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/default/c:0")
+        with variable_scope.variable_scope("inner") as inner:
+          self.assertEqual(variable_scope.get_variable("w", []).name, "outer/inner/w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/inner/c:0")
+        with variable_scope.variable_scope(inner):
+          self.assertEqual(variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
+          self.assertEqual(constant_op.constant([], name="c1").name, "outer/inner_1/c1:0")
+
+  def testAuxiliaryNameScopeIsFalse(self):
+    with self.test_session():
+      with variable_scope.variable_scope(None, default_name="default",
+                                         auxiliary_name_scope=False):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "c:0")
+      with variable_scope.variable_scope("scope", auxiliary_name_scope=False) as scope:
+        self.assertEqual(variable_scope.get_variable("w1", []).name, "scope/w1:0")
+        self.assertEqual(constant_op.constant([], name="c1").name, "c1:0")
+      with variable_scope.variable_scope(scope, auxiliary_name_scope=False):
+        self.assertEqual(variable_scope.get_variable("w2", []).name, "scope/w2:0")
+        self.assertEqual(constant_op.constant([], name="c2").name, "c2:0")
+
+      with variable_scope.variable_scope("outer"):
+        with variable_scope.variable_scope(None, default_name="default",
+                                           auxiliary_name_scope=False):
+          self.assertEqual(variable_scope.get_variable("w", []).name, "outer/default/w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/c:0")
+        with variable_scope.variable_scope("inner", auxiliary_name_scope=False) as inner:
+          self.assertEqual(variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
+          self.assertEqual(constant_op.constant([], name="c1").name, "outer/c1:0")
+        with variable_scope.variable_scope(inner, auxiliary_name_scope=False):
+          self.assertEqual(variable_scope.get_variable("w2", []).name, "outer/inner/w2:0")
+          self.assertEqual(constant_op.constant([], name="c2").name, "outer/c2:0")
+
+  def testAuxiliaryNameScopeIsInvalid(self):
+    with self.test_session():
+      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+        with variable_scope.variable_scope(None, default_name="scope",
+                                           auxiliary_name_scope="invalid"):
+          pass
+
+      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+        with variable_scope.variable_scope("scope", auxiliary_name_scope="invalid"):
+          pass
+
+      with variable_scope.variable_scope("scope") as scope:
+        pass
+      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+        with variable_scope.variable_scope(scope, auxiliary_name_scope="invalid"):
+          pass
+
   @test_util.run_in_graph_and_eager_modes()
   def testGetLocalVar(self):
     # Check that local variable respects naming.
