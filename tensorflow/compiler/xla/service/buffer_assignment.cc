@@ -497,19 +497,19 @@ Status GatherComputationsByAllocationType(
     std::vector<const HloComputation*>* global_computations) {
   // Create a worklist of computations paired with whether the allocation must
   // be thread-local.
-  std::deque<std::pair<HloComputation*, bool>> worklist;
+  std::deque<std::pair<const HloComputation*, bool>> worklist;
   worklist.push_back(std::make_pair(module->entry_computation(),
                                     /*is_thread_local*/ false));
 
   // Sets for quickly checking membership. Computations are returned in vectors
   // for stable iteration.
-  FlatSet<HloComputation*> thread_local_set;
-  FlatSet<HloComputation*> global_set;
+  FlatSet<const HloComputation*> thread_local_set;
+  FlatSet<const HloComputation*> global_set;
 
   while (!worklist.empty()) {
     auto worklist_front = worklist.front();
     worklist.pop_front();
-    HloComputation* computation = worklist_front.first;
+    const HloComputation* computation = worklist_front.first;
     bool is_thread_local = worklist_front.second;
     bool in_thread_local_set = thread_local_set.count(computation) > 0;
     bool in_global_set = global_set.count(computation) > 0;
@@ -653,7 +653,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
   }
 
   if (allow_input_output_aliasing_ && allocation->maybe_live_out()) {
-    HloComputation* entry_computation =
+    const HloComputation* entry_computation =
         assignment->module_->entry_computation();
     for (auto param : entry_computation->parameter_instructions()) {
       for (auto& param_buffer :
