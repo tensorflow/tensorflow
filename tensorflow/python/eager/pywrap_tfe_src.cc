@@ -443,8 +443,7 @@ void TFE_DeleteContextCapsule(PyObject* context) {
   TF_DeleteStatus(status);
 }
 
-using GradientTape =
-    tensorflow::eager::GradientTape<PyObject, PyObject, PyObject>;
+using GradientTape = tensorflow::eager::GradientTape<PyObject, PyObject>;
 
 typedef struct {
   PyObject_HEAD
@@ -630,8 +629,7 @@ void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id) {
   reinterpret_cast<TFE_Py_Tape*>(tape)->tape->DeleteTrace(tensor_id);
 }
 
-class PyVSpace
-    : public tensorflow::eager::VSpace<PyObject, PyObject, PyObject> {
+class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
  public:
   explicit PyVSpace(PyObject* py_vspace) : py_vspace_(py_vspace) {}
 
@@ -648,9 +646,9 @@ class PyVSpace
     if (zeros_ == nullptr) {
       return tensorflow::errors::InvalidArgument("invalid vspace");
     }
-    ones_like_ = PyObject_GetAttrString(reinterpret_cast<PyObject*>(py_vspace_),
-                                        "ones_like");
-    if (ones_like_ == nullptr) {
+    ones_ =
+        PyObject_GetAttrString(reinterpret_cast<PyObject*>(py_vspace_), "ones");
+    if (ones_ == nullptr) {
       return tensorflow::errors::InvalidArgument("invalid vspace");
     }
     return tensorflow::Status::OK();
@@ -660,7 +658,7 @@ class PyVSpace
     Py_XDECREF(num_elements_);
     Py_XDECREF(aggregate_fn_);
     Py_XDECREF(zeros_);
-    Py_XDECREF(ones_like_);
+    Py_XDECREF(ones_);
   }
 
   tensorflow::int64 NumElements(PyObject* tensor) const final {
@@ -706,22 +704,19 @@ class PyVSpace
     return reinterpret_cast<PyObject*>(result);
   }
 
-  PyObject* OnesLike(PyObject* tensor) const final {
-    PyObject* arg_list = Py_BuildValue("(O)", tensor);
-    PyObject* result = PyEval_CallObject(ones_like_, arg_list);
-    if (result == nullptr) {
-      VLOG(1) << "Call to ones_like failed";
+  PyObject* Ones(tensorflow::TensorShape shape,
+                 tensorflow::DataType dtype) const final {
+    PyObject* py_shape = PyTuple_New(shape.dims());
+    for (int i = 0; i < shape.dims(); ++i) {
+      PyTuple_SET_ITEM(py_shape, i, PyLong_FromLong(shape.dim_size(i)));
     }
+    PyObject* py_dtype = PyLong_FromLong(static_cast<int>(dtype));
+    PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
+    PyObject* result = PyEval_CallObject(ones_, arg_list);
     Py_DECREF(arg_list);
+    Py_DECREF(py_dtype);
+    Py_DECREF(py_shape);
     return result;
-  }
-
-  tensorflow::int64 TensorId(PyObject* tensor) const final {
-    PyObject* py_tensor = reinterpret_cast<PyObject*>(tensor);
-    PyObject* id_field = PyObject_GetAttrString(py_tensor, "_id");
-    tensorflow::int64 id = MakeInt(id_field);
-    Py_DECREF(id_field);
-    return id;
   }
 
   tensorflow::Status CallBackwardFunction(
@@ -781,7 +776,7 @@ class PyVSpace
   PyObject* num_elements_;
   PyObject* aggregate_fn_;
   PyObject* zeros_;
-  PyObject* ones_like_;
+  PyObject* ones_;
 };
 
 std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
@@ -799,6 +794,28 @@ std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
   return list;
 }
 
+std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
+  PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
+  if (seq == nullptr) {
+    return {};
+  }
+  int len = PySequence_Fast_GET_SIZE(seq);
+  std::vector<tensorflow::int64> list;
+  list.reserve(len);
+  for (int i = 0; i < len; ++i) {
+    PyObject* tensor = PySequence_Fast_GET_ITEM(seq, i);
+    if (EagerTensor_CheckExact(tensor)) {
+      list.push_back(EagerTensor_id(tensor));
+    } else {
+      PyObject* id_field = PyObject_GetAttrString(tensor, "_id");
+      list.push_back(MakeInt(id_field));
+      Py_DECREF(id_field);
+    }
+  }
+  Py_DECREF(seq);
+  return list;
+}
+
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
                               PyObject* target, PyObject* sources,
                               PyObject* output_gradients, TF_Status* status) {
@@ -807,11 +824,11 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
     return nullptr;
   }
 
-  std::vector<PyObject*> target_vec = MakeTensorList(target);
+  std::vector<tensorflow::int64> target_vec = MakeTensorIDList(target);
   if (PyErr_Occurred()) {
     return nullptr;
   }
-  std::vector<PyObject*> sources_vec = MakeTensorList(sources);
+  std::vector<tensorflow::int64> sources_vec = MakeTensorIDList(sources);
   if (PyErr_Occurred()) {
     return nullptr;
   }

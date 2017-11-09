@@ -744,7 +744,7 @@ _default_vspace = imperative_grad.VSpace(
     aggregate_fn=_aggregate_grads,
     tensor_id=ops.tensor_id,
     zeros=_zeros,
-    ones_like=lambda x: ops.convert_to_tensor(array_ops.ones_like(x)))
+    ones=array_ops.ones)
 
 
 class GradientTape(object):
