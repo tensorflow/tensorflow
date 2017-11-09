@@ -770,6 +770,8 @@ class TestDynamicTrainability(test.TestCase):
 
 class TestGeneratorMethods(test.TestCase):
 
+  # use_multiprocessing=True fails on windows with "Can't pickle local object".
+  @unittest.skipIf(platform.system() == 'Windows')
   def test_generator_methods(self):
     arr_data = np.random.random((50, 2))
     arr_labels = np.random.random((50,))
