@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -29,29 +28,31 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
-class QuantizedDeconv2DTest : public OpsTestBase {
-  protected:
+class QuantizedConv2DBackpropInputTest : public OpsTestBase {
+ protected:
 };
 
-TEST_F(QuantizedDeconv2DTest, Small) {
+TEST_F(QuantizedConv2DBackpropInputTest, Small) {
   const int stride = 1;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DBackpropInput")
-                   .Input(FakeInput(DT_QUINT8))
-                   .Input(FakeInput(DT_QUINT8))
-                   .Input(FakeInput(DT_INT32))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Attr("out_type", DataTypeToEnum<qint32>::v())
-                   .Attr("strides", {1, stride, stride, 1})
-                   .Attr("padding", "VALID")
-                   .Finalize(node_def()));
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DBackpropInput")
+          .Input(FakeInput(DT_QUINT8))
+          .Input(FakeInput(DT_QUINT8))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("out_type", DataTypeToEnum<qint32>::v())
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", "VALID")
+          .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
   const int depth = 1;
@@ -64,17 +65,17 @@ TEST_F(QuantizedDeconv2DTest, Small) {
 
   Tensor input_float(DT_FLOAT,
                      {input_batch_count, input_height, input_width, depth});
-  test::FillValues<float>(&input_float, { 1, 1, 1, 1 });
+  test::FillValues<float>(&input_float, {1, 1, 1, 1});
   Tensor input_quantized =
       FloatTensorToQuantized<quint8>(input_float, input_min, input_max);
 
   const int filter_size = 3;
   const int filter_count = 1;
-  const float filter_min = 0.0;
-  const float filter_max = 2.0;
+  const float filter_min = 1.0;
+  const float filter_max = 3.0;
   Tensor filter_float(DT_FLOAT,
                       {filter_size, filter_size, depth, filter_count});
-  test::FillValues<float>(&filter_float, {1, 1, 1, 1, 1, 1, 1, 1, 1});
+  test::FillValues<float>(&filter_float, {2, 2, 2, 2, 2, 2, 2, 2, 2});
   Tensor filter_quantized =
       FloatTensorToQuantized<quint8>(filter_float, filter_min, filter_max);
 
@@ -94,29 +95,33 @@ TEST_F(QuantizedDeconv2DTest, Small) {
   Tensor expected_float(
       DT_FLOAT, TensorShape({input_batch_count, expected_height, expected_width,
                              filter_count}));
-  test::FillValues<float>(&expected_float, {1, 2, 2, 1, 2, 4, 4, 2, 2, 4, 4, 2, 1, 2, 2, 1});
+  test::FillValues<float>(&expected_float,
+                          {2, 4, 4, 2, 4, 8, 8, 4, 4, 8, 8, 4, 2, 4, 4, 2});
   const Tensor& output_quantized = *GetOutput(0);
+  std::cout << output_quantized.tensor<qint32, 4>() << std::endl;
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
   Tensor output_float =
       QuantizedTensorToFloat<qint32>(output_quantized, output_min, output_max);
+
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
-TEST_F(QuantizedDeconv2DTest, SmallWithStrideLargerThanOne) {
+TEST_F(QuantizedConv2DBackpropInputTest, SmallWithStrideLargerThanOne) {
   const int stride = 2;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DBackpropInput")
-                   .Input(FakeInput(DT_QUINT8))
-                   .Input(FakeInput(DT_QUINT8))
-                   .Input(FakeInput(DT_INT32))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Attr("out_type", DataTypeToEnum<qint32>::v())
-                   .Attr("strides", {1, stride, stride, 1})
-                   .Attr("padding", "VALID")
-                   .Finalize(node_def()));
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DBackpropInput")
+          .Input(FakeInput(DT_QUINT8))
+          .Input(FakeInput(DT_QUINT8))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("out_type", DataTypeToEnum<qint32>::v())
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", "VALID")
+          .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
   const int depth = 1;
@@ -129,7 +134,7 @@ TEST_F(QuantizedDeconv2DTest, SmallWithStrideLargerThanOne) {
 
   Tensor input_float(DT_FLOAT,
                      {input_batch_count, input_height, input_width, depth});
-  test::FillValues<float>(&input_float, { 1, 1, 1, 1 });
+  test::FillValues<float>(&input_float, {1, 1, 1, 1});
   Tensor input_quantized =
       FloatTensorToQuantized<quint8>(input_float, input_min, input_max);
 
@@ -160,11 +165,8 @@ TEST_F(QuantizedDeconv2DTest, SmallWithStrideLargerThanOne) {
       DT_FLOAT, TensorShape({input_batch_count, expected_height, expected_width,
                              filter_count}));
   test::FillValues<float>(&expected_float,
-      { 1, 1, 2, 1, 1,
-        1, 1, 2, 1, 1,
-        2, 2, 4, 2, 2,
-        1, 1, 2, 1, 1,
-        1, 1, 2, 1, 1 });
+                          {1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 2, 2, 4,
+                           2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1});
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
@@ -173,4 +175,4 @@ TEST_F(QuantizedDeconv2DTest, SmallWithStrideLargerThanOne) {
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
-} // tensorflow
+}  // tensorflow
