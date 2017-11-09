@@ -245,8 +245,6 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
-        "//third_party/py/numpy",
-        "//third_party/py/pandas",
         "@six_archive//:six",
     ],
 )
