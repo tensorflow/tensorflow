@@ -371,17 +371,47 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
     HloInstruction* operand, int64 channel_id) {
+  // Send instruction produces a tuple of {aliased operand, U32 context}.
+  Shape output_shape = ShapeUtil::MakeTupleShape(
+      {operand->shape(), ShapeUtil::MakeShape(U32, {})});
   auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kSend, ShapeUtil::MakeNil()));
+      WrapUnique(new HloInstruction(HloOpcode::kSend, output_shape));
   instruction->AppendOperand(operand);
   instruction->channel_id_ = channel_id;
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
+    HloInstruction* operand) {
+  CHECK(operand->opcode() == HloOpcode::kSend)
+      << "SendDone must take the context operand from Send";
+  auto instruction = WrapUnique(
+      new HloInstruction(HloOpcode::kSendDone, ShapeUtil::MakeNil()));
+  instruction->AppendOperand(operand);
+  instruction->channel_id_ = operand->channel_id();
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
     const Shape& shape, int64 channel_id) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kRecv, shape));
+  // Recv instruction produces a tuple of {receive buffer, U32 context}.
+  Shape output_shape =
+      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kRecv, output_shape));
   instruction->channel_id_ = channel_id;
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecvDone(
+    HloInstruction* operand) {
+  CHECK(operand->opcode() == HloOpcode::kRecv)
+      << "RecvDone must take the context operand from Recv";
+  Shape output_shape = ShapeUtil::GetTupleElementShape(operand->shape(), 0);
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kRecvDone, output_shape));
+  instruction->AppendOperand(operand);
+  instruction->channel_id_ = operand->channel_id();
   return instruction;
 }
 
@@ -908,7 +938,9 @@ RandomDistribution HloInstruction::random_distribution() const {
 bool HloInstruction::HasSideEffect() const {
   switch (opcode_) {
     case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
@@ -1164,7 +1196,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                   new_operands[4], epsilon(), feature_index());
       break;
     case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
@@ -1557,8 +1591,10 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
-    case HloOpcode::kSend:
     case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
       return false;
   }
 }
@@ -1891,7 +1927,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
                        })));
   }
 
-  if (opcode() == HloOpcode::kSend || opcode() == HloOpcode::kRecv) {
+  if (opcode() == HloOpcode::kSend || opcode() == HloOpcode::kRecv ||
+      opcode() == HloOpcode::kSendDone || opcode() == HloOpcode::kRecvDone) {
     extra.push_back(StrCat("channel_id=", channel_id_));
   }
 
@@ -2071,8 +2108,10 @@ bool HloInstruction::IsFusable() const {
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
     case HloOpcode::kTrace:
-    case HloOpcode::kSend:
     case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
       return false;
     // Only fuse Rng if it is used once, otherwise the random numbers generated
     // will be different in each fusion. If it is the root (user count = 0)
@@ -2279,10 +2318,14 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCall(this);
     case HloOpcode::kCustomCall:
       return visitor->HandleCustomCall(this);
-    case HloOpcode::kSend:
-      return visitor->HandleSend(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
+    case HloOpcode::kRecvDone:
+      return visitor->HandleRecvDone(this);
+    case HloOpcode::kSend:
+      return visitor->HandleSend(this);
+    case HloOpcode::kSendDone:
+      return visitor->HandleSendDone(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:

@@ -943,7 +943,9 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kFusion:
       return kGray;
     case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCrossReplicaSum:
@@ -1037,7 +1039,9 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
                    ? ""
                    : StrCat("stride=", VectorString(instr->slice_strides()));
       case HloOpcode::kSend:
+      case HloOpcode::kSendDone:
       case HloOpcode::kRecv:
+      case HloOpcode::kRecvDone:
         return StrCat("channel_id=", instr->channel_id());
       default:
         return "";

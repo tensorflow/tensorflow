@@ -442,7 +442,21 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return false;
       }
       instruction = builder->AddInstruction(
-          HloInstruction::CreateRecv(shape, *channel_id));
+          HloInstruction::CreateRecv(shape.tuple_shapes(0), *channel_id));
+      break;
+    }
+    case HloOpcode::kRecvDone: {
+      optional<int64> channel_id;
+      attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (channel_id != operands[0]->channel_id()) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateRecvDone(operands[0]));
       break;
     }
     case HloOpcode::kSend: {
@@ -454,6 +468,20 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(
           HloInstruction::CreateSend(operands[0], *channel_id));
+      break;
+    }
+    case HloOpcode::kSendDone: {
+      optional<int64> channel_id;
+      attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (channel_id != operands[0]->channel_id()) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateSendDone(operands[0]));
       break;
     }
     case HloOpcode::kGetTupleElement: {

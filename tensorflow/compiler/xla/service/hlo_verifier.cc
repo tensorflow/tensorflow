@@ -270,12 +270,40 @@ class ShapeVerifier : public DfsHloVisitor {
                                                     pad->padding_config()));
   }
 
-  Status HandleSend(HloInstruction*) override {
-    return tensorflow::Status::OK();
+  Status HandleSend(HloInstruction* send) override {
+    TF_RET_CHECK(send->users().size() == 1);
+    const HloInstruction* send_done = send->users()[0];
+    TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
+    TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
+    return CheckShape(
+        send, ShapeUtil::MakeTupleShape(
+                  {send->operand(0)->shape(), ShapeUtil::MakeShape(U32, {})}));
   }
 
-  Status HandleRecv(HloInstruction*) override {
-    return tensorflow::Status::OK();
+  Status HandleSendDone(HloInstruction* send_done) override {
+    TF_RET_CHECK(send_done->operands().size() == 1);
+    const HloInstruction* send = send_done->operand(0);
+    TF_RET_CHECK(send->opcode() == HloOpcode::kSend);
+    TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
+    return CheckShape(send_done, ShapeUtil::MakeNil());
+  }
+
+  Status HandleRecv(HloInstruction* recv) override {
+    TF_RET_CHECK(recv->users().size() == 1);
+    const HloInstruction* recv_done = recv->users()[0];
+    TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
+    TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
+    return CheckShape(recv,
+                      ShapeUtil::MakeTupleShape(
+                          {recv_done->shape(), ShapeUtil::MakeShape(U32, {})}));
+  }
+
+  Status HandleRecvDone(HloInstruction* recv_done) override {
+    TF_RET_CHECK(recv_done->operands().size() == 1);
+    const HloInstruction* recv = recv_done->operand(0);
+    TF_RET_CHECK(recv->opcode() == HloOpcode::kRecv);
+    TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
+    return CheckShape(recv_done, recv->shape().tuple_shapes(0));
   }
 
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
@@ -363,6 +391,19 @@ class ShapeVerifier : public DfsHloVisitor {
     return CheckShape(instruction,
                       ShapeInference::InferVariadicOpShape(
                           instruction->opcode(), instruction->operands()));
+  }
+
+  // Checks if the given two instructions shares the same channel id.
+  Status CheckSameChannel(const HloInstruction* instr1,
+                          const HloInstruction* instr2) {
+    if (instr1->channel_id() != instr2->channel_id()) {
+      return FailedPrecondition(
+          "Expected to have the same channel id, actual channel ids are: %s "
+          "(%lld), %s (%lld)",
+          instr1->ToString().c_str(), instr1->channel_id(),
+          instr2->ToString().c_str(), instr2->channel_id());
+    }
+    return tensorflow::Status::OK();
   }
 
   // Returns the size of a Shape in bytes.
