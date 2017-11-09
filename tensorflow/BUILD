@@ -355,7 +355,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# Make a dummy rule that we can chaqnge "default" in select statements to.
+# Make a dummy rule that we can change "default" in select statements to.
 # to disable dependencies in copybara.
 config_setting(
     name = "dummy_disabled_internal",
