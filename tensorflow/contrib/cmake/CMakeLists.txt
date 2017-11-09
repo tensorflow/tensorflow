@@ -53,7 +53,15 @@ if (NOT WIN32)
     set(tensorflow_CUDNN_INCLUDE /usr/include)
   endif (NOT tensorflow_CUDNN_INCLUDE)
   option(tensorflow_PATH_CUDNN_STATIC_LIB "Override PATH_STATIC_LIB for libcudnn_static.a" ${tensorflow_PATH_STATIC_LIB})
+  if (NOT tensorflow_PATH_CUDNN_STATIC_LIB)
+    # option's default value is OFF. Fill it with real default values
+    set (tensorflow_PATH_CUDNN_STATIC_LIB ${tensorflow_PATH_STATIC_LIB})
+  endif (NOT tensorflow_PATH_CUDNN_STATIC_LIB)
   option(tensorflow_PATH_NCCL_STATIC_LIB "Override PATH_STATIC_LIB for libnccl_static.a" ${tensorflow_PATH_STATIC_LIB})
+  if (NOT tensorflow_PATH_NCCL_STATIC_LIB)
+    # option's default value is OFF. Fill it with real default values
+    set (tensorflow_PATH_NCCL_STATIC_LIB ${tensorflow_PATH_STATIC_LIB})
+  endif (NOT tensorflow_PATH_NCCL_STATIC_LIB)
   option(tensorflow_CUDA_LIBRARY_PATH "Designate the default CUDA library paths" /usr/local/cuda/lib64)
   if (NOT tensorflow_CUDA_LIBRARY_PATH)
     # option's default value is OFF. Fill it with real default values
