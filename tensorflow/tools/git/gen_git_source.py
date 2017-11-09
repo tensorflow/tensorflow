@@ -204,7 +204,14 @@ def generate(arglist):
   if not data["git"]:
     git_version = b"unknown"
   else:
-    git_version = get_git_version(data["path"])
+    old_branch = data["branch"]		
+    new_branch = parse_branch_ref(head_symlink)
+    if new_branch != old_branch:
+      print("Warning, run ./configure again, to get __git_version__ to record "
+            "correct version")
+      git_version = get_git_version(data["path"])+'-inconsistent-git-version'
+    else:
+      git_version = get_git_version(data["path"])
   write_version_info(dest_file, git_version)
 
 
