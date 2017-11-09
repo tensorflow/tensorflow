@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
@@ -47,6 +48,27 @@ const bool FLAGS_brain_gpu_record_mem_types = false;
 namespace gpu = ::perftools::gputools;
 
 namespace tensorflow {
+
+namespace {
+bool useCudaMallocAllocator() {
+  const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
+  if (debug_allocator_str != nullptr &&
+      strcmp(debug_allocator_str, "cuda_malloc") == 0)
+    return true;
+  else
+    return false;
+}
+
+bool useCudaMemoryGuardAllocator() {
+  const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
+  if (debug_allocator_str != nullptr &&
+      strcmp(debug_allocator_str, "memory_guard") == 0)
+    return true;
+  else
+    return false;
+}
+
+}  // namespace
 
 ProcessState* ProcessState::instance_ = nullptr;
 
@@ -114,10 +136,14 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
-    static const bool kGPUDebug = false;
-    if (kGPUDebug) {
+    if (useCudaMemoryGuardAllocator()) {
       gpu_allocator = new GPUDebugAllocator(gpu_allocator, gpu_id);
       gpu_allocator = new GPUNanResetAllocator(gpu_allocator, gpu_id);
+    } else if (useCudaMallocAllocator()) {
+      // If true, passes all allocation requests through to cudaMalloc
+      // useful for doing memory debugging with tools like cuda-memcheck
+      // **WARNING** probably will not work in a multi-gpu scenario
+      gpu_allocator = new GPUcudaMallocAllocator(gpu_allocator, gpu_id);
     }
     gpu_allocators_[gpu_id] = gpu_allocator;
 
@@ -127,7 +153,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
         gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
     int bus_id = se->GetDeviceDescription().numa_node();
     if (bus_id >= 0 && bus_id < static_cast<int64>(gpu_visitors_.size())) {
-      for (auto v : gpu_visitors_[bus_id]) {
+      for (const auto& v : gpu_visitors_[bus_id]) {
         gpu_allocators_[gpu_id]->AddAllocVisitor(v);
       }
     }
@@ -159,13 +185,40 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
   numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
-    Allocator* allocator =
-        new PoolAllocator(100 /*pool_size_limit*/, true /*auto_resize*/,
-                          new BasicCPUAllocator(), new NoopRounder, "cpu_pool");
+    bool use_bfc_allocator = false;
+    // TODO(reedwm): Switch default to BGFAllocator if it's at least as fast and
+    // efficient.
+    Status status = ReadBoolFromEnvVar("TF_CPU_ALLOCATOR_USE_BFC", false,
+                                       &use_bfc_allocator);
+    if (!status.ok()) {
+      LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
+    }
+    VisitableAllocator* allocator;
+    if (use_bfc_allocator) {
+      // TODO(reedwm): evaluate whether 64GB by default is the best choice.
+      int64 cpu_mem_limit_in_mb = -1;
+      Status status = ReadInt64FromEnvVar("TF_CPU_BFC_MEM_LIMIT_IN_MB",
+                                          1LL << 16 /*64GB max by default*/,
+                                          &cpu_mem_limit_in_mb);
+      if (!status.ok()) {
+        LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
+      }
+      int64 cpu_mem_limit = cpu_mem_limit_in_mb * (1LL << 20);
+      allocator = new BFCAllocator(new BasicCPUAllocator(), cpu_mem_limit,
+                                   true /*allow_growth*/,
+                                   "bfc_cpu_allocator_for_gpu" /*name*/);
+      VLOG(2) << "Using BFCAllocator with memory limit of "
+              << cpu_mem_limit_in_mb << " MB for ProcessState CPU allocator";
+    } else {
+      allocator = new PoolAllocator(
+          100 /*pool_size_limit*/, true /*auto_resize*/,
+          new BasicCPUAllocator(), new NoopRounder, "cpu_pool");
+      VLOG(2) << "Using PoolAllocator for ProcessState CPU allocator";
+    }
     if (LogMemory::IsEnabled()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.
-      allocator = new TrackingAllocator(allocator, true);
+      allocator = new TrackingVisitableAllocator(allocator, true);
     }
     cpu_allocators_.push_back(allocator);
   }
@@ -210,14 +263,14 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
       LOG(ERROR) << "GetCUDAHostAllocator: " << status.error_message();
     }
     int64 cuda_host_mem_limit = cuda_host_mem_limit_in_mb * (1LL << 20);
-    Allocator* allocator =
+    VisitableAllocator* allocator =
         new BFCAllocator(new CUDAHostAllocator(se), cuda_host_mem_limit,
                          true /*allow_growth*/, "cuda_host_bfc" /*name*/);
 
     if (LogMemory::IsEnabled()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.
-      allocator = new TrackingAllocator(allocator, true);
+      allocator = new TrackingVisitableAllocator(allocator, true);
     }
     cuda_host_allocators_.push_back(allocator);
     if (FLAGS_brain_gpu_record_mem_types) {

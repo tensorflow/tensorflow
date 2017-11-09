@@ -89,6 +89,10 @@ func (s *Session) Run(feeds map[Output]*Tensor, fetches []Output, targets []*Ope
 		ptrOutput(c.fetches), ptrTensor(c.fetchTensors), C.int(len(fetches)),
 		ptrOperation(c.targets), C.int(len(targets)),
 		nil, status.c)
+
+	// Make sure GC won't harvest input tensors until SessionRun() is finished
+	runtime.KeepAlive(feeds)
+
 	if err := status.Err(); err != nil {
 		return nil, err
 	}
@@ -199,7 +203,7 @@ func (s *Session) NewPartialRun(feeds, fetches []Output, targets []*Operation) (
 		return nil, err
 	}
 	runtime.SetFinalizer(pr, func(pr *PartialRun) {
-		deletePRunHandle(pr.handle)
+		C.TF_DeletePRunHandle(pr.handle)
 	})
 	return pr, nil
 }

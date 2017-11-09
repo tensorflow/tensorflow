@@ -11,8 +11,8 @@ problem is to classify RGB 32x32 pixel images across 10 categories:
 airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.
 ```
 
-For more details refer to the [CIFAR-10 page](http://www.cs.toronto.edu/~kriz/cifar.html)
-and a [Tech Report](http://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
+For more details refer to the [CIFAR-10 page](https://www.cs.toronto.edu/~kriz/cifar.html)
+and a [Tech Report](https://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
 by Alex Krizhevsky.
 
 ### Goals
@@ -42,7 +42,7 @@ designing larger and more sophisticated models in TensorFlow:
 ([wiki](https://en.wikipedia.org/wiki/Convolutional_neural_network#Pooling_layer))
 and @{tf.nn.local_response_normalization$local response normalization}
 (Chapter 3.3 in
-[AlexNet paper](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
+[AlexNet paper](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
 * @{$summaries_and_tensorboard$Visualization}
 of network activities during training, including input images,
 losses and distributions of activations and gradients.
@@ -83,21 +83,21 @@ for details.  It consists of 1,068,298 learnable parameters and requires about
 ## Code Organization
 
 The code for this tutorial resides in
-[`models/tutorials/image/cifar10/`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/).
+[`models/tutorials/image/cifar10/`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/).
 
 File | Purpose
 --- | ---
-[`cifar10_input.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_input.py) | Reads the native CIFAR-10 binary file format.
-[`cifar10.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10.py) | Builds the CIFAR-10 model.
-[`cifar10_train.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_train.py) | Trains a CIFAR-10 model on a CPU or GPU.
-[`cifar10_multi_gpu_train.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py) | Trains a CIFAR-10 model on multiple GPUs.
-[`cifar10_eval.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_eval.py) | Evaluates the predictive performance of a CIFAR-10 model.
+[`cifar10_input.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_input.py) | Reads the native CIFAR-10 binary file format.
+[`cifar10.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10.py) | Builds the CIFAR-10 model.
+[`cifar10_train.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_train.py) | Trains a CIFAR-10 model on a CPU or GPU.
+[`cifar10_multi_gpu_train.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_multi_gpu_train.py) | Trains a CIFAR-10 model on multiple GPUs.
+[`cifar10_eval.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_eval.py) | Evaluates the predictive performance of a CIFAR-10 model.
 
 
 ## CIFAR-10 Model
 
 The CIFAR-10 network is largely contained in
-[`cifar10.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10.py).
+[`cifar10.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10.py).
 The complete training
 graph contains roughly 765 operations. We find that we can make the code most
 reusable by constructing the graph with the following modules:
@@ -178,7 +178,7 @@ the network architecture to return normalized predictions using
 @{tf.nn.softmax}.
 
 The `inputs()` and `inference()` functions provide all the components
-necessary to perform evaluation on a model. We now shift our focus towards
+necessary to perform an evaluation of a model. We now shift our focus towards
 building operations for training a model.
 
 > **EXERCISE:** The model architecture in `inference()` differs slightly from
@@ -411,13 +411,13 @@ the first tower are prepended with `tower_0`, e.g. `tower_0/conv1/Conv2D`.
 
 * A preferred hardware device to run the operation within a tower.
 @{tf.device} specifies this. For
-instance, all operations in the first tower reside within `device('/gpu:0')`
+instance, all operations in the first tower reside within `device('/device:GPU:0')`
 scope indicating that they should be run on the first GPU.
 
 All variables are pinned to the CPU and accessed via
 @{tf.get_variable}
 in order to share them in a multi-GPU version.
-See how-to on @{$variable_scope$Sharing Variables}.
+See how-to on @{$variables$Sharing Variables}.
 
 ### Launching and Training the Model on Multiple GPU cards
 

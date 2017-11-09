@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -155,9 +156,30 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
     predictions = math_ops.cast(predictions, dtypes.int64)
     labels = math_ops.cast(labels, dtypes.int64)
 
+    # Sanity checks - underflow or overflow can cause memory corruption.
+    labels = control_flow_ops.with_dependencies(
+        [check_ops.assert_non_negative(
+            labels, message='`labels` contains negative values')],
+        labels)
+    predictions = control_flow_ops.with_dependencies(
+        [check_ops.assert_non_negative(
+            predictions, message='`predictions` contains negative values')],
+        predictions)
+
     if num_classes is None:
       num_classes = math_ops.maximum(math_ops.reduce_max(predictions),
                                      math_ops.reduce_max(labels)) + 1
+    else:
+      num_classes_int64 = math_ops.cast(num_classes, dtypes.int64)
+      labels = control_flow_ops.with_dependencies(
+          [check_ops.assert_less(
+              labels, num_classes_int64, message='`labels` out of bound')],
+          labels)
+      predictions = control_flow_ops.with_dependencies(
+          [check_ops.assert_less(
+              predictions, num_classes_int64,
+              message='`predictions` out of bound')],
+          predictions)
 
     if weights is not None:
       predictions.get_shape().assert_is_compatible_with(weights.get_shape())

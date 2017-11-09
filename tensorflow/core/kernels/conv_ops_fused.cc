@@ -713,7 +713,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
       const int32 before =
           paddings_matrix(d, 0);  // Pad before existing elements.
       const int32 after =
-          paddings_matrix(d, 1);  // Pad after exisitng elements.
+          paddings_matrix(d, 1);  // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
                   errors::InvalidArgument("paddings must be non-negative: ",
                                           before, " ", after));

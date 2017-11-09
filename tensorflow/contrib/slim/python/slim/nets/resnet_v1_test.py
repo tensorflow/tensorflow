@@ -250,7 +250,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
   def _resnet_small(self,
                     inputs,
                     num_classes=None,
-                    is_training=None,
+                    is_training=True,
                     global_pool=True,
                     output_stride=None,
                     include_root_block=True,
@@ -386,7 +386,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
                 inputs, None, is_training=False, global_pool=False)
             sess.run(variables.global_variables_initializer())
             self.assertAllClose(
-                output.eval(), expected.eval(), atol=1e-4, rtol=1e-4)
+                output.eval(), expected.eval(), atol=2e-4, rtol=1e-4)
 
   def testUnknownBatchSize(self):
     batch = 2

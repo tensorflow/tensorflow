@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -9,22 +11,6 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
-    name = "mobile_srcs",
-    srcs = glob(
-        [
-            "utils.*",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
     visibility = ["//tensorflow:__subpackages__"],
 )
 
@@ -38,13 +24,12 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     srcs = [
         "utils_test.cc",
@@ -52,7 +37,6 @@ cc_test(
     deps = [
         ":utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -80,8 +64,23 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/kernels:aggregate_ops",
-        "//tensorflow/core/kernels:array",
+    ],
+)
+
+cc_library(
+    name = "file_input_yielder",
+    srcs = ["file_input_yielder.cc"],
+    hdrs = [
+        "file_input_yielder.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":input_yielder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler:utils",
     ],
 )

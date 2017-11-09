@@ -26,6 +26,7 @@ limitations under the License.
 #include "grpc++/impl/codegen/sync_stream.h"
 #include "grpc++/support/byte_buffer.h"
 
+#include "tensorflow/core/distributed_runtime/rpc/grpc_namespace_compat.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -130,7 +131,7 @@ namespace grpc {
 // definition in "//tensorflow/core/protobuf/worker_service.proto",
 // and the gRPC generated stub and service classes.
 // See the proto file for the definition of methods and messages.
-class WorkerService GRPC_FINAL {
+class WorkerService final {
  public:
   class AsyncService : public ::grpc::Service {
    public:

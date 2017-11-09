@@ -597,8 +597,8 @@ class DynamicRnnEstimator(estimator.Estimator):
         `ProblemType.CLASSIFICATION` or `ProblemType.LINEAR_REGRESSION`.
       prediction_type: whether the `Estimator` should return a value for each
         step in the sequence, or just a single value for the final time step.
-        Must be one of `ProblemType.SINGLE_VALUE` or
-        `ProblemType.MULTIPLE_VALUE`.
+        Must be one of `PredictionType.SINGLE_VALUE` or
+        `PredictionType.MULTIPLE_VALUE`.
       sequence_feature_columns: An iterable containing all the feature columns
         describing sequence features. All items in the iterable should be
         instances of classes derived from `FeatureColumn`.
@@ -639,7 +639,7 @@ class DynamicRnnEstimator(estimator.Estimator):
       ValueError: `problem_type` is not one of
         `ProblemType.LINEAR_REGRESSION` or `ProblemType.CLASSIFICATION`.
       ValueError: `problem_type` is `ProblemType.CLASSIFICATION` but
-        `num_classes` is not specifieProblemType
+        `num_classes` is not specified.
       ValueError: `prediction_type` is not one of
         `PredictionType.MULTIPLE_VALUE` or `PredictionType.SINGLE_VALUE`.
     """

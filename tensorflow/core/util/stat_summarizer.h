@@ -154,6 +154,8 @@ class StatSummarizer {
   // GraphDef is not needed by the StatSummarizer.
   explicit StatSummarizer(const tensorflow::GraphDef& tensorflow_graph);
 
+  ~StatSummarizer();
+
   // Adds another run's StepStats output to the aggregate counts.
   void ProcessStepStats(const StepStats& step_stats);
 
@@ -172,6 +174,7 @@ class StatSummarizer {
   void ComputeStatsByType(std::map<string, int64>* node_type_map_count,
                           std::map<string, int64>* node_type_map_time,
                           std::map<string, int64>* node_type_map_memory,
+                          std::map<string, int64>* node_type_map_times_called,
                           int64* accumulated_us) const;
 
   std::string GetStatsByNodeType() const;
@@ -180,11 +183,7 @@ class StatSummarizer {
                                SortingMetric sorting_metric,
                                int num_stats) const;
 
-  void Reset() {
-    run_total_us_.Reset();
-    memory_.Reset();
-    details_.clear();
-  }
+  void Reset();
 
   // Returns number of runs.
   int num_runs() const { return run_total_us_.count(); }
@@ -201,6 +200,7 @@ class StatSummarizer {
     Stat<int64> rel_end_us;
     Stat<int64> mem_used;
     std::vector<TensorDescription> outputs;
+    int64 times_called;
   };
 
   void Validate(const Detail* detail, const NodeExecStats& ns) const;

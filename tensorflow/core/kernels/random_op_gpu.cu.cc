@@ -141,7 +141,7 @@ struct FillPhiloxRandomKernel<Distribution, false> {
       const typename Distribution::ResultType samples = dist(&gen);
       copier(&data[offset], samples);
 
-      offset += (total_thread_count - 1) * kGroupSize;
+      offset += total_thread_count * kGroupSize;
       gen.Skip(total_thread_count - 1);
     }
 

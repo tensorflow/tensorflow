@@ -25,7 +25,7 @@ limitations under the License.
 // A Master discovers remote devices on-demand and keeps track of
 // statistics of those remote devices.
 //
-// Each session analyses the graph, places nodes across available
+// Each session analyzes the graph, places nodes across available
 // devices, and ultimately drives the graph computation by initiating
 // RunGraph on the workers.
 
@@ -114,6 +114,18 @@ void Master::GC() {
     }
     for (const auto& handle : handles) sessions_.erase(handle);
   }
+}
+
+MasterSession* Master::FindMasterSession(const string& handle) {
+  MasterSession* session = nullptr;
+  {
+    mutex_lock l(mu_);
+    session = gtl::FindPtrOrNull(sessions_, handle);
+    if (session != nullptr) {
+      session->Ref();
+    }
+  }
+  return session;
 }
 
 class DeviceFinder {
@@ -372,7 +384,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
         DeviceNameUtils::ParsedName name = d->parsed_name();
         if (name.job == *worker_cache_factory_options.job_name &&
             name.task == worker_cache_factory_options.task_index &&
-            name.type == "CPU") {
+            name.type == "CPU" && name.id == 0) {
           device_set->set_client_device(d.get());
         }
       }
@@ -399,7 +411,8 @@ void Master::CreateSession(const CreateSessionRequest* req,
       }
     }
 
-    CHECK(device_set->client_device());
+    CHECK(device_set->client_device()) << "No client device found. Missing "
+                                       << "CPU:0 device?";
 
     SessionOptions options;
     options.config = req->config();
@@ -428,16 +441,11 @@ void Master::CreateSession(const CreateSessionRequest* req,
 
 void Master::ExtendSession(const ExtendSessionRequest* req,
                            ExtendSessionResponse* resp, MyClosure done) {
-  mu_.lock();
-  MasterSession* session = nullptr;
-  session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+  auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
-  session->Ref();
-  mu_.unlock();
 
   SchedClosure([session, req, resp, done]() {
     Status status = ValidateExternalGraphDefSyntax(req->graph_def());
@@ -451,15 +459,11 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
 
 void Master::PartialRunSetup(const PartialRunSetupRequest* req,
                              PartialRunSetupResponse* resp, MyClosure done) {
-  mu_.lock();
-  MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+  auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
-  session->Ref();
-  mu_.unlock();
 
   SchedClosure([this, session, req, resp, done]() {
     Status s = session->PartialRunSetup(req, resp);
@@ -470,16 +474,12 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
 
 void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
                      MutableRunStepResponseWrapper* resp, MyClosure done) {
-  mu_.lock();
-  uint64 start_time = env_->env->NowMicros();
-  MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+  auto start_time = env_->env->NowMicros();
+  auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
-  session->Ref();
-  mu_.unlock();
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
     Status status = session->Run(opts, *req, resp);
@@ -524,6 +524,19 @@ void Master::CloseSession(const CloseSessionRequest* req,
 void Master::ListDevices(const ListDevicesRequest* req,
                          ListDevicesResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
+    if (!req->session_handle().empty()) {
+      auto session = FindMasterSession(req->session_handle());
+      if (session == nullptr) {
+        done(errors::InvalidArgument(
+             "Session ", req->session_handle(),
+             " is not found. Possibly, this master has restarted."));
+        return;
+      }
+      core::ScopedUnref ref(session);
+      Status s = session->ListDevices(resp);
+      done(s);
+      return;
+    }
     std::vector<std::unique_ptr<Device>> remote_devices;
     Status s = DeviceFinder::GetRemoteDevices({}, env_, env_->worker_cache,
                                               &remote_devices);

@@ -81,16 +81,23 @@ class ReaderTest(test.TestCase):
 
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
-    # - multiple custom tags.
+    # - multiple predefined tags.
     with self.test_session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 44)
+      builder.add_meta_graph([tag_constants.SERVING, tag_constants.GPU])
+
+    # Graph that updates the single variable. SavedModel is invoked:
+    # - to add the model (weights are not updated).
+    # - multiple custom tags.
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 45)
       builder.add_meta_graph(["foo", "bar"])
 
     # Save the SavedModel to disk.
     builder.save()
 
     actual_tags = reader.get_saved_model_tag_sets(saved_model_dir)
-    expected_tags = [["train"], ["serve"], ["foo", "bar"]]
+    expected_tags = [["train"], ["serve"], ["serve", "gpu"], ["foo", "bar"]]
     self.assertEqual(expected_tags, actual_tags)
 
 

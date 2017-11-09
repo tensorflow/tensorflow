@@ -42,7 +42,7 @@ class RandomTreeGen {
   boosted_trees::trees::DecisionTreeConfig Generate(
       const boosted_trees::trees::DecisionTreeConfig& tree);
 
-  // Requried: depth >= 1; tree_count >= 1.
+  // Required: depth >= 1; tree_count >= 1.
   boosted_trees::trees::DecisionTreeEnsembleConfig GenerateEnsemble(
       int dept, int tree_count);
 

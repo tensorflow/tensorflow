@@ -171,7 +171,7 @@ void hdfsFileFreeReadStatistics(struct hdfsReadStatistics *stats);
  * Connect to the hdfs.
  * @param nn   The NameNode.  See hdfsBuilderSetNameNode for details.
  * @param port The port on which the server is listening.
- * @param user the user name (this is hadoop domain user). Or NULL is equivelant
+ * @param user the user name (this is hadoop domain user). Or NULL is equivalent
  * to hhdfsConnect(host, port)
  * @return Returns a handle to the filesystem or NULL on error.
  * @deprecated Use hdfsBuilderConnect instead.
@@ -397,7 +397,7 @@ hdfsFile hdfsOpenFile(hdfsFS fs, const char *path, int flags, int bufferSize,
                       short replication, tSize blocksize);
 
 /**
- * hdfsTruncateFile - Truncate a hdfs file to given lenght.
+ * hdfsTruncateFile - Truncate a hdfs file to given length.
  * @param fs The configured filesystem handle.
  * @param path The full path to the file.
  * @param newlength The size the file is to be truncated to

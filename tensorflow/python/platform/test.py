@@ -17,6 +17,9 @@
 
 See the @{$python/test} guide.
 
+Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
+depending on the python version.
+
 @@main
 @@TestCase
 @@test_src_dir_path
@@ -27,22 +30,26 @@ See the @{$python/test} guide.
 @@gpu_device_name
 @@compute_gradient
 @@compute_gradient_error
+@@create_local_cluster
+
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 # pylint: disable=g-bad-import-order
-from tensorflow.python.client import device_lib as _device_lib
 from tensorflow.python.framework import test_util as _test_util
 from tensorflow.python.platform import googletest as _googletest
 from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import assert_equal_graph_def
+from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import gpu_device_name
+from tensorflow.python.framework.test_util import is_gpu_available
 
 from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
@@ -56,6 +63,9 @@ else:
 
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
+
+# Import StubOutForTesting class
+StubOutForTesting = _googletest.StubOutForTesting  # pylint: disable=invalid-name
 
 
 def main(argv=None):
@@ -92,26 +102,11 @@ def is_built_with_cuda():
   return _test_util.IsGoogleCudaEnabled()
 
 
-def is_gpu_available(cuda_only=False):
-  """Returns whether TensorFlow can access a GPU.
-
-  Args:
-    cuda_only: limit the search to CUDA gpus.
-
-  Returns:
-    True iff a gpu device of the requested kind is available.
-  """
-  if cuda_only:
-    return any((x.device_type == 'GPU')
-               for x in _device_lib.list_local_devices())
-  else:
-    return any((x.device_type == 'GPU' or x.device_type == 'SYCL')
-               for x in _device_lib.list_local_devices())
-
 _allowed_symbols = [
     # We piggy-back googletest documentation.
     'Benchmark',
     'mock',
+    'StubOutForTesting',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

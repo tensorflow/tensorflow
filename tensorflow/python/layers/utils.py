@@ -20,13 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
-
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 
@@ -110,6 +105,78 @@ def normalize_padding(value):
   return padding
 
 
+def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
+  """Determines output length of a convolution given input length.
+
+  Arguments:
+      input_length: integer.
+      filter_size: integer.
+      padding: one of "same", "valid", "full".
+      stride: integer.
+      dilation: dilation rate, integer.
+
+  Returns:
+      The output length (integer).
+  """
+  if input_length is None:
+    return None
+  assert padding in {'same', 'valid', 'full'}
+  dilated_filter_size = filter_size + (filter_size - 1) * (dilation - 1)
+  if padding == 'same':
+    output_length = input_length
+  elif padding == 'valid':
+    output_length = input_length - dilated_filter_size + 1
+  elif padding == 'full':
+    output_length = input_length + dilated_filter_size - 1
+  return (output_length + stride - 1) // stride
+
+
+def conv_input_length(output_length, filter_size, padding, stride):
+  """Determines input length of a convolution given output length.
+
+  Arguments:
+      output_length: integer.
+      filter_size: integer.
+      padding: one of "same", "valid", "full".
+      stride: integer.
+
+  Returns:
+      The input length (integer).
+  """
+  if output_length is None:
+    return None
+  assert padding in {'same', 'valid', 'full'}
+  if padding == 'same':
+    pad = filter_size // 2
+  elif padding == 'valid':
+    pad = 0
+  elif padding == 'full':
+    pad = filter_size - 1
+  return (output_length - 1) * stride - 2 * pad + filter_size
+
+
+def deconv_output_length(input_length, filter_size, padding, stride):
+  """Determines output length of a transposed convolution given input length.
+
+  Arguments:
+      input_length: integer.
+      filter_size: integer.
+      padding: one of "same", "valid", "full".
+      stride: integer.
+
+  Returns:
+      The output length (integer).
+  """
+  if input_length is None:
+    return None
+  input_length *= stride
+  if padding == 'valid':
+    input_length += max(filter_size - stride, 0)
+  elif padding == 'full':
+    input_length -= (stride + filter_size - 2)
+  return input_length
+
+
 def smart_cond(pred, fn1, fn2, name=None):
   """Return either `fn1()` or `fn2()` based on the boolean predicate `pred`.
 
@@ -126,7 +193,7 @@ def smart_cond(pred, fn1, fn2, name=None):
     Tensors returned by the call to either `fn1` or `fn2`.
 
   Raises:
-    TypeError is fn1 or fn2 is not callable.
+    TypeError: If `fn1` or `fn2` is not callable.
   """
   if not callable(fn1):
     raise TypeError('`fn1` must be callable.')
@@ -154,7 +221,7 @@ def constant_value(pred):
     True or False if `pred` has a constant boolean value, None otherwise.
 
   Raises:
-    TypeError is pred is not a Variable, Tensor or bool.
+    TypeError: If `pred` is not a Variable, Tensor or bool.
   """
   if isinstance(pred, bool):
     pred_value = pred
@@ -165,28 +232,3 @@ def constant_value(pred):
   else:
     raise TypeError('`pred` must be a Tensor, a Variable, or a Python bool.')
   return pred_value
-
-
-def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
-  """Return output dimension of a deconv layer, based on input dimension.
-
-  Arguments:
-    dim_size: An int representing size of dimension, can be height, width
-      or depth.
-    stride_size: An int representing the stride of deconvolution filters
-      along the same dimension.
-    kernel_size: An int representing size of deconv kernel (filter) along
-      the same dimension.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
-
-  Returns:
-    An int representing the size of output dimension of the layer.
-  """
-  if isinstance(dim_size, ops.Tensor):
-    dim_size = math_ops.multiply(dim_size, stride_size)
-  elif dim_size is not None:
-    dim_size *= stride_size
-
-  if padding == 'valid' and dim_size is not None:
-    dim_size += max(kernel_size - stride_size, 0)
-  return dim_size

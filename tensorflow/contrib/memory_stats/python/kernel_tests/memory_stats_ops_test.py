@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.memory_stats.python.ops import memory_stats_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
@@ -49,7 +50,7 @@ class MemoryStatsOpsTest(test_util.TensorFlowTestCase):
   # The memory for matrix "a" can be reused for matrix "d". Therefore, this
   # computation needs space for only three matrix plus some small overhead.
   def testChainOfMatmul(self):
-    # MaxBytesInUse is registerd on GPU only. See kernels/memory_stats_ops.cc.
+    # MaxBytesInUse is registered on GPU only. See kernels/memory_stats_ops.cc.
     if not test.is_gpu_available():
       return
 
@@ -64,9 +65,28 @@ class MemoryStatsOpsTest(test_util.TensorFlowTestCase):
       d = math_ops.matmul(c, b)
       sess.run(d)
 
-      max_bytes_in_use = sess.run(memory_stats_ops.MaxBytesInUse())
+      max_bytes_in_use_op = memory_stats_ops.MaxBytesInUse()
+      max_bytes_in_use = sess.run(max_bytes_in_use_op)
       self.assertGreaterEqual(max_bytes_in_use, matrix_size_in_bytes * 3)
       self.assertLess(max_bytes_in_use, matrix_size_in_bytes * 4)
+
+      # run chain with 2 ops, make sure BytesInUse captures intermediate
+      # memory usage
+      a = random_ops.random_uniform(matrix_shape, dtype=dtype)
+      with ops.control_dependencies([a]):
+        bytes_in_use_op = memory_stats_ops.BytesInUse()
+      with ops.control_dependencies([bytes_in_use_op]):
+        b = random_ops.random_uniform(matrix_shape, dtype=dtype)
+
+      _, bytes_in_use, max_bytes_in_use = sess.run([a, bytes_in_use_op,
+                                                    max_bytes_in_use_op])
+
+      # intermediate result allocates 1 matrix, max usage is at least 2
+      self.assertGreaterEqual(bytes_in_use, matrix_size_in_bytes * 1)
+      self.assertLess(bytes_in_use, matrix_size_in_bytes * 2)
+
+      # max usage is still 3 because it reflects maxium from previous .run call
+      self.assertGreaterEqual(max_bytes_in_use, matrix_size_in_bytes * 3)
 
 
 if __name__ == '__main__':

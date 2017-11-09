@@ -34,8 +34,6 @@ REGISTER_OP("ImageProjectiveTransform")
     .Output("transformed_images: dtype")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(0));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
-      c->set_output_handle_shape(0, c->input_handle_shape(0));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -77,7 +75,7 @@ REGISTER_OP("BipartiteMatch")
     .Doc(R"doc(
 Find bipartite matching based on a given distance matrix.
 
-A greedy bi-partite matching alogrithm is used to obtain the matching with the
+A greedy bi-partite matching algorithm is used to obtain the matching with the
 (greedy) minimum distance.
 
 distance_mat: A 2-D float tensor of shape `[num_rows, num_columns]`. It is a

@@ -18,27 +18,111 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import numbers
 import random
-import sys
 
+from google.protobuf import text_format
+
+from tensorflow.contrib.decision_trees.proto import generic_tree_model_pb2 as _tree_proto
 from tensorflow.contrib.framework.python.ops import variables as framework_variables
-from tensorflow.contrib.losses.python.losses import loss_ops
-from tensorflow.contrib.tensor_forest.python import constants
+from tensorflow.contrib.tensor_forest.proto import tensor_forest_params_pb2 as _params_proto
 from tensorflow.contrib.tensor_forest.python.ops import data_ops
-from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
+from tensorflow.contrib.tensor_forest.python.ops import model_ops
+from tensorflow.contrib.tensor_forest.python.ops import stats_ops
 
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+
+
+# Stores tuples of (leaf model type, stats model type)
+CLASSIFICATION_LEAF_MODEL_TYPES = {
+    'all_dense': (_params_proto.MODEL_DENSE_CLASSIFICATION,
+                  _params_proto.STATS_DENSE_GINI),
+    'all_sparse': (_params_proto.MODEL_SPARSE_CLASSIFICATION,
+                   _params_proto.STATS_SPARSE_GINI),
+    'sparse_then_dense':
+        (_params_proto.MODEL_SPARSE_OR_DENSE_CLASSIFICATION,
+         _params_proto.STATS_SPARSE_THEN_DENSE_GINI),
+}
+REGRESSION_MODEL_TYPE = (
+    _params_proto.MODEL_REGRESSION,
+    _params_proto.STATS_LEAST_SQUARES_REGRESSION,
+    _params_proto.COLLECTION_BASIC)
+
+FINISH_TYPES = {
+    'basic': _params_proto.SPLIT_FINISH_BASIC,
+    'hoeffding': _params_proto.SPLIT_FINISH_DOMINATE_HOEFFDING,
+    'bootstrap': _params_proto.SPLIT_FINISH_DOMINATE_BOOTSTRAP
+}
+PRUNING_TYPES = {
+    'none': _params_proto.SPLIT_PRUNE_NONE,
+    'half': _params_proto.SPLIT_PRUNE_HALF,
+    'quarter': _params_proto.SPLIT_PRUNE_QUARTER,
+    '10_percent': _params_proto.SPLIT_PRUNE_10_PERCENT,
+    'hoeffding': _params_proto.SPLIT_PRUNE_HOEFFDING,
+}
+SPLIT_TYPES = {
+    'less_or_equal': _tree_proto.InequalityTest.LESS_OR_EQUAL,
+    'less': _tree_proto.InequalityTest.LESS_THAN
+}
+
+
+def parse_number_or_string_to_proto(proto, param):
+  if isinstance(param, numbers.Number):
+    proto.constant_value = param
+  else:  # assume it's a string
+    if param.isdigit():
+      proto.constant_value = int(param)
+    else:
+      text_format.Merge(param, proto)
+
+
+def build_params_proto(params):
+  """Build a TensorForestParams proto out of the V4ForestHParams object."""
+  proto = _params_proto.TensorForestParams()
+  proto.num_trees = params.num_trees
+  proto.max_nodes = params.max_nodes
+  proto.is_regression = params.regression
+  proto.num_outputs = params.num_classes
+  proto.num_features = params.num_features
+
+  proto.leaf_type = params.leaf_model_type
+  proto.stats_type = params.stats_model_type
+  proto.collection_type = _params_proto.COLLECTION_BASIC
+  proto.pruning_type.type = params.pruning_type
+  proto.finish_type.type = params.finish_type
+
+  proto.inequality_test_type = params.split_type
+
+  proto.drop_final_class = False
+  proto.collate_examples = params.collate_examples
+  proto.checkpoint_stats = params.checkpoint_stats
+  proto.use_running_stats_method = params.use_running_stats_method
+  proto.initialize_average_splits = params.initialize_average_splits
+  proto.inference_tree_paths = params.inference_tree_paths
+
+  parse_number_or_string_to_proto(proto.pruning_type.prune_every_samples,
+                                  params.prune_every_samples)
+  parse_number_or_string_to_proto(proto.finish_type.check_every_steps,
+                                  params.early_finish_check_every_samples)
+  parse_number_or_string_to_proto(proto.split_after_samples,
+                                  params.split_after_samples)
+  parse_number_or_string_to_proto(proto.num_splits_to_consider,
+                                  params.num_splits_to_consider)
+
+  proto.dominate_fraction.constant_value = params.dominate_fraction
+
+  if params.param_file:
+    with open(params.param_file) as f:
+      text_format.Merge(f.read(), proto)
+
+  return proto
 
 
 # A convenience class for holding random forest hyperparameters.
@@ -56,19 +140,31 @@ from tensorflow.python.platform import tf_logging as logging
 class ForestHParams(object):
   """A base class for holding hyperparameters and calculating good defaults."""
 
-  def __init__(self,
-               num_trees=100,
-               max_nodes=10000,
-               bagging_fraction=1.0,
-               num_splits_to_consider=0,
-               feature_bagging_fraction=1.0,
-               max_fertile_nodes=0,
-               split_after_samples=250,
-               min_split_samples=5,
-               valid_leaf_threshold=1,
-               dominate_method='bootstrap',
-               dominate_fraction=0.99,
-               **kwargs):
+  def __init__(
+      self,
+      num_trees=100,
+      max_nodes=10000,
+      bagging_fraction=1.0,
+      num_splits_to_consider=0,
+      feature_bagging_fraction=1.0,
+      max_fertile_nodes=0,  # deprecated, unused.
+      split_after_samples=250,
+      valid_leaf_threshold=1,
+      dominate_method='bootstrap',
+      dominate_fraction=0.99,
+      model_name='all_dense',
+      split_finish_name='basic',
+      split_pruning_name='none',
+      prune_every_samples=0,
+      early_finish_check_every_samples=0,
+      collate_examples=False,
+      checkpoint_stats=False,
+      use_running_stats_method=False,
+      initialize_average_splits=False,
+      inference_tree_paths=False,
+      param_file=None,
+      split_name='less_or_equal',
+      **kwargs):
     self.num_trees = num_trees
     self.max_nodes = max_nodes
     self.bagging_fraction = bagging_fraction
@@ -76,10 +172,21 @@ class ForestHParams(object):
     self.num_splits_to_consider = num_splits_to_consider
     self.max_fertile_nodes = max_fertile_nodes
     self.split_after_samples = split_after_samples
-    self.min_split_samples = min_split_samples
     self.valid_leaf_threshold = valid_leaf_threshold
     self.dominate_method = dominate_method
     self.dominate_fraction = dominate_fraction
+    self.model_name = model_name
+    self.split_finish_name = split_finish_name
+    self.split_pruning_name = split_pruning_name
+    self.collate_examples = collate_examples
+    self.checkpoint_stats = checkpoint_stats
+    self.use_running_stats_method = use_running_stats_method
+    self.initialize_average_splits = initialize_average_splits
+    self.inference_tree_paths = inference_tree_paths
+    self.param_file = param_file
+    self.split_name = split_name
+    self.early_finish_check_every_samples = early_finish_check_every_samples
+    self.prune_every_samples = prune_every_samples
 
     for name, value in kwargs.items():
       setattr(self, name, value)
@@ -115,23 +222,63 @@ class ForestHParams(object):
     # Our experiments have found that num_splits_to_consider = num_features
     # gives good accuracy.
     self.num_splits_to_consider = self.num_splits_to_consider or min(
-        self.num_features, 1000)
-
-    self.max_fertile_nodes = (self.max_fertile_nodes or
-                              int(math.ceil(self.max_nodes / 2.0)))
-
-    # We have num_splits_to_consider slots to fill, and we want to spend
-    # approximately split_after_samples samples initializing them.
-    num_split_initializiations_per_input = max(1, int(math.floor(
-        self.num_splits_to_consider / self.split_after_samples)))
-    self.split_initializations_per_input = getattr(
-        self, 'split_initializations_per_input',
-        num_split_initializiations_per_input)
+        max(10, math.floor(math.sqrt(self.num_features))), 1000)
 
     # If base_random_seed is 0, the current time will be used to seed the
     # random number generators for each tree.  If non-zero, the i-th tree
     # will be seeded with base_random_seed + i.
     self.base_random_seed = getattr(self, 'base_random_seed', 0)
+
+    # How to store leaf models.
+    self.leaf_model_type = (
+        REGRESSION_MODEL_TYPE[0] if self.regression else
+        CLASSIFICATION_LEAF_MODEL_TYPES[self.model_name][0])
+
+    # How to store stats objects.
+    self.stats_model_type = (
+        REGRESSION_MODEL_TYPE[1] if self.regression else
+        CLASSIFICATION_LEAF_MODEL_TYPES[self.model_name][1])
+
+    self.finish_type = (
+        _params_proto.SPLIT_FINISH_BASIC if self.regression else
+        FINISH_TYPES[self.split_finish_name])
+
+    self.pruning_type = PRUNING_TYPES[self.split_pruning_name]
+
+    if self.pruning_type == _params_proto.SPLIT_PRUNE_NONE:
+      self.prune_every_samples = 0
+    else:
+      if (not self.prune_every_samples and
+          not (isinstance(numbers.Number) or
+               self.split_after_samples.isdigit())):
+        logging.error(
+            'Must specify prune_every_samples if using a depth-dependent '
+            'split_after_samples')
+      # Pruning half-way through split_after_samples seems like a decent
+      # default, making it easy to select the number being pruned with
+      # pruning_type while not paying the cost of pruning too often.  Note that
+      # this only holds if not using a depth-dependent split_after_samples.
+      self.prune_every_samples = (self.prune_every_samples or
+                                  int(self.split_after_samples) / 2)
+
+    if self.finish_type == _params_proto.SPLIT_FINISH_BASIC:
+      self.early_finish_check_every_samples = 0
+    else:
+      if (not self.early_finish_check_every_samples and
+          not (isinstance(numbers.Number) or
+               self.split_after_samples.isdigit())):
+        logging.error(
+            'Must specify prune_every_samples if using a depth-dependent '
+            'split_after_samples')
+      # Checking for early finish every quarter through split_after_samples
+      # seems like a decent default. We don't want to incur the checking cost
+      # too often, but (at least for hoeffding) it's lower than the cost of
+      # pruning so we can do it a little more frequently.
+      self.early_finish_check_every_samples = (
+          self.early_finish_check_every_samples or
+          int(self.split_after_samples) / 4)
+
+    self.split_type = SPLIT_TYPES[self.split_name]
 
     return self
 
@@ -157,114 +304,23 @@ class TreeTrainingVariables(object):
   """
 
   def __init__(self, params, tree_num, training):
-    self.tree = variable_scope.get_variable(
-        name=self.get_tree_name('tree', tree_num), dtype=dtypes.int32,
-        shape=[params.max_nodes, 2],
-        initializer=init_ops.constant_initializer(-2))
-    self.tree_thresholds = variable_scope.get_variable(
-        name=self.get_tree_name('tree_thresholds', tree_num),
-        shape=[params.max_nodes],
-        initializer=init_ops.constant_initializer(-1.0))
-    self.end_of_tree = variable_scope.get_variable(
-        name=self.get_tree_name('end_of_tree', tree_num),
-        dtype=dtypes.int32,
-        initializer=constant_op.constant([1]))
-    self.start_epoch = variable_scope.get_variable(
-        name=self.get_tree_name('start_epoch', tree_num),
-        dtype=dtypes.int32, shape=[params.max_nodes],
-        initializer=init_ops.constant_initializer(0))
+    if (not hasattr(params, 'params_proto') or
+        not isinstance(params.params_proto,
+                       _params_proto.TensorForestParams)):
+      params.params_proto = build_params_proto(params)
 
+    params.serialized_params_proto = params.params_proto.SerializeToString()
+    self.stats = None
     if training:
-      self.node_to_accumulator_map = variable_scope.get_variable(
-          name=self.get_tree_name('node_to_accumulator_map', tree_num),
-          shape=[params.max_nodes],
-          dtype=dtypes.int32,
-          initializer=init_ops.constant_initializer(-1))
-      self.accumulator_to_node_map = variable_scope.get_variable(
-          name=self.get_tree_name('accumulator_to_node_map', tree_num),
-          shape=[params.max_fertile_nodes],
-          dtype=dtypes.int32,
-          initializer=init_ops.constant_initializer(-1))
-
-      self.candidate_split_features = variable_scope.get_variable(
-          name=self.get_tree_name('candidate_split_features', tree_num),
-          shape=[params.max_fertile_nodes, params.num_splits_to_consider],
-          dtype=dtypes.int32,
-          initializer=init_ops.constant_initializer(-1))
-      self.candidate_split_thresholds = variable_scope.get_variable(
-          name=self.get_tree_name('candidate_split_thresholds', tree_num),
-          shape=[params.max_fertile_nodes, params.num_splits_to_consider],
-          initializer=init_ops.constant_initializer(0.0))
-
-    # Statistics shared by classification and regression.
-    self.node_sums = variable_scope.get_variable(
-        name=self.get_tree_name('node_sums', tree_num),
-        shape=[params.max_nodes, params.num_output_columns],
-        initializer=init_ops.constant_initializer(0.0))
-
-    if training:
-      self.candidate_split_sums = variable_scope.get_variable(
-          name=self.get_tree_name('candidate_split_sums', tree_num),
-          shape=[params.max_fertile_nodes, params.num_splits_to_consider,
-                 params.num_output_columns],
-          initializer=init_ops.constant_initializer(0.0))
-      self.accumulator_sums = variable_scope.get_variable(
-          name=self.get_tree_name('accumulator_sums', tree_num),
-          shape=[params.max_fertile_nodes, params.num_output_columns],
-          initializer=init_ops.constant_initializer(-1.0))
-
-      # Regression also tracks second order stats.
-      if params.regression:
-        self.node_squares = variable_scope.get_variable(
-            name=self.get_tree_name('node_squares', tree_num),
-            shape=[params.max_nodes, params.num_output_columns],
-            initializer=init_ops.constant_initializer(0.0))
-
-        self.candidate_split_squares = variable_scope.get_variable(
-            name=self.get_tree_name('candidate_split_squares', tree_num),
-            shape=[params.max_fertile_nodes, params.num_splits_to_consider,
-                   params.num_output_columns],
-            initializer=init_ops.constant_initializer(0.0))
-
-        self.accumulator_squares = variable_scope.get_variable(
-            name=self.get_tree_name('accumulator_squares', tree_num),
-            shape=[params.max_fertile_nodes, params.num_output_columns],
-            initializer=init_ops.constant_initializer(-1.0))
-
-      else:
-        self.node_squares = constant_op.constant(
-            0.0, name=self.get_tree_name('node_squares', tree_num))
-
-        self.candidate_split_squares = constant_op.constant(
-            0.0, name=self.get_tree_name('candidate_split_squares', tree_num))
-
-        self.accumulator_squares = constant_op.constant(
-            0.0, name=self.get_tree_name('accumulator_squares', tree_num))
+      # TODO(gilberth): Manually shard this to be able to fit it on
+      # multiple machines.
+      self.stats = stats_ops.fertile_stats_variable(
+          params, '', self.get_tree_name('stats', tree_num))
+    self.tree = model_ops.tree_variable(
+        params, '', self.stats, self.get_tree_name('tree', tree_num))
 
   def get_tree_name(self, name, num):
     return '{0}-{1}'.format(name, num)
-
-
-class ForestStats(object):
-
-  def __init__(self, tree_stats, params):
-    """A simple container for stats about a forest."""
-    self.tree_stats = tree_stats
-    self.params = params
-
-  def get_average(self, thing):
-    val = 0.0
-    for i in range(self.params.num_trees):
-      val += getattr(self.tree_stats[i], thing)
-
-    return val / self.params.num_trees
-
-
-class TreeStats(object):
-
-  def __init__(self, num_nodes, num_leaves):
-    self.num_nodes = num_nodes
-    self.num_leaves = num_leaves
 
 
 class ForestTrainingVariables(object):
@@ -330,6 +386,10 @@ class RandomForestGraphs(object):
     return array_ops.concat(
         [split_data[ind] for ind in self.params.bagged_features[tree_num]], 1)
 
+  def get_all_resource_handles(self):
+    return ([self.variables[i].tree for i in range(len(self.trees))] +
+            [self.variables[i].stats for i in range(len(self.trees))])
+
   def training_graph(self,
                      input_data,
                      input_labels,
@@ -365,7 +425,6 @@ class RandomForestGraphs(object):
     tree_start = int(trainer_id * trees_per_trainer)
     tree_end = int((trainer_id + 1) * trees_per_trainer)
     for i in range(tree_start, tree_end):
-      logging.info('training graph for tree: %d' % i)
       with ops.device(self.variables.device_dummies[i].device):
         seed = self.params.base_random_seed
         if seed != 0:
@@ -378,7 +437,7 @@ class RandomForestGraphs(object):
           if processed_sparse_features is not None:
             raise NotImplementedError(
                 'Bagging not supported with sparse features.')
-          # TODO(thomaswc): This does sampling without replacment.  Consider
+          # TODO(thomaswc): This does sampling without replacement.  Consider
           # also allowing sampling with replacement as an option.
           batch_size = array_ops.strided_slice(
               array_ops.shape(processed_dense_features), [0], [1])
@@ -397,16 +456,13 @@ class RandomForestGraphs(object):
                 'Feature bagging not supported with sparse features.')
           tree_data = self._bag_features(i, tree_data)
 
-        initialization = self.trees[i].tree_initialization()
-
-        with ops.control_dependencies([initialization]):
-          tree_graphs.append(self.trees[i].training_graph(
-              tree_data,
-              tree_labels,
-              seed,
-              data_spec=data_spec,
-              sparse_features=processed_sparse_features,
-              **tree_kwargs))
+        tree_graphs.append(self.trees[i].training_graph(
+            tree_data,
+            tree_labels,
+            seed,
+            data_spec=data_spec,
+            sparse_features=processed_sparse_features,
+            **tree_kwargs))
 
     return control_flow_ops.group(*tree_graphs, name='train')
 
@@ -414,11 +470,16 @@ class RandomForestGraphs(object):
     """Constructs a TF graph for evaluating a random forest.
 
     Args:
-      input_data: A tensor or dict of string->Tensor for input data.
+      input_data: A tensor or dict of string->Tensor for the input data.
+                  This input_data must generate the same spec as the
+                  input_data used in training_graph:  the dict must have
+                  the same keys, for example, and all tensors must have
+                  the same size in their first dimension.
       **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
-      The last op in the random forest inference graph.
+      A tuple of (probabilities, tree_paths, variance), where variance
+      is the variance over all the trees for regression problems only.
 
     Raises:
       NotImplementedError: If trying to use feature bagging with sparse
@@ -428,6 +489,7 @@ class RandomForestGraphs(object):
         data_ops.ParseDataTensorOrDict(input_data))
 
     probabilities = []
+    paths = []
     for i in range(self.params.num_trees):
       with ops.device(self.variables.device_dummies[i].device):
         tree_data = processed_dense_features
@@ -435,17 +497,30 @@ class RandomForestGraphs(object):
           if processed_sparse_features is not None:
             raise NotImplementedError(
                 'Feature bagging not supported with sparse features.')
-          tree_data = self._bag_features(i, input_data)
-        probabilities.append(self.trees[i].inference_graph(
+          tree_data = self._bag_features(i, tree_data)
+        probs, path = self.trees[i].inference_graph(
             tree_data,
             data_spec,
             sparse_features=processed_sparse_features,
-            **inference_args))
+            **inference_args)
+        probabilities.append(probs)
+        paths.append(path)
     with ops.device(self.variables.device_dummies[0].device):
-      all_predict = array_ops.stack(probabilities)
-      return math_ops.div(
-          math_ops.reduce_sum(all_predict, 0), self.params.num_trees,
+      # shape of all_predict should be [batch_size, num_trees, num_outputs]
+      all_predict = array_ops.stack(probabilities, axis=1)
+      average_values = math_ops.div(
+          math_ops.reduce_sum(all_predict, 1),
+          self.params.num_trees,
           name='probabilities')
+      tree_paths = array_ops.stack(paths, axis=1)
+      regression_variance = None
+      if self.params.regression:
+        expected_squares = math_ops.div(
+            math_ops.reduce_sum(all_predict * all_predict, 1),
+            self.params.num_trees)
+        regression_variance = math_ops.maximum(
+            0., expected_squares - average_values * average_values)
+      return average_values, tree_paths, regression_variance
 
   def average_size(self):
     """Constructs a TF graph for evaluating the average size of a forest.
@@ -479,76 +554,11 @@ class RandomForestGraphs(object):
         impurities.append(self.trees[i].average_impurity())
     return math_ops.reduce_mean(array_ops.stack(impurities))
 
-  def get_stats(self, session):
-    tree_stats = []
-    for i in range(self.params.num_trees):
-      with ops.device(self.variables.device_dummies[i].device):
-        tree_stats.append(self.trees[i].get_stats(session))
-    return ForestStats(tree_stats, self.params)
-
   def feature_importances(self):
     tree_counts = [self.trees[i].feature_usage_counts()
                    for i in range(self.params.num_trees)]
     total_counts = math_ops.reduce_sum(array_ops.stack(tree_counts, 0), 0)
     return total_counts / math_ops.reduce_sum(total_counts)
-
-
-def one_hot_wrapper(num_classes, loss_fn):
-  """Some loss functions take one-hot labels."""
-  def _loss(probs, targets):
-    if targets.get_shape().ndims > 1:
-      targets = array_ops.squeeze(targets, squeeze_dims=[1])
-    one_hot_labels = array_ops.one_hot(
-        math_ops.to_int32(targets),
-        num_classes,
-        on_value=1.,
-        off_value=0.,
-        dtype=dtypes.float32)
-    return loss_fn(probs, one_hot_labels)
-  return _loss
-
-
-class TrainingLossForest(RandomForestGraphs):
-  """Random Forest that uses training loss as the termination criteria."""
-
-  def __init__(self, params, loss_fn=None, **kwargs):
-    """Initialize.
-
-    Args:
-      params: Like RandomForestGraphs, a ForestHParams object.
-      loss_fn: A function that takes probabilities and targets and returns
-        a loss for each example.
-      **kwargs: Keyword args to pass to superclass (RandomForestGraphs).
-    """
-    self.loss_fn = loss_fn or one_hot_wrapper(params.num_classes,
-                                              loss_ops.log_loss)
-    self._loss = None
-    super(TrainingLossForest, self).__init__(params, **kwargs)
-
-  def _get_loss(self, features, labels):
-    """Constructs, caches, and returns the inference-based loss."""
-    if self._loss is not None:
-      return self._loss
-
-    def _average_loss():
-      probs = self.inference_graph(features)
-      return math_ops.reduce_sum(self.loss_fn(
-          probs, labels)) / math_ops.to_float(array_ops.shape(labels)[0])
-
-    self._loss = control_flow_ops.cond(
-        self.average_size() > 0, _average_loss,
-        lambda: constant_op.constant(sys.maxsize, dtype=dtypes.float32))
-
-    return self._loss
-
-  def training_graph(self, input_data, input_labels, **kwargs):
-    loss = self._get_loss(input_data, input_labels)
-    with ops.control_dependencies([loss.op]):
-      return super(TrainingLossForest, self).training_graph(
-          input_data, input_labels, **kwargs)
-
-  def training_loss(self, features, labels, name='training_loss'):
-    return array_ops.identity(self._get_loss(features, labels), name=name)
 
 
 class RandomTreeGraphs(object):
@@ -558,77 +568,6 @@ class RandomTreeGraphs(object):
     self.variables = variables
     self.params = params
     self.tree_num = tree_num
-
-  def tree_initialization(self):
-    def _init_tree():
-      return state_ops.scatter_update(self.variables.tree, [0], [[-1, -1]]).op
-
-    def _nothing():
-      return control_flow_ops.no_op()
-
-    return control_flow_ops.cond(
-        math_ops.equal(
-            array_ops.squeeze(
-                array_ops.strided_slice(self.variables.tree, [0, 0], [1, 1])),
-            -2), _init_tree, _nothing)
-
-  def _gini(self, class_counts):
-    """Calculate the Gini impurity.
-
-    If c(i) denotes the i-th class count and c = sum_i c(i) then
-      score = 1 - sum_i ( c(i) / c )^2
-
-    Args:
-      class_counts: A 2-D tensor of per-class counts, usually a slice or
-        gather from variables.node_sums.
-
-    Returns:
-      A 1-D tensor of the Gini impurities for each row in the input.
-    """
-    smoothed = 1.0 + array_ops.slice(class_counts, [0, 1], [-1, -1])
-    sums = math_ops.reduce_sum(smoothed, 1)
-    sum_squares = math_ops.reduce_sum(math_ops.square(smoothed), 1)
-
-    return 1.0 - sum_squares / (sums * sums)
-
-  def _weighted_gini(self, class_counts):
-    """Our split score is the Gini impurity times the number of examples.
-
-    If c(i) denotes the i-th class count and c = sum_i c(i) then
-      score = c * (1 - sum_i ( c(i) / c )^2 )
-            = c - sum_i c(i)^2 / c
-    Args:
-      class_counts: A 2-D tensor of per-class counts, usually a slice or
-        gather from variables.node_sums.
-
-    Returns:
-      A 1-D tensor of the Gini impurities for each row in the input.
-    """
-    smoothed = 1.0 + array_ops.slice(class_counts, [0, 1], [-1, -1])
-    sums = math_ops.reduce_sum(smoothed, 1)
-    sum_squares = math_ops.reduce_sum(math_ops.square(smoothed), 1)
-
-    return sums - sum_squares / sums
-
-  def _variance(self, sums, squares):
-    """Calculate the variance for each row of the input tensors.
-
-    Variance is V = E[x^2] - (E[x])^2.
-
-    Args:
-      sums: A tensor containing output sums, usually a slice from
-        variables.node_sums.  Should contain the number of examples seen
-        in index 0 so we can calculate expected value.
-      squares: Same as sums, but sums of squares.
-
-    Returns:
-      A 1-D tensor of the variances for each row in the input.
-    """
-    total_count = array_ops.slice(sums, [0, 0], [-1, 1])
-    e_x = sums / total_count
-    e_x2 = squares / total_count
-
-    return math_ops.reduce_sum(e_x2 - math_ops.square(e_x), 1)
 
   def training_graph(self,
                      input_data,
@@ -655,15 +594,11 @@ class RandomTreeGraphs(object):
     Returns:
       The last op in the random tree training graph.
     """
-    epoch = math_ops.to_int32(get_epoch_variable())
-
-    serialized_input_spec = data_spec.SerializeToString()
+    # TODO(gilberth): Use this.
+    unused_epoch = math_ops.to_int32(get_epoch_variable())
 
     if input_weights is None:
       input_weights = []
-
-    if input_data is None:
-      input_data = []
 
     sparse_indices = []
     sparse_values = []
@@ -673,245 +608,45 @@ class RandomTreeGraphs(object):
       sparse_values = sparse_features.values
       sparse_shape = sparse_features.dense_shape
 
-    # Count extremely random stats.
-    (node_sums, node_squares, splits_indices, splits_sums, splits_squares,
-     totals_indices, totals_sums, totals_squares,
-     input_leaves) = (tensor_forest_ops.count_extremely_random_stats(
-         input_data,
-         sparse_indices,
-         sparse_values,
-         sparse_shape,
-         input_labels,
-         input_weights,
-         self.variables.tree,
-         self.variables.tree_thresholds,
-         self.variables.node_to_accumulator_map,
-         self.variables.candidate_split_features,
-         self.variables.candidate_split_thresholds,
-         self.variables.start_epoch,
-         epoch,
-         input_spec=serialized_input_spec,
-         num_classes=self.params.num_output_columns,
-         regression=self.params.regression))
-    node_update_ops = []
-    node_update_ops.append(
-        state_ops.assign_add(self.variables.node_sums, node_sums))
+    if input_data is None:
+      input_data = []
 
-    splits_update_ops = []
-    splits_update_ops.append(
-        tensor_forest_ops.scatter_add_ndim(self.variables.candidate_split_sums,
-                                           splits_indices, splits_sums))
-    splits_update_ops.append(
-        tensor_forest_ops.scatter_add_ndim(self.variables.accumulator_sums,
-                                           totals_indices, totals_sums))
+    leaf_ids = model_ops.traverse_tree_v4(
+        self.variables.tree,
+        input_data,
+        sparse_indices,
+        sparse_values,
+        sparse_shape,
+        input_spec=data_spec.SerializeToString(),
+        params=self.params.serialized_params_proto)
 
-    if self.params.regression:
-      node_update_ops.append(state_ops.assign_add(self.variables.node_squares,
-                                                  node_squares))
-      splits_update_ops.append(
-          tensor_forest_ops.scatter_add_ndim(
-              self.variables.candidate_split_squares, splits_indices,
-              splits_squares))
-      splits_update_ops.append(
-          tensor_forest_ops.scatter_add_ndim(self.variables.accumulator_squares,
-                                             totals_indices, totals_squares))
+    update_model = model_ops.update_model_v4(
+        self.variables.tree,
+        leaf_ids,
+        input_labels,
+        input_weights,
+        params=self.params.serialized_params_proto)
 
-    # Sample inputs.
-    update_indices, feature_updates, threshold_updates = (
-        tensor_forest_ops.sample_inputs(
-            input_data,
-            sparse_indices,
-            sparse_values,
-            sparse_shape,
-            input_weights,
-            self.variables.node_to_accumulator_map,
-            input_leaves,
-            self.variables.candidate_split_features,
-            self.variables.candidate_split_thresholds,
-            input_spec=serialized_input_spec,
-            split_initializations_per_input=(
-                self.params.split_initializations_per_input),
-            split_sampling_random_seed=random_seed))
-    update_features_op = state_ops.scatter_update(
-        self.variables.candidate_split_features, update_indices,
-        feature_updates)
-    update_thresholds_op = state_ops.scatter_update(
-        self.variables.candidate_split_thresholds, update_indices,
-        threshold_updates)
+    finished_nodes = stats_ops.process_input_v4(
+        self.variables.tree,
+        self.variables.stats,
+        input_data,
+        sparse_indices,
+        sparse_values,
+        sparse_shape,
+        input_labels,
+        input_weights,
+        leaf_ids,
+        input_spec=data_spec.SerializeToString(),
+        random_seed=random_seed,
+        params=self.params.serialized_params_proto)
 
-    # Calculate finished nodes.
-    with ops.control_dependencies(splits_update_ops):
-      # Passing input_leaves to finished nodes here means that nodes that
-      # have become stale won't be deallocated until an input reaches them,
-      # because we're trying to avoid considering every fertile node for
-      # performance reasons.
-      finished, stale = tensor_forest_ops.finished_nodes(
-          input_leaves,
-          self.variables.node_to_accumulator_map,
-          self.variables.candidate_split_sums,
-          self.variables.candidate_split_squares,
-          self.variables.accumulator_sums,
-          self.variables.accumulator_squares,
-          self.variables.start_epoch,
-          epoch,
-          num_split_after_samples=self.params.split_after_samples,
-          min_split_samples=self.params.min_split_samples,
-          dominate_method=self.params.dominate_method,
-          dominate_fraction=self.params.dominate_fraction)
-
-    # Update leaf scores.
-    # TODO(thomaswc): Store the leaf scores in a TopN and only update the
-    # scores of the leaves that were touched by this batch of input.
-    children = array_ops.squeeze(
-        array_ops.slice(self.variables.tree, [0, 0], [-1, 1]), squeeze_dims=[1])
-    is_leaf = math_ops.equal(constants.LEAF_NODE, children)
-    leaves = math_ops.to_int32(
-        array_ops.squeeze(
-            array_ops.where(is_leaf), squeeze_dims=[1]))
-    non_fertile_leaves = array_ops.boolean_mask(
-        leaves, math_ops.less(array_ops.gather(
-            self.variables.node_to_accumulator_map, leaves), 0))
-
-    # TODO(gilberth): It should be possible to limit the number of non
-    # fertile leaves we calculate scores for, especially since we can only take
-    # at most array_ops.shape(finished)[0] of them.
-    with ops.control_dependencies(node_update_ops):
-      sums = array_ops.gather(self.variables.node_sums, non_fertile_leaves)
-      if self.params.regression:
-        squares = array_ops.gather(self.variables.node_squares,
-                                   non_fertile_leaves)
-        non_fertile_leaf_scores = self._variance(sums, squares)
-      else:
-        non_fertile_leaf_scores = self._weighted_gini(sums)
-
-    # Calculate best splits.
-    with ops.control_dependencies(splits_update_ops):
-      split_indices = tensor_forest_ops.best_splits(
-          finished,
-          self.variables.node_to_accumulator_map,
-          self.variables.candidate_split_sums,
-          self.variables.candidate_split_squares,
-          self.variables.accumulator_sums,
-          self.variables.accumulator_squares,
-          regression=self.params.regression)
-
-    # Grow tree.
-    with ops.control_dependencies([update_features_op, update_thresholds_op,
-                                   non_fertile_leaves.op]):
-      (tree_update_indices, tree_children_updates, tree_threshold_updates,
-       new_eot) = (tensor_forest_ops.grow_tree(
-           self.variables.end_of_tree, self.variables.node_to_accumulator_map,
-           finished, split_indices, self.variables.candidate_split_features,
-           self.variables.candidate_split_thresholds))
-      tree_update_op = state_ops.scatter_update(
-          self.variables.tree, tree_update_indices, tree_children_updates)
-      thresholds_update_op = state_ops.scatter_update(
-          self.variables.tree_thresholds, tree_update_indices,
-          tree_threshold_updates)
-      # TODO(thomaswc): Only update the epoch on the new leaves.
-      new_epoch_updates = epoch * array_ops.ones_like(tree_threshold_updates,
-                                                      dtype=dtypes.int32)
-      epoch_update_op = state_ops.scatter_update(
-          self.variables.start_epoch, tree_update_indices,
-          new_epoch_updates)
-
-    # Update fertile slots.
-    with ops.control_dependencies([tree_update_op]):
-      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
-       accumulators_allocated) = (tensor_forest_ops.update_fertile_slots(
-           finished,
-           non_fertile_leaves,
-           non_fertile_leaf_scores,
-           self.variables.end_of_tree,
-           self.variables.accumulator_sums,
-           self.variables.node_to_accumulator_map,
-           stale,
-           self.variables.node_sums,
-           regression=self.params.regression))
-
-    # Ensure end_of_tree doesn't get updated until UpdateFertileSlots has
-    # used it to calculate new leaves.
-    with ops.control_dependencies([n2a_map_updates.op]):
-      eot_update_op = state_ops.assign(self.variables.end_of_tree, new_eot)
-
-    updates = []
-    updates.append(eot_update_op)
-    updates.append(tree_update_op)
-    updates.append(thresholds_update_op)
-    updates.append(epoch_update_op)
-
-    updates.append(
-        state_ops.scatter_update(self.variables.node_to_accumulator_map,
-                                 n2a_map_updates[0], n2a_map_updates[1]))
-
-    updates.append(
-        state_ops.scatter_update(self.variables.accumulator_to_node_map,
-                                 a2n_map_updates[0], a2n_map_updates[1]))
-
-    cleared_and_allocated_accumulators = array_ops.concat(
-        [accumulators_cleared, accumulators_allocated], 0)
-
-    # Calculate values to put into scatter update for candidate counts.
-    # Candidate split counts are always reset back to 0 for both cleared
-    # and allocated accumulators. This means some accumulators might be doubly
-    # reset to 0 if the were released and not allocated, then later allocated.
-    split_values = array_ops.tile(
-        array_ops.expand_dims(array_ops.expand_dims(
-            array_ops.zeros_like(cleared_and_allocated_accumulators,
-                                 dtype=dtypes.float32), 1), 2),
-        [1, self.params.num_splits_to_consider, self.params.num_output_columns])
-    updates.append(state_ops.scatter_update(
-        self.variables.candidate_split_sums,
-        cleared_and_allocated_accumulators, split_values))
-    if self.params.regression:
-      updates.append(state_ops.scatter_update(
-          self.variables.candidate_split_squares,
-          cleared_and_allocated_accumulators, split_values))
-
-    # Calculate values to put into scatter update for total counts.
-    total_cleared = array_ops.tile(
-        array_ops.expand_dims(
-            math_ops.negative(array_ops.ones_like(accumulators_cleared,
-                                                  dtype=dtypes.float32)), 1),
-        [1, self.params.num_output_columns])
-    total_reset = array_ops.tile(
-        array_ops.expand_dims(
-            array_ops.zeros_like(accumulators_allocated,
-                                 dtype=dtypes.float32), 1),
-        [1, self.params.num_output_columns])
-    accumulator_updates = array_ops.concat([total_cleared, total_reset], 0)
-    updates.append(state_ops.scatter_update(
-        self.variables.accumulator_sums,
-        cleared_and_allocated_accumulators, accumulator_updates))
-    if self.params.regression:
-      updates.append(state_ops.scatter_update(
-          self.variables.accumulator_squares,
-          cleared_and_allocated_accumulators, accumulator_updates))
-
-    # Calculate values to put into scatter update for candidate splits.
-    split_features_updates = array_ops.tile(
-        array_ops.expand_dims(
-            math_ops.negative(array_ops.ones_like(
-                cleared_and_allocated_accumulators)), 1),
-        [1, self.params.num_splits_to_consider])
-    updates.append(state_ops.scatter_update(
-        self.variables.candidate_split_features,
-        cleared_and_allocated_accumulators, split_features_updates))
-
-    updates += self.finish_iteration()
-
-    return control_flow_ops.group(*updates)
-
-  def finish_iteration(self):
-    """Perform any operations that should be done at the end of an iteration.
-
-    This is mostly useful for subclasses that need to reset variables after
-    an iteration, such as ones that are used to finish nodes.
-
-    Returns:
-      A list of operations.
-    """
-    return []
+    with ops.control_dependencies([update_model]):
+      return stats_ops.grow_tree_v4(
+          self.variables.tree,
+          self.variables.stats,
+          finished_nodes,
+          params=self.params.serialized_params_proto)
 
   def inference_graph(self, input_data, data_spec, sparse_features=None):
     """Constructs a TF graph for evaluating a random tree.
@@ -923,11 +658,8 @@ class RandomTreeGraphs(object):
       sparse_features: A tf.SparseTensor for sparse input data.
 
     Returns:
-      The last op in the random tree inference graph.
+      A tuple of (probabilities, tree_paths).
     """
-    if input_data is None:
-      input_data = []
-
     sparse_indices = []
     sparse_values = []
     sparse_shape = []
@@ -935,43 +667,17 @@ class RandomTreeGraphs(object):
       sparse_indices = sparse_features.indices
       sparse_values = sparse_features.values
       sparse_shape = sparse_features.dense_shape
+    if input_data is None:
+      input_data = []
 
-    return tensor_forest_ops.tree_predictions(
+    return model_ops.tree_predictions_v4(
+        self.variables.tree,
         input_data,
         sparse_indices,
         sparse_values,
         sparse_shape,
-        self.variables.tree,
-        self.variables.tree_thresholds,
-        self.variables.node_sums,
         input_spec=data_spec.SerializeToString(),
-        valid_leaf_threshold=self.params.valid_leaf_threshold)
-
-  def average_impurity(self):
-    """Constructs a TF graph for evaluating the average leaf impurity of a tree.
-
-    If in regression mode, this is the leaf variance. If in classification mode,
-    this is the gini impurity.
-
-    Returns:
-      The last op in the graph.
-    """
-    children = array_ops.squeeze(array_ops.slice(
-        self.variables.tree, [0, 0], [-1, 1]), squeeze_dims=[1])
-    is_leaf = math_ops.equal(constants.LEAF_NODE, children)
-    leaves = math_ops.to_int32(array_ops.squeeze(array_ops.where(is_leaf),
-                                                 squeeze_dims=[1]))
-    counts = array_ops.gather(self.variables.node_sums, leaves)
-    gini = self._weighted_gini(counts)
-    # Guard against step 1, when there often are no leaves yet.
-    def impurity():
-      return gini
-    # Since average impurity can be used for loss, when there's no data just
-    # return a big number so that loss always decreases.
-    def big():
-      return array_ops.ones_like(gini, dtype=dtypes.float32) * 10000000.
-    return control_flow_ops.cond(math_ops.greater(
-        array_ops.shape(leaves)[0], 0), impurity, big)
+        params=self.params.serialized_params_proto)
 
   def size(self):
     """Constructs a TF graph for evaluating the current number of nodes.
@@ -979,19 +685,8 @@ class RandomTreeGraphs(object):
     Returns:
       The current number of nodes in the tree.
     """
-    return self.variables.end_of_tree - 1
-
-  def get_stats(self, session):
-    num_nodes = self.variables.end_of_tree.eval(session=session) - 1
-    num_leaves = array_ops.where(
-        math_ops.equal(array_ops.squeeze(array_ops.slice(
-            self.variables.tree, [0, 0], [-1, 1])), constants.LEAF_NODE)
-        ).eval(session=session).shape[0]
-    return TreeStats(num_nodes, num_leaves)
+    return model_ops.tree_size(self.variables.tree)
 
   def feature_usage_counts(self):
-    features = array_ops.slice(self.variables.tree, [0, 1], [-1, 1])
-    # One hot ignores negative values, which is the default for unused nodes.
-    one_hots = array_ops.one_hot(
-        array_ops.squeeze(features), self.params.num_features)
-    return math_ops.reduce_sum(one_hots, 0)
+    return model_ops.feature_usage_counts(
+        self.variables.tree, params=self.params.serialized_params_proto)

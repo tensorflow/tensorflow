@@ -148,14 +148,14 @@ const char* GetVarint32PtrFallback(const char* p, const char* limit,
       return reinterpret_cast<const char*>(p);
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 bool GetVarint32(StringPiece* input, uint32* value) {
   const char* p = input->data();
   const char* limit = p + input->size();
   const char* q = GetVarint32Ptr(p, limit, value);
-  if (q == NULL) {
+  if (q == nullptr) {
     return false;
   } else {
     *input = StringPiece(q, limit - q);
@@ -177,14 +177,14 @@ const char* GetVarint64Ptr(const char* p, const char* limit, uint64* value) {
       return reinterpret_cast<const char*>(p);
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 bool GetVarint64(StringPiece* input, uint64* value) {
   const char* p = input->data();
   const char* limit = p + input->size();
   const char* q = GetVarint64Ptr(p, limit, value);
-  if (q == NULL) {
+  if (q == nullptr) {
     return false;
   } else {
     *input = StringPiece(q, limit - q);

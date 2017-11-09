@@ -1,9 +1,0 @@
-node {
-  name: "a"
-  op: "matmul"
-}
-node {
-  name: "b"
-  op: "matmul"
-  input: "a:0"
-}

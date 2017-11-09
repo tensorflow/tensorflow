@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 class BitcastTest(test.TestCase):
 
   def _testBitcast(self, x, datatype, shape):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       tf_ans = array_ops.bitcast(x, datatype)
       out = tf_ans.eval()
       buff_after = memoryview(out).tobytes()
@@ -75,6 +75,12 @@ class BitcastTest(test.TestCase):
     x = array_ops.placeholder(dtypes.float32)
     datatype = dtypes.int8
     array_ops.bitcast(x, datatype, None)
+
+  def testQuantizeType(self):
+    shape = [3, 4]
+    x = np.zeros(shape, np.uint16)
+    datatype = dtypes.quint16
+    self._testBitcast(x, datatype, shape)
 
 
 if __name__ == "__main__":

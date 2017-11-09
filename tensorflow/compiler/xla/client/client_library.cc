@@ -23,6 +23,13 @@ limitations under the License.
 
 namespace xla {
 
+LocalClientOptions::LocalClientOptions(perftools::gputools::Platform* platform,
+                                       int number_of_replicas,
+                                       int intra_op_parallelism_threads)
+    : platform_(platform),
+      number_of_replicas_(number_of_replicas),
+      intra_op_parallelism_threads_(intra_op_parallelism_threads) {}
+
 LocalClientOptions& LocalClientOptions::set_platform(
     perftools::gputools::Platform* platform) {
   platform_ = platform;
@@ -41,6 +48,16 @@ LocalClientOptions& LocalClientOptions::set_number_of_replicas(
 
 int LocalClientOptions::number_of_replicas() const {
   return number_of_replicas_;
+}
+
+LocalClientOptions& LocalClientOptions::set_intra_op_parallelism_threads(
+    int num_threads) {
+  intra_op_parallelism_threads_ = num_threads;
+  return *this;
+}
+
+int LocalClientOptions::intra_op_parallelism_threads() const {
+  return intra_op_parallelism_threads_;
 }
 
 /* static */ ClientLibrary& ClientLibrary::Singleton() {
@@ -77,6 +94,8 @@ ClientLibrary::~ClientLibrary() = default;
   ServiceOptions service_options;
   service_options.set_platform(platform);
   service_options.set_number_of_replicas(replica_count);
+  service_options.set_intra_op_parallelism_threads(
+      options.intra_op_parallelism_threads());
 
   auto instance = MakeUnique<LocalInstance>();
   TF_ASSIGN_OR_RETURN(instance->service,
@@ -128,6 +147,14 @@ ClientLibrary::GetOrCreateCompileOnlyClient(
   client_library.compile_only_instances_.insert(
       std::make_pair(platform->id(), std::move(instance)));
   return cl;
+}
+
+/* static */ void ClientLibrary::DestroyLocalInstances() {
+  ClientLibrary& client_library = Singleton();
+  tensorflow::mutex_lock lock(client_library.service_mutex_);
+
+  client_library.local_instances_.clear();
+  client_library.compile_only_instances_.clear();
 }
 
 }  // namespace xla

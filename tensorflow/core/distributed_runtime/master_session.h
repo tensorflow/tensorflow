@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
+#include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
@@ -87,6 +87,8 @@ class MasterSession : public core::RefCounted {
   Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
              MutableRunStepResponseWrapper* resp);
 
+  Status ListDevices(ListDevicesResponse* resp) const;
+
   // Close this session and delete "*this". Returns OK if all known
   // states are cleanup successfully.
   //
@@ -112,7 +114,7 @@ class MasterSession : public core::RefCounted {
 
   // The optional session-specific worker cluster.
   // TODO(saeta): Convert to std::optional when available.
-  std::unique_ptr<WorkerCacheInterface> worker_cache_;
+  const std::unique_ptr<WorkerCacheInterface> worker_cache_;
   // Retrieves either worker_cache_ or the env_->worker_cache as appropriate.
   WorkerCacheInterface* get_worker_cache() const;
 
@@ -126,7 +128,7 @@ class MasterSession : public core::RefCounted {
   std::atomic<int64> partial_run_handle_counter_ = {0};
 
   mutex mu_;
-  std::unique_ptr<SimpleGraphExecutionState> execution_state_ GUARDED_BY(mu_);
+  std::unique_ptr<GraphExecutionState> execution_state_ GUARDED_BY(mu_);
   int64 graph_version_;
 
   // We keep a map from a signature of a run request to the
@@ -143,6 +145,7 @@ class MasterSession : public core::RefCounted {
     bool collect_costs = false;
     bool collect_timeline = false;
     bool collect_rpcs = false;
+    bool collect_partition_graphs = false;
     Microseconds start_micros = Microseconds(0);
     Microseconds end_micros = Microseconds(0);
     std::vector<StepStats> step_stats;  // per partition

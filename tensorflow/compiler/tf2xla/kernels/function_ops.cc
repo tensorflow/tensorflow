@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -68,7 +69,8 @@ class SymbolicGradientOp : public AsyncOpKernel {
                       done);
 
     OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
+        ctx, lib->Instantiate(kGradientOp, AttrSlice(&def().attr()), &handle_),
+        done);
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();

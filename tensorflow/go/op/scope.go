@@ -49,6 +49,11 @@ func NewScope() *Scope {
 	return &Scope{graph: tf.NewGraph(), namemap: make(map[string]int), err: new(scopeErr)}
 }
 
+// NewScopeWithGraph creates a Scope initialized with the Graph thats passed in
+func NewScopeWithGraph(g *tf.Graph) *Scope {
+	return &Scope{graph: g, namemap: make(map[string]int), err: new(scopeErr)}
+}
+
 // Finalize returns the Graph on which this scope operates on and renders s
 // unusable. If there was an error during graph construction, that error is
 // returned instead.

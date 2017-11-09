@@ -211,6 +211,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
   }
 
   if (!throwExceptionIfNotOK(env, status)) {
+    TF_DeleteStatus(status);
     return nullptr;
   }
   jlong* t = env->GetLongArrayElements(output_tensor_handles, nullptr);
@@ -222,9 +223,9 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
   jbyteArray ret = nullptr;
   if (run_metadata != nullptr) {
     ret = env->NewByteArray(run_metadata->length);
-    jbyte* elems = env->GetByteArrayElements(ret, nullptr);
-    memcpy(elems, run_metadata->data, run_metadata->length);
-    env->ReleaseByteArrayElements(ret, elems, JNI_COMMIT);
+    env->SetByteArrayRegion(ret, 0, run_metadata->length,
+                            reinterpret_cast<const jbyte*>(run_metadata->data));
   }
+  TF_DeleteStatus(status);
   return ret;
 }

@@ -24,27 +24,26 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib import rnn as rnn_lib
-from tensorflow.contrib.rnn.python.ops import core_rnn
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
-
 
 class Plus1RNNCell(rnn_lib.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
@@ -76,7 +75,7 @@ class DummyMultiDimensionalLSTM(rnn_lib.RNNCell):
       without including 'Time' or 'Batch' dimensions.
     """
     if not isinstance(dims, tuple):
-      raise TypeError("The dimensions passed to DummyMultiDimensionalLSTM"
+      raise TypeError("The dimensions passed to DummyMultiDimensionalLSTM "
                       "should be a tuple of ints.")
     self._dims = dims
     self._output_size = tensor_shape.TensorShape(self._dims)
@@ -153,7 +152,7 @@ class RNNTest(test.TestCase):
     cell = Plus1RNNCell()
     inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
     with self.assertRaisesRegexp(ValueError, "must be a vector"):
-      core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=4)
+      rnn.static_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=4)
 
   def testRNN(self):
     cell = Plus1RNNCell()
@@ -164,13 +163,13 @@ class RNNTest(test.TestCase):
         array_ops.placeholder(
             dtypes.float32, shape=(batch_size, input_size))
     ]
-    outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+    outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
     self.assertEqual(len(outputs), len(inputs))
     for out, inp in zip(outputs, inputs):
       self.assertEqual(out.get_shape(), inp.get_shape())
       self.assertEqual(out.dtype, inp.dtype)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.test_session(use_gpu=True) as sess:
       input_value = np.random.randn(batch_size, input_size)
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
 
@@ -186,7 +185,7 @@ class RNNTest(test.TestCase):
 
   def testDropout(self):
     cell = Plus1RNNCell()
-    full_dropout_cell = core_rnn_cell_impl.DropoutWrapper(
+    full_dropout_cell = rnn_cell.DropoutWrapper(
         cell, input_keep_prob=1e-12, seed=0)
     batch_size = 2
     input_size = 5
@@ -196,16 +195,16 @@ class RNNTest(test.TestCase):
             dtypes.float32, shape=(batch_size, input_size))
     ]
     with variable_scope.variable_scope("share_scope"):
-      outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
     with variable_scope.variable_scope("drop_scope"):
-      dropped_outputs, _ = core_rnn.static_rnn(
+      dropped_outputs, _ = rnn.static_rnn(
           full_dropout_cell, inputs, dtype=dtypes.float32)
     self.assertEqual(len(outputs), len(inputs))
     for out, inp in zip(outputs, inputs):
       self.assertEqual(out.get_shape().as_list(), inp.get_shape().as_list())
       self.assertEqual(out.dtype, inp.dtype)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.test_session(use_gpu=True) as sess:
       input_value = np.random.randn(batch_size, input_size)
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
       full_dropout_values = sess.run(dropped_outputs,
@@ -216,7 +215,7 @@ class RNNTest(test.TestCase):
       for d_v in full_dropout_values[:-1]:  # Add 1.0 to dropped_out (all zeros)
         self.assertAllClose(d_v, np.ones_like(input_value))
 
-  def _testDynamicCalculation(self, use_gpu):
+  def testDynamicCalculation(self):
     cell = Plus1RNNCell()
     sequence_length = array_ops.placeholder(dtypes.int64)
     batch_size = 2
@@ -227,11 +226,11 @@ class RNNTest(test.TestCase):
             dtypes.float32, shape=(batch_size, input_size))
     ]
     with variable_scope.variable_scope("drop_scope"):
-      dynamic_outputs, dynamic_state = core_rnn.static_rnn(
+      dynamic_outputs, dynamic_state = rnn.static_rnn(
           cell, inputs, sequence_length=sequence_length, dtype=dtypes.float32)
     self.assertEqual(len(dynamic_outputs), len(inputs))
 
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       input_value = np.random.randn(batch_size, input_size)
       dynamic_values = sess.run(
           dynamic_outputs,
@@ -261,10 +260,6 @@ class RNNTest(test.TestCase):
       self.assertAllEqual(dynamic_state_value[0],
                           np.vstack((1.0 * (1 + 1) * np.ones((input_size)),
                                      1.0 * (2 + 1) * np.ones((input_size)))))
-
-  def testDynamicCalculation(self):
-    self._testDynamicCalculation(True)
-    self._testDynamicCalculation(False)
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
     with self.test_session(use_gpu=True, graph=ops_lib.Graph()):
@@ -297,8 +292,7 @@ class RNNTest(test.TestCase):
           array_ops.placeholder(
               dtypes.float32, shape=(batch_size, input_size))
       ]
-      return core_rnn.static_rnn(
-          cell, inputs, dtype=dtypes.float32, scope=scope)
+      return rnn.static_rnn(cell, inputs, dtype=dtypes.float32, scope=scope)
 
     self._testScope(factory, use_outer_scope=True)
     self._testScope(factory, use_outer_scope=False)
@@ -311,21 +305,21 @@ class LSTMTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
-  def _testNoProjNoSharding(self, use_gpu):
+  def testNoProjNoSharding(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units, initializer=initializer, state_is_tuple=False)
       inputs = max_length * [
           array_ops.placeholder(
               dtypes.float32, shape=(batch_size, input_size))
       ]
-      outputs, _ = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
       self.assertEqual(len(outputs), len(inputs))
       for out in outputs:
         self.assertEqual(out.get_shape().as_list(), [batch_size, num_units])
@@ -334,15 +328,15 @@ class LSTMTest(test.TestCase):
       input_value = np.random.randn(batch_size, input_size)
       sess.run(outputs, feed_dict={inputs[0]: input_value})
 
-  def _testCellClipping(self, use_gpu):
+  def testCellClipping(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           cell_clip=0.0,
@@ -352,7 +346,7 @@ class LSTMTest(test.TestCase):
           array_ops.placeholder(
               dtypes.float32, shape=(batch_size, input_size))
       ]
-      outputs, _ = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
       self.assertEqual(len(outputs), len(inputs))
       for out in outputs:
         self.assertEqual(out.get_shape().as_list(), [batch_size, num_units])
@@ -365,16 +359,16 @@ class LSTMTest(test.TestCase):
       # if cell c is clipped to 0, tanh(c) = 0 => m==0
       self.assertAllEqual(value, np.zeros((batch_size, num_units)))
 
-  def _testNoProjNoShardingSimpleStateSaver(self, use_gpu):
+  def testNoProjNoShardingSimpleStateSaver(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, 2 * num_units)
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=False,
           initializer=initializer,
@@ -384,7 +378,7 @@ class LSTMTest(test.TestCase):
               dtypes.float32, shape=(batch_size, input_size))
       ]
       with variable_scope.variable_scope("share_scope"):
-        outputs, state = core_rnn.static_state_saving_rnn(
+        outputs, state = rnn.static_state_saving_rnn(
             cell, inputs, state_saver=state_saver, state_name="save_lstm")
       self.assertEqual(len(outputs), len(inputs))
       for out in outputs:
@@ -406,7 +400,7 @@ class LSTMTest(test.TestCase):
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, num_units)
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=False,
           initializer=initializer,
@@ -416,7 +410,7 @@ class LSTMTest(test.TestCase):
               dtypes.float32, shape=(batch_size, input_size))
       ]
       with variable_scope.variable_scope("share_scope"):
-        outputs, state = core_rnn.static_state_saving_rnn(
+        outputs, state = rnn.static_state_saving_rnn(
             cell, inputs, state_saver=state_saver, state_name=("c", "m"))
       self.assertEqual(len(outputs), len(inputs))
       for out in outputs:
@@ -450,14 +444,14 @@ class LSTMTest(test.TestCase):
       })
 
       def _cell(i):
-        return core_rnn_cell_impl.LSTMCell(
+        return rnn_cell.LSTMCell(
             num_units + i,
             use_peepholes=False,
             initializer=initializer,
             state_is_tuple=True)
 
       # This creates a state tuple which has 4 sub-tuples of length 2 each.
-      cell = core_rnn_cell_impl.MultiRNNCell(
+      cell = rnn_cell.MultiRNNCell(
           [_cell(i) for i in range(4)], state_is_tuple=True)
 
       self.assertEqual(len(cell.state_size), 4)
@@ -471,7 +465,7 @@ class LSTMTest(test.TestCase):
 
       state_names = (("c0", "m0"), ("c1", "m1"), ("c2", "m2"), ("c3", "m3"))
       with variable_scope.variable_scope("share_scope"):
-        outputs, state = core_rnn.static_state_saving_rnn(
+        outputs, state = rnn.static_state_saving_rnn(
             cell, inputs, state_saver=state_saver, state_name=state_names)
       self.assertEqual(len(outputs), len(inputs))
 
@@ -495,26 +489,26 @@ class LSTMTest(test.TestCase):
         self.assertAllEqual(last_states[i],
                             named_saved_states[flat_state_names[i]])
 
-  def _testProjNoSharding(self, use_gpu):
+  def testProjNoSharding(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     num_proj = 4
     max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       inputs = max_length * [
           array_ops.placeholder(
               dtypes.float32, shape=(None, input_size))
       ]
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
           initializer=initializer,
           state_is_tuple=False)
-      outputs, _ = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
       self.assertEqual(len(outputs), len(inputs))
 
       variables_lib.global_variables_initializer().run()
@@ -535,20 +529,20 @@ class LSTMTest(test.TestCase):
           array_ops.placeholder(
               dtypes.float32, shape=(None, input_size))
       ]
-      cell_notuple = core_rnn_cell_impl.LSTMCell(
+      cell_notuple = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
           initializer=initializer,
           state_is_tuple=False)
-      cell_tuple = core_rnn_cell_impl.LSTMCell(
+      cell_tuple = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
           initializer=initializer,
           state_is_tuple=True)
       with variable_scope.variable_scope("root") as scope:
-        outputs_notuple, state_notuple = core_rnn.static_rnn(
+        outputs_notuple, state_notuple = rnn.static_rnn(
             cell_notuple,
             inputs,
             dtype=dtypes.float32,
@@ -562,7 +556,7 @@ class LSTMTest(test.TestCase):
         # the parameters from different RNNCell instances.  Right now,
         # this seems an unrealistic use case except for testing.
         cell_tuple._scope = cell_notuple._scope  # pylint: disable=protected-access
-        outputs_tuple, state_tuple = core_rnn.static_rnn(
+        outputs_tuple, state_tuple = rnn.static_rnn(
             cell_tuple,
             inputs,
             dtype=dtypes.float32,
@@ -586,7 +580,7 @@ class LSTMTest(test.TestCase):
       state_tuple_v = sess.run(state_tuple, feed_dict={inputs[0]: input_value})
       self.assertAllEqual(state_notuple_v, np.hstack(state_tuple_v))
 
-  def _testProjSharding(self, use_gpu):
+  def testProjSharding(self):
     num_units = 3
     input_size = 5
     batch_size = 2
@@ -594,7 +588,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
 
@@ -603,7 +597,7 @@ class LSTMTest(test.TestCase):
               dtypes.float32, shape=(None, input_size))
       ]
 
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
@@ -612,7 +606,7 @@ class LSTMTest(test.TestCase):
           initializer=initializer,
           state_is_tuple=False)
 
-      outputs, _ = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
       self.assertEqual(len(outputs), len(inputs))
 
@@ -620,7 +614,7 @@ class LSTMTest(test.TestCase):
       input_value = np.random.randn(batch_size, input_size)
       sess.run(outputs, feed_dict={inputs[0]: input_value})
 
-  def _testDoubleInput(self, use_gpu):
+  def testDoubleInput(self):
     num_units = 3
     input_size = 5
     batch_size = 2
@@ -628,14 +622,14 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(-1, 1, seed=self._seed)
       inputs = max_length * [
           array_ops.placeholder(
               dtypes.float64, shape=(None, input_size))
       ]
 
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
@@ -644,7 +638,7 @@ class LSTMTest(test.TestCase):
           initializer=initializer,
           state_is_tuple=False)
 
-      outputs, _ = core_rnn.static_rnn(
+      outputs, _ = rnn.static_rnn(
           cell,
           inputs,
           initial_state=cell.zero_state(batch_size, dtypes.float64))
@@ -657,7 +651,7 @@ class LSTMTest(test.TestCase):
       values = sess.run(outputs, feed_dict={inputs[0]: input_value})
       self.assertEqual(values[0].dtype, input_value.dtype)
 
-  def _testShardNoShardEquivalentOutput(self, use_gpu):
+  def testShardNoShardEquivalentOutput(self):
     num_units = 3
     input_size = 5
     batch_size = 2
@@ -665,14 +659,14 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       inputs = max_length * [
           array_ops.placeholder(
               dtypes.float32, shape=(None, input_size))
       ]
       initializer = init_ops.constant_initializer(0.001)
 
-      cell_noshard = core_rnn_cell_impl.LSTMCell(
+      cell_noshard = rnn_cell.LSTMCell(
           num_units,
           num_proj=num_proj,
           use_peepholes=True,
@@ -681,7 +675,7 @@ class LSTMTest(test.TestCase):
           num_proj_shards=num_proj_shards,
           state_is_tuple=False)
 
-      cell_shard = core_rnn_cell_impl.LSTMCell(
+      cell_shard = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           initializer=initializer,
@@ -689,10 +683,10 @@ class LSTMTest(test.TestCase):
           state_is_tuple=False)
 
       with variable_scope.variable_scope("noshard_scope"):
-        outputs_noshard, state_noshard = core_rnn.static_rnn(
+        outputs_noshard, state_noshard = rnn.static_rnn(
             cell_noshard, inputs, dtype=dtypes.float32)
       with variable_scope.variable_scope("shard_scope"):
-        outputs_shard, state_shard = core_rnn.static_rnn(
+        outputs_shard, state_shard = rnn.static_rnn(
             cell_shard, inputs, dtype=dtypes.float32)
 
       self.assertEqual(len(outputs_noshard), len(inputs))
@@ -712,7 +706,7 @@ class LSTMTest(test.TestCase):
       for (s_noshard, s_shard) in zip(state_values_noshard, state_values_shard):
         self.assertAllClose(s_noshard, s_shard, atol=1e-3)
 
-  def _testDoubleInputWithDropoutAndDynamicCalculation(self, use_gpu):
+  def testDoubleInputWithDropoutAndDynamicCalculation(self):
     """Smoke test for using LSTM with doubles, dropout, dynamic calculation."""
 
     num_units = 3
@@ -722,7 +716,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       sequence_length = array_ops.placeholder(dtypes.int64)
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
@@ -731,7 +725,7 @@ class LSTMTest(test.TestCase):
               dtypes.float64, shape=(None, input_size))
       ]
 
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
@@ -739,9 +733,9 @@ class LSTMTest(test.TestCase):
           num_proj_shards=num_proj_shards,
           initializer=initializer,
           state_is_tuple=False)
-      dropout_cell = core_rnn_cell_impl.DropoutWrapper(cell, 0.5, seed=0)
+      dropout_cell = rnn_cell.DropoutWrapper(cell, 0.5, seed=0)
 
-      outputs, state = core_rnn.static_rnn(
+      outputs, state = rnn.static_rnn(
           dropout_cell,
           inputs,
           sequence_length=sequence_length,
@@ -776,13 +770,13 @@ class LSTMTest(test.TestCase):
           array_ops.placeholder(
               dtypes.float32, shape=(None, input_size))
       ]
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
           initializer=initializer,
           state_is_tuple=False)
-      cell_d = core_rnn_cell_impl.LSTMCell(
+      cell_d = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
@@ -790,11 +784,11 @@ class LSTMTest(test.TestCase):
           state_is_tuple=False)
 
       with variable_scope.variable_scope("share_scope"):
-        outputs0, _ = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+        outputs0, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
       with variable_scope.variable_scope("share_scope", reuse=True):
-        outputs1, _ = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+        outputs1, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
       with variable_scope.variable_scope("diff_scope"):
-        outputs2, _ = core_rnn.static_rnn(cell_d, inputs, dtype=dtypes.float32)
+        outputs2, _ = rnn.static_rnn(cell_d, inputs, dtype=dtypes.float32)
 
       variables_lib.global_variables_initializer().run()
       input_value = np.random.randn(batch_size, input_size)
@@ -823,7 +817,7 @@ class LSTMTest(test.TestCase):
           array_ops.placeholder(
               dtypes.float32, shape=(None, input_size))
       ]
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
@@ -832,10 +826,10 @@ class LSTMTest(test.TestCase):
 
       with ops_lib.name_scope("scope0"):
         with variable_scope.variable_scope("share_scope"):
-          outputs0, _ = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+          outputs0, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
       with ops_lib.name_scope("scope1"):
         with variable_scope.variable_scope("share_scope", reuse=True):
-          outputs1, _ = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+          outputs1, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
       variables_lib.global_variables_initializer().run()
       input_value = np.random.randn(batch_size, input_size)
@@ -847,44 +841,13 @@ class LSTMTest(test.TestCase):
       for out0, out1 in zip(outputs0_values, outputs1_values):
         self.assertAllEqual(out0, out1)
 
-  def testNoProjNoShardingSimpleStateSaver(self):
-    self._testNoProjNoShardingSimpleStateSaver(use_gpu=False)
-    self._testNoProjNoShardingSimpleStateSaver(use_gpu=True)
-
-  def testNoProjNoSharding(self):
-    self._testNoProjNoSharding(use_gpu=False)
-    self._testNoProjNoSharding(use_gpu=True)
-
-  def testCellClipping(self):
-    self._testCellClipping(use_gpu=False)
-    self._testCellClipping(use_gpu=True)
-
-  def testProjNoSharding(self):
-    self._testProjNoSharding(use_gpu=False)
-    self._testProjNoSharding(use_gpu=True)
-
-  def testProjSharding(self):
-    self._testProjSharding(use_gpu=False)
-    self._testProjSharding(use_gpu=True)
-
-  def testShardNoShardEquivalentOutput(self):
-    self._testShardNoShardEquivalentOutput(use_gpu=False)
-    self._testShardNoShardEquivalentOutput(use_gpu=True)
-
-  def testDoubleInput(self):
-    self._testDoubleInput(use_gpu=False)
-    self._testDoubleInput(use_gpu=True)
-
-  def testDoubleInputWithDropoutAndDynamicCalculation(self):
-    self._testDoubleInputWithDropoutAndDynamicCalculation(use_gpu=False)
-    self._testDoubleInputWithDropoutAndDynamicCalculation(use_gpu=True)
-
   def testDynamicRNNAllowsUnknownTimeDimension(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=[1, None, 20])
-    cell = core_rnn_cell.GRUCell(30)
+    cell = rnn_cell.GRUCell(30)
     # Smoke test, this should not raise an error
     rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testDynamicRNNWithTupleStates(self):
     num_units = 3
     input_size = 5
@@ -892,22 +855,29 @@ class LSTMTest(test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
+    in_graph_mode = context.in_graph_mode()
     with self.test_session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
-      inputs = max_length * [
-          array_ops.placeholder(
-              dtypes.float32, shape=(None, input_size))
-      ]
+      if in_graph_mode:
+        inputs = max_length * [
+            array_ops.placeholder(
+                dtypes.float32, shape=(None, input_size))
+        ]
+      else:
+        inputs = max_length * [
+            constant_op.constant(
+                np.random.randn(batch_size, input_size).astype(np.float32))
+        ]
       inputs_c = array_ops.stack(inputs)
-      cell = core_rnn_cell.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
           initializer=initializer,
           state_is_tuple=True)
       with variable_scope.variable_scope("root") as scope:
-        outputs_static, state_static = core_rnn.static_rnn(
+        outputs_static, state_static = rnn.static_rnn(
             cell,
             inputs,
             dtype=dtypes.float32,
@@ -921,28 +891,41 @@ class LSTMTest(test.TestCase):
             time_major=True,
             sequence_length=sequence_length,
             scope=scope)
-      self.assertTrue(isinstance(state_static, core_rnn_cell.LSTMStateTuple))
-      self.assertTrue(isinstance(state_dynamic, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(state_static, rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(state_dynamic, rnn_cell.LSTMStateTuple))
       self.assertEqual(state_static[0], state_static.c)
       self.assertEqual(state_static[1], state_static.h)
       self.assertEqual(state_dynamic[0], state_dynamic.c)
       self.assertEqual(state_dynamic[1], state_dynamic.h)
 
-      variables_lib.global_variables_initializer().run()
+      if in_graph_mode:
+        variables_lib.global_variables_initializer().run()
+        input_value = np.random.randn(batch_size, input_size)
+        outputs_static = sess.run(
+            outputs_static, feed_dict={
+                inputs[0]: input_value
+            })
+        outputs_dynamic = sess.run(
+            outputs_dynamic, feed_dict={
+                inputs[0]: input_value
+            })
+        state_static = sess.run(
+            state_static, feed_dict={
+                inputs[0]: input_value
+            })
+        state_dynamic = sess.run(
+            state_dynamic, feed_dict={
+                inputs[0]: input_value
+            })
 
-      input_value = np.random.randn(batch_size, input_size)
-      outputs_static_v = sess.run(outputs_static,
-                                  feed_dict={inputs[0]: input_value})
-      outputs_dynamic_v = sess.run(outputs_dynamic,
-                                   feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
+      if in_graph_mode:
+        self.assertAllEqual(outputs_static, outputs_dynamic)
+      else:
+        self.assertAllEqual(
+            array_ops.stack(outputs_static).numpy(), outputs_dynamic.numpy())
+      self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
 
-      state_static_v = sess.run(state_static,
-                                feed_dict={inputs[0]: input_value})
-      state_dynamic_v = sess.run(state_dynamic,
-                                 feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
-
+  @test_util.run_in_graph_and_eager_modes()
   def testDynamicRNNWithNestedTupleStates(self):
     num_units = 3
     input_size = 5
@@ -950,17 +933,24 @@ class LSTMTest(test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
+    in_graph_mode = context.in_graph_mode()
     with self.test_session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
-      inputs = max_length * [
-          array_ops.placeholder(
-              dtypes.float32, shape=(None, input_size))
-      ]
+      if in_graph_mode:
+        inputs = max_length * [
+            array_ops.placeholder(
+                dtypes.float32, shape=(None, input_size))
+        ]
+      else:
+        inputs = max_length * [
+            constant_op.constant(
+                np.random.randn(batch_size, input_size).astype(np.float32))
+        ]
       inputs_c = array_ops.stack(inputs)
 
       def _cell(i):
-        return core_rnn_cell.LSTMCell(
+        return rnn_cell.LSTMCell(
             num_units + i,
             use_peepholes=True,
             num_proj=num_proj + i,
@@ -968,7 +958,7 @@ class LSTMTest(test.TestCase):
             state_is_tuple=True)
 
       # This creates a state tuple which has 4 sub-tuples of length 2 each.
-      cell = core_rnn_cell.MultiRNNCell(
+      cell = rnn_cell.MultiRNNCell(
           [_cell(i) for i in range(4)], state_is_tuple=True)
 
       self.assertEqual(len(cell.state_size), 4)
@@ -982,7 +972,7 @@ class LSTMTest(test.TestCase):
         self.assertEqual(test_zero[i][1].get_shape()[1], cell.state_size[i][1])
 
       with variable_scope.variable_scope("root") as scope:
-        outputs_static, state_static = core_rnn.static_rnn(
+        outputs_static, state_static = rnn.static_rnn(
             cell,
             inputs,
             dtype=dtypes.float32,
@@ -997,107 +987,144 @@ class LSTMTest(test.TestCase):
             sequence_length=sequence_length,
             scope=scope)
 
-      variables_lib.global_variables_initializer().run()
+      if in_graph_mode:
+        input_value = np.random.randn(batch_size, input_size)
+        variables_lib.global_variables_initializer().run()
+        outputs_static = sess.run(
+            outputs_static, feed_dict={
+                inputs[0]: input_value
+            })
+        outputs_dynamic = sess.run(
+            outputs_dynamic, feed_dict={
+                inputs[0]: input_value
+            })
+        state_static = sess.run(
+            nest.flatten(state_static), feed_dict={
+                inputs[0]: input_value
+            })
+        state_dynamic = sess.run(
+            nest.flatten(state_dynamic), feed_dict={
+                inputs[0]: input_value
+            })
 
-      input_value = np.random.randn(batch_size, input_size)
-      outputs_static_v = sess.run(outputs_static,
-                                  feed_dict={inputs[0]: input_value})
-      outputs_dynamic_v = sess.run(outputs_dynamic,
-                                   feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
+      if in_graph_mode:
+        self.assertAllEqual(outputs_static, outputs_dynamic)
+      else:
+        self.assertAllEqual(
+            array_ops.stack(outputs_static).numpy(), outputs_dynamic.numpy())
+        state_static = [s.numpy() for s in nest.flatten(state_static)]
+        state_dynamic = [s.numpy() for s in nest.flatten(state_dynamic)]
+      self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
 
-      state_static_v = sess.run(nest.flatten(state_static),
-                                feed_dict={inputs[0]: input_value})
-      state_dynamic_v = sess.run(nest.flatten(state_dynamic),
-                                 feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
-
-  def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
+  def _testDynamicEquivalentToStaticRNN(self, use_sequence_length):
     time_steps = 8
     num_units = 3
     num_proj = 4
     input_size = 5
     batch_size = 2
 
-    input_values = np.random.randn(time_steps, batch_size, input_size)
+    input_values = np.random.randn(time_steps, batch_size, input_size).astype(
+        np.float32)
 
     if use_sequence_length:
       sequence_length = np.random.randint(0, time_steps, size=batch_size)
     else:
       sequence_length = None
 
-    ########### Step 1: Run static graph and generate readouts
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
-      concat_inputs = array_ops.placeholder(
-          dtypes.float32, shape=(time_steps, batch_size, input_size))
-      inputs = array_ops.unstack(concat_inputs)
+    in_graph_mode = context.in_graph_mode()
+
+    # TODO(b/68017812): Eager ignores operation seeds, so we need to create a
+    # single cell and reuse it across the static and dynamic RNNs. Remove this
+    # special case once is fixed.
+    if not in_graph_mode:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
-
-      cell = core_rnn_cell.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           initializer=initializer,
           num_proj=num_proj,
           state_is_tuple=False)
+
+    ########### Step 1: Run static graph and generate readouts
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+      if in_graph_mode:
+        concat_inputs = array_ops.placeholder(
+            dtypes.float32, shape=(time_steps, batch_size, input_size))
+      else:
+        concat_inputs = constant_op.constant(input_values)
+      inputs = array_ops.unstack(concat_inputs)
+      initializer = init_ops.random_uniform_initializer(
+          -0.01, 0.01, seed=self._seed)
+
+      # TODO(akshayka): Remove special case once b/68017812 is fixed.
+      if in_graph_mode:
+        cell = rnn_cell.LSTMCell(
+            num_units,
+            use_peepholes=True,
+            initializer=initializer,
+            num_proj=num_proj,
+            state_is_tuple=False)
 
       with variable_scope.variable_scope("dynamic_scope"):
-        outputs_static, state_static = core_rnn.static_rnn(
+        outputs_static, state_static = rnn.static_rnn(
             cell, inputs, sequence_length=sequence_length, dtype=dtypes.float32)
 
-      feeds = {concat_inputs: input_values}
+      if in_graph_mode:
+        # Generate gradients and run sessions to obtain outputs
+        feeds = {concat_inputs: input_values}
+        # Initialize
+        variables_lib.global_variables_initializer().run(feed_dict=feeds)
+        # Generate gradients of sum of outputs w.r.t. inputs
+        static_gradients = gradients_impl.gradients(
+            outputs_static + [state_static], [concat_inputs])
+        # Generate gradients of individual outputs w.r.t. inputs
+        static_individual_gradients = nest.flatten([
+            gradients_impl.gradients(y, [concat_inputs])
+            for y in [outputs_static[0], outputs_static[-1], state_static]
+        ])
+        # Generate gradients of individual variables w.r.t. inputs
+        trainable_variables = ops_lib.get_collection(
+            ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+        assert len(trainable_variables) > 1, (
+            "Count of trainable variables: %d" % len(trainable_variables))
+        # pylint: disable=bad-builtin
+        static_individual_variable_gradients = nest.flatten([
+            gradients_impl.gradients(y, trainable_variables)
+            for y in [outputs_static[0], outputs_static[-1], state_static]
+        ])
+        # Test forward pass
+        values_static = sess.run(outputs_static, feed_dict=feeds)
+        (state_value_static,) = sess.run((state_static,), feed_dict=feeds)
 
-      # Initialize
-      variables_lib.global_variables_initializer().run(feed_dict=feeds)
+        # Test gradients to inputs and variables w.r.t. outputs & final state
+        static_grad_values = sess.run(static_gradients, feed_dict=feeds)
 
-      # Generate gradients of sum of outputs w.r.t. inputs
-      static_gradients = gradients_impl.gradients(
-          outputs_static + [state_static], [concat_inputs])
+        static_individual_grad_values = sess.run(static_individual_gradients,
+                                                 feed_dict=feeds)
 
-      # Generate gradients of individual outputs w.r.t. inputs
-      static_individual_gradients = nest.flatten([
-          gradients_impl.gradients(y, [concat_inputs])
-          for y in [outputs_static[0], outputs_static[-1], state_static]
-      ])
-
-      # Generate gradients of individual variables w.r.t. inputs
-      trainable_variables = ops_lib.get_collection(
-          ops_lib.GraphKeys.TRAINABLE_VARIABLES)
-      assert len(trainable_variables) > 1, ("Count of trainable variables: %d" %
-                                            len(trainable_variables))
-      # pylint: disable=bad-builtin
-      static_individual_variable_gradients = nest.flatten([
-          gradients_impl.gradients(y, trainable_variables)
-          for y in [outputs_static[0], outputs_static[-1], state_static]
-      ])
-
-      # Test forward pass
-      values_static = sess.run(outputs_static, feed_dict=feeds)
-      (state_value_static,) = sess.run((state_static,), feed_dict=feeds)
-
-      # Test gradients to inputs and variables w.r.t. outputs & final state
-      static_grad_values = sess.run(static_gradients, feed_dict=feeds)
-
-      static_individual_grad_values = sess.run(static_individual_gradients,
-                                               feed_dict=feeds)
-
-      static_individual_var_grad_values = sess.run(
-          static_individual_variable_gradients, feed_dict=feeds)
+        static_individual_var_grad_values = sess.run(
+            static_individual_variable_gradients, feed_dict=feeds)
 
     ########## Step 2: Run dynamic graph and generate readouts
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
-      concat_inputs = array_ops.placeholder(
-          dtypes.float32, shape=(time_steps, batch_size, input_size))
-      inputs = array_ops.unstack(concat_inputs)
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+      if in_graph_mode:
+        concat_inputs = array_ops.placeholder(
+            dtypes.float32, shape=(time_steps, batch_size, input_size))
+      else:
+        concat_inputs = constant_op.constant(input_values)
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
 
-      cell = core_rnn_cell.LSTMCell(
-          num_units,
-          use_peepholes=True,
-          initializer=initializer,
-          num_proj=num_proj,
-          state_is_tuple=False)
+      # TODO(akshayka): Remove this special case once b/68017812 is
+      # fixed.
+      if in_graph_mode:
+        cell = rnn_cell.LSTMCell(
+            num_units,
+            use_peepholes=True,
+            initializer=initializer,
+            num_proj=num_proj,
+            state_is_tuple=False)
 
       with variable_scope.variable_scope("dynamic_scope"):
         outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
@@ -1108,81 +1135,86 @@ class LSTMTest(test.TestCase):
             dtype=dtypes.float32)
         split_outputs_dynamic = array_ops.unstack(outputs_dynamic, time_steps)
 
-      feeds = {concat_inputs: input_values}
+      if in_graph_mode:
+        feeds = {concat_inputs: input_values}
 
-      # Initialize
-      variables_lib.global_variables_initializer().run(feed_dict=feeds)
+        # Initialize
+        variables_lib.global_variables_initializer().run(feed_dict=feeds)
 
-      # Generate gradients of sum of outputs w.r.t. inputs
-      dynamic_gradients = gradients_impl.gradients(
-          split_outputs_dynamic + [state_dynamic], [concat_inputs])
+        # Generate gradients of sum of outputs w.r.t. inputs
+        dynamic_gradients = gradients_impl.gradients(
+            split_outputs_dynamic + [state_dynamic], [concat_inputs])
 
-      # Generate gradients of several individual outputs w.r.t. inputs
-      dynamic_individual_gradients = nest.flatten([
-          gradients_impl.gradients(y, [concat_inputs])
-          for y in
-          [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
-      ])
+        # Generate gradients of several individual outputs w.r.t. inputs
+        dynamic_individual_gradients = nest.flatten([
+            gradients_impl.gradients(y, [concat_inputs])
+            for y in
+            [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
+        ])
 
-      # Generate gradients of individual variables w.r.t. inputs
-      trainable_variables = ops_lib.get_collection(
-          ops_lib.GraphKeys.TRAINABLE_VARIABLES)
-      assert len(trainable_variables) > 1, ("Count of trainable variables: %d" %
-                                            len(trainable_variables))
-      dynamic_individual_variable_gradients = nest.flatten([
-          gradients_impl.gradients(y, trainable_variables)
-          for y in
-          [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
-      ])
+        # Generate gradients of individual variables w.r.t. inputs
+        trainable_variables = ops_lib.get_collection(
+            ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+        assert len(trainable_variables) > 1, (
+            "Count of trainable variables: %d" % len(trainable_variables))
+        dynamic_individual_variable_gradients = nest.flatten([
+            gradients_impl.gradients(y, trainable_variables)
+            for y in
+            [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
+        ])
 
-      # Test forward pass
-      values_dynamic = sess.run(split_outputs_dynamic, feed_dict=feeds)
-      (state_value_dynamic,) = sess.run((state_dynamic,), feed_dict=feeds)
+        # Test forward pass
+        values_dynamic = sess.run(split_outputs_dynamic, feed_dict=feeds)
+        (state_value_dynamic,) = sess.run((state_dynamic,), feed_dict=feeds)
 
-      # Test gradients to inputs and variables w.r.t. outputs & final state
-      dynamic_grad_values = sess.run(dynamic_gradients, feed_dict=feeds)
+        # Test gradients to inputs and variables w.r.t. outputs & final state
+        dynamic_grad_values = sess.run(dynamic_gradients, feed_dict=feeds)
 
-      dynamic_individual_grad_values = sess.run(dynamic_individual_gradients,
-                                                feed_dict=feeds)
+        dynamic_individual_grad_values = sess.run(dynamic_individual_gradients,
+                                                  feed_dict=feeds)
 
-      dynamic_individual_var_grad_values = sess.run(
-          dynamic_individual_variable_gradients, feed_dict=feeds)
+        dynamic_individual_var_grad_values = sess.run(
+            dynamic_individual_variable_gradients, feed_dict=feeds)
 
     ######### Step 3: Comparisons
+    if not in_graph_mode:
+      values_static = outputs_static
+      values_dynamic = split_outputs_dynamic
+      state_value_static = state_static
+      state_value_dynamic = state_dynamic
+
     self.assertEqual(len(values_static), len(values_dynamic))
     for (value_static, value_dynamic) in zip(values_static, values_dynamic):
       self.assertAllEqual(value_static, value_dynamic)
     self.assertAllEqual(state_value_static, state_value_dynamic)
 
-    self.assertAllEqual(static_grad_values, dynamic_grad_values)
+    if in_graph_mode:
 
-    self.assertEqual(
-        len(static_individual_grad_values), len(dynamic_individual_grad_values))
-    self.assertEqual(
-        len(static_individual_var_grad_values),
-        len(dynamic_individual_var_grad_values))
+      self.assertAllEqual(static_grad_values, dynamic_grad_values)
 
-    for i, (a, b) in enumerate(
-        zip(static_individual_grad_values, dynamic_individual_grad_values)):
-      tf_logging.info("Comparing individual gradients iteration %d" % i)
-      self.assertAllEqual(a, b)
+      self.assertEqual(
+          len(static_individual_grad_values),
+          len(dynamic_individual_grad_values))
+      self.assertEqual(
+          len(static_individual_var_grad_values),
+          len(dynamic_individual_var_grad_values))
 
-    for i, (a, b) in enumerate(
-        zip(static_individual_var_grad_values,
-            dynamic_individual_var_grad_values)):
-      tf_logging.info("Comparing individual variable gradients iteration %d" %
-                      i)
-      self.assertAllEqual(a, b)
+      for i, (a, b) in enumerate(
+          zip(static_individual_grad_values, dynamic_individual_grad_values)):
+        tf_logging.info("Comparing individual gradients iteration %d" % i)
+        self.assertAllEqual(a, b)
 
+      for i, (a, b) in enumerate(
+          zip(static_individual_var_grad_values,
+              dynamic_individual_var_grad_values)):
+        tf_logging.info("Comparing individual variable gradients iteration %d" %
+                        i)
+        self.assertAllEqual(a, b)
+
+  @test_util.run_in_graph_and_eager_modes()
   def testDynamicEquivalentToStaticRNN(self):
-    self._testDynamicEquivalentToStaticRNN(
-        use_gpu=False, use_sequence_length=False)
-    self._testDynamicEquivalentToStaticRNN(
-        use_gpu=True, use_sequence_length=False)
-    self._testDynamicEquivalentToStaticRNN(
-        use_gpu=False, use_sequence_length=True)
-    self._testDynamicEquivalentToStaticRNN(
-        use_gpu=True, use_sequence_length=True)
+    self._testDynamicEquivalentToStaticRNN(use_sequence_length=False)
+    self._testDynamicEquivalentToStaticRNN(use_sequence_length=False)
 
 
 class BidirectionalRNNTest(test.TestCase):
@@ -1192,7 +1224,6 @@ class BidirectionalRNNTest(test.TestCase):
     np.random.seed(self._seed)
 
   def _createBidirectionalRNN(self,
-                              use_gpu,
                               use_shape,
                               use_sequence_length,
                               scope=None):
@@ -1205,16 +1236,16 @@ class BidirectionalRNNTest(test.TestCase):
         -0.01, 0.01, seed=self._seed)
     sequence_length = array_ops.placeholder(
         dtypes.int64) if use_sequence_length else None
-    cell_fw = core_rnn_cell_impl.LSTMCell(
+    cell_fw = rnn_cell.LSTMCell(
         num_units, input_size, initializer=initializer, state_is_tuple=False)
-    cell_bw = core_rnn_cell_impl.LSTMCell(
+    cell_bw = rnn_cell.LSTMCell(
         num_units, input_size, initializer=initializer, state_is_tuple=False)
     inputs = max_length * [
         array_ops.placeholder(
             dtypes.float32,
             shape=(batch_size, input_size) if use_shape else (None, input_size))
     ]
-    outputs, state_fw, state_bw = core_rnn.static_bidirectional_rnn(
+    outputs, state_fw, state_bw = rnn.static_bidirectional_rnn(
         cell_fw,
         cell_bw,
         inputs,
@@ -1231,10 +1262,10 @@ class BidirectionalRNNTest(test.TestCase):
 
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
-  def _testBidirectionalRNN(self, use_gpu, use_shape):
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+  def _testBidirectionalRNN(self, use_shape):
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
-          self._createBidirectionalRNN(use_gpu, use_shape, True))
+          self._createBidirectionalRNN(use_shape, True))
       variables_lib.global_variables_initializer().run()
       # Run with pre-specified sequence length of 2, 3
       out, s_fw, s_bw = sess.run(
@@ -1276,10 +1307,10 @@ class BidirectionalRNNTest(test.TestCase):
       # exactly the same
       self.assertAllClose(s_fw, s_bw)
 
-  def _testBidirectionalRNNWithoutSequenceLength(self, use_gpu, use_shape):
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+  def _testBidirectionalRNNWithoutSequenceLength(self, use_shape):
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, _ = (
-          self._createBidirectionalRNN(use_gpu, use_shape, False))
+          self._createBidirectionalRNN(use_shape, False))
       variables_lib.global_variables_initializer().run()
       out, s_fw, s_bw = sess.run([outputs, state_fw, state_bw],
                                  feed_dict={inputs[0]: input_value})
@@ -1306,23 +1337,14 @@ class BidirectionalRNNTest(test.TestCase):
       self.assertAllClose(s_fw, s_bw)
 
   def testBidirectionalRNN(self):
-    self._testBidirectionalRNN(use_gpu=False, use_shape=False)
-    self._testBidirectionalRNN(use_gpu=True, use_shape=False)
-    self._testBidirectionalRNN(use_gpu=False, use_shape=True)
-    self._testBidirectionalRNN(use_gpu=True, use_shape=True)
+    self._testBidirectionalRNN(use_shape=False)
+    self._testBidirectionalRNN(use_shape=True)
 
   def testBidirectionalRNNWithoutSequenceLength(self):
-    self._testBidirectionalRNNWithoutSequenceLength(
-        use_gpu=False, use_shape=False)
-    self._testBidirectionalRNNWithoutSequenceLength(
-        use_gpu=True, use_shape=False)
-    self._testBidirectionalRNNWithoutSequenceLength(
-        use_gpu=False, use_shape=True)
-    self._testBidirectionalRNNWithoutSequenceLength(
-        use_gpu=True, use_shape=True)
+    self._testBidirectionalRNNWithoutSequenceLength(use_shape=False)
+    self._testBidirectionalRNNWithoutSequenceLength(use_shape=True)
 
   def _createBidirectionalDynamicRNN(self,
-                                     use_gpu,
                                      use_shape,
                                      use_state_tuple,
                                      use_time_major,
@@ -1337,9 +1359,9 @@ class BidirectionalRNNTest(test.TestCase):
         -0.01, 0.01, seed=self._seed)
     sequence_length = (
         array_ops.placeholder(dtypes.int64) if use_sequence_length else None)
-    cell_fw = core_rnn_cell.LSTMCell(
+    cell_fw = rnn_cell.LSTMCell(
         num_units, initializer=initializer, state_is_tuple=use_state_tuple)
-    cell_bw = core_rnn_cell.LSTMCell(
+    cell_bw = rnn_cell.LSTMCell(
         num_units, initializer=initializer, state_is_tuple=use_state_tuple)
     inputs = max_length * [
         array_ops.placeholder(
@@ -1370,11 +1392,11 @@ class BidirectionalRNNTest(test.TestCase):
 
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
-  def _testBidirectionalDynamicRNN(self, use_gpu, use_shape, use_state_tuple,
+  def _testBidirectionalDynamicRNN(self, use_shape, use_state_tuple,
                                    use_time_major, use_sequence_length):
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
-          self._createBidirectionalDynamicRNN(use_gpu, use_shape,
+          self._createBidirectionalDynamicRNN(use_shape,
                                               use_state_tuple, use_time_major,
                                               use_sequence_length))
       variables_lib.global_variables_initializer().run()
@@ -1439,14 +1461,13 @@ class BidirectionalRNNTest(test.TestCase):
   def testBidirectionalDynamicRNN(self):
     # Generate 2^5 option values
     # from [True, True, True, True, True] to [False, False, False, False, False]
-    options = itertools.product([True, False], repeat=5)
+    options = itertools.product([True, False], repeat=4)
     for option in options:
       self._testBidirectionalDynamicRNN(
-          use_gpu=option[0],
-          use_shape=option[1],
-          use_state_tuple=option[2],
-          use_time_major=option[3],
-          use_sequence_length=option[4])
+          use_shape=option[0],
+          use_state_tuple=option[1],
+          use_time_major=option[2],
+          use_sequence_length=option[3])
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
     # REMARKS: factory(scope) is a function accepting a scope
@@ -1475,7 +1496,7 @@ class BidirectionalRNNTest(test.TestCase):
 
     def factory(scope):
       return self._createBidirectionalRNN(
-          use_gpu=True, use_shape=True, use_sequence_length=True, scope=scope)
+          use_shape=True, use_sequence_length=True, scope=scope)
 
     self._testScope(factory, use_outer_scope=True)
     self._testScope(factory, use_outer_scope=False)
@@ -1487,7 +1508,6 @@ class BidirectionalRNNTest(test.TestCase):
 
       def factory(scope):
         return self._createBidirectionalDynamicRNN(
-            use_gpu=True,
             use_shape=True,
             use_state_tuple=True,
             use_sequence_length=True,
@@ -1530,7 +1550,7 @@ class MultiDimensionalLSTMTest(test.TestCase):
       # variables.
       cell = DummyMultiDimensionalLSTM(feature_dims)
       state_saver = TestStateSaver(batch_size, input_size)
-      outputs_static, state_static = core_rnn.static_rnn(
+      outputs_static, state_static = rnn.static_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=sequence_length)
       outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
           cell,
@@ -1538,13 +1558,13 @@ class MultiDimensionalLSTMTest(test.TestCase):
           dtype=dtypes.float32,
           time_major=True,
           sequence_length=sequence_length)
-      outputs_bid, state_fw, state_bw = core_rnn.static_bidirectional_rnn(
+      outputs_bid, state_fw, state_bw = rnn.static_bidirectional_rnn(
           cell,
           cell,
           inputs_using_dim,
           dtype=dtypes.float32,
           sequence_length=sequence_length)
-      outputs_sav, state_sav = core_rnn.static_state_saving_rnn(
+      outputs_sav, state_sav = rnn.static_state_saving_rnn(
           cell,
           inputs_using_dim,
           sequence_length=sequence_length,
@@ -1634,15 +1654,15 @@ class NestedLSTMTest(test.TestCase):
           dtype=dtypes.float32,
           time_major=True,
           sequence_length=sequence_length)
-      outputs_static, state_static = core_rnn.static_rnn(
+      outputs_static, state_static = rnn.static_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=sequence_length)
-      outputs_bid, state_fw, state_bw = core_rnn.static_bidirectional_rnn(
+      outputs_bid, state_fw, state_bw = rnn.static_bidirectional_rnn(
           cell,
           cell,
           inputs_using_dim,
           dtype=dtypes.float32,
           sequence_length=sequence_length)
-      outputs_sav, state_sav = core_rnn.static_state_saving_rnn(
+      outputs_sav, state_sav = rnn.static_state_saving_rnn(
           cell,
           inputs_using_dim,
           sequence_length=sequence_length,
@@ -1738,7 +1758,7 @@ class StateSaverRNNTest(test.TestCase):
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, 2 * num_units)
-      cell = core_rnn_cell_impl.LSTMCell(
+      cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=False,
           initializer=initializer,
@@ -1747,7 +1767,7 @@ class StateSaverRNNTest(test.TestCase):
           array_ops.placeholder(
               dtypes.float32, shape=(batch_size, input_size))
       ]
-      return core_rnn.static_state_saving_rnn(
+      return rnn.static_state_saving_rnn(
           cell,
           inputs,
           state_saver=state_saver,
@@ -1765,7 +1785,7 @@ class GRUTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
-  def _testDynamic(self, use_gpu):
+  def testDynamic(self):
     time_steps = 8
     num_units = 3
     input_size = 5
@@ -1775,11 +1795,11 @@ class GRUTest(test.TestCase):
 
     sequence_length = np.random.randint(0, time_steps, size=batch_size)
 
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()) as sess:
       concat_inputs = array_ops.placeholder(
           dtypes.float32, shape=(time_steps, batch_size, input_size))
 
-      cell = core_rnn_cell.GRUCell(num_units=num_units)
+      cell = rnn_cell.GRUCell(num_units=num_units)
 
       with variable_scope.variable_scope("dynamic_scope"):
         outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
@@ -1795,10 +1815,6 @@ class GRUTest(test.TestCase):
       variables_lib.global_variables_initializer().run(feed_dict=feeds)
 
       sess.run([outputs_dynamic, state_dynamic], feed_dict=feeds)
-
-  def testDynamic(self):
-    self._testDynamic(use_gpu=False)
-    self._testDynamic(use_gpu=True)
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
     with self.test_session(use_gpu=True, graph=ops_lib.Graph()):
@@ -1830,7 +1846,7 @@ class GRUTest(test.TestCase):
     def factory(scope):
       concat_inputs = array_ops.placeholder(
           dtypes.float32, shape=(time_steps, batch_size, input_size))
-      cell = core_rnn_cell.GRUCell(num_units=num_units)
+      cell = rnn_cell.GRUCell(num_units=num_units)
       return rnn.dynamic_rnn(
           cell,
           inputs=concat_inputs,
@@ -1864,7 +1880,7 @@ class RawRNNTest(test.TestCase):
           dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = core_rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell.LSTMCell(num_units, state_is_tuple=True)
 
       def loop_fn(time_, cell_output, cell_state, unused_loop_state):
         emit_output = cell_output  # == None for time == 0
@@ -1965,7 +1981,7 @@ class RawRNNTest(test.TestCase):
           dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = core_rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell.LSTMCell(num_units, state_is_tuple=True)
 
       def loop_fn(time_, cell_output, cell_state, loop_state):
         if cell_output is None:
@@ -2001,7 +2017,7 @@ class RawRNNTest(test.TestCase):
           dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = core_rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell.LSTMCell(num_units, state_is_tuple=True)
 
       def loop_fn(time_, cell_output, cell_state, loop_state):
         if cell_output is None:
@@ -2043,19 +2059,22 @@ class RawRNNTest(test.TestCase):
       inputs_ta = tensor_array_ops.TensorArray(
           dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
+      # Verify emit shapes may be unknown by feeding a placeholder that
+      # determines an emit shape.
+      unknown_dim = array_ops.placeholder(dtype=dtypes.int32)
 
-      cell = core_rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell.LSTMCell(num_units, state_is_tuple=True)
 
       def loop_fn(time_, cell_output, cell_state, _):
         if cell_output is None:
           emit_output = (array_ops.zeros(
               [2, 3], dtype=dtypes.int32), array_ops.zeros(
-                  [1], dtype=dtypes.int64))
+                  [unknown_dim], dtype=dtypes.int64))
           next_state = cell.zero_state(batch_size, dtypes.float32)
         else:
           emit_output = (array_ops.ones(
               [batch_size, 2, 3], dtype=dtypes.int32), array_ops.ones(
-                  [batch_size, 1], dtype=dtypes.int64))
+                  [batch_size, unknown_dim], dtype=dtypes.int64))
           next_state = cell_state
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
@@ -2072,7 +2091,7 @@ class RawRNNTest(test.TestCase):
       self.assertEqual([dtypes.int32, dtypes.int64],
                        [ta.dtype for ta in output_ta])
       output = [ta.stack() for ta in output_ta]
-      output_vals = sess.run(output)
+      output_vals = sess.run(output, feed_dict={unknown_dim: 1})
       self.assertAllEqual(
           np.ones((max_time, batch_size, 2, 3), np.int32), output_vals[0])
       self.assertAllEqual(
@@ -2113,7 +2132,7 @@ class RawRNNTest(test.TestCase):
           dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = core_rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell.LSTMCell(num_units, state_is_tuple=True)
 
       def loop_fn(time_, cell_output, cell_state, unused_loop_state):
         emit_output = cell_output  # == None for time == 0
@@ -2138,7 +2157,7 @@ class RawRNNTest(test.TestCase):
     self._testScope(factory, prefix=None, use_outer_scope=False)
 
 
-class DeviceWrapperCell(core_rnn_cell.RNNCell):
+class DeviceWrapperCell(rnn_cell.RNNCell):
   """Class to ensure cell calculation happens on a specific device."""
 
   def __init__(self, cell, device):
@@ -2172,7 +2191,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     input_size = 5
     num_units = 10
 
-    cell = core_rnn_cell.LSTMCell(num_units, use_peepholes=True)
+    cell = rnn_cell.LSTMCell(num_units, use_peepholes=True)
     gpu_cell = DeviceWrapperCell(cell, cell_device)
     inputs = np.random.randn(batch_size, time_steps,
                              input_size).astype(np.float32)
@@ -2204,16 +2223,25 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
 
     return run_metadata
 
+  def _retrieve_cpu_gpu_stats(self, run_metadata):
+    cpu_stats = None
+    gpu_stats = None
+    step_stats = run_metadata.step_stats
+    for ds in step_stats.dev_stats:
+      if "cpu:0" in ds.device[-5:].lower():
+        cpu_stats = ds.node_stats
+      if "gpu:0" == ds.device[-5:].lower():
+        gpu_stats = ds.node_stats
+    return cpu_stats, gpu_stats
+
   def testRNNOnCPUCellOnGPU(self):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
 
+    gpu_dev = test.gpu_device_name()
     run_metadata = self._execute_rnn_on(
-        rnn_device="/cpu:0", cell_device="/gpu:0")
-    step_stats = run_metadata.step_stats
-    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
-    gpu_stats = step_stats.dev_stats[ix].node_stats
-    cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+        rnn_device="/cpu:0", cell_device=gpu_dev)
+    cpu_stats, gpu_stats = self._retrieve_cpu_gpu_stats(run_metadata)
 
     def _assert_in(op_str, in_stats, out_stats):
       self.assertTrue(any(op_str in s.node_name for s in in_stats))
@@ -2232,12 +2260,11 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
 
+    gpu_dev = test.gpu_device_name()
     run_metadata = self._execute_rnn_on(
-        rnn_device="/cpu:0", cell_device="/cpu:0", input_device="/gpu:0")
-    step_stats = run_metadata.step_stats
-    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
-    gpu_stats = step_stats.dev_stats[ix].node_stats
-    cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+        rnn_device="/cpu:0", cell_device="/cpu:0",
+        input_device=gpu_dev)
+    cpu_stats, gpu_stats = self._retrieve_cpu_gpu_stats(run_metadata)
 
     def _assert_in(op_str, in_stats, out_stats):
       self.assertTrue(any(op_str in s.node_name for s in in_stats))
@@ -2250,11 +2277,10 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
 
-    run_metadata = self._execute_rnn_on(input_device="/gpu:0")
-    step_stats = run_metadata.step_stats
-    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
-    gpu_stats = step_stats.dev_stats[ix].node_stats
-    cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+    gpu_dev = test.gpu_device_name()
+    run_metadata = self._execute_rnn_on(
+        input_device=gpu_dev)
+    cpu_stats, gpu_stats = self._retrieve_cpu_gpu_stats(run_metadata)
 
     def _assert_in(op_str, in_stats, out_stats):
       self.assertTrue(any(op_str in s.node_name for s in in_stats))

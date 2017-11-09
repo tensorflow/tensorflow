@@ -20,20 +20,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
-
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
-
+from tensorflow.python.eager import context
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
 
 
 class _Pooling1D(base.Layer):
@@ -66,12 +58,7 @@ class _Pooling1D(base.Layer):
     self.strides = utils.normalize_tuple(strides, 1, 'strides')
     self.padding = utils.normalize_padding(padding)
     self.data_format = utils.normalize_data_format(data_format)
-
-  def build(self, input_shape):
-    if len(input_shape) != 3:
-      raise ValueError('Inputs should have rank 3. '
-                       'Received input shape:', str(input_shape))
-    self.built = True
+    self.input_spec = base.InputSpec(ndim=3)
 
   def call(self, inputs):
     # There is no TF op for 1D pooling, hence we make the inputs 4D.
@@ -97,6 +84,12 @@ class _Pooling1D(base.Layer):
       return array_ops.squeeze(outputs, 2)
     else:
       return array_ops.squeeze(outputs, 1)
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    length = utils.conv_output_length(input_shape[1], self.pool_size[0],
+                                      self.padding, self.strides[0])
+    return tensor_shape.TensorShape([input_shape[0], length, input_shape[2]])
 
 
 class AveragePooling1D(_Pooling1D):
@@ -152,6 +145,9 @@ def average_pooling1d(inputs, pool_size, strides,
 
   Returns:
     The output tensor, of rank 3.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling1D(pool_size=pool_size,
                            strides=strides,
@@ -214,6 +210,9 @@ def max_pooling1d(inputs, pool_size, strides,
 
   Returns:
     The output tensor, of rank 3.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling1D(pool_size=pool_size,
                        strides=strides,
@@ -257,12 +256,7 @@ class _Pooling2D(base.Layer):
     self.strides = utils.normalize_tuple(strides, 2, 'strides')
     self.padding = utils.normalize_padding(padding)
     self.data_format = utils.normalize_data_format(data_format)
-
-  def build(self, input_shape):
-    if len(input_shape) != 4:
-      raise ValueError('Inputs should have rank 4. '
-                       'Received input shape:', str(input_shape))
-    self.built = True
+    self.input_spec = base.InputSpec(ndim=4)
 
   def call(self, inputs):
     if self.data_format == 'channels_last':
@@ -271,12 +265,32 @@ class _Pooling2D(base.Layer):
     else:
       pool_shape = (1, 1) + self.pool_size
       strides = (1, 1) + self.strides
-    return self.pool_function(
+    outputs = self.pool_function(
         inputs,
         ksize=pool_shape,
         strides=strides,
         padding=self.padding.upper(),
         data_format=utils.convert_data_format(self.data_format, 4))
+    return outputs
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if self.data_format == 'channels_first':
+      rows = input_shape[2]
+      cols = input_shape[3]
+    else:
+      rows = input_shape[1]
+      cols = input_shape[2]
+    rows = utils.conv_output_length(rows, self.pool_size[0], self.padding,
+                                    self.strides[0])
+    cols = utils.conv_output_length(cols, self.pool_size[1], self.padding,
+                                    self.strides[1])
+    if self.data_format == 'channels_first':
+      return tensor_shape.TensorShape(
+          [input_shape[0], input_shape[1], rows, cols])
+    else:
+      return tensor_shape.TensorShape(
+          [input_shape[0], rows, cols, input_shape[3]])
 
 
 class AveragePooling2D(_Pooling2D):
@@ -337,6 +351,9 @@ def average_pooling2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling2D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
@@ -402,6 +419,9 @@ def max_pooling2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling2D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,
@@ -445,20 +465,16 @@ class _Pooling3D(base.Layer):
     self.strides = utils.normalize_tuple(strides, 3, 'strides')
     self.padding = utils.normalize_padding(padding)
     self.data_format = utils.normalize_data_format(data_format)
-
-  def build(self, input_shape):
-    if len(input_shape) != 5:
-      raise ValueError('Inputs should have rank 5. '
-                       'Received input shape:', str(input_shape))
-    self.built = True
+    self.input_spec = base.InputSpec(ndim=5)
 
   def call(self, inputs):
     pool_shape = (1,) + self.pool_size + (1,)
     strides = (1,) + self.strides + (1,)
 
     if self.data_format == 'channels_first':
-      # TF does not support channels first with 3D pooling operations,
+      # TF does not support `channels_first` with 3D pooling operations,
       # so we must handle this case manually.
+      # TODO(fchollet): remove this when TF pooling is feature-complete.
       inputs = array_ops.transpose(inputs, (0, 2, 3, 4, 1))
 
     outputs = self.pool_function(
@@ -470,6 +486,29 @@ class _Pooling3D(base.Layer):
     if self.data_format == 'channels_first':
       outputs = array_ops.transpose(outputs, (0, 4, 1, 2, 3))
     return outputs
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if self.data_format == 'channels_first':
+      len_dim1 = input_shape[2]
+      len_dim2 = input_shape[3]
+      len_dim3 = input_shape[4]
+    else:
+      len_dim1 = input_shape[1]
+      len_dim2 = input_shape[2]
+      len_dim3 = input_shape[3]
+    len_dim1 = utils.conv_output_length(len_dim1, self.pool_size[0],
+                                        self.padding, self.strides[0])
+    len_dim2 = utils.conv_output_length(len_dim2, self.pool_size[1],
+                                        self.padding, self.strides[1])
+    len_dim3 = utils.conv_output_length(len_dim3, self.pool_size[2],
+                                        self.padding, self.strides[2])
+    if self.data_format == 'channels_first':
+      return tensor_shape.TensorShape(
+          [input_shape[0], input_shape[1], len_dim1, len_dim2, len_dim3])
+    else:
+      return tensor_shape.TensorShape(
+          [input_shape[0], len_dim1, len_dim2, len_dim3, input_shape[4]])
 
 
 class AveragePooling3D(_Pooling3D):
@@ -534,6 +573,9 @@ def average_pooling3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling3D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
@@ -603,6 +645,9 @@ def max_pooling3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling3D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,

@@ -15,18 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 
+#include <string>
 #include <vector>
+
 #include "tensorflow/core/framework/attr_value.pb_text.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
-
 namespace {
 
 string SummarizeString(const string& str) {
@@ -36,8 +39,8 @@ string SummarizeString(const string& str) {
 string SummarizeTensor(const TensorProto& tensor_proto) {
   Tensor t;
   if (!t.FromProto(tensor_proto)) {
-    return strings::StrCat("<Invalid TensorProto: ",
-                           ProtoShortDebugString(tensor_proto), ">");
+    return strings::StrCat(
+        "<Invalid TensorProto: ", ProtoShortDebugString(tensor_proto), ">");
   }
   return t.DebugString();
 }
@@ -287,15 +290,17 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
   return ProtoParseFromString(to_parse, out);
 }
 
+void SetAttrValue(const AttrValue& value, AttrValue* out) { *out = value; }
+
 #define DEFINE_SET_ATTR_VALUE_ONE(ARG_TYPE, FIELD) \
   void SetAttrValue(ARG_TYPE value, AttrValue* out) { out->set_##FIELD(value); }
 
-#define DEFINE_SET_ATTR_VALUE_LIST(ARG_TYPE, FIELD)              \
-  void SetAttrValue(ARG_TYPE value, AttrValue* out) {            \
-    out->mutable_list(); /* create list() even if value empty */ \
-    for (const auto& v : value) {                                \
-      out->mutable_list()->add_##FIELD(v);                       \
-    }                                                            \
+#define DEFINE_SET_ATTR_VALUE_LIST(ARG_TYPE, FIELD)                       \
+  void SetAttrValue(ARG_TYPE value, AttrValue* out) {                     \
+    out->mutable_list()->Clear(); /* create list() even if value empty */ \
+    for (const auto& v : value) {                                         \
+      out->mutable_list()->add_##FIELD(v);                                \
+    }                                                                     \
   }
 
 #define DEFINE_SET_ATTR_VALUE_BOTH(ARG_TYPE, FIELD) \
@@ -319,7 +324,7 @@ void SetAttrValue(StringPiece value, AttrValue* out) {
 }
 
 void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     out->mutable_list()->add_s(v.data(), v.size());
   }
@@ -338,14 +343,14 @@ void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
 }
 
 void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
   }
 }
 
 void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     *out->mutable_list()->add_shape() = v;
   }
@@ -353,7 +358,7 @@ void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
 
 void SetAttrValue(const gtl::ArraySlice<PartialTensorShape> value,
                   AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
   }
@@ -368,7 +373,7 @@ void SetAttrValue(const Tensor& value, AttrValue* out) {
 }
 
 void SetAttrValue(const gtl::ArraySlice<Tensor> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     if (v.NumElements() > 1) {
       v.AsProtoTensorContent(out->mutable_list()->add_tensor());
@@ -383,7 +388,7 @@ void SetAttrValue(const TensorProto& value, AttrValue* out) {
 }
 
 void SetAttrValue(const gtl::ArraySlice<TensorProto> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     *out->mutable_list()->add_tensor() = v;
   }
@@ -394,40 +399,96 @@ void SetAttrValue(const NameAttrList& value, AttrValue* out) {
 }
 
 void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     *out->mutable_list()->add_func() = v;
   }
 }
 
-// Wrapper around protocol buffer serialization that requests deterministic
-// serialization, in particular for Map fields, which serialize in a random
-// order by default. Returns true on success.
-template <typename T>
-static bool DeterministicSerialization(const T& t, string* result) {
-  const int size = t.ByteSize();
-  *result = string(size, '\0');
-  ::tensorflow::protobuf::io::ArrayOutputStream array_stream(&(*result)[0],
-                                                             size);
-  ::tensorflow::protobuf::io::CodedOutputStream output_stream(&array_stream);
-  output_stream.SetSerializationDeterministic(true);
-  t.SerializeWithCachedSizes(&output_stream);
-  return !output_stream.HadError() && size == output_stream.ByteCount();
+bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
+  // There are multiple equivalent representations of attr values containing
+  // TensorProtos. Compare them by constructing Tensors and serializing them
+  // back. Comparing Tensor objects is pretty tricky.
+  if (a.has_tensor() != b.has_tensor()) {
+    return false;
+  } else if (a.has_tensor() && b.has_tensor()) {
+    Tensor at(a.tensor().dtype());
+    bool success = at.FromProto(a.tensor());
+    DCHECK(success);
+
+    Tensor bt(b.tensor().dtype());
+    success = bt.FromProto(b.tensor());
+    DCHECK(success);
+
+    TensorProto ap;
+    at.AsProtoTensorContent(&ap);
+
+    TensorProto bp;
+    bt.AsProtoTensorContent(&bp);
+
+    string a_str, b_str;
+    SerializeToStringDeterministic(ap, &a_str);
+    SerializeToStringDeterministic(bp, &b_str);
+    return a_str == b_str;
+  }
+
+  // `func` field contains a nested AttrValue. Compare such AttrValues
+  // recursively.
+  if (a.has_func() != b.has_func()) {
+    return false;
+  } else if (a.has_func() && b.has_func()) {
+    const NameAttrList& af = a.func();
+    const NameAttrList& bf = b.func();
+    if (af.name() != bf.name()) return false;
+    std::unordered_map<string, AttrValue> am(af.attr().begin(),
+                                             af.attr().end());
+    for (const auto& bm_pair : bf.attr()) {
+      const auto& iter = am.find(bm_pair.first);
+      if (iter == am.end()) return false;
+      if (!AreAttrValuesEqual(iter->second, bm_pair.second)) return false;
+      am.erase(iter);
+    }
+    if (!am.empty()) return false;
+    return true;
+  }
+
+  // All other fields in AttrValue have deterministic representations.
+  // It is safe to compare their serialized strings.
+  string a_str, b_str;
+  SerializeToStringDeterministic(a, &a_str);
+  SerializeToStringDeterministic(b, &b_str);
+  return a_str == b_str;
 }
 
-bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
-  string a_str, b_str;
-  DeterministicSerialization(a, &a_str);
-  DeterministicSerialization(b, &b_str);
-  // Note: it should be safe to compare proto serializations of the attr
-  // values since at most one field should be set in each (indeed, it
-  // must be the same field if they are to compare equal).
-  // Exception: there are multiple equivalent representations of
-  // TensorProtos.  So a return value of true implies a == b, but not the
-  // converse.
-  // TODO(phawkins): this is incorrect for NameAttrList attributes that may
-  // contain nested AttrValue maps.
-  return a_str == b_str;
+uint64 AttrValueHash(const AttrValue& a) {
+  if (a.has_tensor()) {
+    // Deal with multiple representations by parsing TensorProto to
+    // Tensor and serializing it back. This is slow, but current use case
+    // don't need high efficiency.
+    Tensor tensor(a.tensor().dtype());
+    bool success = tensor.FromProto(a.tensor());
+    DCHECK(success);
+    TensorProto p;
+    tensor.AsProtoTensorContent(&p);
+    string s;
+    SerializeToStringDeterministic(p, &s);
+    return Hash64(s);
+  }
+  if (a.has_func()) {
+    const NameAttrList& func = a.func();
+    uint64 h = Hash64(func.name());
+    std::map<string, AttrValue> map(func.attr().begin(), func.attr().end());
+    for (const auto& pair : map) {
+      h = Hash64(pair.first.data(), pair.first.size(), h);
+      h = Hash64Combine(AttrValueHash(pair.second), h);
+    }
+    return h;
+  }
+
+  // If `a` is not a tensor or func, get a hash of serialized string.
+  string s;
+  SerializeToStringDeterministic(a, &s);
+  return Hash64(s);
 }
 
 bool HasPlaceHolder(const AttrValue& val) {
@@ -457,7 +518,8 @@ bool HasPlaceHolder(const AttrValue& val) {
   return false;
 }
 
-bool SubstitutePlaceholders(SubstituteFunc substitute, AttrValue* value) {
+bool SubstitutePlaceholders(const SubstituteFunc& substitute,
+                            AttrValue* value) {
   switch (value->value_case()) {
     case AttrValue::kList: {
       for (NameAttrList& func : *value->mutable_list()->mutable_func()) {

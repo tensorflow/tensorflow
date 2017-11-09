@@ -75,6 +75,12 @@ class BufferedInputStream : public InputStreamInterface {
   // no special treatment.
   string ReadLineAsString();
 
+  // Reads the entire contents of the file into *result.
+  //
+  // Note: the amount of memory used by this function call is unbounded, so only
+  // use in ops that expect that behavior.
+  Status ReadAll(string* result);
+
   Status Reset() override;
 
  private:
@@ -88,6 +94,9 @@ class BufferedInputStream : public InputStreamInterface {
   size_t pos_ = 0;    // current position in buf_.
   size_t limit_ = 0;  // just past the end of valid data in buf_.
   bool owns_input_stream_ = false;
+  // When EoF is reached, file_status_ contains the status to skip unnecessary
+  // buffer allocations.
+  Status file_status_ = Status::OK();
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferedInputStream);
 };

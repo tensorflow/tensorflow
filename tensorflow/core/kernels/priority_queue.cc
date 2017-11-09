@@ -18,6 +18,7 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -338,7 +339,7 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
             for (; s > 0; --s) {
               if (attempt->tuple.empty()) {
                 // Only allocate tuple when we have something to dequeue
-                // so we don't use exceessive memory when there are many
+                // so we don't use excessive memory when there are many
                 // blocked dequeue attempts waiting.
                 attempt->tuple.reserve(num_components());
                 for (int i = 0; i < num_components(); ++i) {

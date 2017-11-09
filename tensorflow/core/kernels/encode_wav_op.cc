@@ -52,7 +52,7 @@ class EncodeWavOp : public OpKernel {
     const int32 sample_count = static_cast<int32>(audio.dim_size(0));
 
     // Encode audio to wav string.
-    Tensor* output = NULL;
+    Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(context,

@@ -135,7 +135,10 @@ class BoundingBox(ItemHandler):
     """
     sides = []
     for key in self._full_keys:
-      side = array_ops.expand_dims(keys_to_tensors[key].values, 0)
+      side = keys_to_tensors[key]
+      if isinstance(side, sparse_tensor.SparseTensor):
+        side = side.values
+      side = array_ops.expand_dims(side, 0)
       sides.append(side)
 
     bounding_box = array_ops.concat(sides, 0)
@@ -202,6 +205,76 @@ class Tensor(ItemHandler):
       if shape is not None:
         tensor = array_ops.reshape(tensor, shape)
     return tensor
+
+
+class LookupTensor(Tensor):
+  """An ItemHandler that returns a parsed Tensor, the result of a lookup."""
+
+  def __init__(self,
+               tensor_key,
+               table,
+               shape_keys=None,
+               shape=None,
+               default_value=''):
+    """Initializes the LookupTensor handler.
+
+    See Tensor.  Simply calls a vocabulary (most often, a label mapping) lookup.
+
+    Args:
+      tensor_key: the name of the `TFExample` feature to read the tensor from.
+      table: A tf.lookup table.
+      shape_keys: Optional name or list of names of the TF-Example feature in
+        which the tensor shape is stored. If a list, then each corresponds to
+        one dimension of the shape.
+      shape: Optional output shape of the `Tensor`. If provided, the `Tensor` is
+        reshaped accordingly.
+      default_value: The value used when the `tensor_key` is not found in a
+        particular `TFExample`.
+
+    Raises:
+      ValueError: if both `shape_keys` and `shape` are specified.
+    """
+    self._table = table
+    super(LookupTensor, self).__init__(tensor_key, shape_keys, shape,
+                                       default_value)
+
+  def tensors_to_item(self, keys_to_tensors):
+    unmapped_tensor = super(LookupTensor, self).tensors_to_item(keys_to_tensors)
+    return self._table.lookup(unmapped_tensor)
+
+
+class BackupHandler(ItemHandler):
+  """An ItemHandler that tries two ItemHandlers in order."""
+
+  def __init__(self, handler, backup):
+    """Initializes the BackupHandler handler.
+
+    If the first Handler's tensors_to_item returns a Tensor with no elements,
+    the second Handler is used.
+
+    Args:
+      handler: The primary ItemHandler.
+      backup: The backup ItemHandler.
+
+    Raises:
+      ValueError: if either is not an ItemHandler.
+    """
+    if not isinstance(handler, ItemHandler):
+      raise ValueError('Primary handler is of type %s instead of ItemHandler'
+                       % type(handler))
+    if not isinstance(backup, ItemHandler):
+      raise ValueError('Backup handler is of type %s instead of ItemHandler'
+                       % type(backup))
+    self._handler = handler
+    self._backup = backup
+    super(BackupHandler, self).__init__(handler.keys + backup.keys)
+
+  def tensors_to_item(self, keys_to_tensors):
+    item = self._handler.tensors_to_item(keys_to_tensors)
+    return control_flow_ops.cond(
+        pred=math_ops.equal(math_ops.reduce_prod(array_ops.shape(item)), 0),
+        true_fn=lambda: self._backup.tensors_to_item(keys_to_tensors),
+        false_fn=lambda: item)
 
 
 class SparseTensor(ItemHandler):
@@ -291,9 +364,8 @@ class Image(ItemHandler):
       channels: the number of channels in the image.
       dtype: images will be decoded at this bit depth. Different formats
         support different bit depths.
-          See tf.image.decode_png,
+          See tf.image.decode_image,
               tf.decode_raw,
-              tf.image.decode_jpeg: only supports tf.uint8
       repeated: if False, decodes a single image. If True, decodes a
         variable number of image strings from a 1D tensor of strings.
     """
@@ -326,48 +398,29 @@ class Image(ItemHandler):
 
     Args:
       image_buffer: The tensor representing the encoded image tensor.
-      image_format: The image format for the image in `image_buffer`.
+      image_format: The image format for the image in `image_buffer`. If image
+        format is `raw`, all images are expected to be in this format, otherwise
+        this op can decode a mix of `jpg` and `png` formats.
 
     Returns:
       A tensor that represents decoded image of self._shape, or
       (?, ?, self._channels) if self._shape is not specified.
     """
-
-    def decode_png():
-      return image_ops.decode_png(
-          image_buffer, self._channels, dtype=self._dtype)
+    def decode_image():
+      """Decodes a png or jpg based on the headers."""
+      return image_ops.decode_image(image_buffer, self._channels)
 
     def decode_raw():
+      """Decodes a raw image."""
       return parsing_ops.decode_raw(image_buffer, out_type=self._dtype)
 
-    def decode_jpg():
-      if self._dtype != dtypes.uint8:
-        raise ValueError(
-            'jpeg decoder can only be used to decode to tf.uint8 but %s was '
-            'requested for a jpeg image.' % self._dtype)
-      return image_ops.decode_jpeg(image_buffer, self._channels)
-
-    # For RGBA images JPEG is not a valid decoder option.
-    if self._channels > 3:
-      pred_fn_pairs = {
-          math_ops.logical_or(
-              math_ops.equal(image_format, 'raw'),
-              math_ops.equal(image_format, 'RAW')): decode_raw,
-      }
-      default_decoder = decode_png
-    else:
-      pred_fn_pairs = {
-          math_ops.logical_or(
-              math_ops.equal(image_format, 'png'),
-              math_ops.equal(image_format, 'PNG')): decode_png,
-          math_ops.logical_or(
-              math_ops.equal(image_format, 'raw'),
-              math_ops.equal(image_format, 'RAW')): decode_raw,
-      }
-      default_decoder = decode_jpg
-
+    pred_fn_pairs = {
+        math_ops.logical_or(
+            math_ops.equal(image_format, 'raw'),
+            math_ops.equal(image_format, 'RAW')): decode_raw,
+    }
     image = control_flow_ops.case(
-        pred_fn_pairs, default=default_decoder, exclusive=True)
+        pred_fn_pairs, default=decode_image, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:
@@ -427,8 +480,9 @@ class TFExampleDecoder(data_decoder.DataDecoder):
     example = parsing_ops.parse_single_example(serialized_example,
                                                self._keys_to_features)
 
-    # Reshape non-sparse elements just once:
-    for k in self._keys_to_features:
+    # Reshape non-sparse elements just once, adding the reshape ops in
+    # deterministic order.
+    for k in sorted(self._keys_to_features):
       v = self._keys_to_features[k]
       if isinstance(v, parsing_ops.FixedLenFeature):
         example[k] = array_ops.reshape(example[k], v.shape)

@@ -51,7 +51,7 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor>& inputs,
   std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>> inputs_flat;
   inputs_flat.reserve(inputs.size());
   int64 output_dim0 = 0;
-  for (int i = 0; i < inputs.size(); ++i) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
     const Tensor& input = inputs[i];
     if (input.dims() != input_dims) {
       return errors::InvalidArgument(
@@ -347,6 +347,7 @@ class BatchResource : public ResourceBase {
 
       // Concatenate the tasks ith input tensors into a big output tensor.
       std::vector<Tensor> to_concatenate;
+      to_concatenate.reserve(batch->num_tasks());
       for (int task_idx = 0; task_idx < batch->num_tasks(); ++task_idx) {
         to_concatenate.push_back(batch->task(task_idx).inputs.at(i));
       }
@@ -547,7 +548,7 @@ class BatchKernel : public AsyncOpKernel {
       return Status::OK();
     }
     int32 last_size = 0;
-    for (int i = 0; i < allowed_batch_sizes_.size(); ++i) {
+    for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
       const int32 size = allowed_batch_sizes_.at(i);
       if (i > 0 && size <= last_size) {
         return errors::InvalidArgument(
@@ -674,7 +675,7 @@ class UnbatchResource : public ResourceBase {
       // If we have a non-empty tensor, finish the waitlisted runs,
       // and store any remaining pieces.
       if (nonempty_input) {
-        for (int i = 0; i < batch_keys.size(); ++i) {
+        for (size_t i = 0; i < batch_keys.size(); ++i) {
           auto runs_it = waiting_callbacks_.find(batch_keys[i]);
           if (runs_it != waiting_callbacks_.end()) {
             runs_it->second.context->set_output(0, split_inputs[i]);

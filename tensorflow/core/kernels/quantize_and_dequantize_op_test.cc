@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -63,6 +62,32 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
   EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
 }
 
+TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("signed_input", true)
+          .Attr("range_given", false)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {-3.5});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1}));
+  test::FillValues<float>(&expected, {-3.5});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+
+  // Ensure that the inputs haven't been changed.
+  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
+  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+}
+
 // Convert a 1D tensor with signed 8 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
   TF_ASSERT_OK(
@@ -78,6 +103,37 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
   AddInputFromArray<float>(TensorShape({6}), {-1, -0.5, 0, 0.3, 0.8, 0.555});
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+
+  // With int8, the tensor is quantized to {-127, -63, 0, 38, 102, 70}.
+  // Scale is: 1/127
+  // Then it is dequantized to {-1, -63.0/127, 0, 38.0/127, 102.0/127, 70.0/127}
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({6}));
+  test::FillValues<float>(
+      &expected, {-1, -63.0 / 127, 0, 38.0 / 127, 102.0 / 127, 70.0 / 127});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+
+  // Ensure that the inputs haven't been changed.
+  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
+  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+}
+
+// Convert a 1D tensor with signed 8 bits.
+TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("signed_input", true)
+          .Attr("range_given", false)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({6}), {-1, -0.5, 0, 0.3, 0.8, 0.555});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
 
   // With int8, the tensor is quantized to {-127, -63, 0, 38, 102, 70}.
   // Scale is: 1/127
@@ -122,6 +178,36 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {
   EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
 }
 
+// Convert a 1D tensor with signed 4 bits.
+TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("signed_input", true)
+          .Attr("range_given", false)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({6}), {-1, -0.5, 0, 0.3, 0.8, 0.555});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {4});    // num_bits
+
+  // With int4, the tensor is quantized to {-7, -3, 0, 2, 6, 4}.
+  // Scale is: 1/7
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({6}));
+  test::FillValues<float>(&expected,
+                          {-1, -3.0 / 7, 0, 2.0 / 7, 6.0 / 7, 4.0 / 7});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+
+  // Ensure that the inputs haven't been changed.
+  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
+  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+}
+
 // Convert a 2D tensor with signed 8 bits with given range.
 TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
   TF_ASSERT_OK(
@@ -139,6 +225,36 @@ TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
                            {-0.8, -0.5, 0, 0.3, 0.8, 0.555, -2, 33});
   AddInputFromArray<float>(TensorShape({}), {-1.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {1.0});   // Max
+
+  // Note that the range is given as [-1, 1].
+  // With int8, the tensor is quantized to {-102, -63, 0, 38, 102, 70, -127,
+  // 127}.
+  // Scale is: 1/127
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 4}));
+  test::FillValues<float>(&expected, {-102.0 / 127, -63.0 / 127, 0, 38.0 / 127,
+                                      102.0 / 127, 70.0 / 127, -1, 1});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+}
+
+// Convert a 2D tensor with signed 8 bits with given range.
+TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("signed_input", true)
+          .Attr("range_given", true)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  // Note that the last two values are saturated.
+  AddInputFromArray<float>(TensorShape({2, 4}),
+                           {-0.8, -0.5, 0, 0.3, 0.8, 0.555, -2, 33});
+  AddInputFromArray<float>(TensorShape({}), {-1.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {1.0});   // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});     // num_bits
 
   // Note that the range is given as [-1, 1].
   // With int8, the tensor is quantized to {-102, -63, 0, 38, 102, 70, -127,
@@ -176,6 +292,32 @@ TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given) {
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 }
 
+// Convert a 4D tensor with unsigned 8 bits with given range.
+TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("signed_input", false)
+          .Attr("range_given", true)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {1.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+
+  // Note that the range is given as [0, 1].
+  // With int8, the tensor is quantized to {0, 0, 77, 204}
+  // Scale is: 1/255
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 1, 1}));
+  test::FillValues<float>(&expected, {0, 0, 77.0 / 255, 204.0 / 255});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+}
+
 // Convert a tensor with all 0.
 TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0) {
   TF_ASSERT_OK(
@@ -191,6 +333,29 @@ TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0) {
   AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {0, 0, 0, 0});
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 1, 1}));
+  test::FillValues<float>(&expected, {0, 0, 0, 0});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+}
+
+// Convert a tensor with all 0.
+TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("signed_input", false)
+          .Attr("range_given", false)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {0, 0, 0, 0});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 1, 1}));
@@ -219,15 +384,37 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
       << s;
 }
 
-#define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                           \
-  static void BM_SIMPLE_QUAN_DEQUAN_##DEVICE(int iters) {       \
-    auto root = Scope::NewRootScope().ExitOnError();            \
-    ops::QuantizeAndDequantizeV2(root, {-3.5}, {-3.5}, {-3.5}); \
-    TF_CHECK_OK(root.status());                                 \
-    Graph* g = new Graph(OpRegistry::Global());                 \
-    TF_CHECK_OK(root.ToGraph(g));                               \
-    test::Benchmark(#DEVICE, g).Run(iters);                     \
-  }                                                             \
+// Range is invalid
+TEST_F(QuantizeAndDequantizeTest, Invalid_range_given_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("range_given", true)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({}), {1.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+
+  Status s = RunOpKernel();
+  EXPECT_TRUE(StringPiece(s.ToString())
+                  .contains("Invalid range: input_min 1 > input_max 0"))
+      << s;
+}
+
+#define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                     \
+  static void BM_SIMPLE_QUAN_DEQUAN_##DEVICE(int iters) { \
+    auto root = Scope::NewRootScope().ExitOnError();      \
+    ops::QuantizeAndDequantizeV2(root, -3.5, -3.5, -3.5); \
+    TF_CHECK_OK(root.status());                           \
+    Graph* g = new Graph(OpRegistry::Global());           \
+    TF_CHECK_OK(root.ToGraph(g));                         \
+    test::Benchmark(#DEVICE, g).Run(iters);               \
+  }                                                       \
   BENCHMARK(BM_SIMPLE_QUAN_DEQUAN_##DEVICE);
 
 BM_SIMPLE_QUAN_DEQUAN(cpu);

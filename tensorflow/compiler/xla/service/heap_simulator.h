@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
@@ -61,6 +62,9 @@ class HeapSimulator {
 
     // The total size in bytes of heap fragmentation.
     int64 fragmentation_size = 0;
+
+    // A trace of heap simulation events.
+    HeapSimulatorTrace debug_trace;
   };
 
   // Run the heap simulation with the given algorithm, assuming the given
@@ -96,28 +100,38 @@ class HeapSimulator {
           nullptr);
 
  private:
+  // If 'module_sequence' is non-null, it is used to find kCall and kWhile
+  // sub-computations, and the heap simulation for those sub-computations will
+  // be run recursively. I.e. the simulation is run over the whole module.
   HeapSimulator(
       std::unique_ptr<HeapAlgorithm> algorithm,
       const LogicalBuffer::SizeFunction& size_fn,
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign);
+      const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign,
+      const SequentialHloOrdering::HloModuleSequence* module_sequence);
   ~HeapSimulator();
 
   Status RunComputation(
       const HloComputation& computation,
       const std::vector<const HloInstruction*>& instruction_sequence,
-      const TuplePointsToAnalysis& points_to_analysis,
-      const SequentialHloOrdering::HloModuleSequence* module_sequence);
+      const TuplePointsToAnalysis& points_to_analysis);
 
   bool IgnoreBuffer(const LogicalBuffer* buffer) const;
-  void Alloc(const LogicalBuffer* buffer);
-  void Free(const LogicalBuffer* buffer);
-  void ShareBuffer(const LogicalBuffer* buffer, const LogicalBuffer* shared);
+  void Alloc(const LogicalBuffer* buffer, const HloInstruction* instruction);
+  void Free(const LogicalBuffer* buffer, const HloInstruction* instruction);
+  void ShareBuffer(const LogicalBuffer* buffer, const LogicalBuffer* shared,
+                   const HloInstruction* instruction);
   Result Finish();
+
+  void FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
+                      const LogicalBuffer* buffer,
+                      const HloInstruction* instruction,
+                      const LogicalBuffer* shared_with_canonical);
 
   const std::unique_ptr<HeapAlgorithm> no_fragmentation_stats_;
   const std::unique_ptr<HeapAlgorithm> algorithm_;
   const LogicalBuffer::SizeFunction size_fn_;
   const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign_;
+  const SequentialHloOrdering::HloModuleSequence* module_sequence_;
 
   // In addition to Alloc and Free, the heap simulator exposes a concept of
   // buffer sharing.  When ShareBuffer is called, instead of allocating new
@@ -143,6 +157,9 @@ class HeapSimulator {
   // Hold some sets for error-checking the sequence of Alloc and Free calls.
   tensorflow::gtl::FlatSet<const LogicalBuffer*> allocated_buffers_;
   tensorflow::gtl::FlatSet<const LogicalBuffer*> freed_buffers_;
+
+  // Debugging information filled in while the heap simulator runs.
+  HeapSimulatorTrace debug_trace_;
 };
 
 // Abstract base class describing a heap simulation algorithm that assigns

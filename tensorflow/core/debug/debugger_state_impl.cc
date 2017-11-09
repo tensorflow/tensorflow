@@ -36,12 +36,12 @@ DebuggerState::~DebuggerState() {
 }
 
 Status DebuggerState::PublishDebugMetadata(
-    const int64 global_step, const int64 session_run_count,
-    const int64 executor_step_count, const std::vector<string>& input_names,
+    const int64 global_step, const int64 session_run_index,
+    const int64 executor_step_index, const std::vector<string>& input_names,
     const std::vector<string>& output_names,
     const std::vector<string>& target_names) {
-  return DebugIO::PublishDebugMetadata(global_step, session_run_count,
-                                       executor_step_count, input_names,
+  return DebugIO::PublishDebugMetadata(global_step, session_run_index,
+                                       executor_step_index, input_names,
                                        output_names, target_names, debug_urls_);
 }
 
@@ -51,7 +51,8 @@ Status DebugGraphDecorator::DecorateGraph(Graph* graph, Device* device) {
       debug_options_.debug_tensor_watch_opts(), graph, device);
 }
 
-Status DebugGraphDecorator::PublishGraph(const Graph& graph) {
+Status DebugGraphDecorator::PublishGraph(const Graph& graph,
+                                         const string& device_name) {
   std::unordered_set<string> debug_urls;
   for (const DebugTensorWatch& watch :
        debug_options_.debug_tensor_watch_opts()) {
@@ -60,7 +61,7 @@ Status DebugGraphDecorator::PublishGraph(const Graph& graph) {
     }
   }
 
-  return DebugIO::PublishGraph(graph, debug_urls);
+  return DebugIO::PublishGraph(graph, device_name, debug_urls);
 }
 
 }  // namespace tensorflow

@@ -19,14 +19,21 @@ from __future__ import division
 from __future__ import print_function
 
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+
+
+# Picked a long key value to minimize the chance of collision with user defined
+# collection keys.
+GLOBAL_STEP_READ_KEY = 'global_step_read_op_cache'
 
 
 # TODO(drpng): remove this after legacy uses are resolved.
@@ -55,6 +62,8 @@ def global_step(sess, global_step_tensor):
   Returns:
     The global step value.
   """
+  if context.in_eager_mode():
+    return int(global_step_tensor.numpy())
   return int(sess.run(global_step_tensor))
 
 
@@ -110,13 +119,24 @@ def create_global_step(graph=None):
     raise ValueError('"global_step" already exists.')
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
+    if context.in_eager_mode():
+      with ops.device('cpu:0'):
+        return variable_scope.get_variable(
+            ops.GraphKeys.GLOBAL_STEP,
+            shape=[],
+            dtype=dtypes.int64,
+            initializer=init_ops.zeros_initializer(),
+            trainable=False,
+            collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                         ops.GraphKeys.GLOBAL_STEP])
     return variable_scope.get_variable(
         ops.GraphKeys.GLOBAL_STEP,
         shape=[],
         dtype=dtypes.int64,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
-        collections=[ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP])
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                     ops.GraphKeys.GLOBAL_STEP])
 
 
 def get_or_create_global_step(graph=None):
@@ -154,6 +174,75 @@ def assert_global_step(global_step_tensor):
     raise TypeError('Existing "global_step" does not have integer type: %s' %
                     global_step_tensor.dtype)
 
-  if global_step_tensor.get_shape().ndims != 0:
+  if (global_step_tensor.get_shape().ndims != 0 and
+      global_step_tensor.get_shape().is_fully_defined()):
     raise TypeError('Existing "global_step" is not scalar: %s' %
                     global_step_tensor.get_shape())
+
+
+def _get_global_step_read(graph=None):
+  """Gets global step read tensor in graph.
+
+  Args:
+    graph: The graph in which to create the global step read tensor. If missing,
+      use default graph.
+
+  Returns:
+    Global step read tensor.
+
+  Raises:
+    RuntimeError: if multiple items found in collection GLOBAL_STEP_READ_KEY.
+  """
+  graph = graph or ops.get_default_graph()
+  global_step_read_tensors = graph.get_collection(GLOBAL_STEP_READ_KEY)
+  if len(global_step_read_tensors) > 1:
+    raise RuntimeError('There are multiple items in collection {}. '
+                       'There should be only one.'.format(GLOBAL_STEP_READ_KEY))
+
+  if len(global_step_read_tensors) == 1:
+    return global_step_read_tensors[0]
+  return None
+
+
+def _get_or_create_global_step_read(graph=None):
+  """Gets or creates global step read tensor in graph.
+
+  Args:
+    graph: The graph in which to create the global step read tensor. If missing,
+      use default graph.
+
+  Returns:
+    Global step read tensor if there is global_step_tensor else return None.
+  """
+  graph = graph or ops.get_default_graph()
+  global_step_read_tensor = _get_global_step_read(graph)
+  if global_step_read_tensor is not None:
+    return global_step_read_tensor
+  global_step_tensor = get_global_step(graph)
+  if global_step_tensor is None:
+    return None
+  # add 'zero' so that it will create a copy of variable as Tensor.
+  with graph.as_default() as g, g.name_scope(None):
+    with g.name_scope(global_step_tensor.op.name + '/'):
+      # using initialized_value to ensure that global_step is initialized before
+      # this run. This is needed for example Estimator makes all model_fn build
+      # under global_step_read_tensor dependency.
+      global_step_value = global_step_tensor.initialized_value() if isinstance(
+          global_step_tensor, variables.Variable) else global_step_tensor
+      global_step_read_tensor = global_step_value + 0
+      ops.add_to_collection(GLOBAL_STEP_READ_KEY, global_step_read_tensor)
+  return _get_global_step_read(graph)
+
+
+def _increment_global_step(increment, graph=None):
+  graph = graph or ops.get_default_graph()
+  global_step_tensor = get_global_step(graph)
+  if global_step_tensor is None:
+    raise ValueError(
+        'Global step tensor should be created by '
+        'tf.train.get_or_create_global_step before calling increment.')
+  global_step_read_tensor = _get_or_create_global_step_read(graph)
+  with graph.as_default() as g, g.name_scope(None):
+    with g.name_scope(global_step_tensor.op.name + '/'):
+      with ops.control_dependencies([global_step_read_tensor]):
+        return state_ops.assign_add(global_step_tensor, increment)

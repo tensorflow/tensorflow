@@ -32,9 +32,9 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 
 
@@ -47,11 +47,13 @@ ops.NotDifferentiable('RGBToHSV')
 ops.NotDifferentiable('HSVToRGB')
 ops.NotDifferentiable('DrawBoundingBoxes')
 ops.NotDifferentiable('SampleDistortedBoundingBox')
+ops.NotDifferentiable('SampleDistortedBoundingBoxV2')
 # TODO(bsteiner): Implement the gradient function for extract_glimpse
 # TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
 ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
+ops.NotDifferentiable('NonMaxSuppressionV2')
 
 
 def _assert(cond, ex_type, msg):
@@ -281,7 +283,7 @@ def flip_left_right(image):
 
 
 def flip_up_down(image):
-  """Flip an image horizontally (upside down).
+  """Flip an image vertically (upside down).
 
   Outputs the contents of `image` flipped along the first dimension, which is
   `height`.
@@ -395,9 +397,10 @@ def central_crop(image, central_fraction):
 
   img_shape = array_ops.shape(image)
   depth = image.get_shape()[2]
-  fraction_offset = int(1 / ((1 - central_fraction) / 2.0))
-  bbox_h_start = math_ops.div(img_shape[0], fraction_offset)
-  bbox_w_start = math_ops.div(img_shape[1], fraction_offset)
+  img_h = math_ops.to_double(img_shape[0])
+  img_w = math_ops.to_double(img_shape[1])
+  bbox_h_start = math_ops.to_int32((img_h - img_h * central_fraction) / 2)
+  bbox_w_start = math_ops.to_int32((img_w - img_w * central_fraction) / 2)
 
   bbox_h_size = img_shape[0] - bbox_h_start * 2
   bbox_w_size = img_shape[1] - bbox_w_start * 2
@@ -619,7 +622,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   # Make sure our checks come first, so that error messages are clearer.
   if _is_tensor(target_height):
     target_height = control_flow_ops.with_dependencies(
-      assert_ops, target_height)
+        assert_ops, target_height)
   if _is_tensor(target_width):
     target_width = control_flow_ops.with_dependencies(assert_ops, target_width)
 
@@ -698,10 +701,19 @@ def resize_images(images,
 
   `method` can be one of:
 
-  *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](https://en.wikipedia.org/wiki/Bilinear_interpolation)
-  *   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-  *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](https://en.wikipedia.org/wiki/Bicubic_interpolation)
+  *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](
+    https://en.wikipedia.org/wiki/Bilinear_interpolation)
+  *   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](
+    https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
+  *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
+    https://en.wikipedia.org/wiki/Bicubic_interpolation)
   *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
+
+  The return value has the same type as `images` if `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
+  if the size of `images` can be statically determined to be the same as `size`,
+  because `images` is returned in this case. Otherwise, the return value has
+  type `float32`.
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or
@@ -961,6 +973,7 @@ def adjust_contrast(images, contrast_factor):
 
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs Gamma Correction on the input image.
+
     Also known as Power Law Transform. This function transforms the
     input image pixelwise according to the equation Out = In**gamma
     after scaling each pixel to the range 0 to 1.
@@ -973,6 +986,9 @@ def adjust_gamma(image, gamma=1, gain=1):
   Returns:
     A Tensor. Gamma corrected output image.
 
+  Raises:
+    ValueError: If gamma is negative.
+
   Notes:
     For gamma greater than 1, the histogram will shift towards left and
     the output image will be darker than the input image.
@@ -983,16 +999,17 @@ def adjust_gamma(image, gamma=1, gain=1):
     [1] http://en.wikipedia.org/wiki/Gamma_correction
   """
 
-  with ops.op_scope([image, gamma, gain], None, 'adjust_gamma') as name:
+  with ops.op_scope([image, gamma, gain], None, 'adjust_gamma'):
     # Convert pixel value to DT_FLOAT for computing adjusted image
     img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
     # Keep image dtype for computing the scale of corresponding dtype
     image = ops.convert_to_tensor(image, name='image')
 
     if gamma < 0:
-      raise ValueError("Gamma should be a non-negative real number")
+      raise ValueError('Gamma should be a non-negative real number')
     # scale = max(dtype) - min(dtype)
-    scale = constant_op.constant(image.dtype.limits[1] - image.dtype.limits[0], dtype=dtypes.float32)
+    scale = constant_op.constant(image.dtype.limits[1] - image.dtype.limits[0],
+                                 dtype=dtypes.float32)
     # According to the definition of gamma correction
     adjusted_img = (img / scale) ** gamma * scale * gain
 
@@ -1051,7 +1068,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         # Scaling up, cast first, then scale. The scale will not map in.max to
         # out.max, but converting back and forth should result in no change.
         if saturate:
-          cast = math_ops.saturate_cast(scaled, dtype)
+          cast = math_ops.saturate_cast(image, dtype)
         else:
           cast = math_ops.cast(image, dtype)
         scale = (scale_out + 1) // (scale_in + 1)
@@ -1104,7 +1121,7 @@ def rgb_to_grayscale(images, name=None):
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     gray_float = math_ops.reduce_sum(flt_image * rgb_weights,
                                      rank_1,
-                                     keep_dims=True)
+                                     keepdims=True)
     gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
     return convert_image_dtype(gray_float, orig_dtype, name=name)
 
@@ -1195,26 +1212,7 @@ def adjust_hue(image, delta, name=None):
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
 
-    # TODO(zhengxq): we will switch to the fused version after we add a GPU
-    # kernel for that.
-    fused = os.environ.get('TF_ADJUST_HUE_FUSED', '')
-    fused = fused.lower() in ('true', 't', '1')
-
-    if not fused:
-      hsv = gen_image_ops.rgb_to_hsv(flt_image)
-
-      hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
-      saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
-      value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
-
-      # Note that we add 2*pi to guarantee that the resulting hue is a positive
-      # floating point number since delta is [-0.5, 0.5].
-      hue = math_ops.mod(hue + (delta + 1.), 1.)
-
-      hsv_altered = array_ops.concat([hue, saturation, value], 2)
-      rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
-    else:
-      rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
+    rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
 
@@ -1304,15 +1302,18 @@ def adjust_saturation(image, saturation_factor, name=None):
 
 
 def decode_image(contents, channels=None, name=None):
-  """Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
-  Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate
-  operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
+  """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
+  and `decode_png`.
+
+  Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
+  appropriate operation to convert the input bytes `string` into a `Tensor` of
+  type `uint8`.
 
   Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
-  opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays
-  `[height, width, num_channels]`. Make sure to take this into account when
-  constructing your graph if you are intermixing GIF files with JPEG and/or PNG
-  files.
+  opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
+  arrays `[height, width, num_channels]`. Make sure to take this into account
+  when constructing your graph if you are intermixing GIF files with BMP, JPEG,
+  and/or PNG files.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
@@ -1322,39 +1323,73 @@ def decode_image(contents, channels=None, name=None):
 
   Returns:
     `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
-      JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
-      images.
-  """
-  with ops.name_scope(name, 'decode_image') as scope:
-    if channels not in (None, 0, 1, 3):
-      raise ValueError('channels must be in (None, 0, 1, 3)')
-    substr = string_ops.substr(contents, 0, 4)
+      BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
+      GIF images.
 
-    def _gif():
-      # Create assert op to check that bytes are GIF decodable
-      is_gif = math_ops.equal(substr, b'\x47\x49\x46\x38', name='is_gif')
-      decode_msg = 'Unable to decode bytes as JPEG, PNG, or GIF'
-      assert_decode = control_flow_ops.Assert(is_gif, [decode_msg])
-      # Create assert to make sure that channels is not set to 1
-      # Already checked above that channels is in (None, 0, 1, 3)
-      gif_channels = 0 if channels is None else channels
-      good_channels = math_ops.not_equal(gif_channels, 1, name='check_channels')
-      channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
+  Raises:
+    ValueError: On incorrect number of channels.
+  """
+  with ops.name_scope(name, 'decode_image'):
+    if channels not in (None, 0, 1, 3, 4):
+      raise ValueError('channels must be in (None, 0, 1, 3, 4)')
+    substr = string_ops.substr(contents, 0, 3)
+
+    def _bmp():
+      """Decodes a GIF image."""
+      signature = string_ops.substr(contents, 0, 2)
+      # Create assert op to check that bytes are BMP decodable
+      is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
+      decode_msg = 'Unable to decode bytes as JPEG, PNG, GIF, or BMP'
+      assert_decode = control_flow_ops.Assert(is_bmp, [decode_msg])
+      bmp_channels = 0 if channels is None else channels
+      good_channels = math_ops.not_equal(bmp_channels, 1, name='check_channels')
+      channels_msg = 'Channels must be in (None, 0, 3) when decoding BMP images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_decode, assert_channels]):
+        return gen_image_ops.decode_bmp(contents)
+
+    def _gif():
+      # Create assert to make sure that channels is not set to 1
+      # Already checked above that channels is in (None, 0, 1, 3)
+
+      gif_channels = 0 if channels is None else channels
+      good_channels = math_ops.logical_and(
+          math_ops.not_equal(gif_channels, 1, name='check_gif_channels'),
+          math_ops.not_equal(gif_channels, 4, name='check_gif_channels')
+      )
+      channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
+      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
+      with ops.control_dependencies([assert_channels]):
         return gen_image_ops.decode_gif(contents)
 
+    def check_gif():
+      # Create assert op to check that bytes are GIF decodable
+      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
+      return control_flow_ops.cond(is_gif, _gif, _bmp, name='cond_gif')
+
     def _png():
+      """Decodes a PNG image."""
       return gen_image_ops.decode_png(contents, channels)
 
     def check_png():
-      is_png = math_ops.equal(substr, b'\211PNG', name='is_png')
-      return control_flow_ops.cond(is_png, _png, _gif, name='cond_png')
+      """Checks if an image is PNG."""
+      is_png = math_ops.equal(substr, b'\211PN', name='is_png')
+      return control_flow_ops.cond(is_png, _png, check_gif, name='cond_png')
 
     def _jpeg():
-      return gen_image_ops.decode_jpeg(contents, channels)
+      """Decodes a jpeg image."""
+      jpeg_channels = 0 if channels is None else channels
+      good_channels = math_ops.not_equal(jpeg_channels, 4,
+                                         name='check_jpeg_channels')
+      channels_msg = ('Channels must be in (None, 0, 1, 3) when decoding JPEG '
+                      'images')
+      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
+      with ops.control_dependencies([assert_channels]):
+        return gen_image_ops.decode_jpeg(contents, channels)
 
-    is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff\xe0', name='is_jpeg')
+    # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
+    # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
+    is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff', name='is_jpeg')
     return control_flow_ops.cond(is_jpeg, _jpeg, check_png, name='cond_jpeg')
 
 
@@ -1422,7 +1457,154 @@ def total_variation(images, name=None):
 
     # Calculate the total variation by taking the absolute value of the
     # pixel-differences and summing over the appropriate axis.
-    tot_var = math_ops.reduce_sum(math_ops.abs(pixel_dif1), axis=sum_axis) + \
-              math_ops.reduce_sum(math_ops.abs(pixel_dif2), axis=sum_axis)
+    tot_var = (math_ops.reduce_sum(math_ops.abs(pixel_dif1), axis=sum_axis) +
+               math_ops.reduce_sum(math_ops.abs(pixel_dif2), axis=sum_axis))
 
   return tot_var
+
+
+def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
+                                  seed2=None, min_object_covered=None,
+                                  aspect_ratio_range=None, area_range=None,
+                                  max_attempts=None,
+                                  use_image_if_no_bounding_boxes=None,
+                                  name=None):
+  """Generate a single randomly distorted bounding box for an image.
+
+  Bounding box annotations are often supplied in addition to ground-truth labels
+  in image recognition or object localization tasks. A common technique for
+  training such a system is to randomly distort an image while preserving
+  its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+  localization of an object, i.e. bounding box, given an `image_size`,
+  `bounding_boxes` and a series of constraints.
+
+  The output of this Op is a single bounding box that may be used to crop the
+  original image. The output is returned as 3 tensors: `begin`, `size` and
+  `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+  image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
+  what the bounding box looks like.
+
+  Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
+  bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+  height of the underlying image.
+
+  For example,
+
+  ```python
+      # Generate a single distorted bounding box.
+      begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+          tf.shape(image),
+          bounding_boxes=bounding_boxes,
+          min_object_covered=0.1)
+
+      # Draw the bounding box in an image summary.
+      image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                    bbox_for_draw)
+      tf.image_summary('images_with_box', image_with_box)
+
+      # Employ the bounding box to distort the image.
+      distorted_image = tf.slice(image, begin, size)
+  ```
+
+  Note that if no bounding box information is available, setting
+  `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+  bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+  false and no bounding boxes are supplied, an error is raised.
+
+  Args:
+    image_size: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`.
+      1-D, containing `[height, width, channels]`.
+    bounding_boxes: A `Tensor` of type `float32`.
+      3-D with shape `[batch, N, 4]` describing the N bounding boxes
+      associated with the image.
+    seed: An optional `int`. Defaults to `0`.
+      If either `seed` or `seed2` are set to non-zero, the random number
+      generator is seeded by the given `seed`.  Otherwise, it is seeded by a random
+      seed.
+    seed2: An optional `int`. Defaults to `0`.
+      A second seed to avoid seed collision.
+    min_object_covered: A Tensor of type `float32`. Defaults to `0.1`.
+      The cropped area of the image must contain at least this
+      fraction of any bounding box supplied. The value of this parameter should be
+      non-negative. In the case of 0, the cropped area does not need to overlap
+      any of the bounding boxes supplied.
+    aspect_ratio_range: An optional list of `floats`. Defaults to `[0.75, 1.33]`.
+      The cropped area of the image must have an aspect ratio =
+      width / height within this range.
+    area_range: An optional list of `floats`. Defaults to `[0.05, 1]`.
+      The cropped area of the image must contain a fraction of the
+      supplied image within in this range.
+    max_attempts: An optional `int`. Defaults to `100`.
+      Number of attempts at generating a cropped region of the image
+      of the specified constraints. After `max_attempts` failures, return the entire
+      image.
+    use_image_if_no_bounding_boxes: An optional `bool`. Defaults to `False`.
+      Controls behavior if no bounding boxes supplied.
+      If true, assume an implicit bounding box covering the whole input. If false,
+      raise an error.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of `Tensor` objects (begin, size, bboxes).
+
+    begin: A `Tensor`. Has the same type as `image_size`. 1-D, containing `[offset_height, offset_width, 0]`. Provide as input to
+      `tf.slice`.
+    size: A `Tensor`. Has the same type as `image_size`. 1-D, containing `[target_height, target_width, -1]`. Provide as input to
+      `tf.slice`.
+    bboxes: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
+      Provide as input to `tf.image.draw_bounding_boxes`.
+  """
+  with ops.name_scope(name, 'sample_distorted_bounding_box'):
+    return gen_image_ops._sample_distorted_bounding_box_v2(image_size,
+                bounding_boxes, seed=seed,
+                seed2=seed2, min_object_covered=min_object_covered,
+                aspect_ratio_range=aspect_ratio_range, area_range=area_range,
+                max_attempts=max_attempts,
+                use_image_if_no_bounding_boxes=use_image_if_no_bounding_boxes,
+                name=name)
+
+
+def non_max_suppression(boxes,
+                        scores,
+                        max_output_size,
+                        iou_threshold=0.5,
+                        name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes.  Bounding boxes are supplied as
+  [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+  is agnostic to where the origin is in the coordinate system.  Note that this
+  algorithm is invariant to orthogonal transformations and translations
+  of the coordinate system; thus translating or reflections of the coordinate
+  system result in the same boxes being selected by the algorithm.
+  The output of this operation is a set of integers indexing into the input
+  collection of bounding boxes representing the selected boxes.  The bounding
+  box coordinates corresponding to the selected indices can then be obtained
+  using the `tf.gather operation`.  For example:
+    selected_indices = tf.image.non_max_suppression(
+        boxes, scores, max_output_size, iou_threshold)
+    selected_boxes = tf.gather(boxes, selected_indices)
+
+  Args:
+    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+  """
+  with ops.name_scope(name, 'non_max_suppression'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    # pylint: disable=protected-access
+    return gen_image_ops._non_max_suppression_v2(boxes, scores, max_output_size,
+                                                 iou_threshold)
+    # pylint: enable=protected-access

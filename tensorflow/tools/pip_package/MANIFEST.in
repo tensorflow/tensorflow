@@ -4,3 +4,9 @@ recursive-include * *.so
 recursive-include * *.dll
 recursive-include * *.lib
 recursive-include * *.csv
+recursive-include tensorflow/include/tensorflow *.h
+recursive-include tensorflow/include/Eigen *
+recursive-include tensorflow/include/external *
+recursive-include tensorflow/include/google *.h
+recursive-include tensorflow/include/third_party *
+recursive-include tensorflow/include/unsupported *

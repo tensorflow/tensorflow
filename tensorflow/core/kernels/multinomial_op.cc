@@ -23,6 +23,7 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -67,8 +68,8 @@ struct MultinomialFunctor<CPUDevice, T> {
     //
     // This takes O(BatchSize * NumSamples * log(NumClasses) + NumClasses) CPU
     // time.
-    auto DoWork = [num_samples, num_classes, &gen, &output, &logits](
-        int64 start_row, int64 limit_row) {
+    auto DoWork = [ctx, num_samples, num_classes, &gen, &output, &logits](
+                      int64 start_row, int64 limit_row) {
       // Capturing "gen" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
@@ -78,35 +79,41 @@ struct MultinomialFunctor<CPUDevice, T> {
       gen_copy.Skip(start_row * (num_samples + 3) / 4);
       random::SimplePhilox simple_philox(&gen_copy);
 
-      std::vector<float> cdf(num_classes);
-
+      Tensor cdf_tensor;
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DT_DOUBLE, TensorShape({num_classes}),
+                                        &cdf_tensor));
+      auto cdf = cdf_tensor.flat<double>();
       for (int64 b = start_row; b < limit_row; ++b) {
         const auto* logits_row = &logits(b, 0);
 
         // Takes an along-class maximum (for numerical stability).
         T max = std::numeric_limits<T>::lowest();
         for (int64 j = 0; j < num_classes; ++j) {
-          if (std::isfinite(static_cast<float>(logits_row[j]))) {
+          if (Eigen::numext::isfinite(logits_row[j])) {
             max = std::max(max, logits_row[j]);
           }
         }
-        const float max_logit = static_cast<float>(max);
+        const double max_logit = static_cast<double>(max);
 
         // Precompute cumulative probability distribution across classes.
         // Note: This isn't normalized.
-        float running_total = 0;
+        cdf = (logits.template chip<0>(b).template cast<double>() - max_logit)
+                  .exp();
+        double running_total = 0;
         for (int64 j = 0; j < num_classes; ++j) {
-          if (std::isfinite(static_cast<float>(logits_row[j]))) {
-            running_total +=
-                std::exp(static_cast<float>(logits_row[j]) - max_logit);
+          if (Eigen::numext::isfinite(logits_row[j])) {
+            running_total += cdf(j);
           }
-          cdf[j] = running_total;
+          cdf(j) = running_total;
         }
         // Generate each sample.
+        const double* cdf_begin = cdf.data();
+        const double* cdf_end = cdf.data() + num_classes;
         for (int64 j = 0; j < num_samples; ++j) {
-          float to_find = simple_philox.RandFloat() * running_total;
-          auto found_iter = std::upper_bound(cdf.begin(), cdf.end(), to_find);
-          output(b, j) = std::distance(cdf.begin(), found_iter);
+          const double to_find = simple_philox.RandDouble() * running_total;
+          auto found_iter = std::upper_bound(cdf_begin, cdf_end, to_find);
+          output(b, j) = std::distance(cdf_begin, found_iter);
         }
       }
     };
@@ -148,9 +155,9 @@ class MultinomialOp : public OpKernel {
     for (int i = 0; i < 2; i++) {
       const int64 dim = logits_t.dim_size(i);
       OP_REQUIRES(ctx, static_cast<int>(dim) == dim,
-                  errors::InvalidArgument("logits.shape = ",
-                                          logits_t.shape().DebugString(),
-                                          " too large for int"));
+                  errors::InvalidArgument(
+                      "logits.shape = ", logits_t.shape().DebugString(),
+                      " too large for int"));
     }
     const int batch_size = static_cast<int>(logits_t.dim_size(0));
     const int num_classes = static_cast<int>(logits_t.dim_size(1));
@@ -183,7 +190,9 @@ class MultinomialOp : public OpKernel {
                                &scratch));
       }
 
-      const int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
+      int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
+      // CPU generates doubles = 2 samples per number.
+      if (std::is_same<Device, CPUDevice>::value) num_samples_ceil_4 *= 2;
       auto rng =
           generator_.ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
       functor::MultinomialFunctor<Device, T>()(

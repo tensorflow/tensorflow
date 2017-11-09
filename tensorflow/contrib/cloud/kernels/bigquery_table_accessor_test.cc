@@ -28,7 +28,7 @@ constexpr char kTestProject[] = "test-project";
 constexpr char kTestDataset[] = "test-dataset";
 constexpr char kTestTable[] = "test-table";
 
-static bool HasSubstr(const string& base, const string& substr) {
+bool HasSubstr(const string& base, const string& substr) {
   bool ok = StringPiece(base).contains(substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
@@ -42,8 +42,8 @@ class FakeAuthProvider : public AuthProvider {
   }
 };
 
-static string DeterministicSerialization(const tensorflow::Example& example) {
-  const int size = example.ByteSize();
+string DeterministicSerialization(const tensorflow::Example& example) {
+  const std::size_t size = example.ByteSizeLong();
   string result(size, '\0');
   ::tensorflow::protobuf::io::ArrayOutputStream array_stream(
       gtl::string_as_array(&result), size);

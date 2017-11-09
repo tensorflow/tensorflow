@@ -37,8 +37,8 @@ namespace {
 // patterns to match.
 //
 // Each ExprTree node is comprised of an HloOpcode, and a set of operands (each
-// of type ExprTree). Operands can be added by specifing the index and HloOpcode
-// of the operand.
+// of type ExprTree). Operands can be added by specifying the index and
+// HloOpcode of the operand.
 //
 // For example, the following computation:
 //
@@ -197,10 +197,9 @@ class MatcherBase {
       return InvalidArgument("Must use S32 or S64 integral types.");
     }
     if (type == S32) {
-      *const_value =
-          static_cast<int64>(LiteralUtil::GetFirstElement<int32>(literal));
+      *const_value = static_cast<int64>(literal.GetFirstElement<int32>());
     } else if (type == S64) {
-      *const_value = LiteralUtil::GetFirstElement<int64>(literal);
+      *const_value = literal.GetFirstElement<int64>();
     }
     return tensorflow::Status::OK();
   }
@@ -223,7 +222,7 @@ class MatcherBase {
   TF_DISALLOW_COPY_AND_ASSIGN(MatcherBase);
 };
 
-// WhileConditionComputationMatcher attempst to match a target computation
+// WhileConditionComputationMatcher attempts to match a target computation
 // pattern in the while condition sub-computation.
 // If the target pattern is matched, two pieces of information are extracted
 // from 'tagged' instructions returned by the matcher:
@@ -240,7 +239,7 @@ class MatcherBase {
 //
 class WhileConditionComputationMatcher : public MatcherBase {
  public:
-  WhileConditionComputationMatcher(const HloComputation* computation)
+  explicit WhileConditionComputationMatcher(const HloComputation* computation)
       : computation_(computation) {
     expr_trees_.emplace_back(BuildCondExprTree());
   }
@@ -309,7 +308,7 @@ class WhileConditionComputationMatcher : public MatcherBase {
         GetTaggedInstruction("gte.fusion_param.param0", tagged_instructions));
     CHECK_EQ(HloOpcode::kParameter, gte_fusion_param0->opcode());
     CHECK(gte_fusion_param0->IsFused());
-    if (gte_fusion_param0->fusion_instruction()->operand(
+    if (gte_fusion_param0->parent()->FusionInstruction()->operand(
             gte_fusion_param0->parameter_number()) !=
         computation_->parameter_instruction(0)) {
       return InvalidArgument("Could not match fusion param: %s",
@@ -470,7 +469,8 @@ class WhileBodyComputationMatcher : public MatcherBase {
         // Fusion parameter: lookup and compare with associated fusion operand.
         CHECK_EQ(HloOpcode::kParameter, inst->opcode());
         CHECK(inst->IsFused());
-        if (inst->fusion_instruction()->operand(inst->parameter_number()) !=
+        if (inst->parent()->FusionInstruction()->operand(
+                inst->parameter_number()) !=
             computation_->parameter_instruction(0)) {
           return InvalidArgument("Could not match fusion param: %s",
                                  inst->name().c_str());

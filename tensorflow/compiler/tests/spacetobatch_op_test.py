@@ -228,34 +228,40 @@ class SpaceToBatchNDTest(XLATestCase):
         outputs=[[[0, 0], [2, 21]], [[0, 0], [5, 51]], [[1, 11], [3, 31]],
                  [[4, 41], [6, 61]]])
 
-  def testDirect(self):
+  def testDirect0(self):
     # Test with zero-size remaining dimension.
     self._testDirect(
         input_shape=[3, 1, 2, 0], block_shape=[3], paddings=[[0, 2]])
 
+  def testDirect1(self):
     # Test with zero-size blocked dimension.
     self._testDirect(
         input_shape=[3, 0, 2, 5], block_shape=[3], paddings=[[0, 0]])
 
+  def testDirect2(self):
     # Test with padding up from zero size.
     self._testDirect(
         input_shape=[3, 0, 2, 5], block_shape=[3], paddings=[[1, 2]])
 
+  def testDirect3(self):
     self._testDirect(
         input_shape=[3, 3, 4, 5, 2],
         block_shape=[3, 4, 2],
         paddings=[[1, 2], [0, 0], [3, 0]])
 
+  def testDirect4(self):
     self._testDirect(
         input_shape=[3, 3, 4, 5, 2],
         block_shape=[3, 4, 2, 2],
         paddings=[[1, 2], [0, 0], [3, 0], [0, 0]])
 
+  def testDirect5(self):
     self._testDirect(
         input_shape=[3, 2, 2, 3, 4, 5, 2, 5],
         block_shape=[1, 1, 3, 4, 2, 2],
         paddings=[[0, 0], [0, 0], [1, 2], [0, 0], [3, 0], [0, 0]])
 
+  def testDirect6(self):
     self._testDirect(
         input_shape=[3, 2, 2, 3, 4, 5, 2, 5],
         block_shape=[1, 1, 3, 4, 2, 2, 1],

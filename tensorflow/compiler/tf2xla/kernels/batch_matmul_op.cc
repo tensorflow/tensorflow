@@ -77,7 +77,13 @@ class BatchMatMulOp : public XlaOpKernel {
     xla::ComputationBuilder* builder = ctx->builder();
 
     xla::ComputationDataHandle x_handle = ctx->Input(0);
+    if (BaseType(input_type(0)) == DT_COMPLEX64 && adj_x_) {
+      x_handle = builder->Conj(x_handle);
+    }
     xla::ComputationDataHandle y_handle = ctx->Input(1);
+    if (BaseType(input_type(1)) == DT_COMPLEX64 && adj_y_) {
+      y_handle = builder->Conj(y_handle);
+    }
 
     // Reshape input tensors into 3D tensors by flattening the batch
     // dimensions. This makes it easier to unroll the batch dimension.
@@ -94,12 +100,14 @@ class BatchMatMulOp : public XlaOpKernel {
       // Slice off individual matrices and reshape to 2D tensors.
       auto x_slice = builder->Slice(
           x_flat, {i, 0, 0},
-          {i + 1, x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)});
+          {i + 1, x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)},
+          {1, 1, 1});
       x_slice = builder->Reshape(
           x_slice, {x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)});
       auto y_slice = builder->Slice(
           y_flat, {i, 0, 0},
-          {i + 1, y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)});
+          {i + 1, y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)},
+          {1, 1, 1});
       y_slice = builder->Reshape(
           y_slice, {y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)});
 

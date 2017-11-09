@@ -49,6 +49,44 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS HDRS ROOT_DIR)
   set(${HDRS} ${${HDRS}} PARENT_SCOPE)
 endfunction()
 
+if(NOT WIN32)
+  function(RELATIVE_PROTOBUF_GENERATE_GRPC_CPP SRCS HDRS ROOT_DIR)
+    if(NOT ARGN)
+      message(SEND_ERROR "Error: RELATIVE_PROTOBUF_GENERATE_GRPC_CPP() called without any proto files")
+      return()
+    endif()
+
+    set(${SRCS})
+    set(${HDRS})
+    foreach(FIL ${ARGN})
+      set(ABS_FIL ${ROOT_DIR}/${FIL})
+      get_filename_component(FIL_WE ${FIL} NAME_WE)
+      get_filename_component(FIL_DIR ${ABS_FIL} PATH)
+      file(RELATIVE_PATH REL_DIR ${ROOT_DIR} ${FIL_DIR})
+
+      list(APPEND ${SRCS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.cc")
+      list(APPEND ${HDRS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.h")
+      list(APPEND ${SRCS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc")
+      list(APPEND ${HDRS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h")
+
+      add_custom_command(
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.cc"
+               "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.h"
+               "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc"
+               "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h"
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE}
+        ARGS --grpc_out ${CMAKE_CURRENT_BINARY_DIR} --cpp_out ${CMAKE_CURRENT_BINARY_DIR} --plugin protoc-gen-grpc=${GRPC_BUILD}/grpc_cpp_plugin -I ${ROOT_DIR} ${ABS_FIL} -I ${PROTOBUF_INCLUDE_DIRS}
+        DEPENDS ${ABS_FIL} protobuf grpc
+        COMMENT "Running C++ protocol buffer grpc compiler on ${FIL}"
+        VERBATIM )
+    endforeach()
+
+    set_source_files_properties(${${SRCS}} ${${HDRS}} PROPERTIES GENERATED TRUE)
+    set(${SRCS} ${${SRCS}} PARENT_SCOPE)
+    set(${HDRS} ${${HDRS}} PARENT_SCOPE)
+  endfunction()
+endif()
+
 function(RELATIVE_PROTOBUF_TEXT_GENERATE_CPP SRCS HDRS ROOT_DIR)
   if(NOT ARGN)
       message(SEND_ERROR "Error: RELATIVE_PROTOBUF_TEXT_GENERATE_CPP() called without any proto files")
@@ -87,10 +125,12 @@ endfunction()
 
 file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_protos_cc_srcs}
 )
+
 
 set(PROTO_TEXT_EXE "proto_text")
 set(tf_proto_text_srcs
@@ -132,7 +172,17 @@ RELATIVE_PROTOBUF_TEXT_GENERATE_CPP(PROTO_TEXT_SRCS PROTO_TEXT_HDRS
     ${tensorflow_source_dir} ${tf_proto_text_srcs}
 )
 
-add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
+if(WIN32)
+  add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
+else()
+  file(GLOB_RECURSE tf_protos_grpc_cc_srcs RELATIVE ${tensorflow_source_dir}
+      "${tensorflow_source_dir}/tensorflow/core/debug/*.proto"
+  )
+  RELATIVE_PROTOBUF_GENERATE_GRPC_CPP(PROTO_GRPC_SRCS PROTO_GRPC_HDRS
+      ${tensorflow_source_dir} ${tf_protos_grpc_cc_srcs}
+  )
+  add_library(tf_protos_cc ${PROTO_GRPC_SRCS} ${PROTO_GRPC_HDRS} ${PROTO_SRCS} ${PROTO_HDRS})
+endif()
 
 ########################################################
 # tf_core_lib library
@@ -141,19 +191,34 @@ file(GLOB_RECURSE tf_core_lib_srcs
     "${tensorflow_source_dir}/tensorflow/core/lib/*.h"
     "${tensorflow_source_dir}/tensorflow/core/lib/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/public/*.h"
+    # TODO(@jart): Move StatusOr into core.
+    "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor.cc"
+    "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor.h"
+    "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor_internals.h"
 )
 
 file(GLOB tf_core_platform_srcs
     "${tensorflow_source_dir}/tensorflow/core/platform/*.h"
     "${tensorflow_source_dir}/tensorflow/core/platform/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/*.h"
-    "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc")
+    "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.h"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc")
 if (NOT tensorflow_ENABLE_GPU)
   file(GLOB tf_core_platform_gpu_srcs
       "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
       "${tensorflow_source_dir}/tensorflow/core/platform/default/cuda_libdevice_path.*")
   list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
+else()
+  file(GLOB tf_core_platform_srcs_exclude
+      "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu_tracer.cc")
+  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_srcs_exclude})
 endif()
+
+file(GLOB tf_core_platform_exclude_srcs
+  "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc")
+list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_exclude_srcs})
+
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
 if(UNIX)
@@ -223,6 +288,14 @@ set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.c
 file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.h"
+    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
@@ -231,18 +304,19 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/public/*.h"
 )
 
-file(GLOB_RECURSE tf_core_framework_test_srcs
+file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/framework/*testutil.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*testutil.cc"
     "${tensorflow_source_dir}/tensorflow/core/framework/*main.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
 )
 
-list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs})
+list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})
 
 add_library(tf_core_framework OBJECT
     ${tf_core_framework_srcs}

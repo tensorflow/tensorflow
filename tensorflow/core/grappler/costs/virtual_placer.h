@@ -33,10 +33,25 @@ class VirtualPlacer {
 
   const DeviceProperties& get_device(const NodeDef& node) const;
 
+  // Returns device name from cluster, which best matches the node.device()
+  // specification. Returns default device if no match was found or the
+  // node.device() could not be parsed.
+  string get_canonical_device_name(const NodeDef& node) const;
+
  private:
+  // Converts given device name to Lowercase Fully-Qualified Name (LFQN) string.
+  // This helps us disambiguate device names internally and simplify matching.
+  // If device_name couldn't be parsed succesfully, returns empty string.
+  string to_lfqn_or_empty(const string& device_name) const;
+
+  // Map based on the cluster info: cluster device name -> device properties.
   std::unordered_map<string, DeviceProperties> devices_;
-  bool has_gpu_;
-  DeviceProperties unknown_device_;
+
+  // Maps LFQN to original device name as it was declared in cluster.
+  std::unordered_map<string, string> lfqn_map_;
+
+  string default_device_name_;
+  string default_job_name_lowercase_;
 };
 
 }  // namespace grappler

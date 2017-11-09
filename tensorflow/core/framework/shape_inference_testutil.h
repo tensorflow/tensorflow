@@ -16,7 +16,7 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_TESTUTIL_H_
 
 #include <vector>
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -27,14 +27,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-class NodeDef;
 class Tensor;
 
 struct ShapeInferenceTestOp {
+  typedef std::pair<string, DataType> ShapeAndType;
   explicit ShapeInferenceTestOp(StringPiece name) : name(name.ToString()) {}
   string name;
   NodeDef node_def;
   std::vector<const Tensor*> input_tensors;
+  std::vector<std::vector<ShapeAndType>*>
+      input_resource_handle_shapes_and_types;
   int graph_def_version = TF_GRAPH_DEF_VERSION;
 };
 

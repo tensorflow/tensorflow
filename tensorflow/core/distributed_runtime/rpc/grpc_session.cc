@@ -23,22 +23,21 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
 
+const char* const kSchemePrefix = "grpc://";
+const size_t kSchemePrefixLength = strlen(kSchemePrefix);
+
 GrpcSession::GrpcSession(const SessionOptions& options)
-    : options_(options),
-      current_graph_version_(-1) {}
+    : options_(options), current_graph_version_(-1) {}
 
 GrpcSession::~GrpcSession() {}
-
-namespace {
-const char* kSchemePrefix = "grpc://";
-const size_t kSchemePrefixLength = strlen(kSchemePrefix);
-}  // namespace
 
 /* static */
 Status GrpcSession::Create(const SessionOptions& options,
@@ -75,7 +74,7 @@ void ReEncodeConsts(GraphDef* gdef) {
         }
       }
       if (proto != nullptr && proto->tensor_content().empty() &&
-          proto->ByteSize() > 64) {
+          proto->ByteSizeLong() > 64) {
         // If the constant is encoded with repeated proto fields and
         // it is moderate large, we re-encode it in tensor_content as
         // a Cord. This is mildly helpful for reducing the peak memory
@@ -191,12 +190,14 @@ Status GrpcSession::RunHelper(
     req->add_feed(it.first, it.second);
   }
 
-  // Build an index from fetch tensor name to offset.
+  // Build an index from fetch tensor name to first index in
+  // output_tensor_names.
   std::unordered_map<string, int> output_name_to_offset;
-  for (const string& output_name : output_tensor_names) {
-    req->add_fetch(output_name);
-    output_name_to_offset.insert(
-        std::make_pair(output_name, output_name_to_offset.size()));
+  for (int i = 0; i < output_tensor_names.size(); ++i) {
+    const string& name = output_tensor_names[i];
+    if (output_name_to_offset.insert(std::make_pair(name, i)).second) {
+      req->add_fetch(name);
+    }
   }
   for (const string& target : target_node_names) {
     req->add_target(target);
@@ -221,6 +222,17 @@ Status GrpcSession::RunHelper(
     Tensor output;
     TF_RETURN_IF_ERROR(resp->TensorValue(i, &output));
     (*outputs)[fetch_it->second] = output;
+  }
+  // In the unlikely event that output_tensor_names contains duplicates, fill in
+  // the duplicate values.
+  if (output_name_to_offset.size() != output_tensor_names.size()) {
+    for (int i = 0; i < output_tensor_names.size(); ++i) {
+      const string& name = output_tensor_names[i];
+      int offset = output_name_to_offset[name];
+      if (offset != i) {
+        (*outputs)[i] = (*outputs)[offset];
+      }
+    }
   }
 
   if (run_metadata) {
@@ -321,27 +333,41 @@ Status GrpcSession::Close() {
   return master_->CloseSession(&call_options, &req, &resp);
 }
 
-std::vector<DeviceAttributes> GrpcSession::ListDevices() {
-  std::vector<DeviceAttributes> devices;
-
+Status GrpcSession::ListDevices(std::vector<DeviceAttributes>* response) {
   ListDevicesRequest req;
+  {
+    mutex_lock l(mu_);
+    req.set_session_handle(handle_);
+  }
+  if (req.session_handle().empty()) {
+    LOG(WARNING) << "GrpcSession::ListDevices will initialize the session with "
+                    "an empty graph and other defaults because the session has "
+                    "not yet been created.";
+    GraphDef graph_def;
+    TF_RETURN_IF_ERROR(Create(graph_def));
+    {
+      mutex_lock l(mu_);
+      req.set_session_handle(handle_);
+    }
+  }
   ListDevicesResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   Status s = master_->ListDevices(&call_options, &req, &resp);
   if (!s.ok()) {
     LOG(ERROR) << "Could not list devices: " << s;
-    return devices;
+    return s;
   }
 
+  response->clear();
+  response->reserve(resp.local_device_size() + resp.remote_device_size());
   for (const auto& device_attr : resp.local_device()) {
-    devices.push_back(device_attr);
+    response->emplace_back(device_attr);
   }
   for (const auto& device_attr : resp.remote_device()) {
-    devices.push_back(device_attr);
+    response->emplace_back(device_attr);
   }
-
-  return devices;
+  return Status::OK();
 }
 
 void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {

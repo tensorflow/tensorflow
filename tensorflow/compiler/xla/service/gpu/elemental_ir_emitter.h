@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -52,6 +52,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
  protected:
   StatusOr<llvm::Value*> EmitFloatUnaryOp(
+      const HloInstruction* op, llvm::Value* operand_value) const override;
+
+  StatusOr<llvm::Value*> EmitComplexUnaryOp(
       const HloInstruction* op, llvm::Value* operand_value) const override;
 
   StatusOr<llvm::Value*> EmitFloatBinaryOp(

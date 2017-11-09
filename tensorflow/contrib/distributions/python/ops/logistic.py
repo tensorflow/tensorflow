@@ -190,13 +190,13 @@ class Logistic(distribution.Distribution):
     return math_ops.exp(self._log_prob(x))
 
   def _log_cdf(self, x):
-    return nn_ops.softplus(-self._z(x))
+    return -nn_ops.softplus(-self._z(x))
 
   def _cdf(self, x):
     return math_ops.sigmoid(self._z(x))
 
   def _log_survival_function(self, x):
-    return nn_ops.softplus(self._z(x))
+    return -nn_ops.softplus(self._z(x))
 
   def _survival_function(self, x):
     return math_ops.sigmoid(-self._z(x))

@@ -443,19 +443,19 @@ class VariablesTest(test.TestCase):
         e = variables_lib2.variable('e', initializer=e_init)
       # The values below highlight how the VariableDeviceChooser puts initial
       # values on the same device as the variable job.
-      self.assertDeviceEqual(a.device, '/gpu:0')
+      self.assertDeviceEqual(a.device, '/device:GPU:0')
       self.assertEqual(a.initial_value.op.colocation_groups(),
                        a.op.colocation_groups())
-      self.assertDeviceEqual(b.device, '/gpu:0')
+      self.assertDeviceEqual(b.device, '/device:GPU:0')
       self.assertEqual(b.initial_value.op.colocation_groups(),
                        b.op.colocation_groups())
       self.assertDeviceEqual(c.device, '/cpu:12')
       self.assertEqual(c.initial_value.op.colocation_groups(),
                        c.op.colocation_groups())
-      self.assertDeviceEqual(d.device, '/gpu:0')
+      self.assertDeviceEqual(d.device, '/device:GPU:0')
       self.assertEqual(d.initial_value.op.colocation_groups(),
                        d.op.colocation_groups())
-      self.assertDeviceEqual(e.device, '/gpu:0')
+      self.assertDeviceEqual(e.device, '/device:GPU:0')
       self.assertDeviceEqual(e.initial_value.device, '/cpu:99')
 
 

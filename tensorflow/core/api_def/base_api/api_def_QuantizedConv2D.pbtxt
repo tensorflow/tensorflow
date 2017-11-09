@@ -1,0 +1,65 @@
+op {
+  graph_op_name: "QuantizedConv2D"
+  in_arg {
+    name: "filter"
+    description: <<END
+filter's input_depth dimension must match input's depth dimensions.
+END
+  }
+  in_arg {
+    name: "min_input"
+    description: <<END
+The float value that the lowest quantized input value represents.
+END
+  }
+  in_arg {
+    name: "max_input"
+    description: <<END
+The float value that the highest quantized input value represents.
+END
+  }
+  in_arg {
+    name: "min_filter"
+    description: <<END
+The float value that the lowest quantized filter value represents.
+END
+  }
+  in_arg {
+    name: "max_filter"
+    description: <<END
+The float value that the highest quantized filter value represents.
+END
+  }
+  out_arg {
+    name: "min_output"
+    description: <<END
+The float value that the lowest quantized output value represents.
+END
+  }
+  out_arg {
+    name: "max_output"
+    description: <<END
+The float value that the highest quantized output value represents.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+The stride of the sliding window for each dimension of the input
+tensor.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  summary: "Computes a 2D convolution given quantized 4D input and filter tensors."
+  description: <<END
+The inputs are quantized tensors where the lowest value represents the real
+number of the associated minimum, and the highest represents the maximum.
+This means that you can only interpret the quantized output in the same way, by
+taking the returned minimum and maximum values into account.
+END
+}

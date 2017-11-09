@@ -27,7 +27,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
-from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import estimators
 from tensorflow.python.client import session as session_lib
@@ -43,6 +42,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
+from tensorflow.python.training import training_util
 
 
 class _MyEveryN(learn.monitors.EveryN):
@@ -301,10 +301,12 @@ class MonitorsTest(test.TestCase):
                                  monitor,
                                  expected_early_stopped=False,
                                  expected_best_step=None,
-                                 expected_best_value=None):
+                                 expected_best_value=None,
+                                 expected_best_metrics=None):
     self.assertEqual(expected_early_stopped, monitor.early_stopped)
     self.assertEqual(expected_best_step, monitor.best_step)
     self.assertEqual(expected_best_value, monitor.best_value)
+    self.assertEqual(expected_best_metrics, monitor.best_metrics)
 
   def test_validation_monitor_no_estimator(self):
     monitor = learn.monitors.ValidationMonitor(
@@ -379,7 +381,7 @@ class MonitorsTest(test.TestCase):
     estimator = mock_estimator_class()
     model_dir = 'model/dir'
     estimator.model_dir = model_dir
-    validation_outputs = {'loss': None}
+    validation_outputs = {'loss': None, 'auc': None}
     estimator.evaluate.return_value = validation_outputs
 
     monitor = learn.monitors.ValidationMonitor(
@@ -395,11 +397,13 @@ class MonitorsTest(test.TestCase):
       step = 0
       mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
       validation_outputs['loss'] = 42.0
+      validation_outputs['auc'] = 0.5
       self.assertEqual(0, len(monitor.step_begin(step=step)))
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(1, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=0, expected_best_value=42.0)
+          monitor, expected_best_step=0, expected_best_value=42.0,
+          expected_best_metrics={'loss': 42.0, 'auc': 0.5})
       monitor.post_step(step=step, session=None)
 
       # Step 1, same checkpoint, no eval.
@@ -408,29 +412,34 @@ class MonitorsTest(test.TestCase):
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(1, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=0, expected_best_value=42.0)
+          monitor, expected_best_step=0, expected_best_value=42.0,
+          expected_best_metrics={'loss': 42.0, 'auc': 0.5})
       monitor.post_step(step=step, session=None)
 
       # Step 2, lower loss.
       step = 2
       mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
       validation_outputs['loss'] = 40.0
+      validation_outputs['auc'] = 0.6
       self.assertEqual(0, len(monitor.step_begin(step=step)))
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(2, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=2, expected_best_value=40.0)
+          monitor, expected_best_step=2, expected_best_value=40.0,
+          expected_best_metrics={'loss': 40.0, 'auc': 0.6})
       monitor.post_step(step=step, session=None)
 
       # Step 3, higher loss.
       step = 3
       mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
       validation_outputs['loss'] = 44.0
+      validation_outputs['auc'] = 0.7
       self.assertEqual(0, len(monitor.step_begin(step=step)))
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(3, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=2, expected_best_value=40.0)
+          monitor, expected_best_step=2, expected_best_value=40.0,
+          expected_best_metrics={'loss': 40.0, 'auc': 0.6})
       monitor.post_step(step=step, session=None)
 
       # Step 4, higher loss for 2 steps, early stopping.
@@ -444,7 +453,8 @@ class MonitorsTest(test.TestCase):
           monitor,
           expected_early_stopped=True,
           expected_best_step=2,
-          expected_best_value=40.0)
+          expected_best_value=40.0,
+          expected_best_metrics={'loss': 40.0, 'auc': 0.6})
       monitor.post_step(step=step, session=None)
 
       monitor.epoch_end(epoch=0)
@@ -455,7 +465,7 @@ class MonitorsTest(test.TestCase):
     estimator = test.mock.Mock(spec=core_estimator.Estimator)
     model_dir = 'model/dir'
     estimator.model_dir = model_dir
-    validation_outputs = {'loss': None}
+    validation_outputs = {'loss': None, 'auc': None}
     estimator.evaluate.return_value = validation_outputs
 
     monitor = learn.monitors.ValidationMonitor(
@@ -472,11 +482,13 @@ class MonitorsTest(test.TestCase):
       step = 0
       mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
       validation_outputs['loss'] = 42.0
+      validation_outputs['auc'] = 0.5
       self.assertEqual(0, len(monitor.step_begin(step=step)))
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(1, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=0, expected_best_value=42.0)
+          monitor, expected_best_step=0, expected_best_value=42.0,
+          expected_best_metrics={'loss': 42.0, 'auc': 0.5})
       monitor.post_step(step=step, session=None)
 
   @test.mock.patch.object(saver, 'latest_checkpoint')
@@ -604,7 +616,7 @@ class CheckpointSaverTest(test.TestCase):
     self.graph = ops.Graph()
     with self.graph.as_default():
       self.scaffold = monitored_session.Scaffold()
-      self.global_step = variables_lib.get_or_create_global_step()
+      self.global_step = training_util.get_or_create_global_step()
       self.train_op = state_ops.assign_add(self.global_step, 1)
 
   def tearDown(self):
@@ -768,7 +780,7 @@ class RunHookAdapterForMonitorsTest(test.TestCase):
 
   def test_calls_and_steps(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:
-      global_step_tensor = variables_lib.create_global_step()
+      global_step_tensor = training_util.create_global_step()
       inc_5 = state_ops.assign_add(global_step_tensor, 5)
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
@@ -809,7 +821,7 @@ class RunHookAdapterForMonitorsTest(test.TestCase):
 
   def test_requests(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:
-      variables_lib.create_global_step()
+      training_util.create_global_step()
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
 

@@ -20,21 +20,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
-
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
-
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 
 
 class _Conv(base.Layer):
@@ -74,7 +68,15 @@ class _Conv(base.Layer):
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -94,11 +96,14 @@ class _Conv(base.Layer):
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
-    super(_Conv, self).__init__(trainable=trainable,
-                                name=name, **kwargs)
+    super(_Conv, self).__init__(trainable=trainable, name=name,
+                                activity_regularizer=activity_regularizer,
+                                **kwargs)
     self.rank = rank
     self.filters = filters
     self.kernel_size = utils.normalize_tuple(kernel_size, rank, 'kernel_size')
@@ -113,13 +118,12 @@ class _Conv(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.activity_regularizer = activity_regularizer
+    self.kernel_constraint = kernel_constraint
+    self.bias_constraint = bias_constraint
+    self.input_spec = base.InputSpec(ndim=self.rank + 2)
 
   def build(self, input_shape):
-    if len(input_shape) != self.rank + 2:
-      raise ValueError('Inputs should have rank ' +
-                       str(self.rank + 2) +
-                       '. Received input shape: ' + str(input_shape))
+    input_shape = tensor_shape.TensorShape(input_shape)
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
@@ -134,6 +138,7 @@ class _Conv(base.Layer):
                                     shape=kernel_shape,
                                     initializer=self.kernel_initializer,
                                     regularizer=self.kernel_regularizer,
+                                    constraint=self.kernel_constraint,
                                     trainable=True,
                                     dtype=self.dtype)
     if self.use_bias:
@@ -141,27 +146,35 @@ class _Conv(base.Layer):
                                     shape=(self.filters,),
                                     initializer=self.bias_initializer,
                                     regularizer=self.bias_regularizer,
+                                    constraint=self.bias_constraint,
                                     trainable=True,
                                     dtype=self.dtype)
     else:
       self.bias = None
-    self.built = True
-
-  def call(self, inputs):
-    outputs = nn.convolution(
-        input=inputs,
-        filter=self.kernel,
+    self.input_spec = base.InputSpec(ndim=self.rank + 2,
+                                     axes={channel_axis: input_dim})
+    self._convolution_op = nn_ops.Convolution(
+        input_shape,
+        filter_shape=self.kernel.get_shape(),
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=self.padding.upper(),
-        data_format=utils.convert_data_format(self.data_format, self.rank + 2))
-    if self.bias is not None:
-      if self.rank != 2 and self.data_format == 'channels_first':
-        # bias_add does not support channels_first for non-4D inputs.
+        data_format=utils.convert_data_format(self.data_format,
+                                              self.rank + 2))
+    self.built = True
+
+  def call(self, inputs):
+    outputs = self._convolution_op(inputs, self.kernel)
+
+    if self.use_bias:
+      if self.data_format == 'channels_first':
         if self.rank == 1:
+          # nn.bias_add does not accept a 1D input tensor.
           bias = array_ops.reshape(self.bias, (1, self.filters, 1))
           outputs += bias
-        elif self.rank == 3:
+        if self.rank == 2:
+          outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
+        if self.rank == 3:
           # As of Mar 2017, direct addition is significantly slower than
           # bias_add when computing gradients. To use bias_add, we collapse Z
           # and Y into a single dimension to obtain a 4D input tensor.
@@ -170,22 +183,43 @@ class _Conv(base.Layer):
                                          [outputs_shape[0], outputs_shape[1],
                                           outputs_shape[2] * outputs_shape[3],
                                           outputs_shape[4]])
-          outputs_4d = nn.bias_add(
-              outputs_4d,
-              self.bias,
-              data_format=utils.convert_data_format(self.data_format, 4))
+          outputs_4d = nn.bias_add(outputs_4d, self.bias, data_format='NCHW')
           outputs = array_ops.reshape(outputs_4d, outputs_shape)
       else:
-        outputs = nn.bias_add(
-            outputs,
-            self.bias,
-            data_format=utils.convert_data_format(self.data_format, 4))
-        # Note that we passed rank=4 because bias_add will only accept
-        # NHWC and NCWH even if the rank of the inputs is 3 or 5.
+        outputs = nn.bias_add(outputs, self.bias, data_format='NHWC')
 
     if self.activation is not None:
       return self.activation(outputs)
     return outputs
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if self.data_format == 'channels_last':
+      space = input_shape[1:-1]
+      new_space = []
+      for i in range(len(space)):
+        new_dim = utils.conv_output_length(
+            space[i],
+            self.kernel_size[i],
+            padding=self.padding,
+            stride=self.strides[i],
+            dilation=self.dilation_rate[i])
+        new_space.append(new_dim)
+      return tensor_shape.TensorShape([input_shape[0]] + new_space +
+                                      [self.filters])
+    else:
+      space = input_shape[2:]
+      new_space = []
+      for i in range(len(space)):
+        new_dim = utils.conv_output_length(
+            space[i],
+            self.kernel_size[i],
+            padding=self.padding,
+            stride=self.strides[i],
+            dilation=self.dilation_rate[i])
+        new_space.append(new_dim)
+      return tensor_shape.TensorShape([input_shape[0], self.filters] +
+                                      new_space)
 
 
 class Conv1D(_Conv):
@@ -224,7 +258,15 @@ class Conv1D(_Conv):
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -243,6 +285,8 @@ class Conv1D(_Conv):
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
@@ -261,6 +305,8 @@ class Conv1D(_Conv):
         kernel_regularizer=kernel_regularizer,
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        bias_constraint=bias_constraint,
         trainable=trainable,
         name=name, **kwargs)
 
@@ -279,6 +325,8 @@ def conv1d(inputs,
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
+           kernel_constraint=None,
+           bias_constraint=None,
            trainable=True,
            name=None,
            reuse=None):
@@ -318,7 +366,15 @@ def conv1d(inputs,
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -327,6 +383,9 @@ def conv1d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv1D(
       filters=filters,
@@ -342,8 +401,11 @@ def conv1d(inputs,
       kernel_regularizer=kernel_regularizer,
       bias_regularizer=bias_regularizer,
       activity_regularizer=activity_regularizer,
+      kernel_constraint=kernel_constraint,
+      bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -362,7 +424,7 @@ class Conv2D(_Conv):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-      width and height of the 2D convolution window.
+      height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
@@ -392,7 +454,15 @@ class Conv2D(_Conv):
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -411,6 +481,8 @@ class Conv2D(_Conv):
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
@@ -429,6 +501,8 @@ class Conv2D(_Conv):
         kernel_regularizer=kernel_regularizer,
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        bias_constraint=bias_constraint,
         trainable=trainable,
         name=name, **kwargs)
 
@@ -447,6 +521,8 @@ def conv2d(inputs,
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
+           kernel_constraint=None,
+           bias_constraint=None,
            trainable=True,
            name=None,
            reuse=None):
@@ -463,7 +539,7 @@ def conv2d(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-      width and height of the 2D convolution window.
+      height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
@@ -493,7 +569,15 @@ def conv2d(inputs,
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -502,6 +586,9 @@ def conv2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv2D(
       filters=filters,
@@ -517,8 +604,11 @@ def conv2d(inputs,
       kernel_regularizer=kernel_regularizer,
       bias_regularizer=bias_regularizer,
       activity_regularizer=activity_regularizer,
+      kernel_constraint=kernel_constraint,
+      bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -568,7 +658,15 @@ class Conv3D(_Conv):
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -587,6 +685,8 @@ class Conv3D(_Conv):
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
@@ -605,6 +705,8 @@ class Conv3D(_Conv):
         kernel_regularizer=kernel_regularizer,
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        bias_constraint=bias_constraint,
         trainable=trainable,
         name=name, **kwargs)
 
@@ -623,6 +725,8 @@ def conv3d(inputs,
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
+           kernel_constraint=None,
+           bias_constraint=None,
            trainable=True,
            name=None,
            reuse=None):
@@ -670,7 +774,15 @@ def conv3d(inputs,
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -679,6 +791,9 @@ def conv3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv3D(
       filters=filters,
@@ -694,8 +809,11 @@ def conv3d(inputs,
       kernel_regularizer=kernel_regularizer,
       bias_regularizer=bias_regularizer,
       activity_regularizer=activity_regularizer,
+      kernel_constraint=kernel_constraint,
+      bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -714,7 +832,7 @@ class SeparableConv2D(Conv2D):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -749,7 +867,17 @@ class SeparableConv2D(Conv2D):
     pointwise_regularizer: Optional regularizer for the pointwise
       convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    depthwise_constraint: Optional projection function to be applied to the
+        depthwise kernel after being updated by an `Optimizer` (e.g. used for
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    pointwise_constraint: Optional projection function to be applied to the
+        pointwise kernel after being updated by an `Optimizer`.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -771,6 +899,9 @@ class SeparableConv2D(Conv2D):
                pointwise_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               depthwise_constraint=None,
+               pointwise_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
@@ -785,6 +916,7 @@ class SeparableConv2D(Conv2D):
         use_bias=use_bias,
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
+        bias_constraint=bias_constraint,
         trainable=trainable,
         name=name,
         **kwargs)
@@ -793,6 +925,8 @@ class SeparableConv2D(Conv2D):
     self.pointwise_initializer = pointwise_initializer
     self.depthwise_regularizer = depthwise_regularizer
     self.pointwise_regularizer = pointwise_regularizer
+    self.depthwise_constraint = depthwise_constraint
+    self.pointwise_constraint = pointwise_constraint
 
   def build(self, input_shape):
     if len(input_shape) < 4:
@@ -807,6 +941,7 @@ class SeparableConv2D(Conv2D):
                        '`SeparableConv2D` '
                        'should be defined. Found `None`.')
     input_dim = int(input_shape[channel_axis])
+    self.input_spec = base.InputSpec(ndim=4, axes={channel_axis: input_dim})
     depthwise_kernel_shape = (self.kernel_size[0],
                               self.kernel_size[1],
                               input_dim,
@@ -820,6 +955,7 @@ class SeparableConv2D(Conv2D):
         shape=depthwise_kernel_shape,
         initializer=self.depthwise_initializer,
         regularizer=self.depthwise_regularizer,
+        constraint=self.depthwise_constraint,
         trainable=True,
         dtype=self.dtype)
     self.pointwise_kernel = self.add_variable(
@@ -827,6 +963,7 @@ class SeparableConv2D(Conv2D):
         shape=pointwise_kernel_shape,
         initializer=self.pointwise_initializer,
         regularizer=self.pointwise_regularizer,
+        constraint=self.pointwise_constraint,
         trainable=True,
         dtype=self.dtype)
     if self.use_bias:
@@ -834,6 +971,7 @@ class SeparableConv2D(Conv2D):
                                     shape=(self.filters,),
                                     initializer=self.bias_initializer,
                                     regularizer=self.bias_regularizer,
+                                    constraint=self.bias_constraint,
                                     trainable=True,
                                     dtype=self.dtype)
     else:
@@ -841,24 +979,21 @@ class SeparableConv2D(Conv2D):
     self.built = True
 
   def call(self, inputs):
-    if self.data_format == 'channels_first':
-      # Reshape to channels last
-      inputs = array_ops.transpose(inputs, (0, 2, 3, 1))
-
     # Apply the actual ops.
+    if self.data_format == 'channels_last':
+      strides = (1,) + self.strides + (1,)
+    else:
+      strides = (1, 1) + self.strides
     outputs = nn.separable_conv2d(
         inputs,
         self.depthwise_kernel,
         self.pointwise_kernel,
-        strides=(1,) + self.strides + (1,),
+        strides=strides,
         padding=self.padding.upper(),
-        rate=self.dilation_rate)
+        rate=self.dilation_rate,
+        data_format=utils.convert_data_format(self.data_format, ndim=4))
 
-    if self.data_format == 'channels_first':
-      # Reshape to channels first
-      outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
-
-    if self.bias is not None:
+    if self.use_bias:
       outputs = nn.bias_add(
           outputs,
           self.bias,
@@ -867,6 +1002,26 @@ class SeparableConv2D(Conv2D):
     if self.activation is not None:
       return self.activation(outputs)
     return outputs
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if self.data_format == 'channels_first':
+      rows = input_shape[2]
+      cols = input_shape[3]
+    else:
+      rows = input_shape[1]
+      cols = input_shape[2]
+
+    rows = utils.conv_output_length(rows, self.kernel_size[0],
+                                    self.padding, self.strides[0])
+    cols = utils.conv_output_length(cols, self.kernel_size[1],
+                                    self.padding, self.strides[1])
+    if self.data_format == 'channels_first':
+      return tensor_shape.TensorShape(
+          [input_shape[0], self.filters, rows, cols])
+    else:
+      return tensor_shape.TensorShape(
+          [input_shape[0], rows, cols, self.filters])
 
 
 def separable_conv2d(inputs,
@@ -886,6 +1041,9 @@ def separable_conv2d(inputs,
                      pointwise_regularizer=None,
                      bias_regularizer=None,
                      activity_regularizer=None,
+                     depthwise_constraint=None,
+                     pointwise_constraint=None,
+                     bias_constraint=None,
                      trainable=True,
                      name=None,
                      reuse=None):
@@ -902,7 +1060,7 @@ def separable_conv2d(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -937,7 +1095,17 @@ def separable_conv2d(inputs,
     pointwise_regularizer: Optional regularizer for the pointwise
       convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    depthwise_constraint: Optional projection function to be applied to the
+        depthwise kernel after being updated by an `Optimizer` (e.g. used for
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    pointwise_constraint: Optional projection function to be applied to the
+        pointwise kernel after being updated by an `Optimizer`.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -946,6 +1114,9 @@ def separable_conv2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = SeparableConv2D(
       filters=filters,
@@ -964,6 +1135,9 @@ def separable_conv2d(inputs,
       pointwise_regularizer=pointwise_regularizer,
       bias_regularizer=bias_regularizer,
       activity_regularizer=activity_regularizer,
+      depthwise_constraint=depthwise_constraint,
+      pointwise_constraint=pointwise_constraint,
+      bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
       _reuse=reuse,
@@ -985,7 +1159,7 @@ class Conv2DTranspose(Conv2D):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1004,7 +1178,15 @@ class Conv2DTranspose(Conv2D):
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -1022,6 +1204,8 @@ class Conv2DTranspose(Conv2D):
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
@@ -1038,9 +1222,12 @@ class Conv2DTranspose(Conv2D):
         kernel_regularizer=kernel_regularizer,
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        bias_constraint=bias_constraint,
         trainable=trainable,
         name=name,
         **kwargs)
+    self.input_spec = base.InputSpec(ndim=4)
 
   def build(self, input_shape):
     if len(input_shape) != 4:
@@ -1055,12 +1242,14 @@ class Conv2DTranspose(Conv2D):
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
     input_dim = input_shape[channel_axis]
+    self.input_spec = base.InputSpec(ndim=4, axes={channel_axis: input_dim})
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
     self.kernel = self.add_variable(name='kernel',
                                     shape=kernel_shape,
                                     initializer=self.kernel_initializer,
                                     regularizer=self.kernel_regularizer,
+                                    constraint=self.kernel_constraint,
                                     trainable=True,
                                     dtype=self.dtype)
     if self.use_bias:
@@ -1068,6 +1257,7 @@ class Conv2DTranspose(Conv2D):
                                     shape=(self.filters,),
                                     initializer=self.bias_initializer,
                                     regularizer=self.bias_regularizer,
+                                    constraint=self.bias_constraint,
                                     trainable=True,
                                     dtype=self.dtype)
     else:
@@ -1087,9 +1277,14 @@ class Conv2DTranspose(Conv2D):
     stride_h, stride_w = self.strides
 
     # Infer the dynamic output shape:
-    out_height = utils.get_deconv_dim(height, stride_h, kernel_h, self.padding)
-    out_width = utils.get_deconv_dim(width, stride_w, kernel_w, self.padding)
-
+    out_height = utils.deconv_output_length(height,
+                                            kernel_h,
+                                            self.padding,
+                                            stride_h)
+    out_width = utils.deconv_output_length(width,
+                                           kernel_w,
+                                           self.padding,
+                                           stride_w)
     if self.data_format == 'channels_first':
       output_shape = (batch_size, self.filters, out_height, out_width)
       strides = (1, 1, stride_h, stride_w)
@@ -1106,16 +1301,21 @@ class Conv2DTranspose(Conv2D):
         padding=self.padding.upper(),
         data_format=utils.convert_data_format(self.data_format, ndim=4))
 
-    # Infer the static output shape:
-    out_shape = inputs.get_shape().as_list()
-    out_shape[c_axis] = self.filters
-    out_shape[h_axis] = utils.get_deconv_dim(out_shape[h_axis], stride_h,
-                                             kernel_h, self.padding)
-    out_shape[w_axis] = utils.get_deconv_dim(out_shape[w_axis], stride_w,
-                                             kernel_w, self.padding)
-    outputs.set_shape(out_shape)
+    if context.in_graph_mode():
+      # Infer the static output shape:
+      out_shape = inputs.get_shape().as_list()
+      out_shape[c_axis] = self.filters
+      out_shape[h_axis] = utils.deconv_output_length(out_shape[h_axis],
+                                                     kernel_h,
+                                                     self.padding,
+                                                     stride_h)
+      out_shape[w_axis] = utils.deconv_output_length(out_shape[w_axis],
+                                                     kernel_w,
+                                                     self.padding,
+                                                     stride_w)
+      outputs.set_shape(out_shape)
 
-    if self.bias:
+    if self.use_bias:
       outputs = nn.bias_add(
           outputs,
           self.bias,
@@ -1124,6 +1324,24 @@ class Conv2DTranspose(Conv2D):
     if self.activation is not None:
       return self.activation(outputs)
     return outputs
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    output_shape = list(input_shape)
+    if self.data_format == 'channels_first':
+      c_axis, h_axis, w_axis = 1, 2, 3
+    else:
+      c_axis, h_axis, w_axis = 3, 1, 2
+
+    kernel_h, kernel_w = self.kernel_size
+    stride_h, stride_w = self.strides
+
+    output_shape[c_axis] = self.filters
+    output_shape[h_axis] = utils.deconv_output_length(
+        output_shape[h_axis], kernel_h, self.padding, stride_h)
+    output_shape[w_axis] = utils.deconv_output_length(
+        output_shape[w_axis], kernel_w, self.padding, stride_w)
+    return tensor_shape.TensorShape(output_shape)
 
 
 def conv2d_transpose(inputs,
@@ -1139,6 +1357,8 @@ def conv2d_transpose(inputs,
                      kernel_regularizer=None,
                      bias_regularizer=None,
                      activity_regularizer=None,
+                     kernel_constraint=None,
+                     bias_constraint=None,
                      trainable=True,
                      name=None,
                      reuse=None):
@@ -1156,7 +1376,7 @@ def conv2d_transpose(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1175,7 +1395,15 @@ def conv2d_transpose(inputs,
       bias will be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -1184,6 +1412,9 @@ def conv2d_transpose(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv2DTranspose(
       filters=filters,
@@ -1198,8 +1429,11 @@ def conv2d_transpose(inputs,
       kernel_regularizer=kernel_regularizer,
       bias_regularizer=bias_regularizer,
       activity_regularizer=activity_regularizer,
+      kernel_constraint=kernel_constraint,
+      bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1234,7 +1468,15 @@ class Conv3DTranspose(Conv3D):
       bias will be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -1253,6 +1495,8 @@ class Conv3DTranspose(Conv3D):
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
@@ -1269,9 +1513,12 @@ class Conv3DTranspose(Conv3D):
         kernel_regularizer=kernel_regularizer,
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        bias_constraint=bias_constraint,
         trainable=trainable,
         name=name,
         **kwargs)
+    self.input_spec = base.InputSpec(ndim=5)
 
   def build(self, input_shape):
     if len(input_shape) != 5:
@@ -1292,6 +1539,7 @@ class Conv3DTranspose(Conv3D):
         shape=kernel_shape,
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
+        constraint=self.kernel_constraint,
         trainable=True,
         dtype=self.dtype)
     if self.use_bias:
@@ -1300,6 +1548,7 @@ class Conv3DTranspose(Conv3D):
           shape=(self.filters,),
           initializer=self.bias_initializer,
           regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint,
           trainable=True,
           dtype=self.dtype)
     else:
@@ -1313,6 +1562,9 @@ class Conv3DTranspose(Conv3D):
     else:
       c_axis, d_axis, h_axis, w_axis = 4, 1, 2, 3
 
+    self.input_spec = base.InputSpec(ndim=5,
+                                     axes={c_axis: inputs_shape[c_axis]})
+
     depth = inputs_shape[d_axis]
     height = inputs_shape[h_axis]
     width = inputs_shape[w_axis]
@@ -1321,10 +1573,18 @@ class Conv3DTranspose(Conv3D):
     stride_d, stride_h, stride_w = self.strides
 
     # Infer the dynamic output shape:
-    out_depth = utils.get_deconv_dim(depth, stride_d, kernel_d, self.padding)
-    out_height = utils.get_deconv_dim(height, stride_h, kernel_h, self.padding)
-    out_width = utils.get_deconv_dim(width, stride_w, kernel_w, self.padding)
-
+    out_depth = utils.deconv_output_length(depth,
+                                           kernel_d,
+                                           self.padding,
+                                           stride_d)
+    out_height = utils.deconv_output_length(height,
+                                            kernel_h,
+                                            self.padding,
+                                            stride_h)
+    out_width = utils.deconv_output_length(width,
+                                           kernel_w,
+                                           self.padding,
+                                           stride_w)
     if self.data_format == 'channels_first':
       output_shape = (batch_size, self.filters, out_depth, out_height,
                       out_width)
@@ -1343,18 +1603,25 @@ class Conv3DTranspose(Conv3D):
         data_format=utils.convert_data_format(self.data_format, ndim=5),
         padding=self.padding.upper())
 
-    # Infer the static output shape:
-    out_shape = inputs.get_shape().as_list()
-    out_shape[c_axis] = self.filters
-    out_shape[d_axis] = utils.get_deconv_dim(out_shape[d_axis], stride_d,
-                                             kernel_d, self.padding)
-    out_shape[h_axis] = utils.get_deconv_dim(out_shape[h_axis], stride_h,
-                                             kernel_h, self.padding)
-    out_shape[w_axis] = utils.get_deconv_dim(out_shape[w_axis], stride_w,
-                                             kernel_w, self.padding)
-    outputs.set_shape(out_shape)
+    if context.in_graph_mode():
+      # Infer the static output shape:
+      out_shape = inputs.get_shape().as_list()
+      out_shape[c_axis] = self.filters
+      out_shape[d_axis] = utils.deconv_output_length(out_shape[d_axis],
+                                                     kernel_d,
+                                                     self.padding,
+                                                     stride_d)
+      out_shape[h_axis] = utils.deconv_output_length(out_shape[h_axis],
+                                                     kernel_h,
+                                                     self.padding,
+                                                     stride_h)
+      out_shape[w_axis] = utils.deconv_output_length(out_shape[w_axis],
+                                                     kernel_w,
+                                                     self.padding,
+                                                     stride_w)
+      outputs.set_shape(out_shape)
 
-    if self.bias:
+    if self.use_bias:
       outputs_shape = outputs.shape.as_list()
       if self.data_format == 'channels_first':
         outputs_4d = array_ops.reshape(outputs, [
@@ -1376,6 +1643,26 @@ class Conv3DTranspose(Conv3D):
       return self.activation(outputs)
     return outputs
 
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    output_shape = list(input_shape)
+    if self.data_format == 'channels_first':
+      c_axis, d_axis, h_axis, w_axis = 1, 2, 3, 4
+    else:
+      c_axis, d_axis, h_axis, w_axis = 4, 1, 2, 3
+
+    kernel_d, kernel_h, kernel_w = self.kernel_size
+    stride_d, stride_h, stride_w = self.strides
+
+    output_shape[c_axis] = self.filters
+    output_shape[d_axis] = utils.deconv_output_length(
+        output_shape[d_axis], stride_d, kernel_d, self.padding)
+    output_shape[h_axis] = utils.deconv_output_length(
+        output_shape[h_axis], stride_h, kernel_h, self.padding)
+    output_shape[w_axis] = utils.deconv_output_length(
+        output_shape[w_axis], stride_w, kernel_w, self.padding)
+    return tensor_shape.TensorShape(output_shape)
+
 
 def conv3d_transpose(inputs,
                      filters,
@@ -1390,6 +1677,8 @@ def conv3d_transpose(inputs,
                      kernel_regularizer=None,
                      bias_regularizer=None,
                      activity_regularizer=None,
+                     kernel_constraint=None,
+                     bias_constraint=None,
                      trainable=True,
                      name=None,
                      reuse=None):
@@ -1400,7 +1689,7 @@ def conv3d_transpose(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 3 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 3 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1409,8 +1698,9 @@ def conv3d_transpose(inputs,
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, height, width)`.
+      `(batch, depth, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, depth, height, width)`.
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
@@ -1419,7 +1709,15 @@ def conv3d_transpose(inputs,
       be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
-    activity_regularizer: Regularizer function for the output.
+    activity_regularizer: Optional regularizer function for the output.
+    kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
@@ -1428,6 +1726,9 @@ def conv3d_transpose(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv3DTranspose(
       filters=filters,
@@ -1442,8 +1743,11 @@ def conv3d_transpose(inputs,
       kernel_regularizer=kernel_regularizer,
       bias_regularizer=bias_regularizer,
       activity_regularizer=activity_regularizer,
+      kernel_constraint=kernel_constraint,
+      bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

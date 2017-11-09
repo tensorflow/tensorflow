@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -358,7 +359,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       }
                     }
                   }
-                  if (allow_small_batch && queues_[0].size() > 0) {
+                  if (allow_small_batch && !queues_[0].empty()) {
                     // Request all remaining elements in the queue.
                     queue_size = queues_[0].size();
                     attempt->tuple.clear();

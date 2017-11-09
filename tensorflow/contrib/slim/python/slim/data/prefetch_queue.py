@@ -25,9 +25,15 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
 
+def _which_queue(dynamic_pad):
+  return (data_flow_ops.PaddingFIFOQueue if dynamic_pad
+          else data_flow_ops.FIFOQueue)
+
+
 def prefetch_queue(tensors,
                    capacity=8,
                    num_threads=1,
+                   dynamic_pad=False,
                    shared_name=None,
                    name=None):
   """Creates a queue to prefetech tensors from `tensors`.
@@ -50,6 +56,7 @@ def prefetch_queue(tensors,
     tensors: A list or dictionary of `Tensors` to enqueue in the buffer.
     capacity: An integer. The maximum number of elements in the queue.
     num_threads: An integer.  Number of threads running the enqueue op.
+    dynamic_pad: Boolean.  Whether to allow variable dimensions in input shapes.
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
@@ -70,7 +77,7 @@ def prefetch_queue(tensors,
   with ops.name_scope(name, "prefetch_queue", tensor_list) as name:
     dtypes = [t.dtype for t in tensor_list]
     shapes = [t.get_shape() for t in tensor_list]
-    queue = data_flow_ops.FIFOQueue(
+    queue = _which_queue(dynamic_pad)(
         capacity=capacity,
         dtypes=dtypes,
         shapes=shapes,

@@ -344,7 +344,7 @@ def _prepare_sequence_inputs(inputs, states):
   key = _check_rank(inputs.key, 0)
 
   if length.dtype != dtypes.int32:
-    raise TypeError("length dtype must be int32, but recieved: %s" %
+    raise TypeError("length dtype must be int32, but received: %s" %
                     length.dtype)
   if key.dtype != dtypes.string:
     raise TypeError("key dtype must be string, but received: %s" % key.dtype)
@@ -1596,7 +1596,7 @@ def _padding(sequences, num_unroll):
   else:  # Only have SparseTensors
     sparse_lengths = [value.dense_shape[0] for value in sequences_dict.values()
                       if isinstance(value, sparse_tensor.SparseTensor)]
-    length = math_ops.maximum(sparse_lengths)
+    length = math_ops.reduce_max(math_ops.to_int32(sparse_lengths))
 
   unroll = array_ops.constant(num_unroll)
   padded_length = length + ((unroll - (length % unroll)) % unroll)
@@ -1652,7 +1652,8 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
   if input_sequences:
     seq = list(input_sequences.values())[0]
     if isinstance(seq, ops.Tensor):
-      value_length = array_ops.shape(seq)[0]
+      with ops.control_dependencies([seq]):
+        value_length = array_ops.shape(seq)[0]
     else:
       value_length = seq.dense_shape[0]
   value_length = math_ops.cast(value_length, dtype=dtypes.int64)
@@ -1673,7 +1674,7 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
     shape = array_ops.concat(
         [array_ops.expand_dims(value_length, 0), sp_tensor.dense_shape], 0)
 
-    # Construct new indices by mutliplying old ones and prepending [0, n).
+    # Construct new indices by multiplying old ones and prepending [0, n).
     # First multiply indices n times along a newly created 0-dimension.
     multiplied_indices = array_ops.tile(
         array_ops.expand_dims(sp_tensor.indices, 0),
@@ -1814,7 +1815,7 @@ def _reconstruct_sparse_tensor_seq(sequence,
 
     Counter-part of `_flatten_tensor` which is called on the input of
     `_restore_sparse` while this method is called on the output of it.
-    Together they  work around the limitation of `_restore_sparse` to only
+    Together they work around the limitation of `_restore_sparse` to only
     accept 1D handles.
 
     The `indices` in `sp_tensor` is a 2D `Tensor` of `shape [N, ndims]`, where

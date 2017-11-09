@@ -29,5 +29,19 @@ bool FilesExist(const std::set<string>& files) {
   return FilesExist(std::vector<string>(files.begin(), files.end()), nullptr);
 }
 
+bool FileExists(const std::string& file, Status* status) {
+  *status = Env::Default()->FileExists(file);
+  return status->ok();
+}
+
+Status ReadGraphDefFromFile(const std::string& graph_def_pbtxt_path,
+                            GraphDef* result) {
+  Status status;
+  if (FileExists(graph_def_pbtxt_path, &status)) {
+    return ReadTextProto(Env::Default(), graph_def_pbtxt_path, result);
+  }
+  return status;
+}
+
 }  // End namespace grappler
 }  // end namespace tensorflow

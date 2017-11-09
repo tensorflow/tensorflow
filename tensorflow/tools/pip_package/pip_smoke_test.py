@@ -25,16 +25,16 @@ from __future__ import print_function
 
 import subprocess
 
-PIP_PACKAGE_QUERY = """bazel query \
-  'deps(//tensorflow/tools/pip_package:build_pip_package)'"""
+PIP_PACKAGE_QUERY_EXPRESSION = \
+  'deps(//tensorflow/tools/pip_package:build_pip_package)'
 
-PY_TEST_QUERY = """bazel query 'deps(\
+PY_TEST_QUERY_EXPRESSION = 'deps(\
   filter("^((?!benchmark).)*$",\
   kind(py_test,\
   //tensorflow/python/... \
-  + //tensorflow/tensorboard/... \
   + //tensorflow/contrib/... \
-  - attr(tags, "manual|no_pip", //tensorflow/...))), 1)'"""
+  - //tensorflow/contrib/tensorboard/... \
+  - attr(tags, "manual|no_pip", //tensorflow/...))), 1)'
 
 # Hard-coded blacklist of files if not included in pip package
 # TODO(amitpatankar): Clean up blacklist.
@@ -46,6 +46,7 @@ BLACKLIST = [
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
+    "//tensorflow/core:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
@@ -56,8 +57,15 @@ BLACKLIST = [
     "//tensorflow/contrib/factorization/examples:mnist",
     "//tensorflow/contrib/factorization/examples:mnist.py",
     "//tensorflow/contrib/factorization:factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/framework:checkpoint_ops_testdata",
     "//tensorflow/contrib/bayesflow:reinforce_simple_example",
     "//tensorflow/contrib/bayesflow:examples/reinforce_simple/reinforce_simple_example.py",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/timeseries/examples:predict",
+    "//tensorflow/contrib/timeseries/examples:multivariate",
+    "//tensorflow/contrib/timeseries/examples:known_anomaly",
+    "//tensorflow/contrib/timeseries/examples:data/period_trend.csv",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
+    "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:test_utils",  # pylint:disable=line-too-long
 ]
 
 
@@ -75,15 +83,15 @@ def main():
   """
 
   # pip_package_dependencies_list is the list of included files in pip packages
-  pip_package_dependencies = subprocess.check_output(
-      PIP_PACKAGE_QUERY, shell=True)
+  pip_package_dependencies = subprocess.check_output([
+      'bazel', 'query', PIP_PACKAGE_QUERY_EXPRESSION])
   pip_package_dependencies_list = pip_package_dependencies.strip().split("\n")
   print("Pip package superset size: %d" % len(pip_package_dependencies_list))
 
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
-  tf_py_test_dependencies = subprocess.check_output(
-      PY_TEST_QUERY, shell=True)
+  tf_py_test_dependencies = subprocess.check_output([
+      'bazel', 'query', PY_TEST_QUERY_EXPRESSION])
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
   print("Pytest dependency subset size: %d" % len(tf_py_test_dependencies_list))
 
@@ -104,11 +112,9 @@ def main():
 
       # Check if the dependency is in the pip package, the blacklist, or
       # should be ignored because of its file extension
-      if (ignore or
-          dependency in pip_package_dependencies_list or
-          dependency in BLACKLIST):
-        continue
-      else:
+      if not (ignore or
+              dependency in pip_package_dependencies_list or
+              dependency in BLACKLIST):
         missing_dependencies.append(dependency)
 
   print("Ignored files: %d" % ignored_files)
@@ -118,9 +124,9 @@ def main():
     for missing_dependency in missing_dependencies:
       print("\nMissing dependency: %s " % missing_dependency)
       print("Affected Tests:")
-      rdep_query = """bazel query 'rdeps(kind(py_test, \
-      //tensorflow/python/...), %s)'""" % missing_dependency
-      affected_tests = subprocess.check_output(rdep_query, shell=True)
+      rdep_query = 'rdeps(kind(py_test, \
+      //tensorflow/python/...), %s)' % missing_dependency
+      affected_tests = subprocess.check_output(['bazel', 'query', rdep_query])
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
 

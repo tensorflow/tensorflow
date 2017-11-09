@@ -17,11 +17,10 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -44,10 +43,12 @@ class Stream;
 namespace tensorflow {
 
 class Device;
+class DeviceAttributes;
 class Env;
 class EventMgr;
 class OpKernelContext;
 class ResourceMgr;
+class TensorProto;
 
 namespace thread {
 class ThreadPool;
@@ -187,6 +188,9 @@ class DeviceBase {
   // by GPU devices to return a derived type.
   virtual PerOpGpuDevice* MakeGpuDevice() { return nullptr; }
 
+  virtual DeviceBase* UnderlyingDevice() { return this; }
+  virtual const DeviceBase* UnderlyingDevice() const { return this; }
+
   // This is overridden by GPU devices to reinitialize the derived
   // type returned by MakeGpuDevice.
   virtual void ReinitializeGpuDevice(OpKernelContext* /*context*/,
@@ -194,11 +198,9 @@ class DeviceBase {
                                      DeviceContext* /*dc*/,
                                      Allocator* /*allocator*/) {}
 
-  virtual const DeviceAttributes& attributes() const {
-    LOG(FATAL) << "Device does not implement attributes()";
-    static DeviceAttributes dummy;
-    return dummy;
-  }
+  // Unimplemented by default
+  virtual const DeviceAttributes& attributes() const;
+  virtual const string& name() const;
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.

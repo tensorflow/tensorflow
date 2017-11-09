@@ -89,8 +89,8 @@ static Output BuildPlaceHolderOp(const string& name, const DataType dt,
                                  const TensorShape& tensor_shape, Scope* root) {
   const Scope& scope = root->WithOpName(name);
   Node* ret;
-  const string unique_name = scope.GetUniqueNameForOp("PlaceholderV2");
-  NodeBuilder builder = NodeBuilder(unique_name, "PlaceholderV2")
+  const string unique_name = scope.GetUniqueNameForOp("Placeholder");
+  NodeBuilder builder = NodeBuilder(unique_name, "Placeholder")
                             .Attr("dtype", dt)
                             .Attr("shape", tensor_shape);
   scope.UpdateBuilder(&builder);
@@ -159,8 +159,8 @@ static RemoteFusedGraphExecuteInfo BuildRemoteFusedGraphExecuteInfo(
   return execute_info;
 }
 
-// 1. Create TestRemoteFusedGraphExecutor to execute your fused graph
-class TestRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
+// 1. Create SampleRemoteFusedGraphExecutor to execute your fused graph
+class SampleRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
  public:
   int GetVersion() final { return 1; }
   bool Init(const RemoteFusedGraphExecuteInfo& info) final {
@@ -214,6 +214,16 @@ class TestRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
     return true;
   }
 
+  Status FuseRemoteGraph(const GraphDef& original_graph_def,
+                         const std::vector<string>& /*inputs*/,
+                         const std::vector<string>& /*outputs*/,
+                         GraphDef* fused_graph_def) final {
+    *fused_graph_def = original_graph_def;
+    return Status::OK();
+  }
+
+  bool IsEnabled() const final { return true; }
+
  private:
   const RemoteFusedGraphExecuteInfo* info_;
   std::unordered_map<string, Tensor> input_tensor_cache_;
@@ -225,7 +235,7 @@ class TestRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
 namespace remote_fused_graph_execute_op {
 Status BuildRemoteFusedGraphExecutor(
     std::unique_ptr<IRemoteFusedGraphExecutor>* executor) {
-  executor->reset(new TestRemoteFusedGraphExecutor());
+  executor->reset(new SampleRemoteFusedGraphExecutor());
   return Status::OK();
 }
 
@@ -269,13 +279,13 @@ static Status RewriteGraphToFusedGraph(const GraphDef& original_graph,
 // 5. Fuse the original graph and run the inference the new fused graph
 TEST(RemoteFusedExecuteGraphOp, EndToEndTest) {
   // 5.1 Load original graph
-  const GraphDef original_graph =
-      RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-          NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef original_graph;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &original_graph));
 
   // 5.2 Fuse graph
   GraphDef fused_graph;
-  TF_CHECK_OK(RewriteGraphToFusedGraph(original_graph, &fused_graph));
+  TF_ASSERT_OK(RewriteGraphToFusedGraph(original_graph, &fused_graph));
 
   // 5.3 Setup session
   std::vector<Tensor> output_tensors;

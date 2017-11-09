@@ -49,7 +49,7 @@ enum class PluginKind {
 //
 // A PluginConfig may be passed to the StreamExecutor constructor - the plugins
 // described therein will be used to provide BLAS, DNN, FFT, and RNG
-// functionality. Platform-approprate defaults will be used for any un-set
+// functionality. Platform-appropriate defaults will be used for any un-set
 // libraries. If a platform does not support a specified plugin (ex. cuBLAS on
 // an OpenCL executor), then an error will be logged and no plugin operations
 // will succeed.

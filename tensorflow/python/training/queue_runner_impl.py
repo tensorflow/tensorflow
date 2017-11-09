@@ -22,6 +22,8 @@ import threading
 import weakref
 
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -42,6 +44,11 @@ class QueueRunner(object):
   and reporting exceptions, etc.
 
   The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
+
+  @compatibility(eager)
+  QueueRunners are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, queue=None, enqueue_ops=None, close_op=None,
@@ -78,7 +85,13 @@ class QueueRunner(object):
       ValueError: If both `queue_runner_def` and `queue` are both specified.
       ValueError: If `queue` or `enqueue_ops` are not provided when not
         restoring from `queue_runner_def`.
+      RuntimeError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "QueueRunners are not supported when eager execution is enabled. "
+          "Instead, please use tf.data to get data into your model.")
+
     if queue_runner_def:
       if queue or enqueue_ops:
         raise ValueError("queue_runner_def and queue are mutually exclusive.")
@@ -315,11 +328,17 @@ class QueueRunner(object):
       self._runs_per_session[sess] = len(self._enqueue_ops)
       self._exceptions_raised = []
 
-    ret_threads = [threading.Thread(target=self._run, args=(sess, op, coord))
-                   for op in self._enqueue_ops]
+    ret_threads = []
+    for op in self._enqueue_ops:
+      name = "QueueRunnerThread-{}-{}".format(self.name, op.name)
+      ret_threads.append(threading.Thread(target=self._run,
+                                          args=(sess, op, coord),
+                                          name=name))
     if coord:
+      name = "QueueRunnerThread-{}-close_on_stop".format(self.name)
       ret_threads.append(threading.Thread(target=self._close_on_stop,
-                                          args=(sess, self._cancel_op, coord)))
+                                          args=(sess, self._cancel_op, coord),
+                                          name=name))
     for t in ret_threads:
       if coord:
         coord.register_thread(t)
@@ -401,15 +420,39 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
     collection: A `GraphKey` specifying the graph collection to
       get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
+  Raises:
+    ValueError: if `sess` is None and there isn't any default session.
+    TypeError: if `sess` is not a `tf.Session` object.
+
   Returns:
     A list of threads.
+
+  Raises:
+    RuntimeError: If called with eager execution enabled.
+    ValueError: If called without a default `tf.Session` registered.
+
+  @compatibility(eager)
+  Not compatible with eager execution. To ingest data under eager execution,
+  use the `tf.data` API instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise RuntimeError("Queues are not compatible with eager execution.")
   if sess is None:
     sess = ops.get_default_session()
     if not sess:
       raise ValueError("Cannot start queue runners: No default session is "
                        "registered. Use `with sess.as_default()` or pass an "
                        "explicit session to tf.start_queue_runners(sess=sess)")
+
+  if not isinstance(sess, session.SessionInterface):
+    # Following check is due to backward compatibility. (b/62061352)
+    if sess.__class__.__name__ in [
+        "MonitoredSession", "SingularMonitoredSession"]:
+      return []
+    raise TypeError("sess must be a `tf.Session` object. "
+                    "Given class: {}".format(sess.__class__))
+
   with sess.graph.as_default():
     threads = []
     for qr in ops.get_collection(collection):

@@ -22,6 +22,7 @@ import copy
 import json
 
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -32,6 +33,12 @@ MASTER = "master_"
 RANDOM_SEED = 123
 
 patch = test.mock.patch
+
+
+def _create_run_config_with_cluster_spec(tf_config_str):
+  with patch.dict("os.environ", {"TF_CONFIG": tf_config_str}):
+    return run_config_lib.RunConfig(
+        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
 
 
 class RunConfigTest(test.TestCase):
@@ -289,14 +296,15 @@ class RunConfigTest(test.TestCase):
         save_summary_steps=12,
         save_checkpoints_steps=13,
         save_checkpoints_secs=14,
-        session_config=15,
+        session_config=config_pb2.ConfigProto(allow_soft_placement=True),
         keep_checkpoint_max=16,
         keep_checkpoint_every_n_hours=17)
     self.assertEqual(11, config.tf_random_seed)
     self.assertEqual(12, config.save_summary_steps)
     self.assertEqual(13, config.save_checkpoints_steps)
     self.assertEqual(14, config.save_checkpoints_secs)
-    self.assertEqual(15, config.session_config)
+    self.assertEqual(config_pb2.ConfigProto(allow_soft_placement=True),
+                     config.session_config)
     self.assertEqual(16, config.keep_checkpoint_max)
     self.assertEqual(17, config.keep_checkpoint_every_n_hours)
 
@@ -305,7 +313,7 @@ class RunConfigTest(test.TestCase):
         save_summary_steps=22,
         save_checkpoints_steps=23,
         save_checkpoints_secs=24,
-        session_config=25,
+        session_config=config_pb2.ConfigProto(allow_soft_placement=False),
         keep_checkpoint_max=26,
         keep_checkpoint_every_n_hours=27)
     self.assertEqual(config.uid(), new_config.uid())
@@ -326,17 +334,64 @@ class RunConfigTest(test.TestCase):
             "index": 1
         }
     }
-    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config_lib.RunConfig(
-          tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
-    self.assertEqual(config.cluster_spec.as_dict(), tf_config["cluster"])
 
-    config = run_config_lib.RunConfig(
-        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
-
+    config = _create_run_config_with_cluster_spec(json.dumps(tf_config))
     expected_uid = config.uid()
+    self.assertEqual(tf_config["cluster"], config.cluster_spec.as_dict())
+
     new_config = copy.deepcopy(config)
+    self.assertEqual(tf_config["cluster"], new_config.cluster_spec.as_dict())
     self.assertEqual(expected_uid, new_config.uid())
+
+  def test_uid_for_different_cluster_spec_order(self):
+    tf_config_1_str = (
+        "{\"cluster\": {\"ps\": [\"host1:1\", \"host2:2\"], "
+        "\"worker\": [\"host3:3\", \"host4:4\", \"host5:5\"]}}")
+
+    tf_config_2_str = (
+        "{\"cluster\": {\"worker\": [\"host3:3\", \"host4:4\", \"host5:5\"],"
+        "\"ps\": [\"host1:1\", \"host2:2\"]}}")
+
+    # Wraps in a loop to check flakiness.
+    for _ in range(100):
+      uid_1 = _create_run_config_with_cluster_spec(tf_config_1_str).uid()
+      uid_2 = _create_run_config_with_cluster_spec(tf_config_2_str).uid()
+      self.assertEqual(uid_1, uid_2)
+
+  def test_uid_for_different_cluster_specs(self):
+    tf_config_1 = {
+        "cluster": {
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
+        },
+    }
+
+    tf_config_2 = {
+        "cluster": {
+            run_config_lib.TaskType.PS: ["host1:1"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
+        },
+    }
+
+    uid_1 = _create_run_config_with_cluster_spec(json.dumps(tf_config_1)).uid()
+    uid_2 = _create_run_config_with_cluster_spec(json.dumps(tf_config_2)).uid()
+    self.assertNotEqual(uid_1, uid_2)
+
+  def test_num_worker_replicas_counts_in_master_too(self):
+    tf_config = {
+        "cluster": {
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.MASTER: ["host6:6"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"],
+        },
+        "task": {
+            "type": run_config_lib.TaskType.WORKER,
+            "index": 1
+        }
+    }
+
+    config = _create_run_config_with_cluster_spec(json.dumps(tf_config))
+    self.assertEqual(config.num_worker_replicas, 4)
 
 
 if __name__ == "__main__":

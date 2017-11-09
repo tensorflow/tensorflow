@@ -27,11 +27,13 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -148,17 +150,24 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       parent_scope,
       values=tuple(six.itervalues(features)),
       partitioner=partitioner) as scope:
-    if joint_weights:
-      layer_fn = layers.joint_weighted_sum_from_feature_columns
+    if all([isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
+            for fc in feature_columns]):
+      if joint_weights:
+        layer_fn = layers.joint_weighted_sum_from_feature_columns
+      else:
+        layer_fn = layers.weighted_sum_from_feature_columns
+      logits, _, _ = layer_fn(
+          columns_to_tensors=features,
+          feature_columns=feature_columns,
+          num_outputs=head.logits_dimension,
+          weight_collections=[parent_scope],
+          scope=scope)
     else:
-      layer_fn = layers.weighted_sum_from_feature_columns
-        
-    logits, _, _ = layer_fn(
-            columns_to_tensors=features,
-            feature_columns=feature_columns,
-            num_outputs=head.logits_dimension,
-            weight_collections=[parent_scope],
-            scope=scope)
+      logits = fc_core.linear_model(
+          features=features,
+          feature_columns=feature_columns,
+          units=head.logits_dimension,
+          weight_collections=[parent_scope])
 
     def _train_op_fn(loss):
       global_step = contrib_variables.get_global_step()
@@ -432,18 +441,16 @@ class LinearClassifier(estimator.Estimator):
 
     Raises:
       ValueError: if n_classes < 2.
+      ValueError: if enable_centered_bias=True and optimizer is SDCAOptimizer.
     """
-    # TODO(zoy): Give an unsupported error if enable_centered_bias is
-    #    requested for SDCA once its default changes to False.
+    if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
+        enable_centered_bias):
+      raise ValueError("enable_centered_bias is not supported with SDCA")
+
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
 
     chief_hook = None
-    if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
-        enable_centered_bias):
-      enable_centered_bias = False
-      logging.warning("centered_bias is not supported with SDCA, "
-                      "please disable it explicitly.")
     head = head_lib.multi_class_head(
         n_classes,
         weight_column_name=weight_column_name,

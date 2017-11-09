@@ -21,11 +21,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+
+static constexpr const char* const kNoInlineAttr = "_noinline";
 
 // Registers a default customizable kernel creator for a function call.
 //
@@ -34,9 +37,6 @@ namespace tensorflow {
 // takes ownership of the returned OpKernel.
 //
 // TODO(zhifengc/phawkins): b/32379046
-typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
-                             std::unique_ptr<OpKernel>*)>
-    CustomKernelCreator;
 void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
 
 // Creates a FunctionLibraryRuntime, which instantiates functions
@@ -48,19 +48,25 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
 // The returned object does not take ownerships of "device" or
 // "lib_def".  The caller must ensure "device" and "lib_def" outlives
 // the returned object.
-FunctionLibraryRuntime* NewFunctionLibraryRuntime(
+//
+// The "parent" is a pointer to the ProcessFunctionLibraryRuntime object that
+// typically owns the created FunctionLibraryRuntime object. The parent pointer
+// is not owned by the FunctionLibraryRuntime object.
+std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator);
+    CustomKernelCreator custom_kernel_creator,
+    ProcessFunctionLibraryRuntime* parent);
 
 // Same as above except that the returned runtime consults with the
 // global default custom kernel creator registered by
 // RegisterDefaultCustomKernelCreator.
-FunctionLibraryRuntime* NewFunctionLibraryRuntime(
+std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options);
+    const OptimizerOptions& optimizer_options,
+    ProcessFunctionLibraryRuntime* parent);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
 // instantiated function that is represented as a Graph with arg/ret
@@ -147,6 +153,19 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // TODO(zhifengc): Asks math expert to say the comment again.
 FunctionBody* SymbolicGradient(const FunctionBody& f);
 
+// Given a "caller" in graph "g", which is a function call of a function
+// to "fbody". Replaces the "caller" with fbody->graph and connects
+// edges properly.
+void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
+                        Node* caller, const FunctionBody* fbody);
+
+// Instantiates FunctionDef into a graph. Set *fbody to point to the
+// FunctionBody that holds the instantiated FunctionDef.
+Status FunctionDefToBodyHelper(
+    const FunctionDef& fdef, const AttrSlice& attrs,
+    const FunctionLibraryDefinition* const lib_def,
+    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
+    FunctionBody** fbody);
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_COMMON_RUNTIME_FUNCTION_H_

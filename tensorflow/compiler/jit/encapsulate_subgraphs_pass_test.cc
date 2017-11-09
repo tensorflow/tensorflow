@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 
 #include "tensorflow/cc/framework/ops.h"
@@ -101,12 +103,12 @@ Node* Input(const GraphDefBuilder::Options& opts) {
 }
 
 Node* Unary(ops::NodeOut a, const GraphDefBuilder::Options& opts) {
-  return ops::UnaryOp("UnaryTest", a, opts);
+  return ops::UnaryOp("UnaryTest", std::move(a), opts);
 }
 
 Node* Binary(ops::NodeOut a, ops::NodeOut b,
              const GraphDefBuilder::Options& opts) {
-  return ops::BinaryOp("BinaryTest", a, b, opts);
+  return ops::BinaryOp("BinaryTest", std::move(a), std::move(b), opts);
 }
 
 Node* AddNLike(const std::vector<ops::NodeOut>& inputs,
@@ -127,7 +129,7 @@ Node* RetOp(int index, ops::NodeOut a, const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp("Retval"), "_Retval",
                            opts.op_registry());
-  node_builder.Input(a).Attr("index", index);
+  node_builder.Input(std::move(a)).Attr("index", index);
   return opts.FinalizeBuilder(&node_builder);
 }
 

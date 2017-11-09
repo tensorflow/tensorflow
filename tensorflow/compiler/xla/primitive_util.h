@@ -75,8 +75,16 @@ template <>
 PrimitiveType NativeToPrimitiveType<float>();
 template <>
 PrimitiveType NativeToPrimitiveType<double>();
+template <>
+PrimitiveType NativeToPrimitiveType<half>();
+
+// Complex
+template <>
+PrimitiveType NativeToPrimitiveType<complex64>();
 
 bool IsFloatingPointType(PrimitiveType type);
+
+bool IsComplexType(PrimitiveType type);
 
 bool IsSignedIntegralType(PrimitiveType type);
 
@@ -86,6 +94,10 @@ bool IsIntegralType(PrimitiveType type);
 
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
+
+// Returns the real, imag component type underlying the given complex type.
+// LOG(FATAL)'s if complex_type is not complex.
+PrimitiveType ComplexComponentType(PrimitiveType complex_type);
 
 // Returns the native type (eg, float) corresponding to the given template
 // parameter XLA primitive type (eg, F32).
@@ -150,7 +162,16 @@ template <>
 struct PrimitiveTypeToNative<F64> {
   using type = double;
 };
+template <>
+struct PrimitiveTypeToNative<F16> {
+  using type = half;
+};
 
+// Complex
+template <>
+struct PrimitiveTypeToNative<C64> {
+  using type = complex64;
+};
 }  // namespace primitive_util
 }  // namespace xla
 

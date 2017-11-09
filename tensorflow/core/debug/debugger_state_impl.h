@@ -50,7 +50,7 @@ class DebugGraphDecorator : public DebugGraphDecoratorInterface {
   virtual ~DebugGraphDecorator() {}
 
   Status DecorateGraph(Graph* graph, Device* device) override;
-  Status PublishGraph(const Graph& graph) override;
+  Status PublishGraph(const Graph& graph, const string& device_name) override;
 
  private:
   DebugOptions debug_options_;

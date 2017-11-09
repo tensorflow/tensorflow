@@ -38,10 +38,9 @@ GetGpuCastFromDouble(DataType dst_dtype) {
 typedef Eigen::SyclDevice SYCLDevice;
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetSyclCastFromDouble(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, SYCLDevice, double);
+  CURRY_TYPES3_NO_HALF(CAST_CASE, SYCLDevice, double);
   return nullptr;
 }
-#endif // TENSORFLOW_USE_SYC
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
-

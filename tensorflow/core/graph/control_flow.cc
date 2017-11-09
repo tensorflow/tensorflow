@@ -88,7 +88,7 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
           out_info->frame = out;
           out_info->parent_frame = frame;
           TF_RETURN_IF_ERROR(
-              GetNodeAttr(out->def(), "frame_name", &out_info->frame_name));
+              GetNodeAttr(out->attrs(), "frame_name", &out_info->frame_name));
           if (out_info->frame_name.empty()) {
             return errors::InvalidArgument("The Enter node ", out->name(),
                                            " must have a frame name.");

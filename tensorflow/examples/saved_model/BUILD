@@ -2,9 +2,6 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -32,5 +29,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python/saved_model:main_op",
     ],
 )

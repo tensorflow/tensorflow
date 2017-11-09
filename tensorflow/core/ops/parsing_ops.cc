@@ -20,14 +20,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
     .Output("output: out_type")
-    .Attr("out_type: {half,float,double,int32,uint8,int16,int8,int64}")
+    .Attr("out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
@@ -86,11 +85,10 @@ REGISTER_OP("ParseExample")
       }
 
       // Output dense_shapes.
-      TensorShapeProto shape_proto;
       for (int i = 0; i < attrs.num_dense; ++i) {
-        attrs.dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle dense;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &dense));
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(attrs.dense_shapes[i], &dense));
         TF_RETURN_IF_ERROR(c->Concatenate(input, dense, &dense));
         c->set_output(output_idx++, dense);
       }
@@ -197,11 +195,10 @@ REGISTER_OP("ParseSingleSequenceExample")
       }
 
       // Output context_dense_shapes.
-      TensorShapeProto shape_proto;
       for (int i = 0; i < attrs.num_context_dense; ++i) {
-        attrs.context_dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            attrs.context_dense_shapes[i], &s));
         c->set_output(output_idx++, s);
       }
 
@@ -219,9 +216,9 @@ REGISTER_OP("ParseSingleSequenceExample")
 
       // Output feature_list_dense_shapes.
       for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
-        attrs.feature_list_dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            attrs.feature_list_dense_shapes[i], &s));
         TF_RETURN_IF_ERROR(
             c->Concatenate(c->Vector(InferenceContext::kUnknownDim), s, &s));
         c->set_output(output_idx++, s);
@@ -295,6 +292,19 @@ out_type: The type of the serialized tensor.  The provided type must match the
 output: A Tensor of type `out_type`.
 )doc");
 
+REGISTER_OP("SerializeTensor")
+    .Input("tensor: T")
+    .Output("serialized: string")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Transforms a Tensor into a serialized TensorProto proto.
+
+tensor: A Tensor of type `T`.
+T: The type of the input tensor.
+serialized: A serialized TensorProto proto of the input tensor.
+)doc");
+
 REGISTER_OP("DecodeJSONExample")
     .Input("json_examples: string")
     .Output("binary_examples: string")
@@ -319,8 +329,10 @@ REGISTER_OP("DecodeCSV")
     .Input("records: string")
     .Input("record_defaults: OUT_TYPE")
     .Output("output: OUT_TYPE")
-    .Attr("OUT_TYPE: list({float,int32,int64,string})")
+    .Attr("OUT_TYPE: list({float,double,int32,int64,string})")
     .Attr("field_delim: string = ','")
+    .Attr("use_quote_delim: bool = true")
+    .Attr("na_value: string = ''")
     .SetShapeFn([](InferenceContext* c) {
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {
@@ -347,7 +359,11 @@ records: Each string is a record/row in the csv and all records should have
   the same format.
 record_defaults: One tensor per column of the input record, with either a
   scalar default value for that column or empty if the column is required.
-field_delim: delimiter to separate fields in a record.
+field_delim: char delimiter to separate fields in a record.
+use_quote_delim: If false, treats double quotation marks as regular
+  characters inside of the string fields (ignoring RFC 4180, Section 2,
+  Bullet 5).
+na_value: Additional string to recognize as NA/NaN.
 output: Each tensor will have the same shape as records.
 )doc");
 

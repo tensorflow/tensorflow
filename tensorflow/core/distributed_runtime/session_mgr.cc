@@ -29,7 +29,7 @@ SessionMgr::SessionMgr(
     std::unique_ptr<WorkerCacheInterface> default_worker_cache,
     WorkerCacheFactory worker_cache_factory)
     : worker_env_(worker_env),
-      legacy_session_(default_worker_name, std::move(default_worker_cache),
+      legacy_session_("", default_worker_name, std::move(default_worker_cache),
                       std::unique_ptr<DeviceMgr>(worker_env->device_mgr),
                       std::unique_ptr<GraphMgr>(
                           new GraphMgr(worker_env, worker_env->device_mgr))),
@@ -63,7 +63,7 @@ Status SessionMgr::CreateSession(const string& session,
       new GraphMgr(worker_env_, device_mgr.get()));
 
   std::unique_ptr<WorkerSession> worker_session(new WorkerSession(
-      worker_name, std::unique_ptr<WorkerCacheInterface>(worker_cache),
+      session, worker_name, std::unique_ptr<WorkerCacheInterface>(worker_cache),
       std::move(device_mgr), std::move(graph_mgr)));
 
   sessions_.insert(std::make_pair(session, std::move(worker_session)));

@@ -55,6 +55,10 @@ tf_class {
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "most_specific_compatible_shape"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "num_elements"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

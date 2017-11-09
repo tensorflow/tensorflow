@@ -121,7 +121,7 @@ def watch_graph(run_options,
       are set, the two filtering operations will occur in a logical `AND`
       relation. In other words, a node will be included if and only if it
       hits both whitelists.
-    tensor_dtype_regex_whitelist: Regular-experssion whitelist for Tensor
+    tensor_dtype_regex_whitelist: Regular-expression whitelist for Tensor
       data type, e.g., `"^int.*"`.
       This whitelist operates in logical `AND` relations to the two whitelists
       above.
@@ -210,7 +210,7 @@ def watch_graph_with_blacklists(run_options,
       relation. In other words, a node will be excluded if it hits either of
       the two blacklists; a node will be included if and only if it hits
       neither of the blacklists.
-    tensor_dtype_regex_blacklist: Regular-experssion blacklist for Tensor
+    tensor_dtype_regex_blacklist: Regular-expression blacklist for Tensor
       data type, e.g., `"^int.*"`.
       This blacklist operates in logical `OR` relations to the two whitelists
       above.

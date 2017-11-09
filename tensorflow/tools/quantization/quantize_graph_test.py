@@ -688,7 +688,7 @@ class QuantizeGraphTest(test.TestCase):
 
   def test_quantized_input_range_bias_add(self):
     input_shape = [1, 1, 2, 6]
-    input_n = quantize_graph.create_node("PlaceholderV2", "input", [])
+    input_n = quantize_graph.create_node("Placeholder", "input", [])
     quantize_graph.set_attr_dtype(input_n, "dtype", dtypes.float32)
     quantize_graph.set_attr_shape(input_n, "shape", input_shape)
     offset_n = quantize_graph.create_constant_node(
@@ -713,7 +713,7 @@ class QuantizeGraphTest(test.TestCase):
     shapes = [[3, 2], [2, 4]]
     inputs = []
     for i, shape in enumerate(shapes):
-      node = quantize_graph.create_node("PlaceholderV2", "input_%s" % i, [])
+      node = quantize_graph.create_node("Placeholder", "input_%s" % i, [])
       quantize_graph.set_attr_dtype(node, "dtype", dtypes.float32)
       quantize_graph.set_attr_shape(node, "shape", shape)
       inputs.append(node)

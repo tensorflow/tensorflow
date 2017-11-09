@@ -21,9 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn import ops
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.platform import test
 
 
@@ -82,7 +82,7 @@ class Seq2SeqOpsTest(test.TestCase):
           array_ops.placeholder(dtypes.float32, [2, 2]) for _ in range(3)
       ]
       encoding = array_ops.placeholder(dtypes.float32, [2, 2])
-      cell = core_rnn_cell_impl.GRUCell(2)
+      cell = rnn_cell.GRUCell(2)
       outputs, states, sampling_outputs, sampling_states = (
           ops.rnn_decoder(decoder_inputs, encoding, cell))
       self.assertEqual(len(outputs), 3)

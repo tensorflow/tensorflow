@@ -284,6 +284,7 @@ meta_graphs {
           type: "shape"
           default_value {
             shape {
+              unknown_rank: true
             }
           }
         }
@@ -447,7 +448,7 @@ meta_graphs {
       }
     }
     tags: "serve"
-    tensorflow_version: "1.0.0"
+    tensorflow_version: "1.1.0-rc2"
     tensorflow_git_version: "unknown"
   }
   graph_def {
@@ -885,6 +886,7 @@ meta_graphs {
         key: "shape"
         value {
           shape {
+            unknown_rank: true
           }
         }
       }
@@ -1714,7 +1716,7 @@ meta_graphs {
             dtype: DT_STRING
             tensor_shape {
             }
-            string_val: "_temp_d286b725003942fd8bac94b6c67e7c0c/part"
+            string_val: "_temp_80e928f1e0c844239d136d1ea966099d/part"
           }
         }
       }
@@ -2444,7 +2446,7 @@ meta_graphs {
       input: "^save/restore_shard"
     }
     versions {
-      producer: 21
+      producer: 23
     }
   }
   saver_def {

@@ -95,7 +95,7 @@ void ConcatSYCL(const Eigen::SyclDevice& d,
      const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
      typename TTypes<T, 2>::Matrix* output);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL)
 
 #undef REGISTER_SYCL
 #endif // TENSORFLOW_USE_SYCL

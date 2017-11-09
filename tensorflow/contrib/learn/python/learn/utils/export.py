@@ -89,7 +89,7 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
 def generic_signature_fn(examples, unused_features, predictions):
   """Creates generic signature from given examples and predictions.
 
-  This is needed for backward compatibility with default behaviour of
+  This is needed for backward compatibility with default behavior of
   export_estimator.
 
   Args:

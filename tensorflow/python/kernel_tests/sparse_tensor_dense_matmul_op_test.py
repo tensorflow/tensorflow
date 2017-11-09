@@ -347,7 +347,7 @@ def sparse_tensor_dense_vs_dense_matmul_benchmark(thresh,
           ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
               x_t, y_t, adjoint_a, adjoint_b)
       else:
-        with ops.device("/gpu:0"):
+        with ops.device("/device:GPU:0"):
           x_t = constant_op.constant(x)
           y_t = constant_op.constant(y)
           ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
@@ -365,7 +365,7 @@ def sparse_tensor_dense_vs_dense_matmul_benchmark(thresh,
         ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
             x_ind, x_val, x_shape, y_t, adjoint_a, adjoint_b)
     else:
-      with ops.device("/gpu:0"):
+      with ops.device("/device:GPU:0"):
         x_ind = constant_op.constant(np.vstack(np.where(x)).astype(np.int64).T)
         x_val = constant_op.constant(x[np.where(x)])
         x_shape = constant_op.constant(np.array(x.shape).astype(np.int64))

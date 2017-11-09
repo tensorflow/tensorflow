@@ -18,9 +18,14 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/reader_base.h"
+#include "tensorflow/core/framework/reader_base.pb.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -29,20 +34,11 @@ namespace tensorflow {
 
 static Status ReadEntireFile(Env* env, const string& filename,
                              string* contents) {
-  uint64 file_size = 0;
-  TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
-  contents->resize(file_size);
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
-  StringPiece data;
-  TF_RETURN_IF_ERROR(file->Read(0, file_size, &data, &(*contents)[0]));
-  if (data.size() != file_size) {
-    return errors::DataLoss("Truncated read of '", filename, "' expected ",
-                            file_size, " got ", data.size());
-  }
-  if (data.data() != &(*contents)[0]) {
-    memmove(&(*contents)[0], data.data(), data.size());
-  }
+  io::RandomAccessInputStream input_stream(file.get());
+  io::BufferedInputStream in(&input_stream, 1 << 20);
+  TF_RETURN_IF_ERROR(in.ReadAll(contents));
   return Status::OK();
 }
 
@@ -137,10 +133,14 @@ class WriteFileOp : public OpKernel {
                 errors::InvalidArgument(
                     "Contents tensor must be scalar, but had shape: ",
                     contents_input->shape().DebugString()));
-    OP_REQUIRES_OK(
-        context,
-        WriteStringToFile(context->env(), filename_input->scalar<string>()(),
-                          contents_input->scalar<string>()()));
+    const string& filename = filename_input->scalar<string>()();
+    const string dir = io::Dirname(filename).ToString();
+    if (!context->env()->FileExists(dir).ok()) {
+      OP_REQUIRES_OK(context, context->env()->RecursivelyCreateDir(dir));
+    }
+    OP_REQUIRES_OK(context,
+                   WriteStringToFile(context->env(), filename,
+                                     contents_input->scalar<string>()()));
   }
 };
 

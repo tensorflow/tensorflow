@@ -20,39 +20,76 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 
-port::Status ExecutorCache::Insert(const StreamExecutorConfig& config,
-                                   std::unique_ptr<StreamExecutor> entry) {
-  if (Get(config).ok()) {
-    return port::Status(port::error::ALREADY_EXISTS,
-                        "An executor with a matching config already exists.");
+port::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
+    const StreamExecutorConfig& config,
+    const std::function<ExecutorFactory>& factory) {
+  Entry* entry = nullptr;
+  {
+    mutex_lock lock{mutex_};
+    entry = &cache_[config.ordinal];
+    // Release the map lock; the address of 'entry' is stable because
+    // std::map guarantees reference stability.
   }
 
-  cache_[config.ordinal].emplace_back(Entry(config, std::move(entry)));
-
-  return port::Status::OK();
-}
-
-port::StatusOr<StreamExecutor*> ExecutorCache::Get(
-    const StreamExecutorConfig& config) {
-  auto entries = cache_.find(config.ordinal);
-  if (entries == cache_.end()) {
-    return port::Status(
-        port::error::NOT_FOUND,
-        port::Printf("No executors registered for ordinal %d", config.ordinal));
-  }
-
-  for (const auto& iter : entries->second) {
+  // Acquire the per-Entry mutex without holding the map mutex. Initializing
+  // an Executor may be expensive, so we want to allow concurrent
+  // initialization of different entries.
+  mutex_lock lock{entry->configurations_mutex};
+  for (const auto& iter : entry->configurations) {
     if (iter.first.plugin_config == config.plugin_config &&
         iter.first.device_options == config.device_options) {
+      VLOG(2) << "hit in cache";
       return iter.second.get();
     }
   }
 
+  VLOG(2) << "building executor";
+  port::StatusOr<std::unique_ptr<StreamExecutor>> result = factory();
+  if (!result.ok()) {
+    VLOG(2) << "failed to get build executor: " << result.status();
+    // If construction failed, leave the cache Entry around, but with a null
+    // executor.
+    return result.status();
+  }
+  entry->configurations.emplace_back(config, std::move(result.ValueOrDie()));
+  return entry->configurations.back().second.get();
+}
+
+port::StatusOr<StreamExecutor*> ExecutorCache::Get(
+    const StreamExecutorConfig& config) {
+  Entry* entry = nullptr;
+  {
+    mutex_lock lock{mutex_};
+    entry = &cache_[config.ordinal];
+    // Release the map lock; the address of 'entry' is stable because
+    // std::map guarantees reference stability.
+  }
+  mutex_lock lock{entry->configurations_mutex};
+  if (entry->configurations.empty()) {
+    return port::Status(
+        port::error::NOT_FOUND,
+        port::Printf("No executors registered for ordinal %d", config.ordinal));
+  }
+  for (const auto& iter : entry->configurations) {
+    if (iter.first.plugin_config == config.plugin_config &&
+        iter.first.device_options == config.device_options) {
+      VLOG(2) << "hit in cache for device ordinal " << config.ordinal;
+      return iter.second.get();
+    }
+  }
   return port::Status(port::error::NOT_FOUND,
                       "No executor found with a matching config.");
 }
 
-void ExecutorCache::DestroyAllExecutors() { cache_.clear(); }
+void ExecutorCache::DestroyAllExecutors() {
+  mutex_lock lock{mutex_};
+  cache_.clear();
+}
+
+ExecutorCache::Entry::~Entry() {
+  mutex_lock lock{configurations_mutex};
+  configurations.clear();
+}
 
 }  // namespace gputools
 }  // namespace perftools

@@ -143,7 +143,7 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
       return out;
     }
     default:
-      CHECK(false) << "not supposed to be here.  dtype requested: " << dtype;
+      LOG(FATAL) << "not supposed to be here.  dtype requested: " << dtype;
   }
 }
 
@@ -180,7 +180,7 @@ int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
       break;
     }
     default:
-      CHECK(false) << "Not supposed to be here.  Saw dtype: " << dtype;
+      LOG(FATAL) << "Not supposed to be here.  Saw dtype: " << dtype;
   }
 
   return num_elements;
@@ -208,7 +208,7 @@ void RowDenseCopy(const std::size_t& out_index, const DataType& dtype,
       break;
     }
     default:
-      CHECK(false) << "Not supposed to be here.  Saw dtype: " << dtype;
+      LOG(FATAL) << "Not supposed to be here.  Saw dtype: " << dtype;
   }
 }
 
@@ -323,7 +323,7 @@ Status BatchExampleProtoToTensors(
     std::vector<Tensor>* output_sparse_shapes_tensor) {
   const int batch_size = examples.size();
 
-  const bool has_names = (names.size() > 0);
+  const bool has_names = (!names.empty());
   if (has_names) {
     if (names.size() != examples.size()) {
       return errors::InvalidArgument(

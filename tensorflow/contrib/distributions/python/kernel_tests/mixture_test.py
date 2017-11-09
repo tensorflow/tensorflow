@@ -38,7 +38,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
-distributions_py = distributions
+ds = distributions
 
 
 def _swap_first_last_axes(array):
@@ -47,37 +47,64 @@ def _swap_first_last_axes(array):
   return array.transpose(transpose)
 
 
+def _mixture_stddev_np(pi_vector, mu_vector, sigma_vector):
+  """Computes the standard deviation of a univariate mixture distribution.
+
+  Acts upon `np.array`s (not `tf.Tensor`s).
+
+  Args:
+    pi_vector: A `np.array` of mixture weights. Shape `[batch, components]`.
+    mu_vector: A `np.array` of means. Shape `[batch, components]`
+    sigma_vector: A `np.array` of stddevs. Shape `[batch, components]`.
+
+  Returns:
+    A `np.array` containing the batch of standard deviations.
+  """
+  pi_vector = np.expand_dims(pi_vector, axis=1)
+  mean_wa = np.matmul(pi_vector, np.expand_dims(mu_vector, axis=2))
+  var_wa = np.matmul(pi_vector, np.expand_dims(sigma_vector**2, axis=2))
+  mid_term = np.matmul(pi_vector, np.expand_dims(mu_vector**2, axis=2))
+  mixture_variance = (
+      np.squeeze(var_wa) + np.squeeze(mid_term) - np.squeeze(mean_wa**2))
+  return np.sqrt(mixture_variance)
+
+
 @contextlib.contextmanager
 def _test_capture_mvndiag_sample_outputs():
-  """Use monkey-patching to capture the output of an MVNDiag _sample_n."""
+  """Use monkey-patching to capture the output of an MVNDiag _call_sample_n."""
   data_container = []
-  true_mvndiag_sample_n = distributions_py.MultivariateNormalDiag._sample_n
+  true_mvndiag_call_sample_n = (
+      ds.MultivariateNormalDiag._call_sample_n)
 
-  def _capturing_mvndiag_sample_n(self, n, seed=None):
-    samples = true_mvndiag_sample_n(self, n=n, seed=seed)
+  def _capturing_mvndiag_call_sample_n(
+      self, sample_shape, seed, name, **kwargs):
+    samples = true_mvndiag_call_sample_n(
+        self, sample_shape, seed, name, **kwargs)
     data_container.append(samples)
     return samples
 
-  distributions_py.MultivariateNormalDiag._sample_n = (
-      _capturing_mvndiag_sample_n)
+  ds.MultivariateNormalDiag._call_sample_n = (
+      _capturing_mvndiag_call_sample_n)
   yield data_container
-  distributions_py.MultivariateNormalDiag._sample_n = true_mvndiag_sample_n
+  ds.MultivariateNormalDiag._call_sample_n = (
+      true_mvndiag_call_sample_n)
 
 
 @contextlib.contextmanager
 def _test_capture_normal_sample_outputs():
-  """Use monkey-patching to capture the output of an Normal _sample_n."""
+  """Use monkey-patching to capture the output of an Normal _call_sample_n."""
   data_container = []
-  true_normal_sample_n = distributions_py.Normal._sample_n
+  true_normal_call_sample_n = ds.Normal._call_sample_n
 
-  def _capturing_normal_sample_n(self, n, seed=None):
-    samples = true_normal_sample_n(self, n=n, seed=seed)
+  def _capturing_normal_call_sample_n(self, sample_shape, seed, name, **kwargs):
+    samples = true_normal_call_sample_n(
+        self, sample_shape, seed, name, **kwargs)
     data_container.append(samples)
     return samples
 
-  distributions_py.Normal._sample_n = _capturing_normal_sample_n
+  ds.Normal._call_sample_n = _capturing_normal_call_sample_n
   yield data_container
-  distributions_py.Normal._sample_n = true_normal_sample_n
+  ds.Normal._call_sample_n = true_normal_call_sample_n
 
 
 def make_univariate_mixture(batch_shape, num_components):
@@ -86,13 +113,13 @@ def make_univariate_mixture(batch_shape, num_components):
       array_ops.concat((batch_shape, [num_components]), axis=0),
       -1, 1, dtype=dtypes.float32) - 50.
   components = [
-      distributions_py.Normal(
+      ds.Normal(
           loc=random_ops.random_normal(batch_shape),
           scale=10 * random_ops.random_uniform(batch_shape))
       for _ in range(num_components)
   ]
-  cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
-  return distributions_py.Mixture(cat, components)
+  cat = ds.Categorical(logits, dtype=dtypes.int32)
+  return ds.Mixture(cat, components)
 
 
 def make_multivariate_mixture(batch_shape, num_components, event_shape,
@@ -114,11 +141,11 @@ def make_multivariate_mixture(batch_shape, num_components, event_shape,
     scale_diag = 10 * random_ops.random_uniform(batch_and_event_shape)
     loc.set_shape(static_batch_and_event_shape)
     scale_diag.set_shape(static_batch_and_event_shape)
-    return distributions_py.MultivariateNormalDiag(
+    return ds.MultivariateNormalDiag(
         loc=loc, scale_diag=scale_diag)
   components = [create_component() for _ in range(num_components)]
-  cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
-  return distributions_py.Mixture(cat, components)
+  cat = ds.Categorical(logits, dtype=dtypes.int32)
+  return ds.Mixture(cat, components)
 
 
 class MixtureTest(test.TestCase):
@@ -143,37 +170,37 @@ class MixtureTest(test.TestCase):
   def testBrokenShapesStatic(self):
     with self.assertRaisesWithPredicateMatch(ValueError,
                                              r"cat.num_classes != len"):
-      distributions_py.Mixture(
-          distributions_py.Categorical([0.1, 0.5]),  # 2 classes
-          [distributions_py.Normal(loc=1.0, scale=2.0)])
+      ds.Mixture(
+          ds.Categorical([0.1, 0.5]),  # 2 classes
+          [ds.Normal(loc=1.0, scale=2.0)])
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"\(\) and \(2,\) are not compatible"):
       # The value error is raised because the batch shapes of the
       # Normals are not equal.  One is a scalar, the other is a
       # vector of size (2,).
-      distributions_py.Mixture(
-          distributions_py.Categorical([-0.5, 0.5]),  # scalar batch
+      ds.Mixture(
+          ds.Categorical([-0.5, 0.5]),  # scalar batch
           [
-              distributions_py.Normal(
+              ds.Normal(
                   loc=1.0, scale=2.0),  # scalar dist
-              distributions_py.Normal(
+              ds.Normal(
                   loc=[1.0, 1.0], scale=[2.0, 2.0])
           ])
     with self.assertRaisesWithPredicateMatch(ValueError, r"Could not infer"):
       cat_logits = array_ops.placeholder(shape=[1, None], dtype=dtypes.float32)
-      distributions_py.Mixture(
-          distributions_py.Categorical(cat_logits),
-          [distributions_py.Normal(
+      ds.Mixture(
+          ds.Categorical(cat_logits),
+          [ds.Normal(
               loc=[1.0], scale=[2.0])])
 
   def testBrokenShapesDynamic(self):
     with self.test_session():
       d0_param = array_ops.placeholder(dtype=dtypes.float32)
       d1_param = array_ops.placeholder(dtype=dtypes.float32)
-      d = distributions_py.Mixture(
-          distributions_py.Categorical([0.1, 0.2]), [
-              distributions_py.Normal(
-                  loc=d0_param, scale=d0_param), distributions_py.Normal(
+      d = ds.Mixture(
+          ds.Categorical([0.1, 0.2]), [
+              ds.Normal(
+                  loc=d0_param, scale=d0_param), ds.Normal(
                       loc=d1_param, scale=d1_param)
           ],
           validate_args=True)
@@ -184,21 +211,21 @@ class MixtureTest(test.TestCase):
 
   def testBrokenTypes(self):
     with self.assertRaisesWithPredicateMatch(TypeError, "Categorical"):
-      distributions_py.Mixture(None, [])
-    cat = distributions_py.Categorical([0.3, 0.2])
+      ds.Mixture(None, [])
+    cat = ds.Categorical([0.3, 0.2])
     # components must be a list of distributions
     with self.assertRaisesWithPredicateMatch(
         TypeError, "all .* must be Distribution instances"):
-      distributions_py.Mixture(cat, [None])
+      ds.Mixture(cat, [None])
     with self.assertRaisesWithPredicateMatch(TypeError, "same dtype"):
-      distributions_py.Mixture(
+      ds.Mixture(
           cat, [
-              distributions_py.Normal(loc=[1.0], scale=[2.0]),
-              distributions_py.Normal(loc=[np.float16(1.0)],
-                                      scale=[np.float16(2.0)]),
+              ds.Normal(loc=[1.0], scale=[2.0]),
+              ds.Normal(loc=[np.float16(1.0)],
+                        scale=[np.float16(2.0)]),
           ])
     with self.assertRaisesWithPredicateMatch(ValueError, "non-empty list"):
-      distributions_py.Mixture(distributions_py.Categorical([0.3, 0.2]), None)
+      ds.Mixture(ds.Categorical([0.3, 0.2]), None)
 
     # TODO(ebrevdo): once distribution Domains have been added, add a
     # test to ensure that the domains of the distributions in a
@@ -249,6 +276,106 @@ class MixtureTest(test.TestCase):
             [c_p * m for (c_p, m) in zip(cat_probs_value, dist_means_value)])
 
         self.assertAllClose(true_mean, mean_value)
+
+  def testStddevShapeUnivariate(self):
+    num_components = 2
+    # This is the same shape test which is done in 'testMeanUnivariate'.
+    with self.test_session() as sess:
+      for batch_shape in ((), (2,), (2, 3)):
+        dist = make_univariate_mixture(
+            batch_shape=batch_shape, num_components=num_components)
+        dev = dist.stddev()
+        self.assertEqual(batch_shape, dev.get_shape())
+
+        cat_probs = nn_ops.softmax(dist.cat.logits)
+        dist_devs = [d.stddev() for d in dist.components]
+        dist_means = [d.mean() for d in dist.components]
+
+        res = sess.run([dev, cat_probs, dist_devs, dist_means])
+        dev_value, cat_probs_values, dist_devs_values, dist_means_values = res
+        # Manual computation of stddev.
+        batch_shape_res = cat_probs_values.shape[:-1]
+        event_shape_res = dist_devs_values[0].shape[len(batch_shape_res):]
+        stacked_mean_res = np.stack(dist_means_values, -1)
+        stacked_dev_res = np.stack(dist_devs_values, -1)
+
+        # Broadcast cat probs over event dimensions.
+        for _ in range(len(event_shape_res)):
+          cat_probs_values = np.expand_dims(cat_probs_values, len(batch_shape))
+        cat_probs_values = cat_probs_values + np.zeros_like(stacked_dev_res)  # pylint: disable=g-no-augmented-assignment
+
+        # Perform stddev computation on a flattened batch.
+        flat_batch_manual_dev = _mixture_stddev_np(
+            np.reshape(cat_probs_values, [-1, num_components]),
+            np.reshape(stacked_mean_res, [-1, num_components]),
+            np.reshape(stacked_dev_res, [-1, num_components]))
+
+        # Reshape to full shape.
+        full_shape_res = list(batch_shape_res) + list(event_shape_res)
+        manual_dev = np.reshape(flat_batch_manual_dev, full_shape_res)
+        self.assertEqual(batch_shape, dev_value.shape)
+        self.assertAllClose(manual_dev, dev_value)
+
+  def testStddevShapeMultivariate(self):
+    num_components = 2
+
+    # This is the same shape test which is done in 'testMeanMultivariate'.
+    with self.test_session() as sess:
+      for batch_shape in ((), (2,), (2, 3)):
+        dist = make_multivariate_mixture(
+            batch_shape=batch_shape,
+            num_components=num_components,
+            event_shape=(4,))
+        dev = dist.stddev()
+        self.assertEqual(batch_shape + (4,), dev.get_shape())
+
+        cat_probs = nn_ops.softmax(dist.cat.logits)
+        dist_devs = [d.stddev() for d in dist.components]
+        dist_means = [d.mean() for d in dist.components]
+
+        res = sess.run([dev, cat_probs, dist_devs, dist_means])
+        dev_value, cat_probs_values, dist_devs_values, dist_means_values = res
+        # Manual computation of stddev.
+        batch_shape_res = cat_probs_values.shape[:-1]
+        event_shape_res = dist_devs_values[0].shape[len(batch_shape_res):]
+        stacked_mean_res = np.stack(dist_means_values, -1)
+        stacked_dev_res = np.stack(dist_devs_values, -1)
+
+        # Broadcast cat probs over event dimensions.
+        for _ in range(len(event_shape_res)):
+          cat_probs_values = np.expand_dims(cat_probs_values, len(batch_shape))
+        cat_probs_values = cat_probs_values + np.zeros_like(stacked_dev_res)  # pylint: disable=g-no-augmented-assignment
+
+        # Perform stddev computation on a flattened batch.
+        flat_batch_manual_dev = _mixture_stddev_np(
+            np.reshape(cat_probs_values, [-1, num_components]),
+            np.reshape(stacked_mean_res, [-1, num_components]),
+            np.reshape(stacked_dev_res, [-1, num_components]))
+
+        # Reshape to full shape.
+        full_shape_res = list(batch_shape_res) + list(event_shape_res)
+        manual_dev = np.reshape(flat_batch_manual_dev, full_shape_res)
+        self.assertEqual(tuple(full_shape_res), dev_value.shape)
+        self.assertAllClose(manual_dev, dev_value)
+
+  def testSpecificStddevValue(self):
+    cat_probs = np.array([0.5, 0.5])
+    component_means = np.array([-10, 0.1])
+    component_devs = np.array([0.05, 2.33])
+    ground_truth_stddev = 5.3120805
+
+    mixture_dist = ds.Mixture(
+        cat=ds.Categorical(probs=cat_probs),
+        components=[
+            ds.Normal(loc=component_means[0],
+                      scale=component_devs[0]),
+            ds.Normal(loc=component_means[1],
+                      scale=component_devs[1]),
+        ])
+    mix_dev = mixture_dist.stddev()
+    with self.test_session() as sess:
+      actual_stddev = sess.run(mix_dev)
+    self.assertAllClose(actual_stddev, ground_truth_stddev)
 
   def testProbScalarUnivariate(self):
     with self.test_session() as sess:
@@ -390,22 +517,22 @@ class MixtureTest(test.TestCase):
 
       random_seed.set_random_seed(654321)
       components = [
-          distributions_py.Normal(
+          ds.Normal(
               loc=mu, scale=sigma) for mu, sigma in zip(mus, sigmas)
       ]
-      cat = distributions_py.Categorical(
+      cat = ds.Categorical(
           logits, dtype=dtypes.int32, name="cat1")
-      dist1 = distributions_py.Mixture(cat, components, name="mixture1")
+      dist1 = ds.Mixture(cat, components, name="mixture1")
       samples1 = dist1.sample(n, seed=123456).eval()
 
       random_seed.set_random_seed(654321)
       components2 = [
-          distributions_py.Normal(
+          ds.Normal(
               loc=mu, scale=sigma) for mu, sigma in zip(mus, sigmas)
       ]
-      cat2 = distributions_py.Categorical(
+      cat2 = ds.Categorical(
           logits, dtype=dtypes.int32, name="cat2")
-      dist2 = distributions_py.Mixture(cat2, components2, name="mixture2")
+      dist2 = ds.Mixture(cat2, components2, name="mixture2")
       samples2 = dist2.sample(n, seed=123456).eval()
 
       self.assertAllClose(samples1, samples2)
@@ -538,15 +665,15 @@ class MixtureTest(test.TestCase):
       e_x = np.exp(x - np.max(x))
       return e_x / e_x.sum()
 
-    # Construct the distributions_py.Mixture object.
+    # Construct the ds.Mixture object.
     mixture_weights = _scalar_univariate_softmax(mixture_weight_logits)
     means = [np.random.uniform(low=-10, high=10, size=()).astype(np.float32)
              for _ in range(n_components)]
     sigmas = [np.ones(shape=(), dtype=np.float32) for _ in range(n_components)]
-    cat_tf = distributions_py.Categorical(probs=mixture_weights)
-    components_tf = [distributions_py.Normal(loc=mu, scale=sigma)
+    cat_tf = ds.Categorical(probs=mixture_weights)
+    components_tf = [ds.Normal(loc=mu, scale=sigma)
                      for (mu, sigma) in zip(means, sigmas)]
-    mixture_tf = distributions_py.Mixture(cat=cat_tf, components=components_tf)
+    mixture_tf = ds.Mixture(cat=cat_tf, components=components_tf)
 
     x_tensor = array_ops.placeholder(shape=(), dtype=dtypes.float32)
 
@@ -591,10 +718,10 @@ class MixtureTest(test.TestCase):
              for _ in range(n_components)]
     sigmas = [np.ones(shape=psize, dtype=np.float32)
               for _ in range(n_components)]
-    cat_tf = distributions_py.Categorical(probs=mixture_weights)
-    components_tf = [distributions_py.Normal(loc=mu, scale=sigma)
+    cat_tf = ds.Categorical(probs=mixture_weights)
+    components_tf = [ds.Normal(loc=mu, scale=sigma)
                      for (mu, sigma) in zip(means, sigmas)]
-    mixture_tf = distributions_py.Mixture(cat=cat_tf, components=components_tf)
+    mixture_tf = ds.Mixture(cat=cat_tf, components=components_tf)
 
     x_tensor = array_ops.placeholder(shape=psize, dtype=dtypes.float32)
     xs_to_check = [
@@ -623,6 +750,20 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(x_cdf_tf_result, scipy_cdf_result)
         self.assertAllClose(np.exp(x_log_cdf_tf_result), scipy_cdf_result)
 
+  def testSampleBimixGamma(self):
+    """Tests a bug in the underlying tf.Gamma op.
+
+    Mixture's use of dynamic partition requires `random_gamma` correctly returns
+    an empty `Tensor`.
+    """
+    with self.test_session():
+      gm = ds.Mixture(
+          cat=ds.Categorical(probs=[.3, .7]),
+          components=[ds.Gamma(1., 2.),
+                      ds.Gamma(2., 1.)])
+      x_ = gm.sample().eval()
+      self.assertAllEqual([], x_.shape)
+
 
 class MixtureBenchmark(test.Benchmark):
 
@@ -634,7 +775,7 @@ class MixtureBenchmark(test.Benchmark):
     np.random.seed(127)
     with session.Session(config=config, graph=ops.Graph()) as sess:
       random_seed.set_random_seed(0)
-      with ops.device("/gpu:0" if use_gpu else "/cpu:0"):
+      with ops.device("/device:GPU:0" if use_gpu else "/cpu:0"):
         mixture = create_distribution(
             num_components=num_components,
             batch_size=batch_size,
@@ -657,7 +798,7 @@ class MixtureBenchmark(test.Benchmark):
         2, "mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
 
     def create_distribution(batch_size, num_components, num_features):
-      cat = distributions_py.Categorical(
+      cat = ds.Categorical(
           logits=np.random.randn(batch_size, num_components))
       mus = [
           variables.Variable(np.random.randn(batch_size, num_features))
@@ -668,9 +809,9 @@ class MixtureBenchmark(test.Benchmark):
           for _ in range(num_components)
       ]
       components = list(
-          distributions_py.MultivariateNormalDiag(
+          ds.MultivariateNormalDiag(
               loc=mu, scale_diag=sigma) for (mu, sigma) in zip(mus, sigmas))
-      return distributions_py.Mixture(cat, components)
+      return ds.Mixture(cat, components)
 
     for use_gpu in False, True:
       if use_gpu and not test.is_gpu_available():
@@ -697,7 +838,7 @@ class MixtureBenchmark(test.Benchmark):
       return np.stack([np.dot(np.transpose(z), z) for z in x])
 
     def create_distribution(batch_size, num_components, num_features):
-      cat = distributions_py.Categorical(
+      cat = ds.Categorical(
           logits=np.random.randn(batch_size, num_components))
       mus = [
           variables.Variable(np.random.randn(batch_size, num_features))
@@ -709,10 +850,10 @@ class MixtureBenchmark(test.Benchmark):
           for _ in range(num_components)
       ]
       components = list(
-          distributions_py.MultivariateNormalTriL(
+          ds.MultivariateNormalTriL(
               loc=mu, scale_tril=linalg_ops.cholesky(sigma))
           for (mu, sigma) in zip(mus, sigmas))
-      return distributions_py.Mixture(cat, components)
+      return ds.Mixture(cat, components)
 
     for use_gpu in False, True:
       if use_gpu and not test.is_gpu_available():

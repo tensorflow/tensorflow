@@ -24,7 +24,7 @@ TF_OperationDescription* requireHandle(JNIEnv* env, jlong handle) {
   if (handle == 0) {
     throwException(env, kIllegalStateException,
                    "Operation has already been built");
-    return 0;
+    return nullptr;
   }
   return reinterpret_cast<TF_OperationDescription*>(handle);
 }
@@ -75,8 +75,10 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_OperationBuilder_finish(
   TF_Status* status = TF_NewStatus();
   TF_Operation* op = TF_FinishOperation(d, status);
   if (throwExceptionIfNotOK(env, status)) {
+    TF_DeleteStatus(status);
     return reinterpret_cast<jlong>(op);
   }
+  TF_DeleteStatus(status);
   return 0;
 }
 
@@ -113,6 +115,20 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInputList(
   env->ReleaseLongArrayElements(op_handles, oph, JNI_ABORT);
   if (!ok) return;
   TF_AddInputList(d, o.get(), n);
+}
+
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addControlInput(
+    JNIEnv* env, jclass clazz, jlong handle, jlong op_handle) {
+  if (op_handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "control input is not valid, "
+                   "perhaps the Graph containing it has been closed()?");
+    return;
+  }
+  TF_Operation* control = reinterpret_cast<TF_Operation*>(op_handle);
+  TF_OperationDescription* d = requireHandle(env, handle);
+  if (d == nullptr) return;
+  TF_AddControlInput(d, control);
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setDevice(
@@ -197,6 +213,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensor(
   TF_Status* status = TF_NewStatus();
   TF_SetAttrTensor(d, cname, t, status);
   throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
   env->ReleaseStringUTFChars(name, cname);
 }
 
@@ -220,6 +237,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensorList(
   TF_Status* status = TF_NewStatus();
   TF_SetAttrTensorList(d, cname, tensors.get(), n, status);
   throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
   env->ReleaseStringUTFChars(name, cname);
 }
 
@@ -241,5 +259,34 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShape(
   }
   const char* cname = env->GetStringUTFChars(name, nullptr);
   TF_SetAttrShape(d, cname, cvalue.get(), static_cast<int>(num_dims));
+  env->ReleaseStringUTFChars(name, cname);
+}
+
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
+    JNIEnv* env, jclass object, jlong handle, jstring name,
+    jobjectArray values) {
+  TF_OperationDescription* d = requireHandle(env, handle);
+  if (d == nullptr) return;
+  const char* cname = env->GetStringUTFChars(name, nullptr);
+  int num_values = env->GetArrayLength(values);
+  static_assert(sizeof(jbyte) == 1,
+                "Require Java byte to be represented as a single byte");
+  std::unique_ptr<jbyteArray[]> jarrays(new jbyteArray[num_values]);
+  std::unique_ptr<jbyte* []> jvalues(new jbyte*[num_values]);
+  std::unique_ptr<void* []> cvalues(new void*[num_values]);
+  std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
+
+  for (int i = 0; i < num_values; ++i) {
+    jbyteArray v =
+        static_cast<jbyteArray>(env->GetObjectArrayElement(values, i));
+    jarrays[i] = v;
+    jvalues[i] = env->GetByteArrayElements(v, nullptr);
+    cvalues[i] = jvalues[i];
+    lengths[i] = static_cast<size_t>(env->GetArrayLength(v));
+  }
+  TF_SetAttrStringList(d, cname, cvalues.get(), lengths.get(), num_values);
+  for (int i = 0; i < num_values; ++i) {
+    env->ReleaseByteArrayElements(jarrays[i], jvalues[i], JNI_ABORT);
+  }
   env->ReleaseStringUTFChars(name, cname);
 }

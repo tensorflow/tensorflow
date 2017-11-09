@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tracking_allocator.h"
 
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -44,6 +45,7 @@ void* TrackingAllocator::AllocateRaw(
       allocated_ += allocated_bytes;
       high_watermark_ = std::max(high_watermark_, allocated_);
       total_bytes_ += allocated_bytes;
+      allocations_.emplace_back(allocated_bytes, Env::Default()->NowMicros());
       ++ref_;
     }
   } else if (track_sizes_locally_) {
@@ -59,10 +61,12 @@ void* TrackingAllocator::AllocateRaw(
     allocated_ += allocated_bytes;
     high_watermark_ = std::max(high_watermark_, allocated_);
     total_bytes_ += allocated_bytes;
+    allocations_.emplace_back(allocated_bytes, Env::Default()->NowMicros());
     ++ref_;
   } else {
     mutex_lock lock(mu_);
     total_bytes_ += num_bytes;
+    allocations_.emplace_back(num_bytes, Env::Default()->NowMicros());
     ++ref_;
   }
   return ptr;
@@ -95,6 +99,7 @@ void TrackingAllocator::DeallocateRaw(void* ptr) {
     if (tracks_allocation_sizes) {
       CHECK_GE(allocated_, allocated_bytes);
       allocated_ -= allocated_bytes;
+      allocations_.emplace_back(-allocated_bytes, Env::Default()->NowMicros());
     }
     should_delete = UnRef();
   }
@@ -151,22 +156,31 @@ void TrackingAllocator::GetStats(AllocatorStats* stats) {
   allocator_->GetStats(stats);
 }
 
-std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizesAndUnRef() {
+std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizes() {
   size_t high_watermark;
   size_t total_bytes;
   size_t still_live_bytes;
-  bool should_delete;
   {
     mutex_lock lock(mu_);
     high_watermark = high_watermark_;
     total_bytes = total_bytes_;
     still_live_bytes = allocated_;
+  }
+  return std::make_tuple(total_bytes, high_watermark, still_live_bytes);
+}
+
+gtl::InlinedVector<AllocRecord, 4> TrackingAllocator::GetRecordsAndUnRef() {
+  bool should_delete;
+  gtl::InlinedVector<AllocRecord, 4> allocations;
+  {
+    mutex_lock lock(mu_);
+    allocations.swap(allocations_);
     should_delete = UnRef();
   }
   if (should_delete) {
     delete this;
   }
-  return std::make_tuple(total_bytes, high_watermark, still_live_bytes);
+  return allocations;
 }
 
 bool TrackingAllocator::UnRef() {

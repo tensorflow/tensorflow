@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/events_writer.h"
 
 #include <math.h>
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

@@ -5,7 +5,7 @@ of `SessionRunHook` and are to be used with helpers like `MonitoredSession`
 and `learn.Estimator` that wrap `tensorflow.Session`.
 
 The hooks are called between invocations of `Session.run()` to perform custom
-behaviour.
+behavior.
 
 For example the `ProfilerHook` periodically collects `RunMetadata` after
 `Session.run()` and saves profiling information that can be viewed in a

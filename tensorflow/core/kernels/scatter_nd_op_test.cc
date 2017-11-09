@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -184,8 +183,9 @@ TEST_F(ScatterNdUpdateOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Invalid indices: [2,0] = [99] is not in [0, 5)"))
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains("Invalid indices: [2,0] = [99] does not index into [5,3]"))
       << s;
 }
 
@@ -242,7 +242,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
 
 class ScatterNdUpdateBM : public ScatterNdUpdateOpTest {
  public:
-  virtual void TestBody() {}
+  void TestBody() override {}
   void MakeBenchmarkOp(const char* op, DataType index_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", op)
                      .Input(FakeInput(DT_FLOAT_REF))

@@ -93,6 +93,8 @@ class ListView(object):
 # TODO(fkp): very generic code, it should be moved in a more generic place.
 def is_iterable(obj):
   """Return true if the object is iterable."""
+  if isinstance(obj, tf_ops.Tensor):
+    return False
   try:
     _ = iter(obj)
   except Exception:  # pylint: disable=broad-except
@@ -130,7 +132,7 @@ def transform_tree(tree, fn, iterable_type=tuple):
     tree: iterable or not. If iterable, its elements (child) can also be
       iterable or not.
     fn: function to apply to each leaves.
-    iterable_type: type use to construct the resulting tree for unknwon
+    iterable_type: type use to construct the resulting tree for unknown
       iterable, typically `list` or `tuple`.
   Returns:
     A tree whose leaves has been transformed by `fn`.

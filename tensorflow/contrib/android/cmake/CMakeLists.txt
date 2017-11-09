@@ -26,14 +26,19 @@ add_library(lib_proto STATIC IMPORTED )
 set_target_properties(lib_proto PROPERTIES IMPORTED_LOCATION
     ${PREBUILT_DIR}/protobuf/lib/libprotobuf.a)
 
+add_library(lib_nsync STATIC IMPORTED )
+set_target_properties(lib_nsync PROPERTIES IMPORTED_LOCATION
+    ${TARGET_NSYNC_LIB}/lib/libnsync.a)
+
 add_library(lib_tf STATIC IMPORTED )
 set_target_properties(lib_tf PROPERTIES IMPORTED_LOCATION
         ${PREBUILT_DIR}/lib/libtensorflow-core.a)
 # Change to compile flags should be replicated into bazel build file
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DIS_SLIM_BUILD \
                      -std=c++11 -fno-rtti -fno-exceptions \
-                     -O2 -Wno-narrowing \
+                     -O2 -Wno-narrowing -fomit-frame-pointer \
                      -mfpu=neon -mfloat-abi=softfp -fPIE \
+                     -ftemplate-depth=900 \
                      -DGOOGLE_PROTOBUF_NO_RTTI \
                      -DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER")
 
@@ -57,14 +62,18 @@ add_library(tensorflow_inference SHARED
 # Include libraries needed for hello-jni lib
 target_link_libraries(tensorflow_inference
                       android
+                      dl
                       log
                       m
                       z
                       lib_tf
-                      lib_proto)
+                      lib_proto
+                      lib_nsync)
+
 include_directories(
     ${PREBUILT_DIR}/proto
     ${PREBUILT_DIR}/protobuf/include
+    ${PREBUILT_DIR}/nsync/public
     ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/downloads/eigen
     ${TENSORFLOW_ROOT_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..)

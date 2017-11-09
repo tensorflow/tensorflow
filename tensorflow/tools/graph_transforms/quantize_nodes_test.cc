@@ -105,9 +105,9 @@ class QuantizeNodesTest : public ::testing::Test {
                                     &quantized_graph_def);
     // Reshape is not included here because it can be added as part of the
     // quantization process.
-    const std::set<string> quantizable_ops = {"BiasAdd", "Concat",  "Conv2D",
-                                              "MatMul",  "Relu",    "Relu6",
-                                              "AvgPool", "MaxPool", "Mul"};
+    const std::set<string> quantizable_ops = {
+        "Add",   "BiasAdd",        "Concat",  "Conv2D",  "MatMul", "Relu",
+        "Relu6", "ResizeBilinear", "AvgPool", "MaxPool", "Mul"};
     for (const NodeDef& node : quantized_graph_def.node()) {
       EXPECT_EQ(0, quantizable_ops.count(node.op()))
           << "Found quantizable node " << node.op() << " for node named "
@@ -275,6 +275,41 @@ class QuantizeNodesTest : public ::testing::Test {
     TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
 
     TestQuantizedVersusFloatGraph(float_graph_def, {}, {"mul"});
+  }
+
+  void TestQuantizeAdd() {
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    std::vector<int64> x_shape({10, 100});
+    const size_t x_num_elements = TensorShape(x_shape).num_elements();
+    std::vector<float> x_values(x_num_elements);
+    for (int i = 0; i < x_num_elements; ++i) {
+      x_values[i] = (i % 256) / 256.0f;
+    }
+
+    std::vector<int64> y_shape({100});
+    const size_t y_num_elements = TensorShape(y_shape).num_elements();
+    std::vector<float> y_values(y_num_elements);
+    for (int i = 0; i < y_num_elements; ++i) {
+      y_values[i] = ((i + 23) % 123) - 50;
+    }
+
+    Scope root = Scope::NewRootScope();
+
+    Tensor x_float_tensor(DT_FLOAT, TensorShape(x_shape));
+    test::FillValues<float>(&x_float_tensor, x_values);
+    Output x = Const(root.WithOpName("x"), Input::Initializer(x_float_tensor));
+
+    Tensor y_float_tensor(DT_FLOAT, TensorShape(y_shape));
+    test::FillValues<float>(&y_float_tensor, y_values);
+    Output y = Const(root.WithOpName("y"), Input::Initializer(y_float_tensor));
+
+    Add add = Add(root.WithOpName("add"), x, y);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    TestQuantizedVersusFloatGraph(float_graph_def, {}, {"add"});
   }
 
   void TestQuantizeConv2D(int depth, int input_width, int input_height,
@@ -615,6 +650,33 @@ class QuantizeNodesTest : public ::testing::Test {
     MapNamesToNodes(removed_graph_def, &node_map);
     EXPECT_EQ(1, node_map.count("final_dequantize"));
     EXPECT_EQ("requantize_op", node_map.at("final_dequantize")->input(0));
+  }
+
+  void TestQuantizeResizeBilinear() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    Tensor size_tensor(DT_INT32, TensorShape({2}));
+    test::FillValues<int32>(&size_tensor, {256, 256});
+
+    Output constant_op = Const(root.WithOpName("size_tensor_op"),
+                               Input::Initializer(size_tensor));
+
+    Output placeholder_op =
+        Placeholder(root.WithOpName("placeholder_op"), DT_FLOAT);
+
+    Output resize_bilinear_op = ResizeBilinear(
+        root.WithOpName("resize_bilinear_op"), placeholder_op, constant_op);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    Tensor input_tensor(DT_FLOAT, {1, 128, 128, 3});
+    test::FillFn<float>(&input_tensor, [](int) { return 100.0f; });
+
+    TestQuantizedVersusFloatGraph(float_graph_def,
+                                  {{"placeholder_op", input_tensor}},
+                                  {"resize_bilinear_op"});
   }
 
   void TestRemoveRedundantQuantizationWithMultipleOutputs() {
@@ -1382,6 +1444,8 @@ TEST_F(QuantizeNodesTest, TestQuantizeMatMulSmall) {
 
 TEST_F(QuantizeNodesTest, TestQuantizeMul) { TestQuantizeMul(); }
 
+TEST_F(QuantizeNodesTest, TestQuantizeAdd) { TestQuantizeAdd(); }
+
 TEST_F(QuantizeNodesTest, TestOddPaddingProblem) {
   // Tests one error case we ran into in a real graph.
   TestQuantizeConv2D(1, 4, 4, 1, 3, 1, 2, "SAME",
@@ -1408,6 +1472,10 @@ TEST_F(QuantizeNodesTest, TestQuantizeMaxPool) { TestQuantizeMaxPool(); }
 TEST_F(QuantizeNodesTest, TestQuantizeAvgPool) { TestQuantizeAvgPool(); }
 
 TEST_F(QuantizeNodesTest, TestQuantizeReshape) { TestQuantizeReshape(); }
+
+TEST_F(QuantizeNodesTest, TestQuantizeResizeBilinear) {
+  TestQuantizeResizeBilinear();
+}
 
 TEST_F(QuantizeNodesTest, TestRemoveRedundantQuantization) {
   TestRemoveRedundantQuantization();

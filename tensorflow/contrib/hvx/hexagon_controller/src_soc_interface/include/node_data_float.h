@@ -28,9 +28,8 @@ struct NodeDataFloat {
   int y;
   int z;
   int d;
-  int buf_size;
-  int array_size;
-  float* array_data;
+  int max_buf_byte_size;
+  int array_byte_size;
   uint8_t* byte_array_data;
   char node_name[NODE_DATA_FLOAT_NODE_NAME_BUF_SIZE];
 };

@@ -25,6 +25,8 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.test_util import TensorFlowTestCase
+# Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import training_ops
@@ -115,6 +117,10 @@ class TrainingOpsTest(TensorFlowTestCase):
         # The calculations here really are not very precise in float16.
         self.assertAllClose(linear_update, linear.eval(), rtol=2e-2, atol=2e-2)
         self.assertAllClose(expected_out, out, rtol=2e-2, atol=2e-2)
+      elif x.dtype == np.float32:
+        # The calculations here not sufficiently precise in float32.
+        self.assertAllClose(linear_update, linear.eval(), rtol=1e-5, atol=1e-5)
+        self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
       else:
         self.assertAllClose(linear_update, linear.eval())
         self.assertAllClose(expected_out, out)

@@ -32,10 +32,6 @@ import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 
 /** A classifier specialized to label images using TensorFlow. */
 public class TensorFlowImageClassifier implements Classifier {
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
-
   private static final String TAG = "TensorFlowImageClassifier";
 
   // Only return this many results with at least this confidence.

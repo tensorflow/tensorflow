@@ -96,15 +96,16 @@ class DropStaleGradientOptimizer(optimizer.Optimizer):
       grad = grad_and_var[0]
       if isinstance(grad, ops.Tensor):
         gradients.append(grad)
-      else:
+      elif grad is not None:
         gradients.append(grad.op)
 
     with ops.control_dependencies(gradients), ops.colocate_with(global_step):
       staleness = gen_array_ops.reshape(
           global_step - self._local_step, shape=())
-      conditional_update = stale_counter.assign_add(control_flow_ops.cond(
-          gen_math_ops.less_equal(staleness, self._staleness),
-          _AcceptGradientOp, _DropGradientOp))
+
+    conditional_update = stale_counter.assign_add(control_flow_ops.cond(
+        gen_math_ops.less_equal(staleness, self._staleness),
+        _AcceptGradientOp, _DropGradientOp))
 
     summary.scalar(
         "Gradient staleness percentage",

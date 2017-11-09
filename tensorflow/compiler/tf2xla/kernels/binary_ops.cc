@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Native XLA implementations of simple unary Ops
+// Native XLA implementations of simple binary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace {
@@ -49,6 +50,9 @@ XLA_MAKE_BINARY(Add, b->Add(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Sub, b->Sub(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mul, b->Mul(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Div, b->Div(lhs, rhs, extend_dimensions));
+
+XLA_MAKE_BINARY(Atan2, b->Atan2(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(Complex, b->Complex(lhs, rhs, extend_dimensions));
 
 // Implementation of FloorDiv. Pseudo-code:
 // if ((x < 0) != (y < 0)) {
@@ -96,17 +100,31 @@ static xla::ComputationDataHandle FloorModImpl(xla::ComputationBuilder* b,
 XLA_MAKE_BINARY(FloorMod,
                 FloorModImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
-XLA_MAKE_BINARY(LogicalAnd, b->LogicalAnd(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(LogicalOr, b->LogicalOr(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(BitwiseAnd, b->And(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(BitwiseOr, b->Or(lhs, rhs, extend_dimensions));
+
+XLA_MAKE_BINARY(LeftShift, b->ShiftLeft(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(RightShift,
+                (DataTypeIsUnsigned(ctx->input_type(0))
+                     ? b->ShiftRightLogical(lhs, rhs, extend_dimensions)
+                     : b->ShiftRightArithmetic(lhs, rhs, extend_dimensions)));
+
+XLA_MAKE_BINARY(LogicalAnd, b->And(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(LogicalOr, b->Or(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mod, b->Rem(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Maximum, b->Max(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Minimum, b->Min(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(RealDiv, b->Div(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(ReciprocalGrad, b->Neg(b->Mul(rhs, b->Mul(lhs, lhs))));
 XLA_MAKE_BINARY(
     RsqrtGrad,
     b->Mul(b->Pow(lhs, XlaHelpers::IntegerLiteral(b, input_type(0), 3)),
            b->Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
            extend_dimensions));
+XLA_MAKE_BINARY(SqrtGrad,
+                b->Div(b->Mul(rhs,
+                              XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
+                       lhs, extend_dimensions));
 
 static xla::ComputationDataHandle Square(xla::ComputationBuilder* builder,
                                          const xla::ComputationDataHandle& x) {
@@ -136,12 +154,40 @@ XLA_MAKE_BINARY(SoftplusGrad,
                 b->Div(lhs, b->Add(b->Exp(b->Neg(rhs)),
                                    XlaHelpers::One(b, input_type(1)))));
 
+// softsigngrad(gradients, features) = gradients / (1 + abs(features)) ** 2
+XLA_MAKE_BINARY(SoftsignGrad,
+                b->Div(lhs, Square(b, b->Add(XlaHelpers::One(b, input_type(0)),
+                                             b->Abs(rhs)))));
+
 XLA_MAKE_BINARY(TanhGrad, b->Mul(rhs, b->Sub(XlaHelpers::One(b, input_type(0)),
                                              b->Mul(lhs, lhs))));
 
 XLA_MAKE_BINARY(Pow, b->Pow(lhs, rhs, extend_dimensions));
 
 #undef XLA_MAKE_BINARY
+
+class ApproximateEqualOp : public XlaOpKernel {
+ public:
+  explicit ApproximateEqualOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tolerance", &tolerance_));
+  }
+
+  // Computes the max of the scalar input x and 0.
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::ComputationBuilder* b = ctx->builder();
+    auto abs = b->Abs(b->Sub(ctx->Input(0), ctx->Input(1)));
+    auto abs_shape = b->GetShape(abs);
+    OP_REQUIRES_OK(ctx, abs_shape.status());
+    auto abs_type = abs_shape.ValueOrDie()->element_type();
+    auto result = b->Lt(
+        abs, b->ConvertElementType(b->ConstantR0<float>(tolerance_), abs_type));
+    ctx->SetOutput(0, result);
+  }
+
+ private:
+  float tolerance_;
+};
+REGISTER_XLA_OP(Name("ApproximateEqual"), ApproximateEqualOp);
 
 }  // namespace
 }  // namespace tensorflow

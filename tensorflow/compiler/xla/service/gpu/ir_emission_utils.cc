@@ -18,10 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -211,13 +212,6 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
           builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
           builder->getIntNTy(bit_width)),
       value->getType());
-}
-
-const HloInstruction* LatestNonGteAncestor(const HloInstruction* hlo) {
-  while (hlo->opcode() == HloOpcode::kGetTupleElement) {
-    hlo = hlo->operand(0);
-  }
-  return hlo;
 }
 
 }  // namespace gpu

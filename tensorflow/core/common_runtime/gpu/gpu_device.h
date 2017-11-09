@@ -20,7 +20,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 #define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -96,12 +100,14 @@ class BaseGPUDevice : public LocalDevice {
 
  private:
   struct StreamGroup {
-    gpu::Stream* compute;
-    gpu::Stream* host_to_device;
-    gpu::Stream* device_to_host;
-    gpu::Stream* device_to_device;
+    gpu::Stream* compute = nullptr;
+    gpu::Stream* host_to_device = nullptr;
+    gpu::Stream* device_to_host = nullptr;
+    gpu::Stream* device_to_device = nullptr;
   };
-  gtl::InlinedVector<StreamGroup, 4> streams_;
+  class StreamGroupFactory;
+
+  gtl::InlinedVector<StreamGroup*, 4> streams_;
   gtl::InlinedVector<char*, 4> scratch_;
   std::vector<GPUDeviceContext*> device_contexts_;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
@@ -115,6 +121,15 @@ class BaseGPUDevice : public LocalDevice {
                           int stream_id, Allocator* allocator);
 
   void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
+
+  // This method returns an initialization status, in addition to
+  // calling the "done" StatusCallback, if there is a failure to
+  // allocate memory or if the tensor "from" is not DMA-copyable.
+  // If there is no error prior to enqueueing the copy, an OK status
+  // is returned.
+  Status MaybeCopyTensorToGPU(const AllocatorAttributes& alloc_attrs,
+                              const Tensor& from, Tensor* to,
+                              StatusCallback done);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {
@@ -135,7 +150,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
                                          Allocator* cpu_allocator) = 0;
 
   // Returns into 'ids' the list of valid GPU ids, in the order that
-  // they should map to logical gpu ids "/gpu:0", "/gpu:1", etc, based
+  // they should map to logical gpu ids "/device:GPU:0", "/device:GPU:1", etc, based
   // upon 'visible_device_list', a comma-separated list of 'visible
   // gpu ids'.
   Status GetValidDeviceIds(const string& visible_device_list,

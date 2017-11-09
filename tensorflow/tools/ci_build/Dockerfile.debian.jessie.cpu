@@ -1,6 +1,6 @@
 FROM debian:jessie
 
-MAINTAINER Jan Prach <jendap@google.com>
+LABEL maintainer="Jan Prach <jendap@google.com>"
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
@@ -24,4 +24,3 @@ RUN pip install --upgrade virtualenv
 
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
-RUN echo "import %workspace%/.tf_configure.bazelrc" >> /etc/bazel.bazelrc

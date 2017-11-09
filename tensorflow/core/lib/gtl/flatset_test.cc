@@ -485,7 +485,7 @@ TEST(FlatSet, ForwardIterator) {
 // or destructions will show up as errors under a sanitizer or
 // heap checker.
 TEST(FlatSet, ConstructDestruct) {
-  FlatSet<string, HashStr> set;
+  FlatSet<string> set;
   string k1 = "the quick brown fox jumped over the lazy dog";
   string k2 = k1 + k1;
   string k3 = k1 + k2;
