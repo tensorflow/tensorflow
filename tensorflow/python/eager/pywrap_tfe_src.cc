@@ -443,10 +443,13 @@ void TFE_DeleteContextCapsule(PyObject* context) {
   TF_DeleteStatus(status);
 }
 
+using GradientTape =
+    tensorflow::eager::GradientTape<PyObject, PyObject, PyObject>;
+
 typedef struct {
   PyObject_HEAD
       /* Type-specific fields go here. */
-      tensorflow::eager::GradientTape* tape;
+      GradientTape* tape;
 } TFE_Py_Tape;
 
 static void TFE_Py_Tape_Delete(PyObject* tape) {
@@ -481,7 +484,7 @@ PyObject* TFE_Py_NewTape() {
   TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
   if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return nullptr;
   TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
-  tape->tape = new tensorflow::eager::GradientTape();
+  tape->tape = new GradientTape();
   return reinterpret_cast<PyObject*>(tape);
 }
 
@@ -627,9 +630,8 @@ void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id) {
   reinterpret_cast<TFE_Py_Tape*>(tape)->tape->DeleteTrace(tensor_id);
 }
 
-// TODO(apassos): cache the attribute lookups as member variables and decref
-// them in the destructor.
-class PyVSpace : public tensorflow::eager::VSpace {
+class PyVSpace
+    : public tensorflow::eager::VSpace<PyObject, PyObject, PyObject> {
  public:
   explicit PyVSpace(PyObject* py_vspace) : py_vspace_(py_vspace) {}
 
@@ -661,7 +663,7 @@ class PyVSpace : public tensorflow::eager::VSpace {
     Py_XDECREF(ones_like_);
   }
 
-  tensorflow::int64 NumElements(void* tensor) const final {
+  tensorflow::int64 NumElements(PyObject* tensor) const final {
     PyObject* arglist =
         Py_BuildValue("(O)", reinterpret_cast<PyObject*>(tensor));
     PyObject* result = PyEval_CallObject(num_elements_, arglist);
@@ -671,8 +673,8 @@ class PyVSpace : public tensorflow::eager::VSpace {
     return r;
   }
 
-  void* AggregateGradients(
-      tensorflow::gtl::ArraySlice<void*> gradient_tensors) const final {
+  PyObject* AggregateGradients(
+      tensorflow::gtl::ArraySlice<PyObject*> gradient_tensors) const final {
     PyObject* list = PyList_New(gradient_tensors.size());
     for (int i = 0; i < gradient_tensors.size(); ++i) {
       // Note: stealing a reference to the gradient tensors.
@@ -689,8 +691,8 @@ class PyVSpace : public tensorflow::eager::VSpace {
     return result;
   }
 
-  void* Zeros(tensorflow::TensorShape shape,
-              tensorflow::DataType dtype) const final {
+  PyObject* Zeros(tensorflow::TensorShape shape,
+                  tensorflow::DataType dtype) const final {
     PyObject* py_shape = PyTuple_New(shape.dims());
     for (int i = 0; i < shape.dims(); ++i) {
       PyTuple_SET_ITEM(py_shape, i, PyLong_FromLong(shape.dim_size(i)));
@@ -701,20 +703,20 @@ class PyVSpace : public tensorflow::eager::VSpace {
     Py_DECREF(arg_list);
     Py_DECREF(py_dtype);
     Py_DECREF(py_shape);
-    return reinterpret_cast<void*>(result);
+    return reinterpret_cast<PyObject*>(result);
   }
 
-  void* OnesLike(void* tensor) const final {
+  PyObject* OnesLike(PyObject* tensor) const final {
     PyObject* arg_list = Py_BuildValue("(O)", tensor);
     PyObject* result = PyEval_CallObject(ones_like_, arg_list);
     if (result == nullptr) {
       VLOG(1) << "Call to ones_like failed";
     }
     Py_DECREF(arg_list);
-    return reinterpret_cast<void*>(result);
+    return result;
   }
 
-  tensorflow::int64 TensorId(void* tensor) const final {
+  tensorflow::int64 TensorId(PyObject* tensor) const final {
     PyObject* py_tensor = reinterpret_cast<PyObject*>(tensor);
     PyObject* id_field = PyObject_GetAttrString(py_tensor, "_id");
     tensorflow::int64 id = MakeInt(id_field);
@@ -723,9 +725,9 @@ class PyVSpace : public tensorflow::eager::VSpace {
   }
 
   tensorflow::Status CallBackwardFunction(
-      void* backward_function,
-      tensorflow::gtl::ArraySlice<void*> output_gradients,
-      std::vector<void*>* result) const final {
+      PyObject* backward_function,
+      tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
+      std::vector<PyObject*>* result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
     for (int i = 0; i < output_gradients.size(); ++i) {
       if (output_gradients[i] == nullptr) {
@@ -771,9 +773,7 @@ class PyVSpace : public tensorflow::eager::VSpace {
     return tensorflow::Status::OK();
   }
 
-  void DeleteTensor(void* tensor) const final {
-    Py_XDECREF(reinterpret_cast<PyObject*>(tensor));
-  }
+  void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }
 
  private:
   PyObject* py_vspace_;
@@ -784,13 +784,13 @@ class PyVSpace : public tensorflow::eager::VSpace {
   PyObject* ones_like_;
 };
 
-std::vector<void*> MakeTensorList(PyObject* tensors) {
+std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
   PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
   if (seq == nullptr) {
     return {};
   }
   int len = PySequence_Fast_GET_SIZE(seq);
-  std::vector<void*> list;
+  std::vector<PyObject*> list;
   list.reserve(len);
   for (int i = 0; i < len; ++i) {
     list.push_back(PySequence_Fast_GET_ITEM(seq, i));
@@ -807,30 +807,30 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
     return nullptr;
   }
 
-  std::vector<void*> target_vec = MakeTensorList(target);
+  std::vector<PyObject*> target_vec = MakeTensorList(target);
   if (PyErr_Occurred()) {
     return nullptr;
   }
-  std::vector<void*> sources_vec = MakeTensorList(sources);
+  std::vector<PyObject*> sources_vec = MakeTensorList(sources);
   if (PyErr_Occurred()) {
     return nullptr;
   }
-  std::vector<void*> outgrad_vec;
+  std::vector<PyObject*> outgrad_vec;
   if (output_gradients != Py_None) {
     outgrad_vec = MakeTensorList(output_gradients);
     if (PyErr_Occurred()) {
       return nullptr;
     }
-    for (void* tensor : outgrad_vec) {
+    for (PyObject* tensor : outgrad_vec) {
       // Calling the backward function will eat a reference to the tensors in
       // outgrad_vec, so we need to increase their reference count.
-      Py_INCREF(reinterpret_cast<PyObject*>(tensor));
+      Py_INCREF(tensor);
     }
   }
   TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
-  std::vector<void*> result;
-  status->status = tape_obj->tape->Gradient(c_vspace, target_vec, sources_vec,
-                                            outgrad_vec, &result);
+  std::vector<PyObject*> result;
+  status->status = tape_obj->tape->ComputeGradient(
+      c_vspace, target_vec, sources_vec, outgrad_vec, &result);
   if (!status->status.ok()) {
     return nullptr;
   }
