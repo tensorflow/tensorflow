@@ -328,6 +328,14 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 			}
 		}
 
+		// Optimization: if only one dimension is left we can use binary.Write() directly for this slice
+		if len(shape) == 1 && v.Len() > 0 {
+			switch v.Index(0).Kind() {
+			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+				return binary.Write(w, nativeEndian, v.Interface())
+			}
+		}
+
 		subShape := shape[1:]
 		for i := 0; i < v.Len(); i++ {
 			err := encodeTensor(w, v.Index(i), subShape)
