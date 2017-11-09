@@ -1078,6 +1078,16 @@ class PadTest(test_util.TensorFlowTestCase):
                            [0, 0, 4, 5, 6, 0, 0],
                            [0, 0, 0, 0, 0, 0, 0]])
 
+class InvertPermutationTest(test_util.TensorFlowTestCase):
+
+  def testInvertPermutation(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
+        y = array_ops.invert_permutation(x)
+        self.assertAllEqual(y.get_shape(), [5])
+        self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
+
 
 if __name__ == "__main__":
   test_lib.main()
