@@ -106,7 +106,6 @@ tf_cc_test(
 
 cc_library(
     name = "tape",
-    srcs = ["tape.cc"],
     hdrs = ["tape.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
