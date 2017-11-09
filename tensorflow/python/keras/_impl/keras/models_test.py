@@ -186,8 +186,7 @@ class TestModelSaving(test.TestCase):
       keras.models.save_model(model, fname)
       model = keras.models.load_model(fname)
       os.close(fd)
-      os.remove(f
-                os.close(fd)name)
+      os.remove(fname)
 
   def test_saving_lambda_numpy_array_arguments(self):
     if h5py is None:
