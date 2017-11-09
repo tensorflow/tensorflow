@@ -956,7 +956,7 @@ auto y = Reshape(scope, Mul(scope, left, right), permuted_shape);
 //   ]
 // ]
 auto out =
-    Mul(scope, grad, Transpose(scope, y, InvertPermutation(scope, perm)));
+    Mul(scope, grad_tiled, Transpose(scope, y, InvertPermutation(scope, perm)));
 
 grad_outputs->push_back(Reshape(scope, out, input_shape));
 
