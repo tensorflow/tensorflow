@@ -179,6 +179,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_default_optimizations",
+    define_values = {"with_default_optimizations": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_gcp_support",
     define_values = {"with_gcp_support": "true"},
     visibility = ["//visibility:public"],

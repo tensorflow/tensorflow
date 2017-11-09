@@ -487,10 +487,11 @@ def set_cc_opt_flags(environ_cp):
   cc_opt_flags = get_from_env_or_user_or_default(environ_cp, 'CC_OPT_FLAGS',
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
-    host_opt = '-march=native'  # It should be safe on the same build host.
-    write_to_bazelrc(
-        'build:opt --cxxopt=%s --copt=%s' % (opt, opt) +
-        ' --host_cxxopt=%s --host_copt=%s' % (host_opt, host_opt))
+    write_to_bazelrc('build:opt --cxxopt=%s --copt=%s' % (opt, opt))
+  host_opt = '-march=native'  # It should be safe on the same build host.
+  write_to_bazelrc(
+      'build:opt --host_cxxopt=%s --host_copt=%s' % (host_opt, host_opt))
+  write_to_bazelrc('build:opt --define with_default_optimizations=true')
 
 
 def set_tf_cuda_clang(environ_cp):
