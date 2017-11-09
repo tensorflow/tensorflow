@@ -156,6 +156,8 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
         after_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
         self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
+
+      writer_cache.FileWriterCache.clear()
       gfile.DeleteRecursively(self._config.model_dir)
 
   def test_evaluate(self):
