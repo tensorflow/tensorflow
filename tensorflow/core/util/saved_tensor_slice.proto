@@ -1,7 +1,7 @@
 // Protocol buffers for saved tensor slices. It's used for the brain tensor
 // ops checkpoints and the V3 checkpoints in dist_belief.
 
-// A checkpoint file is a stable. The value for each record is a serialized
+// A checkpoint file is an sstable. The value for each record is a serialized
 // SavedTensorSlices message (defined below).
 //
 // Each checkpoint file has a record with the empty key (""), which corresponds
