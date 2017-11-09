@@ -21,11 +21,9 @@ limitations under the License.
 #if !defined(__APPLE__)
 #include <sys/sendfile.h>
 #endif
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/uio.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -38,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/platform/posix/posix_file_system.h"
 
 namespace tensorflow {
+
+constexpr size_t kPosixCopyFileBufferSize = 1024 * 1024;
 
 // pread() based random-access
 class PosixRandomAccessFile : public RandomAccessFile {
@@ -311,9 +311,14 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
 #if !defined(__APPLE__)
     rc = sendfile(target_fd, src_fd, &offset, chunk);
 #else
-    off_t len = chunk;
-    rc = sendfile(src_fd, target_fd, offset, &len, NULL, 0);
-    offset += len;
+    char buffer[kPosixCopyFileBufferSize];
+    chunk = chunk < sizeof(buffer) ? chunk : sizeof(buffer);
+    rc = read(src_fd, buffer, chunk);
+    if (rc <= 0) {
+      break;
+    }
+    rc = write(target_fd, buffer, chunk);
+    offset += chunk;
 #endif
     if (rc <= 0) {
       break;
