@@ -60,6 +60,7 @@ class HloParser {
   bool ParseInstructionList(HloComputation::Builder* builder,
                             string* root_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
+  bool ParseControlPredecessors(HloInstruction* instruction);
   bool ParseLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
   bool ParseTupleLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
   bool ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
@@ -123,6 +124,7 @@ class HloParser {
   bool ParseWindow(Window* window);
   bool ParseConvolutionDimensionNumbers(ConvolutionDimensionNumbers* dnums);
   bool ParseSharding(OpSharding* sharding);
+  bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
 
   // Parses a sub-attribute of the window attribute, e.g.,size=1x2x3.
   bool ParseDxD(const string& name, std::vector<int64>* result);
@@ -548,10 +550,45 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   return AddInstruction(name, instruction);
 }
 
-// ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape? ('devices=' ('['
-// dims ']')* device_list)? '}' dims ::= int_list device_list ::= int_list
+// ::= '{' (single_sharding | tuple_sharding) '}'
+//
+// tuple_sharding ::= single_sharding* (',' single_sharding)*
 bool HloParser::ParseSharding(OpSharding* sharding) {
+  // A single sharding starts with '{' and is not followed by '{'.
+  // A tuple sharding starts with '{' and is followed by '{', or is '{''}' for
+  // an empty tuple.
   if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start sharding attribute")) {
+    return false;
+  }
+
+  if (lexer_.GetKind() != TokKind::kLbrace &&
+      lexer_.GetKind() != TokKind::kRbrace) {
+    return ParseSingleSharding(sharding, /*lbrace_pre_lexed=*/true);
+  }
+
+  // Tuple sharding.
+  // Allow empty tuple shardings.
+  if (lexer_.GetKind() != TokKind::kRbrace) {
+    do {
+      if (!ParseSingleSharding(sharding->add_tuple_shardings(),
+                               /*lbrace_pre_lexed=*/false)) {
+        return false;
+      }
+    } while (EatIfPresent(TokKind::kComma));
+  }
+  sharding->set_type(OpSharding::Type::OpSharding_Type_TUPLE);
+
+  return ParseToken(TokKind::kRbrace, "expected '}' to end sharding attribute");
+}
+
+//  ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape?
+//          ('devices=' ('[' dims ']')* device_list)? '}'
+// dims ::= int_list device_list ::= int_list
+bool HloParser::ParseSingleSharding(OpSharding* sharding,
+                                    bool lbrace_pre_lexed) {
+  if (!lbrace_pre_lexed &&
+      !ParseToken(TokKind::kLbrace,
                   "expected '{' to start sharding attribute")) {
     return false;
   }
