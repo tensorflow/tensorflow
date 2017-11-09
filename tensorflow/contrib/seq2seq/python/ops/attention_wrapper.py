@@ -192,7 +192,7 @@ class _BaseAttentionMechanism(AttentionMechanism):
       raise TypeError("probability_fn must be callable, saw type: %s" %
                       type(probability_fn).__name__)
     if score_mask_value is None:
-      score_mask_value = self._memory_layer.dtype.as_numpy_dtype(-np.inf)
+      score_mask_value = dtypes.as_dtype(self._memory_layer.dtype).as_numpy_dtype(-np.inf)
     self._probability_fn = lambda score, prev: (  # pylint:disable=g-long-lambda
         probability_fn(
             _maybe_mask_score(score, memory_sequence_length, score_mask_value),
