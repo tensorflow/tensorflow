@@ -447,6 +447,11 @@ Status GraphProperties::InferStatically() {
   shape_refiner.set_disable_constant_propagation(true);
   shape_refiner.set_function_library_for_shape_inference(&function_library);
   ImportGraphDefOptions options;
+  // Graph optimization happens at the late stage of graph execution,
+  // when colocation constraints are already validated previously and
+  // the device placement of nodes has also completed, so there
+  // is no need to validate colocation constraints again.
+  options.validate_colocation_constraints = false;
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
 

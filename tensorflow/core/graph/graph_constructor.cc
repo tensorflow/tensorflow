@@ -68,7 +68,8 @@ class GraphConstructor {
     Options(const GraphConstructorOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(in.allow_internal_ops),
           expect_device_spec(in.expect_device_spec),
-          importing(false) {}
+          importing(false),
+          validate_colocation_constraints(false) {}
     Options(const ImportGraphDefOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(false),
           expect_device_spec(false),
@@ -81,7 +82,8 @@ class GraphConstructor {
           control_dependencies(in.control_dependencies),
           return_tensors(in.return_tensors),
           return_nodes(in.return_nodes),
-          importing(true) {}
+          importing(true),
+          validate_colocation_constraints(in.validate_colocation_constraints) {}
 
     bool allow_internal_ops;
     bool expect_device_spec;
@@ -103,6 +105,7 @@ class GraphConstructor {
     // applicable to ConvertGraphDefToGraph as well, so make an attempt to
     // remove this.
     bool importing;
+    bool validate_colocation_constraints;
   };
 
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
@@ -492,7 +495,8 @@ Status GraphConstructor::InitFromEdges() {
 
 Status GraphConstructor::ValidateColocationConstraints(
     const NodeDef& node_def) {
-  if (!opts_.importing) return Status::OK();
+  if (!opts_.validate_colocation_constraints || !opts_.importing)
+    return Status::OK();
   const auto iter = node_def.attr().find(kColocationAttrName);
   if (iter == node_def.attr().end()) return Status::OK();
   for (const string& c : iter->second.list().s()) {
