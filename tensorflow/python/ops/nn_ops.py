@@ -37,6 +37,8 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
 
 # Aliases for some automatically-generated names.
@@ -1644,17 +1646,18 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   return output
 
 
-def softmax(logits, dim=-1, name=None):
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
+def softmax(logits, axis=None, name=None, dim=None):
   """Computes softmax activations.
 
   This function performs the equivalent of
 
-      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), dim)
+      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
 
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
-    dim: The dimension softmax would be performed on. The default is -1 which
+    axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
 
@@ -1662,23 +1665,27 @@ def softmax(logits, dim=-1, name=None):
     A `Tensor`. Has the same type and shape as `logits`.
 
   Raises:
-    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
+    InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
   """
-  return _softmax(logits, gen_nn_ops._softmax, dim, name)
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  if axis is None:
+    axis = -1
+  return _softmax(logits, gen_nn_ops._softmax, axis, name)
 
 
-def log_softmax(logits, dim=-1, name=None):
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
+def log_softmax(logits, axis=None, name=None, dim=None):
   """Computes log softmax activations.
 
   For each batch `i` and class `j` we have
 
-      logsoftmax = logits - log(reduce_sum(exp(logits), dim))
+      logsoftmax = logits - log(reduce_sum(exp(logits), axis))
 
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
-    dim: The dimension softmax would be performed on. The default is -1 which
+    axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
 
@@ -1686,10 +1693,13 @@ def log_softmax(logits, dim=-1, name=None):
     A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
 
   Raises:
-    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
+    InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
   """
-  return _softmax(logits, gen_nn_ops._log_softmax, dim, name)
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  if axis is None:
+    axis = -1
+  return _softmax(logits, gen_nn_ops._log_softmax, axis, name)
 
 
 def _ensure_xent_args(name, sentinel, labels, logits):
