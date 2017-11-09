@@ -23,6 +23,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@TextLineDataset
 
 @@batch_and_drop_remainder
+@@padded_batch_and_drop_remainder
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@group_by_window
@@ -45,6 +46,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
+from tensorflow.contrib.data.python.ops.batching import padded_batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import unbatch
 from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
 from tensorflow.contrib.data.python.ops.dataset_ops import get_single_element
