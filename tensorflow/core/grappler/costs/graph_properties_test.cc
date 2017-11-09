@@ -296,10 +296,9 @@ TEST_F(GraphPropertiesTest, Queues) {
   ASSERT_EQ(1, props2.size());
   EXPECT_EQ("float: [3,7]", PropToString(props2[0]));
 
-  // The dequeue3 op shape is unknown.
   const auto props3 = properties.GetOutputProperties("Dequeue3");
   ASSERT_EQ(1, props3.size());
-  EXPECT_EQ("float: ?", PropToString(props3[0]));
+  EXPECT_EQ("float: [3,7]", PropToString(props3[0]));
 
   // The dequeue3 op shape is unknown. The square2 op shape is known. Verify
   // that we merge the 2 properly to determine the shape of the data coming out
@@ -678,8 +677,8 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
 
 TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output var =
-      ops::Variable(s.WithOpName("var"), TensorShape(), DataType::DT_FLOAT);
+  Output var = ops::Variable(s.WithOpName("var"), PartialTensorShape(),
+                             DataType::DT_FLOAT);
   Output var2 = ops::Variable(s.WithOpName("var2"), TensorShape({128, 256}),
                               DataType::DT_FLOAT);
   Output filename =
