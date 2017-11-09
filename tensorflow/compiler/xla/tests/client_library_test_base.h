@@ -196,6 +196,16 @@ class ClientLibraryTestBase : public ::testing::Test {
       ComputationBuilder* builder, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec abs_error);
 
+  // Convenience method for running a built computation and comparing the result
+  // with the HloEvaluator.
+  void ComputeAndCompare(ComputationBuilder* builder,
+                         const ComputationDataHandle& operand,
+                         tensorflow::gtl::ArraySlice<Literal> arguments);
+  void ComputeAndCompare(ComputationBuilder* builder,
+                         const ComputationDataHandle& operand,
+                         tensorflow::gtl::ArraySlice<Literal> arguments,
+                         ErrorSpec error);
+
   // Create scalar operations for use in reductions.
   Computation CreateScalarRelu();
   Computation CreateScalarMax();
@@ -298,6 +308,13 @@ class ClientLibraryTestBase : public ::testing::Test {
       const std::function<void(const Literal& actual,
                                const string& error_message)>& verify_output,
       const Shape* output_with_layout = nullptr);
+
+  // Executes the computation and calculates the expected reference value using
+  // the HloEvaluator. Returns two literal in the order of (expected, actual).
+  StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
+  ComputeValueAndReference(ComputationBuilder* builder,
+                           const ComputationDataHandle& operand,
+                           tensorflow::gtl::ArraySlice<Literal> arguments);
 };
 
 template <typename NativeT>
