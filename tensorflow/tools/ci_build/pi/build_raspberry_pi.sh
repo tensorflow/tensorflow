@@ -88,6 +88,10 @@ else
   echo "Building for the Pi Two/Three, with NEON acceleration"
 fi
 
+# We need to pass down the environment variable with a possible alternate Python
+# include path for Python 3.x builds to work.
+export CROSSTOOL_PYTHON_INCLUDE_PATH
+
 cd ${WORKSPACE_PATH}
 bazel build -c opt ${PI_COPTS} \
   --config=monolithic \
