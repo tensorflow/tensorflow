@@ -219,7 +219,7 @@ Status ValidateStridedSliceOp(
   // Step 2: Make a sparse spec into a full index spec
   //
   // The sparse spec does not correspond to the number of dimensions
-  // Make a dense spec that correspond to the number of dimensions
+  // Make a dense spec that corresponds to the number of dimensions
   //
   // For example suppose foo[...,3:] on foo.shape=(2,2,3) then
   // we need to produce the missing begin_mask for the first two
