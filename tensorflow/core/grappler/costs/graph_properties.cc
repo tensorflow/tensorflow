@@ -108,32 +108,35 @@ struct Processor<DimensionHandle> {
 
     if (dim1 >= 0 && dim2 >= 0) {
       CHECK_EQ(dim1, dim2);
-      RefineDim(dim1, result);
+      return RefineDim(dim1, result);
     } else if (dim1 >= 0 && dim2 < 0) {
-      RefineDim(dim1, result);
+      return RefineDim(dim1, result);
     } else if (dim1 < 0 && dim2 >= 0) {
-      RefineDim(dim2, result);
+      return RefineDim(dim2, result);
     } else if (dim1 < -1) {
-      RefineDim(dim1, result);
+      return RefineDim(dim1, result);
     } else if (dim2 < -1) {
-      RefineDim(dim2, result);
+      return RefineDim(dim2, result);
     } else {
       CHECK_EQ(dim1, dim2);
       CHECK_EQ(-1, dim1);
-      RefineDim(-1, result);
+      return RefineDim(-1, result);
     }
     return Status::OK();
   }
 
  private:
-  void RefineDim(int64 dim, int64* result) {
+  Status RefineDim(int64 dim, int64* result) {
     if (*result >= 0) {
-      CHECK(*result == dim || dim < 0);
+      if (!(*result == dim || dim < 0)) {
+        return errors::InvalidArgument("Inconsistent dimensions detected");
+      }
     } else if (dim >= 0) {
       *result = dim;
     } else if (dim < *result) {
       *result = dim;
     }
+    return Status::OK();
   }
 
   int64 counter = 2;
