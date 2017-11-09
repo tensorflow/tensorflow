@@ -65,9 +65,10 @@ func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
 	return s, nil
 }
 
+// Device structure contains information about a device associated with a session, as returned by ListDevices()
 type Device struct {
-	Name, Type  string
-	MemoryLimit int64
+	Name, Type       string
+	MemoryLimitBytes int64
 }
 
 // Return list of devices associated with a Session
@@ -77,33 +78,30 @@ func (s *Session) ListDevices() ([]Device, error) {
 	status := newStatus()
 	devices_list := C.TF_SessionListDevices(s.c, status.c)
 	if err := status.Err(); err != nil {
-		return nil, fmt.Errorf("TF_SessionListDevices() failed: %v", err)
+		return nil, fmt.Errorf("SessionListDevices() failed: %v", err)
 	}
 	defer C.TF_DeleteDeviceList(devices_list)
 
 	for i := 0; i < int(C.TF_DeviceListCount(devices_list)); i++ {
-		status = newStatus()
 		device_name := C.TF_DeviceListName(devices_list, C.int(i), status.c)
 		if err := status.Err(); err != nil {
-			return nil, fmt.Errorf("TF_DeviceListName(index=%d) failed: %v", i, err)
+			return nil, fmt.Errorf("DeviceListName(index=%d) failed: %v", i, err)
 		}
 
-		status = newStatus()
 		device_type := C.TF_DeviceListType(devices_list, C.int(i), status.c)
 		if err := status.Err(); err != nil {
-			return nil, fmt.Errorf("TF_DeviceListType(index=%d) failed: %v", i, err)
+			return nil, fmt.Errorf("DeviceListType(index=%d) failed: %v", i, err)
 		}
 
-		status = newStatus()
-		memory_limit := C.TF_DeviceListMemoryBytes(devices_list, C.int(i), status.c)
+		memory_limit_bytes := C.TF_DeviceListMemoryBytes(devices_list, C.int(i), status.c)
 		if err := status.Err(); err != nil {
-			return nil, fmt.Errorf("TF_DeviceListMemoryBytes(index=%d) failed: %v", i, err)
+			return nil, fmt.Errorf("DeviceListMemoryBytes(index=%d) failed: %v", i, err)
 		}
 
 		device := Device{
-			Name:        C.GoString(device_name),
-			Type:        C.GoString(device_type),
-			MemoryLimit: int64(memory_limit),
+			Name:             C.GoString(device_name),
+			Type:             C.GoString(device_type),
+			MemoryLimitBytes: int64(memory_limit_bytes),
 		}
 
 		devices = append(devices, device)

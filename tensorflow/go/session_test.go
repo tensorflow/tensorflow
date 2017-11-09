@@ -298,15 +298,4 @@ func TestListDevices(t *testing.T) {
 	if len(devices) == 0 {
 		t.Fatalf("no devices detected")
 	}
-
-	var cpus, gpus int
-
-	for _, d := range devices {
-		switch d.Type {
-		case "GPU":
-			gpus++
-		case "CPU":
-			cpus++
-		}
-	}
 }
