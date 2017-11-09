@@ -1745,9 +1745,8 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testAutoConvertAndCheckData(self):
     with self.test_session() as sess:
       a = array_ops.placeholder(tf.string)
-      with self.assertRaises(TypeError) as e:
+      with self.assertRaisesRegexp(TypeError, 'Type of feed value 1 with type int is not'):
         sess.run(a, feed_dict={a: 1})
-      assert 'Type of feed value 1 with type int is not' in e.value.message
 
 if __name__ == '__main__':
   googletest.main()
