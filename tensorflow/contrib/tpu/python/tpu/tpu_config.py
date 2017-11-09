@@ -45,10 +45,7 @@ class TPUConfig(
       is invoked once on each host. To be precise, with a global batch size
       `train_batch_size` in `TPUEstimator` constructor, the batch size for each
       shard is `train_batch_size` // #hosts. With Per-Core input pipeline
-      deployment, the shard batch size is `train_batch_size` // #cores.  Note
-      that this only works for single-host TPU training now (tracked in
-      b/67051042). For multi-host, please use Per-Core, i.e., `False` for
-      `per_host_input_for_training`.
+      deployment, the shard batch size is `train_batch_size` // #cores.
     tpu_job_name: The name of the TPU job. Typically, this name is auto-inferred
       within TPUEstimator, however when using ClusterSpec propagation in more
       esoteric cluster configurations, you may need to specify the job name as a
