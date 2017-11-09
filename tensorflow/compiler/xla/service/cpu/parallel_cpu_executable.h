@@ -51,7 +51,7 @@ class ParallelCpuExecutable : public Executable {
       std::unique_ptr<SimpleOrcJIT> jit,
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<const HloModule> hlo_module,
-      std::unique_ptr<const std::map<HloInstruction*, string>> function_names,
+      std::unique_ptr<const HloInstructionMap<string>> function_names,
       std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
       std::unordered_map<const HloInstruction*,
                          std::unique_ptr<unsigned char[]>>
@@ -141,8 +141,7 @@ class ParallelCpuExecutable : public Executable {
   string ir_module_string_;
 
   // Map containing the JITted function names for each HLO instruction.
-  const std::unique_ptr<const std::map<HloInstruction*, string>>
-      function_names_;
+  const std::unique_ptr<const HloInstructionMap<string>> function_names_;
 
   // Maps HLOs to their index into the profile counter array.
   const std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;

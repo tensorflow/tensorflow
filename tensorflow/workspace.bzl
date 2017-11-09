@@ -181,6 +181,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party/mkl_dnn:mkldnn.BUILD")),
   )
 
+  native.http_archive(
+      name = "com_google_absl",
+      urls = [
+          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
+          "https://github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
+      ],
+     sha256 = "f1a7349f88d2846210c42e2f7271dabeee404c2a3b4198e34a797993e3569b03",
+     strip_prefix = "abseil-cpp-cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
+  )
+
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
@@ -344,6 +354,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party:six.BUILD")),
   )
 
+  native.http_archive(
+      name = "absl_py",
+      urls = [
+          "https://github.com/abseil/abseil-py/archive/231e3870b976c1dc61dce1749138661d21556028.tar.gz",
+      ],
+      sha256 = "8ea2b23bfdb9ae7622f3e5d95236bc600c8d8509a2f38c84732b3145585d4f73",
+      strip_prefix = "abseil-py-231e3870b976c1dc61dce1749138661d21556028",
+  )
+
   native.new_http_archive(
       name = "org_python_pypi_backports_weakref",
       urls = [
@@ -429,11 +448,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "nsync",
       urls = [
-          "https://mirror.bazel.build/github.com/google/nsync/archive/839fcc53ff9be58218ed55397deb3f8376a1444e.tar.gz",
-          # "https://github.com/google/nsync/archive/839fcc53ff9be58218ed55397deb3f8376a1444e.tar.gz",
+          "https://mirror.bazel.build/github.com/google/nsync/archive/4fc8ff3e7626c5f24bc9674438d8257f0ffc226c.tar.gz",
+          # "https://github.com/google/nsync/archive/4fc8ff3e7626c5f24bc9674438d8257f0ffc226c.tar.gz",
       ],
-      sha256 = "124d105edb0313ef2d7f5bb86ec94d9f8de95479e55641c4254ffa8f795e9b37",
-      strip_prefix = "nsync-839fcc53ff9be58218ed55397deb3f8376a1444e",
+      sha256 = "ffbbe828f3d0bef75462e34801de5cea31d10aa63eaa42a4ed74c46521bdfd58",
+      strip_prefix = "nsync-4fc8ff3e7626c5f24bc9674438d8257f0ffc226c",
   )
 
   native.http_archive(
@@ -554,11 +573,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/bb3c660e87f59abb665570a31b01ab125ec4c10e.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/bb3c660e87f59abb665570a31b01ab125ec4c10e.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/618cf290880ae9cd87b4bbf6c9b1759476f422eb.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/618cf290880ae9cd87b4bbf6c9b1759476f422eb.tar.gz",
       ],
-      sha256 = "caab6d7978e6771cb4e9b5b89607c5370de8aa642913c6c14e892468194c94e4",
-      strip_prefix = "llvm-bb3c660e87f59abb665570a31b01ab125ec4c10e",
+      sha256 = "ec2e032e58372c614c41b539c0309baa91843c30d7a9c6dee647dcd24be02e3c",
+      strip_prefix = "llvm-618cf290880ae9cd87b4bbf6c9b1759476f422eb",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -723,6 +742,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@com_google_guava"],
   )
 
+  java_import_external(
+      name = "javax_validation",
+      jar_sha256 = "e459f313ebc6db2483f8ceaad39af07086361b474fa92e40f442e8de5d9895dc",
+      jar_urls = [
+          "http://mirror.bazel.build/repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
+          "http://repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
+      ],
+      licenses = ["notice"],  # Apache 2.0
+  )
+
   native.new_http_archive(
       name = "com_google_pprof",
       urls = [
@@ -769,4 +798,26 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "d58bb2d6c8603f600d522b6104d6192a65339aa26cbba9f11ff5c4b36dedb928",
       strip_prefix = "bazel-toolchains-af4681c3d19f063f090222ec3d04108c4e0ca255",
+  )
+
+  native.new_http_archive(
+      name = "arm_neon_2_x86_sse",
+      sha256 = "c8d90aa4357f8079d427e87a6f4c493da1fa4140aee926c05902d7ec1533d9a5",
+      strip_prefix = "ARM_NEON_2_x86_SSE-0f77d9d182265259b135dad949230ecbf1a2633d",
+      urls = [
+          "https://mirror.bazel.build/github.com/intel/ARM_NEON_2_x86_SSE/archive/0f77d9d182265259b135dad949230ecbf1a2633d.tar.gz",
+          "https://github.com/intel/ARM_NEON_2_x86_SSE/archive/0f77d9d182265259b135dad949230ecbf1a2633d.tar.gz",
+      ],
+      build_file = str(Label("//third_party:arm_neon_2_x86_sse.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "flatbuffers",
+      build_file = "third_party/flatbuffers/flatbuffers.BUILD",
+      strip_prefix = "flatbuffers-971a68110e4fc1bace10fcb6deeb189e7e1a34ce",
+      sha256 = "874088d2ee0d9f8524191f77209556415f03dd44e156276edf19e5b90ceb5f55",
+      urls = [
+          "https://mirror.bazel.build/github.com/google/flatbuffers/archive/971a68110e4fc1bace10fcb6deeb189e7e1a34ce.tar.gz",
+          "https://github.com/google/flatbuffers/archive/971a68110e4fc1bace10fcb6deeb189e7e1a34ce.tar.gz",
+      ],
   )

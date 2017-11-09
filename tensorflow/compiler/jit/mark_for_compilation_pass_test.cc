@@ -144,8 +144,8 @@ TEST(XlaCompilationTest, UnsupportedTypes) {
     Node* a = ops::SourceOp(
         "Const", builder.opts()
                      .WithName("A")
-                     .WithAttr("dtype", DT_COMPLEX64)
-                     .WithAttr("value", Tensor(DT_COMPLEX64, TensorShape())));
+                     .WithAttr("dtype", DT_COMPLEX128)
+                     .WithAttr("value", Tensor(DT_COMPLEX128, TensorShape())));
     Node* b = ops::UnaryOp("Neg", a, builder.opts().WithName("B"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
     TF_EXPECT_OK(builder.ToGraph(graph.get()));

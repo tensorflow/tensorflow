@@ -46,9 +46,12 @@ message RewriterConfig {
     // Driven by manual op-level annotations.
     MANUAL = 2;
     // Driven by heuristics. The behavior of these heuristics is subject to
-    // change. Currently includes an experimental recomputation
-    // heuristic. Manual annotations are respected, but additional nodes are
+    // change. Currently includes an experimental recomputation and swapping
+    // heuristics. Manual annotations are respected, but additional nodes are
     // selected automatically.
+    SWAPPING_HEURISTICS = 4;
+    RECOMPUTATION_HEURISTICS = 5;
+    // Use any combination of swapping and recomputation heuristics.
     HEURISTICS = 3;
   }
   // Configures memory optimization passes through the meta-optimizer. Has no

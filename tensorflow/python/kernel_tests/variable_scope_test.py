@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+
 import numpy
 
 from tensorflow.python.eager import context
@@ -38,6 +40,12 @@ from tensorflow.python.platform import test
 
 
 class VariableScopeTest(test.TestCase):
+
+  def tearDown(self):
+    gc.collect()
+    # This will only contain uncollectable garbage, i.e. reference cycles
+    # involving objects with __del__ defined.
+    self.assertEqual(0, len(gc.garbage))
 
   def testGetVar(self):
     vs = variable_scope._get_default_variable_store()

@@ -86,8 +86,7 @@ Status LogicalBufferAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleGetTupleElement(
-    HloInstruction* get_tuple_element, HloInstruction* operand) {
+Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
   // GetTupleElement does not create buffers.
   return Status::OK();
 }
@@ -99,24 +98,19 @@ Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleBitcast(HloInstruction* bitcast) {
+Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
   // A kBitcast instruction aliases its operand. That is, the buffer of its
   // result *is* the buffer of its operand.
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select,
-                                           HloInstruction* /*pred*/,
-                                           HloInstruction* on_true,
-                                           HloInstruction* on_false) {
+Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
   NewLogicalBuffer(select, /*index=*/{});

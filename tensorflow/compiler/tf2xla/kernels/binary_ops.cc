@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Native XLA implementations of simple unary Ops
+// Native XLA implementations of simple binary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace {
@@ -49,6 +50,9 @@ XLA_MAKE_BINARY(Add, b->Add(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Sub, b->Sub(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mul, b->Mul(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Div, b->Div(lhs, rhs, extend_dimensions));
+
+XLA_MAKE_BINARY(Atan2, b->Atan2(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(Complex, b->Complex(lhs, rhs, extend_dimensions));
 
 // Implementation of FloorDiv. Pseudo-code:
 // if ((x < 0) != (y < 0)) {
@@ -171,8 +175,12 @@ class ApproximateEqualOp : public XlaOpKernel {
   // Computes the max of the scalar input x and 0.
   void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationBuilder* b = ctx->builder();
-    auto result = b->Lt(b->Abs(b->Sub(ctx->Input(0), ctx->Input(1))),
-                        XlaHelpers::FloatLiteral(b, input_type(0), tolerance_));
+    auto abs = b->Abs(b->Sub(ctx->Input(0), ctx->Input(1)));
+    auto abs_shape = b->GetShape(abs);
+    OP_REQUIRES_OK(ctx, abs_shape.status());
+    auto abs_type = abs_shape.ValueOrDie()->element_type();
+    auto result = b->Lt(
+        abs, b->ConvertElementType(b->ConstantR0<float>(tolerance_), abs_type));
     ctx->SetOutput(0, result);
   }
 

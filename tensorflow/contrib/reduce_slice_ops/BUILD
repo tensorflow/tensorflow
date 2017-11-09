@@ -71,6 +71,7 @@ tf_custom_op_py_library(
         ":reduce_slice_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
 )
 

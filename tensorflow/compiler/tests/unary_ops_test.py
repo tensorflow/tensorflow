@@ -328,6 +328,131 @@ class UnaryOpsTest(XLATestCase):
           np.array([-1, -0.5, 0, 0.3], dtype=dtype),
           expected=np.array([-1, -64.0 / 127, 0, 38.0 / 127], dtype=dtype))
 
+  def testComplexOps(self):
+    for dtype in self.complex_types:
+      # TODO(b/65408531): math_ops.acosh (needs pow)
+      # TODO(b/65408531): math_ops.asinh (needs pow)
+
+      # TODO(b/65408531): Wider support for log (needs atan2).
+      atan2_supported = self.device == "XLA_GPU"
+      if atan2_supported:
+        self._assertOpOutputMatchesExpected(
+            math_ops.atanh,
+            np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype),
+            expected=np.arctanh(
+                np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.cosh,
+          np.array([1j, 2 - 3j, 3, 4 + 2j], dtype=dtype),
+          expected=np.cosh(np.array([1j, 2 - 3j, 3, 4 + 2j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.sinh,
+          np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype),
+          expected=np.sinh(np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.exp,
+          np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype),
+          expected=np.exp(np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.expm1,
+          np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype),
+          expected=np.expm1(np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.reciprocal,
+          np.array([[1, 2j, 2 + 3j]], dtype=dtype),
+          expected=1.0 / np.array([[1, 2j, 2 + 3j]], dtype=dtype))
+
+      if atan2_supported:
+        self._assertOpOutputMatchesExpected(
+            math_ops.log,
+            np.array([[5j, 3 - 2j]], dtype=dtype),
+            expected=np.log(np.array([[5j, 3 - 2j]], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.sin,
+          np.array([[5j, 3 - 2j]], dtype=dtype),
+          expected=np.sin(np.array([[5j, 3 - 2j]], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.cos,
+          np.array([[5j, 3 - 2j]], dtype=dtype),
+          expected=np.cos(np.array([[5j, 3 - 2j]], dtype=dtype)))
+
+      # TODO(b/34703906): improve log1p implementation and make tolerance
+      # tighter.
+      if atan2_supported:  # TODO(b/34703906): log support
+        self._assertOpOutputMatchesExpected(
+            math_ops.log1p,
+            np.array([[1e-14, 1e-15j, 0.6 - 0.3j]], dtype=dtype),
+            expected=np.log1p(
+                np.array([[1e-14, 1e-15j, 0.6 - 0.3j]], dtype=dtype)))
+
+      # TODO(b/34703906): math_ops.rsqrt (needs pow)
+
+      # TODO(b/34703906): math_ops.sigmoid (needs tanh)
+
+      # TODO(b/34703906): math_ops.sqrt (needs pow)
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.tan,
+          np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype),
+          expected=np.tan(np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)))
+
+      # TODO(b/34703906): math_ops.tanh (as itself)
+
+      ctypes = {np.complex64: np.float32}
+      self._assertOpOutputMatchesExpected(
+          math_ops.abs,
+          np.array([[3 - 4j, -1j, np.inf]], dtype=dtype),
+          expected=np.array([[5, 1, np.inf]], dtype=ctypes[dtype]))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.negative,
+          np.array([[-1 + 2j, -3j]], dtype=dtype),
+          expected=np.array([[1 - 2j, 3j]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.square,
+          np.array([[-2 - 3j, 3 + 4j, 5j]], dtype=dtype),
+          expected=np.array([[-2 - 3j, 3 + 4j, 5j]], dtype=dtype)**2)
+
+      self._assertOpOutputMatchesExpected(
+          array_ops.zeros_like,
+          np.array([[4j, 3 - 2j], [2, -1j]], dtype=dtype),
+          expected=np.array([[0, 0], [0, 0]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          array_ops.ones_like,
+          np.array([[-4j, 3 + 2j], [2, -1j]], dtype=dtype),
+          expected=np.array([[1, 1], [1, 1]], dtype=dtype))
+
+      if atan2_supported:  # TODO(b/34703906): atan2 support
+        self._assertOpOutputMatchesExpected(
+            math_ops.angle,
+            np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
+            expected=np.angle(
+                np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.conj,
+          np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
+          expected=np.array([1 - 3j, -4 - 7j, 2.7, 3j], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.imag,
+          np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
+          expected=np.array([3, 7, 0, -3], dtype=ctypes[dtype]))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.real,
+          np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
+          expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
+
   def testIntOps(self):
     for dtype in self.int_types:
       self._assertOpOutputMatchesExpected(
@@ -399,11 +524,14 @@ class UnaryOpsTest(XLATestCase):
 
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
-    types = [dtypes.bool, dtypes.int32, dtypes.float32]
+    types = [dtypes.bool, dtypes.int32, dtypes.float32] + self.complex_tf_types
     for shape in shapes:
       for src_type in types:
         for dst_type in types:
           src = np.arange(np.prod(shape)).astype(src_type.as_numpy_dtype)
+          if src_type in self.complex_tf_types:
+            src += (np.arange(np.prod(shape)) * 2j).astype(
+                src_type.as_numpy_dtype)
           src = src.reshape(shape)
 
           dst = src.astype(dst_type.as_numpy_dtype)

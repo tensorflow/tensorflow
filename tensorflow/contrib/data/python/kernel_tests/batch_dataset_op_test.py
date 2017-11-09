@@ -21,6 +21,7 @@ import math
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -522,6 +523,28 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "number of elements does not match"):
         sess.run(get_next)
+
+
+class BatchDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
+    components = (
+        np.arange(tensor_slice_len),
+        np.array([[1, 2, 3]]) * np.arange(tensor_slice_len)[:, np.newaxis],
+        np.array(multiplier) * np.arange(tensor_slice_len))
+
+    return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
+
+  def testCore(self):
+    tensor_slice_len = 8
+    batch_size = 2
+    num_outputs = tensor_slice_len // batch_size
+    self.run_core_tests(
+        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
+        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
+        num_outputs)
+
 
 if __name__ == "__main__":
   test.main()

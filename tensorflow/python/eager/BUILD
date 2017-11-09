@@ -3,6 +3,10 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "tf_py_logged_benchmark",
+)
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -356,20 +360,24 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":backprop",
         ":context",
         ":function",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
-        "//third_party/py/numpy",
     ],
+)
+
+tf_py_logged_benchmark(
+    name = "benchmarks",
+    target = "//tensorflow/python/eager:benchmarks_test",
 )
 
 py_test(

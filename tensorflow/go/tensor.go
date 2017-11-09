@@ -101,7 +101,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 			return nil, bug("NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v", dataType, shape, nbytes, buf.Len())
 		}
 	} else {
-		e := stringEncoder{offsets: buf, data: raw[nflattened*8 : len(raw)], status: newStatus()}
+		e := stringEncoder{offsets: buf, data: raw[nflattened*8:], status: newStatus()}
 		if err := e.encode(reflect.ValueOf(value), shape); err != nil {
 			return nil, err
 		}
@@ -207,6 +207,9 @@ func (t *Tensor) WriteContentsTo(w io.Writer) (int64, error) {
 func tensorData(c *C.TF_Tensor) []byte {
 	// See: https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
 	cbytes := C.TF_TensorData(c)
+	if cbytes == nil {
+		return nil
+	}
 	length := int(C.TF_TensorByteSize(c))
 	slice := (*[1 << 30]byte)(unsafe.Pointer(cbytes))[:length:length]
 	return slice
@@ -322,6 +325,14 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 			expected := int(shape[0])
 			if v.Len() != expected {
 				return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
+			}
+		}
+
+		// Optimization: if only one dimension is left we can use binary.Write() directly for this slice
+		if len(shape) == 1 && v.Len() > 0 {
+			switch v.Index(0).Kind() {
+			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+				return binary.Write(w, nativeEndian, v.Interface())
 			}
 		}
 

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -56,6 +57,7 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
 
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
       false, [](const Shape&, const Shape&) { return false; });
+  pipeline.AddPass<WhileLoopSimplifier>();
   pipeline.AddPass<ReshapeMover>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);

@@ -357,6 +357,111 @@ TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
 }
 
+// TODO(b/63003356): 11-06-2017: fails on all back-ends with incorrect result.
+TEST_F(WhileTest, DISABLED_WhileWithPermutationAndTupleResult) {
+  std::vector<Shape> shape_elements = {
+      ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {3}),
+      ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(F32, {3})};
+  Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
+
+  // Create a computation for the condition.
+  // Repeat for N iterations.
+  const int N = 2;
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    builder.Gt(builder.ConstantR0<int32>(N), iteration);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add 1 to the iteration variable and permute the weights.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    auto w1 = builder.GetTupleElement(prev, 1);
+    auto w2 = builder.GetTupleElement(prev, 2);
+    auto w3 = builder.GetTupleElement(prev, 3);
+    auto result = builder.Tuple(
+        {builder.Add(iteration, builder.ConstantR0<int32>(1)), w3, w1, w2});
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, "while");
+  auto init = builder.Tuple(
+      {builder.ConstantR0<int32>(0), builder.ConstantR1<float>(3, 1.f),
+       builder.ConstantR1<float>(3, 2.f), builder.ConstantR1<float>(3, 3.f)});
+  auto result = builder.While(condition, body, init);
+  VLOG(2) << "result = "
+          << ShapeUtil::HumanString(
+                 *builder.GetShape(result).ConsumeValueOrDie());
+
+  auto expected_counter = Literal::CreateR0<int32>(N);
+  auto expected_w1 = Literal::CreateR1<float>({1.0f, 1.0f, 1.0f});
+  auto expected_w2 = Literal::CreateR1<float>({2.0f, 2.0f, 2.0f});
+  auto expected_w3 = Literal::CreateR1<float>({3.0f, 3.0f, 3.0f});
+  auto expected = Literal::MakeTuple({expected_counter.get(), expected_w2.get(),
+                                      expected_w3.get(), expected_w1.get()});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+}
+
+// TODO(b/63003356): 11-06-2017: fails on all back-ends with incorrect result.
+TEST_F(WhileTest, DISABLED_WhileWithPermutationAndVectorResult) {
+  std::vector<Shape> shape_elements = {
+      ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {3}),
+      ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(F32, {3})};
+  Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
+
+  // Create a computation for the condition.
+  // Repeat for N iterations.
+  const int N = 2;
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    builder.Gt(builder.ConstantR0<int32>(N), iteration);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add 1 to the iteration variable permute the weights.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    auto w1 = builder.GetTupleElement(prev, 1);
+    auto w2 = builder.GetTupleElement(prev, 2);
+    auto w3 = builder.GetTupleElement(prev, 3);
+    auto result = builder.Tuple(
+        {builder.Add(iteration, builder.ConstantR0<int32>(1)), w3, w1, w2});
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, "while");
+  auto init = builder.Tuple(
+      {builder.ConstantR0<int32>(0), builder.ConstantR1<float>(3, 1.f),
+       builder.ConstantR1<float>(3, 2.f), builder.ConstantR1<float>(3, 3.f)});
+  auto xla_while = builder.While(condition, body, init);
+
+  auto add12 = builder.Add(builder.GetTupleElement(xla_while, 1),
+                           builder.GetTupleElement(xla_while, 2));
+  auto result = builder.Add(add12, builder.GetTupleElement(xla_while, 3));
+  VLOG(2) << "result = "
+          << ShapeUtil::HumanString(
+                 *builder.GetShape(result).ConsumeValueOrDie());
+  std::vector<float> expected = {6.f, 6.f, 6.f};
+  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+}
+
 // Tests a while node when the result type T is a Tuple.
 //
 // tuple<int32, vector<float>> result(0, vector<float>(10, 0.0f));
@@ -897,6 +1002,51 @@ TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
       client_->TransferToServer(*Literal::CreateR0<float>(42)));
   ComputeAndCompareR0<float>(&outer, 43.0f, {parameter_data.get()},
                              ErrorSpec(1e-6));
+}
+
+// Tests loop where the init value comes from two sources (constant and
+// parameter).
+//
+// int32 result = (0, 1);
+// while (result[0] + result[1] < 30) {
+//   result[0] = result[0] + 1;
+//   result[1] = result[1] + 1;
+// }
+TEST_F(WhileTest, WhileWithMixedTupleElements) {
+  auto result_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})});
+
+  ComputationBuilder outer(client_, "outer");
+  auto p =
+      outer.Tuple({outer.ConstantR0<int32>(0),
+                   outer.Parameter(0, ShapeUtil::MakeShape(S32, {}), "t")});
+
+  ComputationBuilder cond(client_, "cond");
+  auto params = cond.Parameter(0, result_shape, "prev");
+  auto cond_t = cond.Add(cond.GetTupleElement(params, 1),
+                         cond.GetTupleElement(params, 0));
+  cond.Lt(cond_t, cond.ConstantR0<int32>(30));
+
+  ComputationBuilder body(client_, "body");
+  auto body_t = body.Parameter(0, result_shape, "t");
+
+  auto tuple = body.Tuple(
+      {body.Add(body.GetTupleElement(params, 0), body.ConstantR0<int32>(1)),
+       body.Add(body.GetTupleElement(params, 1), body.ConstantR0<int32>(1))});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  outer.While(cond_computation, body_computation, p);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> parameter_data,
+      client_->TransferToServer(*Literal::CreateR0<int32>(1)));
+
+  auto add1 = Literal::CreateR0<int32>(15);
+  auto add2 = Literal::CreateR0<int32>(16);
+  auto expected = Literal::MakeTuple({add1.get(), add2.get()});
+  ComputeAndCompareTuple(&outer, *expected, {parameter_data.get()},
+                         ErrorSpec(1e-6));
 }
 
 // Tests nested while loops.

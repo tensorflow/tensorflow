@@ -60,6 +60,20 @@ Building TensorFlow Docker containers should be done through the
 script. The raw Dockerfiles should not be used directly as they contain strings
 to be replaced by the script during the build.
 
+Attempting to run [parameterized_docker_build.sh](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/parameterized_docker_build.sh)
+from a binary docker image such as for example `tensorflow/tensorflow:latest` will
+not work. One needs to execute the script from a developer docker image since by
+contrast with a binary docker image it contains not only the compiled solution but
+also the tensorflow source code. Please select the appropriate developer docker
+image of tensorflow at `tensorflow/tensorflow:[.](https://hub.docker.com/r/tensorflow/tensorflow/tags/)`.
+
+The smallest command line to generate a docker image will then be:
+```docker run -it tensorflow/tensorflow:"right_tag"```
+
+If you would like to start a jupyter notebook on your docker container, make sure
+to map the port 8888 of your docker container by adding -p 8888:8888 to the above
+command.
+
 To use the script, specify the container type (`CPU` vs. `GPU`), the desired
 Python version (`PYTHON2` vs. `PYTHON3`) and whether the developer Docker image
 is to be built (`NO` vs. `YES`). In addition, you need to specify the central

@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/summary_interface.h"
+
+#include <utility>
 
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -19,18 +22,16 @@ limitations under the License.
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/summary_interface.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
-#include "tensorflow/core/util/event.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
 namespace {
 template <typename T>
-Status TensorValueAt(Tensor t, int index, T* out) {
+Status TensorValueAt(Tensor t, int64 index, T* out) {
   switch (t.dtype()) {
     case DT_FLOAT:
       *out = t.flat<float>()(index);
@@ -210,20 +211,20 @@ Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h, int w,
 
 class SummaryWriterImpl : public SummaryWriterInterface {
  public:
-  SummaryWriterImpl(int max_queue, int flush_millis)
+  SummaryWriterImpl(int max_queue, int flush_millis, Env* env)
       : SummaryWriterInterface(),
         is_initialized_(false),
         max_queue_(max_queue),
-        flush_millis_(flush_millis) {}
+        flush_millis_(flush_millis),
+        env_(env) {}
 
-  Status Initialize(const string& logdir, const string& filename_suffix,
-                    Env* env) {
-    const Status is_dir = env->IsDirectory(logdir);
+  Status Initialize(const string& logdir, const string& filename_suffix) {
+    const Status is_dir = env_->IsDirectory(logdir);
     if (!is_dir.ok()) {
       if (is_dir.code() != tensorflow::error::NOT_FOUND) {
         return is_dir;
       }
-      TF_RETURN_IF_ERROR(env->CreateDir(logdir));
+      TF_RETURN_IF_ERROR(env_->CreateDir(logdir));
     }
     mutex_lock ml(mu_);
     events_writer_ =
@@ -231,7 +232,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     if (!events_writer_->InitWithSuffix(filename_suffix)) {
       return errors::Unknown("Could not initialize events writer.");
     }
-    last_flush_ = Env::Default()->NowMicros();
+    last_flush_ = env_->NowMicros();
     is_initialized_ = true;
     return Status::OK();
   }
@@ -250,28 +251,34 @@ class SummaryWriterImpl : public SummaryWriterInterface {
 
   Status WriteTensor(int64 global_step, Tensor t, const string& tag,
                      const string& serialized_metadata) override {
-    Summary s;
-    Summary::Value* v = s.add_value();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(GetWallTime());
+    Summary::Value* v = e->mutable_summary()->add_value();
     t.AsProtoTensorContent(v->mutable_tensor());
     v->set_tag(tag);
     v->mutable_metadata()->ParseFromString(serialized_metadata);
-    return Enqueue(global_step, s);
+    return WriteEvent(std::move(e));
   }
 
   Status WriteScalar(int64 global_step, Tensor t, const string& tag) override {
-    Summary s;
-    Summary::Value* v = s.add_value();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(GetWallTime());
+    Summary::Value* v = e->mutable_summary()->add_value();
     v->set_tag(tag);
     float value;
     TF_RETURN_IF_ERROR(TensorValueAt<float>(t, 0, &value));
     v->set_simple_value(value);
-    return Enqueue(global_step, s);
+    return WriteEvent(std::move(e));
   }
 
   Status WriteHistogram(int64 global_step, Tensor t,
                         const string& tag) override {
-    Summary s;
-    Summary::Value* v = s.add_value();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(GetWallTime());
+    Summary::Value* v = e->mutable_summary()->add_value();
     v->set_tag(tag);
     histogram::Histogram histo;
     for (int64 i = 0; i < t.NumElements(); i++) {
@@ -287,7 +294,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     }
 
     histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */);
-    return Enqueue(global_step, s);
+    return WriteEvent(std::move(e));
   }
 
   Status WriteImage(int64 global_step, Tensor tensor, const string& tag,
@@ -306,7 +313,10 @@ class SummaryWriterImpl : public SummaryWriterInterface {
       return errors::InvalidArgument("Tensor too large for summary ",
                                      tensor.shape().DebugString());
     }
-    Summary s;
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(GetWallTime());
+    Summary* s = e->mutable_summary();
     // The casts and h * w cannot overflow because of the limits above.
     const int batch_size = static_cast<int>(tensor.dim_size(0));
     const int h = static_cast<int>(tensor.dim_size(1));
@@ -321,20 +331,20 @@ class SummaryWriterImpl : public SummaryWriterInterface {
             &values(i, 0, 0), Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
       };
       TF_RETURN_IF_ERROR(
-          AddImages(tag, max_images, batch_size, w, h, depth, ith_image, &s));
+          AddImages(tag, max_images, batch_size, w, h, depth, ith_image, s));
     } else if (tensor.dtype() == DT_HALF) {
       TF_RETURN_IF_ERROR(NormalizeAndAddImages<Eigen::half>(
-          tensor, max_images, h, w, hw, depth, batch_size, tag, bad_color, &s));
+          tensor, max_images, h, w, hw, depth, batch_size, tag, bad_color, s));
     } else if (tensor.dtype() == DT_FLOAT) {
       TF_RETURN_IF_ERROR(NormalizeAndAddImages<float>(
-          tensor, max_images, h, w, hw, depth, batch_size, tag, bad_color, &s));
+          tensor, max_images, h, w, hw, depth, batch_size, tag, bad_color, s));
     } else {
       return errors::InvalidArgument(
           "Only DT_INT8, DT_HALF, and DT_FLOAT images are supported. Got ",
           DataTypeString(tensor.dtype()));
     }
 
-    return Enqueue(global_step, s);
+    return WriteEvent(std::move(e));
   }
 
   Status WriteAudio(int64 global_step, Tensor tensor, const string& tag,
@@ -346,10 +356,13 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     const int64 length_frames = tensor.dim_size(1);
     const int64 num_channels =
         tensor.dims() == 2 ? 1 : tensor.dim_size(tensor.dims() - 1);
-    Summary s;
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(GetWallTime());
+    Summary* s = e->mutable_summary();
     const int N = std::min<int>(max_outputs, batch_size);
     for (int i = 0; i < N; ++i) {
-      Summary::Value* v = s.add_value();
+      Summary::Value* v = s->add_value();
       if (max_outputs > 1) {
         v->set_tag(strings::StrCat(tag, "/audio/", i));
       } else {
@@ -375,36 +388,35 @@ class SummaryWriterImpl : public SummaryWriterInterface {
           channels_by_frames.data(), sample_rate_truncated, num_channels,
           length_frames, sa->mutable_encoded_audio_string()));
     }
-
-    return Enqueue(global_step, s);
+    return WriteEvent(std::move(e));
   }
 
-  string DebugString() override { return "SummaryWriterImpl"; }
-
- private:
-  Status Enqueue(int64 global_step, const Summary& summary) {
+  Status WriteEvent(std::unique_ptr<Event> event) override {
     mutex_lock ml(mu_);
-    queue_.emplace_back(global_step, summary, Env::Default()->NowMicros());
+    queue_.emplace_back(std::move(event));
     if (queue_.size() >= max_queue_ ||
-        Env::Default()->NowMicros() - last_flush_ > 1000 * flush_millis_) {
+        env_->NowMicros() - last_flush_ > 1000 * flush_millis_) {
       return InternalFlush();
     }
     return Status::OK();
   }
 
+  string DebugString() override { return "SummaryWriterImpl"; }
+
+ private:
+  double GetWallTime() {
+    return static_cast<double>(env_->NowMicros()) / 1.0e6;
+  }
+
   Status InternalFlush() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    for (const EventInfo& e : queue_) {
-      Event event;
-      event.set_step(std::get<0>(e));
-      *event.mutable_summary() = std::get<1>(e);
-      event.set_wall_time(std::get<2>(e));
-      events_writer_->WriteEvent(event);
+    for (const std::unique_ptr<Event>& e : queue_) {
+      events_writer_->WriteEvent(*e);
     }
     queue_.clear();
     if (!events_writer_->Flush()) {
       return errors::InvalidArgument("Could not flush events file.");
     }
-    last_flush_ = Env::Default()->NowMicros();
+    last_flush_ = env_->NowMicros();
     return Status::OK();
   }
 
@@ -412,9 +424,9 @@ class SummaryWriterImpl : public SummaryWriterInterface {
   const int max_queue_;
   const int flush_millis_;
   uint64 last_flush_;
-  using EventInfo = std::tuple<int64, Summary, int64>;
+  Env* env_;
   mutex mu_;
-  std::vector<EventInfo> queue_ GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<Event>> queue_ GUARDED_BY(mu_);
   // A pointer to allow deferred construction.
   std::unique_ptr<EventsWriter> events_writer_ GUARDED_BY(mu_);
   std::vector<std::pair<string, SummaryMetadata>> registered_summaries_
@@ -424,8 +436,8 @@ class SummaryWriterImpl : public SummaryWriterInterface {
 Status CreateSummaryWriter(int max_queue, int flush_millis,
                            const string& logdir, const string& filename_suffix,
                            Env* env, SummaryWriterInterface** result) {
-  SummaryWriterImpl* w = new SummaryWriterImpl(max_queue, flush_millis);
-  const Status s = w->Initialize(logdir, filename_suffix, env);
+  SummaryWriterImpl* w = new SummaryWriterImpl(max_queue, flush_millis, env);
+  const Status s = w->Initialize(logdir, filename_suffix);
   if (!s.ok()) {
     w->Unref();
     *result = nullptr;

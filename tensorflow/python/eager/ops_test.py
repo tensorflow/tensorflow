@@ -331,6 +331,20 @@ class OpsTest(test_util.TensorFlowTestCase):
     x.set_shape(tensor_shape.TensorShape([None, 2]))
     self.assertEqual(x.get_shape(), (1, 2))
 
+  def testCastScalarToPrimitiveTypes(self):
+    x = constant_op.constant(1.3)
+    self.assertIsInstance(int(x), int)
+    self.assertEqual(int(x), 1)
+    self.assertIsInstance(float(x), float)
+    self.assertAllClose(float(x), 1.3)
+
+  def testCastNonScalarToPrimitiveTypesFails(self):
+    x = constant_op.constant([1.3, 2])
+    with self.assertRaises(TypeError):
+      int(x)
+    with self.assertRaises(TypeError):
+      float(x)
+
 
 if __name__ == '__main__':
   test.main()

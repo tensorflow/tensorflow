@@ -371,6 +371,22 @@ class Tensor(_TensorLike):
     """
     return self._shape
 
+  def __iter__(self):
+    if context.in_graph_mode():
+      raise TypeError(
+          "`Tensor` objects are not iterable when eager execution is not "
+          "enabled. To iterate over this tensor use `tf.map_fn`.")
+    shape = self._shape_tuple()
+    if shape is None:
+      raise TypeError("Cannot iterate over a tensor with unknown shape.")
+    if not shape:
+      raise TypeError("Cannot iterate over a scalar tensor.")
+    if shape[0] is None:
+      raise TypeError(
+          "Cannot iterate over a tensor with unknown first dimension.")
+    for i in xrange(shape[0]):
+      yield self[i]
+
   def _shape_as_list(self):
     if self._shape.ndims is not None:
       return [dim.value for dim in self._shape.dims]
@@ -382,6 +398,14 @@ class Tensor(_TensorLike):
     if shape is None:
       return None
     return tuple(shape)
+
+  def _rank(self):
+    """Integer rank of this Tensor, if known, else None.
+
+    Returns:
+      Integer rank or None
+    """
+    return self._shape.ndims
 
   def get_shape(self):
     """Alias of Tensor.shape."""
@@ -506,19 +530,6 @@ class Tensor(_TensorLike):
   def _override_operator(operator, func):
     _override_helper(Tensor, operator, func)
 
-  def __iter__(self):
-    """Dummy method to prevent iteration. Do not call.
-
-    NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the Tensor from 0 to
-    infinity.  Declaring this method prevents this unintended
-    behavior.
-
-    Raises:
-      TypeError: when invoked.
-    """
-    raise TypeError("'Tensor' object is not iterable.")
-
   def __bool__(self):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
 
@@ -623,6 +634,14 @@ class _EagerTensorBase(Tensor):
       raise ValueError("Resource handles are not convertible to numpy.")
     return self.cpu()._numpy()  # pylint: disable=protected-access
 
+  # __int__ and  __float__ may copy the tensor to CPU and
+  # only work for scalars; values are cast as per numpy.
+  def __int__(self):
+    return int(self.numpy())
+
+  def __float__(self):
+    return float(self.numpy())
+
   def __array__(self):
     return np.array(self.numpy())
 
@@ -653,6 +672,18 @@ class _EagerTensorBase(Tensor):
 
     Returns:
       tuple with the shape.
+    """
+    raise NotImplementedError()
+
+  def _rank(self):
+    """Integer rank of this Tensor.
+
+    Unlike regular Tensors, the rank is always known for EagerTensors.
+
+    This is more performant than len(self._shape_tuple())
+
+    Returns:
+      Integer rank
     """
     raise NotImplementedError()
 
@@ -831,6 +862,10 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
   constructors apply this function to each of their Tensor-valued
   inputs, which allows those ops to accept numpy arrays, Python lists,
   and scalars in addition to `Tensor` objects.
+
+  Note: This function diverges from default Numpy behavior for `float` and
+    `string` types when `None` is present in a Python list or scalar. Rather
+    than silently converting `None` values, an error will be thrown.
 
   Args:
     value: An object whose type has a registered `Tensor` conversion function.
@@ -2028,6 +2063,19 @@ class Operation(object):
         self._traceback,
         include_func_start_lineno=True)
 
+  def _set_attr(self, attr_name, attr_value):
+    """Private method used to set an attribute in the node_def."""
+    if not _USE_C_API:
+      assert "_set_attr not supported with _USE_C_API == False"
+      return
+    buf = c_api.TF_NewBufferFromString(
+        compat.as_bytes(attr_value.SerializeToString()))
+    try:
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf, status)  # pylint: disable=protected-access
+    finally:
+      c_api.TF_DeleteBuffer(buf)
+
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
 
@@ -2040,6 +2088,21 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
+    if _USE_C_API:
+      try:
+        # TODO(b/65162920): remove this try/except block when all attrs are
+        # implemented to use the _set_attr method instead of node_def.attr.
+        with errors.raise_exception_on_not_ok_status() as status:
+          metadata = c_api.TF_OperationGetAttrMetadata(self._c_op, name, status)
+        with errors.raise_exception_on_not_ok_status() as status:
+          if metadata.type == c_api.TF_ATTR_INT and metadata.is_list == 0:
+            return c_api.TF_OperationGetAttrInt(self._c_op, name, status)
+      except errors.InvalidArgumentError:
+        # Colocation ops are failing to find attrs begininning with "_*". They
+        # should fall through to the not-CAPI logic until the attribute is set
+        # via the C-API always.
+        pass
+
     fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
     if name not in self._node_def.attr:
       raise ValueError("No attr named '" + name + "' in " + str(self._node_def))
@@ -2685,7 +2748,16 @@ class Graph(object):
       A `VersionDef`.
     """
     # pylint: enable=line-too-long
-    return self._graph_def_versions
+    if self._c_graph:
+      with errors.raise_exception_on_not_ok_status() as status:
+        with c_api_util.tf_buffer() as buf:
+          c_api.TF_GraphVersions(self._c_graph, buf, status)
+          data = c_api.TF_GetBuffer(buf)
+      version_def = versions_pb2.VersionDef()
+      version_def.ParseFromString(compat.as_bytes(data))
+      return version_def
+    else:
+      return self._graph_def_versions
 
   @property
   def seed(self):
@@ -2884,7 +2956,11 @@ class Graph(object):
         if previous._hash_str == function._hash_str:
           return
         else:
-          raise ValueError("Another function is already defined with that name")
+          raise ValueError("Cannot add function (%s, hash %s) to graph (%s). "
+                           "Another function (%s, hash %s) is already defined "
+                           "with that name (%s)" % (
+                               function, function._hash_str, self,
+                               previous, previous._hash_str, name))
     # pylint: enable=protected-access
 
     self._functions[name] = function
@@ -4302,11 +4378,18 @@ def device(device_name_or_function):
   Returns:
     A context manager that specifies the default device to use for newly
     created ops.
+
+  Raises:
+    RuntimeError: If eager execution is enabled and a function is passed in.
   """
   if context.in_graph_mode():
     return get_default_graph().device(device_name_or_function)
   else:
     # TODO(agarwal): support device functions in EAGER mode.
+    if callable(device_name_or_function):
+      raise RuntimeError(
+          "tf.device does not support functions when eager execution "
+          "is enabled.")
     return context.device(device_name_or_function)
 
 
@@ -4694,6 +4777,24 @@ def get_default_graph():
   return _default_graph_stack.get_default()
 
 
+def get_name_scope():
+  """Returns the current name scope in the default_graph.
+
+  For example:
+
+  ```python
+  with tf.name_scope('scope1'):
+    with tf.name_scope('scope2'):
+      print(tf.get_name_scope())
+  ```
+  would print the string `scope1/scope2`.
+
+  Returns:
+    A string representing the current name scope.
+  """
+  return get_default_graph().get_name_scope()
+
+
 def _assert_same_graph(original_item, item):
   """Fail if the 2 items are from different graphs.
 
@@ -4835,6 +4936,9 @@ class GraphKeys(object):
   # Key to collect local variables that are local to the machine and are not
   # saved/restored.
   LOCAL_VARIABLES = "local_variables"
+  # Key to collect local variables which are used to accumulate interal state
+  # to be used in tf.metrics.*.
+  METRIC_VARIABLES = "metric_variables"
   # Key to collect model variables defined by layers.
   MODEL_VARIABLES = "model_variables"
   # Key to collect Variable objects that will be trained by the
@@ -4899,6 +5003,7 @@ class GraphKeys(object):
   _VARIABLE_COLLECTIONS = [
       GLOBAL_VARIABLES,
       LOCAL_VARIABLES,
+      METRIC_VARIABLES,
       MODEL_VARIABLES,
       TRAINABLE_VARIABLES,
       MOVING_AVERAGE_VARIABLES,
@@ -4912,9 +5017,10 @@ class GraphKeys(object):
 
   @decorator_utils.classproperty
   def VARIABLES(cls):  # pylint: disable=no-self-argument
-    logging.warning("VARIABLES collection name is deprecated, "
-                    "please use GLOBAL_VARIABLES instead; "
-                    "VARIABLES will be removed after 2017-03-02.")
+    logging.log_first_n(logging.WARN,
+                        "VARIABLES collection name is deprecated, please use "
+                        "GLOBAL_VARIABLES instead; VARIABLES will be removed "
+                        "after 2017-03-02.", 1)
     return cls.GLOBAL_VARIABLES
 
 
@@ -4928,6 +5034,10 @@ def add_to_collection(name, value):
     name: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
     value: The value to add to the collection.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
 
@@ -4942,6 +5052,10 @@ def add_to_collections(names, value):
     names: The key for the collections. The `GraphKeys` class
       contains many standard names for collections.
     value: The value to add to the collections.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
 
@@ -4961,6 +5075,10 @@ def get_collection_ref(key):
     list if no value has been added to that collection.  Note that this returns
     the collection list itself, which can be modified in place to change the
     collection.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   return get_default_graph().get_collection_ref(key)
 
@@ -4985,6 +5103,10 @@ def get_collection(key, scope=None):
     an empty list if no value has been added to that collection. The
     list contains the values in the order under which they were
     collected.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   return get_default_graph().get_collection(key, scope)
 
@@ -5018,6 +5140,10 @@ class name_scope(object):  # pylint: disable=invalid-name
       return foo_op(..., name=scope)
   ```
   """
+
+  @property
+  def name(self):
+    return self._name
 
   def __init__(self, name, default_name=None, values=None):
     """Initialize the context manager.

@@ -438,6 +438,16 @@ class FunctionLibraryRuntime {
     // Parameters for remote function execution.
     bool remote_execution = false;
     string source_device = "";  // Fully specified device name.
+
+    // Allocator attributes specifying where the args are / rets should be put.
+    // These should either be {} or match the length of args / retvals. If {},
+    // the default allocator attributes will be assumed for all args / retvals.
+    std::vector<AllocatorAttributes> args_alloc_attrs;
+    std::vector<AllocatorAttributes> rets_alloc_attrs;
+
+    // If true, we create a new IntraProcessRendezvous, else use the existing
+    // one.
+    bool create_rendezvous = false;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,

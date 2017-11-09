@@ -17,12 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import threading
 
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import iterator_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.util import nest
@@ -34,6 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver as saver_lib
 
 
 class DatasetConstructorTest(test.TestCase):
@@ -570,6 +573,136 @@ class DatasetConstructorTest(test.TestCase):
         # pylint: disable=protected-access
         new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
         # pylint: enable=protected-access
+
+  def _iterator_checkpoint_prefix(self):
+    return os.path.join(self.get_temp_dir(), "iterator")
+
+  def _testSaveRestoreFromTensorsUtility(self, start, break_range, stop):
+    path = self._iterator_checkpoint_prefix()
+    step = 0
+    meta_filename = path + "-%d.meta" % step
+
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
+
+    with ops.Graph().as_default() as g:
+      iterator = (
+          dataset_ops.Dataset.from_tensors(components)
+          .make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      saveable = iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+      for t in nest.flatten(get_next):
+        ops.add_to_collection("get_next", t)
+      saver = saver_lib.Saver()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(start, break_range):
+          result = sess.run(get_next)
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component, result_component)
+        saver.save(sess, path, step)
+
+    with ops.Graph().as_default() as g:
+      saver = saver_lib.import_meta_graph(meta_filename)
+      with self.test_session(graph=g) as sess:
+        get_next = nest.pack_sequence_as(("a", "b", "c"),
+                                         ops.get_collection("get_next"))
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for _ in range(break_range, stop):
+          result = sess.run(get_next)
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component, result_component)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testRestoreFromTensors(self):
+    self._testSaveRestoreFromTensorsUtility(0, 0, 1)
+
+  def testRestoreExhuatedIteratorFromTensors(self):
+    self._testSaveRestoreFromTensorsUtility(0, 1, 1)
+
+  def _build_graph_tensor_slices(self, components):
+    iterator = dataset_ops.Dataset.from_tensor_slices(
+        components).make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    saveable = iterator_ops.make_saveable_from_iterator(iterator)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+    for t in nest.flatten(get_next):
+      ops.add_to_collection("get_next", t)
+    return init_op, get_next
+
+  def _testSaveRestoreFromTensorSlicesUtility(self, start, break_range, stop):
+    path = self._iterator_checkpoint_prefix()
+    step = 0
+    meta_filename = path + "-%d.meta" % step
+
+    components = (np.tile(np.array([[1], [2], [3], [4]]), 20), np.tile(
+        np.array([[12], [13], [14], [15]]), 22),
+                  np.array([37.0, 38.0, 39.0, 40.0]))
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next = self._build_graph_tensor_slices(components)
+      saver = saver_lib.Saver()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for i in range(start, break_range):
+          result = sess.run(get_next)
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component[i], result_component)
+        saver.save(sess, path, step)
+
+    with ops.Graph().as_default() as g:
+      saver = saver_lib.import_meta_graph(meta_filename)
+      with self.test_session(graph=g) as sess:
+        get_next = nest.pack_sequence_as(("a", "b", "c"),
+                                         ops.get_collection("get_next"))
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for i in range(break_range, stop):
+          result = sess.run(get_next)
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component[i], result_component)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testRestoreFromTensorSlices(self):
+    self._testSaveRestoreFromTensorSlicesUtility(0, 4, 2)
+
+  def testRestoreExhaustedIteratorFromTensorSlices(self):
+    self._testSaveRestoreFromTensorSlicesUtility(0, 4, 4)
+
+  def tesRestoreFromTensorSlicesWithDict(self):
+
+    path = self._iterator_checkpoint_prefix()
+    step = 0
+    meta_filename = path + "-%d.meta" % step
+
+    components = {"foo": [1, 2, 3], "bar": [[4.0], [5.0], [6.0]]}
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next = self._build_graph_tensor_slices(components)
+      saver = saver_lib.Saver()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for i in range(2):
+          results = sess.run(get_next)
+          self.assertEqual(components["foo"][i], results["foo"])
+          self.assertEqual(components["bar"][i], results["bar"])
+        saver.save(sess, path, step)
+
+    with ops.Graph().as_default() as g:
+      saver = saver_lib.import_meta_graph(meta_filename)
+      with self.test_session(graph=g) as sess:
+        get_next = nest.pack_sequence_as(("a", "b"),
+                                         ops.get_collection("get_next"))
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for i in range(2, 3):
+          results = sess.run(get_next)
+          self.assertEqual(components["foo"][i], results["foo"])
+          self.assertEqual(components["bar"][i], results["bar"])
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
 
 
 if __name__ == "__main__":

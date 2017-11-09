@@ -138,7 +138,8 @@ class HloComputation {
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Return a string representation of the computation.
-  string ToString(int nested_level = 0) const;
+  string ToString(int nested_level = 0,
+                  bool include_large_constants = false) const;
 
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
@@ -270,7 +271,8 @@ class HloComputation {
   // via the root. The root instruction of the computation is visited last, and
   // the visitor's FinishVisit method is called once upon completion (with the
   // root instruction as the argument).
-  Status Accept(DfsHloVisitor* visitor) const;
+  template <typename HloInstructionPtr>
+  Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor) const;
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -281,14 +283,31 @@ class HloComputation {
 
   // Visit every node in the computation in the given order. 'order' must
   // be a topological sort of all instructions in the computation.
-  Status AcceptOrdered(DfsHloVisitor* visitor,
+  template <typename HloInstructionPtr>
+  Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                        const std::vector<const HloInstruction*>& order) const;
 
   // Same as Accept() above, but the visitor is given as a function.
-  Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
+  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
+  Status Accept(
+      const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Returns a deep copy of this computation including all instructions.
-  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone");
+  // If the module pointer is not nullptr, it will be the module where
+  // the cloned computations will be added to (in order to support deep
+  // cloning).
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
+                                        HloModule* module = nullptr);
+
+  // Like Clone(), but if an instruction is present in replacement_map, we use
+  // the map's value to replace that instruction in the cloned computation.
+  //
+  // If replacements maps a key to nullptr, we remove that instruction from the
+  // new computation.
+  std::unique_ptr<HloComputation> CloneWithReplacements(
+      std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+          replacements,
+      HloModule* module = nullptr, const string& suffix = "clone");
 
   // Returns true if the given instruction can be removed from the
   // computation. Instructions such as parameters and send/receive instructions
@@ -312,8 +331,7 @@ class HloComputation {
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction,
-      HloInstruction* fusion_instruction = nullptr);
+      HloInstruction* root_instruction, HloInstruction* fusion_instruction);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -358,11 +376,6 @@ class HloComputation {
       instruction_iterators_;
 
   std::vector<HloInstruction*> param_instructions_;
-
-  // Unique name generator for instruction identifiers. Instruction names should
-  // be unique per computation and this is enforced when instructions are added
-  // to the computation.
-  NameUniquer instruction_name_uniquer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloComputation);
 };

@@ -18,11 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 from tensorflow.contrib.eager.python import evaluator
+
 from tensorflow.contrib.eager.python import metrics
+from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
+from tensorflow.python.training import training_util
 
 
 class IdentityModel(object):
@@ -71,6 +78,19 @@ class EvaluatorTest(test.TestCase):
     self.assertEqual(set(["mean"]), set(results.keys()))
     self.assertEqual(6.0, results["mean"].numpy())
 
+  def testWriteSummaries(self):
+    e = SimpleEvaluator(IdentityModel())
+    e(3.0)
+    e([5.0, 7.0, 9.0])
+    training_util.get_or_create_global_step()
+    logdir = tempfile.mkdtemp()
+
+    e.all_metric_results(logdir)
+
+    events = summary_test_util.events_from_file(logdir)
+    self.assertEqual(len(events), 2)
+    self.assertEqual(events[1].summary.value[0].simple_value, 6.0)
+
   def testComposition(self):
     e = DelegatingEvaluator(PrefixLModel())
     e({"inner": 2.0, "outer": 100.0})
@@ -97,13 +117,28 @@ class EvaluatorTest(test.TestCase):
     self.assertEqual(6.0, results["mean"].numpy())
 
   def testDatasetGraph(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), ops.Graph().as_default(), self.test_session():
       e = SimpleEvaluator(IdentityModel())
       ds = dataset_ops.Dataset.from_tensor_slices([3.0, 5.0, 7.0, 9.0])
       init_op, call_op, results_op = e.evaluate_on_dataset(ds)
       results = e.run_evaluation(init_op, call_op, results_op)
       self.assertEqual(set(["mean"]), set(results.keys()))
       self.assertEqual(6.0, results["mean"])
+
+  def testWriteSummariesGraph(self):
+    with context.graph_mode(), ops.Graph().as_default(), self.test_session():
+      e = SimpleEvaluator(IdentityModel())
+      ds = dataset_ops.Dataset.from_tensor_slices([3.0, 5.0, 7.0, 9.0])
+      training_util.get_or_create_global_step()
+      logdir = tempfile.mkdtemp()
+      init_op, call_op, results_op = e.evaluate_on_dataset(
+          ds, summary_logdir=logdir)
+      variables.global_variables_initializer().run()
+      e.run_evaluation(init_op, call_op, results_op)
+
+    events = summary_test_util.events_from_file(logdir)
+    self.assertEqual(len(events), 2)
+    self.assertEqual(events[1].summary.value[0].simple_value, 6.0)
 
   def testModelProperty(self):
     m = IdentityModel()

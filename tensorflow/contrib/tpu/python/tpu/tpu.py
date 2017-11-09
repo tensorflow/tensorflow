@@ -146,6 +146,14 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
 
+  @property
+  def grad_state(self):
+    # Define the gradient loop state associated with the TPUReplicateContext to
+    # be None as the TPUReplicateContext does not get nested nor does the
+    # grad_state outside the TPUReplicateContext affect the graph inside so the
+    # grad_state should be as if this is the top-level gradient state.
+    return None
+
 
 def replicate(computation,
               inputs=None,
@@ -311,8 +319,11 @@ def replicate(computation,
       # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
       # be rewritten away, leading to a runtime error.
       # TODO(phawkins): extend the rewrite to elide these nodes instead.
-      with ops.device(core(0)):
-        output_tensors = [array_ops.identity(x) for x in output_tensors]
+      new_output_tensors = []
+      for t in output_tensors:
+        with ops.device(t.device if t.device else core(0)):
+          new_output_tensors.append(array_ops.identity(t))
+      output_tensors = new_output_tensors
     finally:
       context.Exit()
 

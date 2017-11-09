@@ -31,14 +31,15 @@ namespace xla {
 namespace llvm_ir {
 
 void EmitTupleSelect(IrArray select, IrArray pred, llvm::Value* on_true,
-                     llvm::Value* on_false, llvm::IRBuilder<>* ir_builder) {
+                     llvm::Value* on_false, llvm::IRBuilder<>* ir_builder,
+                     llvm::Module* module) {
   CHECK(ShapeUtil::IsScalar(pred.GetShape()));
 
   llvm::LoadInst* pred_value =
       ir_builder->CreateLoad(pred.GetBasePointer(), "load_predicate_value");
   llvm::Value* pred_cond = ir_builder->CreateICmpNE(
       pred_value,
-      llvm::ConstantInt::get(PrimitiveTypeToIrType(PRED, ir_builder), 0),
+      llvm::ConstantInt::get(PrimitiveTypeToIrType(PRED, module), 0),
       "boolean_predicate");
 
   VLOG(2) << "HandleSelect for tuple:";
@@ -71,11 +72,11 @@ void EmitTupleSelect(IrArray select, IrArray pred, llvm::Value* on_true,
 
 void EmitTuple(IrArray tuple,
                tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-               llvm::IRBuilder<>* ir_builder) {
+               llvm::IRBuilder<>* ir_builder, llvm::Module* module) {
   for (size_t i = 0; i < operands.size(); ++i) {
     auto* store = ir_builder->CreateStore(
         ir_builder->CreatePointerCast(operands[i],
-                                      PrimitiveTypeToIrType(TUPLE, ir_builder)),
+                                      PrimitiveTypeToIrType(TUPLE, module)),
         ir_builder->CreateInBoundsGEP(
             tuple.GetBasePointer(),
             {ir_builder->getInt64(0), ir_builder->getInt64(i)}));
@@ -85,7 +86,8 @@ void EmitTuple(IrArray tuple,
 
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
                                  int alignment, llvm::Value* operand,
-                                 llvm::IRBuilder<>* ir_builder) {
+                                 llvm::IRBuilder<>* ir_builder,
+                                 llvm::Module* module) {
   llvm::Value* element_ptr = ir_builder->CreateInBoundsGEP(
       operand, {ir_builder->getInt64(0), ir_builder->getInt64(index)});
   llvm::LoadInst* src_buffer = ir_builder->CreateLoad(element_ptr);
@@ -98,7 +100,7 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
   }
   SetAlignmentMetadataForLoad(src_buffer, alignment);
 
-  llvm::Type* element_type = ShapeToIrType(target_shape, ir_builder);
+  llvm::Type* element_type = ShapeToIrType(target_shape, module);
   llvm::Value* ret_val =
       ir_builder->CreateBitCast(src_buffer, element_type->getPointerTo());
   return ret_val;

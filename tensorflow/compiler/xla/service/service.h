@@ -327,7 +327,8 @@ class Service : public ServiceInterface {
           arguments,
       Backend* backend,
       tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
-      tensorflow::gtl::ArraySlice<string> result_tags);
+      tensorflow::gtl::ArraySlice<string> result_tags,
+      ExecutionProfile* profile);
 
   // Convenience function for adding a function to a user computation.
   template <typename RequestT, typename ResponseT>

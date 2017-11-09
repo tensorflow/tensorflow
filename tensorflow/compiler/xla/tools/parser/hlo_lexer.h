@@ -93,6 +93,7 @@ class HloLexer {
   TokKind LexShape();
   TokKind LexConstant();
   TokKind LexDigitOrNegative();
+  TokKind LexComment();
 
   const tensorflow::StringPiece buf_;
   const char* current_ptr_;

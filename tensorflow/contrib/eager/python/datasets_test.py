@@ -16,10 +16,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data import Dataset
 from tensorflow.contrib.eager.python import datasets
+from tensorflow.python.data import Dataset
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 
@@ -80,6 +81,13 @@ class IteratorTest(test.TestCase):
         lambda x: script_ops.py_func(my_map, [[x]], dtypes.int64))
     got = [x.numpy() for x in datasets.Iterator(ds)]
     self.assertAllEqual([[1], [2], [3], [4]], got)
+
+  def testTensorsPlacedOnDevice(self):
+    ds = Dataset.from_tensors([0., 1.])
+    with ops.device(test.gpu_device_name()):
+      x = datasets.Iterator(ds).next()
+      x = math_ops.add(x, x)
+    self.assertAllEqual([0., 2.], x.numpy())
 
 
 if __name__ == '__main__':

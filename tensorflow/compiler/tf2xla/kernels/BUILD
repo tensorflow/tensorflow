@@ -18,6 +18,7 @@ tf_kernel_library(
         "bias_ops.cc",
         "binary_ops.cc",
         "cast_op.cc",
+        "categorical_op.cc",
         "concat_op.cc",
         "const_op.cc",
         "conv_ops.cc",

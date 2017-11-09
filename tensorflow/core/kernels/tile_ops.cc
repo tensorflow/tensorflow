@@ -248,7 +248,7 @@ TF_CALL_int64(HANDLE_TYPE_NAME_SYCL);
 #undef HANDLE_CASE
 
 // --------------------------------------------------------------------------
-template <typename Device>
+template <typename Device, typename Tmultiples>
 class TileGradientOp : public OpKernel {
  public:
   explicit TileGradientOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -273,10 +273,10 @@ class TileGradientOp : public OpKernel {
       return;
     }
 
-    const gtl::ArraySlice<int32> multiples_array(multiples.flat<int32>().data(),
-                                                 input_dims);
+    const gtl::ArraySlice<Tmultiples> multiples_array(
+        multiples.flat<Tmultiples>().data(), input_dims);
     TensorShape output_shape;
-    std::vector<int32> input_dim_size_vec;
+    std::vector<Tmultiples> input_dim_size_vec;
     for (int i = 0; i < input_dims; ++i) {
       OP_REQUIRES(
           context, multiples_array[i] > 0,
@@ -337,19 +337,19 @@ class TileGradientOp : public OpKernel {
  private:
   template <DataType DT, int NDIM>
   void HandleCase(OpKernelContext* context,
-                  const std::vector<int32>& input_dims,
-                  const gtl::ArraySlice<int32>& multiples_array,
+                  const std::vector<Tmultiples>& input_dims,
+                  const gtl::ArraySlice<Tmultiples>& multiples_array,
                   Tensor* result);
 
   template <DataType DT, int NDIM>
   void HandleCaseImpl(OpKernelContext* context,
-                      const std::vector<int32>& input_dims,
-                      const gtl::ArraySlice<int32>& multiples_array,
+                      const std::vector<Tmultiples>& input_dims,
+                      const gtl::ArraySlice<Tmultiples>& multiples_array,
                       Tensor* result) {
     typedef typename EnumToDataType<DT>::Type T;
 
     bool reduction_only = true;
-    std::vector<int> reduction_dims;
+    std::vector<Tmultiples> reduction_dims;
 
     for (int i = 0; i < NDIM; ++i) {
       if (input_dims[i] > multiples_array[i] && multiples_array[i] > 1) {
@@ -411,7 +411,8 @@ class TileGradientOp : public OpKernel {
 
   template <typename T, int NDIM, int REDUCENDIM>
   void HandleReduce(OpKernelContext* context,
-                    const std::vector<int32>& reduce_dim_in, Tensor* result) {
+                    const std::vector<Tmultiples>& reduce_dim_in,
+                    Tensor* result) {
     static_assert(NDIM >= REDUCENDIM, "Too many reduced dimensions");
     Eigen::DSizes<Eigen::DenseIndex, REDUCENDIM> reduce_dim;
     Eigen::DSizes<Eigen::DenseIndex, NDIM> reshape_dim;
@@ -432,34 +433,41 @@ class TileGradientOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TileGradientOp);
 };
 
-template <typename Device>
+template <typename Device, typename Tmultiples>
 template <DataType DT, int NDIM>
-inline void TileGradientOp<Device>::HandleCase(
-    OpKernelContext* context, const std::vector<int32>& input_dims,
-    const gtl::ArraySlice<int32>& multiples_array, Tensor* result) {
+inline void TileGradientOp<Device, Tmultiples>::HandleCase(
+    OpKernelContext* context, const std::vector<Tmultiples>& input_dims,
+    const gtl::ArraySlice<Tmultiples>& multiples_array, Tensor* result) {
   LOG(FATAL) << "TileGradientOp: Invalid combination of Device, DT and NDIM: "
              << MakeTypeIndex<Device>().name() << ", " << DataTypeString(DT)
              << ", " << NDIM;
 }
 
-#define HANDLE_CASE(device, T, dtype, ndim)                                    \
+#define HANDLE_CASE(device, T, dtype, Tmultiples, ndim)                        \
   template <>                                                                  \
   template <>                                                                  \
-  void TileGradientOp<device>::HandleCase<dtype, ndim>(                        \
-      OpKernelContext * context, const std::vector<int32>& input_dims,         \
-      const gtl::ArraySlice<int32>& multiples_array, Tensor* result) {         \
+  void TileGradientOp<device, Tmultiples>::HandleCase<dtype, ndim>(            \
+      OpKernelContext * context, const std::vector<Tmultiples>& input_dims,    \
+      const gtl::ArraySlice<Tmultiples>& multiples_array, Tensor* result) {    \
     HandleCaseImpl<dtype, ndim>(context, input_dims, multiples_array, result); \
   }
 
 // 0-D handled specially above
-#define HANDLE_CASE_DIM(device, T, dtype) \
-  HANDLE_CASE(device, T, dtype, 1);       \
-  HANDLE_CASE(device, T, dtype, 2);       \
-  HANDLE_CASE(device, T, dtype, 3);       \
-  HANDLE_CASE(device, T, dtype, 4);       \
-  HANDLE_CASE(device, T, dtype, 5);       \
-  HANDLE_CASE(device, T, dtype, 6);       \
-  HANDLE_CASE(device, T, dtype, 7);
+#define HANDLE_CASE_DIM(device, T, dtype)  \
+  HANDLE_CASE(device, T, dtype, int32, 1); \
+  HANDLE_CASE(device, T, dtype, int32, 2); \
+  HANDLE_CASE(device, T, dtype, int32, 3); \
+  HANDLE_CASE(device, T, dtype, int32, 4); \
+  HANDLE_CASE(device, T, dtype, int32, 5); \
+  HANDLE_CASE(device, T, dtype, int32, 6); \
+  HANDLE_CASE(device, T, dtype, int32, 7); \
+  HANDLE_CASE(device, T, dtype, int64, 1); \
+  HANDLE_CASE(device, T, dtype, int64, 2); \
+  HANDLE_CASE(device, T, dtype, int64, 3); \
+  HANDLE_CASE(device, T, dtype, int64, 4); \
+  HANDLE_CASE(device, T, dtype, int64, 5); \
+  HANDLE_CASE(device, T, dtype, int64, 6); \
+  HANDLE_CASE(device, T, dtype, int64, 7);
 
 #define HANDLE_TYPE_NAME_CPU(T) \
   HANDLE_CASE_DIM(CPUDevice, T, DataTypeToEnum<T>::value);
@@ -514,9 +522,16 @@ REGISTER_KERNEL_BUILDER(Name("Tile")
                             .HostMemory("multiples")
                             .TypeConstraint<int64>("Tmultiples"),
                         TileOp<CPUDevice, int64>);
-REGISTER_KERNEL_BUILDER(
-    Name("TileGrad").Device(DEVICE_CPU).HostMemory("multiples"),
-    TileGradientOp<CPUDevice>);
+REGISTER_KERNEL_BUILDER(Name("TileGrad")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("multiples")
+                            .TypeConstraint<int32>("Tmultiples"),
+                        TileGradientOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("TileGrad")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("multiples")
+                            .TypeConstraint<int64>("Tmultiples"),
+                        TileGradientOp<CPUDevice, int64>);
 
 #if GOOGLE_CUDA
 #define REGISTER_GPU(type)                                         \
@@ -537,7 +552,13 @@ REGISTER_KERNEL_BUILDER(
                               .TypeConstraint<type>("T")           \
                               .TypeConstraint<int32>("Tmultiples") \
                               .HostMemory("multiples"),            \
-                          TileGradientOp<GPUDevice>);
+                          TileGradientOp<GPUDevice, int32>);       \
+  REGISTER_KERNEL_BUILDER(Name("TileGrad")                         \
+                              .Device(DEVICE_GPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64>("Tmultiples") \
+                              .HostMemory("multiples"),            \
+                          TileGradientOp<GPUDevice, int64>);
 
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
@@ -569,7 +590,13 @@ TF_CALL_complex128(REGISTER_GPU)
                               .TypeConstraint<type>("T")           \
                               .TypeConstraint<int32>("Tmultiples") \
                               .HostMemory("multiples"),            \
-                          TileGradientOp<SYCLDevice>);
+                          TileGradientOp<SYCLDevice, int32>);      \
+  REGISTER_KERNEL_BUILDER(Name("TileGrad")                         \
+                              .Device(DEVICE_SYCL)                 \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64>("Tmultiples") \
+                              .HostMemory("multiples"),            \
+                          TileGradientOp<SYCLDevice, int64>);
 
     TF_CALL_float(REGISTER_SYCL);
 TF_CALL_double(REGISTER_SYCL);

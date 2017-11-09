@@ -255,8 +255,7 @@ class XlaCompiler {
 
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,
-                         const std::vector<Argument>& args,
-                         CompilationResult* result);
+                         std::vector<Argument> args, CompilationResult* result);
 
   // Compiles a tensorflow::Graph into an xla::Computation.
   // Similar to CompileFunction, but takes a Graph as input rather than a

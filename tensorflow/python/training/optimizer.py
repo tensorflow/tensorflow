@@ -397,6 +397,8 @@ class Optimizer(object):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
+      RuntimeError: If called with eager execution enabled and if `grad_loss`
+        is not `None` or `loss` is not callable.
 
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
@@ -411,11 +413,13 @@ class Optimizer(object):
     """
     if context.in_eager_mode():
       if grad_loss is not None:
-        raise ValueError("`grad_loss` argument to Optimizer.compute_gradients "
-                         "not supported when eager execution is enabled.")
+        raise RuntimeError(
+            "`grad_loss` argument to Optimizer.compute_gradients "
+            "not supported when eager execution is enabled.")
       if not callable(loss):
-        raise ValueError("`loss` passed to Optimizer.compute_gradients should "
-                         "be a function when eager execution is enabled.")
+        raise RuntimeError(
+            "`loss` passed to Optimizer.compute_gradients should "
+            "be a function when eager execution is enabled.")
       # TODO(agarwal): consider passing parameters to the `loss` function.
       if var_list is None:
         return backprop.implicit_grad(loss)()
@@ -569,6 +573,47 @@ class Optimizer(object):
       A list of strings.
     """
     return sorted(self._slots.keys())
+
+  def variables(self):
+    """A list of variables which encode the current state of `Optimizer`.
+
+    Includes slot variables and additional global variables created by the
+    optimizer in the current default graph.
+
+    Returns:
+      A list of variables.
+    """
+    executing_eagerly = context.in_eager_mode()
+    current_graph = ops.get_default_graph()
+
+    def _from_current_graph(variable):
+      if executing_eagerly:
+        # No variable.op in eager mode. We don't expect lots of eager graphs,
+        # but behavior should be consistent with graph mode.
+        return variable._container_prefix == current_graph._container_prefix  # pylint: disable=protected-access
+      else:
+        return variable.op.graph is current_graph
+
+    optimizer_variables = [v for v in self._non_slot_variables()
+                           if _from_current_graph(v)]
+    for _, variable_dict in self._slots.items():
+      for _, slot_for_variable in variable_dict.items():
+        if _from_current_graph(slot_for_variable):
+          optimizer_variables.append(slot_for_variable)
+    # Sort variables by name so that the return is deterministic.
+    return sorted(optimizer_variables, key=lambda v: v.name)
+
+  def _non_slot_variables(self):
+    """Additional variables created by the `Optimizer`.
+
+    This method should be overridden by child classes which create extra
+    variables, so that `variables()` includes the `Optimizer`'s non-slot
+    variables.
+
+    Returns:
+      A list or tuple of variables.
+    """
+    return []
 
   def _assert_valid_dtypes(self, tensors):
     """Asserts tensors are all valid types (see `_valid_dtypes`).

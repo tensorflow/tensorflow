@@ -25,7 +25,6 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-
 // Return in <out> the result of making the end of <s> a square matrix.
 Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
                              ShapeHandle* out) {
@@ -280,6 +279,33 @@ output: Shape is `[..., M, M]`.
 
 @compatibility(numpy)
 Equivalent to np.linalg.inv
+@end_compatibility
+)doc");
+
+REGISTER_OP("MatrixExponential")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
+    .Doc(R"doc(
+Computes the matrix exponential of one or more square matrices:
+
+exp(A) = \sum_{n=0}^\infty A^n/n!
+
+The exponential is computed using a combination of the scaling and squaring
+method and the Pade approximation. Details can be founds in:
+Nicholas J. Higham, "The scaling and squaring method for the matrix exponential
+revisited," SIAM J. Matrix Anal. Applic., 26:1179-1193, 2005.
+
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. The output is a tensor of the same shape as the input
+containing the exponential for all input submatrices `[..., :, :]`.
+
+input: Shape is `[..., M, M]`.
+output: Shape is `[..., M, M]`.
+
+@compatibility(scipy)
+Equivalent to scipy.linalg.expm
 @end_compatibility
 )doc");
 

@@ -289,7 +289,7 @@ tf_java_test(
 #    test_class = "org.tensorflow.processor.OperatorProcessorTest",
 #    deps = [
 #        ":processor_library",
-#        "@junit",
+#        "//third_party/java/junit",
 #        "@com_google_testing_compile",
 #        "@com_google_truth",
 #    ],

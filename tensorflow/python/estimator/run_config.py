@@ -528,6 +528,7 @@ class RunConfig(object):
     """Returns a new instance of `RunConfig` replacing specified properties.
 
     Only the properties in the following list are allowed to be replaced:
+
       - `model_dir`.
       - `tf_random_seed`,
       - `save_summary_steps`,

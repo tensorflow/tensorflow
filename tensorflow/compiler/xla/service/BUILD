@@ -131,6 +131,7 @@ cc_library(
         "hlo_instruction.cc",
         "hlo_module.cc",
         "hlo_opcode.cc",
+        "hlo_sharding.cc",
     ],
     hdrs = [
         "dfs_hlo_visitor.h",
@@ -139,6 +140,7 @@ cc_library(
         "hlo_instruction.h",
         "hlo_module.h",
         "hlo_opcode.h",
+        "hlo_sharding.h",
     ],
     deps = [
         ":hlo_module_config",
@@ -146,6 +148,7 @@ cc_library(
         ":hlo_reachability",
         ":name_uniquer",
         ":versioned_computation_handle",
+        "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_tree",
@@ -223,6 +226,22 @@ cc_library(
 tf_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:protobuf_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_sharding_test",
+    srcs = ["hlo_sharding_test.cc"],
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:literal_util",
@@ -1034,9 +1053,7 @@ cc_library(
     srcs = ["algebraic_simplifier.cc"],
     hdrs = ["algebraic_simplifier.h"],
     deps = [
-        ":call_inliner",
         ":hlo",
-        ":hlo_evaluator",
         ":hlo_pass",
         ":hlo_query",
         ":shape_inference",
@@ -1069,6 +1086,59 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "while_loop_simplifier",
+    srcs = ["while_loop_simplifier.cc"],
+    hdrs = ["while_loop_simplifier.h"],
+    deps = [
+        ":call_inliner",
+        ":hlo",
+        ":hlo_evaluator",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_simplifier_test",
+    srcs = ["while_loop_simplifier_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":while_loop_simplifier",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "defuser",
+    srcs = ["defuser.cc"],
+    hdrs = ["defuser.h"],
+    deps = [
+        ":call_graph",
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "defuser_test",
+    srcs = ["defuser_test.cc"],
+    deps = [
+        ":defuser",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
     ],
 )
 
@@ -2080,6 +2150,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",

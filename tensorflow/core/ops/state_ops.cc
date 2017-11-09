@@ -648,4 +648,37 @@ output: A copy of the input before increment. If nothing else modifies the
   input, the values produced will all be distinct.
 )doc");
 
+REGISTER_OP("ResourceCountUpTo")
+    .Input("resource: resource")
+    .Output("output: T")
+    .Attr("limit: int")
+    .Attr("T: {int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data == nullptr || handle_data->empty()) {
+        return errors::InvalidArgument("Handle has no shape/type information.");
+      }
+      shape_inference::ShapeAndType shape_and_type = (*handle_data)[0];
+      DataType value_dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("T", &value_dtype));
+      if (value_dtype != shape_and_type.dtype) {
+        return errors::InvalidArgument(
+            "Data types do not match: ", DataTypeString(value_dtype), " and ",
+            DataTypeString(shape_and_type.dtype));
+      }
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->WithRank(shape_and_type.shape, 0, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Increments variable pointed to by 'resource' until it reaches 'limit'.
+
+resource: Should be from a scalar `Variable` node.
+limit: If incrementing ref would bring it above limit, instead generates an
+  'OutOfRange' error.
+output: A copy of the input before increment. If nothing else modifies the
+  input, the values produced will all be distinct.
+)doc");
+
 }  // namespace tensorflow

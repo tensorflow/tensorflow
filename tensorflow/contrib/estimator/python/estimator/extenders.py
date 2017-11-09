@@ -27,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.training import optimizer as optimizer_lib
-from tensorflow.python.util import tf_inspect
+
 
 _VALID_METRIC_FN_ARGS = set(['features', 'labels', 'predictions', 'config'])
 
@@ -317,9 +317,6 @@ class _TransformGradients(optimizer_lib.Optimizer):
 
 def _verify_metric_fn_args(metric_fn):
   args = set(estimator_util.fn_args(metric_fn))
-  if tf_inspect.ismethod(metric_fn):
-    if 'self' in args:
-      args.remove('self')
   invalid_args = list(args - _VALID_METRIC_FN_ARGS)
   if invalid_args:
     raise ValueError('metric_fn (%s) has following not expected args: %s' %

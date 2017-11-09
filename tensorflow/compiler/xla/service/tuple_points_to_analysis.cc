@@ -200,13 +200,14 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
 }
 
 Status TuplePointsToAnalysis::HandleGetTupleElement(
-    HloInstruction* get_tuple_element, HloInstruction* operand) {
+    HloInstruction* get_tuple_element) {
   // GetTupleElement forwards a pointer to a particular element of the tuple
   // operand.
   int64 element_index = get_tuple_element->tuple_index();
 
   PointsToSet& points_to_set = CreateEmptyPointsToSet(get_tuple_element);
-  const PointsToSet& operand_points_to_set = *PerInst(operand)->points_to_set;
+  const PointsToSet& operand_points_to_set =
+      *PerInst(get_tuple_element->operand(0))->points_to_set;
 
   // Copy the points-to set (and tuple sources) at index {element_index} of the
   // operand to the points-to set for this GetTupleElement instruction.
@@ -252,9 +253,8 @@ Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
+  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
   PointsToSet& points_to_set = CreateEmptyPointsToSet(tuple);
   points_to_set.AddPointedToBuffer(
       logical_buffer_analysis_->GetBuffer(tuple, /*index=*/{}),
@@ -292,10 +292,7 @@ Status TuplePointsToAnalysis::HandleTuple(
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
-                                           HloInstruction* /*pred*/,
-                                           HloInstruction* on_true,
-                                           HloInstruction* on_false) {
+Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer. Which side is chosen cannot be
   // determined statically so conservatively set the points-to set to the union
@@ -303,6 +300,8 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
   //
   // First create a copy of the on_true points-to set (and tuple sources), then
   // add in elements of the on_false points-to set (tuple sources).
+  auto on_true = select->operand(1);
+  auto on_false = select->operand(2);
   PointsToSet& points_to_set = CreateCopiedPointsToSet(select, on_true);
   const PointsToSet& false_points_to_set = *PerInst(on_false)->points_to_set;
   points_to_set.ForEachMutableElement(

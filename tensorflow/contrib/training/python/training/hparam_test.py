@@ -32,6 +32,11 @@ class HParamsTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Unknown hyperparameter'):
       hparams.parse('xyz=123')
 
+  def testContains(self):
+    hparams = hparam.HParams(foo=1)
+    self.assertTrue('foo' in hparams)
+    self.assertFalse('bar' in hparams)
+
   def testSomeValues(self):
     hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6')
     self.assertDictEqual({'aaa': 1, 'b': 2.0, 'c_c': 'relu6'}, hparams.values())

@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import contextlib
 import os
+import random
+import sys
 import threading
 
 from tensorflow.core.protobuf import config_pb2
@@ -31,6 +33,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import model_analyzer
 from tensorflow.python.util import compat
 
+WARMUP_STEPS = 10
 MAX_TRACED_STEPS = 100
 
 
@@ -51,7 +54,9 @@ def _profiled_run(self,
     # Fast path if no need for profiling.
     if not self.profile_context._is_fast_path():
       # Maybe trace this step.
-      if self.profile_context._should_trace():
+      if self.profile_context._should_trace(self.graph, fetches):
+        if self.profile_context._debug:
+          sys.stderr.write('debug: tracing step: %d\n' % step)
         # Enable tracing, perform auto profiling or auto dump.
         if not run_metadata:
           run_metadata = config_pb2.RunMetadata()
@@ -66,6 +71,8 @@ def _profiled_run(self,
 
         ret = self._profiler_run_internal(
             fetches, feed_dict, options, run_metadata)
+        if self.profile_context._debug:
+          self.profile_context._dump_file(run_metadata, 'run_meta_%d' % step)
 
         self.profile_context.profiler._graph = self.graph
         self.profile_context.profiler.add_step(step, run_metadata)
@@ -80,6 +87,8 @@ def _profiled_run(self,
       to_profiles = self.profile_context._profile_candidates()
       for to_prof in to_profiles:
         cmd, opts, _ = to_prof
+        if self.profile_context._debug:
+          sys.stderr.write('debug: profiling %s step: %d\n' % (cmd, step))
         if cmd == 'graph':
           self.profile_context.profiler.profile_graph(opts)
         elif cmd == 'scope':
@@ -131,29 +140,43 @@ class ProfileContext(object):
         pre-defined steps.
     dump_steps: A list of steps to dump the profile to `profile_dir`. If None,
         use pre-defined steps.
+    enabled: If false, everything is disabled with minimal overhead. It allows
+        user to only enable profiling when needed.
+    debug: If true, also dumps the raw trace RunMetadata text file to
+        profile_dir. And print debugging message. Useful for bug report.
   """
 
   def __init__(self,
                profile_dir,
                trace_steps=None,
-               dump_steps=None):
+               dump_steps=None,
+               enabled=True,
+               debug=False):
+    self._enabled = enabled
+    if not self._enabled:
+      return
+
+    self._debug = debug
     if not profile_dir:
       raise ValueError('Must have a directory for profile.\n')
     self._profiler_dir = profile_dir
 
     if trace_steps is None:
-      self._trace_steps = set(list(range(10, 100, 3)) +
-                              list(range(100, 10000, 1000)))
+      self._trace_steps = set()
+      self._auto_tracing = True
     else:
       if len(trace_steps) > MAX_TRACED_STEPS:
         raise ValueError('Only support tracing up to 100 steps.\n')
       self._trace_steps = set(trace_steps[:])
+      self._auto_tracing = False
 
     if dump_steps is None:
-      self._dump_steps = set([100] + list(range(100, 10000, 2000)))
+      self._dump_steps = set([MAX_TRACED_STEPS])
     else:
       self._dump_steps = set(dump_steps[:])
 
+    self._rng = random.Random(111)
+    self._fetched = set()
     self._slow_path_steps = self._dump_steps | self._trace_steps
     self._trace_next_step = False
     self._dump_next_step = False
@@ -173,6 +196,8 @@ class ProfileContext(object):
           will be run automatically at these integer steps. Each step is
           a session.run.
     """
+    if not self._enabled:
+      return
     self._auto_profiles.append((cmd, options, profile_steps[:]))
     self._slow_path_steps |= set(profile_steps)
     self._trace_steps |= set(profile_steps)
@@ -180,41 +205,82 @@ class ProfileContext(object):
   @property
   def profiler(self):
     """Returns the current profiler object."""
+    if not self._enabled:
+      return None
     if not self._profiler:
       self._profiler = model_analyzer.Profiler(ops.get_default_graph())
     return self._profiler
 
   def trace_next_step(self):
-    """Enables tracing and add traces to profiler at next step."""
+    """Enables tracing and adds traces to profiler at next step."""
+    if not self._enabled:
+      return
     self._trace_next_step = True
+    self._slow_path_steps.add(self._step)
 
   def dump_next_step(self):
     """Enable tracing and dump profiles at next step."""
+    if not self._enabled:
+      return
     self._dump_next_step = True
+    self._slow_path_steps.add(self._step)
 
   def _is_fast_path(self):
-    if (self._step in self._slow_path_steps or
-        self._trace_next_step or
-        self._dump_next_step):
+    if self._step in self._slow_path_steps:
+      return False
+    # When user doesn't set the tracing steps explicitly, auto decide it.
+    if (self._auto_tracing and self._step > WARMUP_STEPS and
+        self._traced_steps <= MAX_TRACED_STEPS):
       return False
     return True
 
-  def _should_trace(self):
+  def _should_trace(self, graph, fetches):
+    """Whether should do tracing at current step."""
     if self._traced_steps > MAX_TRACED_STEPS:
       return False
-    trace = self._step in self._trace_steps or self._trace_next_step
-    if trace:
+    # Check user-set tracing steps.
+    if self._step in self._trace_steps or self._trace_next_step:
       self._traced_steps += 1
-    return trace
+      return True
+
+    # If no user-set tracing steps set and passes warm up steps, auto trace.
+    if self._auto_tracing and self._step > WARMUP_STEPS:
+      # If the fetches have not been seen before, trace it.
+      with graph.as_default():
+        fetch_names = [f.name for f in
+                       session._FetchMapper.for_fetch(fetches).unique_fetches()]  # pylint: disable=protected-access
+      fetch_name = '-'.join(sorted(fetch_names))
+      if self._debug:
+        sys.stderr.write('debug: trace fetches: %s\n' % fetch_name)
+      if fetch_name not in self._fetched:
+        self._fetched.add(fetch_name)
+        self._traced_steps += 1
+        return True
+      # If the trace coverage is low, does some random tracing.
+      if (self.profiler._coverage < 0.5 and self._step < MAX_TRACED_STEPS and  # pylint: disable=protected-access
+          self._rng.randint(0, 10) < 2):
+        self._traced_steps += 1
+        return True
+    return False
 
   def _maybe_dump(self):
+    """Maybe dump the profile file."""
     if not (self._step in self._dump_steps or self._dump_next_step):
       return
+    if self._debug:
+      sys.stderr.write('debug: dumping file at step: %d\n' % self._step)
     if not gfile.Exists(self._profiler_dir):
       gfile.MakeDirs(self._profiler_dir)
-    print_mdl.WriteProfile(
-        os.path.join(compat.as_bytes(self._profiler_dir),
-                     compat.as_bytes('profile_%d' % self._step)))
+
+    filename = os.path.join(compat.as_bytes(self._profiler_dir),
+                            compat.as_bytes('profile_%d' % self._step))
+    self.profiler._write_profile(filename)  # pylint: disable=protected-access
+
+  def _dump_file(self, pb, basename):
+    if not gfile.Exists(self._profiler_dir):
+      gfile.MakeDirs(self._profiler_dir)
+    with gfile.Open(os.path.join(self._profiler_dir, basename), 'w') as f:
+      f.write('%s' % pb)
 
   @contextlib.contextmanager
   def _new_step(self):
@@ -233,28 +299,33 @@ class ProfileContext(object):
     return to_profile
 
   def __enter__(self):
-    self.old_run = getattr(session.BaseSession, 'run', None)
-    self.old_init = getattr(session.BaseSession, '__init__', None)
-    if not self.old_run:
-      raise errors.InternalError(None, None, 'BaseSession misses run method.')
-    elif not self.old_init:
-      raise errors.InternalError(None, None,
-                                 'BaseSession misses __init__ method.')
-    elif getattr(session.BaseSession, '_profiler_run_internal', None):
-      raise errors.InternalError(None, None,
-                                 'Already in context or context not cleaned.')
-    elif getattr(session.BaseSession, '_profiler_init_internal', None):
-      raise errors.InternalError(None, None,
-                                 'Already in context or context not cleaned.')
+    if self._enabled:
+      self.old_run = getattr(session.BaseSession, 'run', None)
+      self.old_init = getattr(session.BaseSession, '__init__', None)
+      if not self.old_run:
+        raise errors.InternalError(None, None, 'BaseSession misses run method.')
+      elif not self.old_init:
+        raise errors.InternalError(None, None,
+                                   'BaseSession misses __init__ method.')
+      elif getattr(session.BaseSession, '_profiler_run_internal', None):
+        raise errors.InternalError(None, None,
+                                   'Already in context or context not cleaned.')
+      elif getattr(session.BaseSession, '_profiler_init_internal', None):
+        raise errors.InternalError(None, None,
+                                   'Already in context or context not cleaned.')
+      else:
+        setattr(session.BaseSession, 'run', _profiled_run)
+        setattr(session.BaseSession, '__init__', _profiled_init)
+        setattr(session.BaseSession, '_profiler_run_internal', self.old_run)
+        setattr(session.BaseSession, '_profiler_init_internal', self.old_init)
+        setattr(session.BaseSession, 'profile_context', self)
+        return self
     else:
-      setattr(session.BaseSession, 'run', _profiled_run)
-      setattr(session.BaseSession, '__init__', _profiled_init)
-      setattr(session.BaseSession, '_profiler_run_internal', self.old_run)
-      setattr(session.BaseSession, '_profiler_init_internal', self.old_init)
-      setattr(session.BaseSession, 'profile_context', self)
       return self
 
   def __exit__(self, exec_type, exec_value, exec_tb):
+    if not self._enabled:
+      return
     print_mdl.DeleteProfiler()
     setattr(session.BaseSession, 'run', self.old_run)
     setattr(session.BaseSession, '__init__', self.old_init)

@@ -58,6 +58,7 @@ __all__ = [
     'get_sequential_train_hooks',
     'get_joint_train_hooks',
     'get_sequential_train_steps',
+    'RunTrainOpsHook',
 ]
 
 

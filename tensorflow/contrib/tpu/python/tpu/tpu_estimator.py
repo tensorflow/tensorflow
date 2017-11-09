@@ -66,7 +66,7 @@ _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
 # TODO(b/65703635): Flip the value and remove all dead code.
-_WRAP_INPUT_FN_INTO_WHILE_LOOP = False
+_WRAP_INPUT_FN_INTO_WHILE_LOOP = True
 
 
 def _create_global_step(graph):
@@ -1106,8 +1106,6 @@ class _EvalMetrics(object):
 
     if isinstance(eval_metrics[1], (tuple, list)):
       fn_args = util.fn_args(eval_metrics[0])
-      if 'self' in fn_args:
-        fn_args = tuple([arg for arg in fn_args if arg != 'self'])
       if len(eval_metrics[1]) != len(fn_args):
         raise RuntimeError(
             'In TPUEstimatorSpec.eval_metrics, length of tensors does not '

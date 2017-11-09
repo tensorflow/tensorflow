@@ -45,6 +45,9 @@ tensorflow::ImportNumpy();
 // Compiler
 %constant const char* __compiler_version__ = tf_compiler_version();
 
+// _GLIBCXX_USE_CXX11_ABI flag value
+%constant const int __cxx11_abi_flag__ = tf_cxx11_abi_flag();
+
 // Release the Python GIL for the duration of most methods.
 %exception {
   Py_BEGIN_ALLOW_THREADS;
@@ -340,6 +343,16 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
+
+// Create temporary int64_t to pass to TF_OperationGetAttrInt
+%typemap(in, numinputs=0) int64_t* value (int64_t val) {
+  $1 = &val;
+}
+
+// Convert value to Python int
+%typemap(argout) int64_t* value {
+  $result = PyInt_FromLong(*$1);
+}
 
 %include "tensorflow/c/c_api.h"
 %include "tensorflow/c/python_api.h"

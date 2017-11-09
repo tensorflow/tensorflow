@@ -66,8 +66,9 @@ class ConvNetTest(tf.test.TestCase):
     with tf.Graph().as_default():
       x = tf.placeholder(tf.float32, [None, 6, 6, 3])
       y = tf.placeholder(tf.int64, [None])
-      loss, statistics, layer_collection = convnet.build_model(
-          x, y, num_labels=5)
+      layer_collection = lc.LayerCollection()
+      loss, accuracy = convnet.build_model(
+          x, y, num_labels=5, layer_collection=layer_collection)
 
       # Ensure layers and logits were registered.
       self.assertEqual(len(layer_collection.fisher_blocks), 3)
@@ -80,7 +81,7 @@ class ConvNetTest(tf.test.TestCase):
             x: np.random.randn(10, 6, 6, 3).astype(np.float32),
             y: np.random.randint(5, size=10).astype(np.int64),
         }
-        sess.run([loss, statistics], feed_dict=feed_dict)
+        sess.run([loss, accuracy], feed_dict=feed_dict)
 
   def _build_toy_problem(self):
     """Construct a toy linear regression problem.
@@ -90,8 +91,7 @@ class ConvNetTest(tf.test.TestCase):
 
     Returns:
       loss: 0-D Tensor representing loss to be minimized.
-      statistics: dict mapping strings to Tensors. Additional model evaluation
-        statistics.
+      accuracy: 0-D Tensors representing model accuracy.
       layer_collection: LayerCollection instance describing model architecture.
     """
     x = np.asarray([[1.], [2.]]).astype(np.float32)
@@ -101,34 +101,34 @@ class ConvNetTest(tf.test.TestCase):
     w = tf.get_variable("w", shape=[1, 1], initializer=tf.zeros_initializer())
     y_hat = tf.matmul(x, w)
     loss = tf.reduce_mean(0.5 * tf.square(y_hat - y))
-    statistics = {"loss": loss}
+    accuracy = loss
 
     layer_collection = lc.LayerCollection()
     layer_collection.register_fully_connected(params=w, inputs=x, outputs=y_hat)
     layer_collection.register_normal_predictive_distribution(y_hat)
 
-    return loss, statistics, layer_collection
+    return loss, accuracy, layer_collection
 
   def testMinimizeLossSingleMachine(self):
     with tf.Graph().as_default():
-      loss, statistics, layer_collection = self._build_toy_problem()
-      statistics_ = convnet.minimize_loss_single_machine(
-          loss, statistics, layer_collection)
-      self.assertLess(statistics_["loss"], 1.0)
+      loss, accuracy, layer_collection = self._build_toy_problem()
+      accuracy_ = convnet.minimize_loss_single_machine(loss, accuracy,
+                                                       layer_collection)
+      self.assertLess(accuracy_, 1.0)
 
   def testMinimizeLossDistributed(self):
     with tf.Graph().as_default():
-      loss, statistics, layer_collection = self._build_toy_problem()
-      statistics_ = convnet.minimize_loss_distributed(
+      loss, accuracy, layer_collection = self._build_toy_problem()
+      accuracy_ = convnet.minimize_loss_distributed(
           task_id=0,
           num_worker_tasks=1,
           num_ps_tasks=0,
           master="",
           checkpoint_dir=None,
           loss=loss,
-          statistics=statistics,
+          accuracy=accuracy,
           layer_collection=layer_collection)
-      self.assertLess(statistics_["loss"], 1.0)
+      self.assertLess(accuracy_, 1.0)
 
   def testTrainMnistSingleMachine(self):
     with tf.Graph().as_default():
@@ -139,6 +139,12 @@ class ConvNetTest(tf.test.TestCase):
       # the training set the way an MLP can.
       convnet.train_mnist_single_machine(
           data_dir=None, num_epochs=1, use_fake_data=True)
+
+  def testTrainMnistMultitower(self):
+    with tf.Graph().as_default():
+      # Ensure model training doesn't crash.
+      convnet.train_mnist_multitower(
+          data_dir=None, num_epochs=1, num_towers=2, use_fake_data=True)
 
   def testTrainMnistDistributed(self):
     with tf.Graph().as_default():

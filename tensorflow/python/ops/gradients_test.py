@@ -23,6 +23,7 @@ import warnings
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -204,6 +205,23 @@ class GradientsTest(test_util.TensorFlowTestCase):
 
       gw2 = gradients.gradients(z, [w], colocate_gradients_with_ops=False)[0]
       self.assertTrue(w.op.colocation_groups() != gw2.op.colocation_groups())
+
+  def testColocateGradientsWithGateGradients(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+    with ops.Graph().as_default() as g:
+      with g.device("/device:CPU:0"):
+        x = constant(1.0, shape=[1, 1])
+        y = constant(1.0, shape=[1, 1])
+        s = x + y
+      with g.device("/device:GPU:0"):
+        z = math_ops.reduce_sum(s)
+
+      gz_x = gradients.gradients(z, [x], colocate_gradients_with_ops=True,
+                                 gate_gradients=True)[0]
+      with session.Session():
+        # Make sure the placer doesn't complain.
+        gz_x.eval()
 
   def testBoundaryStop(self):
     # Test that we don't differentiate 'x'. The gradient function for 'x' is
@@ -406,8 +424,8 @@ class GradientsTest(test_util.TensorFlowTestCase):
                           constants=constants, variables=variables_))
 
     # evaluate all tensors in one call to session.run for speed
-    with self.test_session() as session:
-      results = session.run([(case["grad1"], case["grad2"]) for case in cases])
+    with self.test_session() as sess:
+      results = sess.run([(case["grad1"], case["grad2"]) for case in cases])
 
     for (npgrad1, npgrad2), case in zip(results, cases):
       for a, b in zip(npgrad1, npgrad2):
