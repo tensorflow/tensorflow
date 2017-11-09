@@ -301,6 +301,9 @@ done
 
 case "$target_platform" in
 ios)    nsync_platform_dir="$nsync_builds_dir/lipo.$target_platform.c++11"
+        if [ -d "$nsync_platform_dir" ]; then
+            rm -rf "$nsync_platform_dir"
+        fi
         mkdir "$nsync_platform_dir"
         eval lipo $platform_libs -create -output '$nsync_platform_dir/nsync.a'
         echo "$nsync_platform_dir/nsync.a"
