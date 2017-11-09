@@ -34,10 +34,12 @@ from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients as gradients_lib
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
@@ -183,10 +185,17 @@ def _split_batch(features, labels, number_of_shards, device):
   """Split input features and labes into batches."""
 
   def split_dictionary(dictionary):
+    """Split a dictionary into shards."""
     shards = [{} for _ in range(number_of_shards)]
     for name, tensor in six.iteritems(dictionary):
-      for i, shard in enumerate(array_ops.split(tensor, number_of_shards)):
-        shards[i][name] = shard
+      if isinstance(tensor, sparse_tensor.SparseTensor):
+        for i, shard in enumerate(
+            sparse_ops.sparse_split(
+                sp_input=tensor, num_split=number_of_shards, axis=0)):
+          shards[i][name] = shard
+      else:
+        for i, shard in enumerate(array_ops.split(tensor, number_of_shards)):
+          shards[i][name] = shard
     return shards
 
   with ops_lib.name_scope('split_inputs'):
@@ -313,7 +322,17 @@ def _call_optimizer_fn(optimizer_fn, params):
 
 def _compute_sum_on_device(values, device, name=None):
   with ops_lib.device(device):
-    return math_ops.add_n(values, name=name)
+    if isinstance(values[0], ops_lib.IndexedSlices):
+      if name:
+        raise ValueError('The name {} is not expected to be given to '
+                         'IndexedSlices {}'.format(name, values))
+
+      values_concat = array_ops.concat([v.values for v in values], axis=0)
+      indices_concat = array_ops.concat([v.indices for v in values], axis=0)
+      return ops_lib.IndexedSlices(values_concat, indices_concat,
+                                   values[0].dense_shape)
+    else:
+      return math_ops.add_n(values, name=name)
 
 
 def _train_spec(tower_specs,
