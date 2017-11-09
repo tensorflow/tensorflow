@@ -509,8 +509,12 @@ model.fit(...)  # This will break into the TFDBG CLI.
 
 ## Debugging tf-slim with TFDBG
 
-TFDBG currently supports only training with
+TFDBG supports debugging of training and evaluation with
 [tf-slim](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/slim).
+As detailed below, training and evaluation require slightly different debugging
+workflows.
+
+### Debugging training in tf-slim
 To debug the training process, provide `LocalCLIDebugWrapperSession` to the
 `session_wrapper` argument of `slim.learning.train()`. For example:
 
@@ -519,11 +523,29 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 # ... Code that creates the graph and the train_op ...
-tf.contrib.slim.learning_train(
+tf.contrib.slim.learning.train(
     train_op,
     logdir,
     number_of_steps=10,
     session_wrapper=tf_debug.LocalCLIDebugWrapperSession)
+```
+
+### Debugging evaluation in tf-slim
+To debug the evaluation process, provide `LocalCLIDebugHook` to the
+`hooks` argument of `slim.evaluation.evaluate_once()`. For example:
+
+``` python
+import tensorflow as tf
+from tensorflow.python import debug as tf_debug
+
+# ... Code that creates the graph and the eval and final ops ...
+tf.contrib.slim.evaluation.evaluate_once(
+    '',
+    checkpoint_path,
+    logdir,
+    eval_op=my_eval_op,
+    final_op=my_value_op,
+    hooks=[tf_debug.LocalCLIDebugHook()])
 ```
 
 ## Offline Debugging of Remotely-Running Sessions
