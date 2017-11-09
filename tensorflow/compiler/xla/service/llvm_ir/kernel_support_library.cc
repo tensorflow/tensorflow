@@ -40,7 +40,9 @@ void KernelSupportLibrary::For(
         });
   } else {
     std::unique_ptr<llvm_ir::ForLoop> loop = llvm_ir::ForLoop::EmitForLoop(
-        name, start, end, step, ir_builder_, prevent_unrolling_);
+        name, start, end, step, ir_builder_,
+        /*prevent_unrolling=*/prevent_unrolling_,
+        /*prevent_vectorization=*/prevent_vectorization_);
     ir_builder_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
     for_body_generator(loop->GetIndVarValue(),
                        /*is_first_iteration=*/ir_builder_->CreateICmpEQ(
