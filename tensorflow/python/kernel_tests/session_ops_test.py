@@ -297,6 +297,5 @@ class SessionOpsTest(test.TestCase):
       sess.run(inc_a)
       self.assertAllClose(19.0, sess.run(b, feed_dict={a: h_a_read}))
 
-
 if __name__ == "__main__":
   test.main()

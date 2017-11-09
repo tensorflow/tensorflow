@@ -1742,6 +1742,12 @@ class SessionTest(test_util.TensorFlowTestCase):
     server = server_lib.Server.create_local_server()
     self.runTestAddFunctionToSession(server.target)
 
+  def testAutoConvertAndCheckData(self):
+    with self.test_session() as sess:
+      a = array_ops.placeholder(tf.string)
+      with self.assertRaises(TypeError) as e:
+        sess.run(a, feed_dict={a: 1})
+      assert 'Type of feed value 1 with type int is not' in e.value.message
 
 if __name__ == '__main__':
   googletest.main()
