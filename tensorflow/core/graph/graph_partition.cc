@@ -1152,7 +1152,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     // Add control edges from 'ref_control_inputs' to 'ref_recvs'.
     // NOTE(yuanbyu): Adding these control edges should not introduce
     // deadlocks. 'dst' has implicit "read" nodes that, when we split
-    // across devices, are made explicit; Retargettig the dependencies
+    // across devices, are made explicit; Retargeting the dependencies
     // to 'dst' to those nodes would not introduce cycles if there isn't
     // one before the transformation.
     // NOTE(yuanbyu): This may impact performance because it defers the
