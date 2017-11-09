@@ -42,7 +42,7 @@ message GPUOptions {
   // A comma-separated list of GPU ids that determines the 'visible'
   // to 'virtual' mapping of GPU devices.  For example, if TensorFlow
   // can see 8 GPU devices in the process, and one wanted to map
-  // visible GPU devices 5 and 3 as "/gpu:0", and "/gpu:1", then one
+  // visible GPU devices 5 and 3 as "/device:GPU:0", and "/device:GPU:1", then one
   // would specify this field as "5,3".  This field is similar in
   // spirit to the CUDA_VISIBLE_DEVICES environment variable, except
   // it applies to the visible GPU devices in the process.
@@ -86,6 +86,13 @@ message OptimizerOptions {
 
   // If true, perform constant folding optimization on the graph.
   bool do_constant_folding = 2;
+
+  // Constant folding optimization replaces tensors whose values can be
+  // predetermined, with constant nodes. To avoid inserting too large constants,
+  // the size of each constant created can be limited. If this value is zero, a
+  // default limit of 10 MiB will be applied. If constant folding optimization
+  // is disabled, this value is ignored.
+  int64 max_folded_constant_in_bytes = 6;
 
   // If true, perform function inlining on the graph.
   bool do_function_inlining = 4;

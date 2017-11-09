@@ -45,6 +45,22 @@ class BatchFeatures {
                     std::vector<Tensor> sparse_int_feature_values_list,
                     std::vector<Tensor> sparse_int_feature_shapes_list);
 
+  Status GetFeatureColumnSizes(int64* const num_dense_float_features,
+                               int64* const num_sparse_float_features,
+                               int64* const num_sparse_int_features) const {
+    QCHECK_NE(num_dense_float_features, nullptr);
+    QCHECK_NE(num_sparse_float_features, nullptr);
+    QCHECK_NE(num_sparse_int_features, nullptr);
+    *num_dense_float_features = dense_float_feature_columns_.size();
+    *num_sparse_float_features = sparse_float_feature_columns_.size();
+    *num_sparse_int_features = sparse_int_feature_columns_.size();
+    if (*num_dense_float_features == 0 && *num_sparse_float_features == 0 &&
+        *num_sparse_int_features == 0) {
+      return errors::FailedPrecondition("Not intialized yet.");
+    }
+    return Status::OK();
+  }
+
   // Creates an example iterable for the requested slice.
   ExamplesIterable examples_iterable(int64 example_start,
                                      int64 example_end) const {

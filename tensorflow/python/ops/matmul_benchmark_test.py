@@ -71,37 +71,39 @@ class MatmulBenchmarkTest(googletest.TestCase):
   def _VerifyBuildGraph(self, n, m, k, transpose_a, transpose_b, dtype):
     graph = ops.Graph()
     with graph.as_default():
-      matmul_benchmark.build_graph("gpu", n, m, k, transpose_a, transpose_b,
+      matmul_benchmark.build_graph(googletest.gpu_device_name(), n, m, k, transpose_a, transpose_b,
                                    dtype)
       gd = graph.as_graph_def()
-      self.assertProtoEquals("""
-      node { name: "random_uniform/shape" op: "Const" device: "/device:GPU:0" }
-      node { name: "random_uniform/min" op: "Const" device: "/device:GPU:0" }
-      node { name: "random_uniform/max" op: "Const" device: "/device:GPU:0" }
-      node { name: "random_uniform/RandomUniform" op: "RandomUniform" input: "random_uniform/shape" device: "/device:GPU:0" }
-      node { name: "random_uniform/sub" op: "Sub" input: "random_uniform/max" input: "random_uniform/min" device: "/device:GPU:0" }
-      node { name: "random_uniform/mul" op: "Mul" input: "random_uniform/RandomUniform" input: "random_uniform/sub" device: "/device:GPU:0" }
-      node { name: "random_uniform" op: "Add" input: "random_uniform/mul" input: "random_uniform/min" device: "/device:GPU:0" }
-      node { name: "Variable" op: "VariableV2" device: "/device:GPU:0" }
-      node { name: "Variable/Assign" op: "Assign" input: "Variable" input: "random_uniform" device: "/device:GPU:0" }
-      node { name: "Variable/read" op: "Identity" input: "Variable" device: "/device:GPU:0" }
-      node { name: "random_uniform_1/shape" op: "Const" device: "/device:GPU:0" }
-      node { name: "random_uniform_1/min" op: "Const" device: "/device:GPU:0" }
-      node { name: "random_uniform_1/max" op: "Const" device: "/device:GPU:0" }
-      node { name: "random_uniform_1/RandomUniform" op: "RandomUniform" input: "random_uniform_1/shape" device: "/device:GPU:0" }
-      node { name: "random_uniform_1/sub" op: "Sub" input: "random_uniform_1/max" input: "random_uniform_1/min" device: "/device:GPU:0" }
-      node { name: "random_uniform_1/mul" op: "Mul" input: "random_uniform_1/RandomUniform" input: "random_uniform_1/sub" device: "/device:GPU:0" }
-      node { name: "random_uniform_1" op: "Add" input: "random_uniform_1/mul" input: "random_uniform_1/min" device: "/device:GPU:0" }
-      node { name: "Variable_1" op: "VariableV2" device: "/device:GPU:0" }
-      node { name: "Variable_1/Assign" op: "Assign" input: "Variable_1" input: "random_uniform_1" device: "/device:GPU:0" }
-      node { name: "Variable_1/read" op: "Identity" input: "Variable_1" device: "/device:GPU:0" }
-      node { name: "MatMul" op: "MatMul" input: "Variable/read" input: "Variable_1/read" device: "/device:GPU:0" }
-      node { name: "group_deps" op: "NoOp" input: "^MatMul" device: "/device:GPU:0" }
-                             """, self._StripGraph(gd))
+      dev=googletest.gpu_device_name()
+      proto_expected = """
+      node { name: "random_uniform/shape" op: "Const" device: \""""+ dev +"""\" }
+      node { name: "random_uniform/min" op: "Const" device: \""""+ dev +"""\" }
+      node { name: "random_uniform/max" op: "Const" device: \""""+ dev +"""\" }
+      node { name: "random_uniform/RandomUniform" op: "RandomUniform" input: "random_uniform/shape" device: \""""+ dev +"""\" }
+      node { name: "random_uniform/sub" op: "Sub" input: "random_uniform/max" input: "random_uniform/min" device: \""""+ dev +"""\" }
+      node { name: "random_uniform/mul" op: "Mul" input: "random_uniform/RandomUniform" input: "random_uniform/sub" device: \""""+ dev +"""\" }
+      node { name: "random_uniform" op: "Add" input: "random_uniform/mul" input: "random_uniform/min" device: \""""+ dev +"""\" }
+      node { name: "Variable" op: "VariableV2" device: \""""+ dev +"""\" }
+      node { name: "Variable/Assign" op: "Assign" input: "Variable" input: "random_uniform" device: \""""+ dev +"""\" }
+      node { name: "Variable/read" op: "Identity" input: "Variable" device: \""""+ dev +"""\" }
+      node { name: "random_uniform_1/shape" op: "Const" device: \""""+ dev +"""\" }
+      node { name: "random_uniform_1/min" op: "Const" device: \""""+ dev +"""\" }
+      node { name: "random_uniform_1/max" op: "Const" device: \""""+ dev +"""\" }
+      node { name: "random_uniform_1/RandomUniform" op: "RandomUniform" input: "random_uniform_1/shape" device: \""""+ dev +"""\" }
+      node { name: "random_uniform_1/sub" op: "Sub" input: "random_uniform_1/max" input: "random_uniform_1/min" device: \""""+ dev +"""\" }
+      node { name: "random_uniform_1/mul" op: "Mul" input: "random_uniform_1/RandomUniform" input: "random_uniform_1/sub" device: \""""+ dev +"""\" }
+      node { name: "random_uniform_1" op: "Add" input: "random_uniform_1/mul" input: "random_uniform_1/min" device: \""""+ dev +"""\" }
+      node { name: "Variable_1" op: "VariableV2" device: \""""+ dev +"""\" }
+      node { name: "Variable_1/Assign" op: "Assign" input: "Variable_1" input: "random_uniform_1" device: \""""+ dev +"""\" }
+      node { name: "Variable_1/read" op: "Identity" input: "Variable_1" device: \""""+ dev +"""\" }
+      node { name: "MatMul" op: "MatMul" input: "Variable/read" input: "Variable_1/read" device: \""""+ dev +"""\" }
+      node { name: "group_deps" op: "NoOp" input: "^MatMul" device: \""""+ dev +"""\" }
+                       """
+      self.assertProtoEquals(str(proto_expected), self._StripGraph(gd))
 
   def _VerifyRunGraph(self, n, m, k, transpose_a, transpose_b, dtype):
     benchmark_instance = matmul_benchmark.MatmulBenchmark()
-    duration = benchmark_instance.run_graph("gpu", n, m, k, transpose_a,
+    duration = benchmark_instance.run_graph(googletest.gpu_device_name(), n, m, k, transpose_a,
                                             transpose_b, 1, dtype)
     self.assertTrue(duration > 1e-6)
 

@@ -25,17 +25,34 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+namespace {
+bool CreateRunMetadataNode(const string& name, NodeDef* def) {
+  // TODO(xpan): Better solution than blacklisting this 2 nodes. They
+  // actually cost some resources, maybe include them. Some nodes, such
+  // as _SOURCE appear in multiple devices, which breaks tfprof's assumption.
+  if (name == "RecvTensor" || name == "_SOURCE" ||
+      name.find("MEMCPY") != name.npos) {
+    return false;
+  }
+  def->set_name(name);
+  // TODO(xpan): Better operation type.
+  // This is because some times a node doesn't have a op type,
+  // so we use node name as the op type.
+  def->set_op(name);
+  return true;
+}
+}  // namespace
+
 TFStats::TFStats(std::unique_ptr<GraphDef> graph,
                  std::unique_ptr<RunMetadata> run_meta,
                  std::unique_ptr<OpLogProto> op_log,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
     : has_code_traces_(false),
-      graph_(std::move(graph)),
       ckpt_reader_(std::move(ckpt_reader)) {
-  CHECK(graph_) << "Must at least have GraphDef";
+  CHECK(graph) << "Must at least have GraphDef";
 
   printf("Parsing Inputs...\n");
-  ParseGraph();
+  AddGraph(std::move(graph));
   if (run_meta && run_meta->has_step_stats()) {
     AddRunMeta(0, std::move(run_meta));
   }
@@ -48,6 +65,36 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
         node->second->AddOpType("_checkpoint_variables");
       }
     }
+  }
+}
+
+TFStats::TFStats(const string& filename,
+                 std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
+    : has_code_traces_(false), ckpt_reader_(std::move(ckpt_reader)) {
+  string str;
+  Status s = ReadFileToString(Env::Default(), filename, &str);
+  if (!s.ok()) {
+    fprintf(stderr, "Failed to read profile: %s", s.ToString().c_str());
+    return;
+  }
+
+  ProfileProto profile;
+  if (!profile.ParseFromString(str)) {
+    fprintf(stderr, "Failed to parse profile\n");
+    return;
+  }
+  for (const auto& entry : profile.id_to_string()) {
+    id_to_string_[entry.first] = entry.second;
+  }
+  for (const auto& node_pb : profile.nodes()) {
+    std::unique_ptr<TFGraphNode> node(
+        new TFGraphNode(node_pb.second, profile, &id_to_string_, &nodes_map_));
+    nodes_map_.insert(std::pair<string, std::unique_ptr<TFGraphNode>>(
+        node_pb.second.name(), std::move(node)));
+  }
+  has_code_traces_ = profile.has_trace();
+  for (int64 s : profile.steps()) {
+    steps_.insert(s);
   }
 }
 
@@ -97,6 +144,14 @@ const GraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
   if (cmd == kCmds[0]) {
     return scope_view_->Show(opts);
   } else if (cmd == kCmds[1]) {
+    if (opts.step < 0 && opts.output_type == kOutput[0]) {
+      for (int64 step : steps_) {
+        Options nopts = opts;
+        nopts.step = step;
+        graph_view_->Show(nopts);
+      }
+      return empty_graph_node_;
+    }
     return graph_view_->Show(opts);
   } else {
     fprintf(stderr, "Unknown command: %s\n", cmd.c_str());
@@ -110,6 +165,10 @@ const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
     return empty_multi_graph_node_;
   }
   if (cmd == kCmds[2]) {
+    if (!has_code_traces()) {
+      fprintf(stderr, "No code trace information\n");
+      return empty_multi_graph_node_;
+    }
     return code_view_->Show(opts);
   } else if (cmd == kCmds[3]) {
     return op_view_->Show(opts);
@@ -119,18 +178,25 @@ const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
   }
 }
 
-void TFStats::ParseGraph() {
-  for (const NodeDef& node : graph_->node()) {
-    CHECK(nodes_map_.find(node.name()) == nodes_map_.end());
-    nodes_map_[node.name()] =
-        std::unique_ptr<TFGraphNode>(new TFGraphNode(&node));
+void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
+  std::map<string, const NodeDef*> node_defs;
+  bool node_added = false;
+  for (const NodeDef& node : graph->node()) {
+    if (nodes_map_.find(node.name()) != nodes_map_.end()) {
+      continue;
+    }
+    node_added = true;
+    nodes_map_[node.name()] = std::unique_ptr<TFGraphNode>(
+        new TFGraphNode(&node, nodes_map_.size(), &nodes_map_));
+    node_defs[node.name()] = &node;
   }
-  for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
-    const NodeDef* node_def = it->second->node_def();
-    for (int i = 0; i < node_def->input_size(); ++i) {
-      string node_input = node_def->input(i);
+  for (auto it = node_defs.begin(); it != node_defs.end(); it++) {
+    TFGraphNode* node = nodes_map_.at(it->first).get();
+    for (int i = 0; i < it->second->input_size(); ++i) {
+      string node_input = it->second->input(i);
       int output_idx = 0;
       // input name format can be: "^node:src_output"
+      // if not :src_output, then it's the first one (further verify?)
       auto prefix_pos = node_input.find(":");
       if (prefix_pos != node_input.npos) {
         std::vector<string> input_parts = str_util::Split(node_input, ":");
@@ -143,18 +209,28 @@ void TFStats::ParseGraph() {
       if (node_input.substr(0, 1) == "^") {
         node_input = node_input.substr(1);
       }
-      auto input_node = nodes_map_.find(node_input);
-      if (input_node == nodes_map_.end()) {
-        continue;
-      }
-      it->second->AddInput(input_node->second.get(), output_idx, i);
+      // Delay input TFGraphNode retrieval as late as possible.
+      // In long run, when we have TensorFlow runtime graph, the
+      // graph connection should be dynamic and per-step.
+      node->AddInput(node_input, output_idx, i);
     }
+  }
+  if (node_added) {
+    graph_view_.reset(nullptr);
+    scope_view_.reset(nullptr);
+    op_view_.reset(nullptr);
+    code_view_.reset(nullptr);
   }
 }
 
 void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
   if (!op_log) {
     return;
+  }
+  for (const auto& entry : op_log->id_to_string()) {
+    if (id_to_string_.find(entry.first) == id_to_string_.end()) {
+      id_to_string_[entry.first] = entry.second;
+    }
   }
   for (const OpLogEntry& entry : op_log->log_entries()) {
     auto node = nodes_map_.find(entry.name());
@@ -167,7 +243,7 @@ void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
     }
     if (entry.has_code_def()) {
       has_code_traces_ = true;
-      node->second->AddCode(entry.code_def());
+      node->second->AddCode(entry.code_def(), &id_to_string_);
     }
   }
 }
@@ -177,9 +253,8 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
     fprintf(stderr, "Invalid RunMetadata for step %lld\n", step);
     return;
   }
-  if (steps_.find(step) != steps_.end()) {
-    fprintf(stderr, "The same step %lld has been added before.\n", step);
-    return;
+  if (steps_.find(step) == steps_.end()) {
+    steps_.insert(step);
   }
   steps_.insert(step);
 
@@ -192,16 +267,53 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
         name = node_stat.node_name().substr(0, split_pos);
       }
       auto node = nodes_map_.find(name);
-      if (node != nodes_map_.end()) {
+      if (node == nodes_map_.end()) {
+        NodeDef def;
+        if (CreateRunMetadataNode(name, &def)) {
+          nodes_map_[name] = std::unique_ptr<TFGraphNode>(
+              new TFGraphNode(&def, nodes_map_.size(), &nodes_map_));
+          nodes_map_.at(name)->AddStepStat(step, dev_stat.device(), node_stat);
+        }
+      } else {
+        covered_nodes_.insert(node->second->id());
         node->second->AddStepStat(step, dev_stat.device(), node_stat);
       }
     }
   }
 }
 
+void TFStats::WriteProfile(const string& filename) {
+  ProfileProto profile;
+  for (const auto& entry : id_to_string_) {
+    (*profile.mutable_id_to_string())[entry.first] = entry.second;
+  }
+  for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
+    if (it->second->id() < 0) {
+      continue;
+    }
+    (*profile.mutable_nodes())[it->second->id()].MergeFrom(
+        it->second->ToProto(nodes_map_));
+  }
+
+  profile.set_has_trace(has_code_traces_);
+  for (int64 s : steps_) {
+    profile.add_steps(s);
+  }
+  Status s =
+      WriteStringToFile(Env::Default(), filename, profile.SerializeAsString());
+  if (!s.ok()) {
+    fprintf(stderr, "%s\n", s.ToString().c_str());
+  }
+}
+
 bool TFStats::Validate(const Options& opts) const {
   if (opts.step >= 0 && steps_.find(opts.step) == steps_.end()) {
-    fprintf(stderr, "Options -step=%lld not found\n", opts.step);
+    fprintf(stderr,
+            "Options -step=%lld not found.\nAvailable steps: ", opts.step);
+    for (int64 s : steps_) {
+      fprintf(stderr, "%lld ", s);
+    }
+    fprintf(stderr, "\n");
     return false;
   }
   return true;

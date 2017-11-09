@@ -31,6 +31,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util import compat
 
 
@@ -38,21 +42,28 @@ _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
 
 
-class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
-                                                  ['features',
-                                                   'receiver_tensors'])):
+class ServingInputReceiver(collections.namedtuple(
+    'ServingInputReceiver',
+    ['features', 'receiver_tensors', 'receiver_tensors_alternatives'])):
   """A return type for a serving_input_receiver_fn.
 
   The expected return values are:
-    features: A dict of string to `Tensor` or `SparseTensor`, specifying the
-      features to be passed to the model.
+    features: A `Tensor`, `SparseTensor`, or dict of string to `Tensor` or
+      `SparseTensor`, specifying the features to be passed to the model.
     receiver_tensors: a `Tensor`, or a dict of string to `Tensor`, specifying
-      input nodes where this receiver expects to be fed.  Typically, this is a
-      single placeholder expecting serialized `tf.Example` protos.
+      input nodes where this receiver expects to be fed by default.  Typically,
+      this is a single placeholder expecting serialized `tf.Example` protos.
+    receiver_tensors_alternatives: a dict of string to additional
+      groups of receiver tensors, each of which may be a `Tensor` or a dict of
+      string to `Tensor`.  These named receiver tensor alternatives generate
+      additional serving signatures, which may be used to feed inputs at
+      different points within the input reciever subgraph.  A typical usage is
+      to allow feeding raw feature `Tensor`s *downstream* of the
+      tf.parse_example() op.  Defaults to None.
   """
-  # TODO(soergel): add receiver_alternatives when supported in serving.
 
-  def __new__(cls, features, receiver_tensors):
+  def __new__(cls, features, receiver_tensors,
+              receiver_tensors_alternatives=None):
     if features is None:
       raise ValueError('features must be defined.')
     if not isinstance(features, dict):
@@ -77,8 +88,34 @@ class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
         raise ValueError(
             'receiver_tensor {} must be a Tensor.'.format(name))
 
+    if receiver_tensors_alternatives is not None:
+      if not isinstance(receiver_tensors_alternatives, dict):
+        raise ValueError(
+            'receiver_tensors_alternatives must be a dict: {}.'.format(
+                receiver_tensors_alternatives))
+      for alternative_name, receiver_tensors_alt in (
+          six.iteritems(receiver_tensors_alternatives)):
+        if not isinstance(receiver_tensors_alt, dict):
+          receiver_tensors_alt = {_SINGLE_RECEIVER_DEFAULT_NAME:
+                                  receiver_tensors_alt}
+          # Updating dict during iteration is OK in this case.
+          receiver_tensors_alternatives[alternative_name] = (
+              receiver_tensors_alt)
+        for name, tensor in receiver_tensors_alt.items():
+          if not isinstance(name, six.string_types):
+            raise ValueError(
+                'receiver_tensors keys must be strings: {}.'.format(name))
+          if not (isinstance(tensor, ops.Tensor)
+                  or isinstance(tensor, sparse_tensor.SparseTensor)):
+            raise ValueError(
+                'receiver_tensor {} must be a Tensor or SparseTensor.'.format(
+                    name))
+
     return super(ServingInputReceiver, cls).__new__(
-        cls, features=features, receiver_tensors=receiver_tensors)
+        cls,
+        features=features,
+        receiver_tensors=receiver_tensors,
+        receiver_tensors_alternatives=receiver_tensors_alternatives)
 
 
 def build_parsing_serving_input_receiver_fn(feature_spec,
@@ -131,11 +168,11 @@ def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
       shape_list[0] = default_batch_size
       shape = tensor_shape.TensorShape(shape_list)
 
-      # Reuse the feature tensor name for the placeholder, excluding the index
-      placeholder_name = t.name.split(':')[0]
-      receiver_tensors[name] = array_ops.placeholder(dtype=t.dtype,
-                                                     shape=shape,
-                                                     name=placeholder_name)
+      # Reuse the feature tensor's op name (t.op.name) for the placeholder,
+      # excluding the index from the tensor's name (t.name):
+      # t.name = "%s:%d" % (t.op.name, t._value_index)
+      receiver_tensors[name] = array_ops.placeholder(
+          dtype=t.dtype, shape=shape, name=t.op.name)
     # TODO(b/34885899): remove the unnecessary copy
     # The features provided are simply the placeholders, but we defensively copy
     # the dict because it may be mutated.
@@ -147,19 +184,95 @@ def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
 ### Below utilities are specific to SavedModel exports.
 
 
-def build_all_signature_defs(receiver_tensors, export_outputs):
+def build_all_signature_defs(receiver_tensors,
+                             export_outputs,
+                             receiver_tensors_alternatives=None):
   """Build `SignatureDef`s for all export outputs."""
   if not isinstance(receiver_tensors, dict):
-    receiver_tensors = {'receiver': receiver_tensors}
+    receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
   if export_outputs is None or not isinstance(export_outputs, dict):
     raise ValueError('export_outputs must be a dict.')
 
-  signature_def_map = {
-      '{}'.format(output_key or 'None'):
-      export_output.as_signature_def(receiver_tensors)
-      for output_key, export_output in export_outputs.items()}
+  signature_def_map = {}
+  excluded_signatures = {}
+  for output_key, export_output in export_outputs.items():
+    signature_name = '{}'.format(output_key or 'None')
+    try:
+      signature = export_output.as_signature_def(receiver_tensors)
+      signature_def_map[signature_name] = signature
+    except ValueError as e:
+      excluded_signatures[signature_name] = str(e)
 
-  return signature_def_map
+  if receiver_tensors_alternatives:
+    for receiver_name, receiver_tensors_alt in (
+        six.iteritems(receiver_tensors_alternatives)):
+      if not isinstance(receiver_tensors_alt, dict):
+        receiver_tensors_alt = {_SINGLE_RECEIVER_DEFAULT_NAME:
+                                receiver_tensors_alt}
+      for output_key, export_output in export_outputs.items():
+        signature_name = '{}:{}'.format(receiver_name or 'None',
+                                        output_key or 'None')
+        try:
+          signature = export_output.as_signature_def(receiver_tensors_alt)
+          signature_def_map[signature_name] = signature
+        except ValueError as e:
+          excluded_signatures[signature_name] = str(e)
+
+  _log_signature_report(signature_def_map, excluded_signatures)
+
+  # The above calls to export_output.as_signature_def should return only
+  # valid signatures; if there is a validity problem, they raise ValueError,
+  # which we ignore above. Consequently the call to is_valid_signature here
+  # should not remove anything else; it's just an extra sanity check.
+  return {k: v for k, v in signature_def_map.items()
+          if signature_def_utils.is_valid_signature(v)}
+
+
+_FRIENDLY_METHOD_NAMES = {
+    signature_constants.CLASSIFY_METHOD_NAME: 'Classify',
+    signature_constants.REGRESS_METHOD_NAME: 'Regress',
+    signature_constants.PREDICT_METHOD_NAME: 'Predict',
+}
+
+
+def _log_signature_report(signature_def_map, excluded_signatures):
+  """Log a report of which signatures were produced."""
+  sig_names_by_method_name = collections.defaultdict(list)
+
+  # We'll collect whatever method_names are present, but also we want to make
+  # sure to output a line for each of the three standard methods even if they
+  # have no signatures.
+  for method_name in _FRIENDLY_METHOD_NAMES:
+    sig_names_by_method_name[method_name] = []
+
+  for signature_name, sig in signature_def_map.items():
+    sig_names_by_method_name[sig.method_name].append(signature_name)
+
+  # TODO(b/67733540): consider printing the full signatures, not just names
+  for method_name, sig_names in sig_names_by_method_name.items():
+    if method_name in _FRIENDLY_METHOD_NAMES:
+      method_name = _FRIENDLY_METHOD_NAMES[method_name]
+    logging.info('Signatures INCLUDED in export for {}: {}'.format(
+        method_name, sig_names if sig_names else 'None'))
+
+  if excluded_signatures:
+    logging.info('Signatures EXCLUDED from export because they cannot be '
+                 'be served via TensorFlow Serving APIs:')
+    for signature_name, message in excluded_signatures.items():
+      logging.info('\'{}\' : {}'.format(signature_name, message))
+
+  if not signature_def_map:
+    logging.warn('Export includes no signatures!')
+  elif (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+        not in signature_def_map):
+    logging.warn('Export includes no default signature!')
+
+
+# When we create a timestamped directory, there is a small chance that the
+# directory already exists because another worker is also writing exports.
+# In this case we just wait one second to get a new timestamp and try again.
+# If this fails several times in a row, then something is seriously wrong.
+MAX_DIRECTORY_CREATION_ATTEMPTS = 10
 
 
 def get_timestamped_export_dir(export_dir_base):
@@ -175,11 +288,47 @@ def get_timestamped_export_dir(export_dir_base):
         graph and checkpoints.
   Returns:
     The full path of the new subdirectory (which is not actually created yet).
+
+  Raises:
+    RuntimeError: if repeated attempts fail to obtain a unique timestamped
+      directory name.
   """
-  export_timestamp = int(time.time())
+  attempts = 0
+  while attempts < MAX_DIRECTORY_CREATION_ATTEMPTS:
+    export_timestamp = int(time.time())
 
-  export_dir = os.path.join(
-      compat.as_bytes(export_dir_base),
-      compat.as_bytes(str(export_timestamp)))
-  return export_dir
+    export_dir = os.path.join(
+        compat.as_bytes(export_dir_base),
+        compat.as_bytes(str(export_timestamp)))
+    if not gfile.Exists(export_dir):
+      # Collisions are still possible (though extremely unlikely): this
+      # directory is not actually created yet, but it will be almost
+      # instantly on return from this function.
+      return export_dir
+    time.sleep(1)
+    attempts += 1
+    logging.warn(
+        'Export directory {} already exists; retrying (attempt {}/{})'.format(
+            export_dir, attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
+  raise RuntimeError('Failed to obtain a unique export directory name after '
+                     '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
 
+
+def get_temp_export_dir(timestamped_export_dir):
+  """Builds a directory name based on the argument but starting with 'temp-'.
+
+  This relies on the fact that TensorFlow Serving ignores subdirectories of
+  the base directory that can't be parsed as integers.
+
+  Args:
+    timestamped_export_dir: the name of the eventual export directory, e.g.
+      /foo/bar/<timestamp>
+
+  Returns:
+    A sister directory prefixed with 'temp-', e.g. /foo/bar/temp-<timestamp>.
+  """
+  (dirname, basename) = os.path.split(timestamped_export_dir)
+  temp_export_dir = os.path.join(
+      compat.as_bytes(dirname),
+      compat.as_bytes('temp-{}'.format(basename)))
+  return temp_export_dir

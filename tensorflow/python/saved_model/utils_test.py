@@ -38,9 +38,7 @@ class UtilsTest(test.TestCase):
     self.assertEqual(1, x_tensor_info.tensor_shape.dim[0].size)
 
   def testBuildTensorInfoSparse(self):
-    x = sparse_tensor.SparseTensor(indices=[[3, 3], [4, 4], [5, 5]],
-                                   values=[103.0, 104.0, 105.0],
-                                   dense_shape=[42, 69])
+    x = array_ops.sparse_placeholder(dtypes.float32, [42, 69], name="x")
     x_tensor_info = utils.build_tensor_info(x)
     self.assertEqual(x.values.name,
                      x_tensor_info.coo_sparse.values_tensor_name)

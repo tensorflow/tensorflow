@@ -40,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import monitored_session
 from tensorflow.python.util import tf_inspect
 
 
@@ -320,7 +321,17 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
                                       self._observer)
 
     with wrapper as sess:
-      sess.run(self._s)
+      self.assertAllClose([[3.0], [4.0]], self._s.eval())
+      self.assertEqual(1, self._observer["on_run_start_count"])
+      self.assertEqual(self._s, self._observer["run_fetches"])
+      self.assertEqual(1, self._observer["on_run_end_count"])
+
+      self.assertAllClose(
+          [[11.0], [-1.0]],
+          sess.run(self._q, feed_dict={self._ph: np.array([[1.0], [2.0]])}))
+      self.assertEqual(2, self._observer["on_run_start_count"])
+      self.assertEqual(self._q, self._observer["run_fetches"])
+      self.assertEqual(2, self._observer["on_run_end_count"])
 
   def testUsingWrappedSessionShouldSupportEvalWithAsDefault(self):
     wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
@@ -407,6 +418,22 @@ class SessionWrapperPublicMethodParityTest(test_util.TensorFlowTestCase):
     session_public_methods = [
         method_tuple[0] for method_tuple in
         tf_inspect.getmembers(session.Session, predicate=tf_inspect.ismethod)
+        if _is_public_method_name(method_tuple[0])]
+    wrapper_public_methods = [
+        method_tuple[0] for method_tuple in
+        tf_inspect.getmembers(
+            framework.BaseDebugWrapperSession, predicate=tf_inspect.ismethod)
+        if _is_public_method_name(method_tuple[0])]
+    missing_public_methods = [
+        method for method in session_public_methods
+        if method not in wrapper_public_methods]
+    self.assertFalse(missing_public_methods)
+
+  def testWrapperHasAllPublicMethodsOfMonitoredSession(self):
+    session_public_methods = [
+        method_tuple[0] for method_tuple in
+        tf_inspect.getmembers(monitored_session.MonitoredSession,
+                              predicate=tf_inspect.ismethod)
         if _is_public_method_name(method_tuple[0])]
     wrapper_public_methods = [
         method_tuple[0] for method_tuple in

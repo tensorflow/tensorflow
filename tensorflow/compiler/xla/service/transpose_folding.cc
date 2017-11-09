@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -59,14 +58,32 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoConvolution(
     return {};
   }
 
-  // We only support folding the RHS.
-  const int64 kRhsOperandIndex = 1;
-  auto& operand = *convolution.operand(kRhsOperandIndex);
-  if (operand.opcode() == HloOpcode::kTranspose && operand.user_count() == 1) {
-    return transposable_conv_operands(convolution, {kRhsOperandIndex});
+  const ConvolutionDimensionNumbers& dnums =
+      convolution.convolution_dimension_numbers();
+
+  TransposeFolding::OperandIndices operand_set;
+  for (int64 i = 0; i < convolution.operand_count(); ++i) {
+    auto& operand = *convolution.operand(i);
+    if (operand.opcode() == HloOpcode::kTranspose &&
+        operand.user_count() == 1) {
+      const auto& transpose_dimensions = operand.dimensions();
+      // We can transpose the LHS so long as it doesn't move around spatial
+      // dimensions because ConvolutionDimensionNumbers doesn't have different
+      // fields for input and output spatial dimensions.
+      if (i == 0 &&
+          std::any_of(dnums.spatial_dimensions().begin(),
+                      dnums.spatial_dimensions().end(),
+                      [&](const int64 spatial_dimension) {
+                        return transpose_dimensions[spatial_dimension] !=
+                               spatial_dimension;
+                      })) {
+        continue;
+      }
+      operand_set.push_back(i);
+    }
   }
 
-  return {};
+  return transposable_conv_operands(convolution, operand_set);
 }
 
 using InstructionOperandsPair =
@@ -99,40 +116,61 @@ bool FoldTransposeIntoDot(InstructionOperandsPair pair) {
 // Returns whether the module is changed.
 bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
   auto& convolution = *pair.first;
-
-  // We only support fusing the RHS transpose into convolution.
-  //
-  // ConvolutionDimensionNumbers doesn't make enough of a distinction between
-  // the output and the activations.
-  //
-  // TODO(b/37125184): Support transposing the LHS too.
-  if (pair.second.size() != 1 || pair.second.front() != 1) {
-    return false;
-  }
+  auto& operand_indices = pair.second;
 
   const ConvolutionDimensionNumbers& dnums =
       convolution.convolution_dimension_numbers();
-  HloInstruction& transpose = *convolution.mutable_operand(1);
-  CHECK_EQ(transpose.opcode(), HloOpcode::kTranspose);
-  const auto& transpose_dimensions = transpose.dimensions();
-  HloInstruction& transpose_operand = *transpose.mutable_operand(0);
-
-  // Everything remains the same except for the kernel dimension numbers. We
-  // need to apply the transpose permutation to the original shape to figure out
-  // what the new logical dimensions are.
   ConvolutionDimensionNumbers new_dnums = dnums;
-  new_dnums.set_kernel_input_feature_dimension(
-      transpose_dimensions[dnums.kernel_input_feature_dimension()]);
-  new_dnums.set_kernel_output_feature_dimension(
-      transpose_dimensions[dnums.kernel_output_feature_dimension()]);
-  for (auto& kernel_spatial_dimension :
-       *new_dnums.mutable_kernel_spatial_dimensions()) {
-    kernel_spatial_dimension = transpose_dimensions[kernel_spatial_dimension];
+
+  HloInstruction* new_lhs;
+  const int64 kLhsIdx = 0;
+  if (std::find(operand_indices.begin(), operand_indices.end(), kLhsIdx) !=
+      operand_indices.end()) {
+    HloInstruction& transpose = *convolution.mutable_operand(kLhsIdx);
+    const auto& transpose_dimensions = transpose.dimensions();
+    HloInstruction& transpose_operand = *transpose.mutable_operand(0);
+
+    // Everything remains the same except for the input/output dimension
+    // numbers. We need to apply the transpose permutation to the original shape
+    // to figure out what the new logical dimensions are.
+    new_dnums.set_input_batch_dimension(
+        transpose_dimensions[dnums.input_batch_dimension()]);
+    new_dnums.set_input_feature_dimension(
+        transpose_dimensions[dnums.input_feature_dimension()]);
+    for (const auto& spatial_dimension : dnums.spatial_dimensions()) {
+      CHECK_EQ(spatial_dimension, transpose_dimensions[spatial_dimension]);
+    }
+    new_lhs = &transpose_operand;
+  } else {
+    new_lhs = convolution.mutable_operand(kLhsIdx);
+  }
+
+  HloInstruction* new_rhs;
+  const int64 kRhsIdx = 1;
+  if (std::find(operand_indices.begin(), operand_indices.end(), kRhsIdx) !=
+      operand_indices.end()) {
+    HloInstruction& transpose = *convolution.mutable_operand(kRhsIdx);
+    const auto& transpose_dimensions = transpose.dimensions();
+    HloInstruction& transpose_operand = *transpose.mutable_operand(0);
+
+    // Everything remains the same except for the kernel dimension numbers. We
+    // need to apply the transpose permutation to the original shape to figure
+    // out what the new logical dimensions are.
+    new_dnums.set_kernel_input_feature_dimension(
+        transpose_dimensions[dnums.kernel_input_feature_dimension()]);
+    new_dnums.set_kernel_output_feature_dimension(
+        transpose_dimensions[dnums.kernel_output_feature_dimension()]);
+    for (auto& kernel_spatial_dimension :
+         *new_dnums.mutable_kernel_spatial_dimensions()) {
+      kernel_spatial_dimension = transpose_dimensions[kernel_spatial_dimension];
+    }
+    new_rhs = &transpose_operand;
+  } else {
+    new_rhs = convolution.mutable_operand(kRhsIdx);
   }
 
   auto new_conv = HloInstruction::CreateConvolve(
-      convolution.shape(), convolution.mutable_operand(0), &transpose_operand,
-      convolution.window(), new_dnums);
+      convolution.shape(), new_lhs, new_rhs, convolution.window(), new_dnums);
   TF_CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 
@@ -172,14 +210,7 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
     return tensorflow::Status::OK();
   };
 
-  std::vector<HloComputation*> computations;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(computation.get());
-  }
-  for (auto& comp : computations) {
+  for (auto* comp : module->MakeNonfusionComputations()) {
     TF_RETURN_IF_ERROR(comp->Accept(visit_fn));
   }
 

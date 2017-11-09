@@ -28,13 +28,32 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
+#define PKEY_DEFAULT 0
+#define QUEUE_DEPTH_DEFAULT 1024
+#define TIMEOUT_DEFAULT 14
+#define RETRY_CNT_DEFAULT 7
+#define SL_DEFAULT 0
+#define TRAFFIC_CLASS 0
 
+struct RdmaParams {
+  uint8_t port_num;
+  uint8_t sgid_index;
+  uint8_t pkey_index;
+  uint32_t queue_depth;
+  uint8_t timeout;
+  uint8_t retry_cnt;
+  uint8_t sl;
+  enum ibv_mtu mtu;
+  uint8_t traffic_class;
+};
 // structure to save the address of remote channels.
 struct RdmaAddress {
   uint32_t lid;
@@ -48,9 +67,20 @@ struct RemoteMR {
   uint64_t remote_addr;
   uint32_t rkey;
 };
-enum BufferStatus { none, idle, busy };
-enum Location { local, remote };
-enum BufferType { ACK, MESSAGE, TENSOR };
+enum BufferStatus {
+  none,
+  idle,
+  busy
+};
+enum Location {
+  local,
+  remote
+};
+enum BufferType {
+  ACK,
+  MESSAGE,
+  TENSOR
+};
 enum RdmaMessageType {
   RDMA_MESSAGE_ACK,
   RDMA_MESSAGE_BUFFER_IDLE,
@@ -82,6 +112,8 @@ class RdmaAdapter {
  protected:
   static const int MAX_CONCURRENT_WRITES = 1000;
   ibv_context* context_;
+  // RDMA configuration parameters
+  RdmaParams params_;
   // ibverbs protection domain
   ibv_pd* pd_;
   // Completion event channel, to wait for work completions
@@ -181,7 +213,7 @@ class RdmaBuffer {
   }
   void FreeBuffer();
   void EnqueueItem(string Item);
-  virtual void SendNextItem(){};
+  virtual void SendNextItem() {};
   void CreateCPUBuffer(size_t size, bool lock = true);
   void SetRemoteMR(RemoteMR rmi, bool override);
   uint32_t LookupBufferIndex(const string& buffer_name) {
@@ -223,8 +255,57 @@ class RdmaMessageBuffer : public RdmaBuffer {
 class RdmaTensorBuffer : public RdmaBuffer {
  public:
   explicit RdmaTensorBuffer(RdmaChannel* channel, string name);
-  virtual ~RdmaTensorBuffer() override {}
+  virtual ~RdmaTensorBuffer() override;
   void SendNextItem() override;
+  void PostCopyOperations(bool can_memcpy, size_t buffer_size,
+                          size_t tensor_bytes, const string& key,
+                          const Tensor& in, int64 step_id, bool is_dead,
+                          const string& key_with_step_id, const Tensor* copy,
+                          const TensorProto* proto, const StringPiece* copy_buf,
+                          const Rendezvous::Args& send_args,
+                          const Rendezvous::Args& recv_args);
+
+  void ReSendNextItem();
+
+ private:
+  Rendezvous::DoneCallback getRecvTensorCallback(
+      const string& key_with_step_id, const string& key, int64 step_id,
+      const Rendezvous::ParsedKey& parsed);
+
+  struct ReItem {
+    Rendezvous::Args send_args;
+    Rendezvous::Args recv_args;
+    Tensor in;
+    bool is_dead;
+
+    ReItem(const Rendezvous::Args& send_args_,
+           const Rendezvous::Args& recv_args_, const Tensor& in_, bool is_dead_)
+        : send_args(send_args_),
+          recv_args(recv_args_),
+          in(in_),
+          is_dead(is_dead_) {
+      if (send_args.device_context) {
+        send_args.device_context->Ref();
+      }
+      if (recv_args.device_context) {
+        recv_args.device_context->Ref();
+      }
+    }
+
+    ~ReItem() {
+      if (send_args.device_context) {
+        send_args.device_context->Unref();
+      }
+      if (recv_args.device_context) {
+        recv_args.device_context->Unref();
+      }
+    }
+  };
+  typedef std::map<string, ReItem*> Table;
+  typedef Table::iterator Itable;
+
+  std::queue<string> requeue GUARDED_BY(mu_);
+  Table retable GUARDED_BY(mu_);
 };
 
 struct RdmaMessage {

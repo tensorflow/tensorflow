@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -34,25 +35,43 @@ bool PotentiallyImplementedAsEigenConvolution(
   //   kernel and output.
   //
   // To be sufficient, certain layout constraints need to be satisfied as well.
-  if (ShapeUtil::HasZeroElements(convolution.operand(0)->shape()) ||
-      ShapeUtil::HasZeroElements(convolution.operand(1)->shape())) {
+  const Shape& input_shape = convolution.operand(0)->shape();
+  const Shape& kernel_shape = convolution.operand(0)->shape();
+  if (ShapeUtil::HasZeroElements(input_shape) ||
+      ShapeUtil::HasZeroElements(kernel_shape)) {
     return false;
   }
+  // TODO(b/65408531): Explore using Eigen dot for complex64 type.
+  if (ShapeUtil::ElementIsComplex(input_shape) ||
+      ShapeUtil::ElementIsComplex(kernel_shape)) {
+    return false;
+  }
+
   const ConvolutionDimensionNumbers& dnums =
       convolution.convolution_dimension_numbers();
-  // Only 2D convolutions are supported at the moment.
+  // Only 1D and 2D convolutions are supported at the moment.
   // TODO(b/32897908): add an optimized implementation for 3D convolution.
-  if (dnums.spatial_dimensions_size() != 2) {
+  if (dnums.spatial_dimensions_size() > 2) {
     return false;
   }
-  bool input_spatial_dims_ascending =
-      dnums.spatial_dimensions(0) < dnums.spatial_dimensions(1);
+
+  bool input_spatial_dims_ascending = std::is_sorted(
+      dnums.spatial_dimensions().begin(), dnums.spatial_dimensions().end());
   bool kernel_spatial_dims_ascending =
-      dnums.kernel_spatial_dimensions(0) < dnums.kernel_spatial_dimensions(1);
-  return dnums.batch_dimension() == 0 && dnums.feature_dimension() == 3 &&
+      std::is_sorted(dnums.kernel_spatial_dimensions().begin(),
+                     dnums.kernel_spatial_dimensions().end());
+
+  const Shape& output_shape = convolution.shape();
+  return dnums.input_batch_dimension() == 0 &&
+         dnums.input_feature_dimension() == input_shape.dimensions_size() - 1 &&
+         dnums.output_batch_dimension() == 0 &&
+         dnums.output_feature_dimension() ==
+             output_shape.dimensions_size() - 1 &&
          input_spatial_dims_ascending == kernel_spatial_dims_ascending &&
-         dnums.kernel_input_feature_dimension() == 2 &&
-         dnums.kernel_output_feature_dimension() == 3;
+         dnums.kernel_input_feature_dimension() ==
+             kernel_shape.dimensions_size() - 2 &&
+         dnums.kernel_output_feature_dimension() ==
+             kernel_shape.dimensions_size() - 1;
 }
 
 namespace {
@@ -86,6 +105,10 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
       return false;
     }
 
+    if (ProfitableToImplementDotInLlvmIr(hlo) == DotInLlvmIrProfitable::kYes) {
+      return false;
+    }
+
     // If gemm can accept the operand shapes, use it rather than a custom
     // kernel.
     if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape())) {
@@ -100,8 +123,9 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kFusion &&
       hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
       hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    const Shape& lhs_shape = hlo.operand(0)->shape();
-    const Shape& rhs_shape = hlo.operand(1)->shape();
+    auto* dot = hlo.fused_expression_root();
+    const Shape& lhs_shape = dot->operand(0)->shape();
+    const Shape& rhs_shape = dot->operand(1)->shape();
     if (ShapeUtil::HasZeroElements(lhs_shape) ||
         ShapeUtil::HasZeroElements(rhs_shape)) {
       return false;
@@ -110,6 +134,48 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
   }
 
   return false;
+}
+
+DotInLlvmIrProfitable ProfitableToImplementDotInLlvmIr(
+    const HloInstruction& dot) {
+  if (dot.opcode() == HloOpcode::kDot && dot.shape().dimensions_size() == 2) {
+    const Shape& result_shape = dot.shape();
+    // kReductionDimensionThresholdBytes was chosen to be 1/4 of a typical L1
+    // cache line size, so that we can have the reduction dimension of both the
+    // LHS and RHS matrices and still have some space "left over".  This needs
+    // to be tuned further.
+    const int64 kReductionDimensionThresholdBytes = 8 * 1024;
+    const bool single_threaded_eigen =
+        !dot.GetModule()->config().debug_options().xla_cpu_multi_thread_eigen();
+
+    // This is the point at which it is better to call into Eigen and shard the
+    // dot across multiple worker threads.  This is a rough estimate by running
+    // a matmult benchmark on my local machine, and it can be tuned further.
+    const int64 kMaxSingleThreadedFlops = 16 * 1024;
+
+    const int64 M = result_shape.dimensions(0);
+    const int64 N = result_shape.dimensions(1);
+    const int64 K = dot.operand(1)->shape().dimensions(0);
+    const int64 primitive_type_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(result_shape.element_type());
+    if (M == 1 &&
+        K * primitive_type_size <= kReductionDimensionThresholdBytes &&
+        (single_threaded_eigen || M * K * N <= kMaxSingleThreadedFlops)) {
+      // Heuristics:
+      //
+      //  - Look for a configuration where we will likely be able to keep LHS in
+      //    L1 and do a cache-optimal traversal of RHS.
+      //
+      //  - Bail out on matrices that are large enough that Eigen can profitably
+      //    shard the computation across multiple cores.  This only applies when
+      //    multi-threading is enabled.
+      return LayoutUtil::IsMonotonicWithDim0Major(
+                 dot.operand(1)->shape().layout())
+                 ? DotInLlvmIrProfitable::kWithColumnMajorRhs
+                 : DotInLlvmIrProfitable::kYes;
+    }
+  }
+  return DotInLlvmIrProfitable::kNo;
 }
 
 }  // namespace cpu

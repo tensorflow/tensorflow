@@ -1,4 +1,4 @@
-##Profile Time
+## Profile Time
 
 * [Times in TensorFlow and tfprof](#times-in-tensorflow-and-tfprof)
 * [Profile by Python Code](#profile-by-python-code)
@@ -7,7 +7,7 @@
 * [Profile by Name Scope](#profile-by-name-scope)
 
 
-###Times in TensorFlow and tfprof
+### Times in TensorFlow and tfprof
 When we run a model, Tensorflow schedules and runs the nodes (operations)
 in the graph. An operation can be placed on an accelerator or on CPU.
 
@@ -37,7 +37,7 @@ When an operation is placed on CPU, it will completely run on CPU. Hence,
 should be 0.
 
 
-###Profile by Python Code
+### Profile by Python Code
 ```python
 # In code view, the time of each line of Python code is the aggregated
 # times of all operations created by that line.
@@ -112,7 +112,7 @@ Set ```-output timeline:outfile=<filename>``` to generate timeline instead of st
 </left>
 
 
-###Profile by Operation Type
+### Profile by Operation Type
 ```python
 # In op view, you can view the aggregated time of each operation type.
 tfprof> op -select micros,occurrence -order_by micros
@@ -134,11 +134,11 @@ AddN                            50.10ms (17.33%, 1.34%),       5481
 tfprof> op -select micros,device -order_by micros
 node name | execution time | assigned devices
 SoftmaxCrossEntropyWithLogits     1.37sec (100.00%, 36.44%), /job:worker/replica:0/task:0/cpu:0
-MatMul                        618.97ms (63.56%, 16.51%), |/job:worker/replica:0/task:0/cpu:0|/job:worker/replica:0/task:0/gpu:0|/job:worker/replica:0/task:0/gpu:1|/job:worker/replica:0/task:0/gpu:2|/job:worker/replica:0/task:0/gpu:3
+MatMul                        618.97ms (63.56%, 16.51%), |/job:worker/replica:0/task:0/cpu:0|/job:worker/replica:0/task:0/device:GPU:0|/job:worker/replica:0/task:0/device:GPU:1|/job:worker/replica:0/task:0/device:GPU:2|/job:worker/replica:0/task:0/device:GPU:3
 ```
 
 
-###Profile by Graph
+### Profile by Graph
 
 Usually, use graph view to generate a timeline to visualize the result.
 
@@ -163,7 +163,7 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ******************************************************
 ```
 
-###Profile by Name Scope
+### Profile by Name Scope
 
 Usually scope view allows you to pin point the problematic places if you
 have properly named your operations with tf.name_scope or tf.variable_scope.

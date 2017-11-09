@@ -28,7 +28,7 @@ class MomentumOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Momentum algorithm.
 
   Computes (if `use_nesterov = False`):
-  
+
   ```
   accumulation = momentum * accumulation + gradient
   variable -= learning_rate * accumulation
@@ -53,8 +53,17 @@ class MomentumOptimizer(optimizer.Optimizer):
         gradients.  Defaults to "Momentum".
       use_nesterov: If `True` use Nesterov Momentum.
         See [Sutskever et al., 2013](
-        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf)
+        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf).
+        This implementation always computes gradients at the value of the
+        variable(s) passed to the optimizer. Using Nesterov Momentum makes the
+        variable(s) track the values called `theta_t + mu*v_t` in the paper.
 
+    @compatibility(eager)
+    When eager execution is enabled, learning_rate and momentum can each be a
+    callable that takes no arguments and returns the actual value to use. This
+    can be useful for changing these values across different invocations of
+    optimizer functions.
+    @end_compatibility
     """
     super(MomentumOptimizer, self).__init__(use_locking, name)
     self._learning_rate = learning_rate
@@ -66,10 +75,15 @@ class MomentumOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "momentum", self._name)
 
   def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
+    learning_rate = self._learning_rate
+    if callable(learning_rate):
+      learning_rate = learning_rate()
+    self._learning_rate_tensor = ops.convert_to_tensor(learning_rate,
                                                        name="learning_rate")
-    self._momentum_tensor = ops.convert_to_tensor(self._momentum,
-                                                  name="momentum")
+    momentum = self._momentum
+    if callable(momentum):
+      momentum = momentum()
+    self._momentum_tensor = ops.convert_to_tensor(momentum, name="momentum")
 
   def _apply_dense(self, grad, var):
     mom = self.get_slot(var, "momentum")

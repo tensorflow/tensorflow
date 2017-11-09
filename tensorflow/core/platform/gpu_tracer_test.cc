@@ -63,12 +63,12 @@ class GPUTracerTest : public ::testing::Test {
     Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
     test::FillValues<float>(&x_tensor, {1, 1});
     Node* x = test::graph::Constant(&graph, x_tensor);
-    x->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     x_ = x->name();
 
     // y = A * x
     Node* y = test::graph::Matmul(&graph, a, x, false, false);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     y_ = y->name();
 
     // Use an Identity op to force a memcpy to CPU and back to GPU.
@@ -77,7 +77,7 @@ class GPUTracerTest : public ::testing::Test {
 
     Node* y_neg = test::graph::Unary(&graph, "Neg", i);
     y_neg_ = y_neg->name();
-    y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
 
     test::graph::ToGraphDef(&graph, &def_);
   }
@@ -195,6 +195,7 @@ TEST_F(GPUTracerTest, TraceToStepStatsCollector) {
   StepStats stats;
   StepStatsCollector collector(&stats);
   TF_ASSERT_OK(tracer->Collect(&collector));
+  collector.Finalize();
   // Depending on whether this runs on CPU or GPU, we will have a
   // different number of devices.
   EXPECT_GE(stats.dev_stats_size(), 1);

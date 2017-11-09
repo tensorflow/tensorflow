@@ -37,8 +37,9 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };
-REGISTER_XLA_OP(Name("ResourceApplyGradientDescent"),
-                ResourceApplyGradientDescent);
+REGISTER_XLA_OP(
+    Name("ResourceApplyGradientDescent").TypeConstraint("T", kFloatTypes),
+    ResourceApplyGradientDescent);
 
 class ResourceApplyMomentum : public XlaOpKernel {
  public:
@@ -109,7 +110,8 @@ class ResourceApplyMomentum : public XlaOpKernel {
  private:
   bool use_nesterov_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyMomentum"), ResourceApplyMomentum);
+REGISTER_XLA_OP(Name("ResourceApplyMomentum").TypeConstraint("T", kFloatTypes),
+                ResourceApplyMomentum);
 
 class ResourceApplyAdagrad : public XlaOpKernel {
  public:
@@ -163,7 +165,8 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
   }
 };
-REGISTER_XLA_OP(Name("ResourceApplyAdagrad"), ResourceApplyAdagrad);
+REGISTER_XLA_OP(Name("ResourceApplyAdagrad").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdagrad);
 
 class ResourceApplyAdam : public XlaOpKernel {
  public:
@@ -263,7 +266,8 @@ class ResourceApplyAdam : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyAdam"), ResourceApplyAdam);
+REGISTER_XLA_OP(Name("ResourceApplyAdam").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdam);
 
 class ResourceApplyRMSProp : public XlaOpKernel {
  public:
@@ -362,7 +366,8 @@ class ResourceApplyRMSProp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, type, new_mom));
   }
 };
-REGISTER_XLA_OP(Name("ResourceApplyRMSProp"), ResourceApplyRMSProp);
+REGISTER_XLA_OP(Name("ResourceApplyRMSProp").TypeConstraint("T", kFloatTypes),
+                ResourceApplyRMSProp);
 
 void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
                  bool has_l2_shrinkage) {
@@ -455,11 +460,10 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
   // linear += grad_to_use -
   //     (new_accum^(-lr_power) - accum^(-lr_power)) / lr * var
   // quadratic = (new_accum^(-lr_power) / lr) + 2 * l2
-  // var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+  // linear_clipped = clamp linear in [-l1, l1]
+  // var = (linear_clipped - linear) / quadratic
   // accum = new_accum
 
-  xla::ComputationDataHandle zero_broadcast = b->Broadcast(
-      XlaHelpers::FloatLiteral(b, dtype, 0.0), var_shape.dim_sizes());
   xla::ComputationDataHandle two = XlaHelpers::FloatLiteral(b, dtype, 2.0);
   xla::ComputationDataHandle grad_to_use;
   if (has_l2_shrinkage) {
@@ -477,11 +481,10 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
       linear,
       b->Sub(grad_to_use,
              b->Mul(b->Div(b->Sub(new_accum_lr_pow, accum_lr_pow), lr), var)));
+  xla::ComputationDataHandle linear_clipped = b->Clamp(b->Neg(l1), linear, l1);
   xla::ComputationDataHandle quadratic =
       b->Add(b->Div(new_accum_lr_pow, lr), b->Mul(two, l2));
-  xla::ComputationDataHandle pre_shrink =
-      b->Div(b->Sub(b->Mul(l1, b->Sign(linear)), linear), quadratic);
-  var = b->Select(b->Gt(b->Abs(linear), l1), pre_shrink, zero_broadcast);
+  var = b->Div(b->Sub(linear_clipped, linear), quadratic);
   accum = new_accum;
 
   OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype, var));
@@ -502,7 +505,8 @@ class ResourceApplyFtrl : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyFtrl"), ResourceApplyFtrl);
+REGISTER_XLA_OP(Name("ResourceApplyFtrl").TypeConstraint("T", kFloatTypes),
+                ResourceApplyFtrl);
 
 class ResourceApplyFtrlV2 : public XlaOpKernel {
  public:
@@ -517,7 +521,8 @@ class ResourceApplyFtrlV2 : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyFtrlV2"), ResourceApplyFtrlV2);
+REGISTER_XLA_OP(Name("ResourceApplyFtrlV2").TypeConstraint("T", kFloatTypes),
+                ResourceApplyFtrlV2);
 
 }  // namespace
 }  // namespace tensorflow

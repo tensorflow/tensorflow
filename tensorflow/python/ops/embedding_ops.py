@@ -34,43 +34,68 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 
-def _gather_and_clip(params, ids, max_norm, name=None):
+def _gather(params, ids, name=None):
   """Helper function for _embedding_lookup_and_transform.
 
   This function gathers embeddings from a single tensor. The gather deals with
-  resource variables specially. The embeddings are clipped to an l2-norm of
-  max_norm if provided.
+  resource variables specially.
 
   Args:
     params: A `Tensor` of embeddings.
     ids: A `Tensor` indexing the embeddings to be retrieved from `params`.
-    max_norm: If provided, embedding values are l2-normalized to the value of
-      max_norm.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` with the same type as `params`.
   """
   if isinstance(params, resource_variable_ops.ResourceVariable):
-    embs = params.sparse_read(ids, name=name)
+    return params.sparse_read(ids, name=name)
   else:
-    embs = array_ops.gather(params, ids, name=name)
+    return array_ops.gather(params, ids, name=name)
+
+
+def _clip(params, ids, max_norm):
+  """Helper function for _embedding_lookup_and_transform.
+
+  This function optionally clips embeddings to an l2-norm of max_norm.
+
+  Args:
+    params: A `Tensor` of embeddings retrieved by `_gather`.
+    ids: The `ids` argument that was passed to `_gather`.
+    max_norm: If provided, the embeddings are l2-normalized to the value of
+      max_norm.
+
+  Returns:
+    A `Tensor` with the same type as `params`.
+  """
+
+  def _rank(x):
+    """Helper function to retrieve the rank of a tensor.
+
+    Args:
+      x: Something convertible to `Tensor`.
+
+    Returns:
+      Either a pair `(rank, True)` where `rank` is an integer or a pair
+      `(rank, False)` where `rank` is an integer `Tensor`. In either case,
+      `rank` is the rank of `x`.
+    """
+    rank = ops.convert_to_tensor(x).get_shape().ndims
+    if rank:
+      return rank, True
+    else:
+      return array_ops.rank(x), False
+
   if max_norm is None:
-    return embs
-  static = True
-  ids_rank = ops.convert_to_tensor(ids).get_shape().ndims
-  if ids_rank is None:
-    ids_rank = array_ops.rank(ids)
-    static = False
-  embs_rank = embs.get_shape().ndims
-  if embs_rank is None:
-    embs_rank = array_ops.rank(embs)
-    static = False
+    return params
+  ids_rank, ids_static = _rank(ids)
+  params_rank, params_static = _rank(params)
   return clip_ops.clip_by_norm(
-      embs,
+      params,
       max_norm,
-      axes=list(range(ids_rank, embs_rank))
-      if static else math_ops.range(ids_rank, embs_rank))
+      axes=(list(range(ids_rank, params_rank))
+            if ids_static and params_static
+            else math_ops.range(ids_rank, params_rank)))
 
 
 def _embedding_lookup_and_transform(params,
@@ -98,6 +123,8 @@ def _embedding_lookup_and_transform(params,
     name: See embedding_lookup.
     max_norm: See embedding_lookup.
     transform_fn: An optional function to apply to each retrieved embedding.
+      If max_norm is provided, transform_fn is applied to the norm-limited
+      embeddings.
 
   Returns:
     See embedding_lookup for details.
@@ -118,10 +145,10 @@ def _embedding_lookup_and_transform(params,
         isinstance(p, resource_variable_ops.ResourceVariable) for p in params):
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     ids = ops.convert_to_tensor(ids, name="ids")
-    if np == 1 and (transform_fn is None or ids.get_shape().ndims == 1):
+    if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
       with ops.colocate_with(params[0]):
-        result = _gather_and_clip(params[0], ids, max_norm, name=name)
-        if transform_fn is not None:
+        result = _clip(_gather(params[0], ids, name=name), ids, max_norm)
+        if transform_fn:
           result = transform_fn(result)
         return result
     else:
@@ -129,7 +156,7 @@ def _embedding_lookup_and_transform(params,
       # - There is more than one params tensor.
       # - There is a transform_fn and ids is not statically known to be 1-D.
       #   We must flatten in this case because transform_fn expects a flat
-      #   a flat tensor of embeddings.
+      #   tensor of embeddings.
       flat_ids = array_ops.reshape(ids, [-1])
       original_indices = math_ops.range(array_ops.size(flat_ids))
 
@@ -185,13 +212,17 @@ def _embedding_lookup_and_transform(params,
       # Do np separate lookups, finding embeddings for plist[p] in params[p]
       partitioned_result = []
       for p in xrange(np):
+        pids = gather_ids[p]
         with ops.colocate_with(params[p]):
-          result = _gather_and_clip(params[p], gather_ids[p], max_norm)
-          if transform_fn is not None:
-            result = transform_fn(result)
-          partitioned_result.append(result)
+          result = _gather(params[p], pids)
+          if transform_fn:
+            # If transform_fn is provided, the clip_by_norm precedes
+            # the transform and hence must be co-located. See below
+            # for the counterpart if transform_fn is not proveded.
+            result = transform_fn(_clip(result, pids, max_norm))
+        partitioned_result.append(result)
       # Stitch these back together
-      ret = data_flow_ops.dynamic_stitch(
+      ret = data_flow_ops.parallel_dynamic_stitch(
           pindices, partitioned_result, name=name)
 
       # Determine the static element shape.
@@ -223,6 +254,9 @@ def _embedding_lookup_and_transform(params,
       # teaches shape inference that params[1:].get_shape() matters
       # (in the case that transform_fn is None).
       ret.set_shape(ids.get_shape().concatenate(element_shape_s))
+      if not transform_fn:
+        # If transform_fn was provided, the clip_by_norm was done above.
+        ret = _clip(ret, ids, max_norm)
       return ret
 
 

@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -18,16 +20,21 @@ cc_library(
     hdrs = ["scc.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:utils",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "scc_test",
-    size = "small",
     srcs = ["scc_test.cc"],
+    data = [
+        "//tensorflow/core/grappler/costs:graph_properties_testdata",
+    ],
     deps = [
         ":scc",
         "//tensorflow/core:lib_proto_parsing",
@@ -53,12 +60,38 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "topological_sort_test",
-    size = "small",
     srcs = ["topological_sort_test.cc"],
     deps = [
         ":topological_sort",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "frame",
+    srcs = ["frame.cc"],
+    hdrs = ["frame.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+tf_cc_test(
+    name = "frame_test",
+    size = "small",
+    srcs = ["frame_test.cc"],
+    deps = [
+        ":frame",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

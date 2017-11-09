@@ -97,7 +97,7 @@ class CpuUtils {
   // Return cycle counter frequency.
   // As this method caches the cpu frequency internally,
   // the first call will incur overhead, but not subsequent calls.
-  #if defined(__powerpc__) || defined(__ppc__) && ( __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+  #if (defined(__powerpc__) || defined(__ppc__) && ( __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) || (defined(__s390x__))
      static uint64 GetCycleCounterFrequency();
   #else
      static int64 GetCycleCounterFrequency();

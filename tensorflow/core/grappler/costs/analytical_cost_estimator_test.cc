@@ -42,7 +42,7 @@ class AnalyticalCostEstimatorTest : public ::testing::Test {
     gpu_device.set_frequency(1100);
     gpu_device.set_bandwidth(180 * 1024 * 1024);
     (*gpu_device.mutable_environment())["architecture"] = "6";
-    devices["/job:localhost/replica:0/task:0/gpu:0"] = gpu_device;
+    devices["/job:localhost/replica:0/task:0/device:GPU:0"] = gpu_device;
 
     cluster_.reset(new VirtualCluster(devices));
   }

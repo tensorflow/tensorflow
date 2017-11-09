@@ -281,6 +281,11 @@ class BufferAssignment {
   std::set<BufferAllocation::Slice> GetAllSlices(
       const HloInstruction* instruction, const ShapeIndex& index) const;
 
+  // Convenience function which returns whether the buffer of the
+  // instruction at the given index is assigned an allocation.
+  bool HasAllocationAt(const HloInstruction* instruction,
+                       const ShapeIndex& index) const;
+
   // Convenience function which returns whether the top-level buffer of the
   // instruction (index == {}) is assigned an allocation.
   bool HasTopLevelAllocation(const HloInstruction* instruction) const;
@@ -301,7 +306,7 @@ class BufferAssignment {
 
   // Returns the set LogicalBuffers which may be the source of the value at the
   // given index and instruction.
-  const std::vector<const LogicalBuffer*>& GetSourceBuffers(
+  const PointsToSet::BufferList& GetSourceBuffers(
       const HloInstruction* instruction, const ShapeIndex& index) const {
     return GetPointsToSet(instruction).element(index);
   }
@@ -314,6 +319,13 @@ class BufferAssignment {
                           const ShapeIndex& shape_index_a,
                           const HloInstruction* hlo_b,
                           const ShapeIndex& shape_index_b) const;
+
+  // Returns true if the top-level buffers of hlo_a and hlo_b are the same.
+  // REQUIRES: HasTopLevelAllocation(hlo_a) && HasTopLevelAllocation(hlo_b).
+  bool SharesTopLevelSlice(const HloInstruction* hlo_a,
+                           const HloInstruction* hlo_b) const {
+    return SharesSliceAtIndex(hlo_a, {}, hlo_b, {});
+  }
 
   // Returns the underlying points-to analysis used for this assignment.
   const TuplePointsToAnalysis& points_to_analysis() const {

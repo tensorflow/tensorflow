@@ -20,7 +20,6 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Machine Learning with TensorFlow (Book & Code)](http://tensorflowbook.com)
 * [@jtoy's awesome "Awesome TensorFlow" list of awesome things](https://github.com/jtoy/awesome-tensorflow)
 * [TensorFlow tutorials](https://github.com/pkmital/tensorflow_tutorials)
-* [Scikit Flow - Simplified Interface for TensorFlow](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/learn/python/learn)
 * [Caffe to TensorFlow model converter](https://github.com/ethereon/caffe-tensorflow)
 * [Bitfusion's` GPU-enabled AWS EC2 TensorFlow AMI](https://github.com/bitfusionio/amis/tree/master/awsmrkt-bfboost-ubuntu14-cuda75-tensorflow) ([Launch AMI](https://aws.amazon.com/marketplace/pp/B01EYKBEQ0))
 * [Rust language bindings](https://github.com/google/tensorflow-rust)
@@ -29,6 +28,7 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Sublime Tensorflow - A plugin for Sublime Text](https://github.com/baptisteArnaud/Sublime-Tensorflow)
 * [Edward - A library for probabilistic modeling, inference, and criticism](http://edwardlib.org) ([Github](https://github.com/blei-lab/edward), [Forum](https://discourse.edwardlib.org))
 * [GPflow - Gaussian processes in TensorFlow](https://github.com/GPflow/GPflow)
+* [CS 20SI: Tensorflow for Deep Learning Research](https://web.stanford.edu/class/cs20si/) - Please note, this course was designed with TensorFlow v0.12, so some of the notes may be out of date - but it's still a great resource.
 
 ## TensorFlow Communities Around the World
 
@@ -37,6 +37,7 @@ Asia:
 * [TensorFlow Korea (TF-KR) User Group](https://www.facebook.com/groups/TensorFlowKR/) _(Korean language)_
 * [TensorFlow User Group Tokyo](https://tfug-tokyo.connpass.com/) _(Japanese Language)_
 * [Soleil Data Dojo](https://soleildatadojo.connpass.com/) _(Japanese language)_
+* [TensorFlow User Group Utsunomiya](https://tfug-utsunomiya.connpass.com/)
 
 
 Europe:

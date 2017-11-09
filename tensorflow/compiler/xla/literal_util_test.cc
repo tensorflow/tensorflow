@@ -107,6 +107,9 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
 
   auto f16_lit = Literal::CreateR0<half>(static_cast<half>(0.5f));
   ASSERT_EQ("0.5", f16_lit->ToString());
+
+  auto c64_lit = Literal::CreateR0<complex64>({3.14f, 2.78f});
+  ASSERT_EQ("(3.14, 2.78)", c64_lit->ToString());
 }
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
@@ -119,7 +122,7 @@ TEST_F(LiteralUtilTest, R2ToString) {
   const string expected = R"(s32[3,2] {
   { 1, 2 },
   { 3, 4 },
-  { 5, 6 },
+  { 5, 6 }
 })";
   ASSERT_EQ(expected, literal->ToString());
 }
@@ -145,8 +148,8 @@ TEST_F(LiteralUtilTest, TupleToString) {
 1,
 f32[2,2] {
   { 1, 2 },
-  { 3, 4 },
-},
+  { 3, 4 }
+}
 ))";
   ASSERT_EQ(expected, tuple->ToString());
 }
@@ -188,18 +191,18 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   EXPECT_THAT(literal->shape().dimensions(), ElementsAre(1, 2, 3, 2));
   string result = literal->ToString();
   const string expected = R"(f32[1,2,3,2] {
-  {  // i0=0
-    {  // i1=0
+  {  /*i0=0*/
+    {  /*i1=0*/
       {1, 2},
       {1001, 1002},
-      {2001, 2002},
+      {2001, 2002}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {1, 2},
       {1001, 1002},
-      {2001, 2002},
-    },
-  },
+      {2001, 2002}
+    }
+  }
 })";
   ASSERT_EQ(expected, result);
 }
@@ -209,30 +212,30 @@ TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
               ElementsAre(2, 2, 3, 3));
   string result = literal_r4_2x2x3x3_dim0major_->ToString();
   const string expected = R"(f32[2,2,3,3] {
-  {  // i0=0
-    {  // i1=0
+  {  /*i0=0*/
+    {  /*i1=0*/
       {1, 2, 3},
       {4, 5, 6},
-      {7, 8, 9},
+      {7, 8, 9}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {11, 12, 13},
       {14, 15, 16},
-      {17, 18, 19},
-    },
+      {17, 18, 19}
+    }
   },
-  {  // i0=1
-    {  // i1=0
+  {  /*i0=1*/
+    {  /*i1=0*/
       {101, 102, 103},
       {104, 105, 106},
-      {107, 108, 109},
+      {107, 108, 109}
     },
-    {  // i1=1
+    {  /*i1=1*/
       {201, 202, 203},
       {204, 205, 206},
-      {207, 208, 209},
-    },
-  },
+      {207, 208, 209}
+    }
+  }
 })";
   ASSERT_EQ(expected, result);
 }
@@ -257,37 +260,37 @@ TEST_F(LiteralUtilTest, EachCellR2F32) {
 }
 
 TEST_F(LiteralUtilTest, ScalarEquality) {
-  // Test Literal::Equal with scalars.
+  // Test equality with scalars.
   auto f32_42 = Literal::CreateR0<float>(42.0);
   auto f32_42_clone = Literal::CreateR0<float>(42.0);
 
-  EXPECT_TRUE(f32_42->Equal(*f32_42));
-  EXPECT_TRUE(f32_42->Equal(*f32_42_clone));
+  EXPECT_EQ(*f32_42, *f32_42);
+  EXPECT_EQ(*f32_42, *f32_42_clone);
 
   auto f32_123 = Literal::CreateR0<float>(123.0);
-  EXPECT_FALSE(f32_42->Equal(*f32_123));
+  EXPECT_NE(*f32_42, *f32_123);
 
   auto f64_42 = Literal::CreateR0<double>(42.0);
-  EXPECT_FALSE(f32_42->Equal(*f64_42));
+  EXPECT_NE(*f32_42, *f64_42);
 }
 
 TEST_F(LiteralUtilTest, NonScalarEquality) {
-  // Test Literal::Equal with nonscalars.
+  // Test equality with nonscalars.
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto matrix_clone = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto matrix_different = Literal::CreateR2<float>({{4.0, 3.0}, {1.0, 2.0}});
   auto vector_literal = Literal::CreateR1<float>({1.0, 2.0, 3.0, 4.0});
   auto scalar = Literal::CreateR0<float>(1.0);
 
-  EXPECT_TRUE(matrix->Equal(*matrix));
-  EXPECT_TRUE(matrix->Equal(*matrix_clone));
-  EXPECT_FALSE(matrix->Equal(*matrix_different));
-  EXPECT_FALSE(matrix->Equal(*vector_literal));
-  EXPECT_FALSE(matrix->Equal(*scalar));
+  EXPECT_EQ(*matrix, *matrix);
+  EXPECT_EQ(*matrix, *matrix_clone);
+  EXPECT_NE(*matrix, *matrix_different);
+  EXPECT_NE(*matrix, *vector_literal);
+  EXPECT_NE(*matrix, *scalar);
 }
 
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
-  // Test Literal::Equal with literals which have different layouts.
+  // Test equality with literals which have different layouts.
   auto colmajor = MakeUnique<Literal>();
   *colmajor->mutable_shape() = ShapeUtil::MakeShape(F32, {2, 2});
   *colmajor->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
@@ -306,11 +309,11 @@ TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   rowmajor->Set<float>({1, 0}, 3.0);
   rowmajor->Set<float>({1, 1}, 4.0);
 
-  EXPECT_TRUE(rowmajor->Equal(*colmajor));
+  EXPECT_EQ(*rowmajor, *colmajor);
 }
 
 TEST_F(LiteralUtilTest, TupleEquality) {
-  // Test Literal::Equal with tuples.
+  // Test equality with tuples.
   auto scalar = Literal::CreateR0<float>(1.0);
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple1 = Literal::MakeTuple({scalar.get(), matrix.get()});
@@ -319,16 +322,29 @@ TEST_F(LiteralUtilTest, TupleEquality) {
   // tuple, the other is a clone of the element in the original tuple.
   auto scalar_clone = Literal::CreateR0<float>(1.0);
   auto tuple2 = Literal::MakeTuple({scalar_clone.get(), matrix.get()});
-  EXPECT_TRUE(tuple1->Equal(*tuple2));
+  EXPECT_EQ(*tuple1, *tuple2);
 
   // Tuple with elements reversed.
   auto reversed_tuple = Literal::MakeTuple({matrix.get(), scalar.get()});
-  EXPECT_FALSE(tuple1->Equal(*reversed_tuple));
+  EXPECT_NE(*tuple1, *reversed_tuple);
 
   // Tuple with different value.
   auto scalar_42 = Literal::CreateR0<float>(42.0);
   auto different_tuple = Literal::MakeTuple({scalar_42.get(), matrix.get()});
-  EXPECT_FALSE(tuple1->Equal(*different_tuple));
+  EXPECT_NE(*tuple1, *different_tuple);
+}
+
+TEST_F(LiteralUtilTest, C64Equality) {
+  // Test equality with tuples.
+  auto vector = Literal::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
+
+  // Tuple with the same elements. One element is shared with the original
+  // tuple, the other is a clone of the element in the original tuple.
+  auto vector_clone = Literal::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*vector, *vector_clone);
+
+  auto vector_reversed = Literal::CreateR1<complex64>({{3.0, 4.0}, {1.0, 2.0}});
+  EXPECT_NE(*vector, *vector_reversed);
 }
 
 TEST_F(LiteralUtilTest, IsAllTuple) {
@@ -348,7 +364,7 @@ TEST_F(LiteralUtilTest, CreateFromShapeTuple) {
   auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
 
   auto x = Literal::CreateFromShape(tuple->shape());
-  EXPECT_TRUE(tuple->Equal(*x));
+  EXPECT_EQ(*tuple, *x);
 }
 
 TEST_F(LiteralUtilTest, IsAll) {
@@ -381,6 +397,9 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_FALSE(Literal::CreateR2<half>({{h8}, {h9}})->IsAll(8));
   EXPECT_FALSE(Literal::CreateR2<half>({{h9}, {h8}})->IsAll(8));
 
+  complex64 c8_9 = {8, 9};
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c8_9}, {c8_9}})->IsAll(8));
+
   auto uint64_max = std::numeric_limits<uint64>::max();
   EXPECT_FALSE(Literal::CreateR2<uint64>(
                    {{uint64_max, uint64_max}, {uint64_max, uint64_max}})
@@ -411,6 +430,25 @@ TEST_F(LiteralUtilTest, IsAllFloat) {
       Literal::CreateR2<double>({{0, 0, 0}, {0, .1, 0}})->IsAllFloat(0));
 }
 
+TEST_F(LiteralUtilTest, IsAllComplex) {
+  // IsAllComplex always returns false when the literal is not complex.
+  EXPECT_FALSE(Literal::CreateR0<bool>(false)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<int8>(0)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<uint8>(0)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<int>(0)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<float>(0)->IsAllComplex(0));
+  EXPECT_FALSE(Literal::CreateR0<double>(0)->IsAllComplex(0));
+
+  complex64 c8_9 = {8, 9};
+  complex64 c7_9 = {7, 9};
+  EXPECT_TRUE(Literal::CreateR2<complex64>({{c8_9}, {c8_9}})
+                  ->IsAllComplex({8.0f, 9.0f}));
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c7_9}, {c8_9}})
+                   ->IsAllComplex({8.0f, 9.0f}));
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c8_9}, {c7_9}})
+                   ->IsAllComplex({8.0f, 9.0f}));
+}
+
 TEST_F(LiteralUtilTest, IsZero) {
   auto scalar_zero = Literal::CreateR0<float>(0.0f);
   auto scalar_one = Literal::CreateR0<float>(1.0f);
@@ -422,12 +460,17 @@ TEST_F(LiteralUtilTest, IsZero) {
   EXPECT_TRUE(array->IsZero({0, 2}));
   EXPECT_TRUE(array->IsZero({1, 1}));
   EXPECT_FALSE(array->IsZero({1, 2}));
+
+  auto complex_zero = Literal::CreateR0<complex64>(0.0f);
+  auto complex_nonzero = Literal::CreateR0<complex64>(0.5f);
+  EXPECT_TRUE(complex_zero->IsZero({}));
+  EXPECT_FALSE(complex_nonzero->IsZero({}));
 }
 
 template <typename T>
 class LiteralUtilTestTemplated : public ::testing::Test {};
 
-using TestedTypes = ::testing::Types<float, int32, uint32>;
+using TestedTypes = ::testing::Types<float, int32, uint32, complex64>;
 TYPED_TEST_CASE(LiteralUtilTestTemplated, TestedTypes);
 
 TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
@@ -439,17 +482,17 @@ TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
 
   auto data01 = data->Relayout(layout01);
   EXPECT_TRUE(LayoutUtil::Equal(data01->shape().layout(), layout01));
-  EXPECT_TRUE(data->Equal(*data01));
+  EXPECT_EQ(*data, *data01);
 
   auto data10 = data->Relayout(layout10);
   EXPECT_TRUE(LayoutUtil::Equal(data10->shape().layout(), layout10));
-  EXPECT_TRUE(data->Equal(*data10));
+  EXPECT_EQ(*data, *data10);
 }
 
 TEST_F(LiteralUtilTest, ReshapeR0) {
   auto original = Literal::CreateR0<float>(1.7f);
   auto reshape = original->Reshape(/*shape=*/{}).ConsumeValueOrDie();
-  EXPECT_TRUE(original->Equal(*reshape));
+  EXPECT_EQ(*original, *reshape);
 }
 
 TEST_F(LiteralUtilTest, ReshapeR4) {
@@ -469,7 +512,7 @@ TEST_F(LiteralUtilTest, ReshapeR4) {
   // clang-format on
   auto reshape = original->Reshape({3, 4, 2}).ConsumeValueOrDie();
 
-  EXPECT_TRUE(expected->Equal(*reshape));
+  EXPECT_EQ(*expected, *reshape);
 }
 
 TEST_F(LiteralUtilTest, ReshapeR4Dim0Minor) {
@@ -489,13 +532,13 @@ TEST_F(LiteralUtilTest, ReshapeR4Dim0Minor) {
   // clang-format on
   auto reshape = original->Reshape({3, 4, 2}).ConsumeValueOrDie();
 
-  EXPECT_TRUE(expected->Equal(*reshape));
+  EXPECT_EQ(*expected, *reshape);
 }
 
 TEST_F(LiteralUtilTest, TransposeR0) {
   auto original = Literal::CreateR0<float>(1.7f);
   auto reshape = original->Transpose(/*permutation=*/{});
-  EXPECT_TRUE(original->Equal(*reshape));
+  EXPECT_EQ(*original, *reshape);
 }
 
 TEST_F(LiteralUtilTest, TransposeR4) {
@@ -521,13 +564,11 @@ TEST_F(LiteralUtilTest, TestR4RelayoutEquivalence) {
   // target layout in the first place.
   auto dim0minor_relaid_to_dim0major =
       literal_r4_2x2x3x3_dim0minor_->Relayout(layout_r4_dim0major_);
-  EXPECT_TRUE(
-      literal_r4_2x2x3x3_dim0major_->Equal(*dim0minor_relaid_to_dim0major));
+  EXPECT_EQ(*literal_r4_2x2x3x3_dim0major_, *dim0minor_relaid_to_dim0major);
 
   auto dim0major_relaid_to_dim0minor =
       literal_r4_2x2x3x3_dim0major_->Relayout(layout_r4_dim0minor_);
-  EXPECT_TRUE(
-      literal_r4_2x2x3x3_dim0minor_->Equal(*dim0major_relaid_to_dim0minor));
+  EXPECT_EQ(*literal_r4_2x2x3x3_dim0minor_, *dim0major_relaid_to_dim0minor);
 }
 
 TEST_F(LiteralUtilTest, TestR2LinearLayout) {
@@ -596,14 +637,14 @@ TEST_F(LiteralUtilTest, TestR3LinearLayout) {
 TEST_F(LiteralUtilTest, SliceR0S32) {
   auto input = Literal::CreateR0<int32>(1);
   auto result = input->Slice({}, {});
-  EXPECT_TRUE(input->Equal(*result));
+  EXPECT_EQ(*input, *result);
 }
 
 TEST_F(LiteralUtilTest, SliceR1F32) {
   auto input = Literal::CreateR1<float>({1.0, 2.0, 3.0, 4.0, 5.0});
   auto result = input->Slice({3}, {4});
   auto expected = Literal::CreateR1<float>({4.0});
-  EXPECT_TRUE(expected->Equal(*result));
+  EXPECT_EQ(*expected, *result);
 }
 
 TEST_F(LiteralUtilTest, SliceR2U32) {
@@ -611,49 +652,72 @@ TEST_F(LiteralUtilTest, SliceR2U32) {
       Literal::CreateR2<uint32>({{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
   auto result = input_3x4->Slice({0, 2}, {2, 4});
   auto expected = Literal::CreateR2<uint32>({{3, 4}, {7, 8}});
-  EXPECT_TRUE(expected->Equal(*result));
+  EXPECT_EQ(*expected, *result);
 }
 
 TEST_F(LiteralUtilTest, SliceR3U32Full) {
   auto input_2x3x2 = Literal::CreateR3<uint32>(
       {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}});
   auto result = input_2x3x2->Slice({0, 0, 0}, {2, 3, 2});
-  EXPECT_TRUE(input_2x3x2->Equal(*result));
+  EXPECT_EQ(*input_2x3x2, *result);
 }
 
 TEST_F(LiteralUtilTest, PopulateR1S64) {
   Literal output;
   output.PopulateR1<int64>({77});
   auto expected = Literal::CreateR1<int64>({77});
-  EXPECT_TRUE(output.Equal(*expected));
+  EXPECT_EQ(output, *expected);
 }
 
-TEST_F(LiteralUtilTest, PopulateR2U64) {
+TEST_F(LiteralUtilTest, PopulateR1U64) {
   Literal output;
   output.PopulateR1<uint64>({{77, 88}});
   auto expected = Literal::CreateR1<uint64>({{77, 88}});
-  EXPECT_TRUE(output.Equal(*expected));
+  EXPECT_EQ(output, *expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateR1C64) {
+  Literal output;
+  output.PopulateR1<complex64>({{77, 88}});
+  auto expected = Literal::CreateR1<complex64>({{77, 88}});
+  EXPECT_EQ(output, *expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateR2C64) {
+  Literal output;
+  output.PopulateR2<complex64>({{{7, 8}, {9, 10}}, {{1, 2}, {3, 4}}});
+  auto expected =
+      Literal::CreateR2<complex64>({{{7, 8}, {9, 10}}, {{1, 2}, {3, 4}}});
+  EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR0F32) {
   Literal output;
   output.PopulateWithValue<float>(2.5f, {});
   auto expected = Literal::CreateR0<float>(2.5f);
-  EXPECT_TRUE(output.Equal(*expected));
+  EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1S64) {
   Literal output;
   output.PopulateWithValue<int64>(-7, {3});
   auto expected = Literal::CreateR1<int64>({-7, -7, -7});
-  EXPECT_TRUE(output.Equal(*expected));
+  EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR2U64) {
   Literal output;
   output.PopulateWithValue<uint64>(42, {2, 2});
   auto expected = Literal::CreateR2<uint64>({{42, 42}, {42, 42}});
-  EXPECT_TRUE(output.Equal(*expected));
+  EXPECT_EQ(output, *expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateWithValueR2C64) {
+  Literal output;
+  output.PopulateWithValue<complex64>({4, 2}, {2, 2});
+  auto expected =
+      Literal::CreateR2<complex64>({{{4, 2}, {4, 2}}, {{4, 2}, {4, 2}}});
+  EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR0F16) {
@@ -661,7 +725,7 @@ TEST_F(LiteralUtilTest, PopulateWithValueR0F16) {
   half h(0.25f);
   output.PopulateWithValue<half>(h, {});
   auto expected = Literal::CreateR0<half>(h);
-  EXPECT_TRUE(output.Equal(*expected));
+  EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1F16) {
@@ -669,7 +733,7 @@ TEST_F(LiteralUtilTest, PopulateWithValueR1F16) {
   half h(0.5f);
   output.PopulateWithValue<half>(h, {3});
   auto expected = Literal::CreateR1<half>({h, h, h});
-  EXPECT_TRUE(output.Equal(*expected));
+  EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR2F16) {
@@ -677,7 +741,7 @@ TEST_F(LiteralUtilTest, PopulateWithValueR2F16) {
   half h(2.0f);
   output.PopulateWithValue<half>(h, {2, 2});
   auto expected = Literal::CreateR2<half>({{h, h}, {h, h}});
-  EXPECT_TRUE(output.Equal(*expected));
+  EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, ReplicateR2U32) {
@@ -688,7 +752,7 @@ TEST_F(LiteralUtilTest, ReplicateR2U32) {
       {{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
        {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
        {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}}});
-  EXPECT_TRUE(output->Equal(*expected));
+  EXPECT_EQ(*output, *expected);
 }
 
 TEST_F(LiteralUtilTest, Copy) {
@@ -698,7 +762,7 @@ TEST_F(LiteralUtilTest, Copy) {
   for (const auto& layout : layouts) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), dimensions, layout);
-    auto blank = Literal::CreateFromShape(shape);
+
     auto source = Literal::CreateFromShape(shape);
     const int64 zero_base[] = {0, 0, 0, 0};
     const int64 step[] = {1, 1, 1, 1};
@@ -707,15 +771,15 @@ TEST_F(LiteralUtilTest, Copy) {
       source->Set(indexes, ++seqnr);
       return true;
     };
-
     ShapeUtil::ForEachIndex(source->shape(), zero_base, dimensions, step,
                             init_proc);
 
+    auto blank = Literal::CreateFromShape(shape);
     const int64 src_base[] = {3, 1, 5, 7};
     const int64 dest_base[] = {6, 4, 12, 2};
     const int64 copy_size[] = {7, 8, 11, 9};
-
     TF_EXPECT_OK(blank->Copy(*source, src_base, dest_base, copy_size));
+
     std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
     bool matched = true;
@@ -730,6 +794,7 @@ TEST_F(LiteralUtilTest, Copy) {
       matched = (bval != 0 && bval == source->Get<uint32>(source_indexes));
       return matched;
     };
+
     ShapeUtil::ForEachIndex(source->shape(), zero_base, copy_size, step,
                             check_proc);
     EXPECT_TRUE(matched);
@@ -740,13 +805,37 @@ TEST_F(LiteralUtilTest, CopyScalars) {
   auto zero = Literal::CreateR0<uint32>(0);
   auto nine = Literal::CreateR0<uint32>(9);
   TF_EXPECT_OK(zero->Copy(*nine, {}, {}, {}));
-  EXPECT_TRUE(zero->Equal(*nine));
+  EXPECT_EQ(*zero, *nine);
 
   auto vect = Literal::CreateR1<uint32>({3, 4, 9, 12, 5, 17, 21});
   TF_EXPECT_OK(zero->Copy(*vect, {5}, {}, {}));
   EXPECT_EQ(zero->Get<uint32>({}), 17);
   TF_EXPECT_OK(vect->Copy(*zero, {}, {4}, {}));
   EXPECT_EQ(vect->Get<uint32>({4}), 17);
+}
+
+TEST_F(LiteralUtilTest, CopyFromAndToZeroElement) {
+  const Shape empty_r1_shape = ShapeUtil::MakeShape(F32, {0});
+  const auto const_nine = Literal::CreateR1<float>({9});
+  const auto const_empty = Literal::CreateFromShape(empty_r1_shape);
+
+  {
+    // Source contains dimension with zero elements.
+    const auto empty = Literal::CreateFromShape(empty_r1_shape);
+    auto nine = Literal::CreateR1<float>({9});
+
+    TF_EXPECT_OK(nine->Copy(*empty, {0}, {0}, {0}));
+    EXPECT_EQ(*nine, *const_nine);
+  }
+
+  {
+    // Copy 0 element to destination with zero elements.
+    const auto empty = Literal::CreateFromShape(empty_r1_shape);
+    auto nine = Literal::CreateR1<float>({9});
+
+    TF_EXPECT_OK(empty->Copy(*nine, {0}, {0}, {0}));
+    EXPECT_EQ(*empty, *const_empty);
+  }
 }
 
 TEST_F(LiteralUtilTest, F16) {
@@ -838,7 +927,7 @@ TEST_F(LiteralUtilTest, ConvertR4) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> converted,
                           original->Convert(U32));
 
-  EXPECT_TRUE(expected->Equal(*converted));
+  EXPECT_EQ(*expected, *converted);
 }
 
 TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
@@ -878,6 +967,14 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0, 1, 0, 1}, {1, 0, 1, 0}},
     {{1, 0, 1, 0}, {0, 1, 0, 1}},
   }}, layout_r4_dim0major_);
+  auto f16 = Literal::CreateR4WithLayout<half>({{
+    {{half(10.0), half(0.0), half(12.0), half(0.0)},
+     {half(0.0), half(15.0), half(0.0), half(17.0)}},
+    {{half(0.0), half(19.0), half(0.0), half(21.0)},
+     {half(22.0), half(0.0), half(24.0), half(0.0)}},
+    {{half(26.0), half(0.0), half(28.0), half(0.0)},
+     {half(0.0), half(31.0), half(0.0), half(33.0)}},
+  }}, layout_r4_dim0major_);
   auto f32 = Literal::CreateR4WithLayout<float>({{
     {{10.0f, 0.0f, 12.0f, 0.0f}, {0.0f, 15.0f, 0.0f, 17.0f}},
     {{0.0f, 19.0f, 0.0f, 21.0f}, {22.0f, 0.0f, 24.0f, 0.0f}},
@@ -888,43 +985,68 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0.0, 19.0, 0.0, 21.0}, {22.0, 0.0, 24.0, 0.0}},
     {{26.0, 0.0, 28.0, 0.0}, {0.0, 31.0, 0.0, 33.0}},
   }}, layout_r4_dim0major_);
+  auto c64 = Literal::CreateR4WithLayout<complex64>({{
+    {{10.0f, 0.0f, 12.0f, 0.0f}, {0.0f, 15.0f, 0.0f, 17.0f}},
+    {{0.0f, 19.0f, 0.0f, 21.0f}, {22.0f, 0.0f, 24.0f, 0.0f}},
+    {{26.0f, 0.0f, 28.0f, 0.0f}, {0.0f, 31.0f, 0.0f, 33.0f}},
+  }}, layout_r4_dim0major_);
   // clang-format on
   std::unique_ptr<Literal> conv;
 
   conv = s8->Convert(U32).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*u32));
+  EXPECT_EQ(*conv, *u32);
 
   conv = s8->Convert(S32).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*s32));
+  EXPECT_EQ(*conv, *s32);
 
   conv = s8->Convert(U64).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*u64));
+  EXPECT_EQ(*conv, *u64);
 
   conv = s8->Convert(S64).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*s64));
+  EXPECT_EQ(*conv, *s64);
 
   conv = s8->Convert(PRED).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*pred));
+  EXPECT_EQ(*conv, *pred);
 
   conv = pred->Convert(S32).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*int32_pred));
+  EXPECT_EQ(*conv, *int32_pred);
 
   conv = f32->Convert(S32).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*s32));
+  EXPECT_EQ(*conv, *s32);
 
   conv = f64->Convert(S32).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*s32));
+  EXPECT_EQ(*conv, *s32);
 
   conv = s32->Convert(F32).ConsumeValueOrDie();
-  EXPECT_TRUE(conv->Equal(*f32));
+  EXPECT_EQ(*conv, *f32);
+
+  conv = f32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *f16);
+
+  conv = f64->Convert(F16).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *f16);
+
+  conv = s32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *f16);
+
+  conv = u32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *f16);
+
+  conv = s32->Convert(C64).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *c64);
+
+  conv = f16->Convert(C64).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *c64);
 
   EXPECT_EQ(s32->Convert(TUPLE).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
-  EXPECT_EQ(s32->Convert(F16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
   EXPECT_EQ(s32->Convert(S16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
   EXPECT_EQ(s32->Convert(U16).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(c64->Convert(F32).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(c64->Convert(S32).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
 }
 
@@ -1000,6 +1122,26 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   ASSERT_EQ(h2, r[1]);
   ASSERT_EQ(h2, r[2]);
   ASSERT_EQ(h1, r[3]);
+}
+
+TEST_F(LiteralUtilTest, Subliterals) {
+  auto scalar = Literal::CreateR0<float>(1.0);
+  auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
+  auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
+
+  EXPECT_EQ(&scalar->GetSubliteral(/*index=*/{}), scalar.get());
+  EXPECT_EQ(&matrix->GetSubliteral(/*index=*/{}), matrix.get());
+  EXPECT_EQ(&tuple->GetSubliteral(/*index=*/{}), tuple.get());
+  EXPECT_EQ(&nested_tuple->GetSubliteral(/*index=*/{}), nested_tuple.get());
+
+  EXPECT_EQ(tuple->GetSubliteral(/*index=*/{0}), *scalar);
+  EXPECT_EQ(tuple->GetSubliteral(/*index=*/{1}), *matrix);
+
+  EXPECT_EQ(nested_tuple->GetSubliteral(/*index=*/{0}), *tuple);
+  EXPECT_EQ(nested_tuple->GetSubliteral(/*index=*/{0, 0}), *scalar);
+  EXPECT_EQ(nested_tuple->GetSubliteral(/*index=*/{0, 1}), *matrix);
+  EXPECT_EQ(nested_tuple->GetSubliteral(/*index=*/{1}), *scalar);
 }
 
 }  // namespace

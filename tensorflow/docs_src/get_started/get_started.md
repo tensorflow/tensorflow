@@ -104,6 +104,7 @@ operations (Operations are also nodes). For example, we can add our two
 constant nodes and produce a new graph as follows:
 
 ```python
+from __future__ import print_function
 node3 = tf.add(node1, node2)
 print("node3:", node3)
 print("sess.run(node3):", sess.run(node3))
@@ -271,7 +272,7 @@ train = optimizer.minimize(loss)
 ```
 
 ```python
-sess.run(init) # reset values to incorrect defaults.
+sess.run(init) # reset variables to incorrect defaults.
 for i in range(1000):
   sess.run(train, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]})
 
@@ -279,15 +280,14 @@ print(sess.run([W, b]))
 ```
 results in the final model parameters:
 ```
-[array([-0.9999969], dtype=float32), array([ 0.99999082],
- dtype=float32)]
+[array([-0.9999969], dtype=float32), array([ 0.99999082], dtype=float32)]
 ```
 
-Now we have done actual machine learning!  Although doing this simple linear
-regression doesn't require much TensorFlow core code, more complicated models
-and methods to feed data into your model necessitate more code. Thus TensorFlow
-provides higher level abstractions for common patterns, structures, and
-functionality. We will learn how to use some of these abstractions in the
+Now we have done actual machine learning!  Although this simple linear
+regression model does not require much TensorFlow core code, more complicated
+models and methods to feed data into your models necessitate more code. Thus,
+TensorFlow provides higher level abstractions for common patterns, structures,
+and functionality. We will learn how to use some of these abstractions in the
 next section.
 
 ### Complete program
@@ -317,7 +317,7 @@ y_train = [0, -1, -2, -3]
 # training loop
 init = tf.global_variables_initializer()
 sess = tf.Session()
-sess.run(init) # reset values to wrong
+sess.run(init) # initialize variables with incorrect defaults.
 for i in range(1000):
   sess.run(train, {x: x_train, y: y_train})
 
@@ -354,9 +354,9 @@ Notice how much simpler the linear regression program becomes with
 `tf.estimator`:
 
 ```python
-import tensorflow as tf
 # NumPy is often used to load, manipulate and preprocess data.
 import numpy as np
+import tensorflow as tf
 
 # Declare list of features. We only have one numeric feature. There are many
 # other types of columns that are more complicated and useful.
@@ -383,7 +383,7 @@ train_input_fn = tf.estimator.inputs.numpy_input_fn(
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
 
-# We can invoke 1000 training steps by invoking the  method and passing the
+# We can invoke 1000 training steps by invoking the method and passing the
 # training data set.
 estimator.train(input_fn=input_fn, steps=1000)
 
@@ -393,10 +393,10 @@ eval_metrics = estimator.evaluate(input_fn=eval_input_fn)
 print("train metrics: %r"% train_metrics)
 print("eval metrics: %r"% eval_metrics)
 ```
-When run, it produces
+When run, it produces something like
 ```
-train metrics: {'loss': 1.2712867e-09, 'global_step': 1000}
-eval metrics: {'loss': 0.0025279333, 'global_step': 1000}
+train metrics: {'average_loss': 1.4833182e-08, 'global_step': 1000, 'loss': 5.9332727e-08}
+eval metrics: {'average_loss': 0.0025353201, 'global_step': 1000, 'loss': 0.01014128}
 ```
 Notice how our eval data has a higher loss, but it is still close to zero.
 That means we are learning properly.
@@ -447,13 +447,13 @@ estimator = tf.estimator.Estimator(model_fn=model_fn)
 x_train = np.array([1., 2., 3., 4.])
 y_train = np.array([0., -1., -2., -3.])
 x_eval = np.array([2., 5., 8., 1.])
-y_eval = np.array([-1.01, -4.1, -7, 0.])
+y_eval = np.array([-1.01, -4.1, -7., 0.])
 input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
 train_input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
+    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1, shuffle=False)
 
 # train
 estimator.train(input_fn=input_fn, steps=1000)

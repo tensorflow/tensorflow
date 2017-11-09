@@ -41,6 +41,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -221,12 +222,12 @@ class NumericColumnTest(test.TestCase):
               0,
           ])
 
-  def test_dtype_is_convertable_to_float(self):
+  def test_dtype_is_convertible_to_float(self):
     with self.assertRaisesRegexp(ValueError,
                                  'dtype must be convertible to float'):
       fc.numeric_column('aaa', dtype=dtypes.string)
 
-  def test_scalar_deafult_value_fills_the_shape(self):
+  def test_scalar_default_value_fills_the_shape(self):
     a = fc.numeric_column('aaa', shape=[2, 3], default_value=2.)
     self.assertEqual(((2., 2., 2.), (2., 2., 2.)), a.default_value)
 
@@ -1344,6 +1345,43 @@ class LinearModelTest(test.TestCase):
         sess.run(bias.assign([7.]))
         self.assertAllClose([[3217.], [4657.]], predictions.eval())
 
+  def test_fills_cols_to_vars(self):
+    price1 = fc.numeric_column('price1', shape=2)
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {'price1': [[1., 2.], [5., 6.]], 'price2': [[3.], [4.]]}
+      cols_to_vars = {}
+      fc.linear_model(features, [price1, price2], cols_to_vars=cols_to_vars)
+      bias = get_linear_model_bias()
+      price1_var = get_linear_model_column_var(price1)
+      price2_var = get_linear_model_column_var(price2)
+      self.assertAllEqual(cols_to_vars['bias'], [bias])
+      self.assertAllEqual(cols_to_vars[price1], [price1_var])
+      self.assertAllEqual(cols_to_vars[price2], [price2_var])
+
+  def test_fills_cols_to_vars_partitioned_variables(self):
+    price1 = fc.numeric_column('price1', shape=2)
+    price2 = fc.numeric_column('price2', shape=3)
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[1., 2.], [6., 7.]],
+          'price2': [[3., 4., 5.], [8., 9., 10.]]
+      }
+      cols_to_vars = {}
+      with variable_scope.variable_scope(
+          'linear',
+          partitioner=partitioned_variables.fixed_size_partitioner(2, axis=0)):
+        fc.linear_model(features, [price1, price2], cols_to_vars=cols_to_vars)
+      with _initialized_session():
+        self.assertEqual([0.], cols_to_vars['bias'][0].eval())
+        # Partitioning shards the [2, 1] price1 var into 2 [1, 1] Variables.
+        self.assertAllEqual([[0.]], cols_to_vars[price1][0].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price1][1].eval())
+        # Partitioning shards the [3, 1] price2 var into a [2, 1] Variable and
+        # a [1, 1] Variable.
+        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price2][1].eval())
+
   def test_dense_collection(self):
     price = fc.numeric_column('price')
     with ops.Graph().as_default() as g:
@@ -1654,6 +1692,21 @@ class InputLayerTest(test.TestCase):
       fc.input_layer(
           features={'a': [[0]]}, feature_columns={'a': fc.numeric_column('a')})
 
+  def test_bare_column(self):
+    with ops.Graph().as_default():
+      features = features = {'a': [0.]}
+      net = fc.input_layer(features, fc.numeric_column('a'))
+      with _initialized_session():
+        self.assertAllClose([[0.]], net.eval())
+
+  def test_column_generator(self):
+    with ops.Graph().as_default():
+      features = features = {'a': [0.], 'b': [1.]}
+      columns = (fc.numeric_column(key) for key in features)
+      net = fc.input_layer(features, columns)
+      with _initialized_session():
+        self.assertAllClose([[0., 1.]], net.eval())
+
   def test_raises_if_duplicate_name(self):
     with self.assertRaisesRegexp(
         ValueError, 'Duplicate feature column name found for columns'):
@@ -1706,6 +1759,64 @@ class InputLayerTest(test.TestCase):
       net = fc.input_layer(features, [price1, price2])
       with _initialized_session():
         self.assertAllClose([[1., 2., 3.], [5., 6., 4.]], net.eval())
+
+  def test_fills_cols_to_vars(self):
+    # Provide three _DenseColumn's to input_layer: a _NumericColumn, a
+    # _BucketizedColumn, and an _EmbeddingColumn.  Only the _EmbeddingColumn
+    # creates a Variable.
+    price1 = fc.numeric_column('price1')
+    dense_feature = fc.numeric_column('dense_feature')
+    dense_feature_bucketized = fc.bucketized_column(
+        dense_feature, boundaries=[0.])
+    some_sparse_column = fc.categorical_column_with_hash_bucket(
+        'sparse_feature', hash_bucket_size=5)
+    some_embedding_column = fc.embedding_column(
+        some_sparse_column, dimension=10)
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[3.], [4.]],
+          'dense_feature': [[-1.], [4.]],
+          'sparse_feature': [['a'], ['x']],
+      }
+      cols_to_vars = {}
+      all_cols = [price1, dense_feature_bucketized, some_embedding_column]
+      fc.input_layer(features, all_cols, cols_to_vars=cols_to_vars)
+      self.assertItemsEqual(list(cols_to_vars.keys()), all_cols)
+      self.assertEqual(0, len(cols_to_vars[price1]))
+      self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
+      self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
+      self.assertIsInstance(cols_to_vars[some_embedding_column][0],
+                            variables_lib.Variable)
+      self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [5, 10])
+
+  def test_fills_cols_to_vars_partitioned_variables(self):
+    price1 = fc.numeric_column('price1')
+    dense_feature = fc.numeric_column('dense_feature')
+    dense_feature_bucketized = fc.bucketized_column(
+        dense_feature, boundaries=[0.])
+    some_sparse_column = fc.categorical_column_with_hash_bucket(
+        'sparse_feature', hash_bucket_size=5)
+    some_embedding_column = fc.embedding_column(
+        some_sparse_column, dimension=10)
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[3.], [4.]],
+          'dense_feature': [[-1.], [4.]],
+          'sparse_feature': [['a'], ['x']],
+      }
+      cols_to_vars = {}
+      all_cols = [price1, dense_feature_bucketized, some_embedding_column]
+      with variable_scope.variable_scope(
+          'input_from_feature_columns',
+          partitioner=partitioned_variables.fixed_size_partitioner(3, axis=0)):
+        fc.input_layer(features, all_cols, cols_to_vars=cols_to_vars)
+      self.assertItemsEqual(list(cols_to_vars.keys()), all_cols)
+      self.assertEqual(0, len(cols_to_vars[price1]))
+      self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
+      self.assertEqual(3, len(cols_to_vars[some_embedding_column]))
+      self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [2, 10])
+      self.assertAllEqual(cols_to_vars[some_embedding_column][1].shape, [2, 10])
+      self.assertAllEqual(cols_to_vars[some_embedding_column][2].shape, [1, 10])
 
   def test_column_order(self):
     price_a = fc.numeric_column('price_a')
@@ -3205,6 +3316,46 @@ class IndicatorColumnTest(test.TestCase):
     indicator_tensor = _transform_features(features, [a_indicator])[a_indicator]
     with _initialized_session():
       self.assertAllEqual([[0, 0, 1], [1, 0, 0]], indicator_tensor.eval())
+
+  def test_transform_with_weighted_column(self):
+    # Github issue 12557
+    ids = fc.categorical_column_with_vocabulary_list(
+        key='ids', vocabulary_list=('a', 'b', 'c'))
+    weights = fc.weighted_categorical_column(ids, 'weights')
+    indicator = fc.indicator_column(weights)
+    features = {
+        'ids': constant_op.constant([['c', 'b', 'a']]),
+        'weights': constant_op.constant([[2., 4., 6.]])
+    }
+    indicator_tensor = _transform_features(features, [indicator])[indicator]
+    with _initialized_session():
+      self.assertAllEqual([[6., 4., 2.]], indicator_tensor.eval())
+
+  def test_transform_with_missing_value_in_weighted_column(self):
+    # Github issue 12583
+    ids = fc.categorical_column_with_vocabulary_list(
+        key='ids', vocabulary_list=('a', 'b', 'c'))
+    weights = fc.weighted_categorical_column(ids, 'weights')
+    indicator = fc.indicator_column(weights)
+    features = {
+        'ids': constant_op.constant([['c', 'b', 'unknown']]),
+        'weights': constant_op.constant([[2., 4., 6.]])
+    }
+    indicator_tensor = _transform_features(features, [indicator])[indicator]
+    with _initialized_session():
+      self.assertAllEqual([[0., 4., 2.]], indicator_tensor.eval())
+
+  def test_transform_with_missing_value_in_categorical_column(self):
+    # Github issue 12583
+    ids = fc.categorical_column_with_vocabulary_list(
+        key='ids', vocabulary_list=('a', 'b', 'c'))
+    indicator = fc.indicator_column(ids)
+    features = {
+        'ids': constant_op.constant([['c', 'b', 'unknown']]),
+    }
+    indicator_tensor = _transform_features(features, [indicator])[indicator]
+    with _initialized_session():
+      self.assertAllEqual([[0., 1., 1.]], indicator_tensor.eval())
 
   def test_linear_model(self):
     animal = fc.indicator_column(

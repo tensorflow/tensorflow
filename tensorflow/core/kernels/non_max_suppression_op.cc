@@ -122,7 +122,9 @@ void DoNonMaxSuppressionOp(OpKernelContext* context,
   for (int i = 0; i < num_boxes; ++i) {
     if (selected.size() >= output_size) break;
     bool should_select = true;
-    for (int j = 0; j < num_selected; ++j) {
+    // Overlapping boxes are likely to have similar scores,
+    // therefore we iterate through the selected boxes backwards.
+    for (int j = num_selected - 1; j >= 0; --j) {
       if (IOUGreaterThanThreshold(boxes_data, sorted_indices[i],
                                   sorted_indices[selected_indices[j]],
                                   iou_threshold)) {

@@ -23,6 +23,7 @@ import numpy as np
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
@@ -31,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -107,6 +109,36 @@ class ConstantTest(test.TestCase):
         np.array([compat.as_bytes(str(x)) for x in np.arange(-15, 15)]).reshape(
             [2, 3, 5]))
     self._testCpu(np.empty((2, 0, 5)).astype(np.str_))
+
+  def testVariant(self):
+    # TODO(ebrevdo): Re-enable use_gpu=True once non-DMA Variant
+    # copying between CPU and GPU is supported.
+    with self.test_session(use_gpu=False):
+      variant_tensor = tensor_pb2.TensorProto(
+          dtype=dtypes_lib.variant.as_datatype_enum,
+          tensor_shape=tensor_shape.TensorShape([]).as_proto(),
+          variant_val=[
+              tensor_pb2.VariantTensorDataProto(
+                  # Match registration in variant_op_registry.cc
+                  type_name=b"int",
+                  metadata=np.array(1, dtype=np.int32).tobytes())
+          ])
+      const = constant_op.constant(variant_tensor)
+      const_value = const.op.get_attr("value")
+
+      # Ensure we stored the tensor proto properly.
+      self.assertProtoEquals(variant_tensor, const_value)
+
+      # Smoke test -- ensure this executes without trouble.
+      # Right now, non-numpy-compatible objects cannot be returned from a
+      # session.run call; similarly, objects that can't be converted to
+      # native numpy types cannot be passed to ops.convert_to_tensor.
+      # TODO(ebrevdo): Add registration mechanism for
+      # ops.convert_to_tensor and for session.run output.
+      logging_const_op = logging_ops.Print(
+          const, [const],
+          message="Variant storing an int, decoded const value:").op
+      logging_const_op.run()
 
   def testStringWithNulls(self):
     with self.test_session():
@@ -407,9 +439,10 @@ class ZerosLikeTest(test.TestCase):
 
   def testZerosLikeCPU(self):
     for dtype in [
-        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
-        dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
-        dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64,
+        dtypes_lib.float32, dtypes_lib.float64,
+        dtypes_lib.int8, dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.uint16,
+        dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.bool,
+        dtypes_lib.complex64, dtypes_lib.complex128,
         dtypes_lib.string
     ]:
       self._compareZeros(dtype, fully_defined_shape=False, use_gpu=False)
@@ -440,6 +473,35 @@ class ZerosLikeTest(test.TestCase):
           self.assertEqual(y.dtype, out_type)
           self.assertEqual(y.shape, shape)
           self.assertAllEqual(y, np.zeros(shape, dtype=out_type))
+
+  def testZerosLikeVariant(self):
+    # TODO(ebrevdo): Re-enable use_gpu=True once non-DMA Variant
+    # copying between CPU and GPU is supported AND we register a
+    # ZerosLike callback for GPU for Variant storing primitive types
+    # in variant_op_registry.cc.
+    with self.test_session(use_gpu=False):
+      variant_tensor = tensor_pb2.TensorProto(
+          dtype=dtypes_lib.variant.as_datatype_enum,
+          tensor_shape=tensor_shape.TensorShape([]).as_proto(),
+          variant_val=[
+              tensor_pb2.VariantTensorDataProto(
+                  # Match registration in variant_op_registry.cc
+                  type_name=b"int",
+                  metadata=np.array(1, dtype=np.int32).tobytes())
+          ])
+      const_variant = constant_op.constant(variant_tensor)
+      zeros_like = array_ops.zeros_like(const_variant)
+      zeros_like_op = logging_ops.Print(
+          zeros_like, [const_variant, zeros_like],
+          message="Variant storing an int, input and output of zeros_like:").op
+
+      # Smoke test -- ensure this executes without trouble.
+      # Right now, non-numpy-compatible objects cannot be returned from a
+      # session.run call; similarly, objects that can't be converted to
+      # native numpy types cannot be passed to ops.convert_to_tensor.
+      # TODO(ebrevdo): Add registration mechanism for
+      # ops.convert_to_tensor and for session.run output.
+      zeros_like_op.run()
 
 
 class OnesTest(test.TestCase):
@@ -512,9 +574,10 @@ class OnesLikeTest(test.TestCase):
 
   def testOnesLike(self):
     for dtype in [
-        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
-        dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
-        dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64
+        dtypes_lib.float32, dtypes_lib.float64,
+        dtypes_lib.int8, dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.uint16,
+        dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.bool,
+        dtypes_lib.complex64, dtypes_lib.complex128
     ]:
       numpy_dtype = dtype.as_numpy_dtype
       with self.test_session():

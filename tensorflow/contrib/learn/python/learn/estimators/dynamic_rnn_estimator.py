@@ -639,7 +639,7 @@ class DynamicRnnEstimator(estimator.Estimator):
       ValueError: `problem_type` is not one of
         `ProblemType.LINEAR_REGRESSION` or `ProblemType.CLASSIFICATION`.
       ValueError: `problem_type` is `ProblemType.CLASSIFICATION` but
-        `num_classes` is not specifieProblemType
+        `num_classes` is not specified.
       ValueError: `prediction_type` is not one of
         `PredictionType.MULTIPLE_VALUE` or `PredictionType.SINGLE_VALUE`.
     """

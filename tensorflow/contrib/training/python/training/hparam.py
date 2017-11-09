@@ -25,6 +25,7 @@ import six
 from tensorflow.contrib.training.python.training import hparam_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 
 # Define the regular expression for parsing a single clause of the input
 # (delimited by commas).  A legal clause looks like:
@@ -138,7 +139,7 @@ def _process_list_value(name, parse_fn, var_type, m_dict, values,
 
 
 def parse_values(values, type_map):
-  """Parses hyperparameter values from a string into a python map..
+  """Parses hyperparameter values from a string into a python map.
 
   `values` is a string containing comma-separated `name=value` pairs.
   For each pair, the value of the hyperparameter named `name` is set to
@@ -424,6 +425,31 @@ class HParams(object):
       self._hparam_types[name] = (type(value), False)
     setattr(self, name, value)
 
+  def set_hparam(self, name, value):
+    """Set the value of an existing hyperparameter.
+
+    This function verifies that the type of the value matches the type of the
+    existing hyperparameter.
+
+    Args:
+      name: Name of the hyperparameter.
+      value: New value of the hyperparameter.
+
+    Raises:
+      ValueError: If there is a type mismatch.
+    """
+    _, is_list = self._hparam_types[name]
+    if isinstance(value, list):
+      if not is_list:
+        raise ValueError(
+            'Must not pass a list for single-valued parameter: %s' % name)
+      setattr(self, name, value)
+    else:
+      if is_list:
+        raise ValueError(
+            'Must pass a list for multi-valued parameter: %s.' % name)
+      setattr(self, name, value)
+
   def parse(self, values):
     """Override hyperparameter values, parsing new values from a string.
 
@@ -445,33 +471,28 @@ class HParams(object):
       type_map[name] = param_type
 
     values_map = parse_values(values, type_map)
-    return self._set_from_map(values_map)
+    return self.override_from_dict(values_map)
 
-  def _set_from_map(self, values_map):
+  def override_from_dict(self, values_dict):
     """Override hyperparameter values, parsing new values from a dictionary.
 
     Args:
-      values_map: Dictionary of name:value pairs.
+      values_dict: Dictionary of name:value pairs.
 
     Returns:
       The `HParams` instance.
 
     Raises:
-      ValueError: If `values_map` cannot be parsed.
+      ValueError: If `values_dict` cannot be parsed.
     """
-    for name, value in values_map.items():
-      _, is_list = self._hparam_types[name]
-      if isinstance(value, list):
-        if not is_list:
-          raise ValueError(
-              'Must not pass a list for single-valued parameter: %s' % name)
-        setattr(self, name, value)
-      else:
-        if is_list:
-          raise ValueError(
-              'Must pass a list for multi-valued parameter: %s.' % name)
-        setattr(self, name, value)
+    for name, value in values_dict.items():
+      self.set_hparam(name, value)
     return self
+
+  @deprecation.deprecated(None, 'Use `override_from_dict`.')
+  def set_from_map(self, values_map):
+    """DEPRECATED. Use override_from_dict."""
+    return self.override_from_dict(values_dict=values_map)
 
   def set_model_structure(self, model_structure):
     self._model_structure = model_structure
@@ -500,7 +521,7 @@ class HParams(object):
       ValueError: If `values_json` cannot be parsed.
     """
     values_map = json.loads(values_json)
-    return self._set_from_map(values_map)
+    return self.override_from_dict(values_map)
 
   def values(self):
     """Return the hyperparameter values as a Python dictionary.
@@ -510,6 +531,9 @@ class HParams(object):
       hyperparameter values.
     """
     return {n: getattr(self, n) for n in self._hparam_types.keys()}
+
+  def __contains__(self, key):
+    return key in self._hparam_types
 
   def __str__(self):
     return str(sorted(self.values().items()))

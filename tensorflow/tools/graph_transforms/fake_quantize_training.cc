@@ -21,6 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 
+// EXPERIMENTAL: This can change without warning.
 // Rewrites the GraphDef for quantized training.
 // Rewrites the forward pass to include the precision loss with quantization so
 // the model can learn to deal with such loss and achieve better accuracy when

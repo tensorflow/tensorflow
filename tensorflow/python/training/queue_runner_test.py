@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import time
 
 from tensorflow.python.client import session
@@ -34,6 +35,9 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import queue_runner_impl
 
 
+_MockOp = collections.namedtuple("MockOp", ["name"])
+
+
 class QueueRunnerTest(test.TestCase):
 
   def testBasic(self):
@@ -46,6 +50,8 @@ class QueueRunnerTest(test.TestCase):
       variables.global_variables_initializer().run()
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       threads = qr.create_threads(sess)
+      self.assertEqual(sorted(t.name for t in threads),
+                       ["QueueRunnerThread-fifo_queue-CountUpTo:0"])
       for t in threads:
         t.start()
       for t in threads:
@@ -65,6 +71,9 @@ class QueueRunnerTest(test.TestCase):
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to_3, count_up_to_30])
       threads = qr.create_threads(sess)
+      self.assertEqual(sorted(t.name for t in threads),
+                       ["QueueRunnerThread-fifo_queue-CountUpTo:0",
+                        "QueueRunnerThread-fifo_queue-CountUpTo_1:0"])
       variables.global_variables_initializer().run()
       for t in threads:
         t.start()
@@ -77,7 +86,8 @@ class QueueRunnerTest(test.TestCase):
   def testExceptionsCaptured(self):
     with self.test_session() as sess:
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      qr = queue_runner_impl.QueueRunner(queue, ["i fail", "so fail"])
+      qr = queue_runner_impl.QueueRunner(queue, [_MockOp("i fail"),
+                                                 _MockOp("so fail")])
       threads = qr.create_threads(sess)
       variables.global_variables_initializer().run()
       for t in threads:
@@ -131,6 +141,9 @@ class QueueRunnerTest(test.TestCase):
       coord = coordinator.Coordinator()
       coord.request_stop()
       threads = qr.create_threads(sess, coord)
+      self.assertEqual(sorted(t.name for t in threads),
+                       ["QueueRunnerThread-fifo_queue-CountUpTo:0",
+                        "QueueRunnerThread-fifo_queue-close_on_stop"])
       for t in threads:
         t.start()
       coord.join()
@@ -141,7 +154,7 @@ class QueueRunnerTest(test.TestCase):
   def testRequestStopOnException(self):
     with self.test_session() as sess:
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      qr = queue_runner_impl.QueueRunner(queue, ["not an op"])
+      qr = queue_runner_impl.QueueRunner(queue, [_MockOp("not an op")])
       coord = coordinator.Coordinator()
       threads = qr.create_threads(sess, coord)
       for t in threads:
@@ -206,8 +219,12 @@ class QueueRunnerTest(test.TestCase):
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       variables.global_variables_initializer().run()
-      qr = queue_runner_impl.QueueRunner(queue, [count_up_to, "bad op"])
+      qr = queue_runner_impl.QueueRunner(queue, [count_up_to,
+                                                 _MockOp("bad_op")])
       threads = qr.create_threads(sess, start=True)
+      self.assertEqual(sorted(t.name for t in threads),
+                       ["QueueRunnerThread-fifo_queue-CountUpTo:0",
+                        "QueueRunnerThread-fifo_queue-bad_op"])
       for t in threads:
         t.join()
       exceptions = qr.exceptions_raised

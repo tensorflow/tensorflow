@@ -51,6 +51,9 @@ extern const char* const kAcquireOutfeedBufferForPopulationSymbolName =
     "__xla_cpu_runtime_AcquireOutfeedBufferForPopulation";
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
     "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
+extern const char* const kParallelForkJoinSymbolName =
+    "__xla_cpu_runtime_ParallelForkJoin";
+
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 }  // namespace runtime
 }  // namespace cpu
@@ -130,5 +133,6 @@ void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
   xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
   xla::StatusOr<xla::Shape> shape =
       xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
-  xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr, shape);
+  xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
+                                         std::move(shape));
 }

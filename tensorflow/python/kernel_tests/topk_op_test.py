@@ -100,6 +100,13 @@ class TopKTest(test.TestCase):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.4, 0.2]]
     self._validateTopK(inputs, 2, [[0.4, 0.3], [0.4, 0.3]], [[3, 1], [2, 1]])
 
+  def testTop3(self):
+    k = 5
+    inputs = np.random.permutation(np.linspace(0, 100, 6140, dtype=np.float64))
+    indices = np.argsort(-inputs)[:k]
+    values = -np.sort(-inputs)[:k]
+    self._validateTopK(inputs, k, values, indices)
+
   def _testLargeSort(self, dtype):
     b = 10
     n = 5000
@@ -140,6 +147,18 @@ class TopKTest(test.TestCase):
   def testMediumTopK(self):
     self._testMediumTopK(np.float32)
     self._testMediumTopK(np.float16)
+
+  def testStableSort(self):
+    b = 5
+    n = 500
+    for k in [1, 5, 50, 500]:
+      # Lots of repeated integers taking values in [0, 3]
+      inputs = np.random.permutation(
+          np.linspace(0, 3, b * n, dtype=np.int32)).reshape(b, n)
+      # Use mergesort, a stable sort, to get the indices.
+      indices = np.argsort(-inputs, axis=1, kind="mergesort")[:, :k]
+      values = -np.sort(-inputs, axis=1)[:, :k]
+      self._validateTopK(inputs, k, values, indices)
 
   def testTopAll(self):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.3, 0.2]]

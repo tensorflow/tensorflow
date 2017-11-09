@@ -43,6 +43,10 @@ if __name__ == '__main__':
 
   flags = doc_generator.parse_known_args()
 
+  # Suppress documentation of some symbols that users should never use.
+  del tf.layers.Layer.inbound_nodes
+  del tf.layers.Layer.outbound_nodes
+
   # tf_debug is not imported with tf, it's a separate module altogether
   doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])
 

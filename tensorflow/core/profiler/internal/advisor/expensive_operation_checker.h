@@ -47,8 +47,8 @@ class ExpensiveOperationChecker : public Checker {
       fprintf(stderr, "Missing run_meta for %s\n", name().c_str());
       return;
     }
-    Options opts(3, 0, 1, 0, 0, 0, -1, "micros", {".*"}, {".*"}, {}, {".*"}, {},
-                 false, {"micros", "occurrence"}, "none", {});
+    Options opts(3, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, -1, "micros", {".*"}, {".*"},
+                 {}, {".*"}, {}, false, {"micros", "occurrence"}, "none", {});
     const MultiGraphNodeProto root = stats->ShowMultiGraphNode("op", opts);
     if (root.children_size() == 0) {
       return;
@@ -74,8 +74,8 @@ class ExpensiveOperationChecker : public Checker {
       fprintf(stderr, "Missing op_log (code traces) for %s\n", name().c_str());
       return;
     }
-    Options opts(100, 0, 1, 0, 0, 0, -1, "micros", {".*"}, {".*"}, {}, {".*"},
-                 {}, false, {"micros"}, "none", {});
+    Options opts(100, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, -1, "micros", {".*"},
+                 {".*"}, {}, {".*"}, {}, false, {"micros"}, "none", {});
     const MultiGraphNodeProto root = stats->ShowMultiGraphNode("code", opts);
     const MultiGraphNodeProto* node = &root;
     // A trick here is: Usually, codes in library file are usually referenced
@@ -93,14 +93,13 @@ class ExpensiveOperationChecker : public Checker {
   }
 
   void CheckScopeView(const TFStats* stats) {
-    Options opts(100, 0, 100, 0, 0, 0, -1, "micros", {".*"}, {".*"}, {}, {".*"},
-                 {}, false, {"micros"}, "none", {});
+    Options opts(100, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, -1, "micros", {".*"},
+                 {".*"}, {}, {".*"}, {}, false, {"micros"}, "none", {});
     const GraphNodeProto root = stats->ShowGraphNode("scope", opts);
     if (root.children_size() == 0) {
       return;
     }
     std::vector<string> outputs;
-    const GraphNodeProto* node = &root;
     for (int i = 0; i < 3 && i < root.children_size(); ++i) {
       const GraphNodeProto& node = root.children(i);
       outputs.push_back(strings::Printf(

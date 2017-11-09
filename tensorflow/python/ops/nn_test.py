@@ -26,8 +26,10 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -74,16 +76,16 @@ class SoftmaxTest(test_lib.TestCase):
     z = u.sum(1)[:, np.newaxis]
     return u / z
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSoftmax(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
     y_np = self._softmax(x_np)
-    with self.test_session():
-      x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.softmax(x_tf)
-      y_tf_last_dim = nn_ops.softmax(x_tf, 1)
-      y_tf_np = y_tf.eval()
-      y_tf_last_dim_np = y_tf_last_dim.eval()
+    x_tf = constant_op.constant(x_np)
+    y_tf = nn_ops.softmax(x_tf)
+    y_tf_last_dim = nn_ops.softmax(x_tf, 1)
+    y_tf_np = self.evaluate(y_tf)
+    y_tf_last_dim_np = self.evaluate(y_tf_last_dim)
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
     self.assertAllClose(y_tf_last_dim_np, y_np, eps)
@@ -109,18 +111,18 @@ class LogPoissonLossTest(test_lib.TestCase):
       lpl += np.ma.masked_array(stirling_approx, mask=(z <= 1)).filled(0.)
     return lpl
 
+  @test_util.run_in_graph_and_eager_modes()
   def testLogPoissonLoss(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
     z_np = np.random.randint(0, 5, size=x_shape).astype(np.float32)
     y_np = self._log_poisson_loss(x_np, z_np, compute_full_loss=False)
     y_np_stirling = self._log_poisson_loss(x_np, z_np, compute_full_loss=True)
-    with self.test_session():
-      y_tf = nn_impl.log_poisson_loss(z_np, x_np, compute_full_loss=False)
-      y_tf_stirling = nn_impl.log_poisson_loss(
-          z_np, x_np, compute_full_loss=True)
-      y_tf_np = y_tf.eval()
-      y_tf_np_stirling = y_tf_stirling.eval()
+    y_tf = nn_impl.log_poisson_loss(z_np, x_np, compute_full_loss=False)
+    y_tf_stirling = nn_impl.log_poisson_loss(
+        z_np, x_np, compute_full_loss=True)
+    y_tf_np = self.evaluate(y_tf)
+    y_tf_np_stirling = self.evaluate(y_tf_stirling)
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
     self.assertAllClose(y_tf_np_stirling, y_np_stirling, eps)
@@ -151,14 +153,14 @@ class LogSoftmaxTest(test_lib.TestCase):
     u = x - m
     return u - np.log(np.sum(np.exp(u), 1, keepdims=True))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testLogSoftmax(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
     y_np = self._log_softmax(x_np)
-    with self.test_session():
-      x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.log_softmax(x_tf)
-      y_tf_np = y_tf.eval()
+    x_tf = constant_op.constant(x_np)
+    y_tf = nn_ops.log_softmax(x_tf)
+    y_tf_np = self.evaluate(y_tf)
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
 
@@ -176,13 +178,13 @@ class LogSoftmaxTest(test_lib.TestCase):
 
 class L2LossTest(test_lib.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testL2Loss(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      with self.test_session():
-        x = constant_op.constant(
-            [1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x", dtype=dtype)
-        l2loss = nn_ops.l2_loss(x)
-        value = l2loss.eval()
+      x = constant_op.constant(
+          [1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x", dtype=dtype)
+      l2loss = nn_ops.l2_loss(x)
+      value = self.evaluate(l2loss)
       self.assertAllClose(7.0, value)
 
   def testGradient(self):
@@ -210,27 +212,27 @@ class L2NormalizeTest(test_lib.TestCase):
       norm = np.apply_along_axis(np.linalg.norm, dim, x)
       return x / np.expand_dims(norm, dim)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testL2Normalize(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
     x_np = np.random.random_sample(x_shape).astype(np.float32)
     for dim in range(len(x_shape)):
       y_np = self._l2Normalize(x_np, dim)
-      with self.test_session():
-        x_tf = constant_op.constant(x_np, name="x")
-        y_tf = nn_impl.l2_normalize(x_tf, dim)
-        self.assertAllClose(y_np, y_tf.eval())
+      x_tf = constant_op.constant(x_np, name="x")
+      y_tf = nn_impl.l2_normalize(x_tf, dim)
+      self.assertAllClose(y_np, self.evaluate(y_tf))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testL2NormalizeDimArray(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
     x_np = np.random.random_sample(x_shape).astype(np.float32)
     dim = [1, 2]
     y_np = self._l2Normalize(x_np, dim)
-    with self.test_session():
-      x_tf = constant_op.constant(x_np, name="x")
-      y_tf = nn_impl.l2_normalize(x_tf, dim)
-      self.assertAllClose(y_np, y_tf.eval())
+    x_tf = constant_op.constant(x_np, name="x")
+    y_tf = nn_impl.l2_normalize(x_tf, dim)
+    self.assertAllClose(y_np, self.evaluate(y_tf))
 
   def testL2NormalizeGradient(self):
     x_shape = [20, 7, 3]
@@ -398,6 +400,11 @@ class DropoutTest(test_lib.TestCase):
     for p in 1, constant_op.constant(1.0):
       y = nn_ops.dropout(x, keep_prob=p)
       self.assertTrue(x is y)
+
+  def testDropoutWithIntegerInputs(self):
+    x = constant_op.constant([1, 1, 1, 1, 1])
+    with self.assertRaises(ValueError):
+      _ = nn_ops.dropout(x, 0.5)
 
 
 class ComputeSampledLogitsTest(test_lib.TestCase):
@@ -826,6 +833,58 @@ class ReluTest(test_lib.TestCase):
       with self.test_session():
         z = nn_ops.relu(constant_op.constant(x)).eval()
         self.assertTrue(np.isnan(z).all())
+
+
+class LeakyReluTest(test_lib.TestCase):
+
+  def testRange(self):
+    batch_size = 3
+    height, width = 4, 4
+    np.random.seed(1)  # Make it reproducible.
+    inputs = np.random.uniform(
+        size=(batch_size, height, width, 3)).astype(np.float32)
+    inputs = constant_op.constant(inputs)
+
+    outputs = nn_ops.leaky_relu(inputs)
+    self.assertEquals(inputs.shape, outputs.shape)
+    with self.test_session() as sess:
+      inputs, outputs = sess.run([inputs, outputs])
+    self.assertGreaterEqual(outputs.min(), 0.0)
+    self.assertLessEqual(outputs.max(), 1.0)
+    self.assertAllClose(inputs, outputs)
+
+  def testValues(self):
+    np_values = np.array([-1.0, 0.0, 0.5, 1.0, 2.0], dtype=np.float32)
+    outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
+    with self.test_session() as sess:
+      outputs = sess.run(outputs)
+    self.assertAllClose(outputs, [-0.2, 0.0, 0.5, 1.0, 2.0])
+
+
+class SwishTest(test_lib.TestCase):
+
+  def testValues(self):
+    np_values = np.array(
+        [np.linspace(-10.0, 0.0, 100),
+         np.linspace(0.0, 10.0, 100)],
+        dtype=np.float32)
+    tf_values = constant_op.constant(np_values)
+    actual_tf_outputs = nn_impl.swish(tf_values)
+    expected_tf_outputs = tf_values * math_ops.sigmoid(tf_values)
+    with self.test_session() as sess:
+      actual_outputs, expected_outputs = sess.run(
+          [actual_tf_outputs, expected_tf_outputs])
+    self.assertAllClose(actual_outputs, expected_outputs)
+
+  def testGradients(self):
+    shape = [5, 3, 4]
+    sigma = 5
+    input_values = np.random.randn(*shape) * sigma
+    x_tf = constant_op.constant(input_values)
+    y_tf = nn_impl.swish(x_tf)
+    with self.test_session():
+      err = gradient_checker.compute_gradient_error(x_tf, shape, y_tf, shape)
+    self.assertLess(err, 1e-4)
 
 
 class MomentsTest(test_lib.TestCase):

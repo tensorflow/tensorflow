@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/util/work_sharder.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_device_array.h"
@@ -211,26 +212,65 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
         input.shaped<T, 3>({prefix_dim_size, split_dim_size, suffix_dim_size});
 
     Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, 0};
-
+    std::vector<int64> split_start_points(num_split);
     for (int i = 0; i < num_split; ++i) {
-      TensorShape output_shape(input_shape);
-      output_shape.set_dim(split_dim, split_sizes_vec[i]);
-      Tensor* result = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(i, output_shape, &result));
-
-      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
-          prefix_dim_size, split_sizes_vec[i], suffix_dim_size};
-
-      if (sizes.TotalSize() > 0) {
-        auto result_shaped = result->shaped<T, 3>(
-            {prefix_dim_size, split_sizes_vec[i], suffix_dim_size});
-
-        functor::Split<CPUDevice, T>()(context->eigen_device<CPUDevice>(),
-                                       result_shaped, input_reshaped, indices,
-                                       sizes);
+      if (i == 0) {
+        split_start_points[i] = 0;
+      } else {
+        split_start_points[i] =
+            split_start_points[i - 1] + split_sizes_vec[i - 1];
       }
-      indices[1] += split_sizes_vec[i];
+    }
+
+    const auto num_threads =
+        context->device()->tensorflow_cpu_worker_threads()->num_threads;
+    // TODO(jewillco): Tune heuristic further.
+    const auto input_element_count = input_shape.num_elements();
+    const bool use_parallelism_between_outputs =
+        (num_split >= 4 &&
+         input_element_count >= std::max(num_threads, num_split) * 4096 &&
+         input_element_count < num_split * 180 * 1024);
+
+    auto range_output_func = [&indices, context, &input_shape, prefix_dim_size,
+                              split_dim, &split_sizes_vec, &split_start_points,
+                              suffix_dim_size, use_parallelism_between_outputs,
+                              &input_reshaped](int64 start, int64 limit) {
+      for (int64 i = start; i < limit; ++i) {
+        TensorShape output_shape(input_shape);
+        output_shape.set_dim(split_dim, split_sizes_vec[i]);
+        Tensor* result = nullptr;
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(i, output_shape, &result));
+
+        Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
+            prefix_dim_size, split_sizes_vec[i], suffix_dim_size};
+
+        if (sizes.TotalSize() > 0) {
+          auto result_shaped = result->shaped<T, 3>(
+              {prefix_dim_size, split_sizes_vec[i], suffix_dim_size});
+
+          auto current_indices = indices;
+          current_indices[1] = split_start_points[i];
+          if (use_parallelism_between_outputs) {
+            // Use sequential implementation for single output.
+            result_shaped = input_reshaped.slice(current_indices, sizes);
+          } else {
+            // This implementation may be parallel internally.
+            functor::Split<CPUDevice, T>()(context->eigen_device<CPUDevice>(),
+                                           result_shaped, input_reshaped,
+                                           current_indices, sizes);
+          }
+        }
+      }
+    };
+    if (use_parallelism_between_outputs) {
+      // Run in parallel, disabling parallelism in functor.
+      Shard(num_split,
+            context->device()->tensorflow_cpu_worker_threads()->workers,
+            num_split, input_element_count / num_split, range_output_func);
+    } else {
+      // Run sequentially, but allow internal parallelism in functor.
+      range_output_func(0, num_split);
     }
   }
 };

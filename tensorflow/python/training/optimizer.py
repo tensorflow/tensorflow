@@ -22,6 +22,8 @@ from __future__ import print_function
 
 import abc
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -37,12 +39,14 @@ from tensorflow.python.util import nest
 
 def _get_variable_for(v):
   """Returns the ResourceVariable responsible for v, or v if not necessary."""
+  if context.in_eager_mode():
+    return v
   if v.op.type == "VarHandleOp":
     for var in variables.trainable_variables():
       if (isinstance(var, resource_variable_ops.ResourceVariable)
           and var.handle.op is v.op):
         return var
-    raise ValueError("Got %s but  could not locate source variable." % (str(v)))
+    raise ValueError("Got %s but could not locate source variable." % (str(v)))
   return v
 
 
@@ -66,6 +70,8 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
+  if context.in_eager_mode():
+    return var._shared_name  # pylint: disable=protected-access
   return (var.op.graph, var.op.name)
 
 
@@ -94,10 +100,18 @@ class _RefVariableProcessor(_OptimizableVariable):
 
   def update_op(self, optimizer, g):
     if isinstance(g, ops.Tensor):
-      return optimizer._apply_dense(g, self._v)  # pylint: disable=protected-access
+      update_op = optimizer._apply_dense(g, self._v)  # pylint: disable=protected-access
+      if self._v.constraint is not None:
+        with ops.control_dependencies([update_op]):
+          return self._v.assign(self._v.constraint(self._v))
+      else:
+        return update_op
     else:
       assert isinstance(g, ops.IndexedSlices), ("Gradient ", g, " is neither a "
                                                 "tensor nor IndexedSlices.")
+      if self._v.constraint is not None:
+        raise RuntimeError(
+            "Cannot use a constraint function on a sparse variable.")
       # pylint: disable=protected-access
       return optimizer._apply_sparse_duplicate_indices(g, self._v)
 
@@ -113,7 +127,12 @@ class _DenseReadResourceVariableProcessor(_OptimizableVariable):
 
   def update_op(self, optimizer, g):
     # pylint: disable=protected-access
-    return optimizer._resource_apply_dense(g, self._v.op.inputs[0])
+    update_op = optimizer._resource_apply_dense(g, self._v.op.inputs[0])
+    if self._v.constraint is not None:
+      with ops.control_dependencies([update_op]):
+        return self._v.assign(self._v.constraint(self._v))
+    else:
+      return update_op
 
 
 class _DenseResourceVariableProcessor(_OptimizableVariable):
@@ -128,9 +147,17 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
   def update_op(self, optimizer, g):
     # pylint: disable=protected-access
     if isinstance(g, ops.IndexedSlices):
+      if self._v.constraint is not None:
+        raise RuntimeError(
+            "Cannot use a constraint function on a sparse variable.")
       return optimizer._resource_apply_sparse_duplicate_indices(
           g.values, self._v, g.indices)
-    return optimizer._resource_apply_dense(g, self._v)
+    update_op = optimizer._resource_apply_dense(g, self._v)
+    if self._v.constraint is not None:
+      with ops.control_dependencies([update_op]):
+        return self._v.assign(self._v.constraint(self._v))
+    else:
+      return update_op
 
 
 class _StreamingModelPortProcessor(_OptimizableVariable):
@@ -148,6 +175,8 @@ class _StreamingModelPortProcessor(_OptimizableVariable):
 
 def _get_processor(v):
   """The processor of v."""
+  if context.in_eager_mode():
+    return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
@@ -307,6 +336,17 @@ class Optimizer(object):
 
     Raises:
       ValueError: If some of the variables are not `Variable` objects.
+
+    @compatibility(eager)
+    When eager execution is enabled, `loss` should be a Python function that
+    takes elements of `var_list` as arguments and computes the value to be
+    minimized. If `var_list` is None, `loss` should take no arguments.
+    Minimization (and gradient computation) is done with respect to the
+    elements of `var_list` if not None, else with respect to any trainable
+    variables created during the execution of the `loss` function.
+    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
+    `grad_loss` are ignored when eager execution is enabled.
+    @end_compatibility
     """
     grads_and_vars = self.compute_gradients(
         loss, var_list=var_list, gate_gradients=gate_gradients,
@@ -357,7 +397,37 @@ class Optimizer(object):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
+      RuntimeError: If called with eager execution enabled and if `grad_loss`
+        is not `None` or `loss` is not callable.
+
+    @compatibility(eager)
+    When eager execution is enabled, `loss` should be a Python function that
+    takes elements of `var_list` as arguments and computes the value to be
+    minimized. If `var_list` is None, `loss` should take no arguments.
+    Gradient computation is done with respect to the elements of `var_list` if
+    not None, else with respect to any trainable variables created during the
+    execution of the `loss` function.
+    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
+    `grad_loss` are ignored when eager execution is enabled.
+    @end_compatibility
     """
+    if context.in_eager_mode():
+      if grad_loss is not None:
+        raise RuntimeError(
+            "`grad_loss` argument to Optimizer.compute_gradients "
+            "not supported when eager execution is enabled.")
+      if not callable(loss):
+        raise RuntimeError(
+            "`loss` passed to Optimizer.compute_gradients should "
+            "be a function when eager execution is enabled.")
+      # TODO(agarwal): consider passing parameters to the `loss` function.
+      if var_list is None:
+        return backprop.implicit_grad(loss)()
+      else:
+        var_list = nest.flatten(var_list)
+        grads = backprop.gradients_function(loss)(*var_list)
+        grads_and_vars = list(zip(grads, var_list))
+        return grads_and_vars
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
       raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
@@ -452,18 +522,23 @@ class Optimizer(object):
           continue
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
-        with ops.name_scope("update_" + var.op.name), ops.colocate_with(var):
+        # TODO(apassos): figure out how to get the variable name here.
+        scope_name = var.op.name if context.in_graph_mode() else ""
+        with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
         apply_updates = self._finish(update_ops, name)
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            apply_updates = state_ops.assign_add(global_step, 1, name=name).op
+            apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
-      train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-      if apply_updates not in train_op:
-        train_op.append(apply_updates)
+      if context.in_graph_mode():
+        if isinstance(apply_updates, ops.Tensor):
+          apply_updates = apply_updates.op
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        if apply_updates not in train_op:
+          train_op.append(apply_updates)
 
       return apply_updates
 
@@ -498,6 +573,47 @@ class Optimizer(object):
       A list of strings.
     """
     return sorted(self._slots.keys())
+
+  def variables(self):
+    """A list of variables which encode the current state of `Optimizer`.
+
+    Includes slot variables and additional global variables created by the
+    optimizer in the current default graph.
+
+    Returns:
+      A list of variables.
+    """
+    executing_eagerly = context.in_eager_mode()
+    current_graph = ops.get_default_graph()
+
+    def _from_current_graph(variable):
+      if executing_eagerly:
+        # No variable.op in eager mode. We don't expect lots of eager graphs,
+        # but behavior should be consistent with graph mode.
+        return variable._container_prefix == current_graph._container_prefix  # pylint: disable=protected-access
+      else:
+        return variable.op.graph is current_graph
+
+    optimizer_variables = [v for v in self._non_slot_variables()
+                           if _from_current_graph(v)]
+    for _, variable_dict in self._slots.items():
+      for _, slot_for_variable in variable_dict.items():
+        if _from_current_graph(slot_for_variable):
+          optimizer_variables.append(slot_for_variable)
+    # Sort variables by name so that the return is deterministic.
+    return sorted(optimizer_variables, key=lambda v: v.name)
+
+  def _non_slot_variables(self):
+    """Additional variables created by the `Optimizer`.
+
+    This method should be overridden by child classes which create extra
+    variables, so that `variables()` includes the `Optimizer`'s non-slot
+    variables.
+
+    Returns:
+      A list or tuple of variables.
+    """
+    return []
 
   def _assert_valid_dtypes(self, tensors):
     """Asserts tensors are all valid types (see `_valid_dtypes`).
@@ -554,7 +670,7 @@ class Optimizer(object):
       grad: A `Tensor`.
       var: A `Variable` object.
 
-    Return:
+    Returns:
       An `Operation`.
     """
     raise NotImplementedError()
@@ -667,7 +783,7 @@ class Optimizer(object):
       grad: `IndexedSlices`, with no repeated indices.
       var: A `Variable` object.
 
-    Return:
+    Returns:
       An `Operation`.
     """
     raise NotImplementedError()
@@ -717,7 +833,7 @@ class Optimizer(object):
       val: A `Tensor`.  The initial value of the slot.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
-        needs to be created for  the slot.
+        needs to be created for the slot.
 
     Returns:
       A `Variable` object.
@@ -738,7 +854,7 @@ class Optimizer(object):
       dtype: Type of the value of the slot.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
-        needs to be created for  the slot.
+        needs to be created for the slot.
 
     Returns:
       A `Variable` object.
@@ -756,7 +872,7 @@ class Optimizer(object):
       var: A `Variable` object.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
-        needs to be created for  the slot.
+        needs to be created for the slot.
 
     Returns:
       A `Variable` object.

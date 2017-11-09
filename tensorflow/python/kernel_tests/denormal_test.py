@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import platform
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
@@ -34,6 +35,10 @@ class DenormalTest(test.TestCase):
       self.assertEqual(tiny, tiny / 16 * 16)
 
   def _flushDenormalsTest(self, use_gpu, dtypes):
+    if platform.machine() == "ppc64le" or platform.machine() == "s390x":
+      # Disabled denormal_test on power/s390x platform
+      # Check relevant discussion - https://github.com/tensorflow/tensorflow/issues/11902
+      return
     with self.test_session(use_gpu=use_gpu):
       array_ops.identity(7).eval()
       for dtype in dtypes:

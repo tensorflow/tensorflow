@@ -121,6 +121,15 @@ class BaseGPUDevice : public LocalDevice {
                           int stream_id, Allocator* allocator);
 
   void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
+
+  // This method returns an initialization status, in addition to
+  // calling the "done" StatusCallback, if there is a failure to
+  // allocate memory or if the tensor "from" is not DMA-copyable.
+  // If there is no error prior to enqueueing the copy, an OK status
+  // is returned.
+  Status MaybeCopyTensorToGPU(const AllocatorAttributes& alloc_attrs,
+                              const Tensor& from, Tensor* to,
+                              StatusCallback done);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {
@@ -141,7 +150,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
                                          Allocator* cpu_allocator) = 0;
 
   // Returns into 'ids' the list of valid GPU ids, in the order that
-  // they should map to logical gpu ids "/gpu:0", "/gpu:1", etc, based
+  // they should map to logical gpu ids "/device:GPU:0", "/device:GPU:1", etc, based
   // upon 'visible_device_list', a comma-separated list of 'visible
   // gpu ids'.
   Status GetValidDeviceIds(const string& visible_device_list,

@@ -1074,11 +1074,11 @@ class BaseLinearClassifierTrainingTest(object):
   def _testFromScratch(self, n_classes):
     label = 1
     age = 17
-    # For binary classifer:
+    # For binary classifier:
     #   loss = sigmoid_cross_entropy(logits, label) where logits=0 (weights are
     #   all zero initially) and label = 1 so,
     #      loss = 1 * -log ( sigmoid(logits) ) = 0.69315
-    # For multi class classifer:
+    # For multi class classifier:
     #   loss = cross_entropy(logits, label) where logits are all 0s (weights are
     #   all zero initially) and label = 1 so,
     #      loss = 1 * -log ( 1.0 / n_classes )
@@ -1131,11 +1131,11 @@ class BaseLinearClassifierTrainingTest(object):
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
-    # For binary classifer:
+    # For binary classifier:
     #   logits = age * age_weight + bias = 17 * 2. - 35. = -1.
     #   loss = sigmoid_cross_entropy(logits, label)
     #   so, loss = 1 * -log ( sigmoid(-1) ) = 1.3133
-    # For multi class classifer:
+    # For multi class classifier:
     #   loss = cross_entropy(logits, label)
     #   where logits = 17 * age_weight + bias and label = 1
     #   so, loss = 1 * -log ( soft_max(logits)[1] )
@@ -1235,14 +1235,14 @@ class BaseLinearClassifierTrainingTest(object):
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
-    # For binary classifer:
+    # For binary classifier:
     #   logits = age * age_weight + bias
     #   logits[0] = 17 * 2. - 35. = -1.
     #   logits[1] = 18.5 * 2. - 35. = 2.
     #   loss = sigmoid_cross_entropy(logits, label)
     #   so, loss[0] = 1 * -log ( sigmoid(-1) ) = 1.3133
     #       loss[1] = (1 - 0) * -log ( 1- sigmoid(2) ) = 2.1269
-    # For multi class classifer:
+    # For multi class classifier:
     #   loss = cross_entropy(logits, label)
     #   where logits = [17, 18.5] * age_weight + bias and label = [1, 0]
     #   so, loss = 1 * -log ( soft_max(logits)[label] )
@@ -1526,7 +1526,7 @@ class BaseLinearClassifierPredictTest(object):
     if self._model_dir:
       shutil.rmtree(self._model_dir)
 
-  def _testPredications(self, n_classes, label_vocabulary, label_output_fn):
+  def _testPredictions(self, n_classes, label_vocabulary, label_output_fn):
     """Tests predict when all variables are one-dimensional."""
     age = 1.
 
@@ -1594,13 +1594,13 @@ class BaseLinearClassifierPredictTest(object):
 
   def testBinaryClassesWithoutLabelVocabulary(self):
     n_classes = 2
-    self._testPredications(n_classes,
-                           label_vocabulary=None,
-                           label_output_fn=lambda x: ('%s' % x).encode())
+    self._testPredictions(n_classes,
+                          label_vocabulary=None,
+                          label_output_fn=lambda x: ('%s' % x).encode())
 
   def testBinaryClassesWithLabelVocabulary(self):
     n_classes = 2
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=['class_vocab_{}'.format(i)
                           for i in range(n_classes)],
@@ -1608,14 +1608,14 @@ class BaseLinearClassifierPredictTest(object):
 
   def testMultiClassesWithoutLabelVocabulary(self):
     n_classes = 4
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=None,
         label_output_fn=lambda x: ('%s' % x).encode())
 
   def testMultiClassesWithLabelVocabulary(self):
     n_classes = 4
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=['class_vocab_{}'.format(i)
                           for i in range(n_classes)],
@@ -1805,3 +1805,26 @@ class BaseLinearClassifierIntegrationTest(object):
 
   def test_multi_classes_input_fn_from_parse_example(self):
     self._test_input_fn_from_parse_example(n_classes=4)
+
+
+class BaseLinearLogitFnTest(object):
+
+  def test_basic_logit_correctness(self):
+    """linear_logit_fn simply wraps feature_column_lib.linear_model."""
+    age = feature_column_lib.numeric_column('age')
+    with ops.Graph().as_default():
+      logit_fn = linear._linear_logit_fn_builder(units=2, feature_columns=[age])
+      logits = logit_fn(features={'age': [[23.], [31.]]})
+      with variable_scope.variable_scope('linear_model', reuse=True):
+        bias_var = variable_scope.get_variable('bias_weights')
+      age_var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
+                                   'linear_model/age')[0]
+      with tf_session.Session() as sess:
+        sess.run([variables.global_variables_initializer()])
+        self.assertAllClose([[0., 0.], [0., 0.]], logits.eval())
+        sess.run(bias_var.assign([10., 5.]))
+        self.assertAllClose([[10., 5.], [10., 5.]], logits.eval())
+        sess.run(age_var.assign([[2.0, 3.0]]))
+        # [2 * 23 + 10, 3 * 23 + 5] = [56, 74].
+        # [2 * 31 + 10, 3 * 31 + 5] = [72, 98]
+        self.assertAllClose([[56., 74.], [72., 98.]], logits.eval())

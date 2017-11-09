@@ -34,8 +34,8 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
   std::vector<DeviceAttributes> devices;
   dm->ListDeviceAttributes(&devices);
   response->mutable_device_attributes()->Reserve(devices.size());
-  for (size_t i = 0; i < devices.size(); ++i) {
-    response->add_device_attributes()->Swap(&devices[i]);
+  for (auto& d : devices) {
+    response->add_device_attributes()->Swap(&d);
   }
   done(Status::OK());
 }
@@ -55,7 +55,8 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
-      request->debug_options(), response->mutable_graph_handle());
+      request->debug_options(), session->cluster_flr.get(),
+      response->mutable_graph_handle());
   done(s);
 }
 
@@ -178,6 +179,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
             response->AddRecv(key, val);
           }
         }
+        if (collector) collector->Finalize();
         delete collector;
         delete out;
         done(s);

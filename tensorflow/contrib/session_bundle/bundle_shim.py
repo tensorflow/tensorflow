@@ -39,7 +39,7 @@ def _add_input_to_signature_def(tensor_name, map_key, signature_def):
   Args:
     tensor_name: string name of tensor to add to signature_def inputs
     map_key: string key to key into signature_def inputs map
-    signature_def: object of type  meta_graph_pb2.SignatureDef()
+    signature_def: object of type meta_graph_pb2.SignatureDef()
 
   Sideffect:
     adds a TensorInfo with tensor_name to signature_def inputs map keyed with
@@ -55,7 +55,7 @@ def _add_output_to_signature_def(tensor_name, map_key, signature_def):
   Args:
     tensor_name: string name of tensor to add to signature_def outputs
     map_key: string key to key into signature_def outputs map
-    signature_def: object of type  meta_graph_pb2.SignatureDef()
+    signature_def: object of type meta_graph_pb2.SignatureDef()
 
   Sideffect:
     adds a TensorInfo with tensor_name to signature_def outputs map keyed with

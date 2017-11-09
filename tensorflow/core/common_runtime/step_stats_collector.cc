@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -25,7 +25,40 @@ limitations under the License.
 
 namespace tensorflow {
 
-StepStatsCollector::StepStatsCollector(StepStats* ss) : step_stats_(ss) {}
+NodeExecStatsWrapper::NodeExecStatsWrapper()
+    : NodeExecStatsWrapper(new NodeExecStats) {}
+NodeExecStatsWrapper::NodeExecStatsWrapper(NodeExecStats* stats)
+    : stats_(stats) {}
+
+void NodeExecStatsWrapper::AddAllocation(
+    Allocator* allocator, TrackingAllocator* tracking_allocator) {
+  AllocatorMemoryUsed* memory = stats_->add_memory();
+  memory->set_allocator_name(allocator->Name());
+  auto sizes = tracking_allocator->GetSizes();
+  memory->set_total_bytes(std::get<0>(sizes));
+  memory->set_peak_bytes(std::get<1>(sizes));
+  memory->set_live_bytes(std::get<2>(sizes));
+
+  AllocatorStats stats;
+  allocator->GetStats(&stats);
+  memory->set_allocator_bytes_in_use(stats.bytes_in_use);
+  allocations_.push_back(std::make_pair(memory, tracking_allocator));
+}
+
+void NodeExecStatsWrapper::Finalize() {
+  for (auto& alloc : allocations_) {
+    AllocatorMemoryUsed* memory = alloc.first;
+    for (auto& record : alloc.second->GetRecordsAndUnRef()) {
+      auto* r = memory->add_allocation_records();
+      r->set_alloc_bytes(record.alloc_bytes);
+      r->set_alloc_micros(record.alloc_micros);
+    }
+  }
+  allocations_.clear();
+}
+
+StepStatsCollector::StepStatsCollector(StepStats* ss)
+    : finalized_(false), step_stats_(ss) {}
 
 static int ExtractGpuWithStreamAll(string device_name) {
   // Check if the device name matches the ".*gpu:(\\d+)/stream:all$" regexp,
@@ -40,8 +73,8 @@ static int ExtractGpuWithStreamAll(string device_name) {
   scanner.OneLiteral("lla:maerts/");
   // Capture the digits if present
   scanner.RestartCapture().Many(strings::Scanner::DIGIT).StopCapture();
-  // Check that the digits are preceded by the 'gpu:' string
-  scanner.OneLiteral(":upg");
+  // Check that the digits are preceded by the 'device:GPU:' string
+  scanner.OneLiteral(":UPG:ecived");
   StringPiece capture;
   bool matched = scanner.GetResult(nullptr, &capture);
 
@@ -69,8 +102,8 @@ static int ExtractGpuWithoutStream(string device_name) {
   strings::Scanner scanner(device_name);
   // Capture the trailing digits if present
   scanner.RestartCapture().Many(strings::Scanner::DIGIT).StopCapture();
-  // Check that the digits are preceded by the 'gpu:' string
-  scanner.OneLiteral(":upg");
+  // Check that the digits are preceded by the 'device:GPU:' string
+  scanner.OneLiteral(":UPG:ecived");
   StringPiece capture;
   bool matched = scanner.GetResult(nullptr, &capture);
 
@@ -92,6 +125,9 @@ void StepStatsCollector::BuildCostModel(
     const std::unordered_map<string, const Graph*>& device_map) {
   mutex_lock lock(mu_);
 
+  if (!finalized_) {
+    FinalizeInternal();
+  }
   // Hardware stats for gpu are available under a fake device named
   // "gpu:<id>/stream::all.
   // Use them instead of regular stats whenever they're available to extract
@@ -208,39 +244,62 @@ void StepStatsCollector::BuildCostModel(
 }
 
 void StepStatsCollector::Save(const string& device, NodeExecStats* nt) {
-  VLOG(1) << "Save dev " << device << " nt " << nt;
-  {
-    mutex_lock l(mu_);
-    if (!step_stats_ || collectedNodes >= kMaxCollectedNodes) {
-      VLOG(1) << "step_stats_ nullptr or already collected too many nodes.";
-      delete nt;
-      return;
-    }
-    DeviceStepStats* dss = nullptr;
-    // Slow linear scan, but it should only be called
-    // by a Worker in a context with < ~10 devices.
-    // TODO(tucker): consider adding a std::unordered_map.
-    for (auto& ds : *step_stats_->mutable_dev_stats()) {
-      if (ds.device() == device) {
-        dss = &ds;
-        break;
-      }
-    }
-    if (dss == nullptr) {
-      dss = step_stats_->add_dev_stats();
-      dss->set_device(device);
-    }
-    nt->Swap(dss->add_node_stats());
-    collectedNodes++;
-  }
-  delete nt;
+  Save(device, new NodeExecStatsWrapper(nt));
 }
 
-void StepStatsCollector::Swap(StepStats* ss) {
+void StepStatsCollector::Save(const string& device,
+                              NodeExecStatsWrapper* stats) {
+  if (!stats) return;
+  VLOG(1) << "Save dev " << device << " nt " << stats->stats();
+  {
+    mutex_lock l(mu_);
+    if (finalized_) {
+      LOG(WARNING) << "stats saved after finalize will not be collected.";
+    }
+    if (!step_stats_ || collectedNodes >= kMaxCollectedNodes) {
+      VLOG(1) << "step_stats_ nullptr or already collected too many nodes.";
+      delete stats;
+      return;
+    }
+    auto& dss = dev_stats_[device];
+    dss.push_back(std::unique_ptr<NodeExecStatsWrapper>(stats));
+    collectedNodes++;
+  }
+}
+
+void StepStatsCollector::Finalize() {
+  mutex_lock l(mu_);
+  FinalizeInternal();
+}
+
+void StepStatsCollector::FinalizeAndSwap(StepStats* ss) {
   mutex_lock l(mu_);
   CHECK(step_stats_);
+  FinalizeInternal();
   ss->Swap(step_stats_);
   collectedNodes = 0;
 }
 
+void StepStatsCollector::FinalizeInternal() {
+  if (!step_stats_ || finalized_) {
+    return;
+  }
+  finalized_ = true;
+  std::map<string, DeviceStepStats*> dev_stats_pb;
+  for (auto& ds : *step_stats_->mutable_dev_stats()) {
+    dev_stats_pb[ds.device()] = &ds;
+  }
+  for (const auto& dev_stat : dev_stats_) {
+    if (dev_stats_pb.find(dev_stat.first) == dev_stats_pb.end()) {
+      DeviceStepStats* ndev_stat = step_stats_->add_dev_stats();
+      ndev_stat->set_device(dev_stat.first);
+      dev_stats_pb[dev_stat.first] = ndev_stat;
+    }
+    DeviceStepStats* dss = dev_stats_pb.at(dev_stat.first);
+    for (auto& stats : dev_stat.second) {
+      stats->Finalize();
+      stats->stats()->Swap(dss->add_node_stats());
+    }
+  }
+}
 }  // namespace tensorflow

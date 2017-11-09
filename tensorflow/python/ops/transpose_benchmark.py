@@ -119,17 +119,12 @@ class TransposeBenchmark(test.Benchmark):
     small_perms += [[0, 3, 1, 2], [0, 2, 3, 1]] + [[3, 1, 2, 0]] * 2
     small_perms += [[0, 2, 1]] * 2 + [[2, 1, 0]] * 2
 
-    large_shapes = [[2, 100, 100, 100, 32], [2, 100, 100, 100, 64]] * 2
-    large_shapes += [[2, 1000, 1000, 32], [2, 1000, 1000, 64]] * 2
-    large_shapes += [[2, 1000000, 32], [2, 1000000, 64]] * 2
-    large_perms = [[0, 4, 1, 2, 3], [0, 2, 3, 4, 1]] + [[4, 1, 2, 3, 0]] * 2
-    large_perms += [[0, 3, 1, 2], [0, 2, 3, 1]] + [[3, 1, 2, 0]] * 2
-    large_perms += [[0, 2, 1]] * 2 + [[2, 1, 0]] * 2
-
-    huge_shapes = [[2, 100, 100, 100, 128], [2, 1000, 1000, 128],
-                   [2, 1000000, 128]] * 2
-    huge_perms = [[0, 4, 1, 2, 3], [0, 3, 1, 2], [0, 2, 1], [4, 1, 2, 3, 0],
-                  [3, 1, 2, 0], [2, 1, 0]]
+    large_shapes = [[2, 40, 40, 40, 32], [2, 40, 40, 40, 64]] * 2 + [[
+        2, 300, 300, 32
+    ], [2, 300, 300, 64]] * 2 + [[2, 100000, 32], [2, 100000, 64]] * 2
+    large_perms = [[0, 4, 1, 2, 3], [0, 2, 3, 4, 1]] + [[4, 1, 2, 3, 0]] * 2 + [
+        [0, 3, 1, 2], [0, 2, 3, 1]
+    ] + [[3, 1, 2, 0]] * 2 + [[0, 2, 1]] * 2 + [[2, 1, 0]] * 2
 
     num_iters = 40
     for datatype in datatypes:
@@ -141,14 +136,8 @@ class TransposeBenchmark(test.Benchmark):
           for ishape, perm in zip(large_shapes, large_perms):
             self._run_graph("gpu", ishape, perm, num_iters, datatype)
 
-      if datatype is not np.complex128:
-        if datatype is not np.float64:
-          if datatype is not np.float16:
-            for ishape, perm in zip(huge_shapes, huge_perms):
-              self._run_graph("gpu", ishape, perm, num_iters, datatype)
-
-    small_dim_large_shapes = [[2, 1000000, 3], [2, 3, 1000000], [2, 1000000, 8],
-                              [2, 8, 1000000]]
+    small_dim_large_shapes = [[2, 10000, 3], [2, 3, 10000], [2, 10000, 8],
+                              [2, 8, 10000]]
     small_dim_small_shapes = [[2, 5000, 3], [2, 3, 5000], [2, 5000, 8],
                               [2, 8, 5000]]
     small_dim_perms = [[0, 2, 1]] * 4

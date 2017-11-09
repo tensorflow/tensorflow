@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -52,6 +54,12 @@ limitations under the License.
 #include "tensorflow/core/platform/variant_coding.h"
 
 namespace tensorflow {
+
+// Allow Tensors to be stored inside Variants with automatic
+// encoding/decoding when those Variants are themselves being decoded
+// in a Tensor's FromProto.
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(Tensor, "tensorflow::Tensor");
+
 namespace {
 
 // An un-templated base class for Buffer.
@@ -280,6 +288,7 @@ PROTO_TRAITS(double, double, double);
 PROTO_TRAITS(int32, int32, int);
 PROTO_TRAITS(uint8, int32, int);
 PROTO_TRAITS(uint16, int32, int);
+PROTO_TRAITS(uint32, uint32, uint32);
 PROTO_TRAITS(int16, int32, int);
 PROTO_TRAITS(int8, int32, int);
 PROTO_TRAITS(bool, bool, bool);
@@ -301,6 +310,20 @@ struct ProtoHelper<int64> {
   static void Fill(const int64* data, size_t n, TensorProto* proto) {
     protobuf::RepeatedField<protobuf_int64> copy(data, data + n);
     proto->mutable_int64_val()->Swap(&copy);
+  }
+};
+
+template <>
+struct ProtoHelper<uint64> {
+  static const uint64* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const uint64*>(proto.uint64_val().begin());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.uint64_val().size();
+  }
+  static void Fill(const uint64* data, size_t n, TensorProto* proto) {
+    protobuf::RepeatedField<protobuf_uint64> copy(data, data + n);
+    proto->mutable_uint64_val()->Swap(&copy);
   }
 };
 
@@ -443,7 +466,7 @@ Buffer<T>::~Buffer() {
 // default value for T.
 //
 // This routine is using the typed fields (float_val, etc.) in the
-// tenor proto as opposed to the untyped binary representation
+// tensor proto as opposed to the untyped binary representation
 // (tensor_content). This is used when we expect the TensorProto is
 // used by a client program which may not know how to encode a tensor
 // in the compact binary representation.
@@ -490,6 +513,14 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
   } else {
     for (int64 i = 0; i < in_n; ++i) {
       data[i] = in.variant_val(i);
+      if (!DecodeUnaryVariant(&data[i])) {
+        LOG(ERROR) << "Could not decode variant with type_name: \""
+                   << data[i].TypeName()
+                   << "\".  Perhaps you forgot to register a "
+                      "decoder via REGISTER_UNARY_VARIANT_DECODE_FUNCTION?";
+        buf->Unref();
+        return nullptr;
+      }
     }
     for (int64 i = in_n; i < n; ++i) {
       data[i] = Variant();
@@ -633,6 +664,8 @@ bool Tensor::RefCountIsOne() const {
     CASE(int32, SINGLE_ARG(STMTS))                             \
     CASE(uint8, SINGLE_ARG(STMTS))                             \
     CASE(uint16, SINGLE_ARG(STMTS))                            \
+    CASE(uint32, SINGLE_ARG(STMTS))                            \
+    CASE(uint64, SINGLE_ARG(STMTS))                            \
     CASE(int16, SINGLE_ARG(STMTS))                             \
     CASE(int8, SINGLE_ARG(STMTS))                              \
     CASE(string, SINGLE_ARG(STMTS))                            \
@@ -909,6 +942,9 @@ string Tensor::SummarizeValue(int64 max_entries) const {
     case DT_DOUBLE:
       return SummarizeArray<double>(limit, num_elts, shape_, data);
       break;
+    case DT_UINT32:
+      return SummarizeArray<uint32>(limit, num_elts, shape_, data);
+      break;
     case DT_INT32:
       return SummarizeArray<int32>(limit, num_elts, shape_, data);
       break;
@@ -927,6 +963,9 @@ string Tensor::SummarizeValue(int64 max_entries) const {
     case DT_INT8:
     case DT_QINT8:
       return SummarizeArray<int8>(limit, num_elts, shape_, data);
+      break;
+    case DT_UINT64:
+      return SummarizeArray<uint64>(limit, num_elts, shape_, data);
       break;
     case DT_INT64:
       return SummarizeArray<int64>(limit, num_elts, shape_, data);
@@ -947,6 +986,10 @@ string Tensor::SummarizeValue(int64 max_entries) const {
           case DT_STRING:
             strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
             break;
+          case DT_VARIANT: {
+            const Variant& v = flat<Variant>()(i);
+            strings::StrAppend(&ret, v.DebugString());
+          } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
             // complex64, quantized).

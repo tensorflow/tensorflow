@@ -38,6 +38,36 @@ class HloMatcher : public ::testing::MatcherInterface<const HloInstruction*> {
   std::vector<::testing::Matcher<const HloInstruction*>> operands_;
 };
 
+// Custom matcher for parameters, which accepts a parameter number.
+class HloParameterMatcher : public HloMatcher {
+ public:
+  explicit HloParameterMatcher(int64 parameter_number)
+      : HloMatcher(HloOpcode::kParameter, /*operands=*/{}),
+        parameter_number_(parameter_number) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+
+ private:
+  int64 parameter_number_;
+};
+
+// Custom matcher for get-tuple-element instructions, which accepts a tuple
+// index to match.
+class HloGetTupleElementMatcher : public HloMatcher {
+ public:
+  explicit HloGetTupleElementMatcher(
+      ::testing::Matcher<const HloInstruction*> operand, int64 tuple_index)
+      : HloMatcher(HloOpcode::kGetTupleElement, /*operands=*/{operand}),
+        tuple_index_(tuple_index) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+
+ private:
+  int64 tuple_index_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -72,16 +102,14 @@ HLO_MATCHER(Exp);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
 HLO_MATCHER(Ge);
-HLO_MATCHER(GetTupleElement);
 HLO_MATCHER(Gt);
-HLO_MATCHER(Index);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
 HLO_MATCHER(Le);
 HLO_MATCHER(Log);
-HLO_MATCHER(LogicalAnd);
-HLO_MATCHER(LogicalNot);
-HLO_MATCHER(LogicalOr);
+HLO_MATCHER(And);
+HLO_MATCHER(Not);
+HLO_MATCHER(Or);
 HLO_MATCHER(Lt);
 HLO_MATCHER(Map);
 HLO_MATCHER(Maximum);
@@ -91,7 +119,6 @@ HLO_MATCHER(Ne);
 HLO_MATCHER(Negate);
 HLO_MATCHER(Outfeed);
 HLO_MATCHER(Pad);
-HLO_MATCHER(Parameter);
 HLO_MATCHER(Power);
 HLO_MATCHER(Recv);
 HLO_MATCHER(Reduce);
@@ -104,6 +131,9 @@ HLO_MATCHER(Rng);
 HLO_MATCHER(Select);
 HLO_MATCHER(SelectAndScatter);
 HLO_MATCHER(Send);
+HLO_MATCHER(ShiftLeft);
+HLO_MATCHER(ShiftRightLogical);
+HLO_MATCHER(ShiftRightArithmetic);
 HLO_MATCHER(Sign);
 HLO_MATCHER(Slice);
 HLO_MATCHER(Sort);
@@ -112,8 +142,44 @@ HLO_MATCHER(Tanh);
 HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
-HLO_MATCHER(Update);
 HLO_MATCHER(While);
+
+// The special cases below let you check additional information about the
+// HloInstruction, beyond just its opcode and operands.  In all cases you can
+// still use the generic matcher which doesn't check this info.
+//
+// Feel free to add additional custom matchers below.
+
+//  - Parameter(N) matches parameter number N.
+//  - Parameter() matches any parameter.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter(
+    int64 parameter_number) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloParameterMatcher(parameter_number));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kParameter, {}));
+}
+
+// GetTupleElement(operand, N) matches a GTE instruction which gets the N'th
+// tuple element of operand, while GetTupleElement(operand) matches any GTE
+// operation on operand, and GetTupleElement() matches any GTE operation at all.
+inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement(
+    ::testing::Matcher<const HloInstruction*> operand, int64 tuple_index) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloGetTupleElementMatcher(operand, tuple_index));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement(
+    ::testing::Matcher<const HloInstruction*> operand) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kGetTupleElement, {operand}));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kGetTupleElement, {}));
+}
+
 #undef HLO_MATCHER
 }  // namespace opcode_matchers
 
@@ -130,13 +196,8 @@ std::vector<const HloInstruction*> Pointers(const Container& container) {
 
 // Tell GMock to print HloInstruction* by value, so error messages are nice.
 // Has to be in the same namespace as 'HloInstruction'.
-void PrintTo(const HloInstruction* inst, ::std::ostream* os) {
-  *os << (inst ? inst->ToString() : "nullptr");
-}
-
-void PrintTo(HloInstruction* inst, ::std::ostream* os) {
-  PrintTo(const_cast<const HloInstruction*>(inst), os);
-}
+void PrintTo(const HloInstruction* inst, ::std::ostream* os);
+void PrintTo(HloInstruction* inst, ::std::ostream* os);
 
 }  // namespace xla
 

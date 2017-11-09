@@ -23,11 +23,11 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.linalg.python.ops import linear_operator_diag
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.linalg import linear_operator_diag
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -287,6 +287,26 @@ class ShapesFromLocAndScaleTest(test.TestCase):
       self.assertAllEqual([3], event_shape)
 
 
+class GetBroadcastShapeTest(test.TestCase):
+
+  def test_all_static_shapes_work(self):
+    x = array_ops.ones((2, 1, 3))
+    y = array_ops.ones((1, 5, 3))
+    z = array_ops.ones(())
+    self.assertAllEqual([2, 5, 3],
+                        distribution_util.get_broadcast_shape(x, y, z))
+
+  def test_with_some_dynamic_shapes_works(self):
+    x = array_ops.ones((2, 1, 3))
+    y = array_ops.placeholder(x.dtype)
+    z = array_ops.ones(())
+    with self.test_session() as sess:
+      bcast_shape = sess.run(
+          distribution_util.get_broadcast_shape(x, y, z),
+          feed_dict={y: np.ones((1, 5, 3)).astype(np.float32)})
+      self.assertAllEqual([2, 5, 3], bcast_shape)
+
+
 class TridiagTest(test.TestCase):
 
   def testWorksCorrectlyNoBatches(self):
@@ -336,6 +356,43 @@ class TridiagTest(test.TestCase):
               diag=[[4., 5., 6., 7.],
                     [0.7, 0.6, 0.5, 0.4]]).eval(),
           rtol=1e-5, atol=0.)
+
+
+class MixtureStddevTest(test.TestCase):
+
+  def test_mixture_dev(self):
+    mixture_weights = np.array([
+        [1.0/3, 1.0/3, 1.0/3],
+        [0.750, 0.250, 0.000]
+    ])
+    component_means = np.array([
+        [1.0, 1.0, 1.0],
+        [-5, 0, 1.25]
+    ])
+    component_devs = np.array([
+        [1.0, 1.0, 1.0],
+        [0.01, 2.0, 0.1]
+    ])
+
+    # The first case should trivially have a standard deviation of 1.0 because
+    # all components are identical and have that standard deviation.
+    # The second case was computed by hand.
+    expected_devs = np.array([
+        1.0,
+        2.3848637277
+    ])
+
+    weights_tf = array_ops.constant(mixture_weights)
+    means_tf = array_ops.constant(component_means)
+    sigmas_tf = array_ops.constant(component_devs)
+    mix_dev = distribution_util.mixture_stddev(weights_tf,
+                                               means_tf,
+                                               sigmas_tf)
+
+    with self.test_session() as sess:
+      actual_devs = sess.run(mix_dev)
+
+    self.assertAllClose(actual_devs, expected_devs)
 
 
 if __name__ == "__main__":

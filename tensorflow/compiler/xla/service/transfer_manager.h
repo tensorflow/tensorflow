@@ -97,6 +97,16 @@ class TransferManager {
       const perftools::gputools::DeviceMemoryBase& source,
       const Shape& shape) = 0;
 
+  // Writes the given device-memory pointers in 'elements' to the given region
+  // to construct a tuple in the platform-specific tuple representation. This
+  // can handle nested tuples as well. In the nested case, the element
+  // DeviceMemoryBase points to another array of pointers on the device.
+  virtual Status WriteTuplePointersToDevice(
+      perftools::gputools::StreamExecutor* executor,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          elements,
+      const Shape& shape, perftools::gputools::DeviceMemoryBase* region) = 0;
+
   // Returns all buffer pointers that the tuple `source` refers to. Unlike
   // ShallowCopyTupleFromDevice, this function gather buffer pointers in nested
   // tuples as well. Also, the returned DeviceMemoryBase objects are
@@ -109,7 +119,7 @@ class TransferManager {
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.
-  virtual int64 GetByteSizeRequirement(const Shape& shape) = 0;
+  virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
 
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.

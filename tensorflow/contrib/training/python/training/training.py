@@ -55,7 +55,7 @@ the gradients using a few arguments:
   train_op = tf.contrib.training.create_train_op(
       total_loss,
       optimizer,
-      clip_gradient_norm=4)
+      transform_grads_fn=clip_gradient_norms_fn(3))
 
   # Create the train_op and scale the gradients by providing a map from variable
   # name (or variable) to a scaling coefficient:
@@ -261,6 +261,7 @@ from tensorflow.python.training import optimizer as tf_optimizer
 __all__ = [
     'add_gradients_summaries',
     'clip_gradient_norms',
+    'clip_gradient_norms_fn',
     'create_train_op',
     'multiply_gradients',
     'train',
@@ -314,6 +315,13 @@ def clip_gradient_norms(gradients_to_variables, max_norm):
         grad = clip_ops.clip_by_norm(grad, max_norm)
     clipped_grads_and_vars.append((grad, var))
   return clipped_grads_and_vars
+
+
+def clip_gradient_norms_fn(max_norm):
+  """Returns a `transform_grads_fn` function for gradient clipping."""
+  def clip_norms(gradients_to_variables):
+    return clip_gradient_norms(gradients_to_variables, max_norm)
+  return clip_norms
 
 
 def multiply_gradients(grads_and_vars, gradient_multipliers):

@@ -48,15 +48,15 @@ class TFProfAdvisorTest : public ::testing::Test {
     for (const auto& attr : attrs) {
       (*def->mutable_attr())[attr.first].set_s(attr.second);
     }
-    std::unique_ptr<TFGraphNode> node(new TFGraphNode(def));
+    std::unique_ptr<TFGraphNode> node(new TFGraphNode(def, -1, nullptr));
 
     NodeExecStats node_stat;
     node_stat.set_all_start_micros(start_miros);
     node_stat.set_op_end_rel_micros(end_rel_micros);
-    node->AddStepStat(step, "/job:localhost/replica:0/task:0/gpu:0", node_stat);
-    node->AddStepStat(step, "/job:localhost/replica:0/task:0/gpu:0:stream:all",
+    node->AddStepStat(step, "/job:localhost/replica:0/task:0/device:GPU:0", node_stat);
+    node->AddStepStat(step, "/job:localhost/replica:0/task:0/device:GPU:0:stream:all",
                       node_stat);
-    node->AddStepStat(step, "/job:localhost/replica:0/task:0/gpu:0:stream:0",
+    node->AddStepStat(step, "/job:localhost/replica:0/task:0/device:GPU:0:stream:0",
                       node_stat);
     return node;
   }

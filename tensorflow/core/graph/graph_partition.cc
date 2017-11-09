@@ -117,7 +117,7 @@ DataType EdgeType(const Edge* e) {
   }
 }
 
-// Return true iff we need to add a same device send/recv for 'edge'.
+// Return true iff we need to add the same device send/recv for 'edge'.
 bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
   if (edge->IsControlEdge()) {
     return false;
@@ -728,7 +728,10 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
             strings::StrCat(dst_frame_name, "$$", dst_device);
         ControlLoop loop = control_loops[cl_key];
         DCHECK(loop.enter != nullptr);
-        g->AddControlEdge(loop.merge, dst);
+        // Note that we'll create multiple duplicate edges if dst has multiple
+        // cross-device inputs. This is expected by the logic in Partition(), so
+        // it can add control edges to the recv nodes once they're created.
+        g->AddControlEdge(loop.merge, dst, /*allow_duplicates=*/true);
       }
     }
   }
@@ -909,8 +912,13 @@ void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
     // No known send_device. The runtime will detect it later.
     return;
   }
-  int64 incarnation = opts.get_incarnation(send_device);
-  AddNodeAttr("send_device_incarnation", incarnation, ndef);
+  int64 incarnation = PartitionOptions::kIllegalIncarnation;
+  if (!GetNodeAttr(*ndef, "send_device_incarnation", &incarnation).ok() ||
+      (incarnation == PartitionOptions::kIllegalIncarnation)) {
+    incarnation = opts.get_incarnation(send_device);
+    SetAttrValue(incarnation,
+                 &((*ndef->mutable_attr())["send_device_incarnation"]));
+  }
 }
 
 // Sets attribute send_device_incarnation of all Send/Recv nodes in
@@ -1108,7 +1116,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         // before the data is available.
         AddInput(real_recv, send->name(), Graph::kControlSlot);
       } else if (control_flow_edge != nullptr) {
-        // Redirect control edge to the real recv since this is not a same
+        // Redirect control edge to the real recv since this is not the same
         // device send/recv.
         --num_control_flow_edges;
         AddInput(real_recv, control_flow_edge->src()->name(),
@@ -1160,11 +1168,16 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     }
   }
 
+  const FunctionLibraryDefinition* flib_def = opts.flib_def;
+  if (flib_def == nullptr) {
+    flib_def = &g->flib_def();
+  }
+
   // Set versions, function library and send/recv incarnation.
   for (auto& it : *partitions) {
     GraphDef* gdef = &it.second;
     *gdef->mutable_versions() = g->versions();
-    *gdef->mutable_library() = g->flib_def().ToProto();
+    *gdef->mutable_library() = flib_def->ToProto();
 
     // Traverse the graph to fill every send/recv op's incarnation
     // information.

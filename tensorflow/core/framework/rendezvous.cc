@@ -210,7 +210,7 @@ class LocalRendezvousImpl : public Rendezvous {
     ItemQueue* queue = &table_[key_hash];
     if (queue->empty() || !queue->front()->IsSendValue()) {
       // There is no message to pick up.
-      // Only recv-related fileds need to be filled.
+      // Only recv-related fields need to be filled.
       Item* item = new Item;
       item->waiter = std::move(done);
       item->recv_args = recv_args;

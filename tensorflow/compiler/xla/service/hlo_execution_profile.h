@@ -36,11 +36,11 @@ class HloExecutionProfile {
   using DeviceDescription = perftools::gputools::DeviceDescription;
 
   // Record how many cycles this HLO took to execute.
-  void AddProfileResult(const HloInstruction* hlo, uint64 cycles_taken);
+  void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
 
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
-  uint64 GetProfileResult(const HloInstruction& hlo) const;
+  uint64 GetCyclesTakenBy(const HloInstruction& hlo) const;
 
   // Return the number of cycles this computation took to execute.
   uint64 total_cycles_executed(const HloComputation& computation) const {
@@ -60,12 +60,12 @@ class HloExecutionProfile {
   // Returns a version of the execution profile suitable for performance
   // debugging; e.g. emits cycle counts, execution time at the nominal device
   // frequency, and the effective throughput given the provided cost_analysis
-  // for the operations in a given computation.
-  // Returns an empty string if it wasn't possible to generate a printable
-  // version.
+  // for the operations in a given computation. Returns an empty string if it
+  // wasn't possible to generate a printable version. cost_analysis should be a
+  // clean analysis that can be used to visit the computation.
   string ToString(const HloComputation& computation,
                   const DeviceDescription& device_description,
-                  const HloCostAnalysis::ShapeSizeFunction& shape_size) const;
+                  HloCostAnalysis* cost_analysis) const;
 
   // Returns the computations we have profiled.
   std::unordered_set<const HloComputation*> profiled_computations() const {

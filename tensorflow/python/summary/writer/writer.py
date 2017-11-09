@@ -25,6 +25,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
@@ -331,10 +332,31 @@ class FileWriter(SummaryToEventTransformer):
       graph_def: DEPRECATED: Use the `graph` argument instead.
       filename_suffix: A string. Every event file's name is suffixed with
         `suffix`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    `FileWriter` is not compatible with eager execution. To write TensorBoard
+    summaries under eager execution, use `tf.contrib.summary` instead.
+    @end_compatbility
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "tf.summary.FileWriter is not compatible with eager execution. "
+          "Use tf.contrib.summary instead.")
+
     event_writer = EventFileWriter(logdir, max_queue, flush_secs,
                                    filename_suffix)
     super(FileWriter, self).__init__(event_writer, graph, graph_def)
+
+  def __enter__(self):
+    """Make usable with "with" statement."""
+    return self
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    """Make usable with "with" statement."""
+    self.close()
 
   def get_logdir(self):
     """Returns the directory where event file will be written."""

@@ -51,7 +51,7 @@ def import_to_tensorboard(model_dir, log_dir):
     pb_visual_writer = summary.FileWriter(log_dir)
     pb_visual_writer.add_graph(sess.graph)
     print("Model Imported. Visualize by running: "
-          "> tensorboard --logdir={}".format(log_dir))
+          "tensorboard --logdir={}".format(log_dir))
 
 
 def main(unused_args):

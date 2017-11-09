@@ -17,16 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import threading
+
 import numpy as np
 
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import iterator_ops
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
+from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.util import nest
+from tensorflow.python.training import saver as saver_lib
 
 
 class DatasetConstructorTest(test.TestCase):
@@ -229,6 +239,16 @@ class DatasetConstructorTest(test.TestCase):
                        dtypes.int64), dataset.output_types)
     self.assertEquals(([], ([], []), []), dataset.output_shapes)
 
+  def testNestedDict(self):
+    components = {"a": {"aa": 1, "ab": [2.0, 2.0]}, "b": [3, 3, 3]}
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    self.assertEquals(dtypes.int32, dataset.output_types["a"]["aa"])
+    self.assertEquals(dtypes.float32, dataset.output_types["a"]["ab"])
+    self.assertEquals(dtypes.int32, dataset.output_types["b"])
+    self.assertEquals([], dataset.output_shapes["a"]["aa"])
+    self.assertEquals([2], dataset.output_shapes["a"]["ab"])
+    self.assertEquals([3], dataset.output_shapes["b"])
+
   def testNonSequenceNestedStructure(self):
     components = np.array([1, 2, 3])
 
@@ -254,6 +274,435 @@ class DatasetConstructorTest(test.TestCase):
     get_next = iterator.get_next()
     self.assertEquals(dtypes.int64, get_next.dtype)
     self.assertEquals([3], get_next.shape)
+
+  def _testFromGenerator(self, generator, elem_sequence, num_repeats):
+    iterator = (
+        dataset_ops.Dataset.from_generator(generator, output_types=dtypes.int64)
+        .repeat(num_repeats)
+        .prefetch(5)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      for _ in range(2):  # Run twice to test reinitialization.
+        sess.run(init_op)
+        for _ in range(num_repeats):
+          for elem in elem_sequence:
+            self.assertAllEqual(elem, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def _testFromGeneratorOneShot(self, generator, elem_sequence, num_repeats):
+    iterator = (
+        dataset_ops.Dataset.from_generator(generator, output_types=dtypes.int64)
+        .repeat(num_repeats)
+        .prefetch(5)
+        .make_one_shot_iterator())
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      for _ in range(num_repeats):
+        for elem in elem_sequence:
+          self.assertAllEqual(elem, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testFromGeneratorUsingFunction(self):
+    def generator():
+      for i in range(1, 100):
+        yield [i] * i
+    elem_sequence = list(generator())
+    self._testFromGenerator(generator, elem_sequence, 1)
+    self._testFromGenerator(generator, elem_sequence, 5)
+    self._testFromGeneratorOneShot(generator, elem_sequence, 1)
+    self._testFromGeneratorOneShot(generator, elem_sequence, 5)
+
+  def testFromGeneratorUsingList(self):
+    generator = lambda: [[i] * i for i in range(1, 100)]
+    elem_sequence = list(generator())
+    self._testFromGenerator(generator, elem_sequence, 1)
+    self._testFromGenerator(generator, elem_sequence, 5)
+
+  def testFromGeneratorUsingNdarray(self):
+    generator = lambda: np.arange(100, dtype=np.int64)
+    elem_sequence = list(generator())
+    self._testFromGenerator(generator, elem_sequence, 1)
+    self._testFromGenerator(generator, elem_sequence, 5)
+
+  def testFromGeneratorUsingGeneratorExpression(self):
+    # NOTE(mrry): Generator *expressions* are not repeatable (or in
+    # general reusable), because they eagerly evaluate the `for`
+    # expression as `iter(range(1, 100))` and discard the means of
+    # reconstructing `range(1, 100)`. Wrapping the generator
+    # expression in a `lambda` makes it repeatable.
+    generator = lambda: ([i] * i for i in range(1, 100))
+    elem_sequence = list(generator())
+    self._testFromGenerator(generator, elem_sequence, 1)
+    self._testFromGenerator(generator, elem_sequence, 5)
+
+  def testFromMultipleConcurrentGenerators(self):
+    num_inner_repeats = 5
+    num_outer_repeats = 100
+
+    def generator():
+      for i in range(1, 10):
+        yield ([i] * i, [i, i ** 2, i ** 3])
+    input_list = list(generator())
+
+    # The interleave transformation is essentially a flat map that
+    # draws from multiple input datasets concurrently (in a cyclic
+    # fashion). By placing `Datsaet.from_generator()` inside an
+    # interleave, we test its behavior when multiple iterators are
+    # active at the same time; by additionally prefetching inside the
+    # interleave, we create the possibility of parallel (modulo GIL)
+    # invocations to several iterators created by the same dataset.
+    def interleave_fn(_):
+      return (dataset_ops.Dataset.from_generator(
+          generator, output_types=(dtypes.int64, dtypes.int64),
+          output_shapes=([None], [3]))
+              .repeat(num_inner_repeats).prefetch(5))
+
+    iterator = (
+        dataset_ops.Dataset.range(num_outer_repeats)
+        .interleave(interleave_fn, cycle_length=10,
+                    block_length=len(input_list))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for _ in range(num_inner_repeats * num_outer_repeats):
+        for elem in input_list:
+          val0, val1 = sess.run(get_next)
+          self.assertAllEqual(elem[0], val0)
+          self.assertAllEqual(elem[1], val1)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testFromGeneratorsRunningInParallel(self):
+    num_parallel_iterators = 3
+
+    # Define shared state that multiple iterator instances will access to
+    # demonstrate their concurrent activity.
+    lock = threading.Lock()
+    condition = threading.Condition(lock)
+    next_ticket = [0]  # GUARDED_BY(lock)
+
+    def generator():
+      # NOTE(mrry): We yield one element before the barrier, because
+      # the current implementation of `Dataset.interleave()` must
+      # fetch one element from each incoming dataset to start the
+      # prefetching.
+      yield 0
+
+      # Define a barrier that `num_parallel_iterators` iterators must enter
+      # before any can proceed. Demonstrates that multiple iterators may be
+      # active at the same time.
+      condition.acquire()
+      ticket = next_ticket[0]
+      next_ticket[0] += 1
+      if ticket == num_parallel_iterators - 1:
+        # The last iterator to join the barrier notifies the others.
+        condition.notify_all()
+      else:
+        # Wait until the last iterator enters the barrier.
+        while next_ticket[0] < num_parallel_iterators:
+          condition.wait()
+      condition.release()
+
+      yield 1
+
+    # As in `testFromMultipleConcurrentGenerators()`, we use a combination of
+    # `Dataset.interleave()` and `Dataset.prefetch()` to cause multiple
+    # iterators to be active concurrently.
+    def interleave_fn(_):
+      return dataset_ops.Dataset.from_generator(
+          generator, output_types=dtypes.int64, output_shapes=[]).prefetch(2)
+
+    iterator = (
+        dataset_ops.Dataset.range(num_parallel_iterators)
+        .interleave(
+            interleave_fn, cycle_length=num_parallel_iterators, block_length=1)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for elem in [0, 1]:
+        for _ in range(num_parallel_iterators):
+          self.assertAllEqual(elem, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testFromGeneratorImplicitConversion(self):
+    def generator():
+      yield [1]
+      yield [2]
+      yield [3]
+
+    for dtype in [dtypes.int8, dtypes.int32, dtypes.int64]:
+      iterator = (dataset_ops.Dataset.from_generator(
+          generator, output_types=dtype, output_shapes=[1])
+                  .make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+
+      self.assertEqual(dtype, get_next.dtype)
+
+      with self.test_session() as sess:
+        sess.run(init_op)
+        for expected in [[1], [2], [3]]:
+          next_val = sess.run(get_next)
+          self.assertEqual(dtype.as_numpy_dtype, next_val.dtype)
+          self.assertAllEqual(expected, next_val)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testFromGeneratorTypeError(self):
+    def generator():
+      yield np.array([1, 2, 3], dtype=np.int64)
+      yield np.array([4, 5, 6], dtype=np.int64)
+      yield "ERROR"
+      yield np.array([7, 8, 9], dtype=np.int64)
+
+    iterator = (dataset_ops.Dataset.from_generator(
+        generator, output_types=dtypes.int64, output_shapes=[3])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual([1, 2, 3], sess.run(get_next))
+      self.assertAllEqual([4, 5, 6], sess.run(get_next))
+      with self.assertRaisesOpError(r"invalid literal for long\(\)"):
+        sess.run(get_next)
+      self.assertAllEqual([7, 8, 9], sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testFromGeneratorShapeError(self):
+    def generator():
+      yield np.array([1, 2, 3], dtype=np.int64)
+      yield np.array([4, 5, 6], dtype=np.int64)
+      yield np.array([7, 8, 9, 10], dtype=np.int64)
+      yield np.array([11, 12, 13], dtype=np.int64)
+
+    iterator = (dataset_ops.Dataset.from_generator(
+        generator, output_types=dtypes.int64, output_shapes=[3])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual([1, 2, 3], sess.run(get_next))
+      self.assertAllEqual([4, 5, 6], sess.run(get_next))
+      with self.assertRaisesOpError(r"element of shape \(3,\) was expected"):
+        sess.run(get_next)
+      self.assertAllEqual([11, 12, 13], sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testSplitPipelineFailsWithPlacementError(self):
+    with session.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+
+      dataset = dataset_ops.Dataset.from_tensors(0)
+
+      # Define a pipeline that attempts to use variables on two
+      # different devices.
+      #
+      # Initialize the variables before creating to iterator, to avoid the
+      # placement algorithm overriding the DT_RESOURCE colocation constraints.
+      with ops.device("/cpu:0"):
+        var_0 = resource_variable_ops.ResourceVariable(initial_value=0)
+        dataset = dataset.map(lambda x: x + var_0.read_value())
+      sess.run(var_0.initializer)
+
+      with ops.device("/cpu:1"):
+        var_1 = resource_variable_ops.ResourceVariable(initial_value=0)
+        dataset = dataset.map(lambda x: x + var_1.read_value())
+      sess.run(var_1.initializer)
+
+      iterator = dataset.make_initializable_iterator()
+
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Trying to access resource located in device"):
+        sess.run(iterator.initializer)
+
+  def testRestructureDataset(self):
+    components = (array_ops.placeholder(dtypes.int32),
+                  (array_ops.placeholder(dtypes.int32, shape=[None]),
+                   array_ops.placeholder(dtypes.int32, shape=[20, 30])))
+    dataset = dataset_ops.Dataset.from_tensors(components)
+
+    i32 = dtypes.int32
+
+    test_cases = [((i32, i32, i32), None),
+                  (((i32, i32), i32), None),
+                  ((i32, i32, i32), (None, None, None)),
+                  ((i32, i32, i32), ([17], [17], [20, 30]))]
+
+    for new_types, new_shape_lists in test_cases:
+      # pylint: disable=protected-access
+      new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
+      # pylint: enable=protected-access
+      self.assertEqual(new_types, new.output_types)
+      if new_shape_lists is not None:
+        for expected_shape_list, shape in zip(
+            nest.flatten(new_shape_lists), nest.flatten(new.output_shapes)):
+          if expected_shape_list is None:
+            self.assertIs(None, shape.ndims)
+          else:
+            self.assertEqual(expected_shape_list, shape.as_list())
+
+    fail_cases = [((i32, dtypes.int64, i32), None),
+                  ((i32, i32, i32, i32), None),
+                  ((i32, i32, i32), ((None, None), None)),
+                  ((i32, i32, i32), (None, None, None, None)),
+                  ((i32, i32, i32), (None, [None], [21, 30]))]
+
+    for new_types, new_shape_lists in fail_cases:
+      with self.assertRaises(ValueError):
+        # pylint: disable=protected-access
+        new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
+        # pylint: enable=protected-access
+
+  def _iterator_checkpoint_prefix(self):
+    return os.path.join(self.get_temp_dir(), "iterator")
+
+  def _testSaveRestoreFromTensorsUtility(self, start, break_range, stop):
+    path = self._iterator_checkpoint_prefix()
+    step = 0
+    meta_filename = path + "-%d.meta" % step
+
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
+
+    with ops.Graph().as_default() as g:
+      iterator = (
+          dataset_ops.Dataset.from_tensors(components)
+          .make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      saveable = iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+      for t in nest.flatten(get_next):
+        ops.add_to_collection("get_next", t)
+      saver = saver_lib.Saver()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(start, break_range):
+          result = sess.run(get_next)
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component, result_component)
+        saver.save(sess, path, step)
+
+    with ops.Graph().as_default() as g:
+      saver = saver_lib.import_meta_graph(meta_filename)
+      with self.test_session(graph=g) as sess:
+        get_next = nest.pack_sequence_as(("a", "b", "c"),
+                                         ops.get_collection("get_next"))
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for _ in range(break_range, stop):
+          result = sess.run(get_next)
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component, result_component)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testRestoreFromTensors(self):
+    self._testSaveRestoreFromTensorsUtility(0, 0, 1)
+
+  def testRestoreExhuatedIteratorFromTensors(self):
+    self._testSaveRestoreFromTensorsUtility(0, 1, 1)
+
+  def _build_graph_tensor_slices(self, components):
+    iterator = dataset_ops.Dataset.from_tensor_slices(
+        components).make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    saveable = iterator_ops.make_saveable_from_iterator(iterator)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+    for t in nest.flatten(get_next):
+      ops.add_to_collection("get_next", t)
+    return init_op, get_next
+
+  def _testSaveRestoreFromTensorSlicesUtility(self, start, break_range, stop):
+    path = self._iterator_checkpoint_prefix()
+    step = 0
+    meta_filename = path + "-%d.meta" % step
+
+    components = (np.tile(np.array([[1], [2], [3], [4]]), 20), np.tile(
+        np.array([[12], [13], [14], [15]]), 22),
+                  np.array([37.0, 38.0, 39.0, 40.0]))
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next = self._build_graph_tensor_slices(components)
+      saver = saver_lib.Saver()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for i in range(start, break_range):
+          result = sess.run(get_next)
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component[i], result_component)
+        saver.save(sess, path, step)
+
+    with ops.Graph().as_default() as g:
+      saver = saver_lib.import_meta_graph(meta_filename)
+      with self.test_session(graph=g) as sess:
+        get_next = nest.pack_sequence_as(("a", "b", "c"),
+                                         ops.get_collection("get_next"))
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for i in range(break_range, stop):
+          result = sess.run(get_next)
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component[i], result_component)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testRestoreFromTensorSlices(self):
+    self._testSaveRestoreFromTensorSlicesUtility(0, 4, 2)
+
+  def testRestoreExhaustedIteratorFromTensorSlices(self):
+    self._testSaveRestoreFromTensorSlicesUtility(0, 4, 4)
+
+  def tesRestoreFromTensorSlicesWithDict(self):
+
+    path = self._iterator_checkpoint_prefix()
+    step = 0
+    meta_filename = path + "-%d.meta" % step
+
+    components = {"foo": [1, 2, 3], "bar": [[4.0], [5.0], [6.0]]}
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next = self._build_graph_tensor_slices(components)
+      saver = saver_lib.Saver()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for i in range(2):
+          results = sess.run(get_next)
+          self.assertEqual(components["foo"][i], results["foo"])
+          self.assertEqual(components["bar"][i], results["bar"])
+        saver.save(sess, path, step)
+
+    with ops.Graph().as_default() as g:
+      saver = saver_lib.import_meta_graph(meta_filename)
+      with self.test_session(graph=g) as sess:
+        get_next = nest.pack_sequence_as(("a", "b"),
+                                         ops.get_collection("get_next"))
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for i in range(2, 3):
+          results = sess.run(get_next)
+          self.assertEqual(components["foo"][i], results["foo"])
+          self.assertEqual(components["bar"][i], results["bar"])
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
 
 
 if __name__ == "__main__":

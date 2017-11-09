@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import collections
 import math
+import time
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -29,6 +30,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -49,6 +51,9 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import state_ops
@@ -174,6 +179,19 @@ class ControlFlowTest(test.TestCase):
 
       result = exit_op.eval()
     self.assertAllEqual(np.array([x * 5 for x in [1, 2, 3, 4, 5, 6]]), result)
+
+  def testEnterShapePropagation(self):
+    with self.test_session():
+      v = variables.Variable([0.0, 0.0], dtype=dtypes.float32)
+
+      # If is_constant=True, the shape information should be propagated.
+      enter_v_constant = control_flow_ops.enter(v, "frame1", is_constant=True)
+      self.assertEqual(enter_v_constant.shape, [2])
+
+      # Otherwise, the shape should be unknown.
+      enter_v_non_constant = control_flow_ops.enter(v, "frame2",
+                                                    is_constant=False)
+      self.assertEqual(enter_v_non_constant.shape, None)
 
   def testSwitchMergeIndexedSlices(self):
     with self.test_session():
@@ -1392,7 +1410,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileStack_1(self):
     with self.test_session():
-      s = gen_data_flow_ops._stack(dtypes.int32, stack_name="foo")
+      s = gen_data_flow_ops._stack_v2(-1, dtypes.int32, stack_name="foo")
       i = constant_op.constant(0)
 
       def c(i):
@@ -1401,7 +1419,7 @@ class ControlFlowTest(test.TestCase):
       def b(i):
         ni = math_ops.add(i, 1)
         ni = control_flow_ops.with_dependencies(
-            [gen_data_flow_ops._stack_push(s, i)], ni)
+            [gen_data_flow_ops._stack_push_v2(s, i)], ni)
         return ni
 
       r = control_flow_ops.while_loop(c, b, [i], parallel_iterations=1)
@@ -1413,7 +1431,7 @@ class ControlFlowTest(test.TestCase):
 
       def b1(i, x):
         ni = math_ops.subtract(i, 1)
-        nx = x + gen_data_flow_ops._stack_pop(s, dtypes.int32)
+        nx = x + gen_data_flow_ops._stack_pop_v2(s, dtypes.int32)
         return [ni, nx]
 
       _, rx = control_flow_ops.while_loop(
@@ -1423,9 +1441,8 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
-    gpu_dev_name = test.gpu_device_name().lower() if test.is_gpu_available(
-    ) else "/gpu:0"
-    gpu_short_name = gpu_dev_name.split("/")[-1]
+    gpu_dev_name = test.gpu_device_name() if test.is_gpu_available(
+    ) else "/device:GPU:0"
 
     with self.test_session(graph=ops.Graph()) as sess:
       v = constant_op.constant(2.0, name="v")
@@ -1439,19 +1456,19 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(
           loop, v, colocate_gradients_with_ops=colocate)[0]
     r_ops = r.graph.get_operations()
-    r_devices = [(op.name, op.device.lower()) for op in r_ops]
+    r_devices = [(op.name, op.device) for op in r_ops]
 
     self.assertTrue(any("Square" in op.name for op in r_ops))
 
     for (name, dev) in r_devices:
       if not colocate and name.endswith("Square"):
         # Only forward graph contain gpu in Square device
-        self.assertTrue(gpu_short_name in dev)
+        self.assertTrue(gpu_dev_name in dev)
       elif colocate and "Square" in name:
         # Forward and backward graphs contain gpu in Square/Square_grad devices
-        self.assertTrue(gpu_short_name in dev)
+        self.assertTrue(gpu_dev_name in dev)
       else:
-        self.assertFalse(gpu_short_name in dev)
+        self.assertFalse(gpu_dev_name in dev)
     self.assertAllClose(1024.0, sess.run(r))
 
   def testWhileGrad_ColocateGradients(self):
@@ -1705,15 +1722,16 @@ class ControlFlowTest(test.TestCase):
   def testWhileGrad_NoDependency(self):
     with self.test_session() as sess:
       variable = variables.Variable(array_ops.ones([2, 3]))
-      time = array_ops.zeros([], dtype=dtypes.int32)
+      duration = array_ops.zeros([], dtype=dtypes.int32)
 
-      def cond(time, tensor, _):
-        return time < 10
+      def cond(duration, tensor, _):
+        del tensor
+        return duration < 10
 
-      def body(time, tensor, _):
-        return (time + 1, tensor, tensor)
+      def body(duration, tensor, _):
+        return (duration + 1, tensor, tensor)
 
-      loop_vars = [time, variable, variable]
+      loop_vars = [duration, variable, variable]
       tensors = control_flow_ops.while_loop(
           cond=cond, body=body, loop_vars=loop_vars)
       cost = math_ops.reduce_sum(tensors[2])
@@ -1725,15 +1743,15 @@ class ControlFlowTest(test.TestCase):
     with self.test_session() as sess:
       c0 = constant_op.constant(0.0, name="c0")
       c1 = constant_op.constant(1.0, name="c1")
-      time = constant_op.constant(0, name="t")
+      duration = constant_op.constant(0, name="t")
 
-      def cond(time, _):
-        return time < 1
+      def cond(duration, _):
+        return duration < 1
 
-      def body(time, tensor):
-        return time + 1, c1
+      def body(duration, _):
+        return duration + 1, c1
 
-      loop_vars = [time, c0]
+      loop_vars = [duration, c0]
       tensors = control_flow_ops.while_loop(
           cond=cond, body=body, loop_vars=loop_vars)
       cost = math_ops.reduce_sum(tensors[1])
@@ -2426,7 +2444,7 @@ class ControlFlowTest(test.TestCase):
 
       # device set on tensor, default device on graph => default device on dep.
       vdef = variables.Variable([0.0], name="vdef")
-      with ops.device("/job:worker/gpu:1"):
+      with ops.device("/job:worker/device:GPU:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
         # The device is empty, but the colocation constraint is set.
@@ -2594,7 +2612,8 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, x)[0]
       self.assertEqual(r.eval(), 524288.0)
       self.assertEqual(
-          len([op for op in x.graph.get_operations() if op.type == "Stack"]), 1)
+          len([op for op in x.graph.get_operations() if op.type == "StackV2"]),
+          1)
 
 
 class TupleTest(test.TestCase):
@@ -2717,6 +2736,165 @@ class AssertTest(test.TestCase):
         self.assertLess(0, len(unguarded_memcpy_nodestat_names))
       # No copy was performed for the guarded assert
       self.assertEqual([], guarded_memcpy_nodestat_names)
+
+
+class WhileOpBenchmark(test.Benchmark):
+  """Evaluate the performance of while_loop op."""
+
+  def _getInitVariables(self):
+    batch_size = 10
+    image_size = 256
+    kernel_size = 3
+    depth = 16
+
+    init_step = constant_op.constant(-1)
+    image = variable_scope.get_variable(
+        "image",
+        initializer=random_ops.random_normal(
+            [batch_size, image_size, image_size, depth],
+            dtype=dtypes.float32,
+            stddev=1e-1))
+    kernel = variable_scope.get_variable(
+        "weights",
+        initializer=random_ops.truncated_normal(
+            [kernel_size, kernel_size, depth, depth],
+            dtype=dtypes.float32,
+            stddev=1e-1))
+    return init_step, image, kernel
+
+  def _runOneBenchmark(self,
+                       default_device,
+                       num_iters=10,
+                       static_unroll=False,
+                       steps=10):
+    """Evaluate the while loop performance.
+
+    Args:
+      default_device: The default device to run all ops except the loop_body.
+        loop_body is always run on GPU.
+      num_iters: Number of iterations to run.
+      static_unroll: If true, run unrolled version; otherwise, run while_loop.
+      steps: Total number of repeated steps to run the loop.
+
+    Returns:
+      The duration of the run in seconds.
+    """
+    def loop_body(i, x):
+      with ops.device("/gpu:0"):
+        # Always put loop body on GPU.
+        nx = nn_ops.conv2d(
+            input=x,
+            filter=kernel,
+            strides=[1, 1, 1, 1],
+            padding="SAME",
+            data_format="NHWC",
+            name="conv2d")
+        ni = math_ops.add(i, 1)
+        return ni, nx
+
+    ops.reset_default_graph()
+    with session.Session() as sess, ops.device(default_device):
+      # Get the initial id i, input x, and kernel.
+      i, x, kernel = self._getInitVariables()
+      sess.run(variables.global_variables_initializer())
+
+      if static_unroll:
+        for _ in xrange(steps):
+          i, x = loop_body(i, x)
+      else:
+        i, x = control_flow_ops.while_loop(
+            lambda i, _: i < steps,
+            loop_body, [i, x],
+            parallel_iterations=steps,
+            swap_memory=True)
+
+      r = math_ops.reduce_sum(x)
+      dx, dk = gradients_impl.gradients(r, [x, kernel])
+      # Use group to avoid fetching back results.
+      r = control_flow_ops.group(dx, dk)
+
+      for _ in xrange(3):
+        # exclude warm up time
+        sess.run(r)
+
+      start_time = time.time()
+      for _ in xrange(num_iters):
+        sess.run(r)
+      return (time.time() - start_time)/num_iters
+
+  def benchmarkWhileOpCrossDevicePlacement(self):
+    iters = 10
+    # Run loop body on GPU, but other ops on CPU.
+    duration = self._runOneBenchmark("cpu", iters, static_unroll=False)
+    self.report_benchmark(
+        name="while_op_cross_device", iters=iters, wall_time=duration)
+
+  def benchmarkWhileOpSameDevicePlacement(self):
+    iters = 10
+    # Run all ops on the same GPU device.
+    duration = self._runOneBenchmark("gpu", iters, static_unroll=False)
+    self.report_benchmark(
+        name="while_op_same_device", iters=iters, wall_time=duration)
+
+  def benchmarkWhileOpUnrollCrossDevicePlacement(self):
+    iters = 10
+    # Run loop body on GPU, but other ops on CPU.
+    duration = self._runOneBenchmark("cpu", iters, static_unroll=True)
+    self.report_benchmark(
+        name="unroll_cross_device_cpu", iters=iters, wall_time=duration)
+
+  def benchmarkWhileOpUnrollSameDevicePlacement(self):
+    iters = 10
+    # Run all ops on GPU.
+    duration = self._runOneBenchmark("gpu", iters, static_unroll=True)
+    self.report_benchmark(
+        name="unroll_same_device", iters=iters, wall_time=duration)
+
+
+class EagerTest(test.TestCase):
+
+  def testCond(self):
+    with context.eager_mode():
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: constant_op.constant(10)
+      fn2 = lambda: constant_op.constant(20)
+      r = control_flow_ops.cond(pred, fn1, fn2)
+
+      self.assertAllEqual(r.numpy(), 10)
+
+  def testWhileLoop(self):
+    with context.eager_mode():
+      tensor = constant_op.constant([1, 2, 3, 4, 5])
+      self.assertAllEqual(isum(tensor).numpy(),
+                          [46, 47, 48, 49, 50])
+
+  def testWithDependencies(self):
+    with context.eager_mode():
+      t1 = constant_op.constant(1)
+      t2 = constant_op.constant(2)
+      t3 = control_flow_ops.with_dependencies(t1, t2)
+      self.assertAllEqual(t2.numpy(), t3.numpy())
+
+  def testTuple(self):
+    with context.eager_mode():
+      t1 = constant_op.constant(1)
+      t2 = constant_op.constant(2)
+      tup1, tup2 = control_flow_ops.tuple([t1, t2])
+      self.assertAllEqual(t1.numpy(), tup1.numpy())
+      self.assertAllEqual(t2.numpy(), tup2.numpy())
+
+  def testCase(self):
+    with context.eager_mode():
+      x = constant_op.constant(1)
+      y = constant_op.constant(2)
+      z = constant_op.constant(3)
+      f1 = lambda: constant_op.constant(17)
+      f2 = lambda: constant_op.constant(23)
+      f3 = lambda: constant_op.constant(-1)
+
+      r1 = control_flow_ops.case([(x < y, f1), (x > z, f2)],
+                                 default=f3, exclusive=True)
+      self.assertAllEqual(r1.numpy(), 17)
 
 if __name__ == "__main__":
   test.main()

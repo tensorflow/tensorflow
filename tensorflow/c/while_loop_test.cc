@@ -73,6 +73,11 @@ class CApiWhileLoopTest : public ::testing::Test {
   }
 
   void Run(std::initializer_list<int> input_values) {
+    Run(outputs_, input_values);
+  }
+
+  void Run(const std::vector<TF_Output>& run_outputs,
+           std::initializer_list<int> input_values) {
     DCHECK_EQ(inputs_.size(), input_values.size());
     std::vector<std::pair<TF_Operation*, TF_Tensor*>> inputs(inputs_.size());
     int i = 0;
@@ -80,9 +85,10 @@ class CApiWhileLoopTest : public ::testing::Test {
       inputs[i] = {inputs_[i].oper, Int32Tensor(v)};
       ++i;
     }
+    // TODO(skyewm): use std::make_unique or absl::make_unique when possible.
     csession_.reset(new CSession(graph_, s_));
     csession_->SetInputs(inputs);
-    csession_->SetOutputs(outputs_);
+    csession_->SetOutputs(run_outputs);
     csession_->Run(s_);
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   }
@@ -173,6 +179,16 @@ TEST_F(CApiWhileLoopTest, BasicLoop) {
   EXPECT_GE(outputs_[0].index, 0);
   EXPECT_TRUE(outputs_[1].oper != nullptr);
   EXPECT_GE(outputs_[1].index, 0);
+
+  // Check that cond and body inputs are not present
+  for (int i = 0; i < params_->ninputs; ++i) {
+    string cond_name =
+        ::tensorflow::strings::StrCat(params_->name, "/cond/cond_input", i);
+    string body_name =
+        ::tensorflow::strings::StrCat(params_->name, "/body/body_input", i);
+    EXPECT_TRUE(TF_GraphOperationByName(graph_, cond_name.c_str()) == nullptr);
+    EXPECT_TRUE(TF_GraphOperationByName(graph_, body_name.c_str()) == nullptr);
+  }
 
   // Run the graph
   Run({-9, 2});
@@ -278,19 +294,85 @@ TEST_F(CApiWhileLoopTest, NestedLoop) {
   ExpectOutputValue(1, 3);
 }
 
-TEST_F(CApiWhileLoopTest, BadCondOutput) {
+TEST_F(CApiWhileLoopTest, UnsetCondOutput) {
   Init(1);
   params_->body_outputs[0] = params_->body_inputs[0];
   ExpectError(TF_INVALID_ARGUMENT,
               "TF_WhileParams `cond_output` field isn't set");
 }
 
-TEST_F(CApiWhileLoopTest, BadBodyOutput) {
+TEST_F(CApiWhileLoopTest, WrongCondOutputType) {
+  Init(1);
+  params_->cond_output = params_->cond_inputs[0];
+  params_->body_outputs[0] = params_->body_inputs[0];
+  ExpectError(TF_INVALID_ARGUMENT,
+              "BuildWhileLoop: 'cond' argument must return a boolean output, "
+              "got int32");
+}
+
+TEST_F(CApiWhileLoopTest, InvalidCondOutputNode) {
+  Init(1);
+  // Try to reuse node from parent graph
+  params_->cond_output = inputs_[0];
+  params_->body_outputs[0] = params_->body_inputs[0];
+  // TODO(skyewm): this error message could be more informative. Add explicit
+  // checks for this case in the while loop implementation?
+  ExpectError(TF_INVALID_ARGUMENT,
+              "Requested return tensor 'p0:0' not found in graph def");
+}
+
+TEST_F(CApiWhileLoopTest, InvalidCondOutputIndex) {
+  Init(1);
+  CreateCondGraph();
+  params_->cond_output.index = 100;
+  params_->body_outputs[0] = params_->body_inputs[0];
+  ExpectError(TF_INVALID_ARGUMENT,
+              "Invalid return output 100 of node 'less_than', which has 1 "
+              "output(s)");
+}
+
+// TODO(skyewm): test bad cond output shape
+
+TEST_F(CApiWhileLoopTest, UnsetBodyOutput) {
   Init(1);
   CreateCondGraph();
   ExpectError(TF_INVALID_ARGUMENT,
               "TF_WhileParams `body_outputs[0]` field isn't set");
 }
+
+// TODO(skyewm): enable this when it works (currently doesn't error)
+// TEST_F(CApiWhileLoopTest, WrongBodyOutputType) {
+//   Init(1);
+//   CreateCondGraph();
+//   TF_Operation* double_scalar =
+//       ScalarConst(1.0, params_->body_graph, s_, "double_scalar");
+//   params_->body_outputs[0] = {double_scalar, 0};
+//   ExpectError(TF_INVALID_ARGUMENT, "bad body output type");
+// }
+
+TEST_F(CApiWhileLoopTest, InvalidBodyOutputNode) {
+  Init(1);
+  CreateCondGraph();
+  // Try to reuse node from parent graph
+  params_->body_outputs[0] = inputs_[0];
+  // TODO(skyewm): this error message could be more informative. Add explicit
+  // checks for this case in the while loop implementation?
+  ExpectError(TF_INVALID_ARGUMENT,
+              "Requested return tensor 'p0:0' not found in graph def");
+}
+
+// TODO(skyewm): enable this when it works (currently segfaults!)
+// TEST_F(CApiWhileLoopTest, InvalidBodyOutputIndex) {
+//   Init(1);
+//   CreateCondGraph();
+//   params_->body_outputs[0] = params_->body_inputs[0];
+//   params_->body_outputs[0].index = 100;
+//   ExpectError(TF_INVALID_ARGUMENT,
+//               "Invalid return output 100 of node 'less_than', which has 1 "
+//               "output(s)");
+// }
+
+// TODO(skyewm): test bad body output shape
 
 TEST_F(CApiWhileLoopTest, NullName) {
   Init(1);
@@ -307,7 +389,7 @@ TEST_F(CApiWhileLoopTest, WrongGraph) {
   params_->body_outputs[0] = inputs_[0];
   // TODO(skyewm): improve error message
   ExpectError(TF_INVALID_ARGUMENT,
-              "Requested return node 'p0' not found in graph def");
+              "Requested return tensor 'p0:0' not found in graph def");
 }
 
 TEST_F(CApiWhileLoopTest, BadTypes) {
@@ -324,6 +406,38 @@ TEST_F(CApiWhileLoopTest, BadTypes) {
                      "building NodeDef 'float_op'"),
             msg.npos);
   TF_AbortWhile(params_.get());
+}
+
+// This is a basic test to make sure the C++ gradient code can handle while
+// loops created by the C API (which calls the C++ API under the hood). There
+// are more while loop gradient tests in cc/framework/while_gradients_test.cc.
+TEST_F(CApiWhileLoopTest, Gradients) {
+  Init(1);
+
+  // Create loop: while (i < 10) i += 1
+  TF_Operation* ten = ScalarConst(10, params_->cond_graph, s_);
+  TF_Operation* less_than =
+      LessThan(params_->cond_inputs[0], {ten, 0}, params_->cond_graph, s_);
+  DCHECK_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  params_->cond_output = {less_than, 0};
+
+  TF_Operation* one = ScalarConst(1, params_->body_graph, s_);
+  TF_Operation* add =
+      Add(params_->body_inputs[0], {one, 0}, params_->body_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  params_->body_outputs[0] = {add, 0};
+
+  ExpectOK();
+
+  // Create backprop graph
+  TF_Output grad_output;
+  TF_AddGradients(graph_, outputs_.data(), outputs_.size(), inputs_.data(), 1,
+                  nullptr, s_, &grad_output);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Run gradient
+  Run({grad_output}, {0});
+  ExpectOutputValue(0, 1);
 }
 
 }  // namespace

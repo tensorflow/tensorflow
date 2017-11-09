@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import os
+
 from tensorflow.contrib.boosted_trees.proto import tree_config_pb2
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
 from tensorflow.contrib.decision_trees.proto import generic_tree_model_extensions_pb2
@@ -26,18 +29,21 @@ from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader as saved_model_loader
 from tensorflow.python.saved_model import tag_constants
 
 
-def make_custom_export_strategy(name, convert_fn, feature_columns,
+def make_custom_export_strategy(name,
+                                convert_fn,
+                                feature_columns,
                                 export_input_fn):
   """Makes custom exporter of GTFlow tree format.
 
   Args:
     name: A string, for the name of the export strategy.
     convert_fn: A function that converts the tree proto to desired format and
-      saves it to the desired location.
+      saves it to the desired location. Can be None to skip conversion.
     feature_columns: A list of feature columns.
     export_input_fn: A function that takes no arguments and returns an
       `InputFnOps`.
@@ -52,7 +58,7 @@ def make_custom_export_strategy(name, convert_fn, feature_columns,
    sparse_int_indices, _, _) = gbdt_batch.extract_features(
        input_fn.features, feature_columns)
 
-  def export_fn(estimator, export_dir, checkpoint_path, eval_result=None):
+  def export_fn(estimator, export_dir, checkpoint_path=None, eval_result=None):
     """A wrapper to export to SavedModel, and convert it to other formats."""
     result_dir = base_strategy.export(estimator, export_dir,
                                       checkpoint_path,
@@ -68,16 +74,30 @@ def make_custom_export_strategy(name, convert_fn, feature_columns,
         dtec = tree_config_pb2.DecisionTreeEnsembleConfig()
         dtec.ParseFromString(dfec_str)
         # Export the result in the same folder as the saved model.
-        convert_fn(dtec, sorted_feature_names, len(dense_floats),
-                   len(sparse_float_indices), len(sparse_int_indices),
-                   result_dir, eval_result)
+        if convert_fn:
+          convert_fn(dtec, sorted_feature_names,
+                     len(dense_floats),
+                     len(sparse_float_indices),
+                     len(sparse_int_indices), result_dir, eval_result)
+        feature_importances = _get_feature_importances(
+            dtec, sorted_feature_names,
+            len(dense_floats),
+            len(sparse_float_indices), len(sparse_int_indices))
+        sorted_by_importance = sorted(
+            feature_importances.items(), key=lambda x: -x[1])
+        assets_dir = os.path.join(result_dir, "assets.extra")
+        gfile.MakeDirs(assets_dir)
+        with gfile.GFile(os.path.join(assets_dir, "feature_importances"),
+                         "w") as f:
+          f.write("\n".join("%s, %f" % (k, v) for k, v in sorted_by_importance))
     return result_dir
   return export_strategy.ExportStrategy(name, export_fn)
 
 
 def convert_to_universal_format(dtec, sorted_feature_names,
                                 num_dense, num_sparse_float,
-                                num_sparse_int):
+                                num_sparse_int,
+                                feature_name_to_proto=None):
   """Convert GTFlow trees to universal format."""
   del num_sparse_int  # unused.
   model_and_features = generic_tree_model_pb2.ModelAndFeatures()
@@ -85,7 +105,11 @@ def convert_to_universal_format(dtec, sorted_feature_names,
   # feature is processed before it's fed to the model (e.g. bucketing
   # information). As of now, this serves as a list of features the model uses.
   for feature_name in sorted_feature_names:
-    model_and_features.features[feature_name].SetInParent()
+    if not feature_name_to_proto:
+      model_and_features.features[feature_name].SetInParent()
+    else:
+      model_and_features.features[feature_name].CopyFrom(
+          feature_name_to_proto[feature_name])
   model = model_and_features.model
   model.ensemble.summation_combination_technique.SetInParent()
   for tree_idx in range(len(dtec.trees)):
@@ -125,6 +149,8 @@ def convert_to_universal_format(dtec, sorted_feature_names,
           split = gtflow_node.sparse_float_binary_split_default_left.split
           node.default_direction = (
               generic_tree_model_pb2.BinaryNode.LEFT)
+          # TODO(nponomareva): adjust this id assignement when we allow multi-
+          # column sparse tensors.
           feature_id = split.feature_column + num_dense
           inequality_test = node.inequality_left_child_test
           inequality_test.feature_id.id.value = sorted_feature_names[feature_id]
@@ -132,9 +158,11 @@ def convert_to_universal_format(dtec, sorted_feature_names,
               generic_tree_model_pb2.InequalityTest.LESS_OR_EQUAL)
           inequality_test.threshold.float_value = split.threshold
         elif node_type == "sparse_float_binary_split_default_right":
-          split = gtflow_node.sparse_float_binary_split_default_right
+          split = gtflow_node.sparse_float_binary_split_default_right.split
           node.default_direction = (
               generic_tree_model_pb2.BinaryNode.RIGHT)
+          # TODO(nponomareva): adjust this id assignement when we allow multi-
+          # column sparse tensors.
           feature_id = split.feature_column + num_dense
           inequality_test = node.inequality_left_child_test
           inequality_test.feature_id.id.value = sorted_feature_names[feature_id]
@@ -157,3 +185,41 @@ def convert_to_universal_format(dtec, sorted_feature_names,
         node.left_child_id.value = split.left_id
         node.right_child_id.value = split.right_id
   return model_and_features
+
+
+def _get_feature_importances(dtec, feature_names, num_dense_floats,
+                             num_sparse_float, num_sparse_int):
+  """Export the feature importance per feature column."""
+  del num_sparse_int    # Unused.
+  sums = collections.defaultdict(lambda: 0)
+  for tree_idx in range(len(dtec.trees)):
+    tree = dtec.trees[tree_idx]
+    for tree_node in tree.nodes:
+      node_type = tree_node.WhichOneof("node")
+      if node_type == "dense_float_binary_split":
+        split = tree_node.dense_float_binary_split
+        split_column = feature_names[split.feature_column]
+      elif node_type == "sparse_float_binary_split_default_left":
+        split = tree_node.sparse_float_binary_split_default_left.split
+        split_column = feature_names[split.feature_column + num_dense_floats]
+      elif node_type == "sparse_float_binary_split_default_right":
+        split = tree_node.sparse_float_binary_split_default_right.split
+        split_column = feature_names[split.feature_column + num_dense_floats]
+      elif node_type == "categorical_id_binary_split":
+        split = tree_node.categorical_id_binary_split
+        split_column = feature_names[split.feature_column + num_dense_floats +
+                                     num_sparse_float]
+      elif node_type == "categorical_id_set_membership_binary_split":
+        split = tree_node.categorical_id_set_membership_binary_split
+        split_column = feature_names[split.feature_column + num_dense_floats +
+                                     num_sparse_float]
+      elif node_type == "leaf":
+        assert tree_node.node_metadata.gain == 0
+        continue
+      else:
+        raise ValueError("Unexpected split type %s", node_type)
+      # Apply shrinkage factor. It is important since it is not always uniform
+      # across different trees.
+      sums[split_column] += (
+          tree_node.node_metadata.gain * dtec.tree_weights[tree_idx])
+  return dict(sums)

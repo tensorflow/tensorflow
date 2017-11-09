@@ -15,7 +15,7 @@ as regressors and classifiers:
     Construct a neural network regression model.
 *   @{tf.estimator.DNNLinearCombinedClassifier}:
     Construct a neural network and linear combined classification model.
-*   @{tf.estimator.DNNRegressor}:
+*   @{tf.estimator.DNNLinearCombinedRegressor}:
     Construct a neural network and linear combined regression model.
 
 But what if none of `tf.estimator`'s predefined model types meets your needs?
@@ -44,7 +44,7 @@ feature columns, input functions, and `train()`/`evaluate()`/`predict()`
 operations. If you've never used tf.estimator before, or need a refresher,
 you should first review the following tutorials:
 
-*   @{$estimator$tf.estimator Quickstart}: Quick introduction to
+*   @{$get_started/estimator$tf.estimator Quickstart}: Quick introduction to
     training a neural network using tf.estimator.
 *   @{$wide$TensorFlow Linear Model Tutorial}: Introduction to
     feature columns, and an overview on building a linear classifier in

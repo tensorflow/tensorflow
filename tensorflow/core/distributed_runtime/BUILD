@@ -27,6 +27,7 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
@@ -56,7 +57,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "partial_run_mgr_test",
     size = "small",
     srcs = ["partial_run_mgr_test.cc"],
@@ -74,7 +75,6 @@ cc_library(
     hdrs = ["message_wrappers.h"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
@@ -82,7 +82,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "message_wrappers_test",
     size = "small",
     srcs = ["message_wrappers_test.cc"],
@@ -97,14 +97,40 @@ cc_test(
 
 cc_library(
     name = "worker_session",
-    srcs = ["worker_session.cc"],
+    srcs = [
+        "cluster_function_library_runtime.cc",
+        "worker_session.cc",
+    ],
     hdrs = [
+        "cluster_function_library_runtime.h",
         "worker_session.h",
     ],
     deps = [
         ":graph_mgr",
         ":worker_cache",
+        ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "cluster_function_library_runtime_test",
+    srcs = ["cluster_function_library_runtime_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":worker_session",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:cwise_op",
     ],
 )
 
@@ -121,7 +147,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "session_mgr_test",
     size = "small",
     srcs = ["session_mgr_test.cc"],
@@ -141,19 +167,30 @@ cc_library(
 )
 
 cc_library(
-    name = "worker_interface",
+    name = "tensor_coding",
     srcs = ["tensor_coding.cc"],
     hdrs = [
         "tensor_coding.h",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "worker_interface",
+    hdrs = [
         "worker_interface.h",
     ],
     deps = [
         ":call_options",
         ":message_wrappers",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -169,6 +206,7 @@ cc_library(
         ":partial_run_mgr",
         ":rendezvous_mgr_interface",
         ":session_mgr",
+        ":tensor_coding",
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
@@ -185,7 +223,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "call_options_test",
     size = "small",
     srcs = ["call_options_test.cc"],
@@ -196,14 +234,15 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tensor_coding_test",
     size = "small",
     srcs = ["tensor_coding_test.cc"],
     linkstatic = 1,
     deps = [
-        ":worker_interface",
+        ":tensor_coding",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

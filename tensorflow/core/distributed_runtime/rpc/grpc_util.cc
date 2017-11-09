@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
 namespace tensorflow {
 
@@ -77,23 +78,61 @@ grpc::protobuf::int64 GrpcByteBufferSource::ByteCount() const {
   return byte_count_;
 }
 
-void GrpcUnparseProto(const protobuf::Message& src, grpc::ByteBuffer* dst) {
+void GrpcMaybeUnparseProto(const protobuf::Message& src,
+                           grpc::ByteBuffer* dst) {
   // TODO(sanjay): For bigger protos, serialize into a ZeroCopyOutputStream.
-  size_t len = src.ByteSizeLong();
-  gpr_slice s = gpr_slice_malloc(len);
+  ::grpc::Slice s(src.ByteSizeLong());
   src.SerializeWithCachedSizesToArray(
-      reinterpret_cast<uint8*>(GPR_SLICE_START_PTR(s)));
-  ::grpc::Slice slice(s, ::grpc::Slice::STEAL_REF);
-  ::grpc::ByteBuffer buffer(&slice, 1);
-  // TODO(sanjay): Use Swap() when grpc version we are using is new enough.
-  // dst->Swap(&buffer);
-  *dst = buffer;
+      const_cast<uint8*>(reinterpret_cast<const uint8*>(s.begin())));
+  ::grpc::ByteBuffer buffer(&s, 1);
+  dst->Swap(&buffer);
 }
 
-bool GrpcParseProto(const grpc::ByteBuffer& src, protobuf::Message* dst) {
+// GrpcMaybeUnparseProto from a string simply copies the string to the
+// ByteBuffer.
+void GrpcMaybeUnparseProto(const string& src, grpc::ByteBuffer* dst) {
+  ::grpc::Slice s(src.data(), src.size());
+  ::grpc::ByteBuffer buffer(&s, 1);
+  dst->Swap(&buffer);
+}
+
+bool GrpcMaybeParseProto(const grpc::ByteBuffer& src, protobuf::Message* dst) {
   GrpcByteBufferSource stream;
   if (!stream.Init(src)) return false;
   return dst->ParseFromZeroCopyStream(&stream);
+}
+
+// Overload of GrpcParseProto so we can decode a TensorResponse without
+// extra copying.  This overload is used by the RPCState class in
+// grpc_state.h.
+bool GrpcMaybeParseProto(const ::grpc::ByteBuffer& src, TensorResponse* dst) {
+  struct ByteSource : public TensorResponse::Source {
+    const ::grpc::ByteBuffer* buffer;
+    GrpcByteBufferSource src;
+    bool ok;
+
+    ::tensorflow::protobuf::io::ZeroCopyInputStream* contents() override {
+      ok = src.Init(*buffer);
+      return &src;
+    }
+  };
+  ByteSource bs;
+  bs.buffer = &src;
+  return dst->ParseFrom(&bs).ok() && bs.ok;
+}
+
+// GrpcMaybeParseProto into a string simply copies bytes into the string.
+bool GrpcMaybeParseProto(const grpc::ByteBuffer& src, string* dst) {
+  dst->clear();
+  dst->reserve(src.Length());
+  std::vector<::grpc::Slice> slices;
+  if (!src.Dump(&slices).ok()) {
+    return false;
+  }
+  for (const ::grpc::Slice& s : slices) {
+    dst->append(reinterpret_cast<const char*>(s.begin()), s.size());
+  }
+  return true;
 }
 
 void GrpcCounter::Increment() {

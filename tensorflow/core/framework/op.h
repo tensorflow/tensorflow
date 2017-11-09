@@ -20,7 +20,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include <vector>
-#include "tensorflow/core/framework/op_def.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -76,7 +75,8 @@ class OpRegistry : public OpRegistryInterface {
                 const OpRegistrationData** op_reg_data) const override;
 
   // Fills *ops with all registered OpDefs (except those with names
-  // starting with '_' if include_internal == false).
+  // starting with '_' if include_internal == false) sorted in
+  // ascending alphabetical order.
   void Export(bool include_internal, OpList* ops) const;
 
   // Returns ASCII-format OpList for all registered OpDefs (except

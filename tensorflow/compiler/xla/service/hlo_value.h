@@ -45,6 +45,13 @@ struct HloPosition {
     return instruction == other.instruction && index == other.index;
   }
   bool operator!=(const HloPosition& other) const { return !(*this == other); }
+
+  // Stable less-than operator using instruction id and index.
+  bool operator<(const HloPosition& other) const {
+    return instruction->unique_id() < other.instruction->unique_id() ||
+           (instruction->unique_id() == other.instruction->unique_id() &&
+            index < other.index);
+  }
 };
 
 std::ostream& operator<<(std::ostream& out, const HloPosition& position);
@@ -141,11 +148,16 @@ class HloValue {
   void AddPosition(HloInstruction* instruction, const ShapeIndex& index);
   void RemovePosition(HloInstruction* instruction, const ShapeIndex& index);
 
+  // Remove all positions except the defining position. Updates uses.
+  void ClearPositions();
+
   // Return all positions of the HloValue in the module.
   const std::vector<HloPosition>& positions() const { return positions_; }
 
   // Return all uses of the HloValue.
   const std::vector<HloUse>& uses() const { return uses_; }
+
+  void RecomputeUses();
 
   // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
@@ -201,17 +213,20 @@ class HloValueSet {
     SortAndUniquifyValues();
   }
 
-  // Return the union of the given HloValueSets.
-  static HloValueSet Union(
-      tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
+  // Sets this value set to the union of the given value sets. Returns whether
+  // this value set changed.
+  bool AssignUnionOf(tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
 
   // Return the vector of HloValues in the set. Values in the vector are unique
-  // and sorted.
+  // and stably sorted by value id.
   const std::vector<const HloValue*>& values() const { return values_; }
 
   // Adds the value to the set.  Returns true iff the value was added and didn't
   // already exist in the set.
   bool AddValue(const HloValue* value);
+
+  // Clear all values from the set.
+  void Clear() { values_.clear(); }
 
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
@@ -252,8 +267,9 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
  public:
   InstructionValueSet(const Shape& shape) : ShapeTree<HloValueSet>(shape) {}
 
-  // Return the union of the given InstructionValueSets.
-  static InstructionValueSet Union(
+  // Sets this value set to the union of the given value sets. Returns whether
+  // this value set changed.
+  bool AssignUnionOf(
       tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs);
 
   string ToString() const;

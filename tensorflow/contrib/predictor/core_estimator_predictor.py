@@ -32,8 +32,9 @@ def _get_signature_def(
   if output_key is None:
     output_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
   # pylint: disable=protected-access
-  estimator_spec = estimator._call_model_fn(
-      serving_input_receiver.features, None, model_fn.ModeKeys.PREDICT)
+  estimator_spec = estimator.model_fn(
+      serving_input_receiver.features, None, model_fn.ModeKeys.PREDICT,
+      estimator.config)
   # pylint: enable=protected-access
   export_outputs = estimator_spec.export_outputs
   export_output = export_outputs.get(output_key)

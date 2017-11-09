@@ -38,6 +38,8 @@ string AttrValueToPython(const string& type, const AttrValue& value,
 
 void GenerateLowerCaseOpName(const string& str, string* result);
 
+string DataTypeToPython(DataType dtype, const string& dtype_module);
+
 class GenPythonOp {
  public:
   GenPythonOp(const OpDef& op_def, const string& function_name);
@@ -59,11 +61,11 @@ class GenPythonOp {
   void AddOutputGlobals();
   void AddDocStringOutputs();
   void AddBody(const string& prefix);
-  void AddBodyNoReturn(const string& prefix);
+  void AddBodyNoReturn(const string& apply_prefix);
 
   // From constructor arguments
   const OpDef& op_def_;
-  const string& function_name_;
+  const string function_name_;
   const int num_outs_;
 
   // Return value from Code() is prelude_ + result_.

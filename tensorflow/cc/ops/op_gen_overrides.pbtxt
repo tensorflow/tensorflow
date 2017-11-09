@@ -11,7 +11,7 @@ op { name: "Reverse" skip: true }
 op { name: "ReverseV2" rename_to: "Reverse" }
 op { name: "Split" input_rename: { from: "split_dim" to: "axis" } }
 op { name: "SplitV" input_rename: { from: "split_dim" to: "axis" } }
-op { name: "Squeeze" input_rename: { from: "squeeze_dims" to: "axis" } }
+op { name: "Squeeze" attr_rename: { from: "squeeze_dims" to: "axis" } }
 op { name: "Pack" rename_to: "Stack" }
 op { name: "Unpack" rename_to: "Unstack" }
 op { name: "Select" rename_to: "Where3" input_rename: { from: "t" to: "x" } input_rename: { from: "e" to: "y" } }
@@ -134,6 +134,7 @@ op { name: "WholeFileReaderV2" rename_to: "WholeFileReader" }
 # image_ops
 op { name: "AdjustContrastv2" rename_to: "AdjustContrast" }
 op { name: "ResizeBilinearGrad" hide: true }
+op { name: "ResizeBicubicGrad" hide: true }
 op { name: "ResizeNearestNeighborGrad" hide: true }
 
 # io_ops
@@ -143,6 +144,31 @@ op { name: "SelfAdjointEigV2" rename_to: "SelfAdjointEig" }
 
 # logging_ops
 op { name: "AudioSummaryV2" rename_to: "AudioSummary" }
+
+# lookup_ops
+op { name: "LookupTableFind" skip: true }
+op { name: "LookupTableFindV2" rename_to: "LookupTableFind" }
+op { name: "LookupTableInsert" skip: true }
+op { name: "LookupTableInsertV2" rename_to: "LookupTableInsert" }
+op { name: "LookupTableSize" skip: true }
+op { name: "LookupTableSizeV2" rename_to: "LookupTableSize" }
+op { name: "LookupTableExport" skip: true }
+op { name: "LookupTableExportV2" rename_to: "LookupTableExport" }
+op { name: "LookupTableImport" skip: true }
+op { name: "LookupTableImportV2" rename_to: "LookupTableImport" }
+op { name: "HashTable" skip: true }
+op { name: "HashTableV2" rename_to: "HashTable" }
+op { name: "MutableHashTable" skip: true }
+op { name: "MutableHashTableV2" rename_to: "MutableHashTable" }
+op { name: "MutableHashTableOfTensors" skip: true }
+op { name: "MutableHashTableOfTensorsV2" rename_to: "MutableHashTableOfTensors" }
+op { name: "MutableDenseHashTable" skip: true }
+op { name: "MutableDenseHashTableV2" rename_to: "MutableDenseHashTable" }
+op { name: "InitializeTable" skip: true }
+op { name: "InitializeTableV2" rename_to: "InitializeTable" }
+op { name: "InitializeTableFromTextFile" skip: true }
+op { name: "InitializeTableFromTextFileV2" rename_to: "InitializeTableFromTextFile" }
+
 # math_ops
 op { name: "All" alias: "ReduceAll" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Any" alias: "ReduceAny" input_rename: { from: "reduction_indices" to: "axis" } }

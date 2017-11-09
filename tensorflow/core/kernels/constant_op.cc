@@ -17,6 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif
+
 #include "tensorflow/core/kernels/constant_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -26,13 +30,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
@@ -40,9 +45,8 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
-  OP_REQUIRES_OK(ctx,
-                 ctx->device()->MakeTensorFromProto(
-                     *proto, AllocatorAttributes(), &tensor_));
+  OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
+                          *proto, AllocatorAttributes(), &tensor_));
   OP_REQUIRES(
       ctx, ctx->output_type(0) == tensor_.dtype(),
       errors::InvalidArgument("Type mismatch between value (",
@@ -50,7 +54,17 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
                               DataTypeString(ctx->output_type(0)), ")"));
 }
 
-void ConstantOp::Compute(OpKernelContext* ctx) { ctx->set_output(0, tensor_); }
+void ConstantOp::Compute(OpKernelContext* ctx) {
+  ctx->set_output(0, tensor_);
+  if (TF_PREDICT_FALSE(ctx->track_allocations())) {
+    AllocatorAttributes attr;
+    if (ctx->allocate_on_host(attr)) {
+      ctx->record_host_persistent_memory_allocation(tensor_.AllocatedBytes());
+    } else {
+      ctx->record_device_persistent_memory_allocation(tensor_.AllocatedBytes());
+    }
+  }
+}
 
 ConstantOp::~ConstantOp() {}
 
@@ -73,14 +87,14 @@ REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
-// Currently we do not support string constants on GPU
+REGISTER_KERNEL(GPU, Variant);
 #undef REGISTER_KERNEL
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(D, TYPE)                                  \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"),  \
+#define REGISTER_SYCL_KERNEL(D, TYPE)                                 \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
 REGISTER_SYCL_KERNEL(SYCL, float);
 REGISTER_SYCL_KERNEL(SYCL, double);
@@ -187,18 +201,18 @@ struct FillFunctor<SYCLDevice, T> {
   void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
                   typename TTypes<T>::ConstScalar in) {
 #if !defined(EIGEN_HAS_INDEX_LIST)
-  Eigen::array<int, 1> rank1{1};
+    Eigen::array<int, 1> rank1{1};
 #else
-  Eigen::IndexList<Eigen::type2index<1>> rank1;
+    Eigen::IndexList<Eigen::type2index<1> > rank1;
 #endif
-  const int size  = out.dimension(0);
-  Eigen::array<int, 1> broadcast_dims{size};
+    const int size = out.dimension(0);
+    Eigen::array<int, 1> broadcast_dims{size};
 
-  To32Bit(out).device(d) = in.reshape(rank1).broadcast(broadcast_dims);
+    To32Bit(out).device(d) = in.reshape(rank1).broadcast(broadcast_dims);
   }
 };
-}
-#endif // TENSORFLOW_USE_SYCL
+}  // namespace functor
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNEL(D, TYPE)                         \
   REGISTER_KERNEL_BUILDER(Name("Fill")                   \
@@ -212,6 +226,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 // TODO(b/28917570): Add a test for this. Currently python 3 is not happy about
 // the conversion from uint8 to quint8.
 REGISTER_KERNEL(CPU, quint8);
+REGISTER_KERNEL(CPU, quint16);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -242,6 +257,7 @@ REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, bool);
 // Currently we do not support filling strings and complex64 on GPU
 
 // A special GPU kernel for int32.
@@ -265,11 +281,25 @@ class ZerosLikeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
-                            {0}, 0, input.shape(), &out));
-    functor::SetZeroFunctor<Device, T> f;
-    f(ctx->eigen_device<Device>(), out->flat<T>());
+    const Device& d = ctx->eigen_device<Device>();
+    if (std::is_same<T, Variant>::value) {
+      OP_REQUIRES(
+          ctx, input.dims() == 0,
+          errors::InvalidArgument("ZerosLike non-scalar Tensor with "
+                                  "dtype=DT_VARIANT is not supported."));
+      const Variant& v = input.scalar<Variant>()();
+      Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
+      Variant* out_v = &(out.scalar<Variant>()());
+      OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(
+                              ctx, ZEROS_LIKE_VARIANT_UNARY_OP, v, out_v));
+      ctx->set_output(0, out);
+    } else {
+      Tensor* out = nullptr;
+      OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                              {0}, 0, input.shape(), &out));
+      functor::SetZeroFunctor<Device, T> f;
+      f(d, out->flat<T>());
+    }
   }
 };
 
@@ -280,6 +310,7 @@ class ZerosLikeOp : public OpKernel {
 
 #define REGISTER_CPU(type) REGISTER_KERNEL(type, CPU)
 TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
+REGISTER_CPU(Variant);
 #undef REGISTER_CPU
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -302,6 +333,7 @@ REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL(int64, GPU);
+REGISTER_KERNEL(Variant, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")

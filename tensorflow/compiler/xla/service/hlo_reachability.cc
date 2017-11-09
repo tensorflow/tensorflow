@@ -34,7 +34,10 @@ bool HloReachabilityMap::SetReachabilityToUnion(
   BitVector& bit_vector = GetBitVector(instruction);
   tmp_bit_vector_ = bit_vector;
 
-  bit_vector.SetToZero();
+  // If instruction is part of inputs, don't reset the bit_vector.
+  if (std::find(inputs.begin(), inputs.end(), instruction) == inputs.end()) {
+    bit_vector.SetToZero();
+  }
   bit_vector.Set(GetIndex(instruction));
   for (const HloInstruction* input : inputs) {
     bit_vector.OrWith(GetBitVector(input));

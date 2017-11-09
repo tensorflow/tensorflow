@@ -35,7 +35,7 @@ class LSTMExampleTest(test.TestCase):
     self.assertGreater(
         predicted_values[100, 4]
         - predicted_values[115, 4],  # Amplitude of fifth component
-        0.4)
+        0.2)
 
 
 if __name__ == "__main__":

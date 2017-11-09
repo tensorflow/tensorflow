@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 
 
 def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
@@ -128,20 +132,32 @@ def piecewise_constant(x, boundaries, values, name=None):
     and values[-1] when `x > boundaries[-1]`.
 
   Raises:
-    ValueError: if types of `x` and `buondaries` do not match, or types of all
-        `values` do not match.
+    ValueError: if types of `x` and `boundaries` do not match, or types of all
+        `values` do not match or
+        the number of elements in the lists does not match.
   """
+  if len(boundaries) != len(values) - 1:
+    raise ValueError(
+        "The length of boundaries should be 1 less than the length of values")
   with ops.name_scope(name, "PiecewiseConstant",
                       [x, boundaries, values, name]) as name:
     x = ops.convert_to_tensor(x)
     # Avoid explicit conversion to x's dtype. This could result in faulty
     # comparisons, for example if floats are converted to integers.
     boundaries = ops.convert_n_to_tensor(boundaries)
-    for b in boundaries:
+    for i, b in enumerate(boundaries):
       if b.dtype.base_dtype != x.dtype.base_dtype:
-        raise ValueError(
-            "Boundaries (%s) must have the same dtype as x (%s)." % (
-                b.dtype.base_dtype, x.dtype.base_dtype))
+        # We can promote int32 boundaries to int64 without loss of precision.
+        # This covers the most common case where the user passes in boundaries
+        # as an array of Python integers.
+        if (b.dtype.base_dtype == dtypes.int32 and
+            x.dtype.base_dtype == dtypes.int64):
+          b = math_ops.cast(b, x.dtype.base_dtype)
+          boundaries[i] = b
+        else:
+          raise ValueError(
+              "Boundaries (%s) must have the same dtype as x (%s)." % (
+                  b.dtype.base_dtype, x.dtype.base_dtype))
     # TODO(rdipietro): Ensure that boundaries' elements are strictly increasing.
     values = ops.convert_n_to_tensor(values)
     for v in values[1:]:
@@ -149,14 +165,13 @@ def piecewise_constant(x, boundaries, values, name=None):
         raise ValueError(
             "Values must have elements all with the same dtype (%s vs %s)." % (
                 values[0].dtype.base_dtype, v.dtype.base_dtype))
-
-    pred_fn_pairs = {}
-    pred_fn_pairs[x <= boundaries[0]] = lambda: values[0]
-    pred_fn_pairs[x > boundaries[-1]] = lambda: values[-1]
+    pred_fn_pairs = []
+    pred_fn_pairs.append((x <= boundaries[0], lambda: values[0]))
+    pred_fn_pairs.append((x > boundaries[-1], lambda: values[-1]))
     for low, high, v in zip(boundaries[:-1], boundaries[1:], values[1:-1]):
       # Need to bind v here; can do this with lambda v=v: ...
       pred = (x > low) & (x <= high)
-      pred_fn_pairs[pred] = lambda v=v: v
+      pred_fn_pairs.append((pred, lambda v=v: v))
 
     # The default isn't needed here because our conditions are mutually
     # exclusive and exhaustive, but tf.case requires it.
@@ -251,8 +266,12 @@ def polynomial_decay(learning_rate, global_step, decay_steps,
     power = math_ops.cast(power, dtype)
     if cycle:
       # Find the first multiple of decay_steps that is bigger than global_step.
-      decay_steps = math_ops.multiply(decay_steps,
-                                      math_ops.ceil(global_step / decay_steps))
+      # If global_step is zero set the multiplier to 1
+      multiplier = control_flow_ops.cond(math_ops.equal(global_step, 0),
+                                         lambda: 1.0,
+                                         lambda: math_ops.ceil(
+                                             global_step / decay_steps))
+      decay_steps = math_ops.multiply(decay_steps, multiplier)
     else:
       # Make sure that the global_step used is not bigger than decay_steps.
       global_step = math_ops.minimum(global_step, decay_steps)
@@ -396,3 +415,226 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
     const = math_ops.cast(constant_op.constant(1), learning_rate.dtype)
     denom = math_ops.add(const, math_ops.multiply(decay_rate, p))
     return math_ops.div(learning_rate, denom, name=name)
+
+
+def cosine_decay(learning_rate, global_step, decay_steps, name=None):
+  """Applies cosine decay to the learning rate.
+
+  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
+  with Warm Restarts.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses.  This function applies a cosine decay function
+  to a provided initial learning rate.  It requires a `global_step` value to
+  compute the decayed learning rate.  You can just pass a TensorFlow variable
+  that you increment at each training step.
+
+  The function returns the decayed learning rate.  It is computed as:
+  ```python
+  global_step = min(global_step, decay_steps)
+  decayed = 0.5 * (1 + cos(pi * global_step / decay_steps))
+  decayed_learning_rate = learning_rate * decayed
+  ```
+
+  Example usage:
+  ```python
+  decay_steps = 1000
+  lr_decayed = cosine_decay(learning_rate, global_step, decay_steps)
+  ```
+
+  Args:
+    learning_rate: A scalar `float32` or `float64` Tensor or a Python number.
+      The initial learning rate.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Global step to use for the decay computation.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Number of steps to decay over.
+    name: String. Optional name of the operation.  Defaults to 'CosineDecay'.
+  Returns:
+    A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+    learning rate.
+  Raises:
+    ValueError: if `global_step` is not supplied.
+  """
+  if global_step is None:
+    raise ValueError("cosine decay requires global_step")
+  with ops.name_scope(name, "CosineDecay",
+                      [learning_rate, global_step]) as name:
+    learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
+    dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
+    decay_steps = math_ops.cast(decay_steps, dtype)
+    global_step = math_ops.minimum(global_step, decay_steps)
+    completed_fraction = global_step / decay_steps
+    cosine_decayed = 0.5 * (
+        1.0 + math_ops.cos(constant_op.constant(math.pi) * completed_fraction))
+
+    return math_ops.multiply(learning_rate, cosine_decayed)
+
+
+def linear_cosine_decay(learning_rate, global_step, decay_steps,
+                        num_periods=0.5, alpha=0.0, beta=0.001,
+                        name=None):
+  """Applies linear cosine decay to the learning rate.
+
+  See [Bello et al., ICML2017] Neural Optimizer Search with RL.
+  https://arxiv.org/abs/1709.07417
+
+  Note that linear cosine decay is more aggressive than cosine decay and
+  larger initial learning rates can typically be used.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses.  This function applies a linear cosine decay function
+  to a provided initial learning rate.  It requires a `global_step` value to
+  compute the decayed learning rate.  You can just pass a TensorFlow variable
+  that you increment at each training step.
+
+  The function returns the decayed learning rate.  It is computed as:
+  ```python
+  global_step = min(global_step, decay_steps)
+  linear_decay = (decay_steps - global_step) / decay_steps)
+  cosine_decay = 0.5 * (
+      1 + cos(pi * 2 * num_periods * global_step / decay_steps))
+  decayed = (alpha + linear_decay) * cosine_decay + beta
+  decayed_learning_rate = learning_rate * decayed
+  ```
+
+  Example usage:
+  ```python
+  decay_steps = 1000
+  lr_decayed = linear_cosine_decay(learning_rate, global_step, decay_steps)
+  ```
+
+  Args:
+    learning_rate: A scalar `float32` or `float64` Tensor or a Python number.
+      The initial learning rate.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Global step to use for the decay computation.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Number of steps to decay over.
+    num_periods: Number of periods in the cosine part of the decay.
+      See computation above.
+    alpha: See computation above.
+    beta: See computation above.
+    name: String.  Optional name of the operation.  Defaults to
+      'LinearCosineDecay'.
+  Returns:
+    A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+    learning rate.
+  Raises:
+    ValueError: if `global_step` is not supplied.
+  """
+  if global_step is None:
+    raise ValueError("linear cosine decay requires global_step")
+  with ops.name_scope(name, "LinearCosineDecay",
+                      [learning_rate, global_step]) as name:
+    learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
+    dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
+    decay_steps = math_ops.cast(decay_steps, dtype)
+    num_periods = math_ops.cast(num_periods, dtype)
+    global_step = math_ops.minimum(global_step, decay_steps)
+    alpha = math_ops.cast(alpha, dtype)
+    beta = math_ops.cast(beta, dtype)
+
+    linear_decayed = (decay_steps - global_step) / decay_steps
+    completed_fraction = global_step / decay_steps
+    fraction = 2.0 * num_periods * completed_fraction
+    cosine_decayed = 0.5 * (
+        1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
+
+    linear_cosine_decayed = (alpha + linear_decayed) * cosine_decayed + beta
+    return math_ops.multiply(learning_rate, linear_cosine_decayed, name=name)
+
+
+def noisy_linear_cosine_decay(learning_rate, global_step, decay_steps,
+                              initial_variance=1.0, variance_decay=0.55,
+                              num_periods=0.5, alpha=0.0, beta=0.001,
+                              name=None):
+  """Applies noisy linear cosine decay to the learning rate.
+
+  See [Bello et al., ICML2017] Neural Optimizer Search with RL.
+  https://arxiv.org/abs/1709.07417
+
+  Note that linear cosine decay is more aggressive than cosine decay and
+  larger initial learning rates can typically be used.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses.  This function applies a noisy linear
+  cosine decay function to a provided initial learning rate.
+  It requires a `global_step` value to compute the decayed learning rate.
+  You can just pass a TensorFlow variable that you increment at each
+  training step.
+
+  The function returns the decayed learning rate.  It is computed as:
+  ```python
+  global_step = min(global_step, decay_steps)
+  linear_decay = (decay_steps - global_step) / decay_steps)
+  cosine_decay = 0.5 * (
+      1 + cos(pi * 2 * num_periods * global_step / decay_steps))
+  decayed = (alpha + linear_decay + eps_t) * cosine_decay + beta
+  decayed_learning_rate = learning_rate * decayed
+  ```
+  where eps_t is 0-centered gaussian noise with variance
+  initial_variance / (1 + global_step) ** variance_decay
+
+  Example usage:
+  ```python
+  decay_steps = 1000
+  lr_decayed = noisy_linear_cosine_decay(
+    learning_rate, global_step, decay_steps)
+  ```
+
+  Args:
+    learning_rate: A scalar `float32` or `float64` Tensor or a Python number.
+      The initial learning rate.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Global step to use for the decay computation.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Number of steps to decay over.
+    initial_variance: initial variance for the noise. See computation above.
+    variance_decay: decay for the noise's variance. See computation above.
+    num_periods: Number of periods in the cosine part of the decay.
+      See computation above.
+    alpha: See computation above.
+    beta: See computation above.
+    name: String.  Optional name of the operation.  Defaults to
+      'NoisyLinearCosineDecay'.
+  Returns:
+    A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+    learning rate.
+  Raises:
+    ValueError: if `global_step` is not supplied.
+  """
+  if global_step is None:
+    raise ValueError("noisy linear cosine decay requires global_step")
+  with ops.name_scope(name, "NoisyLinearCosineDecay",
+                      [learning_rate, global_step]) as name:
+    learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
+    dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
+    decay_steps = math_ops.cast(decay_steps, dtype)
+    global_step = math_ops.minimum(global_step, decay_steps)
+    initial_variance = math_ops.cast(initial_variance, dtype)
+    variance_decay = math_ops.cast(variance_decay, dtype)
+    num_periods = math_ops.cast(num_periods, dtype)
+    alpha = math_ops.cast(alpha, dtype)
+    beta = math_ops.cast(beta, dtype)
+
+    linear_decayed = (decay_steps - global_step) / decay_steps
+    variance = initial_variance / (
+        math_ops.pow(1.0 + global_step, variance_decay))
+    std = math_ops.sqrt(variance)
+    noisy_linear_decayed = (
+        linear_decayed + random_ops.random_normal(
+            linear_decayed.shape, stddev=std))
+
+    completed_fraction = global_step / decay_steps
+    fraction = 2.0 * num_periods * completed_fraction
+    cosine_decayed = 0.5 * (
+        1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
+    noisy_linear_cosine_decayed = (
+        (alpha + noisy_linear_decayed) * cosine_decayed + beta)
+
+    return math_ops.multiply(
+        learning_rate, noisy_linear_cosine_decayed, name=name)

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,9 @@ namespace grappler {
 // nodes, and potentially a set of nodes to feed.
 // TODO(volunteer_needed): turn this struct into a class.
 struct GrapplerItem {
+  GrapplerItem() {}
+  GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef);
+
   string id;  // A unique id for this item
 
   // Inputs
@@ -46,6 +50,11 @@ struct GrapplerItem {
   // Expected initialization time in seconds, or 0 if unknown
   int64 expected_init_time = 0;
 
+  // Save/restore ops (if any)
+  string save_op;
+  string restore_op;
+  string save_restore_loc_tensor;
+
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;
 
@@ -57,11 +66,20 @@ struct GrapplerItem {
   std::vector<const NodeDef*> InitOpsFanin() const;
   // Return the set of variables accessed during a regular train/inference step.
   std::vector<const NodeDef*> MainVariables() const;
+  // Return a set of node names that must be preserved.
+  std::unordered_set<string> NodesToPreserve() const;
 };
 
 // Return the transitive fanin of a set of terminal nodes.
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes);
+
+// Return the transitive fanin of a set of terminal nodes. Sets 'ill_formed' to
+// true if one of the node is missing in the graph, or some node inputs don't
+// exist.
+std::vector<const NodeDef*> ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    bool* ill_formed);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

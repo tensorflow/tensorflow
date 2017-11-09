@@ -8,7 +8,7 @@ seem easy because our brains are incredibly good at understanding images.
 In the last few years the field of machine learning has made tremendous
 progress on addressing these difficult problems. In particular, we've
 found that a kind of model called a deep
-[convolutional neural network](http://colah.github.io/posts/2014-07-Conv-Nets-Modular/)
+[convolutional neural network](https://colah.github.io/posts/2014-07-Conv-Nets-Modular/)
 can achieve reasonable performance on hard visual recognition tasks --
 matching or exceeding human performance in some domains.
 
@@ -23,11 +23,11 @@ these models but the results are still hard to reproduce.
 We're now taking the next step by releasing code for running image recognition
 on our latest model, [Inception-v3].
 
-[QuocNet]: http://static.googleusercontent.com/media/research.google.com/en//archive/unsupervised_icml2012.pdf
-[AlexNet]: http://www.cs.toronto.edu/~fritz/absps/imagenet.pdf
-[Inception (GoogLeNet)]: http://arxiv.org/abs/1409.4842
-[BN-Inception-v2]: http://arxiv.org/abs/1502.03167
-[Inception-v3]: http://arxiv.org/abs/1512.00567
+[QuocNet]: https://static.googleusercontent.com/media/research.google.com/en//archive/unsupervised_icml2012.pdf
+[AlexNet]: https://www.cs.toronto.edu/~fritz/absps/imagenet.pdf
+[Inception (GoogLeNet)]: https://arxiv.org/abs/1409.4842
+[BN-Inception-v2]: https://arxiv.org/abs/1502.03167
+[Inception-v3]: https://arxiv.org/abs/1512.00567
 
 Inception-v3 is trained for the [ImageNet] Large Visual Recognition Challenge
 using the data from 2012. This is a standard task in computer vision,
@@ -51,7 +51,7 @@ Andrej Karpathy who attempted to measure his own performance. He reached
 
 [ImageNet]: http://image-net.org/
 [1000 classes]: http://image-net.org/challenges/LSVRC/2014/browse-synsets
-[blog post]: http://karpathy.github.io/2014/09/02/what-i-learned-from-competing-against-a-convnet-on-imagenet/
+[blog post]: https://karpathy.github.io/2014/09/02/what-i-learned-from-competing-against-a-convnet-on-imagenet/
 
 This tutorial will teach you how to use [Inception-v3]. You'll learn how to
 classify images into [1000 classes] in Python or C++. We'll also discuss how to
@@ -433,7 +433,7 @@ TensorFlow within your own products.
 should be able to transfer some of that understanding to solving related
 problems.  One way to perform transfer learning is to remove the final
 classification layer of the network and extract
-the [next-to-last layer of the CNN](http://arxiv.org/abs/1310.1531), in this case a 2048 dimensional vector.
+the [next-to-last layer of the CNN](https://arxiv.org/abs/1310.1531), in this case a 2048 dimensional vector.
 There's a guide to doing this @{$image_retraining$in the how-to section}.
 
 
@@ -443,7 +443,7 @@ To learn about neural networks in general, Michael Nielsen's
 [free online book](http://neuralnetworksanddeeplearning.com/chap1.html)
 is an excellent resource. For convolutional neural networks in particular,
 Chris Olah has some
-[nice blog posts](http://colah.github.io/posts/2014-07-Conv-Nets-Modular/),
+[nice blog posts](https://colah.github.io/posts/2014-07-Conv-Nets-Modular/),
 and Michael Nielsen's book has a
 [great chapter](http://neuralnetworksanddeeplearning.com/chap6.html)
 covering them.

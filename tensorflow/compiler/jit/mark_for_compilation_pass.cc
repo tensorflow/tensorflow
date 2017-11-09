@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -176,8 +177,11 @@ Status FindCompilationCandidates(
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
     std::unordered_set<Node*>* candidates) {
   OptimizerOptions opts;
-  std::unique_ptr<FunctionLibraryRuntime> lib_runtime(NewFunctionLibraryRuntime(
-      nullptr, env, nullptr, TF_GRAPH_DEF_VERSION, flib_def, opts));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
+                                        flib_def, opts));
+  FunctionLibraryRuntime* lib_runtime =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
   for (Node* node : graph.op_nodes()) {
     DeviceType device_type("");
@@ -191,7 +195,7 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
+        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime)) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
               << ": " << node->type_string();
       continue;
@@ -203,7 +207,7 @@ Status FindCompilationCandidates(
       continue;
     }
     if (node->type_string() == "While" &&
-        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime.get())) {
+        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
       continue;
     }
     candidates->insert(node);
@@ -216,6 +220,43 @@ struct Cluster {
   // graph.
   int representative = -1;
 };
+
+// Returns a string describing how an edge from src to dst would
+// create a cycle.
+string DescribeCycle(const GraphCycles& cycles, const Graph& graph, int src,
+                     int dst) {
+  int32 max_path_size = graph.num_node_ids() + 1;
+  std::vector<int32> path(max_path_size);
+  int32 path_size = cycles.FindPath(dst, src, max_path_size, path.data());
+  if (path_size == 0) {
+    return "";
+  }
+
+  auto node_name = [&cycles, &graph](int node_id) {
+    auto* node = graph.FindNodeId(node_id);
+    if (node == nullptr) {
+      return string("(null)");
+    }
+    return node->name();
+  };
+
+  string description;
+  strings::StrAppend(&description, "Edge from ", node_name(src), " to ",
+                     node_name(dst), " would create a cycle.\n");
+  path.resize(path_size);
+  for (int32 node_id : path) {
+    string ascii_art;
+    if (node_id == dst) {
+      ascii_art = "+-> ";
+    } else if (node_id != src) {
+      ascii_art = "|   ";
+    } else {
+      ascii_art = "+-- ";
+    }
+    strings::StrAppend(&description, ascii_art, node_name(node_id), "\n");
+  }
+  return description;
+}
 
 }  // anonymous namespace
 
@@ -351,9 +392,11 @@ Status MarkForCompilationPass::RunImpl(
       // Lift edges to an "Enter" node to the corresponding frame node.
       const string& frame_name =
           control_flow_info[edge->dst()->id()].frame_name;
-      if (!cycles.InsertEdge(edge->src()->id(),
-                             GetOrAddFrameNodeId(frame_name))) {
-        return errors::Internal("Cycle detected when adding enter->frame edge");
+      int dst = GetOrAddFrameNodeId(frame_name);
+      if (!cycles.InsertEdge(edge->src()->id(), dst)) {
+        return errors::Internal(
+            "Cycle detected when adding enter->frame edge: ",
+            DescribeCycle(cycles, *graph, edge->src()->id(), dst));
       }
       continue;
     }
@@ -361,9 +404,11 @@ Status MarkForCompilationPass::RunImpl(
       // Lift edges from an "Exit" node to the corresponding frame node.
       const string& frame_name =
           control_flow_info[edge->src()->id()].frame_name;
-      if (!cycles.InsertEdge(GetOrAddFrameNodeId(frame_name),
-                             edge->dst()->id())) {
-        return errors::Internal("Cycle detected when adding frame->exit edge");
+      int src = GetOrAddFrameNodeId(frame_name);
+      if (!cycles.InsertEdge(src, edge->dst()->id())) {
+        return errors::Internal(
+            "Cycle detected when adding frame->exit edge: ",
+            DescribeCycle(cycles, *graph, src, edge->dst()->id()));
       }
       // Drop the original edge.
       continue;
@@ -377,7 +422,8 @@ Status MarkForCompilationPass::RunImpl(
       // a control flow operator.
       return errors::Internal(
           "Found cycle in graph without control flow operator during XLA "
-          "compilation.");
+          "compilation: ",
+          DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id()));
     }
   }
 
@@ -514,6 +560,7 @@ Status MarkForCompilationPass::RunImpl(
         name = strings::StrCat("cluster_", cluster_sequence_num++);
       }
       n->AddAttr(kXlaClusterAttr, name);
+      VLOG(3) << "Assigning node " << n->name() << " to cluster " << name;
     }
   }
 

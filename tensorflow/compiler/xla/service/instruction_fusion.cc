@@ -32,17 +32,16 @@ namespace xla {
     const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     // Cheap instructions.
-    case HloOpcode::kAbs:
     case HloOpcode::kAdd:
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConstant:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
-    case HloOpcode::kCos:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kEq:
@@ -50,12 +49,13 @@ namespace xla {
     case HloOpcode::kGe:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kGt:
+    case HloOpcode::kImag:
     case HloOpcode::kInfeed:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalNot:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -64,20 +64,32 @@ namespace xla {
     case HloOpcode::kNegate:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
+    case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return false;
 
+    // Cheap instructions for reals, but expensive for complex.
+    case HloOpcode::kAbs:
+    case HloOpcode::kCos:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+      return ShapeUtil::ElementIsComplex(instruction.shape());
+
     // Expensive instructions.
+    case HloOpcode::kAtan2:
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kCall:
     case HloOpcode::kConvolution:
@@ -87,7 +99,6 @@ namespace xla {
     case HloOpcode::kDot:
     case HloOpcode::kExp:
     case HloOpcode::kFusion:
-    case HloOpcode::kIndex:
     case HloOpcode::kLog:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
@@ -100,7 +111,6 @@ namespace xla {
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
-    case HloOpcode::kUpdate:
     case HloOpcode::kWhile:
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
@@ -110,19 +120,11 @@ namespace xla {
   return false;
 }
 
-namespace {
-// Returns true if fusing producer into consumer would cause producer to be
-// duplicated. This is the case if producer has uses other than consumer.
-bool FusionWouldDuplicate(const HloInstruction& producer,
-                          const HloInstruction& consumer) {
-  return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
-}
-
 // An "effectively unary" operation is one that has one "large"
 // input with the others being negligible in terms of memory usage.
 // We use "has a smaller true rank than the output" as a heuristic
 // for "negligible" memory usage.
-bool EffectivelyUnary(HloInstruction* hlo) {
+bool InstructionFusion::EffectivelyUnary(HloInstruction* hlo) {
   int64 output_rank = 0;
   ShapeUtil::ForEachSubshape(
       hlo->shape(),
@@ -144,7 +146,6 @@ bool EffectivelyUnary(HloInstruction* hlo) {
                                 output_rank;
                        }) <= 1;
 }
-}  // namespace
 
 bool InstructionFusion::CanFuseOnAllPaths(
     const HloReachabilityMap& reachability_map, HloInstruction* producer,
@@ -210,16 +211,12 @@ bool InstructionFusion::CanFuseOnAllPaths(
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
-  bool changed = false;
+  VLOG(2) << "Before instruction fusion:";
+  XLA_VLOG_LINES(2, module->ToString());
 
-  std::vector<HloComputation*> computations;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(computation.get());
-  }
-  for (auto& computation : computations) {
+  bool changed = false;
+  module_ = module;
+  for (auto* computation : module->MakeNonfusionComputations()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
 
@@ -242,7 +239,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     DoNotFuseSet do_not_fuse;
     auto reachability = computation->ComputeReachability();
 
-    auto cheap_to_duplicate = [](HloInstruction* producer) {
+    auto cheap_to_duplicate = [this](HloInstruction* producer) {
       if (producer->opcode() == HloOpcode::kBroadcast) {
         return true;
       }
@@ -385,6 +382,10 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       }
     }
   }
+
+  VLOG(2) << "After instruction fusion:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   return changed;
 }
 
@@ -392,18 +393,21 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
                                         HloInstruction* consumer) {
   HloInstruction* fusion_instruction;
 
-  VLOG(2) << "Fusing " << producer << " into " << consumer;
-
+  VLOG(2) << "Fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+  auto kind = ChooseKind(producer, consumer);
   if (consumer->opcode() == HloOpcode::kFusion) {
     fusion_instruction = consumer;
+    if (kind != fusion_instruction->fusion_kind()) {
+      fusion_instruction->set_fusion_kind(kind);
+    }
   } else {
-    fusion_instruction =
-        computation_->AddInstruction(HloInstruction::CreateFusion(
-            consumer->shape(), ChooseKind(producer, consumer), consumer));
+    fusion_instruction = computation_->AddInstruction(
+        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
   }
-  fusion_instruction->FuseInstruction(producer);
 
+  fusion_instruction->FuseInstruction(producer);
   return fusion_instruction;
 }
 
@@ -418,14 +422,8 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   if (consumer->opcode() == HloOpcode::kFusion &&
       consumer->fusion_kind() != HloInstruction::FusionKind::kLoop &&
-      consumer->fusion_kind() != HloInstruction::FusionKind::kInput) {
-    return false;
-  }
-
-  // Cost condition: not fuse (expensive producers) and (consumers who reuse
-  // operand elements).
-  if (consumer->ReusesOperandElements(operand_index) &&
-      is_expensive_(*producer)) {
+      consumer->fusion_kind() != HloInstruction::FusionKind::kInput &&
+      consumer->fusion_kind() != HloInstruction::FusionKind::kOutput) {
     return false;
   }
 

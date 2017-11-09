@@ -28,7 +28,7 @@ namespace {
 class AutoParallelTest : public ::testing::Test {};
 
 TEST_F(AutoParallelTest, SimpleParallel) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope s = tensorflow::Scope::DisabledShapeInferenceScope();
   Output constant_a = ops::Const(s.WithOpName("constant_a"), 1.0f, {1});
   Output constant_b = ops::Const(s.WithOpName("constant_b"), 1, {1});
   Output var = ops::Variable(s.WithOpName("var"), {1}, DT_FLOAT);

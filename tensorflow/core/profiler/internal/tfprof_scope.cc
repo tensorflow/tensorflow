@@ -34,8 +34,8 @@ ScopeNode* TFScope::CreateParentNode(const string& name) {
   node_defs_.push_back(std::unique_ptr<NodeDef>(new NodeDef()));
   node_defs_.back()->set_name(name);
   node_defs_.back()->set_op(kTFScopeParent);
-  parent_nodes_[name] =
-      std::unique_ptr<TFGraphNode>(new TFGraphNode(node_defs_.back().get()));
+  parent_nodes_[name] = std::unique_ptr<TFGraphNode>(
+      new TFGraphNode(node_defs_.back().get(), -1, nullptr));
   nodes_map_[name] =
       std::unique_ptr<ScopeNode>(new ScopeNode(parent_nodes_[name].get()));
   return nodes_map_[name].get();
@@ -78,8 +78,13 @@ void TFScope::Build() {
 }
 
 const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
-  std::vector<ScopeNode*> roots = Account(root_->children, opts);
   root_->ResetTotalStats();
+  if (opts.output_type == kOutput[3]) {
+    fprintf(stderr, "Only 'code' view supports pprof output now.\n");
+    return root_;
+  }
+
+  std::vector<ScopeNode*> roots = Account(root_->children, opts);
   root_->show_children.clear();
   for (ScopeNode* n : roots) {
     root_->AggregateTotalStats(n);

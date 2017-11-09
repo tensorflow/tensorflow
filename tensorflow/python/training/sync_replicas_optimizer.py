@@ -127,7 +127,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
   To use SyncReplicasOptimizer with an `Estimator`, you need to send
   sync_replicas_hook while calling the fit.
-  ```
+  ```python
   my_estimator = DNNClassifier(..., optimizer=opt)
   my_estimator.fit(..., hooks=[sync_replicas_hook])
   ```
@@ -373,6 +373,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       The `Variable` for the slot if it was created, `None` otherwise.
     """
     return self._opt.get_slot(*args, **kwargs)
+
+  def variables(self):
+    """Fetches a list of optimizer variables in the default graph.
+
+    This wraps `variables()` from the actual optimizer. It does not include
+    the `SyncReplicasOptimizer`'s local step.
+
+    Returns:
+      A list of variables.
+    """
+    return self._opt.variables()
 
   def get_slot_names(self, *args, **kwargs):
     """Return a list of the names of slots created by the `Optimizer`.

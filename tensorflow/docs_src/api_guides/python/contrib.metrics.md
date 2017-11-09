@@ -64,7 +64,7 @@ sess.run(tf.local_variables_initializer())
 for batch in range(num_batches):
   sess.run([update_op_acc, update_op_error])
 
-accuracy, mean_absolute_error = sess.run([accuracy, mean_absolute_error])
+accuracy, error = sess.run([accuracy, error])
 ```
 
 Note that when evaluating the same metric multiple times on different inputs,

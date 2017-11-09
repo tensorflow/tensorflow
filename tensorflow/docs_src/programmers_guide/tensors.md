@@ -29,8 +29,8 @@ Some types of tensors are special, and these will be covered in other
 units of the Programmer's guide. The main ones are:
 
   * `tf.Variable`
-  * `tf.Constant`
-  * `tf.Placeholder`
+  * `tf.constant`
+  * `tf.placeholder`
   * `tf.SparseTensor`
 
 With the exception of `tf.Variable`, the value of a tensor is immutable, which
@@ -64,7 +64,7 @@ The following snippet demonstrates creating a few rank 0 variables:
 mammal = tf.Variable("Elephant", tf.string)
 ignition = tf.Variable(451, tf.int16)
 floating = tf.Variable(3.14159265359, tf.float64)
-its_complicated = tf.Variable((12.3, -4.85), tf.complex64)
+its_complicated = tf.Variable(12.3 - 4.85j, tf.complex64)
 ```
 
 Note: A string is treated as a single item in TensorFlow, not as a sequence of
@@ -79,7 +79,7 @@ initial value. For example:
 mystr = tf.Variable(["Hello"], tf.string)
 cool_numbers  = tf.Variable([3.14159, 2.71828], tf.float32)
 first_primes = tf.Variable([2, 3, 5, 7, 11], tf.int32)
-its_very_complicated = tf.Variable([(12.3, -4.85), (7.5, -6.23)], tf.complex64)
+its_very_complicated = tf.Variable([12.3 - 4.85j, 7.5 - 6.23j], tf.complex64)
 ```
 
 
@@ -147,7 +147,7 @@ Passing a single number, however, returns a subvector of a matrix, as follows:
 
 
 ```python
-my_row_vetor = my_matrix[2]
+my_row_vector = my_matrix[2]
 my_column_vector = my_matrix[:, 3]
 ```
 
@@ -197,7 +197,7 @@ For example, here is how to make a vector of zeros with the same size as the
 number of columns in a given matrix:
 
 ``` python
-zeros = tf.zeros(tf.shape(my_matrix)[1])
+zeros = tf.zeros(my_matrix.shape[1])
 ```
 
 ### Changing the shape of a `tf.Tensor`
@@ -275,8 +275,8 @@ Graphs and Sessions for more information).
 
 Sometimes it is not possible to evaluate a `tf.Tensor` with no context because
 its value might depend on dynamic information that is not available. For
-example, tensors that depend on `Placeholder`s can't be evaluated without
-providing a value for the `Placeholder`.
+example, tensors that depend on `placeholder`s can't be evaluated without
+providing a value for the `placeholder`.
 
 ``` python
 p = tf.placeholder(tf.float32)

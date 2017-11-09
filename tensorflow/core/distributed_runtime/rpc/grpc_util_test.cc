@@ -38,12 +38,11 @@ grpc::ByteBuffer MakeBuffer(const string& str, int num_slices) {
   const size_t per_slice = (str.size() + num_slices - 1) / num_slices;
   for (size_t pos = 0; pos < str.size();) {
     const size_t n = std::min(str.size() - pos, per_slice);
-    auto slice = gpr_slice_from_copied_buffer(&str[pos], n);
-    slices.push_back(::grpc::Slice(slice, ::grpc::Slice::STEAL_REF));
+    slices.emplace_back(&str[pos], n);
     pos += n;
   }
   if (slices.empty()) {
-    slices.push_back(::grpc::Slice());
+    slices.emplace_back();
   }
   return ::grpc::ByteBuffer(&slices[0], slices.size());
 }
@@ -68,7 +67,20 @@ TEST(GrpcProto, Unparse) {
   proto.add_container("hello");
   proto.add_container("world");
   grpc::ByteBuffer buf;
-  GrpcUnparseProto(proto, &buf);
+  GrpcMaybeUnparseProto(proto, &buf);
+  CleanupAllRequest parsed;
+  ASSERT_TRUE(parsed.ParseFromString(ToString(buf)));
+  ASSERT_EQ(proto.DebugString(), parsed.DebugString());
+}
+
+TEST(GrpcProto, UnparseToString) {
+  CleanupAllRequest proto;
+  proto.add_container("hello");
+  proto.add_container("world");
+  string str;
+  CHECK(proto.SerializeToString(&str));
+  grpc::ByteBuffer buf;
+  GrpcMaybeUnparseProto(str, &buf);
   CleanupAllRequest parsed;
   ASSERT_TRUE(parsed.ParseFromString(ToString(buf)));
   ASSERT_EQ(proto.DebugString(), parsed.DebugString());
@@ -91,7 +103,33 @@ TEST(GrpcProto, Parse) {
     CleanupAllRequest proto = MakeProto(c.length);
     ::grpc::ByteBuffer src = MakeBuffer(proto.SerializeAsString(), c.slices);
     CleanupAllRequest parsed;
-    ASSERT_TRUE(GrpcParseProto(src, &parsed)) << c.length << " " << c.slices;
+    ASSERT_TRUE(GrpcMaybeParseProto(src, &parsed))
+        << c.length << " " << c.slices;
+    ASSERT_EQ(proto.DebugString(), parsed.DebugString());
+  }
+}
+
+TEST(GrpcProto, ParseFromString) {
+  // Test with serialization broken up into a bunch of slices.
+  struct Case {
+    int length;
+    int slices;
+  };
+  for (Case c : std::vector<Case>{
+           {0, 1},
+           {20, 1},
+           {100, 1},
+           {1 << 20, 1},
+           {100, 5},
+           {10000, 50},
+       }) {
+    CleanupAllRequest proto = MakeProto(c.length);
+    ::grpc::ByteBuffer src = MakeBuffer(proto.SerializeAsString(), c.slices);
+    string parsed_str;
+    CleanupAllRequest parsed;
+    ASSERT_TRUE(GrpcMaybeParseProto(src, &parsed_str))
+        << c.length << " " << c.slices;
+    ASSERT_TRUE(parsed.ParseFromString(parsed_str));
     ASSERT_EQ(proto.DebugString(), parsed.DebugString());
   }
 }
@@ -102,7 +140,7 @@ static void BM_UnparseGrpc(int iters, int size) {
   testing::StartTiming();
   for (int i = 0; i < iters; i++) {
     grpc::ByteBuffer buf;
-    GrpcUnparseProto(proto, &buf);
+    GrpcMaybeUnparseProto(proto, &buf);
   }
   testing::StopTiming();
 }
@@ -129,7 +167,7 @@ static void BM_ParseGrpc(int iters, int size, int num_slices) {
   testing::StartTiming();
 
   for (int i = 0; i < iters; i++) {
-    CHECK(GrpcParseProto(buf, &proto));
+    CHECK(GrpcMaybeParseProto(buf, &proto));
   }
 
   testing::StopTiming();

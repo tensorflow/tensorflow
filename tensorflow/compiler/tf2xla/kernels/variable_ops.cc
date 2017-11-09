@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -47,7 +48,6 @@ class ReadVariableOp : public XlaOpKernel {
   }
 };
 REGISTER_XLA_OP(Name("ReadVariableOp"), ReadVariableOp);
-REGISTER_XLA_OP(Name("_UnsafeReadVariable"), ReadVariableOp);
 
 class AssignVariableOp : public XlaOpKernel {
  public:
@@ -111,40 +111,10 @@ class ResourceGatherOp : public XlaOpKernel {
 
     auto indices = ctx->Input(1);
     auto indices_shape = ctx->InputShape(1);
-    const int num_indices = indices_shape.num_elements();
-
-    // Flatten the indices into 1-D.
-    auto indices_1d = builder->Reshape(indices, {num_indices});
-
-    // Compute the slice for each of these indices separately.
-    std::vector<xla::ComputationDataHandle> slices(num_indices);
-    for (int i = 0; i < num_indices; ++i) {
-      auto index = builder->Slice(indices_1d, {i}, {i + 1}, {1});
-
-      auto start_indices =
-          XlaHelpers::PadWithZeros(builder, index, resource_shape.dims() - 1);
-
-      auto slice_shape = resource_shape.dim_sizes();
-      slice_shape[0] = 1LL;
-
-      slices[i] =
-          builder->DynamicSlice(resource_handle, start_indices, slice_shape);
-    }
-
-    // Concatenate the slices into one tensor.
-    xla::ComputationDataHandle concat = builder->ConcatInDim(slices, 0);
-
-    // Compute the shape of the result tensor, which is:
-    //    indices.shape + resource.shape[1:]
-    TensorShape gather_shape = indices_shape;
-    gather_shape.AppendShape(resource_shape);
-    gather_shape.RemoveDim(indices_shape.dims());
-
-    // Reshape the concatenated slices into the shape expected of the result
-    // tensor.
-    xla::ComputationDataHandle gather =
-        builder->Reshape(concat, gather_shape.dim_sizes());
-
+    DataType index_type = ctx->input_type(1);
+    xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
+        ctx, resource_handle, resource_shape, indices, indices_shape, 0,
+        resource_dtype, index_type, builder);
     ctx->SetOutput(0, gather);
   }
 };

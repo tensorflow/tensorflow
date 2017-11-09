@@ -89,6 +89,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddBatchNormTrainingInstruction(
       const BatchNormTrainingRequest& batch_norm_training_request);
 
+  // Enqueues a batch norm inference instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddBatchNormInferenceInstruction(
+      const BatchNormInferenceRequest& batch_norm_inference_request);
+
   // Enqueues a batch norm grad instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddBatchNormGradInstruction(
       const BatchNormGradRequest& batch_norm_grad_request);
@@ -246,9 +250,11 @@ class UserComputation {
   StatusOr<std::shared_ptr<const ProgramShape>> ComputeProgramShape(
       VersionedComputationHandle::Version version) const;
 
-  // Returns true if the given data handle does not depend on any
-  // parameters. That is, the value can be computed at compile time.
-  StatusOr<bool> IsConstant(const ComputationDataHandle& handle);
+  // Returns true if the given data handle does not depend on any parameter with
+  // index higher then num_parameters. That is, the value can be computed at
+  // compile time if we know the first num_parameters arguments.
+  StatusOr<bool> IsConstant(const ComputationDataHandle& handle,
+                            int64 num_parameters);
 
   // Returns the output shape of the operation indicated by the given handle.
   StatusOr<Shape> GetShape(const ComputationDataHandle& handle);
@@ -256,6 +262,10 @@ class UserComputation {
   // Sets metadata on the Hlo instruction referenced by the given handle.
   Status SetOpMetadata(const ComputationDataHandle& handle,
                        const OpMetadata& metadata);
+
+  // Sets the device assignment on the Hlo instruction referenced by 'handle'.
+  Status SetOpSharding(const ComputationDataHandle& handle,
+                       const OpSharding& sharding);
 
   // Builds a HLO computation from the UserComputation. The parameter "resolver"
   // is a function which returns a pointer to the HloComputation corresponding

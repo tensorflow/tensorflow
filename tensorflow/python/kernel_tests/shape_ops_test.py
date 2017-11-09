@@ -411,14 +411,16 @@ class TileTest(test.TestCase):
       self.assertEqual(7, result)
 
   def testSimple(self):
-    with self.test_session():
-      inp = np.random.rand(4, 1).astype(np.float32)
-      a = constant_op.constant(inp)
-      tiled = array_ops.tile(a, [1, 4])
-      result = tiled.eval()
-    self.assertEqual(result.shape, (4, 4))
-    self.assertEqual([4, 4], tiled.get_shape())
-    self.assertTrue((result == np.tile(inp, (1, 4))).all())
+    # multiples could be int32 or int64
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        inp = np.random.rand(4, 1).astype(np.float32)
+        a = constant_op.constant(inp)
+        tiled = array_ops.tile(a, constant_op.constant([1, 4], dtype=dtype))
+        result = tiled.eval()
+      self.assertEqual(result.shape, (4, 4))
+      self.assertEqual([4, 4], tiled.get_shape())
+      self.assertTrue((result == np.tile(inp, (1, 4))).all())
 
   def testIdentityTileAndGrad(self):
     with self.test_session():
