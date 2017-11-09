@@ -825,8 +825,10 @@ message OpSharding {
     REPLICATED = 0;
     // This sharding is maximal - one device runs the entire operation.
     MAXIMAL = 1;
-    // Neither of the above; tile_shape and tile_assignment are both used.
-    OTHER = 2;
+    // This sharding is a tuple - only the tuple_shardings field is valid.
+    TUPLE = 2;
+    // None of the above; tile_shape and tile_assignment are both used.
+    OTHER = 3;
   }
   Type type = 1;
   // The shape of the sharded tile.
@@ -838,6 +840,13 @@ message OpSharding {
   // Flattened list of device IDs. The order of flattening is the same as used
   // by IndexUtil::MultiToLinearIndex(tile_assignment_shape).
   repeated int64 tile_assignment_devices = 4;
+  // If type == TUPLE, the sub-shardings, one per leaf node in the tuple shape,
+  // in pre-order. The tuple shape could be nested; here we store just a
+  // flattened list of all leaves in the tuple shape. Note that the tuple shape
+  // is not stored here; shardings do not store the shapes to which they are
+  // applied, this is inferred from the instruction this sharding gets attached
+  // to.
+  repeated OpSharding tuple_shardings = 5;
 }
 
 message OpRequest {
