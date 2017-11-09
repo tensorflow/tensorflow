@@ -833,8 +833,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     }
   }
 
-  if (node->input_size() > 0 && IsAggregate(*node) &&
-      !node_map->GetOutputs(node->name()).empty()) {
+  if (node->input_size() > 0 && IsAggregate(*node)) {
     // Discard aggregate nodes with a single input.
     if (node->input_size() == 1) {
       return node->input(0);
@@ -855,7 +854,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
         break;
       }
     }
-    if (all_equal) {
+    if (all_equal && node_map->GetNode(node->name() + "_const") == nullptr) {
       // 1. Create constant node with value N.
       const int N = node->input_size();
       const auto type = GetDataTypeFromAttr(*node, "T");
@@ -898,7 +897,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   // where all the inputs are Mul nodes. This pattern occurs frequently in
   // regularization terms for the gradients during training.
   if (node->input_size() > 1 && IsAggregate(*node) &&
-      !node_map->GetOutputs(node->name()).empty()) {
+      node_map->GetNode(node->name() + "_hoist") == nullptr) {
     // Determine the set of common factors if the input nodes are all Mul nodes.
     std::set<string> common_factors;
     int i = 0;
@@ -1011,8 +1010,9 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   }
 
   // Fold Conj into Transpose or ConjugateTranspose.
-  if (node->op() == "Conj" || node->op() == "Transpose" ||
-      node->op() == "ConjugateTranspose") {
+  if ((node->op() == "Conj" || node->op() == "Transpose" ||
+       node->op() == "ConjugateTranspose") &&
+      node_map->GetNode(node->name() + "_fused") == nullptr) {
     const NodeDef* input = node_map->GetNode(node->input(0));
     const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
     const NodeDef* conj_op = node->op() == "Conj" ? node : input;
