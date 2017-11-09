@@ -21,6 +21,8 @@ import math
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -229,8 +231,9 @@ class BatchDatasetTest(test.TestCase):
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
     iterator = (dataset_ops.Dataset.from_tensor_slices(components)
-                .map(lambda x: array_ops.fill([x], x)).dense_to_sparse_batch(
-                    4, [12]).make_initializable_iterator())
+                .map(lambda x: array_ops.fill([x], x)).apply(
+                    batching.dense_to_sparse_batch(4, [12]))
+                .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = sparse_tensor.SparseTensor(*iterator.get_next())
 
@@ -251,10 +254,52 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testDenseToSparseBatchDatasetWithUnknownShape(self):
+    components = np.random.randint(5, size=(40,)).astype(np.int32)
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components)
+                .map(lambda x: array_ops.fill([x, x], x)).apply(
+                    batching.dense_to_sparse_batch(
+                        4, [5, -1])).make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = sparse_tensor.SparseTensor(*iterator.get_next())
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+
+      for start in range(0, len(components), 4):
+        results = sess.run(get_next)
+        self.assertAllEqual(
+            [[i, j, z] for i, c in enumerate(components[start:start+4])
+             for j in range(c) for z in range(c)], results.indices)
+        self.assertAllEqual(
+            [c for c in components[start:start+4]
+             for _ in range(c) for _ in range(c)],
+            results.values)
+        self.assertAllEqual(
+            [min(4, len(components) - start),
+             5,
+             np.max(components[start:start+4])],
+            results.dense_shape)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testDenseToSparseBatchDatasetWithInvalidShape(self):
+    input_tensor = array_ops.constant([[1]])
+    iterator = (dataset_ops.Dataset.from_tensors(input_tensor)
+                .apply(batching.dense_to_sparse_batch(4, [-2]))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Dimension -2 must be >= -1"):
+        sess.run(init_op)
+
   def testDenseToSparseBatchDatasetShapeErrors(self):
     input_tensor = array_ops.placeholder(dtypes.int32)
-    iterator = (dataset_ops.Dataset.from_tensors(input_tensor)
-                .dense_to_sparse_batch(4, [12]).make_initializable_iterator())
+    iterator = (dataset_ops.Dataset.from_tensors(input_tensor).apply(
+        batching.dense_to_sparse_batch(4, [12])).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = sparse_tensor.SparseTensor(*iterator.get_next())
 
@@ -277,7 +322,7 @@ class BatchDatasetTest(test.TestCase):
     expected_types = (dtypes.int32,) * 3
     data = data.batch(2)
     self.assertEqual(expected_types, data.output_types)
-    data = data.unbatch()
+    data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
     iterator = data.make_one_shot_iterator()
@@ -296,7 +341,7 @@ class BatchDatasetTest(test.TestCase):
     expected_types = ((dtypes.int32,),) * 3
     data = data.batch(2)
     self.assertEqual(expected_types, data.output_types)
-    data = data.unbatch()
+    data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
     iterator = data.make_one_shot_iterator()
@@ -317,7 +362,7 @@ class BatchDatasetTest(test.TestCase):
     expected_types = ((dtypes.int32, dtypes.string),) * 3
     data = data.batch(2)
     self.assertAllEqual(expected_types, data.output_types)
-    data = data.unbatch()
+    data = data.apply(batching.unbatch())
     self.assertAllEqual(expected_types, data.output_types)
 
     iterator = data.make_one_shot_iterator()
@@ -332,6 +377,173 @@ class BatchDatasetTest(test.TestCase):
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
+
+  def testBatchAndDropRemainder(self):
+    components = (np.arange(7),
+                  np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
+                  np.array(37.0) * np.arange(7))
+
+    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components).apply(
+        batching.batch_and_drop_remainder(batch_size))
+                .make_initializable_iterator())
+
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      for test_batch_size in [1, 3, 7, 10]:
+        sess.run(iterator.initializer, feed_dict={batch_size: test_batch_size})
+        num_batches = 7 // test_batch_size
+        for i in range(num_batches):
+          result = sess.run(next_element)
+          for component, result_component in zip(components, result):
+            for j in range(test_batch_size):
+              self.assertAllEqual(component[(i * test_batch_size + j)],
+                                  result_component[j])
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(next_element)
+
+  def testBatchAndDropRemainderShapeInference(self):
+    components = (array_ops.placeholder(dtypes.int32), (array_ops.placeholder(
+        dtypes.int32, shape=[None]), array_ops.placeholder(
+            dtypes.int32, shape=[20, 30])))
+
+    # Test with a statically known batch size.
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components).apply(
+        batching.batch_and_drop_remainder(128)))
+
+    self.assertIs(None, dataset.output_shapes[0].ndims)
+    self.assertEqual([128], dataset.output_shapes[1][0].as_list())
+    self.assertEqual([128, 30], dataset.output_shapes[1][1].as_list())
+
+    # Test with a dynamic batch size: the static shape will be unknown, because
+    # `batch_size` is a placeholder.
+    batch_size = array_ops.placeholder(dtypes.int64)
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components).apply(
+        batching.batch_and_drop_remainder(batch_size)))
+
+    self.assertIs(None, dataset.output_shapes[0].ndims)
+    self.assertEqual([None], dataset.output_shapes[1][0].as_list())
+    self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
+
+  def testBatchAndMapDataset(self):
+    """Test a dataset that maps a TF function across its input elements."""
+    # The pipeline is TensorSliceDataset ->
+    # RepeatDataset(count) -> BatchAndMapDataset(square_3, batch_size).
+    components = (np.arange(7),
+                  np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
+                  np.array(37.0) * np.arange(7))
+
+    count = array_ops.placeholder(dtypes.int64, shape=[])
+    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components).repeat(count)
+                .apply(batching.map_and_batch(_map_fn, batch_size))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    self.assertEqual([[None] + list(c.shape[1:]) for c in components],
+                     [t.shape.as_list() for t in get_next])
+
+    with self.test_session() as sess:
+      # Batch of a finite input, where the batch_size divides the
+      # total number of elements.
+      sess.run(init_op, feed_dict={count: 28, batch_size: 14})
+      num_batches = (28 * 7) // 14
+      for i in range(num_batches):
+        result = sess.run(get_next)
+        for component, result_component in zip(components, result):
+          for j in range(14):
+            self.assertAllEqual(component[(i*14 + j) % 7]**2,
+                                result_component[j])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # Batch of a finite input, where the batch_size does not
+      # divide the total number of elements.
+      sess.run(init_op, feed_dict={count: 14, batch_size: 8})
+
+      # We expect (num_batches - 1) full-sized batches.
+      num_batches = int(math.ceil((14 * 7) / 8))
+      for i in range(num_batches - 1):
+        result = sess.run(get_next)
+        for component, result_component in zip(components, result):
+          for j in range(8):
+            self.assertAllEqual(component[(i*8 + j) % 7]**2,
+                                result_component[j])
+      # The last batch should fail with `OutOfRange`.
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # Batch of an empty input should fail straight away.
+      sess.run(init_op, feed_dict={count: 0, batch_size: 8})
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # Empty batch should be an initialization time error.
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(init_op, feed_dict={count: 14, batch_size: 0})
+
+  def testBatchAndMapDatasetFails(self):
+    """Test a dataset that maps a TF function across its input elements."""
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.check_numerics(
+            constant_op.constant(1.0) / constant_op.constant(0.0), "oops"))
+    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+    iterator = (dataset.apply(batching.map_and_batch(lambda x: x, batch_size))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
+        sess.run(init_op, feed_dict={batch_size: 14})
+
+  def testBatchAndMapDatasetShapeMismatch(self):
+    """Test a dataset that maps a TF function across its input elements."""
+    def generator():
+      yield [1]
+      yield [2]
+      yield [3]
+      yield [[4, 5, 6]]
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator, output_types=dtypes.int32)
+    batch_size = 4
+    iterator = (
+        dataset.apply(batching.map_and_batch(lambda x: x, batch_size))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "number of elements does not match"):
+        sess.run(get_next)
+
+
+class BatchDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
+    components = (
+        np.arange(tensor_slice_len),
+        np.array([[1, 2, 3]]) * np.arange(tensor_slice_len)[:, np.newaxis],
+        np.array(multiplier) * np.arange(tensor_slice_len))
+
+    return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
+
+  def testCore(self):
+    tensor_slice_len = 8
+    batch_size = 2
+    num_outputs = tensor_slice_len // batch_size
+    self.run_core_tests(
+        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
+        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
+        num_outputs)
 
 
 if __name__ == "__main__":

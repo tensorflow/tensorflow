@@ -23,12 +23,20 @@ import tensorflow as tf
 import imports85  # pylint: disable=g-bad-import-order
 
 STEPS = 1000
+PRICE_NORM_FACTOR = 1000
 
 
 def main(argv):
   """Builds, trains, and evaluates the model."""
   assert len(argv) == 1
   (train, test) = imports85.dataset()
+
+  # Switch the labels to units of thousands for better convergence.
+  def normalize_price(features, labels):
+    return features, labels / PRICE_NORM_FACTOR
+
+  train = train.map(normalize_price)
+  test = test.map(normalize_price)
 
   # Build the training input_fn.
   def input_train():
@@ -59,7 +67,7 @@ def main(argv):
 
   # The second way, appropriate for an unspecified vocabulary, is to create a
   # hashed column. It will create a fixed length list of weights, and
-  # automatically assign each input categort to a weight. Due to the
+  # automatically assign each input category to a weight. Due to the
   # pseudo-randomness of the process, some weights may be shared between
   # categories, while others will remain unused.
   make_column = tf.feature_column.categorical_column_with_hash_bucket(
@@ -91,7 +99,8 @@ def main(argv):
 
   # Convert MSE to Root Mean Square Error (RMSE).
   print("\n" + 80 * "*")
-  print("\nRMS error for the test set: ${:.0f}".format(average_loss**0.5))
+  print("\nRMS error for the test set: ${:.0f}"
+        .format(PRICE_NORM_FACTOR * average_loss**0.5))
 
   print()
 

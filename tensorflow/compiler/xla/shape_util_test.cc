@@ -218,6 +218,10 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(8, ShapeUtil::ByteSizeOfPrimitiveType(F64));
   EXPECT_EQ(8, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(F64, {})));
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(F64, {10, 20})));
+
+  EXPECT_EQ(8, ShapeUtil::ByteSizeOfPrimitiveType(C64));
+  EXPECT_EQ(8, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {})));
+  EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
 }
 
 TEST(ShapeUtilTest, ByteSizeOfWithPadding) {
@@ -489,6 +493,10 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape1)));
   EXPECT_FALSE(std::get<0>(
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2)));
+}
+
+TEST(ShapeUtilTest, ShapeIs) {
+  EXPECT_FALSE(ShapeUtil::ShapeIs(ShapeUtil::MakeShape(PRED, {2}), PRED, {}));
 }
 
 TEST(ShapeUtilTest, ForEachIndex) {

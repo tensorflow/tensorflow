@@ -1494,13 +1494,13 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
     return;                           \
   }
 
-#define OP_REQUIRES_OK(CTX, STATUS)     \
-  do {                                  \
-    ::tensorflow::Status _s(STATUS);    \
-    if (!TF_PREDICT_TRUE(_s.ok())) {    \
-      (CTX)->CtxFailureWithWarning(_s); \
-      return;                           \
-    }                                   \
+#define OP_REQUIRES_OK(CTX, ...)          \
+  do {                                    \
+    ::tensorflow::Status _s(__VA_ARGS__); \
+    if (!TF_PREDICT_TRUE(_s.ok())) {      \
+      (CTX)->CtxFailureWithWarning(_s);   \
+      return;                             \
+    }                                     \
   } while (0)
 
 #define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK) \

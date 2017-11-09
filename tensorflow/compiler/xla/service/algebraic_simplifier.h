@@ -40,11 +40,13 @@ class AlgebraicSimplifier : public HloPassInterface {
   // bitcasts.
   AlgebraicSimplifier(bool is_layout_sensitive,
                       ValidBitcastCallback valid_bitcast_callback,
-                      bool enable_dot_simplification = true)
+                      bool enable_dot_simplification = true,
+                      bool enable_conv_simplification = true)
       : is_layout_sensitive_(is_layout_sensitive),
         valid_bitcast_callback_(std::move(valid_bitcast_callback)),
-        enable_dot_simplification_(enable_dot_simplification) {}
-  ~AlgebraicSimplifier() override {}
+        enable_dot_simplification_(enable_dot_simplification),
+        enable_conv_simplification_(enable_conv_simplification) {}
+  ~AlgebraicSimplifier() override = default;
   tensorflow::StringPiece name() const override { return "algsimp"; }
 
   // Run algebraic simplification on the given computation. Returns whether the
@@ -57,6 +59,9 @@ class AlgebraicSimplifier : public HloPassInterface {
 
   // Enable dot simplication on platforms where it is profitable.
   bool enable_dot_simplification_;
+
+  // Enable convolution simplication on platforms where it is profitable.
+  bool enable_conv_simplification_;
 };
 
 }  // namespace xla

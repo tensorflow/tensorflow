@@ -39,7 +39,8 @@ class ConvolutionDimensionNumbersTest : public ClientLibraryTestBase {};
 // Tests the convolution operation with invalid input dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
   auto dimension_numbers_status =
-      ComputationBuilder::CreateConvDimensionNumbers(0, 2, 2, 3, 0, 1, 2, 3);
+      ComputationBuilder::CreateConvDimensionNumbers(0, 2, 0, 2, 2, 3, 0, 1, 2,
+                                                     3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
               ::testing::HasSubstr("input are not unique"));
@@ -48,7 +49,8 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
 // Tests the convolution operation with invalid weight dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidWeightDimensionNumbers) {
   auto dimension_numbers_status =
-      ComputationBuilder::CreateConvDimensionNumbers(0, 1, 2, 3, 2, 3, 2, 3);
+      ComputationBuilder::CreateConvDimensionNumbers(0, 1, 0, 1, 2, 3, 2, 3, 2,
+                                                     3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
               ::testing::HasSubstr("weight are not unique"));
@@ -73,14 +75,18 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
   ConvolutionDimensionNumbers dim_nums =
       ComputationBuilder::CreateDefaultConvDimensionNumbers();
   // Swap batch_dimension and feature_dimension.
-  int64 tmp = dim_nums.batch_dimension();
-  dim_nums.set_batch_dimension(dim_nums.feature_dimension());
-  dim_nums.set_feature_dimension(tmp);
+  int64 old_input_batch_dim = dim_nums.input_batch_dimension();
+  int64 old_output_batch_dim = dim_nums.output_batch_dimension();
+  dim_nums.set_input_batch_dimension(dim_nums.input_feature_dimension());
+  dim_nums.set_output_batch_dimension(dim_nums.output_feature_dimension());
+  dim_nums.set_input_feature_dimension(old_input_batch_dim);
+  dim_nums.set_output_feature_dimension(old_output_batch_dim);
   // Swap kernel_input_feature_dimension and kernel_output_feature_dimension.
-  tmp = dim_nums.kernel_input_feature_dimension();
+  int64 old_kernel_input_feature_dim =
+      dim_nums.kernel_input_feature_dimension();
   dim_nums.set_kernel_input_feature_dimension(
       dim_nums.kernel_output_feature_dimension());
-  dim_nums.set_kernel_output_feature_dimension(tmp);
+  dim_nums.set_kernel_output_feature_dimension(old_kernel_input_feature_dim);
   builder.ConvWithGeneralDimensions(input, conv1, {1, 1}, Padding::kValid,
                                     dim_nums);
 

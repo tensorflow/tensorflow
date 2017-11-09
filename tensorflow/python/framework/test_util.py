@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import gc
 import math
 import random
 import re
@@ -47,6 +48,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -208,6 +210,71 @@ def NHWCToNCHW(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+def NHWCToNCHW_VECT_C(input_shape_or_tensor):
+  """Transforms the input from the NHWC layout to NCHW_VECT_C layout.
+
+  Note: Does not include quantization or type conversion steps, which should
+  be applied afterwards.
+
+  Args:
+    input_shape_or_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NCHW_VECT_C
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not evenly
+        divisible by 4.
+  """
+  permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  temp_shape = (input_shape_or_tensor.shape.as_list()
+                if is_tensor else input_shape_or_tensor)
+  if temp_shape[-1] % 4 != 0:
+    raise ValueError(
+        "Last dimension of input must be evenly divisible by 4 to convert to "
+        "NCHW_VECT_C.")
+  temp_shape[-1] //= 4
+  temp_shape.append(4)
+  permutation = permutations[len(temp_shape)]
+  if is_tensor:
+    t = array_ops.reshape(input_shape_or_tensor, temp_shape)
+    return array_ops.transpose(t, permutation)
+  else:
+    return [temp_shape[a] for a in permutation]
+
+
+def NCHW_VECT_CToNHWC(input_shape_or_tensor):
+  """Transforms the input from the NCHW_VECT_C layout to NHWC layout.
+
+  Note: Does not include de-quantization or type conversion steps, which should
+  be applied beforehand.
+
+  Args:
+    input_shape_or_tensor: a 5- or 6-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NHWC
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not 4.
+  """
+  permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  input_shape = (input_shape_or_tensor.shape.as_list()
+                 if is_tensor else input_shape_or_tensor)
+  if input_shape[-1] != 4:
+    raise ValueError("Last dimension of NCHW_VECT_C must be 4.")
+  permutation = permutations[len(input_shape)]
+  nhwc_shape = [input_shape[a] for a in permutation[:-1]]
+  nhwc_shape[-1] *= input_shape[-1]
+  if is_tensor:
+    t = array_ops.transpose(input_shape_or_tensor, permutation)
+    return array_ops.reshape(t, nhwc_shape)
+  else:
+    return nhwc_shape
+
+
 def NCHWToNHWC(input_tensor):
   """Converts the input from the NCHW format to NHWC.
 
@@ -243,6 +310,31 @@ def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
 # pylint: disable=protected-access
 
 
+def c_api_and_cuda_enabled():
+  return ops._USE_C_API and IsGoogleCudaEnabled()
+
+
+def skip_if(condition):
+  """Skips the decorated function if condition is or evaluates to True.
+
+  Args:
+    condition: Either an expression that can be used in "if not condition"
+               statement, or a callable whose result should be a boolean.
+  Returns:
+    The wrapped function
+  """
+  def real_skip_if(fn):
+    def wrapper(*args, **kwargs):
+      if callable(condition):
+        skip = condition()
+      else:
+        skip = condition
+      if not skip:
+        fn(*args, **kwargs)
+    return wrapper
+  return real_skip_if
+
+
 # TODO(skyewm): remove this eventually
 def disable_c_api(fn):
   """Decorator for disabling the C API on a test.
@@ -256,7 +348,9 @@ def disable_c_api(fn):
   Returns:
     The wrapped function
   """
-  return lambda *args, **kwargs: _use_c_api_wrapper(fn, False, *args, **kwargs)
+  def wrapper(*args, **kwargs):
+    _use_c_api_wrapper(fn, False, *args, **kwargs)
+  return wrapper
 
 
 # TODO(skyewm): remove this eventually
@@ -272,12 +366,130 @@ def enable_c_api(fn):
   Returns:
     The wrapped function
   """
-  return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
+  def wrapper(*args, **kwargs):
+    _use_c_api_wrapper(fn, True, *args, **kwargs)
+  return wrapper
 
 
-def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
-                                 use_gpu=False, force_gpu=False,
-                                 reset_test=True):
+# This decorator is a hacky way to run all the test methods in a decorated
+# class with and without C API enabled.
+# TODO(iga): Remove this and its uses once we switch to using C API by default.
+def with_c_api(cls):
+  """Adds methods that call original methods but with C API enabled.
+
+  Note this enables the C API in new methods after running the test class's
+  setup method. This can be a problem if some objects are created in it
+  before the C API is enabled.
+
+  Args:
+    cls: class to decorate
+
+  Returns:
+    cls with new test methods added
+  """
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name + "WithCApi", enable_c_api(value))
+  return cls
+
+
+class IsolateTest(object):
+  """A context manager which isolates resources in its block.
+
+  Provides an Eager-agnostic abstraction for preventing the sharing of
+  variables and other resources.
+
+  In graph mode, resource handle ops are only executed in a particular Session,
+  isolating them from resources with the same name in other Graphs. In Eager,
+  separate Sessions do not exist, so resources (particularly ResourceVariables)
+  would be shared implicitly if a resource of the same name were created
+  anywhere in a Python process. Multiple handles to the same resource would
+  cause several issues, and so this type of sharing will raise an exception.
+
+  Using resources with the same name in a single Python process may be useful
+  (especially for unit tests), so this context manager provides an abstraction
+  for isolating resources. Using a resource created in one Isolation environment
+  in another is an error.
+
+  Example usage in Eager mode:
+
+  ```python
+  import tensorflow as tf
+  # Import subject to change
+  from tensorflow.contrib.eager.python import tfe
+
+  tfe.enable_eager_execution()
+
+  for hyperparameter in [1, 2, 3]:
+    with tfe.IsolateTest():
+      v = tfe.Variable(name="v", initial_value=hyperparameter)
+      # train model, test results ...
+  ```
+
+  IsolateTest is currently exposed through contrib.eager, but it creates a new
+  default Graph and provides equivalent safety in graph mode.
+  """
+
+  def __init__(self):
+    if context.in_eager_mode() and tape.could_possibly_record():
+      raise ValueError("Cannot isolate Eager execution with an active tape.")
+    # In Eager, Graphs set a container which isolates resources, and maintain a
+    # VariableStore which caches ResourceVariable objects created through
+    # get_variable. So setting the default Graph has the side effect of
+    # isolating Eager resources.
+    with context.eager_mode():
+      # Create the graph in Eager mode, as this provides stricter semantics
+      # (i.e. has a unique container prefix). This prevents implicit sharing
+      # when a Graph-mode graph is created and then Eager mode is enabled (an
+      # error through enable_eager_execution, but common with context managers
+      # in unit tests).
+      self._graph_as_default_context_manager = ops.Graph().as_default()
+
+  def __enter__(self):
+    self._graph_as_default_context_manager.__enter__()
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    return self._graph_as_default_context_manager.__exit__(
+        type_arg, value_arg, traceback_arg)
+
+
+def assert_no_garbage_created(f):
+  """Test method decorator to assert that no garbage has been created.
+
+  Note that this decorator sets DEBUG_SAVEALL, which in some Python interpreters
+  cannot be un-set (i.e. will disable garbage collection for any other unit
+  tests in the same file/shard).
+
+  Args:
+    f: The function to decorate.
+  Returns:
+    The decorated function.
+  """
+
+  def decorator(self, **kwargs):
+    """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
+    gc.disable()
+    previous_debug_flags = gc.get_debug()
+    gc.set_debug(gc.DEBUG_SAVEALL)
+    gc.collect()
+    previous_garbage = len(gc.garbage)
+    f(self, **kwargs)
+    gc.collect()
+    # This will fail if any garbage has been created, typically because of a
+    # reference cycle.
+    self.assertEqual(previous_garbage, len(gc.garbage))
+    # TODO(allenl): Figure out why this debug flag reset doesn't work. It would
+    # be nice to be able to decorate arbitrary tests in a large test suite and
+    # not hold on to every object in other tests.
+    gc.set_debug(previous_debug_flags)
+    gc.enable()
+  return decorator
+
+
+def run_in_graph_and_eager_modes(
+    __unused__=None, graph=None, config=None,
+    use_gpu=False, force_gpu=False,
+    reset_test=True, assert_no_eager_garbage=False):
   """Runs the test in both graph and eager modes.
 
   Args:
@@ -288,7 +500,14 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
     use_gpu: If True, attempt to run as many ops as possible on GPU.
     force_gpu: If True, pin all ops to `/device:GPU:0`.
     reset_test: If True, tearDown and SetUp the test case again.
-
+    assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
+      collector and asserts that no extra garbage has been created when running
+      the test in eager mode. This will fail if there are reference cycles
+      (e.g. a = []; a.append(a)). Off by default because some tests may create
+      garbage for legitimate reasons (e.g. they define a class which inherits
+      from `object`), and because DEBUG_SAVEALL is sticky in some Python
+      interpreters (meaning that tests which rely on objects being collected
+      elsewhere in the unit test file will not work).
   Returns:
     Returns a decorator that will run the decorated test function
         using both a graph and using eager execution.
@@ -310,7 +529,7 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
         self.tearDown()
         self.setUp()
 
-      def run_eager_mode():
+      def run_eager_mode(self, **kwargs):
         if force_gpu:
           gpu_name = gpu_device_name()
           if not gpu_name:
@@ -324,10 +543,12 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
           with context.device("/device:CPU:0"):
             f(self, **kwargs)
 
-      eager_graph = graph or ops.Graph()
+      if assert_no_eager_garbage:
+        run_eager_mode = assert_no_garbage_created(run_eager_mode)
+
       with context.eager_mode():
-        with eager_graph.as_default():
-          run_eager_mode()
+        with IsolateTest():
+          run_eager_mode(self, **kwargs)
 
     return decorated
   return decorator
@@ -392,7 +613,6 @@ class TensorFlowTestCase(googletest.TestCase):
     self._cached_session = None
 
   def setUp(self):
-    logging.info("SET UP: %s" % str(self))
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
@@ -404,12 +624,11 @@ class TensorFlowTestCase(googletest.TestCase):
     # cleared first.
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
-    ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
+    random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
 
   def tearDown(self):
-    logging.info("TEAR DOWN: %s" % str(self))
     for thread in self._threads:
-      self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+      thread.check_termination()
 
     self._ClearCachedSession()
 
@@ -509,8 +728,10 @@ class TensorFlowTestCase(googletest.TestCase):
     elif isinstance(tensors, dict):
       assert not tensors, "Only support empty dict now."
       return dict()
+    elif tensors is None:
+      return None
     else:
-      raise ValueError("Unsupported type.")
+      raise ValueError("Unsupported type %s." % type(tensors))
 
   def evaluate(self, tensors):
     """Evaluates tensors and returns numpy values.
@@ -525,7 +746,11 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
-      return sess.run(tensors)
+      if sess is None:
+        with self.test_session() as sess:
+          return sess.run(tensors)
+      else:
+        return sess.run(tensors)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
@@ -663,6 +888,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self._thread = threading.Thread(target=self._protected_run)
       self._exception = None
 
+      self._is_thread_joined = False
+
     def _protected_run(self):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
@@ -685,6 +912,7 @@ class TensorFlowTestCase(googletest.TestCase):
         self._testcase.failureException: If the thread terminates with due to
           an exception.
       """
+      self._is_thread_joined = True
       self._thread.join()
       if self._exception is not None:
         self._testcase.fail("Error in checkedThread: %s" % str(self._exception))
@@ -699,6 +927,28 @@ class TensorFlowTestCase(googletest.TestCase):
         True if the thread is alive, otherwise False.
       """
       return self._thread.is_alive()
+
+    def check_termination(self):
+      """Returns whether the checked thread was properly used and did terminate.
+
+      Every checked thread should be "join"ed after starting, and before the
+      test tears down. If it is not joined, it is possible the thread will hang
+      and cause flaky failures in tests.
+
+      Raises:
+        self._testcase.failureException: If check_termination was called before
+        thread was joined.
+
+        RuntimeError: If the thread is not terminated. This means thread was not
+        joined with the main thread.
+      """
+      if self._is_thread_joined:
+        if self.is_alive():
+          raise RuntimeError(
+              "Thread was not joined with main thread, and is still running "
+              "when the test finished.")
+      else:
+        self._testcase.fail("A checked thread was not joined.")
 
   def checkedThread(self, target, args=None, kwargs=None):
     """Returns a Thread wrapper that asserts 'target' completes successfully.
@@ -734,8 +984,9 @@ class TensorFlowTestCase(googletest.TestCase):
       err: A float value.
       msg: An optional string message to append to the failure message.
     """
+    # f1 == f2 is needed here as we might have: f1, f2 = inf, inf
     self.assertTrue(
-        math.fabs(f1 - f2) <= err,
+        f1 == f2 or math.fabs(f1 - f2) <= err,
         "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
                                if msg is not None else ""))
 

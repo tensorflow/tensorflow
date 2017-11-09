@@ -201,7 +201,7 @@ def variable(name, shape=None, dtype=None, initializer=None,
                      else [ops.GraphKeys.GLOBAL_VARIABLES])
 
   # Remove duplicates
-  collections = set(collections)
+  collections = list(set(collections))
   getter = variable_scope.get_variable
   if custom_getter is not None:
     getter = functools.partial(custom_getter,

@@ -88,25 +88,10 @@ int64 RequiredSpace(const Shape& shape, bool allocate_space_for_deep_copy,
 }
 }  // namespace
 
-StatusOr<GlobalDataHandle> LocalService::AllocateBufferOnDevice(
-    const Shape& shape, int device_ordinal, bool allocate_space_for_deep_copy) {
-  int64 allocation_size = RequiredSpace(shape, allocate_space_for_deep_copy,
-                                        execute_backend_->transfer_manager());
-
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase allocation,
-                      execute_backend_->memory_allocator()->Allocate(
-                          device_ordinal, allocation_size));
-
-  return allocation_tracker_.Register(
-      execute_backend_.get(), device_ordinal, allocation, shape,
-      tensorflow::strings::StrCat("AllocateBufferOnDevice of size ",
-                                  allocation_size));
-}
-
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const ComputationHandle& computation,
     const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const Shape* result_layout, int device_ordinal, bool has_hybrid_result) {
+    const Shape* result_layout, int device_ordinal) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
                       computation_tracker_.Resolve(computation));
   VersionedComputationHandle versioned_handle =
@@ -148,8 +133,7 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, argument_layouts, &execution_options,
-                         has_hybrid_result));
+      CreateModuleConfig(*program_shape, argument_layouts, &execution_options));
 
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       execute_backend_->stream_executor(device_ordinal));

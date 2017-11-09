@@ -46,7 +46,7 @@ StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
 
 tensorflow::Status BufferLiveness::Analyze() {
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     if (computation->IsFusionComputation()) {
       continue;
     }
@@ -55,15 +55,15 @@ tensorflow::Status BufferLiveness::Analyze() {
     // element in other instruction's output.
     for (const auto& instruction : computation->instructions()) {
       for (const LogicalBuffer* aliased_buffer :
-           points_to_analysis_->GetPointsToSet(instruction.get())
+           points_to_analysis_->GetPointsToSet(instruction)
                .CreateFlattenedSet()) {
-        if (aliased_buffer->instruction() != instruction.get()) {
+        if (aliased_buffer->instruction() != instruction) {
           aliased_buffers_.insert(aliased_buffer);
         }
       }
     }
 
-    if (computation.get() == module_->entry_computation()) {
+    if (computation == module_->entry_computation()) {
       const HloInstruction* root = computation->root_instruction();
       maybe_live_out_buffers_ =
           points_to_analysis_->GetPointsToSet(root).CreateFlattenedSet();
@@ -123,7 +123,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
     if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
                                        b.instruction(), b.index(),
-                                       &points_to_analysis())) {
+                                       points_to_analysis())) {
       return false;
     }
   }

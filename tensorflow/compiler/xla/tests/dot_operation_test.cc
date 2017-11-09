@@ -347,7 +347,7 @@ XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTF) {
   TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
 }
 
-TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTT) {
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTT) {
   constexpr bool kLhsRowMajor = true;
   constexpr bool kRhsRowMajor = true;
   TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
@@ -357,7 +357,11 @@ XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF64) {
   TestNonsquareMatrixDot<double>();
 }
 
-TEST_F(DotOperationTest, ConcurrentMatMul) {
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64) {
+  TestNonsquareMatrixDot<complex64>();
+}
+
+XLA_TEST_F(DotOperationTest, ConcurrentMatMul) {
   ComputationBuilder builder(client_, TestName());
   auto matrix1 = builder.ConstantR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto matrix2 = builder.ConstantR2<float>({{5.0, 6.0}, {7.0, 8.0}});

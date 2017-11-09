@@ -200,6 +200,34 @@ TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
       node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input-0"));
 }
 
+TEST_F(LayoutOptimizerTest, Pad) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto c = ops::Const(s.WithOpName("c"), {1, 2, 3, 4, 5, 6, 7, 8}, {4, 2});
+  auto p = ops::Pad(s.WithOpName("p"), conv, c);
+  auto o = ops::Identity(s.WithOpName("o"), p);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  optimizer.set_num_gpus(1);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  NodeMap node_map(&output);
+
+  auto pad = node_map.GetNode("p");
+  EXPECT_EQ(pad->input(0), "Conv2D");
+
+  auto pad_const = node_map.GetNode("LayoutOptimizer-p-c");
+  EXPECT_TRUE(pad_const);
+  EXPECT_TRUE(pad_const->attr().find("value") != pad_const->attr().end());
+  Tensor tensor;
+  EXPECT_TRUE(
+      tensor.FromProto(pad_const->mutable_attr()->at({"value"}).tensor()));
+  Tensor tensor_expected(DT_INT32, {4, 2});
+  test::FillValues<int>(&tensor_expected, {1, 2, 7, 8, 3, 4, 5, 6});
+  test::ExpectTensorEqual<int>(tensor_expected, tensor);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

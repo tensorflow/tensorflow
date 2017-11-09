@@ -151,6 +151,13 @@ py_library(
 )
 
 py_library(
+    name = "cli_config",
+    srcs = ["cli/cli_config.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debugger_cli_common"],
+)
+
+py_library(
     name = "command_parser",
     srcs = ["cli/command_parser.py"],
     srcs_version = "PY2AND3",
@@ -197,6 +204,7 @@ py_library(
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_config",
         ":cli_shared",
         ":command_parser",
         ":debug_graphs",
@@ -249,6 +257,7 @@ py_library(
     srcs = ["cli/base_ui.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_config",
         ":command_parser",
         ":debugger_cli_common",
     ],
@@ -330,7 +339,6 @@ py_library(
         ":stepper_cli",
         ":tensor_format",
         ":ui_factory",
-        "@six_archive//:six",
     ],
 )
 
@@ -584,6 +592,7 @@ py_test(
     srcs = ["cli/readline_ui_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_config",
         ":debugger_cli_common",
         ":readline_ui",
         ":ui_factory",
@@ -726,6 +735,19 @@ py_test(
 )
 
 py_test(
+    name = "cli_config_test",
+    size = "small",
+    srcs = ["cli/cli_config_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cli_config",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "command_parser_test",
     size = "small",
     srcs = ["cli/command_parser_test.py"],
@@ -792,6 +814,7 @@ cuda_py_test(
     srcs = ["cli/analyzer_cli_test.py"],
     additional_deps = [
         ":analyzer_cli",
+        ":cli_config",
         ":command_parser",
         ":debug_data",
         ":debug_utils",
@@ -800,6 +823,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
@@ -873,8 +897,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
+        "no_oss",  # Test flaky due to port collisions.
         "no_windows",
-        "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
         "oss_serial",
     ],
@@ -940,6 +964,7 @@ py_test(
         ":cli_shared",
         ":debugger_cli_common",
         ":local_cli_wrapper",
+        ":ui_factory",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

@@ -104,11 +104,12 @@ string DeviceNameUtils::FullName(const string& job, int replica, int task,
   return DeviceName(job, replica, task, "/device:", type, id);
 }
 
-/* static */
-string DeviceNameUtils::LegacyName(const string& job, int replica, int task,
-                                   const string& type, int id) {
+namespace {
+string LegacyName(const string& job, int replica, int task, const string& type,
+                  int id) {
   return DeviceName(job, replica, task, "/", str_util::Lowercase(type), id);
 }
+}  // anonymous namespace
 
 bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   p->Clear();
@@ -182,6 +183,18 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
     }
   }
   return true;
+}
+
+/* static */
+string DeviceNameUtils::CanonicalizeDeviceName(StringPiece fullname) {
+  ParsedName parsed_name;
+  if (ParseLocalName(fullname, &parsed_name)) {
+    return ParsedNameToString(parsed_name);
+  }
+  if (ParseFullName(fullname, &parsed_name)) {
+    return ParsedNameToString(parsed_name);
+  }
+  return "";
 }
 
 /* static */
@@ -338,8 +351,16 @@ bool DeviceNameUtils::IsSameAddressSpace(StringPiece src, StringPiece dst) {
 
 /* static */
 string DeviceNameUtils::LocalName(StringPiece type, int id) {
+  return strings::StrCat("/device:", type, ":", id);
+}
+
+namespace {
+// Returns the legacy local device name given its "type" and "id" (which is
+// '/device:type:id').
+string LegacyLocalName(StringPiece type, int id) {
   return strings::StrCat(type, ":", id);
 }
+}  // anonymous namespace
 
 /* static */
 string DeviceNameUtils::LocalName(StringPiece fullname) {
@@ -353,12 +374,14 @@ bool DeviceNameUtils::ParseLocalName(StringPiece name, ParsedName* p) {
   if (!ConsumeDeviceType(&name, &p->type)) {
     return false;
   }
+  p->has_type = true;
   if (!str_util::ConsumePrefix(&name, ":")) {
     return false;
   }
   if (!ConsumeNumber(&name, &p->id)) {
     return false;
   }
+  p->has_id = true;
   return name.empty();
 }
 
@@ -393,8 +416,17 @@ std::vector<string> DeviceNameUtils::GetNamesForDeviceMappings(
   if (pn.has_job && pn.has_replica && pn.has_task && pn.has_type && pn.has_id) {
     return {
         DeviceNameUtils::FullName(pn.job, pn.replica, pn.task, pn.type, pn.id),
-        DeviceNameUtils::LegacyName(pn.job, pn.replica, pn.task, pn.type,
-                                    pn.id)};
+        LegacyName(pn.job, pn.replica, pn.task, pn.type, pn.id)};
+  } else {
+    return {};
+  }
+}
+
+std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
+    const ParsedName& pn) {
+  if (pn.has_type && pn.has_id) {
+    return {DeviceNameUtils::LocalName(pn.type, pn.id),
+            LegacyLocalName(pn.type, pn.id)};
   } else {
     return {};
   }

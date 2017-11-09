@@ -39,37 +39,20 @@ Status MakeIteratorFromInputElement(
   std::vector<Tensor> return_values;
   TF_RETURN_IF_ERROR(captured_func->Run(opts, input_element, &return_values));
 
-  if (!(return_values.size() == 1 && return_values[0].dtype() == DT_RESOURCE &&
+  if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {
     return errors::InvalidArgument(
-        "Function must return a single scalar of dtype DT_RESOURCE.");
+        "Function must return a single scalar of dtype DT_VARIANT.");
   }
 
   // Retrieve the dataset that was created in `f`.
   DatasetBase* returned_dataset;
-  const ResourceHandle& dataset_resource =
-      return_values[0].scalar<ResourceHandle>()();
+  TF_RETURN_IF_ERROR(
+      GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
-  // NOTE(mrry): We cannot use the core `LookupResource()` or
-  // `DeleteResource()` functions, because we have an
-  // `IteratorContext*` and not an `OpKernelContext*`, so we
-  // replicate the necessary functionality here.
-  auto type_index = MakeTypeIndex<DatasetBase>();
-  if (type_index.hash_code() != dataset_resource.hash_code()) {
-    return errors::InvalidArgument("Function must return a Dataset resource.");
-  }
-  TF_RETURN_IF_ERROR(captured_func->resource_manager()->Lookup(
-      dataset_resource.container(), dataset_resource.name(),
-      &returned_dataset));
-  core::ScopedUnref unref_dataset(returned_dataset);
-
-  // Create an iterator for the dataset that was returned by
-  // `f`. This transfers ownership of the dataset to the
-  // iterator, so we can delete it from the resource manager.
+  // Create an iterator for the dataset that was returned by `f`.
   *out_iterator = returned_dataset->MakeIterator(
       strings::StrCat(prefix, "[", thread_index, "]"));
-  TF_RETURN_IF_ERROR(captured_func->resource_manager()->Delete<DatasetBase>(
-      dataset_resource.container(), dataset_resource.name()));
   return Status::OK();
 }
 

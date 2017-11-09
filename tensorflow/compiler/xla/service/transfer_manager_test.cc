@@ -37,7 +37,9 @@ namespace {
 
 class CpuTransferManagerTest : public ::testing::Test {
  protected:
-  CpuTransferManagerTest() : transfer_manager_(se::host::kHostPlatformId) {
+  CpuTransferManagerTest()
+      : transfer_manager_(se::host::kHostPlatformId,
+                          /*pointer_size=*/sizeof(void*)) {
     se::Platform* platform =
         se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId)
             .ValueOrDie();

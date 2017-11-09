@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package tensorflow.tf2xla;
+option cc_enable_arenas = true;
+option java_outer_classname = "Tf2XlaProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.tf2xla";
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+// TensorId identifies a tensor in a TensorFlow graph, by specifying the output
+// index of a particular node in the graph.  If the output of the named node
+// feeds into other node(s), this corresponds to one or more edges.  Otherwise
+// it doesn't correspond to any existing edges at all, e.g. for output nodes.
+message TensorId {
+  string node_name = 1;
+  int64 output_index = 2;
+};
+
+// Feed represents a single feed tensor in the graph, which corresponds to an
+// input argument for the generated computation.
+message Feed {
+  TensorId id = 1;
+  TensorShapeProto shape = 2;
+  string name = 3;  // Optional name for generated code.
+
+  // Optional data type. This is not normally required, as the graph itself
+  // contains this information. However, if the node being fed is an op that is
+  // not linked into the binary, then the type cannot be inferred from the node;
+  // in this case, the type should be set here.
+  DataType type = 4;
+};
+
+// Fetch represents a single fetch tensor in the graph, which corresponds to an
+// output argument for the generated computation.
+message Fetch {
+  TensorId id = 1;
+  string name = 2;  // Optional name for generated code.
+};
+
+// Config represents configuration information for tf2xla conversion.
+message Config {
+  // Each feed is a positional input argument for the generated computation.
+  // The order of each entry matches the order of each input argument.
+  repeated Feed feed = 1;
+  // Each fetch is a positional output argument for the generated computation.
+  // The order of each entry matches the order of each output argument.
+  repeated Fetch fetch = 2;
+};

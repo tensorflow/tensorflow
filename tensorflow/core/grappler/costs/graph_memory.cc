@@ -14,45 +14,46 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/graph_memory.h"
-
+#include <list>
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
-Status GraphMemory::InferStatically() {
-  GraphProperties properties(item_);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
-  return InferFromGraphProperties(&properties);
+Status GraphMemory::InferStatically(
+    const std::unordered_map<string, DeviceProperties>& devices) {
+  VirtualCluster cluster(devices);
+  TF_RETURN_IF_ERROR(cluster.Provision());
+  return InferDynamically(&cluster);
 }
 
 Status GraphMemory::InferDynamically(Cluster* cluster) {
-  GraphProperties properties(item_);
-  TF_RETURN_IF_ERROR(properties.InferDynamically(cluster));
-  return InferFromGraphProperties(&properties);
+  if (!cluster->DetailedStatsEnabled()) {
+    return errors::Unavailable("Detailed stats collection must be enabled");
+  }
+
+  TF_RETURN_IF_ERROR(cluster->Initialize(item_));
+  RunMetadata metadata;
+  TF_RETURN_IF_ERROR(
+      cluster->Run(item_.graph, item_.feed, item_.fetch, &metadata));
+  InferFromTrace(metadata.step_stats());
+  return Status::OK();
 }
 
-Status GraphMemory::InferFromGraphProperties(GraphProperties* properties) {
-  // Compute the worst case usage between initialization and normal mode.
-  // TODO(bsteiner): we should consider persistent memory usage separately.
-  int64 worst_case_init_mem_usage;
-  int64 best_case_init_mem_usage;
-  InferMemUsageForNodes(item_.InitOpsFanin(), properties,
-                        &worst_case_init_mem_usage, &best_case_init_mem_usage);
-  int64 worst_case_main_mem_usage;
-  int64 best_case_main_mem_usage;
-  InferMemUsageForNodes(item_.MainOpsFanin(), properties,
-                        &worst_case_main_mem_usage, &best_case_main_mem_usage);
-
-  worst_case_memory_usage_ =
-      std::max(worst_case_init_mem_usage, worst_case_main_mem_usage);
-  best_case_memory_usage_ =
-      std::max(best_case_init_mem_usage, best_case_main_mem_usage);
-
-  return Status::OK();
+int64 GraphMemory::GetWorstCaseMemoryUsage() const {
+  int64 worst_case = -1;
+  for (const auto& peak_usage : peak_usage_) {
+    worst_case = std::max(worst_case, peak_usage.second.used_memory);
+  }
+  return worst_case;
 }
 
 void GraphMemory::InferMemUsageForNodes(
@@ -103,6 +104,149 @@ int64 GraphMemory::InferMemUsageForNeighbors(
     neighbors_memory_usage += num_elems * size;
   }
   return neighbors_memory_usage;
+}
+
+static GraphMemory::LiveTensor* FindOrCreateLiveTensor(
+    const string& node_name, int output_id,
+    std::unordered_map<string, GraphMemory::LiveTensor*>* live_tensors,
+    std::list<GraphMemory::LiveTensor>* device_tensors) {
+  string name = strings::StrCat(node_name, ":", output_id);
+  GraphMemory::LiveTensor* live;
+  auto it = live_tensors->find(name);
+  if (it == live_tensors->end()) {
+    GraphMemory::LiveTensor temp;
+    temp.node = node_name;
+    temp.output_id = output_id;
+    temp.allocation_time = 0;
+    temp.deallocation_time = 0;
+    device_tensors->push_front(temp);
+    live = &device_tensors->front();
+    (*live_tensors)[name] = live;
+  } else {
+    live = it->second;
+  }
+  return live;
+}
+
+namespace {
+struct Event {
+  int64 timestamp;
+  bool allocated;
+  const GraphMemory::LiveTensor* tensor;
+
+  bool operator<(const Event& other) const {
+    return timestamp < other.timestamp;
+  }
+};
+}  // namespace
+
+void GraphMemory::InferFromTrace(const StepStats& timeline) {
+  std::unordered_map<string, string> node_placement;
+  for (const auto& dev_stats : timeline.dev_stats()) {
+    for (const auto& node_stats : dev_stats.node_stats()) {
+      node_placement[node_stats.node_name()] = dev_stats.device();
+    }
+  }
+
+  std::unordered_map<string, LiveTensor*> live_tensors;
+  std::unordered_map<string, std::list<LiveTensor>> live_tensors_per_device;
+
+  NodeMap node_map(&item_.graph);
+  for (const auto& dev_stats : timeline.dev_stats()) {
+    std::list<LiveTensor>& device_tensors =
+        live_tensors_per_device[dev_stats.device()];
+    for (const auto& node_stats : dev_stats.node_stats()) {
+      for (int i = 0; i < node_stats.output_size(); ++i) {
+        const auto& output = node_stats.output(i);
+
+        LiveTensor* live = FindOrCreateLiveTensor(
+            node_stats.node_name(), i, &live_tensors, &device_tensors);
+        live->memory_used = output.tensor_description()
+                                .allocation_description()
+                                .allocated_bytes();
+
+        // Allocations typically take place at the very beginning of the op
+        // execution.
+        live->allocation_time =
+            Costs::MicroSeconds(node_stats.all_start_micros());
+        // Add one nanosecond to the completion time of the ops to account for
+        // TF overhead that slightly delays deallocations.
+        live->deallocation_time = std::max<Costs::Duration>(
+            live->deallocation_time,
+            Costs::NanoSeconds(1) +
+                Costs::MicroSeconds(node_stats.all_start_micros() +
+                                    node_stats.op_end_rel_micros()));
+      }
+
+      const NodeDef* node = node_map.GetNode(node_stats.node_name());
+      if (!node) {
+        // Skip nodes inserted by TF since they don't exist in the original
+        // graph (e.g _Send/_Recv nodes).
+        continue;
+      }
+      for (const string& input : node->input()) {
+        int position;
+        string input_node = ParseNodeName(input, &position);
+        if (position < 0) {
+          // Skip control dependencies
+          continue;
+        }
+        LiveTensor* live = FindOrCreateLiveTensor(
+            input_node, position, &live_tensors,
+            &live_tensors_per_device[node_placement[input_node]]);
+        live->deallocation_time = std::max<Costs::Duration>(
+            live->deallocation_time,
+            Costs::NanoSeconds(1) +
+                Costs::MicroSeconds(node_stats.all_start_micros() +
+                                    node_stats.op_end_rel_micros()));
+      }
+    }
+  }
+
+  for (const auto& live_per_device : live_tensors_per_device) {
+    std::vector<Event> events;
+    events.reserve(2 * live_per_device.second.size());
+    for (const auto& live : live_per_device.second) {
+      events.push_back(Event{live.allocation_time.count(), true, &live});
+      events.push_back(Event{live.deallocation_time.count(), false, &live});
+    }
+    std::stable_sort(events.begin(), events.end());
+    size_t peak = 0;
+    std::set<const LiveTensor*> live_at_peak;
+    size_t current = 0;
+    std::set<const LiveTensor*> currently_live;
+    for (int i = 0; i < events.size(); ++i) {
+      const auto& event = events[i];
+
+      if (event.allocated) {
+        VLOG(1) << "At time " << event.timestamp << " allocated "
+                << event.tensor->memory_used << " for tensor "
+                << event.tensor->node << ":" << event.tensor->output_id;
+        current += event.tensor->memory_used;
+        currently_live.insert(event.tensor);
+      } else {
+        VLOG(1) << "At time " << event.timestamp << " deallocated "
+                << event.tensor->memory_used << " for tensor "
+                << event.tensor->node << ":" << event.tensor->output_id;
+        current -= event.tensor->memory_used;
+        currently_live.erase(event.tensor);
+      }
+      if (i + 1 == events.size() ||
+          event.timestamp != events[i + 1].timestamp) {
+        if (current > peak) {
+          peak = current;
+          live_at_peak = currently_live;
+        }
+      }
+    }
+    MemoryUsage& peak_mem_usage = peak_usage_[live_per_device.first];
+    peak_mem_usage.used_memory = peak;
+    peak_mem_usage.live_tensors.clear();
+    peak_mem_usage.live_tensors.reserve(live_at_peak.size());
+    for (const auto& live : live_at_peak) {
+      peak_mem_usage.live_tensors.push_back(*live);
+    }
+  }
 }
 
 }  // end namespace grappler

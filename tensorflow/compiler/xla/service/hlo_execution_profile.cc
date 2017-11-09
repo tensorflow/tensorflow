@@ -27,13 +27,13 @@ limitations under the License.
 
 namespace xla {
 
-void HloExecutionProfile::AddProfileResult(const HloInstruction* hlo,
+void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
                                            uint64 cycles_taken) {
   hlo_to_cycles_taken_[hlo] = cycles_taken;
   profiled_computations_.insert(hlo->parent());
 }
 
-uint64 HloExecutionProfile::GetProfileResult(const HloInstruction& hlo) const {
+uint64 HloExecutionProfile::GetCyclesTakenBy(const HloInstruction& hlo) const {
   auto iter = hlo_to_cycles_taken_.find(&hlo);
   if (iter == hlo_to_cycles_taken_.end()) {
     return 0;
@@ -45,8 +45,7 @@ string HloExecutionProfile::ToString(
     const HloComputation& computation,
     const DeviceDescription& device_description,
     HloCostAnalysis* cost_analysis) const {
-  tensorflow::Status analysis_status =
-      computation.root_instruction()->Accept(cost_analysis);
+  tensorflow::Status analysis_status = computation.Accept(cost_analysis);
   if (!analysis_status.ok()) {
     return "";
   }

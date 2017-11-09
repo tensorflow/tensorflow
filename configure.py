@@ -25,12 +25,15 @@ import re
 import subprocess
 import sys
 
+# pylint: disable=g-import-not-at-top
 try:
   from shutil import which
 except ImportError:
   from distutils.spawn import find_executable as which
+# pylint: enable=g-import-not-at-top
 
-_TF_BAZELRC = '.tf_configure.bazelrc'
+_TF_BAZELRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           '.tf_configure.bazelrc')
 _DEFAULT_CUDA_VERSION = '8.0'
 _DEFAULT_CUDNN_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
@@ -40,6 +43,7 @@ _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
                           'Toolkit/CUDA/v%s' % _DEFAULT_CUDA_VERSION)
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
+_DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
 
 
 def is_windows():
@@ -175,7 +179,7 @@ def get_python_major_version(python_bin_path):
   return run_shell([python_bin_path, '-c', 'import sys; print(sys.version[0])'])
 
 
-def setup_python(environ_cp, bazel_version):
+def setup_python(environ_cp):
   """Setup python related env variables."""
   # Get PYTHON_BIN_PATH, default is the current running python.
   default_python_bin_path = sys.executable
@@ -229,17 +233,7 @@ def setup_python(environ_cp, bazel_version):
   write_to_bazelrc('build --define PYTHON_LIB_PATH="%s"' % python_lib_path)
   write_to_bazelrc('build --force_python=py%s' % python_major_version)
   write_to_bazelrc('build --host_force_python=py%s' % python_major_version)
-  bazel_version_int = convert_version_to_int(bazel_version)
-  version_0_5_3_int = convert_version_to_int('0.5.3')
-  # If bazel_version_int is None, we are testing a release Bazel, then the
-  # version should be higher than 0.5.3
-  # TODO(pcloudy): remove this after required min bazel version is higher
-  # than 0.5.3
-  if not bazel_version_int or bazel_version_int >= version_0_5_3_int:
-    write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
-  else:
-    write_to_bazelrc('build --python%s_path=\"%s"' % (python_major_version,
-                                                      python_bin_path))
+  write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
   write_to_bazelrc('test --force_python=py%s' % python_major_version)
   write_to_bazelrc('test --host_force_python=py%s' % python_major_version)
   write_to_bazelrc('test --define PYTHON_BIN_PATH="%s"' % python_bin_path)
@@ -261,7 +255,7 @@ def reset_tf_configure_bazelrc():
   if not os.path.exists('.bazelrc'):
     if os.path.exists(os.path.join(home, '.bazelrc')):
       with open('.bazelrc', 'a') as f:
-        f.write('import %s/.bazelrc\n' % home)
+        f.write('import %s/.bazelrc\n' % home.replace('\\', '/'))
     else:
       open('.bazelrc', 'w').close()
 
@@ -359,7 +353,7 @@ def get_var(environ_cp,
 
 
 def set_build_var(environ_cp, var_name, query_item, option_name,
-                  enabled_by_default):
+                  enabled_by_default, bazel_config_name=None):
   """Set if query_item will be enabled for the build.
 
   Ask user if query_item will be enabled. Default is used if no input is given.
@@ -372,12 +366,18 @@ def set_build_var(environ_cp, var_name, query_item, option_name,
       System".
     option_name: string for option to define in .bazelrc.
     enabled_by_default: boolean for default behavior.
+    bazel_config_name: Name for Bazel --config argument to enable build feature.
   """
 
   var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
   environ_cp[var_name] = var
   if var == '1':
     write_to_bazelrc('build --define %s=true' % option_name)
+  elif bazel_config_name is not None:
+    # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
+    # options and not to set build configs through environment variables.
+    write_to_bazelrc('build:%s --define %s=true'
+                     % (bazel_config_name, option_name))
 
 
 def set_action_env_var(environ_cp,
@@ -488,7 +488,10 @@ def set_cc_opt_flags(environ_cp):
   cc_opt_flags = get_from_env_or_user_or_default(environ_cp, 'CC_OPT_FLAGS',
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
-    write_to_bazelrc('build:opt --cxxopt=%s --copt=%s' % (opt, opt))
+    host_opt = '-march=native'  # It should be safe on the same build host.
+    write_to_bazelrc(
+        'build:opt --cxxopt=%s --copt=%s' % (opt, opt) +
+        ' --host_cxxopt=%s --host_copt=%s' % (host_opt, host_opt))
 
 
 def set_tf_cuda_clang(environ_cp):
@@ -638,7 +641,7 @@ def set_tf_cuda_version(environ_cp):
   write_action_env_to_bazelrc('TF_CUDA_VERSION', tf_cuda_version)
 
 
-def set_tf_cunn_version(environ_cp):
+def set_tf_cudnn_version(environ_cp):
   """Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION."""
   ask_cudnn_version = (
       'Please specify the cuDNN version you want to use. '
@@ -884,6 +887,27 @@ def set_computecpp_toolkit_path(environ_cp):
   write_action_env_to_bazelrc('COMPUTECPP_TOOLKIT_PATH',
                               computecpp_toolkit_path)
 
+def set_trisycl_include_dir(environ_cp):
+  """Set TRISYCL_INCLUDE_DIR"""
+  ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
+                             'include directory. (Use --config=sycl_trisycl '
+                             'when building with Bazel) '
+                             '[Default is %s]: '
+                             ) % (_DEFAULT_TRISYCL_INCLUDE_DIR)
+  while True:
+    trisycl_include_dir = get_from_env_or_user_or_default(
+      environ_cp, 'TRISYCL_INCLUDE_DIR', ask_trisycl_include_dir,
+      _DEFAULT_TRISYCL_INCLUDE_DIR)
+    if os.path.exists(trisycl_include_dir):
+      break
+
+    print('Invalid triSYCL include directory, %s cannot be found'
+          % (trisycl_include_dir))
+
+  # Set TRISYCL_INCLUDE_DIR
+  environ_cp['TRISYCL_INCLUDE_DIR'] = trisycl_include_dir
+  write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR',
+                              trisycl_include_dir)
 
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
@@ -953,23 +977,53 @@ def set_mkl():
       'time before build.')
 
 
+def set_monolithic():
+  # Add --config=monolithic to your bazel command to use a mostly-static
+  # build and disable modular op registration support (this will revert to
+  # loading TensorFlow with RTLD_GLOBAL in Python). By default (without
+  # --config=monolithic), TensorFlow will build with a dependence on
+  # //tensorflow:libtensorflow_framework.so.
+  write_to_bazelrc('build:monolithic --define framework_shared_object=false')
+  # For projects which use TensorFlow as part of a Bazel build process, putting
+  # nothing in a bazelrc will default to a monolithic build. The following line
+  # opts in to modular op registration support by default:
+  write_to_bazelrc('build --define framework_shared_object=true')
+
+
+def create_android_bazelrc_configs():
+  # Flags for --config=android
+  write_to_bazelrc('build:android --crosstool_top=//external:android/crosstool')
+  write_to_bazelrc(
+      'build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain')
+  # Flags for --config=android_arm
+  write_to_bazelrc('build:android_arm --config=android')
+  write_to_bazelrc('build:android_arm --cpu=armeabi-v7a')
+  # Flags for --config=android_arm64
+  write_to_bazelrc('build:android_arm64 --config=android')
+  write_to_bazelrc('build:android_arm64 --cpu=arm64-v8a')
+
+
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
   environ_cp = dict(os.environ)
 
-  bazel_version = check_bazel_version('0.4.5')
+  check_bazel_version('0.5.4')
 
   reset_tf_configure_bazelrc()
   cleanup_makefile()
-  setup_python(environ_cp, bazel_version)
+  setup_python(environ_cp)
   run_gen_git_source(environ_cp)
 
   if is_windows():
+    environ_cp['TF_NEED_S3'] = '0'
     environ_cp['TF_NEED_GCP'] = '0'
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
+    environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
+    environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
+    environ_cp['TF_NEED_S3'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
 
   if is_macos():
@@ -978,27 +1032,33 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
   set_build_var(environ_cp, 'TF_NEED_GCP', 'Google Cloud Platform',
-                'with_gcp_support', False)
+                'with_gcp_support', True, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
-                'with_hdfs_support', False)
+                'with_hdfs_support', True, 'hdfs')
+  set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
+                'with_s3_support', True, 's3')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                False)
+                False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
-                False)
+                False, 'gdr')
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
-                False)
+                False, 'verbs')
 
-  set_action_env_var(environ_cp, 'TF_NEED_OPENCL', 'OpenCL', False)
-  if environ_cp.get('TF_NEED_OPENCL') == '1':
+  set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
+  if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
     set_host_cxx_compiler(environ_cp)
     set_host_c_compiler(environ_cp)
-    set_computecpp_toolkit_path(environ_cp)
+    set_action_env_var(environ_cp, 'TF_NEED_COMPUTECPP', 'ComputeCPP', True)
+    if environ_cp.get('TF_NEED_COMPUTECPP') == '1':
+      set_computecpp_toolkit_path(environ_cp)
+    else:
+      set_trisycl_include_dir(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
     set_tf_cuda_version(environ_cp)
-    set_tf_cunn_version(environ_cp)
+    set_tf_cudnn_version(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
 
     set_tf_cuda_clang(environ_cp)
@@ -1019,7 +1079,8 @@ def main():
 
   set_cc_opt_flags(environ_cp)
   set_mkl()
-
+  set_monolithic()
+  create_android_bazelrc_configs()
 
 if __name__ == '__main__':
   main()

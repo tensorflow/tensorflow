@@ -55,6 +55,7 @@ class ElementalIrEmitter {
       const HloToElementGeneratorMap& operand_to_generator) const;
 
   llvm::IRBuilder<>* ir_builder() const { return ir_builder_; }
+  llvm::Module* module() const { return module_; }
 
  protected:
   virtual StatusOr<llvm::Value*> EmitIntegerUnaryOp(
@@ -63,12 +64,19 @@ class ElementalIrEmitter {
   virtual StatusOr<llvm::Value*> EmitFloatUnaryOp(
       const HloInstruction* op, llvm::Value* operand_value) const;
 
+  virtual StatusOr<llvm::Value*> EmitComplexUnaryOp(
+      const HloInstruction* op, llvm::Value* operand_value) const;
+
   virtual StatusOr<llvm::Value*> EmitIntegerBinaryOp(const HloInstruction* op,
                                                      llvm::Value* lhs_value,
                                                      llvm::Value* rhs_value,
                                                      bool is_signed) const;
 
   virtual StatusOr<llvm::Value*> EmitFloatBinaryOp(
+      const HloInstruction* op, llvm::Value* lhs_value,
+      llvm::Value* rhs_value) const;
+
+  virtual StatusOr<llvm::Value*> EmitComplexBinaryOp(
       const HloInstruction* op, llvm::Value* lhs_value,
       llvm::Value* rhs_value) const;
 
@@ -108,6 +116,11 @@ class ElementalIrEmitter {
   // The HloModuleConfig which gathers all settings and values which affect the
   // compiled executable outside of the HLO code itself.
   const HloModuleConfig& hlo_module_config_;
+
+ protected:
+  // Composes a complex struct. imag may be nullptr for simple cast operations.
+  llvm::Value* ComposeComplex(const HloInstruction* op, llvm::Value* real,
+                              llvm::Value* imag) const;
 
  private:
   // Returns a ElementGenerator for a RNG HloInstruction.

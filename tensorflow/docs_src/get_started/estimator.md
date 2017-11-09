@@ -28,7 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import urllib
+from six.moves.urllib.request import urlopen
 
 import numpy as np
 import tensorflow as tf
@@ -44,13 +44,13 @@ IRIS_TEST_URL = "http://download.tensorflow.org/data/iris_test.csv"
 def main():
   # If the training and test sets aren't stored locally, download them.
   if not os.path.exists(IRIS_TRAINING):
-    raw = urllib.urlopen(IRIS_TRAINING_URL).read()
-    with open(IRIS_TRAINING, "w") as f:
+    raw = urlopen(IRIS_TRAINING_URL).read()
+    with open(IRIS_TRAINING, "wb") as f:
       f.write(raw)
 
   if not os.path.exists(IRIS_TEST):
-    raw = urllib.urlopen(IRIS_TEST_URL).read()
-    with open(IRIS_TEST, "w") as f:
+    raw = urlopen(IRIS_TEST_URL).read()
+    with open(IRIS_TEST, "wb") as f:
       f.write(raw)
 
   # Load datasets.
@@ -167,7 +167,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import urllib
+from six.moves.urllib.request import urlopen
 
 import tensorflow as tf
 import numpy as np
@@ -184,13 +184,13 @@ them.
 
 ```python
 if not os.path.exists(IRIS_TRAINING):
-  raw = urllib.urlopen(IRIS_TRAINING_URL).read()
-  with open(IRIS_TRAINING,'w') as f:
+  raw = urlopen(IRIS_TRAINING_URL).read()
+  with open(IRIS_TRAINING,'wb') as f:
     f.write(raw)
 
 if not os.path.exists(IRIS_TEST):
-  raw = urllib.urlopen(IRIS_TEST_URL).read()
-  with open(IRIS_TEST,'w') as f:
+  raw = urlopen(IRIS_TEST_URL).read()
+  with open(IRIS_TEST,'wb') as f:
     f.write(raw)
 ```
 
@@ -400,7 +400,7 @@ second sample is *Iris virginica*.
     @{$linear$Large-scale Linear Models with TensorFlow}.
 
 *   To build your own Estimator using tf.estimator APIs, check out
-    @{$estimators$Creating Estimators in tf.estimator}.
+    @{$extend/estimators$Creating Estimators}.
 
 *   To experiment with neural network modeling and visualization in the browser,
     check out [Deep Playground](http://playground.tensorflow.org/).

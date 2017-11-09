@@ -225,6 +225,11 @@ class Conv2DFastBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
 #if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
@@ -317,6 +322,11 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
+
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
 
 // TODO(andydavis) Consider moving code shared with
 // Conv2DCustomBackpropFilterOp into a shared helper function.
@@ -603,6 +613,11 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
     // For now we take the stride from the second and third dimensions only (we
     // do not support striding on the batch or depth dimension).
     const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
@@ -630,7 +645,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     int col_stride, const Padding& padding, Tensor* in_backprop,
     TensorFormat data_format) {
   using perftools::gputools::dnn::AlgorithmConfig;
-  using perftools::gputools::dnn::AlgorithmType;
+  using perftools::gputools::dnn::AlgorithmDesc;
   using perftools::gputools::dnn::ProfileResult;
 
   std::vector<int32> strides(4, 1);
@@ -870,7 +885,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
-    std::vector<AlgorithmType> algorithms;
+    std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;

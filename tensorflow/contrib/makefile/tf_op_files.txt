@@ -1,4 +1,3 @@
-tensorflow/contrib/boosted_trees/ops/ensemble_optimizer_ops.cc
 tensorflow/contrib/boosted_trees/ops/model_ops.cc
 tensorflow/contrib/boosted_trees/ops/prediction_ops.cc
 tensorflow/contrib/boosted_trees/ops/quantile_ops.cc
@@ -143,6 +142,7 @@ tensorflow/core/kernels/cwise_op_sqrt.cc
 tensorflow/core/kernels/cwise_op_sigmoid.cc
 tensorflow/core/kernels/cwise_op_sign.cc
 tensorflow/core/kernels/cwise_op_select.cc
+tensorflow/core/kernels/cwise_op_round.cc
 tensorflow/core/kernels/cwise_op_rsqrt.cc
 tensorflow/core/kernels/cwise_op_reciprocal.cc
 tensorflow/core/kernels/cwise_op_neg.cc
@@ -161,6 +161,7 @@ tensorflow/core/kernels/cwise_op_invert.cc
 tensorflow/core/kernels/cwise_op_greater_equal.cc
 tensorflow/core/kernels/cwise_op_greater.cc
 tensorflow/core/kernels/cwise_op_floor_div.cc
+tensorflow/core/kernels/cwise_op_floor_mod.cc
 tensorflow/core/kernels/cwise_op_floor.cc
 tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
@@ -169,6 +170,8 @@ tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_bitwise_xor.cc
 tensorflow/core/kernels/cwise_op_bitwise_or.cc
 tensorflow/core/kernels/cwise_op_bitwise_and.cc
+tensorflow/core/kernels/cwise_op_left_shift.cc
+tensorflow/core/kernels/cwise_op_right_shift.cc
 tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_add_1.cc
 tensorflow/core/kernels/cwise_op_abs.cc
@@ -261,3 +264,4 @@ tensorflow/core/kernels/spacetobatch_functor.cc
 tensorflow/core/kernels/spacetobatch_op.cc
 tensorflow/core/kernels/batchtospace_op.cc
 tensorflow/core/kernels/warn_about_ints.cc
+tensorflow/core/kernels/segment_reduction_ops.cc

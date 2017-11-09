@@ -146,8 +146,8 @@ class FlatMap {
     friend class FlatMap;
     Bucket* b_;
     Bucket* end_;
+    char space_ alignas(value_type)[sizeof(value_type)];
     uint32 i_;
-    char space_[sizeof(value_type)];
 
     pointer val() { return reinterpret_cast<pointer>(space_); }
     void FillValue() { new (space_) value_type(b_->key(i_), b_->val(i_)); }

@@ -199,6 +199,11 @@ class Affine(bijector.Bijector):
                   event_ndims, 2, message="event_ndims must be 0 or 1")],
               event_ndims)
 
+      if event_ndims_const == 0 and not self._is_only_identity_multiplier:
+        raise ValueError(
+            "If event_ndims == 0, the only scale argument you can pass is "
+            "scale_identity_multiplier.  All others operate on vectors.")
+
       # In the absence of `loc` and `scale`, we'll assume `dtype` is `float32`.
       dtype = dtypes.float32
 
@@ -321,7 +326,7 @@ class Affine(bijector.Bijector):
         shape_hint=shape_hint)
 
     if perturb_factor is not None:
-      return linalg.LinearOperatorUDVHUpdate(
+      return linalg.LinearOperatorLowRankUpdate(
           scale,
           u=perturb_factor,
           diag_update=perturb_diag,
@@ -383,10 +388,11 @@ class Affine(bijector.Bijector):
     if self._is_only_identity_multiplier:
       # We don't pad in this case and instead let the fldj be applied
       # via broadcast.
-      d = math_ops.cast(array_ops.shape(x)[-1], dtype=self._scale.dtype)
-      one = ops.convert_to_tensor(1., self._scale.dtype)
-      return math_ops.log(math_ops.abs(self._scale)) * array_ops.where(
-          math_ops.equal(self._shaper.event_ndims, 0), one, d)
+      event_size = distribution_util.pick_vector(
+          math_ops.equal(self._shaper.event_ndims, 0),
+          [1], array_ops.shape(x))[-1]
+      event_size = math_ops.cast(event_size, dtype=self._scale.dtype)
+      return math_ops.log(math_ops.abs(self._scale)) * event_size
     return self.scale.log_abs_determinant()
 
   def _maybe_check_scale(self):

@@ -31,6 +31,10 @@ pip3 install wheel
 pip2 install --upgrade six==1.10.0
 pip3 install --upgrade six==1.10.0
 
+# Install absl-py.
+pip2 install --upgrade absl-py
+pip3 install --upgrade absl-py
+
 # Install werkzeug.
 pip2 install --upgrade werkzeug==0.11.10
 pip3 install --upgrade werkzeug==0.11.10
@@ -90,6 +94,3 @@ pip3 install portpicker
 pip2 install grpcio
 pip3 install grpcio
 
-# Eager execution needs autograd:
-pip2 install --upgrade autograd>=1.1.12
-pip3 install --upgrade autograd>=1.1.12

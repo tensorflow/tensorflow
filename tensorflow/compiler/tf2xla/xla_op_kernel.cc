@@ -126,7 +126,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
         "Error evaluating ", context_->op_kernel().name(), " input ", index,
         ": ", computed.status().error_message());
   }
-  constant_literal->Swap(computed.ValueOrDie().get());
+  *constant_literal = std::move(*computed.ValueOrDie());
 
   return Status::OK();
 }
@@ -146,10 +146,31 @@ static Status LiteralToInt64Scalar(const xla::Literal& literal, int64* out) {
   return Status::OK();
 }
 
+// Converts an float32 or float64 scalar literal to a float64.
+static Status LiteralToFloat64Scalar(const xla::Literal& literal, double* out) {
+  if (xla::ShapeUtil::Rank(literal.shape()) != 0) {
+    return errors::InvalidArgument("value is not a scalar");
+  }
+  if (literal.shape().element_type() == xla::F32) {
+    *out = literal.Get<float>({});
+  } else if (literal.shape().element_type() == xla::F64) {
+    *out = literal.Get<double>({});
+  } else {
+    return errors::InvalidArgument("value must be either float32 or float64");
+  }
+  return Status::OK();
+}
+
 Status XlaOpKernelContext::ConstantInputAsIntScalar(int index, int64* out) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
   return LiteralToInt64Scalar(literal, out);
+}
+
+Status XlaOpKernelContext::ConstantInputAsFloatScalar(int index, double* out) {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  return LiteralToFloat64Scalar(literal, out);
 }
 
 // Converts an int32 or int64 1D literal to an int64 vector.
@@ -195,7 +216,7 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
       return Status::OK();
 
     case xla::S64:
-      out->Swap(&literal);
+      *out = std::move(literal);
       return Status::OK();
 
     default:
@@ -345,7 +366,6 @@ Status XlaOpKernelContext::GetResourceInput(int index, XlaResource** resource) {
 Status XlaOpKernelContext::AssignVariable(
     int input_index, DataType type, const xla::ComputationDataHandle& handle) {
   TF_RET_CHECK(handle.handle() != 0);
-  SetOpHasSideEffects();
 
   const XlaExpression* expression =
       CastExpressionFromTensor(context_->input(input_index));
@@ -363,10 +383,6 @@ Status XlaOpKernelContext::AssignVariable(
   return Status::OK();
 }
 
-void XlaOpKernelContext::SetOpHasSideEffects() {
-  XlaContext::Get(context_).AddSideEffects();
-}
-
 XlaCompiler* XlaOpKernelContext::compiler() const {
   return XlaContext::Get(context_).compiler();
 }
@@ -379,6 +395,11 @@ void XlaOpKernelContext::CtxFailureWithWarning(Status s) {
 const xla::Computation* XlaOpKernelContext::GetOrCreateMax(
     const DataType type) {
   return XlaContext::Get(context_).GetOrCreateMax(type);
+}
+
+const xla::Computation* XlaOpKernelContext::GetOrCreateMin(
+    const DataType type) {
+  return XlaContext::Get(context_).GetOrCreateMin(type);
 }
 
 const xla::Computation* XlaOpKernelContext::GetOrCreateAdd(

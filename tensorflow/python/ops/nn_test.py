@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -832,6 +833,58 @@ class ReluTest(test_lib.TestCase):
       with self.test_session():
         z = nn_ops.relu(constant_op.constant(x)).eval()
         self.assertTrue(np.isnan(z).all())
+
+
+class LeakyReluTest(test_lib.TestCase):
+
+  def testRange(self):
+    batch_size = 3
+    height, width = 4, 4
+    np.random.seed(1)  # Make it reproducible.
+    inputs = np.random.uniform(
+        size=(batch_size, height, width, 3)).astype(np.float32)
+    inputs = constant_op.constant(inputs)
+
+    outputs = nn_ops.leaky_relu(inputs)
+    self.assertEquals(inputs.shape, outputs.shape)
+    with self.test_session() as sess:
+      inputs, outputs = sess.run([inputs, outputs])
+    self.assertGreaterEqual(outputs.min(), 0.0)
+    self.assertLessEqual(outputs.max(), 1.0)
+    self.assertAllClose(inputs, outputs)
+
+  def testValues(self):
+    np_values = np.array([-1.0, 0.0, 0.5, 1.0, 2.0], dtype=np.float32)
+    outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
+    with self.test_session() as sess:
+      outputs = sess.run(outputs)
+    self.assertAllClose(outputs, [-0.2, 0.0, 0.5, 1.0, 2.0])
+
+
+class SwishTest(test_lib.TestCase):
+
+  def testValues(self):
+    np_values = np.array(
+        [np.linspace(-10.0, 0.0, 100),
+         np.linspace(0.0, 10.0, 100)],
+        dtype=np.float32)
+    tf_values = constant_op.constant(np_values)
+    actual_tf_outputs = nn_impl.swish(tf_values)
+    expected_tf_outputs = tf_values * math_ops.sigmoid(tf_values)
+    with self.test_session() as sess:
+      actual_outputs, expected_outputs = sess.run(
+          [actual_tf_outputs, expected_tf_outputs])
+    self.assertAllClose(actual_outputs, expected_outputs)
+
+  def testGradients(self):
+    shape = [5, 3, 4]
+    sigma = 5
+    input_values = np.random.randn(*shape) * sigma
+    x_tf = constant_op.constant(input_values)
+    y_tf = nn_impl.swish(x_tf)
+    with self.test_session():
+      err = gradient_checker.compute_gradient_error(x_tf, shape, y_tf, shape)
+    self.assertLess(err, 1e-4)
 
 
 class MomentsTest(test_lib.TestCase):

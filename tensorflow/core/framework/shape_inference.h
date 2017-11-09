@@ -26,10 +26,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+class ShapeRefiner;
 class ShapeRefinerTest;
 
 namespace grappler {
 class GraphProperties;
+class SymbolicShapeManager;
 }
 
 namespace shape_inference {
@@ -54,13 +56,14 @@ class Dimension {
 class DimensionHandle {
  public:
   DimensionHandle() {}
+  bool SameHandle(DimensionHandle d) const { return ptr_ == d.ptr_; }
+  std::size_t Handle() const { return reinterpret_cast<std::size_t>(ptr_); }
 
  private:
   DimensionHandle(const Dimension* dim) { ptr_ = dim; }
 
   const Dimension* operator->() { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
-  bool SameHandle(DimensionHandle d) const { return ptr_ == d.ptr_; }
 
   const Dimension* ptr_ = nullptr;
 
@@ -70,6 +73,8 @@ class DimensionHandle {
   friend class ShapeInferenceTestutil;
   friend class ::tensorflow::ShapeRefinerTest;
   friend class ShapeManager;
+  friend class ::tensorflow::grappler::GraphProperties;
+  friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   // Intentionally copyable.
 };
@@ -86,6 +91,7 @@ class Shape {
 
   friend class InferenceContext;
   friend class ShapeManager;
+  friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Shape);
 };
@@ -93,12 +99,13 @@ class Shape {
 class ShapeHandle {
  public:
   ShapeHandle() {}
+  bool SameHandle(ShapeHandle s) const { return ptr_ == s.ptr_; }
+  std::size_t Handle() const { return reinterpret_cast<std::size_t>(ptr_); }
 
  private:
   ShapeHandle(const Shape* shape) { ptr_ = shape; }
   const Shape* operator->() { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
-  bool SameHandle(ShapeHandle s) const { return ptr_ == s.ptr_; }
 
   const Shape* ptr_ = nullptr;
 
@@ -107,6 +114,7 @@ class ShapeHandle {
   friend class ShapeInferenceTestutil;
   friend class ::tensorflow::ShapeRefinerTest;
   friend class ShapeManager;
+  friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   // Intentionally copyable.
 };
@@ -142,6 +150,8 @@ struct ShapeAndType {
 // is created by the framework and passed to a shape inference function.  The
 // shape inference function calls functions on the context, and should call
 // set_output() to set the shape on all outputs.
+//
+// To infer shapes for user-defined functions see ShapeRefiner.
 //
 // All Shape* and Dimension* returned by functions of InferenceContext are owned
 // by the InferenceContext.
@@ -321,7 +331,9 @@ class InferenceContext {
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
-  AttrSlice attrs() const { return AttrSlice(node_def_); }
+  AttrSlice attrs() const { return AttrSlice(*node_def_); }
+
+  string op() const;
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
@@ -329,24 +341,34 @@ class InferenceContext {
     if (s->rank_ == kUnknownRank) {
       return UnknownDim();
     }
+    return DimKnownRank(s, idx);
+  }
+  // As above, but asserts that the rank of the shape is known.
+  static DimensionHandle DimKnownRank(ShapeHandle s, int64 idx) {
+    CHECK_NE(s->rank_, kUnknownRank);
     if (idx < 0) {
       return s->dims_[s->dims_.size() + idx];
     }
     return s->dims_[idx];
   }
-  int32 Rank(ShapeHandle s) const {
+
+  static int32 Rank(ShapeHandle s) {
     DCHECK(s.IsSet());
     return s.IsSet() ? s->rank_ : kUnknownRank;
   }
-  bool RankKnown(ShapeHandle s) const {
+  static bool RankKnown(ShapeHandle s) {
     return (s.IsSet() && (Rank(s) != kUnknownRank));
   }
-  inline int64 Value(DimensionOrConstant d) const {
+  static inline int64 Value(DimensionOrConstant d) {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
-  inline bool ValueKnown(DimensionOrConstant d) const {
+  static inline bool ValueKnown(DimensionOrConstant d) {
     return Value(d) != kUnknownDim;
   }
+
+  // Fills the output proto with the shape defined by the handle.
+  // "proto" is expected to be empty prior to the call.
+  void ShapeHandleToProto(ShapeHandle handle, TensorShapeProto* proto);
 
   // Returns true if the rank and all dimensions of the Shape are known.
   bool FullyDefined(ShapeHandle s);
@@ -592,6 +614,14 @@ class InferenceContext {
 
   int graph_def_version() const { return graph_def_version_; }
 
+  const std::vector<std::pair<ShapeHandle, ShapeHandle>>& MergedShapes() const {
+    return merged_shapes_;
+  }
+  const std::vector<std::pair<DimensionHandle, DimensionHandle>>& MergedDims()
+      const {
+    return merged_dims_;
+  }
+
  private:
   // Creates and stores shapes for use in InferenceContext.
   class ShapeManager {
@@ -623,6 +653,10 @@ class InferenceContext {
   };
 
   friend class ::tensorflow::grappler::GraphProperties;
+
+  // Friend for user-defined function shape inference purposes.
+  friend class ::tensorflow::ShapeRefiner;
+
   friend class ShapeInferenceTest;      // For testing Relax functions.
   friend class ShapeInferenceTestutil;  // For testing shapes.
 
@@ -696,13 +730,20 @@ class InferenceContext {
       output_handle_shapes_and_types_;
 
   const int graph_def_version_;
-  const NodeDef& node_def_;
+  const NodeDef* node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
 
   // An error set during construction. TODO(cwhipkey): remove when test
   // constructor is removed.
   Status construction_status_;
+
+  // Pair of shape or dim handles that are equivalent, ie that represent the
+  // same underlying shape of dimension. Note that for each pair at least one of
+  // the handles must contain an unknown shape, since we don't keep track of
+  // known shapes or dims here.
+  std::vector<std::pair<ShapeHandle, ShapeHandle>> merged_shapes_;
+  std::vector<std::pair<DimensionHandle, DimensionHandle>> merged_dims_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
 };
@@ -736,7 +777,7 @@ inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
 
 template <class T>
 Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
-  return GetNodeAttr(node_def_, attr_name, value);
+  return GetNodeAttr(*node_def_, attr_name, value);
 }
 
 }  // namespace shape_inference

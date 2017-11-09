@@ -48,7 +48,6 @@ class ReadVariableOp : public XlaOpKernel {
   }
 };
 REGISTER_XLA_OP(Name("ReadVariableOp"), ReadVariableOp);
-REGISTER_XLA_OP(Name("_UnsafeReadVariable"), ReadVariableOp);
 
 class AssignVariableOp : public XlaOpKernel {
  public:
@@ -112,9 +111,10 @@ class ResourceGatherOp : public XlaOpKernel {
 
     auto indices = ctx->Input(1);
     auto indices_shape = ctx->InputShape(1);
+    DataType index_type = ctx->input_type(1);
     xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-        ctx, resource_handle, resource_shape, indices, indices_shape,
-        resource_dtype, builder);
+        ctx, resource_handle, resource_shape, indices, indices_shape, 0,
+        resource_dtype, index_type, builder);
     ctx->SetOutput(0, gather);
   }
 };

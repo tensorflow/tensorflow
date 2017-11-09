@@ -88,11 +88,13 @@ class AttrBuilder {
   template <class T>
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     MayBeInitializeNodeDef();
-    return SetInNodeDef(attr_name, value);
+    SetInAttrValueMap(node_def_->mutable_attr(), attr_name, value);
+    return *this;
   }
 
   tensorflow::Fprint128 CacheKey(const string& device) const;
 
+  void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
   const NodeDef& BuildNodeDef();
 
  private:
@@ -100,21 +102,25 @@ class AttrBuilder {
   using AttrVec = tensorflow::gtl::InlinedVector<std::pair<StringPiece, T>, 2>;
 
   void MayBeInitializeNodeDef();
+  void FillAttrValueMap(AttrValueMap* m, bool include_those_in_node_def) const;
 
   template <class T>
-  AttrBuilder& SetInNodeDef(StringPiece attr_name, T&& value) {
-    DCHECK(!node_def_finalized_) << "Calling SetInNodeDef after BuildNodeDef.";
+  void SetInAttrValueMap(AttrValueMap* m, StringPiece attr_name,
+                         T&& value) const {
+    DCHECK(!node_def_finalized_)
+        << "Calling SetInAttrValueMap after BuildNodeDef.";
     // Copied from NodeDefBuilder::Attr
-    const AttrValue* found = AttrSlice(*node_def_).Find(attr_name);
+    const AttrValue* found = AttrSlice(m).Find(attr_name);
+    AttrValue attr_value;
     if (found == nullptr) {
-      AddNodeAttr(attr_name, std::forward<T>(value), node_def_.get());
+      SetAttrValue(value, &attr_value);
+      m->insert(AttrValueMap::value_type(attr_name.ToString(), attr_value));
     } else {
-      AttrValue attr_value;
-      SetAttrValue(std::forward<T>(value), &attr_value);
       // TODO(ashankar): Do what is done in
       // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
+      SetAttrValue(std::forward<T>(value), &attr_value);
+      (*m)[attr_name.ToString()] = attr_value;
     }
-    return *this;
   }
 
   AttrVec<StringPiece> string_attrs_;
@@ -122,7 +128,7 @@ class AttrBuilder {
   AttrVec<float> float_attrs_;
   AttrVec<bool> bool_attrs_;
   AttrVec<tensorflow::DataType> type_attrs_;
-  string op_name_;
+  const string op_name_;
   int num_inputs_;
   std::unique_ptr<NodeDef> node_def_;
   bool node_def_finalized_;
@@ -150,28 +156,19 @@ class KernelAndDevice {
  public:
   // Populates 'out' with a kernel appropriate for 'ndef'.
   //
-  // Assumes that 'ndef' refers to a primitive op (as opposed to a function).
-  static Status InitOp(Device* device, const NodeDef& ndef,
-                       KernelAndDevice* out);
-
-  // Like InitOp but for functions defined in flib (i.e., ndef.op() refers to a
-  // TensorFlow function in the FunctionLibraryRuntime).
-  //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
   //
-  // TODO(ashankar): There shouldn't be a need for a separate InitOp and InitFn.
-  // The implementation of InitFn should work for both because
-  // FunctionLibraryRuntime::CreateKernel will create a primitive op kernel if
-  // appropriate. However, for now we keep them separate because I haven't
-  // figured out thread-safety concerns around FunctionLibraryRuntime (in
-  // particular, how the underlying FunctionLibraryDefinition might be mutated
-  // by another thread as new functions are registered with it).
-  // Conservatively, thread-safe usage of the FunctionLibraryRuntime is pushed
-  // on to the caller (see locking in c_api.cc) for now.  But I really should
-  // dig into this so that both InitOp and InitFn can be collapsed to
-  // FunctionLibraryRuntime::CreateKernel.
-  static Status InitFn(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+  // TODO(ashankar): Figure out thread-safety concerns around
+  // FunctionLibraryRuntime (in particular, how the underlying
+  // FunctionLibraryDefinition might be mutated by another thread as new
+  // functions are registered with it).  Conservatively, thread-safe usage of
+  // the FunctionLibraryRuntime is pushed on to the caller (see locking in
+  // c_api.cc).
+  static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+                     KernelAndDevice* out);
+  // TODO(ashankar): Remove this
+  static Status InitOp(Device* device, const NodeDef& ndef,
                        KernelAndDevice* out);
 
   KernelAndDevice(tensorflow::Rendezvous* rendez)
@@ -184,10 +181,10 @@ class KernelAndDevice {
 
  private:
   std::unique_ptr<OpKernel> kernel_;
-  tensorflow::Device* device_;
-  tensorflow::FunctionLibraryRuntime* flib_;
-  tensorflow::checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
-  tensorflow::Rendezvous* rendez_;
+  Device* device_;
+  FunctionLibraryRuntime* flib_;
+  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
+  Rendezvous* rendez_;
 };
 
 }  // namespace tensorflow

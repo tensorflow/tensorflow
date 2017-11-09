@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
@@ -26,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import exponential
 from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.linalg import linalg
 
 __all__ = ["VectorExponentialLinearOperator"]
 
@@ -108,7 +108,7 @@ class VectorExponentialLinearOperator(
 
   ```python
   ds = tf.contrib.distributions
-  la = tf.contrib.linalg
+  la = tf.linalg
 
   # Initialize a single 2-variate VectorExponential, supported on
   # {(x, y) in R^2 : x > 0, y > 0}.
@@ -247,7 +247,7 @@ class VectorExponentialLinearOperator(
   def _variance(self):
     if distribution_util.is_diagonal_scale(self.scale):
       return math_ops.square(self.scale.diag_part())
-    elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate) and
+    elif (isinstance(self.scale, linalg.LinearOperatorLowRankUpdate) and
           self.scale.is_self_adjoint):
       return array_ops.matrix_diag_part(
           self.scale.matmul(self.scale.to_dense()))
@@ -258,7 +258,7 @@ class VectorExponentialLinearOperator(
   def _stddev(self):
     if distribution_util.is_diagonal_scale(self.scale):
       return math_ops.abs(self.scale.diag_part())
-    elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate) and
+    elif (isinstance(self.scale, linalg.LinearOperatorLowRankUpdate) and
           self.scale.is_self_adjoint):
       return math_ops.sqrt(
           array_ops.matrix_diag_part(self.scale.matmul(self.scale.to_dense())))

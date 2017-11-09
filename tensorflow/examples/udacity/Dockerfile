@@ -1,5 +1,5 @@
 FROM gcr.io/tensorflow/tensorflow:latest
-MAINTAINER Vincent Vanhoucke <vanhoucke@google.com>
+LABEL maintainer="Vincent Vanhoucke <vanhoucke@google.com>"
 
 # Pillow needs libjpeg by default as of 3.0.
 RUN apt-get update && apt-get install -y --no-install-recommends \

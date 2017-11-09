@@ -30,29 +30,12 @@ class ZipDatasetOp : public DatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     std::vector<DatasetBase*> inputs;
-    Status s;
     for (size_t i = 0; i < ctx->num_inputs(); ++i) {
-      // Create a new ZipDatasetOp::Dataset, insert it in the step-local
-      // container, and return it as the output.
       DatasetBase* input;
-      s.Update(LookupResource(ctx, HandleFromInput(ctx, i), &input));
-      if (!s.ok()) {
-        break;
-      }
+      OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(i), &input));
       inputs.push_back(input);
     }
-
-    if (s.ok()) {
-      *output = new Dataset(inputs);
-    }
-
-    // TODO(mrry): Implement a container that acts as a
-    // `std::vector<core::ScopedUnref>`, to avoid having to unref the
-    // inputs manually, and re-enable the use of `OP_REQUIRES_OK()`.
-    for (DatasetBase* input : inputs) {
-      input->Unref();
-    }
-    ctx->SetStatus(s);
+    *output = new Dataset(inputs);
   }
 
  private:

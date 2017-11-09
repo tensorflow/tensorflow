@@ -73,8 +73,7 @@ class CallOpTest : public ClientLibraryTestBase {
   Shape r1s2f32_ = ShapeUtil::MakeShape(F32, {2});
 };
 
-// TODO(b/64094172) Failing on GPU as of 2017-07-26.
-XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32IdentityScalar)) {
+XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR0F32IdentityComputation();
   auto constant = builder.ConstantLiteral(*Literal::CreateR0<float>(42.0));
@@ -83,8 +82,7 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32IdentityScalar)) {
   ComputeAndCompareR0<float>(&builder, 42.0, {}, ErrorSpec(0.01f));
 }
 
-// TODO(b/64094172) Failing on GPU as of 2017-07-26.
-XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S0F32AddArray)) {
+XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR1S0F32AdditionComputation();
   auto x = builder.ConstantLiteral(*Literal::CreateR1<float>({}));
@@ -94,8 +92,7 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S0F32AddArray)) {
   ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.01f));
 }
 
-// TODO(b/64094172) Failing on GPU as of 2017-07-26.
-XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S2F32AddArray)) {
+XLA_TEST_F(CallOpTest, CallR1S2F32AddArray) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR1S2F32AdditionComputation();
   auto x = builder.ConstantLiteral(*Literal::CreateR1<float>({1.0f, 2.0f}));
@@ -105,8 +102,7 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S2F32AddArray)) {
   ComputeAndCompareR1<float>(&builder, {3.0f, 5.0f}, {}, ErrorSpec(0.01f));
 }
 
-// TODO(b/64094172) Failing on GPU as of 2017-07-26.
-XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallTreeTwoDeepBranchFactorThree)) {
+XLA_TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
   ComputationBuilder builder(client_, "inner");
   {
     auto x = builder.Parameter(0, r0f32_, "x");
@@ -137,8 +133,7 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallTreeTwoDeepBranchFactorThree)) {
   ComputeAndCompareR0<float>(&builder3, 10.0f, {start.get()}, ErrorSpec(0.0f));
 }
 
-// TODO(b/64094172) Failing on GPU as of 2017-07-26.
-XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32Tuple)) {
+XLA_TEST_F(CallOpTest, CallR0F32Tuple) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR0F32TupleComputation();
   auto elem = Literal::CreateR0<float>(42.0);

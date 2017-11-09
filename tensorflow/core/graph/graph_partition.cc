@@ -117,7 +117,7 @@ DataType EdgeType(const Edge* e) {
   }
 }
 
-// Return true iff we need to add a same device send/recv for 'edge'.
+// Return true iff we need to add the same device send/recv for 'edge'.
 bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
   if (edge->IsControlEdge()) {
     return false;
@@ -728,7 +728,10 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
             strings::StrCat(dst_frame_name, "$$", dst_device);
         ControlLoop loop = control_loops[cl_key];
         DCHECK(loop.enter != nullptr);
-        g->AddControlEdge(loop.merge, dst);
+        // Note that we'll create multiple duplicate edges if dst has multiple
+        // cross-device inputs. This is expected by the logic in Partition(), so
+        // it can add control edges to the recv nodes once they're created.
+        g->AddControlEdge(loop.merge, dst, /*allow_duplicates=*/true);
       }
     }
   }
@@ -1113,7 +1116,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         // before the data is available.
         AddInput(real_recv, send->name(), Graph::kControlSlot);
       } else if (control_flow_edge != nullptr) {
-        // Redirect control edge to the real recv since this is not a same
+        // Redirect control edge to the real recv since this is not the same
         // device send/recv.
         --num_control_flow_edges;
         AddInput(real_recv, control_flow_edge->src()->name(),

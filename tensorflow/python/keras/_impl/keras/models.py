@@ -407,15 +407,21 @@ class Sequential(Model):
     self._input_layers = []
 
     # Model attributes.
-    self.inbound_nodes = []
-    self.outbound_nodes = []
+    self._inbound_nodes = []
+    self._outbound_nodes = []
     self.built = False
 
     # Set model name.
     if not name:
       prefix = 'sequential_'
       name = prefix + str(K.get_uid(prefix))
-    self.name = name
+    self._name = name
+
+    # Used by Layer base class.
+    self._dtype = None
+    self._activity_regularizer = None
+    self._per_input_losses = {}
+    self._per_input_updates = {}
 
     # The following properties are not actually used by Keras;
     # they exist for compatibility with TF's variable scoping mechanism.
@@ -451,16 +457,16 @@ class Sequential(Model):
                       'Found: ' + str(layer))
     if not self.outputs:
       # first layer in model: check that it is an input layer
-      if not layer.inbound_nodes:
+      if not layer._inbound_nodes:
         # create an input layer
-        if not hasattr(layer, 'batch_input_shape'):
+        if not hasattr(layer, '_batch_input_shape'):
           raise ValueError('The first layer in a '
                            'Sequential model must '
                            'get an `input_shape` or '
                            '`batch_input_shape` argument.')
         # Instantiate the input layer.
         x = Input(
-            batch_shape=layer.batch_input_shape,
+            batch_shape=layer._batch_input_shape,
             dtype=layer.dtype,
             name=layer.name + '_input')
         # This will build the current layer
@@ -468,20 +474,20 @@ class Sequential(Model):
         # to the input layer we just created.
         layer(x)
 
-      if len(layer.inbound_nodes) != 1:
+      if len(layer._inbound_nodes) != 1:
         raise ValueError('A layer added to a Sequential model must '
                          'not already be connected somewhere else. '
                          'Model received layer ' + layer.name + ' which has ' +
-                         str(len(layer.inbound_nodes)) +
+                         str(len(layer._inbound_nodes)) +
                          ' pre-existing inbound connections.')
 
-      if len(layer.inbound_nodes[0].output_tensors) != 1:
+      if len(layer._inbound_nodes[0].output_tensors) != 1:
         raise ValueError('All layers in a Sequential model '
                          'should have a single output tensor. '
                          'For multi-output layers, '
                          'use the functional API.')
 
-      self.outputs = [layer.inbound_nodes[0].output_tensors[0]]
+      self.outputs = [layer._inbound_nodes[0].output_tensors[0]]
       self.inputs = topology.get_source_inputs(self.outputs[0])
 
       # We create an input node, which we will keep updated
@@ -501,9 +507,9 @@ class Sequential(Model):
                         'For multi-output layers, '
                         'use the functional API.')
       self.outputs = [output_tensor]
-      # update self.inbound_nodes
-      self.inbound_nodes[0].output_tensors = self.outputs
-      self.inbound_nodes[0].output_shapes = [K.int_shape(self.outputs[0])]
+      # update self._inbound_nodes
+      self._inbound_nodes[0].output_tensors = self.outputs
+      self._inbound_nodes[0].output_shapes = [K.int_shape(self.outputs[0])]
 
     self.layers.append(layer)
     self.built = False
@@ -520,14 +526,14 @@ class Sequential(Model):
     self.layers.pop()
     if not self.layers:
       self.outputs = []
-      self.inbound_nodes = []
-      self.outbound_nodes = []
+      self._inbound_nodes = []
+      self._outbound_nodes = []
     else:
-      self.layers[-1].outbound_nodes = []
+      self.layers[-1]._outbound_nodes = []
       self.outputs = [self.layers[-1].output]
-      # update self.inbound_nodes
-      self.inbound_nodes[0].output_tensors = self.outputs
-      self.inbound_nodes[0].output_shapes = [K.int_shape(self.outputs[0])]
+      # update self._inbound_nodes
+      self._inbound_nodes[0].output_tensors = self.outputs
+      self._inbound_nodes[0].output_shapes = [K.int_shape(self.outputs[0])]
     self.built = False
 
   def get_layer(self, name=None, index=None):
@@ -1272,7 +1278,7 @@ def _clone_functional_model(model, input_tensors=None):
     input_tensors = []
     for layer in model._input_layers:
       input_tensor = Input(
-          batch_shape=layer.batch_input_shape,
+          batch_shape=layer._batch_input_shape,
           dtype=layer.dtype,
           sparse=layer.sparse,
           name=layer.name)

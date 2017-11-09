@@ -107,15 +107,13 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     t = ops.convert_to_tensor(t, name="t")
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    l2norm_inv = math_ops.rsqrt(
-        math_ops.reduce_sum(t * t, axes, keep_dims=True))
+    l2norm = math_ops.sqrt(math_ops.reduce_sum(t * t, axes, keep_dims=True))
     intermediate = t * clip_norm
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
     _ = t.shape.merge_with(intermediate.shape)
-    tclip = array_ops.identity(intermediate * math_ops.minimum(
-        l2norm_inv, constant_op.constant(1.0, dtype=t.dtype) / clip_norm),
-                               name=name)
+    tclip = array_ops.identity(
+        intermediate / math_ops.maximum(l2norm, clip_norm), name=name)
 
   return tclip
 

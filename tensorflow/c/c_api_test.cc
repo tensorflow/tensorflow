@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -49,6 +50,11 @@ TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 namespace {
+
+static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+  EXPECT_TRUE(StringPiece(s).contains(expected))
+      << "'" << s << "' does not contain '" << expected << "'";
+}
 
 TEST(CAPI, Version) { EXPECT_STRNE("", TF_Version()); }
 
@@ -567,7 +573,7 @@ TEST(CAPI, ImportGraphDef) {
   TF_GraphToGraphDef(graph, graph_def, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  // Import it again, with a prefix, in a fresh graph.
+  // Import it, with a prefix, in a fresh graph.
   TF_DeleteGraph(graph);
   graph = TF_NewGraph();
   TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
@@ -582,8 +588,8 @@ TEST(CAPI, ImportGraphDef) {
   ASSERT_TRUE(feed != nullptr);
   ASSERT_TRUE(neg != nullptr);
 
-  // Import it again, with an input mapping and return outputs, into the same
-  // graph.
+  // Import it again, with an input mapping, return outputs, and a return
+  // operation, into the same graph.
   TF_DeleteImportGraphDefOptions(opts);
   opts = TF_NewImportGraphDefOptions();
   TF_ImportGraphDefOptionsSetPrefix(opts, "imported2");
@@ -591,9 +597,10 @@ TEST(CAPI, ImportGraphDef) {
   TF_ImportGraphDefOptionsAddReturnOutput(opts, "feed", 0);
   TF_ImportGraphDefOptionsAddReturnOutput(opts, "scalar", 0);
   EXPECT_EQ(2, TF_ImportGraphDefOptionsNumReturnOutputs(opts));
-  TF_Output return_outputs[2];
-  TF_GraphImportGraphDefWithReturnOutputs(graph, graph_def, opts,
-                                          return_outputs, 2, s);
+  TF_ImportGraphDefOptionsAddReturnOperation(opts, "scalar");
+  EXPECT_EQ(1, TF_ImportGraphDefOptionsNumReturnOperations(opts));
+  TF_ImportGraphDefResults* results =
+      TF_GraphImportGraphDefWithResults(graph, graph_def, opts, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_Operation* scalar2 = TF_GraphOperationByName(graph, "imported2/scalar");
@@ -609,10 +616,25 @@ TEST(CAPI, ImportGraphDef) {
   EXPECT_EQ(0, neg_input.index);
 
   // Check return outputs
+  TF_Output* return_outputs;
+  int num_return_outputs;
+  TF_ImportGraphDefResultsReturnOutputs(results, &num_return_outputs,
+                                        &return_outputs);
+  ASSERT_EQ(2, num_return_outputs);
   EXPECT_EQ(feed2, return_outputs[0].oper);
   EXPECT_EQ(0, return_outputs[0].index);
   EXPECT_EQ(scalar, return_outputs[1].oper);  // remapped
   EXPECT_EQ(0, return_outputs[1].index);
+
+  // Check return operation
+  TF_Operation** return_opers;
+  int num_return_opers;
+  TF_ImportGraphDefResultsReturnOperations(results, &num_return_opers,
+                                           &return_opers);
+  ASSERT_EQ(1, num_return_opers);
+  EXPECT_EQ(scalar2, return_opers[0]);  // not remapped
+
+  TF_DeleteImportGraphDefResults(results);
 
   // Import again, with control dependencies, into the same graph.
   TF_DeleteImportGraphDefOptions(opts);
@@ -679,6 +701,113 @@ TEST(CAPI, ImportGraphDef) {
   Add(feed, scalar, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, ImportGraphDef_WithReturnOutputs) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Create a graph with two nodes: x and 3
+  Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "feed") != nullptr);
+  TF_Operation* oper = ScalarConst(3, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "scalar") != nullptr);
+  Neg(oper, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "neg") != nullptr);
+
+  // Export to a GraphDef.
+  TF_Buffer* graph_def = TF_NewBuffer();
+  TF_GraphToGraphDef(graph, graph_def, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Import it in a fresh graph with return outputs.
+  TF_DeleteGraph(graph);
+  graph = TF_NewGraph();
+  TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsAddReturnOutput(opts, "feed", 0);
+  TF_ImportGraphDefOptionsAddReturnOutput(opts, "scalar", 0);
+  EXPECT_EQ(2, TF_ImportGraphDefOptionsNumReturnOutputs(opts));
+  TF_Output return_outputs[2];
+  TF_GraphImportGraphDefWithReturnOutputs(graph, graph_def, opts,
+                                          return_outputs, 2, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* scalar = TF_GraphOperationByName(graph, "scalar");
+  TF_Operation* feed = TF_GraphOperationByName(graph, "feed");
+  TF_Operation* neg = TF_GraphOperationByName(graph, "neg");
+  ASSERT_TRUE(scalar != nullptr);
+  ASSERT_TRUE(feed != nullptr);
+  ASSERT_TRUE(neg != nullptr);
+
+  // Check return outputs
+  EXPECT_EQ(feed, return_outputs[0].oper);
+  EXPECT_EQ(0, return_outputs[0].index);
+  EXPECT_EQ(scalar, return_outputs[1].oper);
+  EXPECT_EQ(0, return_outputs[1].index);
+
+  TF_DeleteImportGraphDefOptions(opts);
+  TF_DeleteBuffer(graph_def);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, ImportGraphDef_UnusedInputMappings) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Create a graph with two nodes: x and 3
+  Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "feed") != nullptr);
+  TF_Operation* oper = ScalarConst(3, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "scalar") != nullptr);
+  Neg(oper, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "neg") != nullptr);
+
+  // Export to a GraphDef.
+  TF_Buffer* graph_def = TF_NewBuffer();
+  TF_GraphToGraphDef(graph, graph_def, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Import it in a fresh graph.
+  TF_DeleteGraph(graph);
+  graph = TF_NewGraph();
+  TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
+  TF_GraphImportGraphDef(graph, graph_def, opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* scalar = TF_GraphOperationByName(graph, "scalar");
+
+  // Import it in a fresh graph with an unused input mapping.
+  TF_DeleteImportGraphDefOptions(opts);
+  opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsSetPrefix(opts, "imported");
+  TF_ImportGraphDefOptionsAddInputMapping(opts, "scalar", 0, {scalar, 0});
+  TF_ImportGraphDefOptionsAddInputMapping(opts, "fake", 0, {scalar, 0});
+  TF_ImportGraphDefResults* results =
+      TF_GraphImportGraphDefWithResults(graph, graph_def, opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Check unused input mappings
+  int num_unused_input_mappings;
+  const char** src_names;
+  int* src_indexes;
+  TF_ImportGraphDefResultsUnusedInputMappings(
+      results, &num_unused_input_mappings, &src_names, &src_indexes);
+  ASSERT_EQ(1, num_unused_input_mappings);
+  EXPECT_EQ(string("fake"), string(src_names[0]));
+  EXPECT_EQ(0, src_indexes[0]);
+
+  TF_DeleteImportGraphDefResults(results);
+  TF_DeleteImportGraphDefOptions(opts);
+  TF_DeleteBuffer(graph_def);
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);
 }
@@ -833,6 +962,31 @@ TEST(CAPI, ShapeInferenceError) {
   ASSERT_NE(TF_OK, TF_GetCode(status));
   ASSERT_TRUE(add == nullptr);
 
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, GetOpDef) {
+  TF_Status* status = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+  TF_Buffer* buffer = TF_NewBuffer();
+
+  TF_GraphGetOpDef(graph, "Add", buffer, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status));
+  const OpDef* expected_op_def;
+  TF_ASSERT_OK(OpRegistry::Global()->LookUpOpDef("Add", &expected_op_def));
+  string expected_serialized;
+  expected_op_def->SerializeToString(&expected_serialized);
+  string actual_string(reinterpret_cast<const char*>(buffer->data),
+                       buffer->length);
+  EXPECT_EQ(expected_serialized, actual_string);
+
+  TF_GraphGetOpDef(graph, "MyFakeOp", buffer, status);
+  EXPECT_EQ(TF_NOT_FOUND, TF_GetCode(status));
+  ExpectHasSubstr(TF_Message(status),
+                  "Op type not registered 'MyFakeOp' in binary");
+
+  TF_DeleteBuffer(buffer);
   TF_DeleteGraph(graph);
   TF_DeleteStatus(status);
 }

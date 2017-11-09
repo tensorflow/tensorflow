@@ -145,6 +145,7 @@ class Conv3DOp : public BinaryOp<T> {
   REGISTER_KERNEL_BUILDER(                                      \
       Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       Conv3DOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -383,15 +384,14 @@ struct LaunchConvOp<GPUDevice, T> {
     };
 
     using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::AlgorithmDesc;
     using perftools::gputools::dnn::ProfileResult;
-    using perftools::gputools::dnn::kDefaultAlgorithm;
 
     AlgorithmConfig algorithm_config;
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
-      std::vector<AlgorithmType> algorithms;
+      std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
       ProfileResult best_result;
@@ -483,12 +483,16 @@ namespace functor {
       const std::array<int, 3>& padding_right,                        \
       typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
 
+DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 #undef DECLARE_GPU_SPEC
 
 }  // namespace functor
 
 // Registration of the GPU implementations.
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    Conv3DOp<GPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv3DOp<GPUDevice, float>);

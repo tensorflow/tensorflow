@@ -16,7 +16,7 @@ give it a try. This overview uses code samples from the tutorial, but the
 tutorial walks through the code in greater detail.
 
 To understand this overview it will help to have some familiarity
-with basic machine learning concepts, and also with @{$estimator$tf.estimator}.
+with basic machine learning concepts, and also with @{$get_started/estimator$`tf.estimator`}.
 
 [TOC]
 

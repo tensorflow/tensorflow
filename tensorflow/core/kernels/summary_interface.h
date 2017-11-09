@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SUMMARY_INTERFACE_H_
 #define TENSORFLOW_CORE_KERNELS_SUMMARY_INTERFACE_H_
 
+#include <memory>
 
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 
@@ -43,13 +45,16 @@ class SummaryWriterInterface : public ResourceBase {
 
   virtual Status WriteAudio(int64 global_step, Tensor t, const string& tag,
                             int max_outputs_, float sample_rate) = 0;
+
+  virtual Status WriteEvent(std::unique_ptr<Event> e) = 0;
 };
 
 // Creates a SummaryWriterInterface instance which writes to a file. It will
 // enqueue up to max_queue summaries, and flush at least every flush_millis
 // milliseconds. The summaries will be written to the directory specified by
 // logdir and with the filename suffixed by filename_suffix. The caller owns a
-// reference to result if the returned status is ok.
+// reference to result if the returned status is ok. The Env object must not
+// be destroyed until after the returned writer.
 Status CreateSummaryWriter(int max_queue, int flush_millis,
                            const string& logdir, const string& filename_suffix,
                            Env* env, SummaryWriterInterface** result);

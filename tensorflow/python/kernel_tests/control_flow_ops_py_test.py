@@ -1410,7 +1410,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileStack_1(self):
     with self.test_session():
-      s = gen_data_flow_ops._stack(dtypes.int32, stack_name="foo")
+      s = gen_data_flow_ops._stack_v2(-1, dtypes.int32, stack_name="foo")
       i = constant_op.constant(0)
 
       def c(i):
@@ -1419,7 +1419,7 @@ class ControlFlowTest(test.TestCase):
       def b(i):
         ni = math_ops.add(i, 1)
         ni = control_flow_ops.with_dependencies(
-            [gen_data_flow_ops._stack_push(s, i)], ni)
+            [gen_data_flow_ops._stack_push_v2(s, i)], ni)
         return ni
 
       r = control_flow_ops.while_loop(c, b, [i], parallel_iterations=1)
@@ -1431,7 +1431,7 @@ class ControlFlowTest(test.TestCase):
 
       def b1(i, x):
         ni = math_ops.subtract(i, 1)
-        nx = x + gen_data_flow_ops._stack_pop(s, dtypes.int32)
+        nx = x + gen_data_flow_ops._stack_pop_v2(s, dtypes.int32)
         return [ni, nx]
 
       _, rx = control_flow_ops.while_loop(
@@ -2612,7 +2612,8 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, x)[0]
       self.assertEqual(r.eval(), 524288.0)
       self.assertEqual(
-          len([op for op in x.graph.get_operations() if op.type == "Stack"]), 1)
+          len([op for op in x.graph.get_operations() if op.type == "StackV2"]),
+          1)
 
 
 class TupleTest(test.TestCase):

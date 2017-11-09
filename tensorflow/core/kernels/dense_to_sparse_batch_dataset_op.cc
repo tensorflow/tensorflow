@@ -49,10 +49,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("row_shape", &row_shape_t));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(row_shape_t->shape()),
                 errors::InvalidArgument("row_shape must be a vector"));
-    TensorShape row_shape;
-    for (size_t i = 0; i < row_shape_t->dim_size(0); ++i) {
-      row_shape.AddDim(row_shape_t->vec<int64>()(i));
-    }
+    PartialTensorShape row_shape;
+    OP_REQUIRES_OK(ctx, PartialTensorShape::MakePartialShape(
+                            row_shape_t->vec<int64>().data(),
+                            row_shape_t->NumElements(), &row_shape));
 
     *output = nullptr;
 
@@ -78,7 +78,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
   template <class T>
   class Dataset : public DatasetBase {
    public:
-    Dataset(int64 batch_size, const TensorShape& row_shape,
+    Dataset(int64 batch_size, const PartialTensorShape& row_shape,
             const DatasetBase* input)
         : batch_size_(batch_size), row_shape_(row_shape), input_(input) {
       input_->Ref();
@@ -129,9 +129,22 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         int64 total_elements = 0;
         batch_elements.reserve(
             DatasetIterator<Dataset<T>>::dataset()->batch_size_);
-        const TensorShape& row_shape =
+        const PartialTensorShape& row_shape =
             DatasetIterator<Dataset<T>>::dataset()->row_shape_;
         const int row_ndims = row_shape.dims();
+
+        // Determine the size of the output tensors:
+        // * dense_shape will be [`row_shape + 1`].
+        Tensor dense_shape(cpu_allocator(), DT_INT64, {row_ndims + 1});
+        auto dense_shape_vec = dense_shape.vec<int64>();
+        for (size_t i = 0; i < row_ndims; ++i) {
+          if (row_shape.dim_size(i) == -1) {
+            dense_shape_vec(i + 1) = 0;
+          } else {
+            dense_shape_vec(i + 1) = row_shape.dim_size(i);
+          }
+        }
+
         {
           mutex_lock l(mu_);
           *end_of_sequence = false;
@@ -156,9 +169,14 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                     ") that is incompatible with the row shape (",
                     row_shape.DebugString(), ").");
               }
-              for (int i = 0; i < row_ndims; ++i) {
-                if (batch_element_tuple[0].shape().dim_size(i) >
-                    row_shape.dim_size(i)) {
+              for (int j = 0; j < row_ndims; ++j) {
+                // Take the maximum in the dimension if -1 is given.
+                if (row_shape.dim_size(j) == -1) {
+                  dense_shape_vec(j + 1) =
+                      std::max(batch_element_tuple[0].dim_size(j),
+                               dense_shape_vec(j + 1));
+                } else if (batch_element_tuple[0].dim_size(j) >
+                           row_shape.dim_size(j)) {
                   return errors::DataLoss(
                       "Input element had shape (",
                       batch_element_tuple[0].shape().DebugString(),
@@ -175,20 +193,16 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        // Determine the size of the output tensors:
         // * indices will be [`total_elements`, `row_shape + 1`].
         // * values will be [`total_elements`].
-        // * dense_shape will be [`row_shape + 1`].
         Tensor indices(cpu_allocator(), DT_INT64,
                        {total_elements, row_ndims + 1});
         Tensor values(
             cpu_allocator(),
             DatasetIterator<Dataset<T>>::dataset()->output_dtypes()[1],
             {total_elements});
-        Tensor dense_shape(cpu_allocator(), DT_INT64, {row_ndims + 1});
         auto indices_matrix = indices.matrix<int64>();
         auto values_flat = values.flat<T>();
-        auto dense_shape_vec = dense_shape.vec<int64>();
 
         int64 current_position_in_values = 0;
         for (int64 i = 0; i < batch_elements.size(); ++i) {
@@ -220,9 +234,6 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         }
 
         dense_shape_vec(0) = batch_elements.size();
-        for (size_t i = 0; i < row_ndims; ++i) {
-          dense_shape_vec(i + 1) = row_shape.dim_size(i);
-        }
 
         out_tensors->push_back(std::move(indices));
         out_tensors->push_back(std::move(values));
@@ -234,12 +245,11 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 i_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const int64 batch_size_;
-    const TensorShape row_shape_;
+    const PartialTensorShape row_shape_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;
   };

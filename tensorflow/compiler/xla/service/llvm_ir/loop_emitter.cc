@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -86,7 +85,8 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
   }
 }
 
-IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock() {
+IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock(
+    tensorflow::StringPiece loop_name) {
   if (ShapeUtil::IsScalar(shape_)) {
     // No loop needed, so set exit_bb_ to nullptr.
     exit_bb_ = nullptr;
@@ -97,7 +97,7 @@ IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock() {
   // Loops are added from outermost to innermost order with the ForLoopNest
   // class so emit loops in order from most-major dimension down to most-minor
   // dimension (of the target shape).
-  ForLoopNest loop_nest(ir_builder_);
+  ForLoopNest loop_nest(loop_name, ir_builder_);
   IrArray::Index array_index(shape_.dimensions_size());
   for (int i = shape_.layout().minor_to_major_size() - 1; i >= 0; --i) {
     int64 dimension = shape_.layout().minor_to_major(i);
@@ -121,8 +121,8 @@ IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock() {
   return array_index;
 }
 
-tensorflow::Status LoopEmitter::EmitLoop() {
-  IrArray::Index array_index = EmitIndexAndSetExitBasicBlock();
+tensorflow::Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name) {
+  IrArray::Index array_index = EmitIndexAndSetExitBasicBlock(loop_name);
   TF_RETURN_IF_ERROR(body_emitter_(array_index));
 
   // Set the insertion point of ir_builder_ to the loop exit, so that

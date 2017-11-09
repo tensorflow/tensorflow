@@ -40,86 +40,104 @@ class ShapeVerifier : public DfsHloVisitor {
     return CheckBinaryShape(hlo);
   }
 
-  Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
-                     HloInstruction* arg, HloInstruction* max) override {
+  Status HandleClamp(HloInstruction* clamp) override {
     return CheckTernaryShape(clamp);
   }
 
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override {
+  Status HandleSelect(HloInstruction* select) override {
     return CheckTernaryShape(select);
   }
 
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override {
-    return tensorflow::Status::OK();
+  Status HandleConcatenate(HloInstruction* concatenate) override {
+    std::vector<const Shape*> operand_shapes;
+    for (const HloInstruction* operand : concatenate->operands()) {
+      operand_shapes.push_back(&operand->shape());
+    }
+    return CheckShape(
+        concatenate, ShapeInference::InferConcatOpShape(
+                         operand_shapes, concatenate->concatenate_dimension()));
   }
 
   Status HandleConvert(HloInstruction* convert) override {
-    return tensorflow::Status::OK();
+    if (ShapeUtil::ElementIsComplex(convert->operand(0)->shape())) {
+      TF_RET_CHECK(ShapeUtil::ElementIsComplex(convert->shape()))
+          << "Unsupported complex->real kConvert";
+    }
+    return CheckShape(convert, ShapeInference::InferConvertShape(
+                                   convert->operand(0)->shape(),
+                                   convert->shape().element_type()));
   }
 
   Status HandleCopy(HloInstruction* copy) override {
     return CheckUnaryShape(copy);
   }
 
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
-                   HloInstruction* rhs) override {
+  Status HandleDot(HloInstruction* dot) override {
     return CheckBinaryShape(dot);
   }
 
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
-                           HloInstruction* rhs, const Window& window) override {
-    return tensorflow::Status::OK();
+  Status HandleConvolution(HloInstruction* convolution) override {
+    TF_ASSIGN_OR_RETURN(
+        const Shape expected,
+        ShapeInference::InferConvolveShape(
+            convolution->operand(0)->shape(), convolution->operand(1)->shape(),
+            convolution->window(),
+            convolution->convolution_dimension_numbers()));
+    return CheckShape(convolution, expected);
   }
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override {
-    return tensorflow::Status::OK();
+    return CheckShape(crs, ShapeInference::InferCrossReplicaSumShape(
+                               crs->operand(0)->shape()));
   }
 
   Status HandleReducePrecision(HloInstruction* reduce_precision) override {
+    return CheckShape(reduce_precision,
+                      ShapeInference::InferReducePrecisionShape(
+                          reduce_precision->operand(0)->shape(),
+                          reduce_precision->exponent_bits(),
+                          reduce_precision->mantissa_bits()));
+  }
+
+  Status HandleInfeed(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleInfeed(HloInstruction* infeed) override {
+  Status HandleOutfeed(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleOutfeed(HloInstruction* outfeed) override {
+  Status HandleRng(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleRng(HloInstruction* random,
-                   RandomDistribution distribution) override {
-    return tensorflow::Status::OK();
+  Status HandleReverse(HloInstruction* reverse) override {
+    return CheckShape(
+        reverse, ShapeInference::InferReverseShape(reverse->operand(0)->shape(),
+                                                   reverse->dimensions()));
   }
 
-  Status HandleReverse(HloInstruction* reverse,
-                       HloInstruction* operand) override {
-    return tensorflow::Status::OK();
+  Status HandleSort(HloInstruction* sort) override {
+    return CheckUnaryShape(sort);
   }
 
-  Status HandleSort(HloInstruction* sort, HloInstruction* operand) override {
-    return tensorflow::Status::OK();
+  Status HandleConstant(HloInstruction* constant) override {
+    return CheckShape(constant, constant->literal().shape());
   }
 
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override {
-    return tensorflow::Status::OK();
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override {
+    return CheckShape(get_tuple_element,
+                      ShapeInference::InferGetTupleElementShape(
+                          get_tuple_element->operand(0)->shape(),
+                          get_tuple_element->tuple_index()));
   }
 
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override {
-    return tensorflow::Status::OK();
-  }
-
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override {
-    return tensorflow::Status::OK();
+  Status HandleReduce(HloInstruction* reduce) override {
+    return CheckShape(
+        reduce,
+        ShapeInference::InferReduceShape(
+            reduce->operand(0)->shape(), reduce->operand(1)->shape(),
+            reduce->dimensions(), reduce->to_apply()->ComputeProgramShape()));
   }
 
   Status HandleBitcast(HloInstruction* bitcast) override {
@@ -130,107 +148,168 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
-    TF_RET_CHECK(ShapeUtil::Rank(broadcast->operand(0)->shape()) ==
+    // HLO broadcast has no exact analog at the proto level so there is no
+    // ShapeInference method. Check the output shape explicitly.
+    const Shape& operand_shape = broadcast->operand(0)->shape();
+    TF_RET_CHECK(ShapeUtil::Rank(operand_shape) ==
                  broadcast->dimensions().size());
+    for (int64 operand_dimension = 0;
+         operand_dimension < ShapeUtil::Rank(operand_shape);
+         ++operand_dimension) {
+      int64 output_dimension = broadcast->dimensions()[operand_dimension];
+      TF_RET_CHECK(broadcast->shape().dimensions(output_dimension) ==
+                   operand_shape.dimensions(operand_dimension));
+    }
     return tensorflow::Status::OK();
   }
 
   Status HandleReshape(HloInstruction* reshape) override {
+    TF_RET_CHECK(ShapeUtil::ElementsIn(reshape->shape()) ==
+                 ShapeUtil::ElementsIn(reshape->operand(0)->shape()));
     return tensorflow::Status::OK();
   }
 
   Status HandleTranspose(HloInstruction* transpose) override {
+    return CheckShape(transpose, ShapeInference::InferTransposeShape(
+                                     transpose->operand(0)->shape(),
+                                     transpose->dimensions()));
+  }
+
+  Status HandleParameter(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleParameter(HloInstruction* parameter) override {
-    return tensorflow::Status::OK();
-  }
-
-  Status HandleFusion(HloInstruction* fusion) override {
+  Status HandleFusion(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
   Status HandleCall(HloInstruction* call) override {
+    // The shape of kCall should match the shape of the computation it calls.
+    return CheckShape(call, call->to_apply()->ComputeProgramShape().result());
+  }
+
+  Status HandleCustomCall(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleCustomCall(HloInstruction* custom_call,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override {
-    return tensorflow::Status::OK();
+  Status HandleSlice(HloInstruction* slice) override {
+    return CheckShape(slice,
+                      ShapeInference::InferSliceShape(
+                          slice->operand(0)->shape(), slice->slice_starts(),
+                          slice->slice_limits(), slice->slice_strides()));
   }
 
-  Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override {
-    return tensorflow::Status::OK();
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override {
+    return CheckShape(dynamic_slice, ShapeInference::InferDynamicSliceShape(
+                                         dynamic_slice->operand(0)->shape(),
+                                         dynamic_slice->operand(1)->shape(),
+                                         dynamic_slice->dynamic_slice_sizes()));
   }
 
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* operand,
-                            HloInstruction* start_indices) override {
-    return tensorflow::Status::OK();
+  Status HandleDynamicUpdateSlice(
+      HloInstruction* dynamic_update_slice) override {
+    return CheckShape(dynamic_update_slice,
+                      ShapeInference::InferDynamicUpdateSliceShape(
+                          dynamic_update_slice->operand(0)->shape(),
+                          dynamic_update_slice->operand(1)->shape(),
+                          dynamic_update_slice->operand(2)->shape()));
   }
 
-  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
-                                  HloInstruction* operand,
-                                  HloInstruction* update,
-                                  HloInstruction* start_indices) override {
-    return tensorflow::Status::OK();
-  }
-
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override {
+  Status HandleTuple(HloInstruction* tuple) override {
     return CheckVariadicShape(tuple);
   }
 
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* function,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override {
-    return tensorflow::Status::OK();
+  Status HandleMap(HloInstruction* map) override {
+    std::vector<const Shape*> operand_shapes;
+    int64 max_operand_rank = 0;
+    for (const HloInstruction* operand : map->operands()) {
+      operand_shapes.push_back(&operand->shape());
+      max_operand_rank =
+          std::max(max_operand_rank, ShapeUtil::Rank(operand->shape()));
+    }
+    // TODO(b/65689298) Remove code below once Map is generalized to accept
+    // arbitrary map dimensions.
+    std::vector<int64> map_dims(max_operand_rank);
+    std::iota(map_dims.begin(), map_dims.end(), 0);
+    return CheckShape(
+        map,
+        ShapeInference::InferMapShape(
+            operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims));
   }
 
-  Status HandleReduceWindow(HloInstruction* reduce_window,
-                            HloInstruction* operand, const Window& window,
-                            HloComputation* function) override {
-    return tensorflow::Status::OK();
+  Status HandleReduceWindow(HloInstruction* reduce_window) override {
+    return CheckShape(
+        reduce_window,
+        ShapeInference::InferReduceWindowShape(
+            reduce_window->operand(0)->shape(),
+            reduce_window->operand(1)->shape(), reduce_window->window(),
+            reduce_window->to_apply()->ComputeProgramShape()));
   }
 
   Status HandleSelectAndScatter(HloInstruction* instruction) override {
-    return tensorflow::Status::OK();
+    return CheckShape(
+        instruction,
+        ShapeInference::InferSelectAndScatterShape(
+            instruction->operand(0)->shape(),
+            instruction->select()->ComputeProgramShape(), instruction->window(),
+            instruction->operand(1)->shape(), instruction->operand(2)->shape(),
+            instruction->scatter()->ComputeProgramShape()));
   }
 
   Status HandleWhile(HloInstruction* xla_while) override {
-    return tensorflow::Status::OK();
+    // The shape of kWhile should match the shape of the body computation it
+    // calls.
+    return CheckShape(xla_while,
+                      xla_while->while_body()->ComputeProgramShape().result());
   }
 
   Status HandlePad(HloInstruction* pad) override {
+    return CheckShape(pad,
+                      ShapeInference::InferPadShape(pad->operand(0)->shape(),
+                                                    pad->operand(1)->shape(),
+                                                    pad->padding_config()));
+  }
+
+  Status HandleSend(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleSend(HloInstruction* send) override {
+  Status HandleRecv(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleRecv(HloInstruction* recv) override {
-    return tensorflow::Status::OK();
+  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
+    return CheckShape(batch_norm_training,
+                      ShapeInference::InferBatchNormTrainingShape(
+                          batch_norm_training->operand(0)->shape(),
+                          batch_norm_training->operand(1)->shape(),
+                          batch_norm_training->operand(2)->shape(),
+                          batch_norm_training->feature_index()));
   }
 
-  Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override {
-    return tensorflow::Status::OK();
+  Status HandleBatchNormInference(
+      HloInstruction* batch_norm_inference) override {
+    return CheckShape(batch_norm_inference,
+                      ShapeInference::InferBatchNormInferenceShape(
+                          batch_norm_inference->operand(0)->shape(),
+                          batch_norm_inference->operand(1)->shape(),
+                          batch_norm_inference->operand(2)->shape(),
+                          batch_norm_inference->operand(3)->shape(),
+                          batch_norm_inference->operand(4)->shape(),
+                          batch_norm_inference->feature_index()));
   }
 
-  Status HandleBatchNormInference(HloInstruction* batchNormInference) override {
-    return tensorflow::Status::OK();
+  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
+    return CheckShape(batch_norm_grad, ShapeInference::InferBatchNormGradShape(
+                                           batch_norm_grad->operand(0)->shape(),
+                                           batch_norm_grad->operand(1)->shape(),
+                                           batch_norm_grad->operand(2)->shape(),
+                                           batch_norm_grad->operand(3)->shape(),
+                                           batch_norm_grad->operand(4)->shape(),
+                                           batch_norm_grad->feature_index()));
   }
 
-  Status HandleBatchNormGrad(HloInstruction* batchNormGrad) override {
-    return tensorflow::Status::OK();
-  }
-
-  Status FinishVisit(HloInstruction* root) override {
+  Status FinishVisit(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
@@ -250,32 +329,40 @@ class ShapeVerifier : public DfsHloVisitor {
     return tensorflow::Status::OK();
   }
 
+  // Overload which takes a StatusOr to reduce boilerplate in the caller.
+  Status CheckShape(const HloInstruction* instruction,
+                    const StatusOr<Shape>& expected_shape_status) {
+    if (!expected_shape_status.ok()) {
+      Status s = expected_shape_status.status();
+      tensorflow::errors::AppendToMessage(&s, ", for instruction ",
+                                          instruction->ToString());
+      return s;
+    }
+    return CheckShape(instruction, expected_shape_status.ValueOrDie());
+  }
+
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   Status CheckUnaryShape(const HloInstruction* instruction) {
-    TF_ASSIGN_OR_RETURN(const Shape expected,
-                        ShapeInference::InferUnaryOpShape(
-                            instruction->opcode(), instruction->operand(0)));
-    return CheckShape(instruction, expected);
+    return CheckShape(instruction,
+                      ShapeInference::InferUnaryOpShape(
+                          instruction->opcode(), instruction->operand(0)));
   }
   Status CheckBinaryShape(const HloInstruction* instruction) {
-    TF_ASSIGN_OR_RETURN(const Shape expected,
-                        ShapeInference::InferBinaryOpShape(
-                            instruction->opcode(), instruction->operand(0),
-                            instruction->operand(1)));
-    return CheckShape(instruction, expected);
+    return CheckShape(instruction,
+                      ShapeInference::InferBinaryOpShape(
+                          instruction->opcode(), instruction->operand(0),
+                          instruction->operand(1)));
   }
   Status CheckTernaryShape(const HloInstruction* instruction) {
-    TF_ASSIGN_OR_RETURN(const Shape expected,
-                        ShapeInference::InferTernaryOpShape(
-                            instruction->opcode(), instruction->operand(0),
-                            instruction->operand(1), instruction->operand(2)));
-    return CheckShape(instruction, expected);
+    return CheckShape(instruction,
+                      ShapeInference::InferTernaryOpShape(
+                          instruction->opcode(), instruction->operand(0),
+                          instruction->operand(1), instruction->operand(2)));
   }
   Status CheckVariadicShape(const HloInstruction* instruction) {
-    TF_ASSIGN_OR_RETURN(const Shape expected,
-                        ShapeInference::InferVariadicOpShape(
-                            instruction->opcode(), instruction->operands()));
-    return CheckShape(instruction, expected);
+    return CheckShape(instruction,
+                      ShapeInference::InferVariadicOpShape(
+                          instruction->opcode(), instruction->operands()));
   }
 
   // Returns the size of a Shape in bytes.
@@ -309,8 +396,8 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
       fusion->fused_parameters();
   const HloInstruction* fused_root = fusion->fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters.size(), false);
-  for (auto& instruction : fused_computation->instructions()) {
-    if (fused_root == instruction.get()) {
+  for (auto* instruction : fused_computation->instructions()) {
+    if (fused_root == instruction) {
       if (root_owned) {
         return FailedPrecondition("Root appears more than once in %s.",
                                   fusion->ToString().c_str());
@@ -318,7 +405,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
       root_owned = true;
     }
     for (int i = 0; i < fused_parameters.size(); ++i) {
-      if (fused_parameters[i] == instruction.get()) {
+      if (fused_parameters[i] == instruction) {
         if (parameter_owned[i]) {
           return FailedPrecondition("Parameter appears more than once in %s.",
                                     fusion->ToString().c_str());
@@ -347,9 +434,9 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
 
   // All uses of fused instructions must be in the fusion computation, and every
   // non-root instruction must have at least one use.
-  for (auto& instruction :
+  for (auto* instruction :
        fusion->fused_instructions_computation()->instructions()) {
-    if (instruction.get() != fused_root) {
+    if (instruction != fused_root) {
       if (instruction->user_count() == 0) {
         return FailedPrecondition(
             "Non-root instruction %s in %s must have users.",
@@ -413,11 +500,11 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
   ShapeVerifier shape_verifier(shape_size_fn_);
 
-  for (auto& computation : module->computations()) {
+  for (auto* computation : module->computations()) {
     for (const auto& instruction : computation->instructions()) {
-      TF_RET_CHECK(instruction->parent() == computation.get());
+      TF_RET_CHECK(instruction->parent() == computation);
       if (instruction->opcode() == HloOpcode::kFusion) {
-        TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction.get()));
+        TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
         TF_RET_CHECK(
             ContainersEqual(instruction->called_computations(),
                             {instruction->fused_instructions_computation()}))
@@ -434,10 +521,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
                        instruction->fused_instructions_computation())
               << "Fused HLO was missing a parent: " << fused->ToString()
               << " parent: " << fused->parent()
-              << " computation: " << computation.get();
+              << " computation: " << computation;
         }
-      }
-      if (instruction->opcode() == HloOpcode::kBroadcast) {
+      } else if (instruction->opcode() == HloOpcode::kBroadcast) {
         // If you see this failure then someone has confused the difference
         // between the HLO broadcast op, and the UserComputation broadcast
         // op.  See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
@@ -445,6 +531,40 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
         TF_RET_CHECK(instruction->dimensions().size() ==
                      ShapeUtil::Rank(instruction->operand(0)->shape()))
                 << "Broadcast HLO has invalid number of dimensions.";
+      } else if (instruction->opcode() == HloOpcode::kWhile) {
+        auto* while_cond = instruction->while_condition();
+        auto* while_body = instruction->while_body();
+        TF_RET_CHECK(while_cond->num_parameters() == 1)
+            << "While condition must have exactly 1 parameter; had "
+            << while_cond->num_parameters() << ": " << while_cond->ToString();
+        TF_RET_CHECK(while_body->num_parameters() == 1)
+            << "While body must have exactly 1 parameter; had "
+            << while_body->num_parameters() << ": " << while_body->ToString();
+        TF_RET_CHECK(instruction->operand_count() == 1)
+            << "While loop must have exactly one operand; had "
+            << instruction->operand_count() << ": " << instruction->ToString();
+
+        auto* init = instruction->operand(0);
+        auto* cond_param = while_cond->parameter_instruction(0);
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), cond_param->shape()))
+            << "While condition's parameter must have the same shape as the "
+               "loop's 'init'. init: "
+            << init->ToString() << ", param: " << cond_param->ToString();
+        auto* cond_root = while_cond->root_instruction();
+        TF_RET_CHECK(ShapeUtil::Compatible(cond_root->shape(),
+                                           ShapeUtil::MakeShape(PRED, {})))
+            << "While condition should have shape PRED: "
+            << cond_root->ToString();
+
+        auto* body_param = while_body->parameter_instruction(0);
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_param->shape()))
+            << "While body's parameter must have the same shape as the loop's "
+               "'init'. init: "
+            << init->ToString() << ", param: " << body_param->ToString();
+        auto* body_root = while_body->root_instruction();
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_root->shape()))
+            << "While body should have same shape as the loop's 'init'. init: "
+            << init->ToString() << ", body: " << body_root->ToString();
       }
 
       auto previous = instructions.find(instruction->name());
@@ -455,7 +575,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
           << "\nPrevious HLO with same name:\n"
           << previous->second->ToString()
           << " in computation: " << previous->second->parent()->name();
-      instructions[instruction->name()] = instruction.get();
+      instructions[instruction->name()] = instruction;
     }
 
     TF_RETURN_IF_ERROR(computation->Accept(&shape_verifier));

@@ -29,29 +29,49 @@ from tensorflow.python.estimator.canned.parsing_utils import classifier_parse_ex
 from tensorflow.python.estimator.canned.parsing_utils import regressor_parse_example_spec
 from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.export import export_lib as export
+from tensorflow.python.estimator.exporter import Exporter
+from tensorflow.python.estimator.exporter import FinalExporter
+from tensorflow.python.estimator.exporter import LatestExporter
 from tensorflow.python.estimator.inputs import inputs
 from tensorflow.python.estimator.model_fn import EstimatorSpec
 from tensorflow.python.estimator.model_fn import ModeKeys
 from tensorflow.python.estimator.run_config import RunConfig
+from tensorflow.python.estimator.training import EvalSpec
+from tensorflow.python.estimator.training import train_and_evaluate
+from tensorflow.python.estimator.training import TrainSpec
+
 
 from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
 
 _allowed_symbols = [
+    # Canned Estimators
     'DNNClassifier',
     'DNNRegressor',
     'DNNLinearCombinedClassifier',
     'DNNLinearCombinedRegressor',
     'LinearClassifier',
     'LinearRegressor',
+
+    # I/O
     'classifier_parse_example_spec',
     'regressor_parse_example_spec',
     'inputs',
     'export',
+
+    # Estimator
     'Estimator',
     'EstimatorSpec',
     'ModeKeys',
     'RunConfig',
+
+    # Training utilities
+    'train_and_evaluate',
+    'EvalSpec',
+    'TrainSpec',
+    'Exporter',
+    'LatestExporter',
+    'FinalExporter',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

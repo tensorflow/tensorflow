@@ -44,7 +44,7 @@ namespace xla {
 
 // A class describing the source(s) of the Buffer(s) contained in the output of
 // a particular HLO instruction. The structure of PointsToSet mirrors the
-// structure of the instruction's shape which may be an arbitrary tree (eg, a
+// structure of the instruction's shape, which may be an arbitrary tree (eg, a
 // nested tuple). Each node in this tree corresponds to a single buffer in the
 // instruction's output and contains the set of Buffers which might define
 // the corresponding buffer.
@@ -148,7 +148,7 @@ class PointsToSet {
   ShapeTree<Elem> tree_;
 
   // PointsToSet contains references (const LogicalBuffer*) to elements within
-  // TuplePointsToAnalysis so disable copying.
+  // TuplePointsToAnalysis, so disable copying.
   TF_DISALLOW_COPY_AND_ASSIGN(PointsToSet);
 };
 
@@ -247,16 +247,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status VerifyBuffer(const LogicalBuffer& buffer) const;
 
   Status DefaultAction(HloInstruction* hlo_instruction) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleCopy(HloInstruction* copy) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
+  Status HandleSelect(HloInstruction* select) override;
 
   string ToString() const;
 
@@ -272,11 +267,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status Analyze();
 
   // Populates instruction-defined buffers and aliases for each instruction
-  // in 'instructions'. The parameter 'instructions' is passed in a form
-  // common to how both HloComputation, and fusion instructions maintain a
-  // list of instructions.
-  Status PopulateDefinedBuffersAndAliases(
-      const std::list<std::unique_ptr<HloInstruction>>& instructions);
+  // in 'instructions'.
+  Status PopulateDefinedBuffersAndAliases(const decltype(
+      std::declval<HloComputation>().instructions())& instructions);
 
   // Creates an empty PointsToSet in the points_to_ map for the given
   // instruction.

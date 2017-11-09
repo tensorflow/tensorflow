@@ -10,16 +10,27 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["LICENSE.text"])
 
 config_setting(
-    name = "using_sycl",
-    values = {
-        "define": "using_sycl=true",
+    name = "using_sycl_ccpp",
+    define_values = {
+        "using_sycl": "true",
+        "using_trisycl": "false",
     },
 )
+
+config_setting(
+    name = "using_sycl_trisycl",
+    define_values = {
+        "using_sycl": "true",
+        "using_trisycl": "false",
+    },
+)
+
 
 cc_library(
     name = "sycl_headers",
     hdrs = glob([
         "**/*.h",
+        "**/*.hpp",
     ]),
     includes = [".", "include"],
 )

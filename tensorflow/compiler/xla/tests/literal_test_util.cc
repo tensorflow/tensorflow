@@ -39,28 +39,60 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ void LiteralTestUtil::AssertEqualShapes(const Shape& expected,
-                                                     const Shape& actual) {
-  ASSERT_EQ(ShapeUtil::IsTuple(expected), ShapeUtil::IsTuple(actual));
+/* static */ ::testing::AssertionResult LiteralTestUtil::EqualShapes(
+    const Shape& expected, const Shape& actual) {
+  if (ShapeUtil::IsTuple(expected) != ShapeUtil::IsTuple(actual)) {
+    return ::testing::AssertionFailure()
+           << "tupleness-mismatch! want: " << ShapeUtil::HumanString(expected)
+           << " got: " << ShapeUtil::HumanString(actual);
+  }
   if (ShapeUtil::IsTuple(expected)) {
-    ASSERT_EQ(ShapeUtil::TupleElementCount(expected),
-              ShapeUtil::TupleElementCount(actual));
+    if (ShapeUtil::TupleElementCount(expected) !=
+        ShapeUtil::TupleElementCount(actual)) {
+      return ::testing::AssertionFailure()
+             << "want tuple element count: "
+             << ShapeUtil::TupleElementCount(expected)
+             << " got tuple element count: "
+             << ShapeUtil::TupleElementCount(actual);
+    }
     for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
-      AssertEqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+      ::testing::AssertionResult result =
+          EqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+      if (!result) {
+        return result;
+      }
     }
   } else {
-    ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual));
-    ASSERT_EQ(expected.element_type(), actual.element_type())
-        << PrimitiveType_Name(expected.element_type()) << " vs "
-        << PrimitiveType_Name(actual.element_type());
-    ASSERT_EQ(expected.dimensions_size(), actual.dimensions_size());
+    if (ShapeUtil::Rank(expected) != ShapeUtil::Rank(actual)) {
+      return ::testing::AssertionFailure()
+             << "want rank of: " << ShapeUtil::HumanString(expected)
+             << " got rank of: " << ShapeUtil::HumanString(actual);
+    }
+    if (expected.element_type() != actual.element_type()) {
+      return ::testing::AssertionFailure()
+             << PrimitiveType_Name(expected.element_type()) << " vs "
+             << PrimitiveType_Name(actual.element_type());
+    }
+    if (expected.dimensions_size() != actual.dimensions_size()) {
+      return ::testing::AssertionFailure()
+             << "want dimensions_size " << expected.dimensions_size()
+             << " got dimensions_size " << actual.dimensions_size();
+    }
     for (int i = 0; i < expected.dimensions_size(); ++i) {
-      ASSERT_EQ(expected.dimensions(i), actual.dimensions(i))
-          << "mismatch in dimension #" << i
-          << " expected: " << ShapeUtil::HumanString(expected)
-          << " actual: " << ShapeUtil::HumanString(actual);
+      if (expected.dimensions(i) != actual.dimensions(i)) {
+        return ::testing::AssertionFailure()
+               << "mismatch in dimension #" << i
+               << " expected: " << ShapeUtil::HumanString(expected)
+               << " actual: " << ShapeUtil::HumanString(actual);
+      }
     }
   }
+  return ::testing::AssertionSuccess();
+}
+
+/* static */ void LiteralTestUtil::AssertEqualShapes(const Shape& expected,
+                                                     const Shape& actual) {
+  ASSERT_TRUE(EqualShapes(expected, actual));
 }
 
 /* static */ void LiteralTestUtil::AssertEqualShapesAndLayouts(
@@ -123,6 +155,15 @@ template <>
 template <>
 ::testing::AssertionResult CompareEqual<double>(double lhs, double rhs) {
   return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs);
+}
+template <>
+::testing::AssertionResult CompareEqual<complex64>(complex64 lhs,
+                                                   complex64 rhs) {
+  auto res = CompareEqual<float>(lhs.real(), rhs.real());
+  if (!res) {
+    return res;
+  }
+  return CompareEqual<float>(lhs.imag(), rhs.imag());
 }
 
 // A recursive function which iterates through every index of expected and
@@ -203,6 +244,9 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
     case F64:
       match = ExpectLiteralsEqual<double>(expected, actual, &multi_index, 0);
       break;
+    case C64:
+      match = ExpectLiteralsEqual<complex64>(expected, actual, &multi_index, 0);
+      break;
     case TUPLE: {
       bool tuple_match = true;
       for (int i = 0; i < actual.tuple_literals_size(); ++i) {
@@ -263,7 +307,14 @@ class NearComparator {
     VLOG(1) << "actual:";
     XLA_VLOG_LINES(1, actual.ToString());
 
-    LiteralTestUtil::AssertEqualShapes(expected.shape(), actual.shape());
+    // If the shapes mismatch, we simply fail the expectation instead of
+    // printing out data, as it's a type error rather than a value error.
+    ::testing::AssertionResult equal_shapes =
+        LiteralTestUtil::EqualShapes(expected.shape(), actual.shape());
+    if (!equal_shapes) {
+      EXPECT_TRUE(equal_shapes);
+      return false;
+    }
 
     // Set up members used during the comparison.
     num_miscompares_ = 0;
@@ -285,6 +336,9 @@ class NearComparator {
         break;
       case F64:
         ExpectLiteralsNear<double>(expected, actual, 0);
+        break;
+      case C64:
+        ExpectLiteralsNear<complex64>(expected, actual, 0);
         break;
       default:
         LOG(FATAL) << "Unsupported primitive type in near comparator: "
@@ -326,6 +380,19 @@ class NearComparator {
   }
 
  private:
+  template <typename NativeT>
+  bool NanMismatch(NativeT lhs, NativeT rhs) {
+    return std::isnan(lhs) != std::isnan(rhs);
+  }
+
+  template <typename NativeT>
+  void ExpectNear(NativeT expected, NativeT actual,
+                  const ::testing::Message& message) {
+    EXPECT_NEAR(expected, actual, error_.abs)
+        << "expected:\n  " << expected << "\n\tvs actual:\n  " << actual << "\n"
+        << message;
+  }
+
   // EXPECTs that the two given scalar values are within the error bound. Keeps
   // track of how many mismatches have occurred to keep the size of the output
   // manageable.
@@ -351,7 +418,7 @@ class NearComparator {
         "index %s abs_diff %f rel_err %f",
         LiteralTestUtil::MultiIndexAsString(multi_index_).c_str(), abs_diff,
         rel_err);
-    bool nan_mismatch = std::isnan(actual) != std::isnan(expected);
+    bool nan_mismatch = NanMismatch<NativeT>(expected, actual);
     bool mismatch =
         (nan_mismatch || (abs_diff >= error_.abs && rel_err >= error_.rel));
     if (mismatch) {
@@ -359,11 +426,12 @@ class NearComparator {
       abs_expected_miscompare_sum_ += std::abs(expected);
       const int64 kMaxFailures = 2;
       if (num_miscompares_ < kMaxFailures) {
-        EXPECT_NEAR(expected, actual, error_.abs)
-            << "mismatch at index "
+        ::testing::Message msg;
+        msg << "mismatch at index "
             << LiteralTestUtil::MultiIndexAsString(multi_index_) << " abs diff "
             << abs_diff << " rel err " << rel_err << " failure #"
             << num_miscompares_;
+        ExpectNear<NativeT>(expected, actual, msg);
       } else if (num_miscompares_ == kMaxFailures) {
         LOG(ERROR)
             << "reached max 'loud' failure count; silently proceeding...";
@@ -430,6 +498,23 @@ class NearComparator {
   std::vector<int64> max_rel_multi_index_;
   std::vector<int64> max_abs_multi_index_;
 };
+
+template <>
+bool NearComparator::NanMismatch<complex64>(complex64 lhs, complex64 rhs) {
+  return std::isnan(lhs.real()) != std::isnan(rhs.real()) ||
+         std::isnan(lhs.imag()) != std::isnan(rhs.imag());
+}
+
+template <>
+void NearComparator::ExpectNear<complex64>(complex64 expected, complex64 actual,
+                                           const ::testing::Message& message) {
+  EXPECT_NEAR(expected.real(), actual.real(), error_.abs)
+      << "expected:\n  " << expected << "\n\tvs actual:\n  " << actual << "\n"
+      << message;
+  EXPECT_NEAR(expected.imag(), actual.imag(), error_.abs)
+      << "expected:\n  " << expected << "\n\tvs actual:\n  " << actual << "\n"
+      << message;
+}
 
 }  // namespace
 

@@ -84,7 +84,6 @@ string RunProfile(const string& command, const string& options,
 }  // namespace
 
 bool NewProfiler(const string* graph, const string* op_log) {
-  CHECK(!tf_stat) << "Currently only 1 living tfprof profiler is allowed";
   CHECK(graph) << "graph mustn't be null";
   std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
   if (!graph_ptr->ParseFromString(*graph)) {
@@ -120,8 +119,8 @@ void DeleteProfiler() {
   }
 }
 
-void AddStep(int64 step, const string* graph, const string* run_meta,
-             const string* op_log) {
+double AddStep(int64 step, const string* graph, const string* run_meta,
+               const string* op_log) {
   CHECK(tf_stat);
 
   CHECK(graph && !graph->empty());
@@ -145,6 +144,7 @@ void AddStep(int64 step, const string* graph, const string* run_meta,
     op_log_ptr->ParseFromString(*op_log);
     tf_stat->AddOpLogProto(std::move(op_log_ptr));
   }
+  return tf_stat->run_coverage();
 }
 
 string Profile(const string* command, const string* options) {
@@ -155,6 +155,7 @@ string Profile(const string* command, const string* options) {
 }
 
 void WriteProfile(const string* filename) {
+  CHECK(tf_stat);
   CHECK(filename) << "empty file name when asking to write profile.";
   tf_stat->WriteProfile(*filename);
 }

@@ -101,7 +101,7 @@ TEST_F(HloModuleTest, CloneTest) {
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
        origin != post_order.end() && copied != post_order_copied.end();
        ++origin, ++copied) {
-    EXPECT_EQ((*origin)->name() + "copy", (*copied)->name());
+    EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
   }
 }
 
@@ -125,10 +125,26 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   EXPECT_EQ(post_order.front(), computation1);
 }
 
+TEST_F(HloModuleTest, LargeConstantToString) {
+  // Create a module with a single computation.
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder("Constant");
+  std::vector<float> values(16, 42.0);
+  builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>(values)));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      "HloModule LargeConstantToString:\n\nENTRY %Constant () -> f32[16] {\n  "
+      "ROOT %constant = f32[16]{0} constant({...})\n}\n\n",
+      module->ToString(/*include_large_constants=*/false));
+  EXPECT_EQ(
+      "HloModule LargeConstantToString:\n\nENTRY %Constant () -> f32[16] {\n  "
+      "ROOT %constant = f32[16]{0} constant({42, 42, 42, 42, 42, 42, 42, 42, "
+      "42, 42, 42, 42, 42, 42, 42, 42})\n}\n\n",
+      module->ToString(/*include_large_constants=*/true));
+}
+
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

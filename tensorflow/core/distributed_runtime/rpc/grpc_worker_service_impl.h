@@ -26,6 +26,7 @@ limitations under the License.
 #include "grpc++/impl/codegen/sync_stream.h"
 #include "grpc++/support/byte_buffer.h"
 
+#include "tensorflow/core/distributed_runtime/rpc/grpc_namespace_compat.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/protobuf/worker.pb.h"

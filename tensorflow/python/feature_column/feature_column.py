@@ -159,7 +159,8 @@ from tensorflow.python.util import nest
 def input_layer(features,
                 feature_columns,
                 weight_collections=None,
-                trainable=True):
+                trainable=True,
+                cols_to_vars=None):
   """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -195,6 +196,15 @@ def input_layer(features,
       `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    cols_to_vars: If not `None`, must be a dictionary that will be filled with a
+      mapping from `_FeatureColumn` to list of `Variable`s.  For example, after
+      the call, we might have cols_to_vars =
+      {_EmbeddingColumn(
+        categorical_column=_HashedCategoricalColumn(
+          key='sparse_feature', hash_bucket_size=5, dtype=tf.string),
+        dimension=10): [<tf.Variable 'some_variable:0' shape=(5, 10),
+                        <tf.Variable 'some_variable:1' shape=(5, 10)]}
+      If a column creates no variables, its value will be an empty list.
 
   Returns:
     A `Tensor` which represents input layer of a model. Its shape
@@ -204,7 +214,7 @@ def input_layer(features,
   Raises:
     ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   for column in feature_columns:
     if not isinstance(column, _DenseColumn):
       raise ValueError(
@@ -228,6 +238,12 @@ def input_layer(features,
             builder,
             weight_collections=weight_collections,
             trainable=trainable)
+        if cols_to_vars is not None:
+          # Retrieve any variables created (some _DenseColumn's don't create
+          # variables, in which case an empty list is returned).
+          cols_to_vars[column] = ops.get_collection(
+              ops.GraphKeys.GLOBAL_VARIABLES,
+              scope=variable_scope.get_variable_scope().name)
         num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
         batch_size = array_ops.shape(tensor)[0]
         tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
@@ -241,7 +257,8 @@ def linear_model(features,
                  units=1,
                  sparse_combiner='sum',
                  weight_collections=None,
-                 trainable=True):
+                 trainable=True,
+                 cols_to_vars=None):
   """Returns a linear prediction `Tensor` based on given `feature_columns`.
 
   This function generates a weighted sum based on output dimension `units`.
@@ -285,6 +302,19 @@ def linear_model(features,
       `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    cols_to_vars: If not `None`, must be a dictionary that will be filled with a
+      mapping from `_FeatureColumn` to associated list of `Variable`s.  For
+      example, after the call, we might have cols_to_vars = {
+        _NumericColumn(
+          key='numeric_feature1', shape=(1,):
+        [<tf.Variable 'linear_model/price2/weights:0' shape=(1, 1)>],
+        'bias': [<tf.Variable 'linear_model/bias_weights:0' shape=(1,)>],
+        _NumericColumn(
+          key='numeric_feature2', shape=(2,)):
+        [<tf.Variable 'linear_model/price1/weights:0' shape=(2, 1)>]}
+      If a column creates no variables, its value will be an empty list. Note
+      that cols_to_vars will also contain a string key 'bias' that maps to a
+      list of Variables.
 
   Returns:
     A `Tensor` which represents predictions/logits of a linear model. Its shape
@@ -294,7 +324,7 @@ def linear_model(features,
     ValueError: if an item in `feature_columns` is neither a `_DenseColumn`
       nor `_CategoricalColumn`.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   for column in feature_columns:
     if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
       raise ValueError('Items of feature_columns must be either a _DenseColumn '
@@ -313,12 +343,18 @@ def linear_model(features,
       with variable_scope.variable_scope(None, default_name=column.name):
         ordered_columns.append(column)
         if isinstance(column, _CategoricalColumn):
-          weighted_sums.append(_create_categorical_column_weighted_sum(
+          weighted_sum = _create_categorical_column_weighted_sum(
               column, builder, units, sparse_combiner, weight_collections,
-              trainable))
+              trainable)
         else:
-          weighted_sums.append(_create_dense_column_weighted_sum(
-              column, builder, units, weight_collections, trainable))
+          weighted_sum = _create_dense_column_weighted_sum(
+              column, builder, units, weight_collections, trainable)
+        weighted_sums.append(weighted_sum)
+        if cols_to_vars is not None:
+          # Retrieve the variables created.
+          cols_to_vars[column] = ops.get_collection(
+              ops.GraphKeys.GLOBAL_VARIABLES,
+              scope=variable_scope.get_variable_scope().name)
     _verify_static_batch_size_equality(weighted_sums, ordered_columns)
     predictions_no_bias = math_ops.add_n(
         weighted_sums, name='weighted_sum_no_bias')
@@ -330,7 +366,13 @@ def linear_model(features,
         collections=weight_collections)
     predictions = nn_ops.bias_add(
         predictions_no_bias, bias, name='weighted_sum')
-
+    if cols_to_vars is not None:
+      # Add the bias to cols_to_vars as well, converting the Variable or
+      # PartitionedVariable to a list of Variable's.
+      if isinstance(bias, variables.Variable):
+        cols_to_vars['bias'] = [bias]
+      else:  # Must be a PartitionedVariable.
+        cols_to_vars['bias'] = list(bias)
     return predictions
 
 
@@ -367,7 +409,7 @@ def _transform_features(features, feature_columns):
   Returns:
     A `dict` mapping `_FeatureColumn` to `Tensor` and `SparseTensor` values.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   outputs = {}
   with ops.name_scope(
       None, default_name='transform_features', values=features.values()):
@@ -1647,10 +1689,17 @@ def _to_sparse_input(input_tensor, ignore_value=None):
     return sparse_tensor_lib.SparseTensor(indices, values, dense_shape)
 
 
-def _check_feature_columns(feature_columns):
-  """Verifies feature_columns input."""
+def _clean_feature_columns(feature_columns):
+  """Verifies and normalizes `feature_columns` input."""
+  if isinstance(feature_columns, _FeatureColumn):
+    feature_columns = [feature_columns]
+
+  if isinstance(feature_columns, collections.Iterator):
+    feature_columns = list(feature_columns)
+
   if isinstance(feature_columns, dict):
     raise ValueError('Expected feature_columns to be iterable, found dict.')
+
   for column in feature_columns:
     if not isinstance(column, _FeatureColumn):
       raise ValueError('Items of feature_columns must be a _FeatureColumn. '
@@ -1667,6 +1716,8 @@ def _check_feature_columns(feature_columns):
                        'features dict.'.format(column,
                                                name_to_column[column.name]))
     name_to_column[column.name] = column
+
+  return feature_columns
 
 
 class _NumericColumn(_DenseColumn,

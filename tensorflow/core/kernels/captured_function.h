@@ -55,7 +55,7 @@ class CapturedFunction {
  public:
   // NOTE(mrry): The `captured_inputs` are passed by value. For
   // efficiency, you are recommended to move this argument into the call.
-  static Status Create(OpKernelContext* ctx, const NameAttrList* func,
+  static Status Create(OpKernelContext* ctx, const NameAttrList& func,
                        int graph_def_version,
                        std::vector<Tensor> captured_inputs,
                        std::unique_ptr<CapturedFunction>* out_function);

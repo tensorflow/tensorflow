@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/cc/training/queue_runner.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -282,8 +281,8 @@ Status SingleMachine::ResetSession() {
     // Make sure the session is properly closed
     TF_RETURN_IF_ERROR(Shutdown());
 
-    // Destroying the object deletes all its varibles as well. This is only true
-    // for DirectSession.
+    // Destroying the object deletes all its variables as well. This is only
+    // true for DirectSession.
     session_.reset();
   }
 

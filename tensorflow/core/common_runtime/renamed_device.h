@@ -37,6 +37,13 @@ class RenamedDevice : public Device {
     return underlying_->RequiresRecordingAccessedTensors();
   }
 
+  const DeviceBase* UnderlyingDevice() const override {
+    return underlying_->UnderlyingDevice();
+  }
+  DeviceBase* UnderlyingDevice() override {
+    return underlying_->UnderlyingDevice();
+  }
+
   const CpuWorkerThreads* tensorflow_cpu_worker_threads() const override {
     return underlying_->tensorflow_cpu_worker_threads();
   }

@@ -20,17 +20,16 @@ from __future__ import print_function
 
 import functools
 import hashlib
-import math
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
@@ -287,7 +286,7 @@ def _smallest_integer_by_dtype(dt):
 
 
 def _is_integer_like_by_dtype(dt):
-  """Helper returning True if dtype.is_interger or is `bool`."""
+  """Helper returning True if dtype.is_integer or is `bool`."""
   if not _is_known_dtype(dt):
     raise TypeError("Unrecognized dtype: {}".format(dt.name))
   return dt.is_integer or dt.base_dtype == dtypes.bool
@@ -525,8 +524,8 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   # valid Cholesky factor.
   chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
-  # LinearOperatorTriL ignores the upper triangle.
-  operator = LinearOperatorTriL(chol)
+  # LinearOperatorLowerTriangular ignores the upper triangle.
+  operator = LinearOperatorLowerTriangular(chol)
   ```
 
   Example of heteroskedastic 2-D linear regression.
@@ -708,130 +707,119 @@ def gen_new_seed(seed, salt):
   return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
 
 
-def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
-  """Creates a (batch of) lower triangular matrix from a vector of inputs.
+def fill_triangular(x, upper=False, name=None):
+  """Creates a (batch of) triangular matrix from a vector of inputs.
+
+  Created matrix can be lower- or upper-triangular. (It is more efficient to
+  create the matrix as upper or lower, rather than transpose.)
+
+  Triangular matrix elements are filled in a clockwise spiral. See example,
+  below.
 
   If `x.get_shape()` is `[b1, b2, ..., bK, d]` then the output shape is `[b1,
   b2, ..., bK, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
-  `n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))`.
-
-  Although the non-batch complexity is O(n**2), large constants and sub-optimal
-  vectorization means the complexity of this function is 5x slower than zeroing
-  out the upper triangular, i.e., `tf.matrix_band_part(X, -1, 0)`. This
-  function becomes competitive only when several matmul/cholesky/etc ops can be
-  ellided in constructing the input. Example: wiring a fully connected layer as
-  a covariance matrix; this function reduces the final layer by 2x and possibly
-  reduces the network arch complexity considerably. In most cases it is better
-  to simply build a full matrix and zero out the upper triangular elements,
-  e.g., `tril = tf.matrix_band_part(full, -1, 0)`, rather than directly
-  construct a lower triangular.
-
-  Warning: This Op is intended for convenience, not efficiency.
+  `n = int(np.sqrt(0.25 + 2. * m) - 0.5)`.
 
   Example:
 
   ```python
-  fill_lower_triangular([1, 2, 3, 4, 5, 6])  # [[1, 0, 0],
-                                             #  [2, 3, 0],
-                                             #  [4, 5, 6]]
+  fill_triangular([1, 2, 3, 4, 5, 6])
+  # ==> [[4, 0, 0],
+  #      [6, 5, 0],
+  #      [3, 2, 1]]
+
+  fill_triangular([1, 2, 3, 4, 5, 6], upper=True)
+  # ==> [[1, 2, 3],
+  #      [0, 5, 6],
+  #      [0, 0, 4]]
   ```
 
   For comparison, a pure numpy version of this function can be found in
-  `distribution_util_test.py`, function `_fill_lower_triangular`.
+  `util_test.py`, function `_fill_triangular`.
 
   Args:
-    x: `Tensor` representing lower triangular elements.
-    validate_args: Python `bool`, default `False`. Whether to ensure the shape
-      of `x` can be mapped to a lower triangular matrix (controls non-static
-      checks only).
+    x: `Tensor` representing lower (or upper) triangular elements.
+    upper: Python `bool` representing whether output matrix should be upper
+      triangular (`True`) or lower triangular (`False`, default).
     name: Python `str`. The name to give this op.
 
   Returns:
-    tril: `Tensor` with lower triangular elements filled from `x`.
+    tril: `Tensor` with lower (or upper) triangular elements filled from `x`.
 
   Raises:
-    ValueError: if shape of `x` has static shape which cannot be mapped to a
-      lower triangular matrix.
+    ValueError: if `x` cannot be mapped to a triangular matrix.
   """
-  # TODO(jvdillon): Replace this code with dedicated op when it exists.
-  with ops.name_scope(name, values=[x]):
-    x = ops.convert_to_tensor(x, name="x")
-    if (x.get_shape().ndims is not None and
-        x.get_shape()[-1].value is not None):
-      d = x.get_shape()[-1].value
-      # d = n(n+1)/2 implies n is:
-      n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))
-      d_inferred = n * (n + 1) /2
-      if d != d_inferred:
-        raise ValueError("Input cannot be mapped to a lower triangular; "
-                         "n*(n+1)/2 = %d != %d" % (d_inferred, d))
-      final_shape = x.get_shape()[:-1].concatenate(
-          tensor_shape.TensorShape([n, n]))
+
+  with ops.name_scope(name, "fill_triangular", values=[x]):
+    if x.shape.with_rank_at_least(1)[-1].value is not None:
+      # Formula derived by solving for n: m = n(n+1)/2.
+      m = np.int32(x.shape[-1].value)
+      n = np.sqrt(0.25 + 2. * m) - 0.5
+      if n != np.floor(n):
+        raise ValueError("Input right-most shape ({}) does not "
+                         "correspond to a triangular matrix.".format(m))
+      n = np.int32(n)
+      static_final_shape = x.shape[:-1].concatenate([n, n])
     else:
-      d = math_ops.cast(array_ops.shape(x)[-1], dtype=dtypes.float32)
-      # d = n(n+1)/2 implies n is:
-      n = math_ops.cast(0.5 * (math_ops.sqrt(1. + 8. * d) - 1.),
-                        dtype=dtypes.int32)
-      if validate_args:
-        is_valid_input_shape = check_ops.assert_equal(
-            n * (n + 1) / 2, d,
-            message="Input cannot be mapped to a lower triangular.")
-        n = control_flow_ops.with_dependencies([is_valid_input_shape], n)
-      final_shape = x.get_shape()[:-1].concatenate(
-          tensor_shape.TensorShape([None, None]))
-
-    def tril_ids(n):
-      """Internal helper to create vector of linear indices into y."""
-      # Build the ids statically; chose 512 because it implies 1MiB.
-      if not tensor_util.is_tensor(n) and n <= 512:
-        ids = np.arange(n**2, dtype=np.int32)
-        rows = (ids / n).astype(np.int32)  # Implicit floor.
-        # We need to stop incrementing the index when we encounter
-        # upper-triangular elements. The idea here is to compute the
-        # lower-right number of zeros then by "symmetry" subtract this from the
-        # total number of zeros, n(n-1)/2.
-        # Then we note that: n(n-1)/2 - (n-r)*(n-r-1)/2 = r(2n-r-1)/2
-        offset = (rows * (2 * n - rows - 1) / 2).astype(np.int32)
-        # We could also zero out when (rows < cols) == (rows < ids-n*rows).
-        # mask = (ids <= (n + 1) * rows).astype(np.int32)
-      else:
-        ids = math_ops.range(n**2)
-        rows = math_ops.cast(ids / n, dtype=dtypes.int32)
-        offset = math_ops.cast(rows * (2 * n - rows - 1) / 2,
-                               dtype=dtypes.int32)
-      return ids - offset
-
-    # Special-case non-batch case.
-    if x.get_shape().ndims == 1:
-      y = array_ops.gather(x, array_ops.reshape(tril_ids(n), [n, n]))
-      y = array_ops.matrix_band_part(y, -1, 0)
-      y.set_shape(y.get_shape().merge_with(final_shape))
-      return y
-
-    # Make ids for each batch dim.
-    if (x.get_shape().ndims is not None and
-        x.get_shape()[:-1].is_fully_defined()):
-      batch_shape = np.asarray(x.get_shape()[:-1].as_list(), dtype=np.int32)
-      m = np.prod(batch_shape).astype(np.int32)
+      m = array_ops.shape(x)[-1]
+      # For derivation, see above. Casting automatically lops off the 0.5, so we
+      # omit it.  We don't validate n is an integer because this has
+      # graph-execution cost; an error will be thrown from the reshape, below.
+      n = math_ops.cast(
+          math_ops.sqrt(0.25 + math_ops.cast(2 * m, dtype=dtypes.float32)),
+          dtype=dtypes.int32)
+      static_final_shape = x.shape.with_rank_at_least(1)[:-1].concatenate(
+          [None, None])
+    # We now concatenate the "tail" of `x` to `x` (and reverse one of them).
+    #
+    # We do this based on the insight that the input `x` provides `ceil(n/2)`
+    # rows of an `n x n` matrix, some of which will get zeroed out being on the
+    # wrong side of the diagonal. The first row will not get zeroed out at all,
+    # and we need `floor(n/2)` more rows, so the first is what we omit from
+    # `x_tail`. If we then stack those `ceil(n/2)` rows with the `floor(n/2)`
+    # rows provided by a reversed tail, it is exactly the other set of elements
+    # of the reversed tail which will be zeroed out for being on the wrong side
+    # of the diagonal further up/down the matrix. And, in doing-so, we've filled
+    # the triangular matrix in a clock-wise spiral pattern. Neat!
+    #
+    # Try it out in numpy:
+    #  n = 3
+    #  x = np.arange(n * (n + 1) / 2)
+    #  m = x.shape[0]
+    #  n = np.int32(np.sqrt(.25 + 2 * m) - .5)
+    #  x_tail = x[(m - (n**2 - m)):]
+    #  np.concatenate([x_tail, x[::-1]], 0).reshape(n, n)  # lower
+    #  # ==> array([[3, 4, 5],
+    #               [5, 4, 3],
+    #               [2, 1, 0]])
+    #  np.concatenate([x, x_tail[::-1]], 0).reshape(n, n)  # upper
+    #  # ==> array([[0, 1, 2],
+    #               [3, 4, 5],
+    #               [5, 4, 3]])
+    #
+    # Note that we can't simply do `x[..., -(n**2 - m):]` because this doesn't
+    # correctly handle `m == n == 1`. Hence, we do nonnegative indexing.
+    # Furthermore observe that:
+    #   m - (n**2 - m)
+    #   = n**2 / 2 + n / 2 - (n**2 - n**2 / 2 + n / 2)
+    #   = 2 (n**2 / 2 + n / 2) - n**2
+    #   = n**2 + n - n**2
+    #   = n
+    if upper:
+      x_list = [x, array_ops.reverse(x[..., n:], axis=[-1])]
     else:
-      batch_shape = array_ops.shape(x)[:-1]
-      m = math_ops.reduce_prod(array_ops.shape(x)[:-1])
-    batch_ids = math_ops.range(m)
-
-    # Assemble the tril_ids into batch,tril_id pairs.
-    idx = array_ops.stack([
-        array_ops.tile(array_ops.expand_dims(batch_ids, 1), [1, n * n]),
-        array_ops.tile(array_ops.expand_dims(tril_ids(n), 0), [m, 1])
-    ])
-    idx = array_ops.transpose(idx, [1, 2, 0])
-
-    # Gather up, reshape, and return.
-    y = array_ops.reshape(x, [-1, d])
-    y = array_ops.gather_nd(y, idx)
-    y = array_ops.reshape(y, array_ops.concat([batch_shape, [n, n]], 0))
-    y = array_ops.matrix_band_part(y, -1, 0)
-    y.set_shape(y.get_shape().merge_with(final_shape))
-    return y
+      x_list = [x[..., n:], array_ops.reverse(x, axis=[-1])]
+    new_shape = (
+        static_final_shape.as_list()
+        if static_final_shape.is_fully_defined()
+        else array_ops.concat([array_ops.shape(x)[:-1], [n, n]], axis=0))
+    x = array_ops.reshape(array_ops.concat(x_list, axis=-1), new_shape)
+    x = array_ops.matrix_band_part(
+        x,
+        num_lower=(0 if upper else -1),
+        num_upper=(-1 if upper else 0))
+    x.set_shape(static_final_shape)
+    return x
 
 
 def tridiag(below=None, diag=None, above=None, name=None):
@@ -902,6 +890,104 @@ def tridiag(below=None, diag=None, above=None, name=None):
     return _add(below, diag, above)
 
 
+def reduce_weighted_logsumexp(
+    logx,
+    w=None,
+    axis=None,
+    keep_dims=False,
+    return_sign=False,
+    name=None):
+  """Computes `log(abs(sum(weight * exp(elements across tensor dimensions))))`.
+
+  If all weights `w` are known to be positive, it is more efficient to directly
+  use `reduce_logsumexp`, i.e., `tf.reduce_logsumexp(logx + tf.log(w))` is more
+  efficient than `du.reduce_weighted_logsumexp(logx, w)`.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` has no entries, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  This function is more numerically stable than log(sum(w * exp(input))). It
+  avoids overflows caused by taking the exp of large inputs and underflows
+  caused by taking the log of small inputs.
+
+  For example:
+
+  ```python
+  x = tf.constant([[0., 0, 0],
+                   [0, 0, 0]])
+
+  w = tf.constant([[-1., 1, 1],
+                   [1, 1, 1]])
+
+  du.reduce_weighted_logsumexp(x, w)
+  # ==> log(-1*1 + 1*1 + 1*1 + 1*1 + 1*1 + 1*1) = log(4)
+
+  du.reduce_weighted_logsumexp(x, w, axis=0)
+  # ==> [log(-1+1), log(1+1), log(1+1)]
+
+  du.reduce_weighted_logsumexp(x, w, axis=1)
+  # ==> [log(-1+1+1), log(1+1+1)]
+
+  du.reduce_weighted_logsumexp(x, w, axis=1, keep_dims=True)
+  # ==> [[log(-1+1+1)], [log(1+1+1)]]
+
+  du.reduce_weighted_logsumexp(x, w, axis=[0, 1])
+  # ==> log(-1+5)
+  ```
+
+  Args:
+    logx: The tensor to reduce. Should have numeric type.
+    w: The weight tensor. Should have numeric type identical to `logx`.
+    axis: The dimensions to reduce. If `None` (the default),
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
+    keep_dims: If true, retains reduced dimensions with length 1.
+    return_sign: If `True`, returns the sign of the result.
+    name: A name for the operation (optional).
+
+  Returns:
+    lswe: The `log(abs(sum(weight * exp(x))))` reduced tensor.
+    sign: (Optional) The sign of `sum(weight * exp(x))`.
+  """
+  with ops.name_scope(name, "reduce_weighted_logsumexp", [logx, w]):
+    logx = ops.convert_to_tensor(logx, name="logx")
+    if w is None:
+      lswe = math_ops.reduce_logsumexp(logx, axis=axis, keep_dims=keep_dims)
+      if return_sign:
+        sgn = array_ops.ones_like(lswe)
+        return lswe, sgn
+      return lswe
+    w = ops.convert_to_tensor(w, dtype=logx.dtype, name="w")
+    log_absw_x = logx + math_ops.log(math_ops.abs(w))
+    max_log_absw_x = math_ops.reduce_max(log_absw_x, axis=axis, keep_dims=True)
+    # If the largest element is `-inf` or `inf` then we don't bother subtracting
+    # off the max. We do this because otherwise we'd get `inf - inf = NaN`. That
+    # this is ok follows from the fact that we're actually free to subtract any
+    # value we like, so long as we add it back after taking the `log(sum(...))`.
+    max_log_absw_x = array_ops.where(
+        math_ops.is_inf(max_log_absw_x),
+        array_ops.zeros_like(max_log_absw_x),
+        max_log_absw_x)
+    wx_over_max_absw_x = (
+        math_ops.sign(w) * math_ops.exp(log_absw_x - max_log_absw_x))
+    sum_wx_over_max_absw_x = math_ops.reduce_sum(
+        wx_over_max_absw_x,
+        axis=axis,
+        keep_dims=keep_dims)
+    if not keep_dims:
+      max_log_absw_x = array_ops.squeeze(max_log_absw_x, axis)
+    sgn = math_ops.sign(sum_wx_over_max_absw_x)
+    lswe = max_log_absw_x + math_ops.log(sgn * sum_wx_over_max_absw_x)
+    if return_sign:
+      return lswe, sgn
+    return lswe
+
+
 # TODO(jvdillon): Merge this test back into:
 # tensorflow/python/ops/softplus_op_test.py
 # once TF core is accepting new ops.
@@ -964,11 +1050,75 @@ def dimension_size(x, axis):
   """Returns the size of a specific dimension."""
   # Since tf.gather isn't "constant-in, constant-out", we must first check the
   # static shape or fallback to dynamic shape.
-  num_rows = (None if x.get_shape().ndims is None
-              else x.get_shape()[axis].value)
-  if num_rows is not None:
-    return num_rows
+  s = x.shape.with_rank_at_least(axis + 1)[axis].value
+  if axis > -1 and s is not None:
+    return s
   return array_ops.shape(x)[axis]
+
+
+def process_quadrature_grid_and_probs(
+    quadrature_grid_and_probs, dtype, validate_args, name=None):
+  """Validates quadrature grid, probs or computes them as necessary.
+
+  Args:
+    quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
+      representing the sample points and the corresponding (possibly
+      normalized) weight.  When `None`, defaults to:
+      `np.polynomial.hermite.hermgauss(deg=8)`.
+    dtype: The expected `dtype` of `grid` and `probs`.
+    validate_args: Python `bool`, default `False`. When `True` distribution
+      parameters are checked for validity despite possibly degrading runtime
+      performance. When `False` invalid inputs may silently render incorrect
+      outputs.
+    name: Python `str` name prefixed to Ops created by this class.
+
+  Returns:
+     quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
+      representing the sample points and the corresponding (possibly
+      normalized) weight.
+
+  Raises:
+    ValueError: if `quadrature_grid_and_probs is not None` and
+      `len(quadrature_grid_and_probs[0]) != len(quadrature_grid_and_probs[1])`
+  """
+  with ops.name_scope(name, "process_quadrature_grid_and_probs",
+                      [quadrature_grid_and_probs]):
+    if quadrature_grid_and_probs is None:
+      grid, probs = np.polynomial.hermite.hermgauss(deg=8)
+      grid = grid.astype(dtype.as_numpy_dtype)
+      probs = probs.astype(dtype.as_numpy_dtype)
+      probs /= np.linalg.norm(probs, ord=1, keepdims=True)
+      grid = ops.convert_to_tensor(grid, name="grid", dtype=dtype)
+      probs = ops.convert_to_tensor(probs, name="probs", dtype=dtype)
+      return grid, probs
+
+    grid, probs = tuple(quadrature_grid_and_probs)
+    grid = ops.convert_to_tensor(grid, name="grid", dtype=dtype)
+    probs = ops.convert_to_tensor(probs, name="unnormalized_probs",
+                                  dtype=dtype)
+    probs /= linalg_ops.norm(probs, ord=1, axis=-1, keep_dims=True,
+                             name="probs")
+
+    def _static_dim_size(x, axis):
+      """Returns the static size of a specific dimension or `None`."""
+      return x.shape.with_rank_at_least(axis + 1)[axis].value
+
+    m, n = _static_dim_size(probs, axis=0), _static_dim_size(grid, axis=0)
+    if m is not None and n is not None:
+      if m != n:
+        raise ValueError("`quadrature_grid_and_probs` must be a `tuple` of "
+                         "same-length zero-th-dimension `Tensor`s "
+                         "(saw lengths {}, {})".format(m, n))
+    elif validate_args:
+      grid = control_flow_ops.with_dependencies([
+          check_ops.assert_equal(
+              dimension_size(probs, axis=0),
+              dimension_size(grid, axis=0),
+              message=("`quadrature_grid_and_probs` must be a `tuple` of "
+                       "same-length zero-th-dimension `Tensor`s")),
+      ], grid)
+
+    return grid, probs
 
 
 class AppendDocstring(object):

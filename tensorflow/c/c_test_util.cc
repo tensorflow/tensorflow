@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/c_test_util.h"
 
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -167,9 +168,9 @@ TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
   return TF_FinishOperation(desc, s);
 }
 
-void NegHelper(TF_Operation* n, TF_Graph* graph, TF_Status* s,
+void NegHelper(TF_Operation* n, TF_Graph* graph, TF_Status* s, const char* name,
                TF_Operation** op) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "Neg", "neg");
+  TF_OperationDescription* desc = TF_NewOperation(graph, "Neg", name);
   TF_Output neg_input = {n, 0};
   TF_AddInput(desc, neg_input);
   *op = TF_FinishOperation(desc, s);
@@ -177,9 +178,10 @@ void NegHelper(TF_Operation* n, TF_Graph* graph, TF_Status* s,
   ASSERT_NE(*op, nullptr);
 }
 
-TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s) {
+TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
+                  const char* name) {
   TF_Operation* op;
-  NegHelper(n, graph, s, &op);
+  NegHelper(n, graph, s, name, &op);
   return op;
 }
 
@@ -337,6 +339,25 @@ bool GetAttrValue(TF_Operation* oper, const char* attr_name,
   if (ret) ret = attr_value->ParseFromArray(buffer->data, buffer->length);
   TF_DeleteBuffer(buffer);
   return ret;
+}
+
+std::vector<std::pair<string, string>> GetGradDefs(
+    const tensorflow::GraphDef& graph_def) {
+  std::vector<std::pair<string, string>> grads;
+  for (const tensorflow::GradientDef& grad : graph_def.library().gradient()) {
+    grads.emplace_back(grad.function_name(), grad.gradient_func());
+  }
+  std::sort(grads.begin(), grads.end());
+  return grads;
+}
+
+std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def) {
+  std::vector<string> names;
+  for (const tensorflow::FunctionDef& func : graph_def.library().function()) {
+    names.push_back(func.signature().name());
+  }
+  std::sort(names.begin(), names.end());
+  return names;
 }
 
 CSession::CSession(TF_Graph* graph, TF_Status* s) {

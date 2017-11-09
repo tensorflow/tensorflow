@@ -63,7 +63,7 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
     const HloModuleConfig& hlo_module_config) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(F32 == type || F64 == type);
+  TF_RET_CHECK(F32 == type || F64 == type || C64 == type);
   DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
                            lhs_array, rhs_array, executable_run_options_value,
                            ir_builder, hlo_module_config);
@@ -127,18 +127,32 @@ tensorflow::Status DotOpEmitter::Emit() {
   TF_RET_CHECK(lhs_shape.dimensions(lhs_reduction_dimension) ==
                rhs_shape.dimensions(rhs_reduction_dimension));
 
+  bool lhs_reduction_along_minor_dimension =
+      lhs_reduction_dimension == LayoutUtil::Minor(lhs_shape.layout(), 0);
+  bool rhs_reduction_along_minor_dimension =
+      rhs_reduction_dimension == LayoutUtil::Minor(rhs_shape.layout(), 0);
+
   // Create loop nests which loop through the LHS operand dimensions and the RHS
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
-  llvm_ir::ForLoopNest loop_nest(ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(llvm_ir::IrName(&dot_), ir_builder_);
   llvm_ir::IrArray::Index lhs_index = EmitOperandArrayLoopNest(
       &loop_nest, lhs_array_, lhs_reduction_dimension, "lhs");
   llvm_ir::IrArray::Index rhs_index = EmitOperandArrayLoopNest(
       &loop_nest, rhs_array_, rhs_reduction_dimension, "rhs");
 
   // Create the loop which does the sum of products reduction.
+  //
+  // The prevent_unrolling bit is working around a deficiency in LLVM's loop
+  // vectorization pipeline, wherein in some cases unrolling a loop can prevent
+  // effective vectorization.  Since we know that the IR we generate when
+  // reducing across the minor dimension in both LHS and RHS is vectorized well
+  // by the loop vectorizer, we block unrolling in that case to stop loop unroll
+  // from messing up the vectorization.
   std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
-      0, lhs_shape.dimensions(lhs_reduction_dimension), "reduction");
+      0, lhs_shape.dimensions(lhs_reduction_dimension), "reduction",
+      /*prevent_unrolling=*/lhs_reduction_along_minor_dimension &&
+          rhs_reduction_along_minor_dimension);
 
   // The final entry in the rhs and lhs indexes is the indvar of the
   // reduction loop.
@@ -162,7 +176,7 @@ tensorflow::Status DotOpEmitter::Emit() {
   llvm::BasicBlock* preheader_bb = reduction_loop->GetPreheaderBasicBlock();
   ir_builder_->SetInsertPoint(preheader_bb->getTerminator());
 
-  ir_builder_->CreateStore(llvm::ConstantFP::get(accum_type, 0.0),
+  ir_builder_->CreateStore(llvm::Constant::getNullValue(accum_type),
                            accum_address);
 
   // Body basic block of reduction loop:
@@ -177,9 +191,29 @@ tensorflow::Status DotOpEmitter::Emit() {
   llvm::Value* rhs_element =
       rhs_array_.EmitReadArrayElement(rhs_index, ir_builder_);
 
-  llvm::Value* product = ir_builder_->CreateFMul(lhs_element, rhs_element);
   llvm::Value* accum = ir_builder_->CreateLoad(accum_address);
-  llvm::Value* updated_accum = ir_builder_->CreateFAdd(accum, product);
+  llvm::Value* updated_accum;
+  if (ShapeUtil::ElementIsComplex(lhs_shape)) {
+    auto real = [&](llvm::Value* x) {
+      return ir_builder_->CreateExtractValue(x, {0});
+    };
+    auto imag = [&](llvm::Value* x) {
+      return ir_builder_->CreateExtractValue(x, {1});
+    };
+    llvm::Value* product_real = ir_builder_->CreateFSub(
+        ir_builder_->CreateFMul(real(lhs_element), real(rhs_element)),
+        ir_builder_->CreateFMul(imag(lhs_element), imag(rhs_element)));
+    llvm::Value* product_imag = ir_builder_->CreateFAdd(
+        ir_builder_->CreateFMul(real(lhs_element), imag(rhs_element)),
+        ir_builder_->CreateFMul(imag(lhs_element), real(rhs_element)));
+    updated_accum = ir_builder_->CreateInsertValue(
+        accum, ir_builder_->CreateFAdd(real(accum), product_real), {0});
+    updated_accum = ir_builder_->CreateInsertValue(
+        updated_accum, ir_builder_->CreateFAdd(imag(accum), product_imag), {1});
+  } else {
+    llvm::Value* product = ir_builder_->CreateFMul(lhs_element, rhs_element);
+    updated_accum = ir_builder_->CreateFAdd(accum, product);
+  }
   ir_builder_->CreateStore(updated_accum, accum_address);
 
   // Exit basic block of reduction loop.
@@ -216,11 +250,28 @@ tensorflow::Status DotOpEmitter::Emit() {
 
 tensorflow::Status DotOpEmitter::EmitScalarDot() {
   // A scalar dot is just a scalar multiply.
+  llvm::Value* result;
   llvm::Value* lhs_value =
       lhs_array_.EmitReadArrayElement(/*index=*/{}, ir_builder_);
   llvm::Value* rhs_value =
       rhs_array_.EmitReadArrayElement(/*index=*/{}, ir_builder_);
-  llvm::Value* result = ir_builder_->CreateFMul(lhs_value, rhs_value);
+  if (ShapeUtil::ElementIsComplex(lhs_array_.GetShape())) {
+#define REAL(x) ir_builder_->CreateExtractValue(x, {0})
+#define IMAG(x) ir_builder_->CreateExtractValue(x, {1})
+    llvm::Value* real = ir_builder_->CreateFSub(
+        ir_builder_->CreateFMul(REAL(lhs_value), REAL(rhs_value)),
+        ir_builder_->CreateFMul(IMAG(lhs_value), IMAG(rhs_value)));
+    llvm::Value* imag = ir_builder_->CreateFAdd(
+        ir_builder_->CreateFMul(REAL(lhs_value), IMAG(rhs_value)),
+        ir_builder_->CreateFMul(IMAG(lhs_value), REAL(rhs_value)));
+#undef IMAG
+#undef REAL
+    result = llvm::ConstantAggregateZero::get(lhs_array_.GetElementLlvmType());
+    result = ir_builder_->CreateInsertValue(result, real, {0});
+    result = ir_builder_->CreateInsertValue(result, imag, {1});
+  } else {
+    result = ir_builder_->CreateFMul(lhs_value, rhs_value);
+  }
   target_array_.EmitWriteArrayElement(/*index=*/{}, result, ir_builder_);
   return tensorflow::Status::OK();
 }
@@ -291,6 +342,9 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
+
+  CHECK(LayoutUtil::Equal(lhs_shape.layout(), rhs_shape.layout()));
+
   int64 m = lhs_shape.dimensions(transpose_lhs_ ? 1 : 0);
   int64 k = lhs_shape.dimensions(transpose_lhs_ ? 0 : 1);
   int64 n = rhs_shape.dimensions(transpose_rhs_ ? 0 : 1);

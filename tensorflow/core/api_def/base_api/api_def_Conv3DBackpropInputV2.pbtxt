@@ -1,0 +1,49 @@
+op {
+  graph_op_name: "Conv3DBackpropInputV2"
+  in_arg {
+    name: "input_sizes"
+    description: <<END
+An integer vector representing the tensor shape of `input`,
+where `input` is a 5-D
+`[batch, depth, rows, cols, in_channels]` tensor.
+END
+  }
+  in_arg {
+    name: "filter"
+    description: <<END
+Shape `[depth, rows, cols, in_channels, out_channels]`.
+`in_channels` must match between `input` and `filter`.
+END
+  }
+  in_arg {
+    name: "out_backprop"
+    description: <<END
+Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+out_channels]`.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+1-D tensor of length 5. The stride of the sliding window for each
+dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  attr {
+    name: "data_format"
+    description: <<END
+The data format of the input and output data. With the
+default format "NDHWC", the data is stored in the order of:
+    [batch, in_depth, in_height, in_width, in_channels].
+Alternatively, the format could be "NCDHW", the data storage order is:
+    [batch, in_channels, in_depth, in_height, in_width].
+END
+  }
+  summary: "Computes the gradients of 3-D convolution with respect to the input."
+}

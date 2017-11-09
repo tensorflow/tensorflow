@@ -61,6 +61,7 @@ fi
 
 set -e
 # Install six.
+pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
@@ -91,6 +92,3 @@ pip3.5 install portpicker
 pip3.5 install werkzeug
 
 pip3.5 install grpcio
-
-# Eager execution needs autograd:
-pip3.5 install --upgrade autograd

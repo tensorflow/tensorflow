@@ -141,11 +141,11 @@ class MergeLayersTest(test.TestCase):
   def test_concatenate_errors(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(3, 5))
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError, 'inputs with matching shapes'):
       keras.layers.concatenate([i1, i2], axis=-1)
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError, 'called on a list'):
       keras.layers.concatenate(i1, axis=-1)
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError, 'called on a list'):
       keras.layers.concatenate([i1], axis=-1)
 
   def test_merge_dot(self):

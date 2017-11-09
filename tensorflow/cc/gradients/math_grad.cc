@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/math_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -200,8 +203,8 @@ Status TanhGrad(const Scope& scope, const Operation& op,
   // evaluated.
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto y = ConjugateHelper(grad_scope, op.output(0));
-  grad_outputs->push_back(internal::TanhGrad(scope, y, grad));
-  return scope.status();
+  grad_outputs->push_back(internal::TanhGrad(grad_scope, y, grad));
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Tanh", TanhGrad);
 
@@ -256,8 +259,8 @@ Status SigmoidGrad(const Scope& scope, const Operation& op,
   // evaluated.
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto y = ConjugateHelper(grad_scope, op.output(0));
-  grad_outputs->push_back(internal::SigmoidGrad(scope, y, grad));
-  return scope.status();
+  grad_outputs->push_back(internal::SigmoidGrad(grad_scope, y, grad));
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Sigmoid", SigmoidGrad);
 
@@ -484,7 +487,7 @@ Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
   auto grad = grad_inputs[0];
   auto zeros = ZerosLike(scope, grad);
   auto gx_1 = Where3(scope, comparator, grad, zeros);
-  auto gx_2 = Where3(scope, LogicalNot(scope, comparator), grad, zeros);
+  auto gx_2 = Where3(scope, comparator, zeros, grad);
   return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
 }
 
@@ -525,6 +528,15 @@ Status ImagGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Imag", ImagGrad);
+
+Status ComplexGrad(const Scope& scope, const Operation& op,
+                   const std::vector<Output>& grad_inputs,
+                   std::vector<Output>* grad_outputs) {
+  auto gx_1 = Real(scope, grad_inputs[0]);
+  auto gx_2 = Imag(scope, grad_inputs[0]);
+  return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
+}
+REGISTER_GRADIENT_OP("Complex", ComplexGrad);
 
 Status AngleGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
@@ -687,15 +699,32 @@ Status MeanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Mean", MeanGrad);
 
+Status ErfGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  auto grad = grad_inputs[0];
+  auto two_over_root_pi = Cast(scope, Const(scope, 2 / std::sqrt(M_PI)),
+                               grad.type());
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
+  // grad * 2/sqrt(pi) * exp(-x**2)
+  auto dx = Mul(grad_scope,
+                Mul(grad_scope, grad, two_over_root_pi),
+                Exp(grad_scope, Neg(grad_scope, Square(grad_scope, x))));
+  grad_outputs->push_back(dx);
+  return grad_scope.status();
+}
+REGISTER_GRADIENT_OP("Erf", ErfGrad);
+
 Status LgammaGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
                   std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto x = ConjugateHelper(grad_scope, op.input(0));
-  auto dx = Mul(scope, grad, Digamma(scope, x));
+  auto dx = Mul(grad_scope, grad, Digamma(grad_scope, x));
   grad_outputs->push_back(dx);
-  return scope.status();
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Lgamma", LgammaGrad);
 
@@ -793,42 +822,37 @@ Status MatMulGradHelper(const Scope& scope, const bool is_batch,
 // MatMulGrad common used to read and check node attr state, and determine
 // proper MatMul products for gradients based on input matrix transposition
 // combinations.
-// TODO(andydavis) Re-use this function for BatchMatMulGrad.
 Status MatMulGradCommon(const Scope& scope, const Operation& op,
                         const bool is_batch,
                         const std::vector<Output>& grad_inputs,
                         const string& attr_adj_x, const string& attr_adj_y,
                         std::vector<Output>* grad_outputs) {
-  DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->attrs(), "T", &dtype));
-  if (dtype == DT_COMPLEX64 || dtype == DT_COMPLEX128) {
-    return errors::Unimplemented(
-        "MatMul gradient for complex data type is not supported yet.");
+  auto a = op.input(0);
+  auto b = op.input(1);
+  // Use conjugate of the inputs for MatMul
+  if (is_batch == false) {
+    a = ConjugateHelper(scope, a);
+    b = ConjugateHelper(scope, b);
   }
+  auto product = op.output(0);
 
   bool ta;
   bool tb;
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.output(0).node()->attrs(), attr_adj_x, &ta));
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.output(0).node()->attrs(), attr_adj_y, &tb));
+  TF_RETURN_IF_ERROR(GetNodeAttr(product.node()->attrs(), attr_adj_x, &ta));
+  TF_RETURN_IF_ERROR(GetNodeAttr(product.node()->attrs(), attr_adj_y, &tb));
 
   if (!ta && !tb) {
-    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, op.input(1),
-                            true, op.input(0), true, grad_inputs[0], false,
-                            grad_outputs);
+    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, true, a,
+                            true, grad_inputs[0], false, grad_outputs);
   } else if (!ta && tb) {
-    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, op.input(1),
-                            false, grad_inputs[0], true, op.input(0), false,
-                            grad_outputs);
+    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, false,
+                            grad_inputs[0], true, a, false, grad_outputs);
   } else if (ta && !tb) {
-    return MatMulGradHelper(scope, is_batch, op.input(1), false, grad_inputs[0],
-                            true, op.input(0), false, grad_inputs[0], false,
-                            grad_outputs);
+    return MatMulGradHelper(scope, is_batch, b, false, grad_inputs[0], true, a,
+                            false, grad_inputs[0], false, grad_outputs);
   }
-  return MatMulGradHelper(scope, is_batch, op.input(1), true, grad_inputs[0],
-                          true, grad_inputs[0], true, op.input(0), true,
-                          grad_outputs);
+  return MatMulGradHelper(scope, is_batch, b, true, grad_inputs[0], true,
+                          grad_inputs[0], true, a, true, grad_outputs);
 }
 
 Status MatMulGrad(const Scope& scope, const Operation& op,

@@ -34,13 +34,15 @@ class SqlDatasetOp : public DatasetOpKernel {
   explicit SqlDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    // TODO(b/64276939) Remove this check when we add support for other
-    // tensorflow types.
     for (const DataType& dt : output_types_) {
-      OP_REQUIRES(
-          ctx, dt == DT_STRING || dt == DT_INT32,
-          errors::InvalidArgument(
-              "Each element of `output_types_` must be DT_STRING or DT_INT32"));
+      OP_REQUIRES(ctx,
+                  dt == DT_STRING || dt == DT_INT8 || dt == DT_INT16 ||
+                      dt == DT_INT32 || dt == DT_INT64 || dt == DT_UINT8 ||
+                      dt == DT_UINT16 || dt == DT_BOOL || dt == DT_DOUBLE,
+                  errors::InvalidArgument(
+                      "Each element of `output_types_` must be one of: "
+                      "DT_STRING, DT_INT8, DT_INT16, DT_INT32, DT_INT64, "
+                      "DT_UINT8, DT_UINT16, DT_BOOL, DT_DOUBLE "));
     }
     for (const PartialTensorShape& pts : output_shapes_) {
       OP_REQUIRES(ctx, pts.dims() == 0,

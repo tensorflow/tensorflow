@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
@@ -42,8 +41,8 @@ CompileOnlyClient::CompileAheadOfTime(
 
 int64 CompileOnlyClient::PointerSizeForTriple(
     tensorflow::StringPiece target_triple) {
-  llvm::Triple triple(
-      llvm::Triple::normalize(llvm_ir::AsStringRef(target_triple)));
+  llvm::Triple triple(llvm::Triple::normalize(
+      llvm::StringRef(target_triple.data(), target_triple.size())));
   if (triple.isArch64Bit()) {
     return 8;
   } else if (triple.isArch32Bit()) {

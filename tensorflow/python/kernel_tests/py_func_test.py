@@ -133,10 +133,47 @@ class PyOpTest(test.TestCase):
       z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
       self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
 
+  def testStringsAreConvertedToBytes(self):
+
+    def read_fixed_length_numpy_strings():
+      return np.array([" there"])
+
+    def read_and_return_strings(x, y):
+      return x + y
+
+    with self.test_session():
+      x = constant_op.constant(["hello", "hi"], dtypes.string)
+      y, = script_ops.py_func(read_fixed_length_numpy_strings, [],
+                              [dtypes.string])
+      z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
+      self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
+
+  def testObjectArraysAreConvertedToBytes(self):
+
+    def read_object_array():
+      return np.array([b" there", u" ya"], dtype=np.object)
+
+    def read_and_return_strings(x, y):
+      return x + y
+
+    with self.test_session():
+      x = constant_op.constant(["hello", "hi"], dtypes.string)
+      y, = script_ops.py_func(read_object_array, [],
+                              [dtypes.string])
+      z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
+      self.assertListEqual(list(z.eval()), [b"hello there", b"hi ya"])
+
   def testStringPadding(self):
     correct = [b"this", b"is", b"a", b"test"]
     with self.test_session():
       s, = script_ops.py_func(lambda: [correct], [], [dtypes.string])
+      self.assertAllEqual(s.eval(), correct)
+
+  def testStringPaddingAreConvertedToBytes(self):
+    inp = ["this", "is", "a", "test"]
+    correct = [b"this", b"is", b"a", b"test"]
+    with self.test_session():
+      s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
       self.assertAllEqual(s.eval(), correct)
 
   def testLarge(self):

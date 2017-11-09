@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -62,6 +64,30 @@ void Expect(BundleReader* reader, const string& key,
   Tensor val(expected_val.dtype(), shape);
   TF_ASSERT_OK(reader->Lookup(key, &val));
   test::ExpectTensorEqual<T>(val, expected_val);
+}
+
+template <class T>
+void ExpectVariant(BundleReader* reader, const string& key,
+                   const Tensor& expected_t) {
+  // Tests for Contains().
+  EXPECT_TRUE(reader->Contains(key));
+  // Tests for LookupDtypeAndShape().
+  DataType dtype;
+  TensorShape shape;
+  TF_ASSERT_OK(reader->LookupDtypeAndShape(key, &dtype, &shape));
+  // Tests for Lookup(), checking tensor contents.
+  EXPECT_EQ(expected_t.dtype(), dtype);
+  EXPECT_EQ(expected_t.shape(), shape);
+  Tensor actual_t(dtype, shape);
+  TF_ASSERT_OK(reader->Lookup(key, &actual_t));
+  for (int i = 0; i < expected_t.NumElements(); i++) {
+    Variant actual_var = actual_t.flat<Variant>()(i);
+    Variant expected_var = expected_t.flat<Variant>()(i);
+    EXPECT_EQ(actual_var.TypeName(), expected_var.TypeName());
+    auto* actual_val = actual_var.get<T>();
+    auto* expected_val = expected_var.get<T>();
+    EXPECT_EQ(*expected_val, *actual_val);
+  }
 }
 
 template <typename T>
@@ -457,6 +483,55 @@ TEST(TensorBundleTest, StringTensors) {
         &reader, "strs",
         test::AsTensor<string>({"hello", "", "x01", string(1 << 25, 'c')}));
     Expect<float>(&reader, "floats", Constant_2x3<float>(16.18));
+  }
+}
+
+class VariantObject {
+ public:
+  VariantObject() {}
+  VariantObject(const string& metadata, int64 value)
+      : metadata_(metadata), value_(value) {}
+
+  string TypeName() const { return "TEST VariantObject"; }
+  void Encode(VariantTensorData* data) const {
+    data->set_type_name(TypeName());
+    data->set_metadata(metadata_);
+    Tensor val_t = Tensor(DT_INT64, TensorShape({}));
+    val_t.scalar<int64>()() = value_;
+    *(data->add_tensors()) = val_t;
+  }
+  bool Decode(const VariantTensorData& data) {
+    EXPECT_EQ(data.type_name(), TypeName());
+    data.get_metadata(&metadata_);
+    EXPECT_EQ(data.tensors_size(), 1);
+    value_ = data.tensors(0).scalar<int64>()();
+    return true;
+  }
+  bool operator==(const VariantObject other) const {
+    return metadata_ == other.metadata_ && value_ == other.value_;
+  }
+  string metadata_;
+  int64 value_;
+};
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(VariantObject, "TEST VariantObject");
+
+TEST(TensorBundleTest, VariantTensors) {
+  {
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_EXPECT_OK(
+        writer.Add("variant_tensor",
+                   test::AsTensor<Variant>({VariantObject("test", 10),
+                                            VariantObject("test1", 20)})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    ExpectVariant<VariantObject>(
+        &reader, "variant_tensor",
+        test::AsTensor<Variant>(
+            {VariantObject("test", 10), VariantObject("test1", 20)}));
   }
 }
 

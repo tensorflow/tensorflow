@@ -251,6 +251,7 @@ cc_library(
         "LLVM_ENABLE_STATS",
         "__STDC_LIMIT_MACROS",
         "__STDC_CONSTANT_MACROS",
+        "__STDC_FORMAT_MACROS",
         "_DEBUG",
         "LLVM_BUILD_GLOBAL_ISEL",
     ],
@@ -962,7 +963,7 @@ cc_library(
         "lib/Target/ARM/MCTargetDesc/*.cpp",
         "lib/Target/ARM/MCTargetDesc/*.inc",
         "lib/Target/ARM/*.h",
-        "include/llvm/CodeGen/GlobalISel/GISelAccessor.h",
+        "include/llvm/CodeGen/GlobalISel/*.h",
     ]),
     hdrs = glob([
         "include/llvm/Target/ARM/MCTargetDesc/*.h",
@@ -1216,11 +1217,11 @@ cc_library(
         "lib/IR/*.h",
     ]),
     hdrs = glob([
-        "include/llvm/Analysis/*.def",
         "include/llvm/IR/*.h",
         "include/llvm/IR/*.def",
         "include/llvm/IR/*.inc",
         "include/llvm/*.h",
+        "include/llvm/Analysis/*.def",
     ]),
     deps = [
         ":attributes_compat_gen",
@@ -2033,11 +2034,10 @@ cc_library(
         "lib/Target/*.h",
     ]),
     hdrs = glob([
-        "include/llvm/CodeGen/*.h",
-        "include/llvm/CodeGen/*.def",
         "include/llvm/Target/*.h",
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
+        "include/llvm/CodeGen/*.def",
     ]),
     deps = [
         ":analysis",
@@ -2115,6 +2115,7 @@ cc_library(
         ":mc",
         ":mc_parser",
         ":support",
+        ":x86_asm_printer",
         ":x86_desc",
         ":x86_info",
     ],

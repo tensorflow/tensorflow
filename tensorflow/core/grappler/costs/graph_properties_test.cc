@@ -54,7 +54,8 @@ class GraphPropertiesTest : public ::testing::Test {
     } else {
       strings::StrAppend(&s, "[");
       for (int i = 0; i < p.shape().dim_size(); ++i) {
-        strings::StrAppend(&s, i == 0 ? "" : ",", p.shape().dim(i).size());
+        strings::StrAppend(&s, i == 0 ? "" : ",",
+                           std::max<int64>(p.shape().dim(i).size(), -1));
       }
       strings::StrAppend(&s, "]");
     }
@@ -510,6 +511,64 @@ TEST_F(GraphPropertiesTest, LoopsAndQueues) {
   }
 }
 
+TEST_F(GraphPropertiesTest, LoopsAndResourceVars) {
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i0 = tf.constant(0)
+      with tf.variable_scope(VariableScope(reuse=None, use_resource=True)):
+        v = tf.get_variable(initializer=i0, name='loop_var')
+
+      def inner(j, y):
+        def inner_cond(j, y):
+          return j < 3
+
+        def inner_body(j, y):
+          return j + 1, y + y
+
+        return tf.while_loop(inner_cond, inner_body, loop_vars=[j, y])
+
+      def outer_cond(i, x):
+        return i < 3
+
+      def outer_body(i, x):
+        y = x + x
+        inner(0, v)
+        return i + 1, y
+
+      v, z = tf.while_loop(outer_cond, outer_body,
+                           loop_vars=[v, tf.constant(1)])
+
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+  */
+
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "loops_and_resource_vars.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
+                                  "while/Exit_1"};
+  std::vector<string> inner_nodes{"while/while/Merge_1",
+                                  "while/while/NextIteration_1",
+                                  "while/while/Exit_1"};
+  for (const string& node : outer_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_INT32, prop.dtype());
+    EXPECT_EQ("int32: []", PropToString(prop));
+  }
+  for (const string& node : inner_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_INT32, prop.dtype());
+    EXPECT_EQ("int32: []", PropToString(prop));
+  }
+}
+
 TEST_F(GraphPropertiesTest, QueuesAndLoops) {
   // Test graph produced in python using:
   /*
@@ -643,6 +702,86 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   const OpInfo::TensorProperties& prop = props[0];
   EXPECT_EQ(DT_FLOAT, prop.dtype());
   EXPECT_EQ("float: [128,256]", PropToString(prop));
+}
+
+TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
+  // Test graph produced in python using:
+  /*
+    @function.Defun(*[tf.float32] * 2, noinline=True)
+    def MyAdd(x, y):
+      return tf.add(x,y)
+
+    with tf.Graph().as_default():
+      x = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      y = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      z = MyAdd(x, y)
+      z = MyAdd(x, z)
+  */
+  // Check that the shape of the second MyAdd node propagates
+  // correctly.
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "simple_function.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto props = properties.GetOutputProperties("MyAdd_55e046a8_1");
+  const OpInfo::TensorProperties& prop = props[0];
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_FALSE(prop.shape().unknown_rank());
+  EXPECT_EQ(2, prop.shape().dim_size());
+  EXPECT_EQ(1, prop.shape().dim(0).size());
+  EXPECT_EQ(2, prop.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, SymbolicShapes) {
+  // Build a simple graph with placeholders of unknown dimensions. These
+  // dimensions will be encoded symbolically.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a =
+      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
+  Output b =
+      ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1})));
+  Output c = ops::Identity(s.WithOpName("c"), a);
+  Output d = ops::Identity(s.WithOpName("d"), b);
+  Output e = ops::Add(s.WithOpName("e"), c, d);
+  Output f = ops::Add(s.WithOpName("f"), a, c);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
+  const auto shape_c = properties.GetOutputProperties("c").at(0).shape();
+  EXPECT_EQ(2, shape_a.dim_size());
+  EXPECT_EQ(shape_a.dim_size(), shape_c.dim_size());
+  EXPECT_GE(-2, shape_a.dim(0).size());
+  EXPECT_EQ(shape_a.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_GE(-2, shape_a.dim(1).size());
+  EXPECT_EQ(shape_a.dim(1).size(), shape_c.dim(1).size());
+
+  const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
+  const auto shape_d = properties.GetOutputProperties("d").at(0).shape();
+  EXPECT_EQ(1, shape_b.dim_size());
+  EXPECT_EQ(shape_b.dim_size(), shape_d.dim_size());
+  EXPECT_GE(-2, shape_b.dim(0).size());
+  EXPECT_NE(shape_a.dim(0).size(), shape_b.dim(0).size());
+  EXPECT_EQ(shape_b.dim(0).size(), shape_d.dim(0).size());
+
+  const auto shape_e = properties.GetOutputProperties("e").at(0).shape();
+  EXPECT_EQ(2, shape_e.dim_size());
+  EXPECT_EQ(shape_e.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_NE(shape_e.dim(1).size(), shape_c.dim(1).size());
+  EXPECT_NE(shape_e.dim(0).size(), shape_d.dim(0).size());
+
+  const auto shape_f = properties.GetOutputProperties("f").at(0).shape();
+  EXPECT_EQ(2, shape_f.dim_size());
+  EXPECT_EQ(shape_f.dim(0).size(), shape_a.dim(0).size());
+  EXPECT_EQ(shape_f.dim(1).size(), shape_a.dim(1).size());
 }
 
 }  // namespace

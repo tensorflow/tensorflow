@@ -22,6 +22,10 @@ See the @{$python/contrib.metrics} guide.
 @@streaming_recall_at_thresholds
 @@streaming_precision
 @@streaming_precision_at_thresholds
+@@streaming_false_positive_rate
+@@streaming_false_positive_rate_at_thresholds
+@@streaming_false_negative_rate
+@@streaming_false_negative_rate_at_thresholds
 @@streaming_auc
 @@streaming_curve_points
 @@streaming_recall_at_k
@@ -51,6 +55,7 @@ See the @{$python/contrib.metrics} guide.
 @@streaming_true_negatives_at_thresholds
 @@streaming_true_positives
 @@streaming_true_positives_at_thresholds
+@@sparse_recall_at_top_k
 @@auc_using_histogram
 @@accuracy
 @@aggregate_metrics
@@ -60,6 +65,8 @@ See the @{$python/contrib.metrics} guide.
 @@set_intersection
 @@set_size
 @@set_union
+@@count
+@@recall_at_precision
 
 """
 from __future__ import absolute_import
@@ -73,13 +80,20 @@ from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_map
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metrics
+from tensorflow.contrib.metrics.python.ops.metric_ops import count
+from tensorflow.contrib.metrics.python.ops.metric_ops import recall_at_precision
+from tensorflow.contrib.metrics.python.ops.metric_ops import sparse_recall_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_concat
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_covariance
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_curve_points
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negative_rate
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negative_rate_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negatives
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negatives_at_thresholds
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_positive_rate
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_positive_rate_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_positives
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_positives_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean

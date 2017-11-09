@@ -213,6 +213,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                                      FunctionBody** g_body);
   bool IsLocalTarget(const AttrSlice& attrs);
   AttrValueMap FixAttrs(const AttrSlice& attrs);
+  void RunRemote(const Options& opts, Handle handle,
+                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                 Executor::Args* exec_args, Item* item, DoneCallback done);
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryRuntimeImpl);
 };
@@ -408,7 +411,11 @@ bool FunctionLibraryRuntimeImpl::IsLocalTarget(const AttrSlice& attrs) {
   if (device_ == nullptr) return true;
   string target = ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
   if (target.empty()) return true;
-  return target == device_->name();
+  Device* target_device;
+  if (!device_mgr_->LookupDevice(target, &target_device).ok()) {
+    return false;
+  }
+  return target_device == device_;
 }
 
 AttrValueMap FunctionLibraryRuntimeImpl::FixAttrs(const AttrSlice& attrs) {
@@ -557,52 +564,150 @@ Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
   return Status::OK();
 }
 
+void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
+                                           gtl::ArraySlice<Tensor> args,
+                                           std::vector<Tensor>* rets,
+                                           Executor::Args* exec_args,
+                                           Item* item, DoneCallback done) {
+  FunctionCallFrame* frame = exec_args->call_frame;
+  string target_device = parent_->GetDeviceName(handle);
+  string source_device = opts.source_device;
+  Rendezvous* rendezvous = opts.rendezvous;
+  DeviceContext* device_context;
+  Status s = parent_->GetDeviceContext(target_device, &device_context);
+  if (!s.ok()) {
+    delete frame;
+    delete exec_args;
+    done(s);
+    return;
+  }
+  int64 src_incarnation, target_incarnation;
+  s = parent_->GetDeviceIncarnation(source_device, &src_incarnation);
+  s.Update(parent_->GetDeviceIncarnation(target_device, &target_incarnation));
+  if (!s.ok()) {
+    delete frame;
+    delete exec_args;
+    done(s);
+    return;
+  }
+
+  // The ProcFLR sends the arguments to the function from the source_device to
+  // the target_device. So here we receive those arguments. Similarly, when the
+  // computation is done and stored in *rets, we send the return values back
+  // to the source_device (caller) so that the ProcFLR can receive them later.
+  std::vector<Tensor>* remote_args = new std::vector<Tensor>;
+  ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
+      source_device, target_device, "arg_", src_incarnation, args.size(),
+      device_context, {}, rendezvous, remote_args,
+      [frame, remote_args, item, source_device, target_device,
+       target_incarnation, rendezvous, device_context, rets, done,
+       exec_args](const Status& status) {
+        Status s = status;
+        if (s.ok()) {
+          s = frame->SetArgs(*remote_args);
+        }
+        if (!s.ok()) {
+          delete frame;
+          delete remote_args;
+          delete exec_args;
+          done(s);
+          return;
+        }
+        item->exec->RunAsync(
+            *exec_args, [item, frame, rets, done, source_device, target_device,
+                         target_incarnation, rendezvous, device_context,
+                         remote_args, exec_args](const Status& status) {
+              item->Unref();
+              Status s = status;
+              if (s.ok()) {
+                s = frame->ConsumeRetvals(rets);
+              }
+              delete frame;
+              if (!s.ok()) {
+                delete remote_args;
+                delete exec_args;
+                done(s);
+                return;
+              }
+              s = ProcessFunctionLibraryRuntime::SendTensors(
+                  target_device, source_device, "ret_", target_incarnation,
+                  *rets, device_context, {}, rendezvous);
+              delete remote_args;
+              delete exec_args;
+              done(s);
+            });
+      });
+}
+
 void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
                                      gtl::ArraySlice<Tensor> args,
                                      std::vector<Tensor>* rets,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
-    return done(errors::Cancelled(""));
+    done(errors::Cancelled(""));
+    return;
+  }
+  Options run_opts = opts;
+  if (opts.create_rendezvous) {
+    Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
+    run_opts.rendezvous = rendezvous;
+    run_opts.create_rendezvous = false;
+    done = [done, rendezvous](const Status& status) {
+      rendezvous->Unref();
+      done(status);
+    };
   }
   if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
-    return parent_->Run(opts, handle, args, rets, done);
+    parent_->Run(run_opts, handle, args, rets, done);
+    return;
   }
   const FunctionBody* fbody = GetFunctionBody(handle);
   FunctionCallFrame* frame =
       new FunctionCallFrame(fbody->arg_types, fbody->ret_types);
-  Status s = frame->SetArgs(args);
-  if (!s.ok()) {
-    delete frame;
-    return done(s);
-  }
-  Item* item = nullptr;
-  s = GetOrCreateItem(handle, &item);
-  if (!s.ok()) {
-    delete frame;
-    return done(s);
-  }
-  DCHECK(opts.runner != nullptr);
 
-  Executor::Args exec_args;
+  Item* item = nullptr;
+  Status s = GetOrCreateItem(handle, &item);
+  if (!s.ok()) {
+    delete frame;
+    done(s);
+    return;
+  }
+  DCHECK(run_opts.runner != nullptr);
+
+  Executor::Args* exec_args = new Executor::Args;
   // Inherit the step_id from the caller.
-  exec_args.step_id = opts.step_id;
-  exec_args.rendezvous = opts.rendezvous;
-  exec_args.stats_collector = opts.stats_collector;
-  exec_args.call_frame = frame;
-  exec_args.cancellation_manager = opts.cancellation_manager;
-  exec_args.step_container = opts.step_container;
-  exec_args.runner = *opts.runner;
+  exec_args->step_id = run_opts.step_id;
+  exec_args->rendezvous = run_opts.rendezvous;
+  exec_args->stats_collector = run_opts.stats_collector;
+  exec_args->call_frame = frame;
+  exec_args->cancellation_manager = run_opts.cancellation_manager;
+  exec_args->step_container = run_opts.step_container;
+  exec_args->runner = *run_opts.runner;
+
+  if (run_opts.remote_execution) {
+    RunRemote(run_opts, handle, args, rets, exec_args, item, done);
+    return;
+  }
+
+  s = frame->SetArgs(args);
+  if (!s.ok()) {
+    delete frame;
+    delete exec_args;
+    done(s);
+    return;
+  }
   item->exec->RunAsync(
       // Executor args
-      exec_args,
+      *exec_args,
       // Done callback.
-      [item, frame, rets, done](const Status& status) {
+      [item, frame, rets, done, exec_args](const Status& status) {
         item->Unref();
         Status s = status;
         if (s.ok()) {
-          s = frame->GetRetvals(rets);
+          s = frame->ConsumeRetvals(rets);
         }
         delete frame;
+        delete exec_args;
         done(s);
       });
 }

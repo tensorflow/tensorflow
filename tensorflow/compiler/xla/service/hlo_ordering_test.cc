@@ -269,29 +269,32 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   // while because of the use of the init value in the add.
   EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(constant),
                                        dataflow->GetValueDefinedAt(xla_while)));
-  EXPECT_FALSE(
-      ordering.LiveRangeStrictlyBefore(dataflow->GetValueDefinedAt(constant),
-                                       dataflow->GetValueDefinedAt(xla_while)));
+  EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(constant),
+      dataflow->GetValueDefinedAt(xla_while), *dataflow));
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(constant),
-                                    dataflow->GetValueDefinedAt(xla_while)));
+                                    dataflow->GetValueDefinedAt(xla_while),
+                                    *dataflow));
 
   // Any value defined in the body or condition is defined before the while, and
   // has a live range strictly before the while.
   EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(negate),
                                        dataflow->GetValueDefinedAt(xla_while)));
-  EXPECT_TRUE(
-      ordering.LiveRangeStrictlyBefore(dataflow->GetValueDefinedAt(negate),
-                                       dataflow->GetValueDefinedAt(xla_while)));
+  EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(negate),
+      dataflow->GetValueDefinedAt(xla_while), *dataflow));
   EXPECT_FALSE(ordering.MayInterfere(dataflow->GetValueDefinedAt(negate),
-                                     dataflow->GetValueDefinedAt(xla_while)));
+                                     dataflow->GetValueDefinedAt(xla_while),
+                                     *dataflow));
 
   EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(convert),
                                        dataflow->GetValueDefinedAt(xla_while)));
-  EXPECT_TRUE(
-      ordering.LiveRangeStrictlyBefore(dataflow->GetValueDefinedAt(convert),
-                                       dataflow->GetValueDefinedAt(xla_while)));
+  EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(convert),
+      dataflow->GetValueDefinedAt(xla_while), *dataflow));
   EXPECT_FALSE(ordering.MayInterfere(dataflow->GetValueDefinedAt(convert),
-                                     dataflow->GetValueDefinedAt(xla_while)));
+                                     dataflow->GetValueDefinedAt(xla_while),
+                                     *dataflow));
 
   // The live range of the while should be before the add.
   EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(xla_while),
@@ -301,15 +304,11 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   const HloUse& while_use = dataflow->GetValueDefinedAt(xla_while).uses()[0];
   EXPECT_EQ(while_use.instruction, add);
   EXPECT_TRUE(ordering.UseIsBeforeValueDefinition(
-      while_use, dataflow->GetValueDefinedAt(add)));
-  EXPECT_TRUE(
-      ordering.LiveRangeStrictlyBefore(dataflow->GetValueDefinedAt(xla_while),
-                                       dataflow->GetValueDefinedAt(add)));
+      while_use, dataflow->GetValueDefinedAt(add), *dataflow));
+  EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(xla_while), dataflow->GetValueDefinedAt(add),
+      *dataflow));
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

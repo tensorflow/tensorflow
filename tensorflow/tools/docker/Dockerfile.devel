@@ -1,6 +1,6 @@
 FROM ubuntu:16.04
 
-MAINTAINER Craig Citro <craigcitro@google.com>
+LABEL maintainer="Craig Citro <craigcitro@google.com>"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -57,7 +57,7 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.5.0
+ENV BAZEL_VERSION 0.5.4
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
@@ -72,7 +72,7 @@ RUN mkdir /bazel && \
 
 RUN git clone https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
-    git checkout r1.3
+    git checkout r1.4
 WORKDIR /tensorflow
 
 # TODO(craigcitro): Don't install the pip package, since it makes it

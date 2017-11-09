@@ -29,29 +29,30 @@ TensorData = collections.namedtuple(
 class MemoryTrace(object):
   """Records a trace of memory usage over operation execution."""
 
-  def __init__(self, n_devices):
+  def __init__(self):
 
     self.trace = []
     self.tensor_to_data = {}
-    self.current_device_mem_usage = [0] * n_devices
+    self.current_device_mem_usage = collections.defaultdict(int)
 
   def record_tensor(self, op_name, tensor_id, device, size):
     self.current_device_mem_usage[device] += size
     self.tensor_to_data[tensor_id] = TensorData(op_name, size, device)
     self.trace.append(TraceEntry(op_name,
                                  tensor_id,
-                                 self.current_device_mem_usage[:],
+                                 dict(self.current_device_mem_usage.items()),
                                  device,
                                  size))
 
   def delete_tensor(self, tensor_id):
     if tensor_id not in self.tensor_to_data:
       return
-    data = self.tensor_to_data.pop(tensor_id)
+    data = self.tensor_to_data.pop(tensor_id, None)
+    if data is None: return
     self.current_device_mem_usage[data.device] -= data.tensor_size
     self.trace.append(TraceEntry(data.op_name,
                                  tensor_id,
-                                 self.current_device_mem_usage[:],
+                                 dict(self.current_device_mem_usage.items()),
                                  data.device,
                                  -data.tensor_size))
 

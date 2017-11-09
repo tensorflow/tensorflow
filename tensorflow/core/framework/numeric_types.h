@@ -44,7 +44,14 @@ typedef Eigen::QUInt16 quint16;
 // see framework/bfloat16.h for description.
 struct bfloat16 {
   EIGEN_DEVICE_FUNC bfloat16() {}
-  EIGEN_DEVICE_FUNC explicit bfloat16(const uint16_t v) : value(v) {}
+  EIGEN_DEVICE_FUNC explicit bfloat16(const float v) {
+    const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    value = p[0];
+#else
+    value = p[1];
+#endif
+  }
 
   uint16_t value;
 };

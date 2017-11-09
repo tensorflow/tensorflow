@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -32,6 +33,10 @@ bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
   // Intentionally do not check that versions match so that this routine can
   // be used for less brittle golden file tests.
   return EqualRepeatedNodeDef(actual.node(), expected.node(), diff, options);
+}
+
+uint64 GraphDefHash(const GraphDef& gdef, const EqualGraphDefOptions& options) {
+  return RepeatedNodeDefHash(gdef.node(), options);
 }
 
 bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
@@ -69,6 +74,21 @@ bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
   }
 
   return true;
+}
+
+uint64 RepeatedNodeDefHash(const protobuf::RepeatedPtrField<NodeDef>& ndefs,
+                           const EqualGraphDefOptions& options) {
+  uint64 h = 0xDECAFCAFFE;
+  // Insert NodeDefs into map to deterministically sort by name
+  std::map<string, const NodeDef*> nodes;
+  for (const NodeDef& node : ndefs) {
+    nodes[node.name()] = &node;
+  }
+  for (const auto& pair : nodes) {
+    h = Hash64(pair.first.data(), pair.first.size(), h);
+    h = Hash64Combine(NodeDefHash(*pair.second, options), h);
+  }
+  return h;
 }
 
 namespace {
@@ -207,6 +227,47 @@ bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
   }
 
   return true;
+}
+
+uint64 NodeDefHash(const NodeDef& ndef, const EqualGraphDefOptions& options) {
+  uint64 h = Hash64(ndef.name());
+  h = Hash64(ndef.op().data(), ndef.op().size(), h);
+  h = Hash64(ndef.device().data(), ndef.device().size(), h);
+
+  // Normal inputs. Order important.
+  int first_control_input = ndef.input_size();
+  for (int i = 0; i < ndef.input_size(); ++i) {
+    if (StringPiece(ndef.input(i)).starts_with("^")) {
+      first_control_input = i;
+      break;
+    }
+    h = Hash64(ndef.input(i).data(), ndef.input(i).size(), h);
+  }
+
+  // Control inputs. Order irrelevant.
+  std::set<string> ndef_control;
+  for (int i = first_control_input; i < ndef.input_size(); ++i) {
+    ndef_control.insert(ndef.input(i));
+  }
+  for (const string& s : ndef_control) {
+    h = Hash64(s.data(), s.size(), h);
+  }
+
+  // Attributes
+  std::map<string, AttrValue> ndef_attr;
+  for (const auto& a : ndef.attr()) {
+    if (options.ignore_internal_attrs && !a.first.empty() &&
+        a.first[0] == '_') {
+      continue;
+    }
+    ndef_attr[a.first] = a.second;
+  }
+  for (const auto& a : ndef_attr) {
+    h = Hash64(a.first.data(), a.first.size(), h);
+    h = Hash64Combine(AttrValueHash(a.second), h);
+  }
+
+  return h;
 }
 
 }  // namespace tensorflow

@@ -69,7 +69,7 @@ class TimelineTest(test.TestCase):
     self.assertTrue(run_metadata.HasField('step_stats'))
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:0' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in devices)
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
@@ -181,9 +181,9 @@ class TimelineTest(test.TestCase):
     self.assertTrue(run_metadata.HasField('step_stats'))
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:0' in devices)
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:1' in devices)
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:2' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:1' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:2' in devices)
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)

@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 
 
 def build_graph(device, input_shape, perm, datatype, num_iters):
-  """Build a graph containing a sequence of conv2d operations.
+  """builds a graph containing a sequence of conv2d operations.
 
   Args:
     device: String, the device to run on.
@@ -50,10 +50,12 @@ def build_graph(device, input_shape, perm, datatype, num_iters):
     t = constant_op.constant(inp, shape=input_shape)
 
     outputs = []
-    outputs.append(array_ops.transpose(t, perm))
-    for i in range(1, num_iters):
-      with ops.control_dependencies([outputs[i - 1]]):
-        outputs.append(array_ops.transpose(t, perm))
+    transpose_op = array_ops.transpose(t, perm)
+    outputs.append(transpose_op)
+    for _ in range(1, num_iters):
+      with ops.control_dependencies([transpose_op]):
+        transpose_op = array_ops.transpose(t, perm)
+        outputs.append(transpose_op)
     return control_flow_ops.group(*outputs)
 
 
@@ -61,7 +63,7 @@ class TransposeBenchmark(test.Benchmark):
   """Benchmark transpose!"""
 
   def _run_graph(self, device, input_shape, perm, num_iters, datatype):
-    """Run the graph and print its execution time.
+    """runs the graph and print its execution time.
 
     Args:
       device: String, the device to run on.
@@ -82,9 +84,11 @@ class TransposeBenchmark(test.Benchmark):
         session.run(outputs)
         start_time = time.time()
         session.run(outputs)
+
         duration = (time.time() - start_time) / num_iters
         throughput = np.prod(
             np.array(input_shape)) * datatype().itemsize * 2 / duration / 1e9
+
         print("%s %s inputshape:%s perm:%s %d %.6fsec, %.4fGB/s." %
               (device, str(datatype), str(input_shape).replace(" ", ""),
                str(perm).replace(" ", ""), num_iters, duration, throughput))
@@ -108,12 +112,12 @@ class TransposeBenchmark(test.Benchmark):
 
     datatypes = [np.complex128, np.float64, np.float32, np.float16, np.int8]
 
-    small_shapes = [[2, 20, 20, 20, 16], [2, 16, 20, 20, 20]] * 2 + [[
-        2, 100, 100, 16
-    ], [2, 16, 100, 100]] * 2 + [[2, 5000, 16], [2, 16, 5000]] * 2
-    small_perms = [[0, 4, 1, 2, 3], [0, 2, 3, 4, 1]] + [[4, 1, 2, 3, 0]] * 2 + [
-        [0, 3, 1, 2], [0, 2, 3, 1]
-    ] + [[3, 1, 2, 0]] * 2 + [[0, 2, 1]] * 2 + [[2, 1, 0]] * 2
+    small_shapes = [[2, 20, 20, 20, 16], [2, 16, 20, 20, 20]] * 2
+    small_shapes += [[2, 100, 100, 16], [2, 16, 100, 100]] * 2
+    small_shapes += [[2, 5000, 16], [2, 16, 5000]] * 2
+    small_perms = [[0, 4, 1, 2, 3], [0, 2, 3, 4, 1]] + [[4, 1, 2, 3, 0]] * 2
+    small_perms += [[0, 3, 1, 2], [0, 2, 3, 1]] + [[3, 1, 2, 0]] * 2
+    small_perms += [[0, 2, 1]] * 2 + [[2, 1, 0]] * 2
 
     large_shapes = [[2, 40, 40, 40, 32], [2, 40, 40, 40, 64]] * 2 + [[
         2, 300, 300, 32
@@ -131,6 +135,24 @@ class TransposeBenchmark(test.Benchmark):
         if datatype is not np.float16:
           for ishape, perm in zip(large_shapes, large_perms):
             self._run_graph("gpu", ishape, perm, num_iters, datatype)
+
+    small_dim_large_shapes = [[2, 10000, 3], [2, 3, 10000], [2, 10000, 8],
+                              [2, 8, 10000]]
+    small_dim_small_shapes = [[2, 5000, 3], [2, 3, 5000], [2, 5000, 8],
+                              [2, 8, 5000]]
+    small_dim_perms = [[0, 2, 1]] * 4
+
+    num_iters = 320
+    small_dim_large_shape_datatypes = [np.float64, np.float32, np.int8]
+    for datatype in small_dim_large_shape_datatypes:
+      for ishape, perm in zip(small_dim_large_shapes, small_dim_perms):
+        self._run_graph("gpu", ishape, perm, num_iters, datatype)
+
+    small_dim_small_shape_datatypes = [np.complex128, np.float16]
+    for datatype in small_dim_small_shape_datatypes:
+      for ishape, perm in zip(small_dim_small_shapes, small_dim_perms):
+        self._run_graph("gpu", ishape, perm, num_iters, datatype)
+
 
 if __name__ == "__main__":
   test.main()

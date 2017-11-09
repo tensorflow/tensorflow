@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -28,6 +29,41 @@ limitations under the License.
 namespace tensorflow {
 namespace tfcompile {
 namespace {
+
+void ExpectErrorContains(const Status& status, StringPiece str) {
+  EXPECT_NE(Status::OK(), status);
+  EXPECT_TRUE(StringPiece(status.error_message()).contains(str))
+      << "expected error: " << status.error_message() << " to contain: " << str;
+}
+
+TEST(ValidateCppIdent, Simple) {
+  TF_EXPECT_OK(ValidateCppIdent("a", ""));
+  TF_EXPECT_OK(ValidateCppIdent("abc", ""));
+  TF_EXPECT_OK(ValidateCppIdent("_abc", ""));
+  TF_EXPECT_OK(ValidateCppIdent("_abc123", ""));
+  // Make sure we didn't skip a valid letter or digit
+  string ident;
+  for (char c = 'a'; c <= 'z'; c++) {
+    ident.append(1, c);
+  }
+  for (char c = 'A'; c <= 'Z'; c++) {
+    ident.append(1, c);
+  }
+  for (char c = '0'; c <= '9'; c++) {
+    ident.append(1, c);
+  }
+  ident += "_";
+  TF_EXPECT_OK(ValidateCppIdent(ident, ""));
+
+  ExpectErrorContains(ValidateCppIdent("", ""), "empty identifier");
+  ExpectErrorContains(ValidateCppIdent(" ", ""), "illegal leading char");
+  ExpectErrorContains(ValidateCppIdent("0", ""), "illegal leading char");
+  ExpectErrorContains(ValidateCppIdent(".", ""), "illegal leading char");
+  ExpectErrorContains(ValidateCppIdent(":", ""), "illegal leading char");
+  ExpectErrorContains(ValidateCppIdent("a.", ""), "illegal char");
+  ExpectErrorContains(ValidateCppIdent("a:", ""), "illegal char");
+  ExpectErrorContains(ValidateCppIdent("a:", ""), "illegal char");
+}
 
 class ParseCppClassTest : public ::testing::Test {
  protected:
@@ -91,13 +127,15 @@ TEST(GenerateHeader, Golden) {
   HeaderOpts opts;
   opts.class_name = "MyClass";
   opts.namespaces = {"foo", "bar"};
-  Config config;
-  Feed* feed = config.add_feed();
+  opts.gen_name_to_index = true;
+  opts.gen_program_shape = true;
+  tf2xla::Config config;
+  tf2xla::Feed* feed = config.add_feed();
   feed->mutable_id()->set_node_name("feed0");
   feed->set_name("myfeed");
   feed = config.add_feed();
   feed->mutable_id()->set_node_name("feed1");
-  Fetch* fetch = config.add_fetch();
+  tf2xla::Fetch* fetch = config.add_fetch();
   fetch->mutable_id()->set_node_name("fetch0");
   fetch->set_name("myfetch");
   CompileResult compile_result;
@@ -109,7 +147,8 @@ TEST(GenerateHeader, Golden) {
           xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
           xla::ShapeUtil::MakeOpaqueShape(),
       },
-      xla::ShapeUtil::MakeShape(xla::U32, {5, 6}));
+      xla::ShapeUtil::MakeTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}));
   compile_result.has_context_arg = true;
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;

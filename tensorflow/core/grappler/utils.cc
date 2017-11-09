@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -29,7 +32,9 @@ NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
     auto node = graph_->mutable_node(i);
     auto rslt = nodes_.insert(std::make_pair(node->name(), node));
     // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(rslt.second);
+    if (!rslt.second) {
+      LOG(WARNING) << "Duplicated node in the graph: " << node->name();
+    }
     for (const auto& input : node->input()) {
       outputs_[NodeName(input)].insert(nodes_[node->name()]);
     }
@@ -40,6 +45,7 @@ NodeDef* NodeMap::GetNode(const string& name) const {
   string node_name = NodeName(name);
   auto it = nodes_.find(node_name);
   if (it == nodes_.end()) {
+    LOG(WARNING) << "Node " << node_name << " is not in the graph.";
     return nullptr;
   }
   return it->second;
@@ -56,7 +62,7 @@ const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
 void NodeMap::AddNode(const string& name, NodeDef* node) {
   auto ret = nodes_.insert(std::make_pair(name, node));
   CHECK(ret.second) << "Pair (" << name << "," << node
-                    << ") is not inserted because a same key already exists.";
+                    << ") is not inserted because the same key already exists.";
 }
 
 void NodeMap::AddOutput(const string& node_name, const string& output_name) {
@@ -218,6 +224,25 @@ string AsControlDependency(const NodeDef& node) {
 
 string AsControlDependency(const string& node) {
   return strings::StrCat("^", node);
+}
+
+int NumOutputs(const NodeDef& node) {
+  int num_outputs = 0;
+  const OpDef* op_def = nullptr;
+  auto status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  if (status.ok()) {
+    for (const auto& output : op_def->output_arg()) {
+      if (!output.type_list_attr().empty()) {
+        num_outputs +=
+            node.attr().at(output.type_list_attr()).list().type_size();
+      } else if (!output.number_attr().empty()) {
+        num_outputs += node.attr().at(output.number_attr()).i();
+      } else {
+        num_outputs++;
+      }
+    }
+  }
+  return num_outputs;
 }
 
 }  // end namespace grappler

@@ -143,7 +143,7 @@ class CheckpointsTest(test.TestCase):
         self.assertAllEqual(my4.eval(session), v4)
 
         # Check that tensors are not explicitly in the graph.
-        self.assertLess(len(str(session.graph.as_graph_def())), 27000)
+        self.assertLess(len(str(session.graph.as_graph_def())), 28000)
 
   def testInitWithScopeDoesNotCaptureSuffixes(self):
     checkpoint_dir = self.get_temp_dir()
@@ -163,6 +163,20 @@ class CheckpointsTest(test.TestCase):
         session.run(variables.global_variables_initializer())
         self.assertAllEqual(my4.eval(session), v4)
         self.assertAllEqual(my5.eval(session), my5_init)
+
+  def testRestoreRunsOnSameDevice(self):
+    checkpoint_dir = self.get_temp_dir()
+    with self.test_session() as session:
+      _create_checkpoints(session, checkpoint_dir)
+
+    with ops.Graph().as_default():
+      with ops.device("/job:ps"):
+        with variable_scope.variable_scope("useful_scope"):
+          my4 = variable_scope.get_variable("var4", [9, 9])
+
+      checkpoint_utils.init_from_checkpoint(checkpoint_dir,
+                                            {"useful_scope/": "useful_scope/"})
+      self.assertEqual(my4._initializer_op.op.inputs[1].device, "/job:ps")
 
   def testInitFromRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()

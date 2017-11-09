@@ -236,6 +236,7 @@ class Conv3DBackpropInputOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Conv3DBackpropInputV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       Conv3DBackpropInputOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -383,6 +384,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<T>("T"),                        \
                           Conv3DBackpropFilterOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -409,6 +411,7 @@ namespace functor {
       const std::array<int, 3>& padding_right,                        \
       typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
 
+DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -649,13 +652,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     };
 
     using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::AlgorithmDesc;
     using perftools::gputools::dnn::ProfileResult;
-    using perftools::gputools::dnn::kDefaultAlgorithm;
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
-      std::vector<AlgorithmType> algorithms;
+      std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
       ProfileResult best_result;
@@ -1016,13 +1018,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     };
 
     using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::AlgorithmDesc;
     using perftools::gputools::dnn::ProfileResult;
-    using perftools::gputools::dnn::kDefaultAlgorithm;
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
-      std::vector<AlgorithmType> algorithms;
+      std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
       ProfileResult best_result;
@@ -1100,22 +1101,29 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
   bool cudnn_use_autotune_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    Conv3DBackpropInputOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T")
-                            .HostMemory("input_sizes"),
-                        Conv3DBackpropInputOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("Conv3DBackpropFilter").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    Conv3DBackpropFilterOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T")
-                            .HostMemory("filter_sizes"),
-                        Conv3DBackpropFilterOp<GPUDevice, float>);
+
+
+#define REGISTER_GPU_KERNEL(T)                                                \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<T>("T"),  \
+      Conv3DBackpropInputOp<GPUDevice, T>);                                   \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                       \
+                            .Device(DEVICE_GPU)                               \
+                            .TypeConstraint<T>("T")                           \
+                            .HostMemory("input_sizes"),                       \
+                        Conv3DBackpropInputOp<GPUDevice, T>);                 \
+  REGISTER_KERNEL_BUILDER(                                                    \
+    Name("Conv3DBackpropFilter").Device(DEVICE_GPU).TypeConstraint<T>("T"),   \
+    Conv3DBackpropFilterOp<GPUDevice, T>);                                    \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")                      \
+                            .Device(DEVICE_GPU)                               \
+                            .TypeConstraint<T>("T")                           \
+                            .HostMemory("filter_sizes"),                      \
+                        Conv3DBackpropFilterOp<GPUDevice, T>);
+TF_CALL_half(REGISTER_GPU_KERNEL);
+TF_CALL_float(REGISTER_GPU_KERNEL);
+#undef REGISTER_GPU_KERNEL
+     
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

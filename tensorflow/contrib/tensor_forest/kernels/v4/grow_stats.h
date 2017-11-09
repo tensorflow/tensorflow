@@ -189,15 +189,29 @@ class ClassificationStats : public GrowStats {
                                half_initialized_splits_.empty());
   }
 
+  bool BestSplit(SplitCandidate* best) const override;
+  // When best_split_index has been chosen as the best split,
+  // InitLeafClassStats is used to initialize the LeafStat's of the two
+  // new leaves.
+  virtual void InitLeafClassStats(int best_split_index, LeafStat* left_stats,
+                                  LeafStat* right_stats) const = 0;
+
  protected:
   virtual float GiniScore(int split, float* left_sum,
                           float* right_sum) const = 0;
-  virtual int num_outputs_seen() const = 0;
+
+  // is_pure should return true if at most one class label has been seen
+  // at the node, and false if two or more have been seen.
+  virtual bool is_pure() const = 0;
   virtual float left_count(int split, int class_num) const = 0;
   virtual float right_count(int split, int class_num) const = 0;
 
   virtual void ClassificationAddLeftExample(
       int split, int64 int_label, float weight) = 0;
+  virtual void ClassificationAddRightExample(int split, int64 int_label,
+                                             float weight) {
+    // Does nothing by default, but sub-classes can override.
+  }
   virtual void ClassificationAddTotalExample(int64 int_label, float weight) = 0;
 
   virtual void ClassificationAddSplitStats() = 0;
@@ -301,7 +315,8 @@ class DenseClassificationGrowStats : public ClassificationStats {
   void ExtractFromProto(const FertileSlot& slot) override;
   void PackToProto(FertileSlot* slot) const override;
 
-  bool BestSplit(SplitCandidate* best) const override;
+  void InitLeafClassStats(int best_split_index, LeafStat* left_stats,
+                          LeafStat* right_stats) const;
 
  protected:
   void ClassificationAddSplitStats() override {
@@ -317,9 +332,7 @@ class DenseClassificationGrowStats : public ClassificationStats {
     num_outputs_seen_ = 0;
   }
 
-  int num_outputs_seen() const override {
-    return num_outputs_seen_;
-  }
+  bool is_pure() const override { return num_outputs_seen_ <= 1; }
 
   void ClassificationAddLeftExample(int split, int64 int_label,
                                     float weight) override {
@@ -369,7 +382,8 @@ class SparseClassificationGrowStats : public ClassificationStats {
   void ExtractFromProto(const FertileSlot& slot) override;
   void PackToProto(FertileSlot* slot) const override;
 
-  bool BestSplit(SplitCandidate* best) const override;
+  void InitLeafClassStats(int best_split_index, LeafStat* left_stats,
+                          LeafStat* right_stats) const;
 
  protected:
   void ClassificationAddSplitStats() override {
@@ -384,7 +398,7 @@ class SparseClassificationGrowStats : public ClassificationStats {
     left_counts_.clear();
   }
 
-  int num_outputs_seen() const override { return total_counts_.size(); }
+  bool is_pure() const override { return total_counts_.size() <= 1; }
 
   void ClassificationAddLeftExample(int split, int64 int_label,
                                     float weight) override {
@@ -410,6 +424,111 @@ class SparseClassificationGrowStats : public ClassificationStats {
   // Left-branch taken class counts at this leaf for each split.
   // left_counts_[i][j] has the j-th class count for split i.
   std::vector<std::unordered_map<int, float>> left_counts_;
+};
+
+// Accumulates weights for the most popular classes while only using a
+// fixed amount of space.
+class FixedSizeClassStats {
+ public:
+  // n specifies how many classes are tracked.
+  FixedSizeClassStats(int n, int num_classes)
+      : n_(n), num_classes_(num_classes), smallest_weight_class_(-1) {}
+
+  // Add weight w to the class c.
+  void accumulate(int c, float w);
+
+  // Return the approximate accumulated weight for class c.  If c isn't one
+  // of the n-most popular classes, this can be 0 even if c has accumulated
+  // some weight.
+  float get_weight(int c) const;
+
+  // Put the sum of all weights seen into *sum, and
+  // \sum_c get_weight(c)^2
+  // into *square.  *sum will be exact, but *square will be approximate.
+  void set_sum_and_square(float* sum, float* square) const;
+
+  void ExtractFromProto(const decision_trees::SparseVector& sparse_vector);
+  void PackToProto(decision_trees::SparseVector* sparse_vector) const;
+
+ private:
+  // For our typical use cases, n_ is between 10 and 100, so there's no
+  // need to track the smallest weight with a min_heap or the like.
+  int n_;
+  int num_classes_;
+
+  // This tracks the class of the smallest weight, but isn't set until
+  // class_weights_.size() == n_.
+  int smallest_weight_class_;
+
+  std::unordered_map<int, float> class_weights_;
+};
+
+// Tracks classification stats sparsely in a fixed amount of space.
+class FixedSizeSparseClassificationGrowStats : public ClassificationStats {
+ public:
+  FixedSizeSparseClassificationGrowStats(const TensorForestParams& params,
+                                         int32 depth)
+      : ClassificationStats(params, depth) {}
+
+  void Initialize() override { Clear(); }
+
+  void ExtractFromProto(const FertileSlot& slot) override;
+  void PackToProto(FertileSlot* slot) const override;
+
+  void InitLeafClassStats(int best_split_index, LeafStat* left_stats,
+                          LeafStat* right_stats) const;
+
+ protected:
+  void ClassificationAddSplitStats() override {
+    FixedSizeClassStats stats(params_.num_classes_to_track(),
+                              params_.num_outputs());
+    left_counts_.resize(num_splits(), stats);
+    right_counts_.resize(num_splits(), stats);
+  }
+  void ClassificationRemoveSplitStats(int split_num) override {
+    left_counts_.erase(left_counts_.begin() + split_num,
+                       left_counts_.begin() + (split_num + 1));
+    right_counts_.erase(right_counts_.begin() + split_num,
+                        right_counts_.begin() + (split_num + 1));
+  }
+  void ClearInternal() override {
+    left_counts_.clear();
+    right_counts_.clear();
+  }
+
+  bool is_pure() const override { return first_two_classes_seen_.size() <= 1; }
+
+  void ClassificationAddLeftExample(int split, int64 int_label,
+                                    float weight) override {
+    left_counts_[split].accumulate(int_label, weight);
+  }
+  void ClassificationAddRightExample(int split, int64 int_label,
+                                     float weight) override {
+    right_counts_[split].accumulate(int_label, weight);
+  }
+  void ClassificationAddTotalExample(int64 int_label, float weight) override {
+    if (is_pure()) {
+      first_two_classes_seen_.insert(int_label);
+    }
+  }
+
+  float GiniScore(int split, float* left_sum, float* right_sum) const override;
+
+  float left_count(int split, int class_num) const override {
+    return left_counts_[split].get_weight(class_num);
+  }
+
+  float right_count(int split, int class_num) const override {
+    return right_counts_[split].get_weight(class_num);
+  }
+
+ private:
+  std::vector<FixedSizeClassStats> left_counts_;
+  std::vector<FixedSizeClassStats> right_counts_;
+
+  // We keep track of the first two class labels seen, so we can tell if
+  // the node is pure (= all of one class) or not.
+  std::set<int> first_two_classes_seen_;
 };
 
 // Tracks regression stats using least-squares minimization.

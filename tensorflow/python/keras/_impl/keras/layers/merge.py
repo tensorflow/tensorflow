@@ -318,9 +318,9 @@ class Concatenate(_Merge):
 
   def build(self, input_shape):
     # Used purely for shape validation.
-    if not isinstance(input_shape, list):
+    if not (isinstance(input_shape, list) and len(input_shape) > 1):
       raise ValueError('`Concatenate` layer should be called '
-                       'on a list of inputs')
+                       'on a list containing at least two inputs')
     if all([shape is None for shape in input_shape]):
       return
     reduced_inputs_shapes = [

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
@@ -577,7 +578,7 @@ bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
 
 GcsFileSystem::GcsFileSystem()
     : auth_provider_(new GoogleAuthProvider()),
-      http_request_factory_(new HttpRequest::Factory()) {
+      http_request_factory_(new CurlHttpRequest::Factory()) {
   uint64 value;
   size_t block_size = kDefaultBlockSize;
   size_t max_bytes = kDefaultMaxCacheSize;

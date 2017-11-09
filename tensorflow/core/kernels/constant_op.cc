@@ -54,7 +54,17 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
                               DataTypeString(ctx->output_type(0)), ")"));
 }
 
-void ConstantOp::Compute(OpKernelContext* ctx) { ctx->set_output(0, tensor_); }
+void ConstantOp::Compute(OpKernelContext* ctx) {
+  ctx->set_output(0, tensor_);
+  if (TF_PREDICT_FALSE(ctx->track_allocations())) {
+    AllocatorAttributes attr;
+    if (ctx->allocate_on_host(attr)) {
+      ctx->record_host_persistent_memory_allocation(tensor_.AllocatedBytes());
+    } else {
+      ctx->record_device_persistent_memory_allocation(tensor_.AllocatedBytes());
+    }
+  }
+}
 
 ConstantOp::~ConstantOp() {}
 
@@ -77,14 +87,7 @@ REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
-// TODO(ebrevdo): Add callbacks based on Variant TypeName for
-// Variant tensors in rendezvous.  At that point, MakeTensorFromProto() will
-// work correctly and so will Variant _Send/_Recv calls; and we will
-// no longer have to mark Variant inputs/outputs as sitting on host in
-// kernel registrations.  Then we can uncomment this registration.
-// REGISTER_KERNEL(GPU, Variant);
-
-// Currently we do not support string constants on GPU
+REGISTER_KERNEL(GPU, Variant);
 #undef REGISTER_KERNEL
 #endif
 
@@ -254,6 +257,7 @@ REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, bool);
 // Currently we do not support filling strings and complex64 on GPU
 
 // A special GPU kernel for int32.
@@ -279,13 +283,15 @@ class ZerosLikeOp : public OpKernel {
     const Tensor& input = ctx->input(0);
     const Device& d = ctx->eigen_device<Device>();
     if (std::is_same<T, Variant>::value) {
-      OP_REQUIRES(ctx, input.dims() == 0,
-                  errors::InvalidArgument(
-                      "ZerosLike of non-unary Variant not supported."));
+      OP_REQUIRES(
+          ctx, input.dims() == 0,
+          errors::InvalidArgument("ZerosLike non-scalar Tensor with "
+                                  "dtype=DT_VARIANT is not supported."));
       const Variant& v = input.scalar<Variant>()();
       Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
       Variant* out_v = &(out.scalar<Variant>()());
-      OP_REQUIRES_OK(ctx, CreateZerosLikeVariant<Device>(ctx, v, out_v));
+      OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(
+                              ctx, ZEROS_LIKE_VARIANT_UNARY_OP, v, out_v));
       ctx->set_output(0, out);
     } else {
       Tensor* out = nullptr;
@@ -327,19 +333,12 @@ REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL(int64, GPU);
+REGISTER_KERNEL(Variant, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         ZerosLikeOp<CPUDevice, int32>);
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("ZerosLike")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .HostMemory("x")
-                            .HostMemory("y"),
-                        ZerosLikeOp<GPUDevice, Variant>);
 #endif  // GOOGLE_CUDA
 
 #undef REGISTER_KERNEL

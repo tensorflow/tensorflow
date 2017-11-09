@@ -123,6 +123,11 @@ class QueueBase(object):
   @{tf.RandomShuffleQueue} for concrete
   implementations of this class, and instructions on how to create
   them.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -146,7 +151,12 @@ class QueueBase(object):
 
     Raises:
       ValueError: If one of the arguments is invalid.
+      RuntimeError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "Queues are not supported when eager execution is enabled. "
+          "Instead, please use tf.data to get data into your model.")
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
@@ -590,6 +600,11 @@ class RandomShuffleQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, min_after_dequeue, dtypes, shapes=None,
@@ -663,6 +678,11 @@ class FIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, dtypes, shapes=None, names=None,
@@ -714,6 +734,11 @@ class PaddingFIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, dtypes, shapes, names=None, shared_name=None,
@@ -776,6 +801,11 @@ class PriorityQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, types, shapes=None, names=None, shared_name=None,

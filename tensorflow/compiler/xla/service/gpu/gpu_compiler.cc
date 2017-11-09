@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
@@ -60,11 +61,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -76,14 +81,13 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
+/* static */ const char* GpuCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
+/* static */ const char* GpuCompiler::kDataLayout =
+    "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+
 namespace {
 
-// The triple that represents our target.
-const char* kTargetTriple = "nvptx64-nvidia-cuda";
-
-// The data layout of the emitted module. Copied from computeDataLayout in
-// NVPTXTargetMachine.cpp.
-const char* kDataLayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+using tensorflow::strings::StrCat;
 
 // Any address of a variable residing in global memory or returned by one of the
 // memory allocation routines from the driver or runtime API is always aligned
@@ -92,15 +96,13 @@ const char* kDataLayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 // http://docs.nvidia.com/cuda/cuda-c-programming-guide/#device-memory-accesses
 constexpr int64 kMemoryAlignment = 256;
 
-// Returns the directory containing nvvm libdevice files. This function is
-// called in GpuCompiler's constructor, so can't return an error. But
-// GpuCompiler::Compile will return an error when the wanted libdevice file
-// doesn't exist in the folder this function returns.
-string GetLibdeviceDir(const HloModuleConfig& config) {
+// Returns the directory containing nvvm libdevice files.  config_cuda_data_dir
+// should be equal to config().debug_options().xla_gpu_cuda_data_dir() of the
+// HloModule being compiled.
+string GetLibdeviceDir(const string& config_cuda_data_dir) {
   std::vector<string> potential_libdevice_dirs;
-  const string datadir = config.debug_options().xla_gpu_cuda_data_dir();
-  if (!datadir.empty()) {
-    potential_libdevice_dirs.push_back(datadir);
+  if (!config_cuda_data_dir.empty()) {
+    potential_libdevice_dirs.push_back(config_cuda_data_dir);
   }
   potential_libdevice_dirs.push_back(tensorflow::LibdeviceRoot());
 
@@ -129,6 +131,10 @@ tensorflow::Status OptimizeHloModule(
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
         ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
+
+    // TODO(b/64094172): make Call work on GPU instead of inlining.
+    pipeline.AddPass<CallInliner>();
+
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
@@ -144,6 +150,9 @@ tensorflow::Status OptimizeHloModule(
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
+      pass.AddPass<TupleSimplifier>();
+      pass.AddPass<WhileLoopSimplifier>();
+      pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
     }
@@ -218,41 +227,63 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   return pipeline.Run(hlo_module).status();
 }
 
-// Invokes the ptxas tool on the given PTX string, and dumps its output.
-void DumpPtxasInfo(const string& ptx) {
+// Compiles the given PTX string using ptxas and returns the resulting machine
+// code (i.e. a cubin) as a byte array.
+StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
+                                        int cc_minor) {
   const string ptxas_path =
-      tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin/ptxas");
-  // Do not log PTX stats if ptxas is not found at the given path.
-  if (!tensorflow::Env::Default()->FileExists(ptxas_path).ok()) {
-    LOG(WARNING)
-        << "Failed to dump PTX stats because ptxas is not found at path \""
-        << ptxas_path << "\".";
-    return;
-  }
+      tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin", "ptxas");
+  VLOG(2) << "Using ptxas at " << ptxas_path;
+  auto env = tensorflow::Env::Default();
+  TF_RETURN_IF_ERROR(env->FileExists(ptxas_path));
 
-  // Write `ptx` into a temporary file.
-  char tempdir_template[] = "/tmp/ptxXXXXXX";
-  char* tempdir_name = mkdtemp(tempdir_template);
-  CHECK_NOTNULL(tempdir_name);
-  string ptx_path = tensorflow::io::JoinPath(tempdir_name, "ptx");
-  TF_CHECK_OK(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), ptx_path, ptx));
-  LOG(INFO) << "ptx file written to: " << ptx_path;
+  // Write ptx into a temporary file.
+  string ptx_path;
+  if (!env->LocalTempFilename(&ptx_path)) {
+    return InternalError("couldn't get temp PTX file name");
+  }
+  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
+    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
+  });
+
+  TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(env, ptx_path, ptx));
+  VLOG(2) << "ptx written to: " << ptx_path;
 
   // Invoke ptxas and collect its output.
+  string cubin_path;
+  if (!env->LocalTempFilename(&cubin_path)) {
+    return InternalError("couldn't get temp CUBIN file name");
+  }
+  auto cubin_cleaner = tensorflow::gtl::MakeCleanup([&cubin_path] {
+    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(cubin_path));
+  });
   tensorflow::SubProcess ptxas_info_dumper;
-  ptxas_info_dumper.SetProgram(ptxas_path, {ptxas_path, ptx_path, "-o",
-                                            "/dev/null", "-v", "-arch=sm_35"});
+  std::vector<string> ptxas_args = {ptxas_path, ptx_path, "-o", cubin_path,
+                                    StrCat("-arch=sm_", cc_major, cc_minor)};
+  if (VLOG_IS_ON(2)) {
+    ptxas_args.push_back("-v");
+  }
+  ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);
-  CHECK(ptxas_info_dumper.Start());
+  if (!ptxas_info_dumper.Start()) {
+    return InternalError("Failed to launch ptxas");
+  }
   string stderr_output;
   int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   XLA_LOG_LINES(tensorflow::INFO, stderr_output);
   if (exit_status != 0) {
-    LOG(FATAL) << "Invalid PTX. See the error message above for reasons.";
+    return InternalError("ptxas exited with non-zero error code %d",
+                         exit_status);
   }
+
+  // Read in the result of compilation and return it as a byte vector.
+  string cubin;
+  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
+                                                  cubin_path, &cubin));
+  std::vector<uint8> cubin_vector(cubin.begin(), cubin.end());
+  return cubin_vector;
 }
 
 }  // namespace
@@ -279,7 +310,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
     diag_info.print(*printer);
   };
-  llvm_context.setDiagnosticHandler(DiagnosticHandler, &printer);
+  llvm_context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
   llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
@@ -302,13 +333,16 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
                           BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
                             return kMemoryAlignment;
                           }));
-
-  const string dump_debug_json_to =
-      module->config().debug_options().xla_dump_debug_json_to();
-  if (!dump_debug_json_to.empty()) {
+  // BufferAssignment::ToString() includes a header, so no need for us to
+  // print one ourselves.
+  XLA_VLOG_LINES(2, buffer_assignment->ToString());
+  XLA_VLOG_LINES(2, module->ToString());
+  const string xla_dump_hlo_proto_to =
+      module->config().debug_options().xla_dump_hlo_proto_to();
+  if (!xla_dump_hlo_proto_to.empty()) {
     HloProto proto = MakeHloProto(*module, *buffer_assignment);
-    TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-        proto, dump_debug_json_to, module->name()));
+    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+        proto, xla_dump_hlo_proto_to, module->name()));
   }
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
@@ -317,7 +351,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
-                               module->config().has_hybrid_result(),
                                &ir_emitter_context);
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));
@@ -334,12 +367,31 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     XLA_VLOG_LINES(2, ir_module_string_before_opt);
   }
 
-  // Reserve space for the PTX to be generated for this module.
-  string* ptx;
+  const string& ir_dump_directory =
+      module->config().debug_options().xla_dump_ir_to();
+
+  if (!ir_dump_directory.empty()) {
+    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
+        /*directory_name=*/ir_dump_directory,
+        /*hlo_module_name=*/module->name(), llvm_module,
+        /*optimized=*/false));
+  }
+
+  string libdevice_dir;
   {
     tensorflow::mutex_lock lock(mutex_);
-    generated_ptxes_.emplace_back(MakeUnique<string>());
-    ptx = generated_ptxes_.back().get();
+
+    // Find the directory containing libdevice.  To avoid searching for it every
+    // time, we have a one-element cache, keyed on the module's config's
+    // cuda_data_dir.
+    const auto& config_cuda_data_dir =
+        module->config().debug_options().xla_gpu_cuda_data_dir();
+    if (cached_libdevice_dir_.empty() ||
+        cached_cuda_data_dir_ != config_cuda_data_dir) {
+      cached_cuda_data_dir_ = config_cuda_data_dir;
+      cached_libdevice_dir_ = GetLibdeviceDir(config_cuda_data_dir);
+    }
+    libdevice_dir = cached_libdevice_dir_;
   }
   int cc_major, cc_minor;
   if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
@@ -349,12 +401,17 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     cc_major = 2;
     cc_minor = 0;
   }
-  if (libdevice_dir_.empty()) {
-    // Compute libdevice_dir_ just once and cache it in this member.
-    libdevice_dir_ = GetLibdeviceDir(module->config());
+
+  TF_ASSIGN_OR_RETURN(string ptx,
+                      CompileToPtx(&llvm_module, {cc_major, cc_minor},
+                                   module->config(), libdevice_dir));
+
+  if (!ir_dump_directory.empty()) {
+    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
+        /*directory_name=*/ir_dump_directory,
+        /*hlo_module_name=*/module->name(), llvm_module,
+        /*optimized=*/true));
   }
-  TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
-                                         module->config(), libdevice_dir_));
 
   if (user_post_optimization_hook_) {
     TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
@@ -362,10 +419,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
   VLOG(2) << "PTX:";
-  XLA_VLOG_LINES(2, *ptx);
-  if (VLOG_IS_ON(2)) {
-    DumpPtxasInfo(*ptx);
-  }
+  XLA_VLOG_LINES(2, ptx);
+
+  const std::vector<uint8> cubin =
+      CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor);
 
   auto thunk_schedule = MakeUnique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
@@ -374,7 +431,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   XLA_VLOG_LINES(2, thunk_schedule->ToString());
 
   auto* gpu_executable =
-      new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(module),
+      new GpuExecutable(ptx, cubin, {cc_major, cc_minor},
+                        std::move(thunk_schedule), std::move(module),
                         std::move(buffer_assignment), ShapeSizeBytesFunction());
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
@@ -383,9 +441,64 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   return std::unique_ptr<Executable>(gpu_executable);
 }
 
+std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
+                                                            int cc_major,
+                                                            int cc_minor) {
+  bool inserted;
+  decltype(compilation_cache_.begin()) iter;
+  // Pointers into compilation_cache_ where the ptx and (optional) cubin are
+  // stored.
+  const string* cache_ptx = nullptr;
+  CompilationCacheValue* cache_value = nullptr;
+
+  {
+    tensorflow::mutex_lock lock(mutex_);
+    std::tie(iter, inserted) = compilation_cache_.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(ptx, cc_major, cc_minor),
+        std::forward_as_tuple());
+    cache_ptx = &iter->first.ptx;
+    cache_value = &iter->second;
+  }
+
+  // Compile the ptx if it wasn't in the cache before we called this function.
+  // Other threads asking for the same compilation key will block on
+  // cache_value->mutex_ until compilation is done.
+  {
+    tensorflow::mutex_lock lock(cache_value->mutex_);
+    if (inserted) {
+      CHECK(!cache_value->compilation_done);
+      if (!ptx.empty()) {
+        StatusOr<std::vector<uint8>> maybe_cubin =
+            CompilePtx(*cache_ptx, cc_major, cc_minor);
+        if (maybe_cubin.ok()) {
+          cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
+          VLOG(2) << "Compiled PTX size:" << ptx.size()
+                  << " CUBIN size: " << cache_value->cubin_data.size();
+        } else {
+          LOG(WARNING)
+              << "Failed to compile ptx to cubin.  Will attempt to let "
+                 "GPU driver compile the ptx. "
+              << maybe_cubin.status();
+        }
+      }
+      cache_value->compilation_done = true;
+      cache_value->compilation_done_cv_.notify_all();
+    } else {
+      while (!cache_value->compilation_done) {
+        cache_value->compilation_done_cv_.wait(lock);
+      }
+    }
+  }
+
+  CHECK(cache_value != nullptr);
+  CHECK(cache_value->compilation_done);
+  return cache_value->cubin_data;
+}
+
 StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }

@@ -43,12 +43,9 @@ class HloDceTest : public HloTestBase {
   // Returns whether the given instruction exists in the given computation.
   bool HasInstruction(const HloComputation& computation,
                       const HloInstruction* instruction) {
-    for (auto& inst : computation.instructions()) {
-      if (inst.get() == instruction) {
-        return true;
-      }
-    }
-    return false;
+    return std::find(computation.instructions().begin(),
+                     computation.instructions().end(),
+                     instruction) != computation.instructions().end();
   }
 };
 
@@ -302,9 +299,93 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
   EXPECT_TRUE(HasInstruction(*computation, live_call));
 }
 
+TEST_F(HloDceTest, RemoveDeadSubcomputation) {
+  auto module = CreateNewModule();
+  HloComputation::Builder builder(TestName());
+
+  HloComputation::Builder subcomp_builder("reduction_subcomp");
+  {
+    auto* param0 =
+        subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "param0"));
+    auto* param1 =
+        subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "param1"));
+    subcomp_builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, param0, param1));
+  }
+  auto reduce_subcomp = module->AddEmbeddedComputation(subcomp_builder.Build());
+
+  // Create a dead reduce instruction.
+  builder.AddInstruction(HloInstruction::CreateReduce(
+      ShapeUtil::MakeShape(F32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {100}), "param0")),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+      /*dimensions_to_reduce=*/{0}, reduce_subcomp));
+
+  // Add another instruction as the root of the computation.
+  builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
+
+  module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+
+  // We should have DCE'ed the reduction computation along with the reduction
+  // instruction.
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 1);
+}
+
+TEST_F(HloDceTest, KeepUsedSubcomputation) {
+  auto module = CreateNewModule();
+  HloComputation::Builder builder(TestName());
+
+  HloComputation::Builder subcomp_builder("reduction_subcomp");
+  {
+    auto* param0 =
+        subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "param0"));
+    auto* param1 =
+        subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "param1"));
+    subcomp_builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, param0, param1));
+  }
+  auto reduce_subcomp = module->AddEmbeddedComputation(subcomp_builder.Build());
+
+  // Create a dead reduce instruction.
+  builder.AddInstruction(HloInstruction::CreateReduce(
+      ShapeUtil::MakeShape(F32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {100}), "param0")),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+      /*dimensions_to_reduce=*/{0}, reduce_subcomp));
+
+  // Add another instruction as the root of the computation that also uses
+  // reduce_subcomp.
+  builder.AddInstruction(HloInstruction::CreateReduce(
+      ShapeUtil::MakeShape(F32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {100}), "param1")),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+      /*dimensions_to_reduce=*/{0}, reduce_subcomp));
+
+  module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+
+  // We shouldn't have DCE'ed reduce_subcomp, even though we removed one of
+  // its users.
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

@@ -11,6 +11,7 @@
 # NEED OWNER: tensorflow/contrib/avro/*
 #tensorflow/contrib/batching/* @alextp @chrisolston
 #tensorflow/contrib/bayesflow/* @ebrevdo @rsepassi @jvdillon
+#tensorflow/contrib/boosted_trees/* @sshrdp @yk5 @nataliaponomareva
 #tensorflow/contrib/cmake/* @mrry @benoitsteiner
 #tensorflow/contrib/copy_graph/* @tucker @poxvoculi
 #tensorflow/contrib/crf/* @kentonl
@@ -22,7 +23,6 @@
 #tensorflow/contrib/graph_editor/* @purpledog
 # NEED OWNER: tensorflow/contrib/grid_rnn/*
 #tensorflow/contrib/hvx/* @satok16
-#tensorflow/contrib/imperative/* @keveman
 #tensorflow/contrib/integrate/* @shoyer
 #tensorflow/contrib/kernel_methods/* @petrosmol
 #tensorflow/contrib/ios_examples/* @petewarden
