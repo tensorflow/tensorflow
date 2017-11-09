@@ -15,7 +15,6 @@ limitations under the License.
 
 // The utility to write checkpoints for google brain tensor ops and v3
 // checkpoints for dist_belief.
-//
 
 #ifndef TENSORFLOW_UTIL_TENSOR_SLICE_WRITER_H_
 #define TENSORFLOW_UTIL_TENSOR_SLICE_WRITER_H_
