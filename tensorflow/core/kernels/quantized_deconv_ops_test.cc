@@ -34,25 +34,24 @@ limitations under the License.
 
 namespace tensorflow {
 
-class QuantizedConv2DBackpropInputTest : public OpsTestBase {
+class QuantizedConv2DTransposeTest : public OpsTestBase {
  protected:
 };
 
-TEST_F(QuantizedConv2DBackpropInputTest, Small) {
+TEST_F(QuantizedConv2DTransposeTest, Small) {
   const int stride = 1;
-  TF_ASSERT_OK(
-      NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DBackpropInput")
-          .Input(FakeInput(DT_QUINT8))
-          .Input(FakeInput(DT_QUINT8))
-          .Input(FakeInput(DT_INT32))
-          .Input(FakeInput(DT_FLOAT))
-          .Input(FakeInput(DT_FLOAT))
-          .Input(FakeInput(DT_FLOAT))
-          .Input(FakeInput(DT_FLOAT))
-          .Attr("out_type", DataTypeToEnum<qint32>::v())
-          .Attr("strides", {1, stride, stride, 1})
-          .Attr("padding", "VALID")
-          .Finalize(node_def()));
+  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DTranspose")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
   const int depth = 1;
@@ -107,21 +106,20 @@ TEST_F(QuantizedConv2DBackpropInputTest, Small) {
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
-TEST_F(QuantizedConv2DBackpropInputTest, SmallWithStrideLargerThanOne) {
+TEST_F(QuantizedConv2DTransposeTest, SmallWithStrideLargerThanOne) {
   const int stride = 2;
-  TF_ASSERT_OK(
-      NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DBackpropInput")
-          .Input(FakeInput(DT_QUINT8))
-          .Input(FakeInput(DT_QUINT8))
-          .Input(FakeInput(DT_INT32))
-          .Input(FakeInput(DT_FLOAT))
-          .Input(FakeInput(DT_FLOAT))
-          .Input(FakeInput(DT_FLOAT))
-          .Input(FakeInput(DT_FLOAT))
-          .Attr("out_type", DataTypeToEnum<qint32>::v())
-          .Attr("strides", {1, stride, stride, 1})
-          .Attr("padding", "VALID")
-          .Finalize(node_def()));
+  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DTranspose")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
   const int depth = 1;

@@ -15,7 +15,7 @@ limitations under the License.
 
 // Implements quantized eight-bit versions of the deconvolution operations.
 //
-// Conv2DBackpropInputolution operation defined in this file is similar to the
+// Conv2DTransposeolution operation defined in this file is similar to the
 // 'conv2d_transpose' op in TensorFlow.
 // Currently only a reference implementation is supported.
 //
@@ -41,7 +41,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Similar to the ReferenceConvFunctor defined in quantized_conv_ops.cc,
-// this ReferenceConv2DBackpropInputFunctor implements the deconvolution
+// this ReferenceConv2DTransposeFunctor implements the deconvolution
 // operation in
 // the simplest way.
 // As there is no backpropagation function designed for quantized convolution,
@@ -50,7 +50,7 @@ namespace tensorflow {
 //
 // TODO: add some detailed explanation of the algorithm.
 template <class T1, class T2, class T3>
-class ReferenceConv2DBackpropInputFunctor {
+class ReferenceConv2DTransposeFunctor {
  public:
   void operator()(OpKernelContext* context, const T1* input_data,
                   int input_batches, int input_height, int input_width,
@@ -143,9 +143,9 @@ class ReferenceConv2DBackpropInputFunctor {
 
 template <class T1, class T2, class T3,
           template <class TF1, class TF2, class TF3> class ConvTransFunctor>
-class QuantizedConv2DBackpropInputOp : public OpKernel {
+class QuantizedConv2DTransposeOp : public OpKernel {
  public:
-  explicit QuantizedConv2DBackpropInputOp(OpKernelConstruction* context)
+  explicit QuantizedConv2DTransposeOp(OpKernelConstruction* context)
       : OpKernel(context) {
     //
     // Assertions for Attr
@@ -301,12 +301,12 @@ class QuantizedConv2DBackpropInputOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("QuantizedConv2DBackpropInput")
+    Name("QuantizedConv2DTranspose")
         .Device(DEVICE_CPU)
         .TypeConstraint<quint8>("Tinput")
         .TypeConstraint<quint8>("Tfilter")
         .TypeConstraint<qint32>("out_type"),
-    QuantizedConv2DBackpropInputOp<quint8, quint8, qint32,
-                                   ReferenceConv2DBackpropInputFunctor>);
+    QuantizedConv2DTransposeOp<quint8, quint8, qint32,
+                               ReferenceConv2DTransposeFunctor>);
 
 }  // namespace tensorflow
