@@ -26,7 +26,7 @@ from tensorflow.python.framework import errors
 
 VSpace = collections.namedtuple(
     "VSpace",
-    ["aggregate_fn", "num_elements_fn", "tensor_id", "zeros", "ones_like"])
+    ["aggregate_fn", "num_elements_fn", "tensor_id", "zeros", "ones"])
 
 
 def imperative_grad(
