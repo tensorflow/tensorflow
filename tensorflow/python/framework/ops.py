@@ -863,6 +863,10 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
   inputs, which allows those ops to accept numpy arrays, Python lists,
   and scalars in addition to `Tensor` objects.
 
+  Note: This function diverges from default Numpy behavior for `float` and
+    `string` types when `None` is present in a Python list or scalar. Rather
+    than silently converting `None` values, an error will be thrown.
+
   Args:
     value: An object whose type has a registered `Tensor` conversion function.
     dtype: Optional element type for the returned tensor. If missing, the
