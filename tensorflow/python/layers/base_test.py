@@ -47,7 +47,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.trainable_variables, [])
     self.assertEqual(layer.non_trainable_variables, [])
     if context.in_graph_mode():
-      # updates, losses only suppported in GRAPH mode
+      # updates, losses only supported in GRAPH mode
       self.assertEqual(layer.updates, [])
       self.assertEqual(layer.losses, [])
     self.assertEqual(layer.built, False)
