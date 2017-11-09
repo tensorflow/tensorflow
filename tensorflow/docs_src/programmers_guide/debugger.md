@@ -12,14 +12,16 @@ debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
 > NOTE: TensorFlow debugger uses a
 > [curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based
 > text user interface. On Mac OS X, the `ncurses` library is required and can
-> be installed with `brew install homebrew/dupes/ncurses`. On Windows, an
-> unofficial curses package for various Python versions can be downloaded
-> [here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
-> installed using `pip install <your_version>.whl`. A
+> be installed with `brew install homebrew/dupes/ncurses`. On Windows, curses
+> isn't as well supported, so a
 > [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based interface can
-> also be used with tfdbg by installing `pyreadline` with pip.
+> be used with tfdbg by installing `pyreadline` with pip.
 > If you use Anaconda3, you can install it with a command
 > such as `"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`.
+> Unofficial Windows curses packages can be downloaded
+> [here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
+> installed using `pip install <your_version>.whl`, however curses on Windows
+> may not work as reliably as curses on Linux or Mac.
 
 This tutorial demonstrates how to use the **tfdbg** command-line interface
 (CLI) to debug the appearance of [`nan`s](https://en.wikipedia.org/wiki/NaN)
