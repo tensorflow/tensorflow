@@ -20,8 +20,9 @@ limitations under the License.
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
+#if !defined(PLATFORM_WINDOWS)
 #include <unistd.h>
+#endif
 
 #include <vector>
 
