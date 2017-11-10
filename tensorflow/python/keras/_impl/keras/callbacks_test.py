@@ -499,7 +499,10 @@ class KerasCallbacksTest(test.TestCase):
       values = []
       with open(fp) as f:
         for x in csv.reader(f):
-          values.append(x)
+          # In windows, due to \n\r line ends we may end up reading empty lines
+          # after each line. Skip them.
+          if x:
+            values.append(x)
       assert 'nan' in values[-1], 'The last epoch was not logged.'
 
   def test_TerminateOnNaN(self):
