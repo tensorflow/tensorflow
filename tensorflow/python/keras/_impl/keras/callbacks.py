@@ -767,7 +767,7 @@ class TensorBoard(Callback):
       self.writer.add_summary(summary, epoch)
     self.writer.flush()
 
-  def on_train_end(self, unused_logs=None):
+  def on_train_end(self, logs=None):
     self.writer.close()
 
 
