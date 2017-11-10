@@ -492,6 +492,8 @@ def set_cc_opt_flags(environ_cp):
   write_to_bazelrc(
       'build:opt --host_cxxopt=%s --host_copt=%s' % (host_opt, host_opt))
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
+  write_to_bazelrc('build --copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
+  write_to_bazelrc('build --host_copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
 
 
 def set_tf_cuda_clang(environ_cp):
