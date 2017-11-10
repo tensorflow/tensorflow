@@ -228,17 +228,9 @@ def setup_python(environ_cp):
   # Set-up env variables used by python_configure.bzl
   write_action_env_to_bazelrc('PYTHON_BIN_PATH', python_bin_path)
   write_action_env_to_bazelrc('PYTHON_LIB_PATH', python_lib_path)
-  write_to_bazelrc('build --define PYTHON_BIN_PATH="%s"' % python_bin_path)
-  write_to_bazelrc('build --define PYTHON_LIB_PATH="%s"' % python_lib_path)
   write_to_bazelrc('build --force_python=py%s' % python_major_version)
   write_to_bazelrc('build --host_force_python=py%s' % python_major_version)
   write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
-  write_to_bazelrc('test --force_python=py%s' % python_major_version)
-  write_to_bazelrc('test --host_force_python=py%s' % python_major_version)
-  write_to_bazelrc('test --define PYTHON_BIN_PATH="%s"' % python_bin_path)
-  write_to_bazelrc('test --define PYTHON_LIB_PATH="%s"' % python_lib_path)
-  write_to_bazelrc('run --define PYTHON_BIN_PATH="%s"' % python_bin_path)
-  write_to_bazelrc('run --define PYTHON_LIB_PATH="%s"' % python_lib_path)
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
 
   # Write tools/python_bin_path.sh
@@ -487,11 +479,12 @@ def set_cc_opt_flags(environ_cp):
   cc_opt_flags = get_from_env_or_user_or_default(environ_cp, 'CC_OPT_FLAGS',
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
-    write_to_bazelrc('build:opt --cxxopt=%s --copt=%s' % (opt, opt))
-  host_opt = '-march=native'  # It should be safe on the same build host.
-  write_to_bazelrc(
-      'build:opt --host_cxxopt=%s --host_copt=%s' % (host_opt, host_opt))
+    write_to_bazelrc('build:opt --copt=%s' % opt)
+  # It should be safe on the same build host.
+  write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
+  # TODO(mikecase): Remove these default defines once we are able to get
+  # TF Lite targets building without them.
   write_to_bazelrc('build --copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
   write_to_bazelrc('build --host_copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
 
@@ -949,7 +942,6 @@ def set_other_mpi_vars(environ_cp):
 def set_mkl():
   write_to_bazelrc('build:mkl --define using_mkl=true')
   write_to_bazelrc('build:mkl -c opt')
-  write_to_bazelrc('build:mkl --copt="-DEIGEN_USE_VML"')
   print(
       'Add "--config=mkl" to your bazel command to build with MKL '
       'support.\nPlease note that MKL on MacOS or windows is still not '
@@ -1002,7 +994,6 @@ def main():
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
-    environ_cp['TF_NEED_S3'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
 
   if is_macos():
