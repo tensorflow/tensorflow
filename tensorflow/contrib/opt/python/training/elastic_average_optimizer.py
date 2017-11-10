@@ -32,6 +32,11 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import constant_op
 
+LOCAL_CENTER_VARIABLE = '_local_center_variable'
+GLOBAL_CENTER_VARIABLE = '_global_center_variable'
+LOCAL_VARIABLE_NAME = 'local_center_variable'
+GLOBAL_VARIABLE_NAME = 'global_center_variable'
+
 
 class ElasticAverageCustomGetter(object):
   """Custom_getter class is used to do:
@@ -40,7 +45,6 @@ class ElasticAverageCustomGetter(object):
   2. Generate global variables(global center variables)
   3. Generate local variables(local center variables) which record the global
     variables and place them at worker device
-  4. Remain global step variable as global variable
     Notice that the class should be used with tf.replica_device_setter,
     so that the global center variables and global step variable can be placed
     at ps device. Besides, use 'tf.get_variable' instead of 'tf.Variable' to
@@ -82,21 +86,21 @@ class ElasticAverageCustomGetter(object):
     if kwargs['trainable']:
       global_center_variable = variables.Variable(
         name='%s/%s' %
-             ('global_center_variable',
+             (GLOBAL_VARIABLE_NAME,
               name),
         initial_value=local_var.initialized_value(),
         trainable=False,
         collections=[
           ops.GraphKeys.GLOBAL_VARIABLES,
-          'global_center_variable'])
+          GLOBAL_CENTER_VARIABLE])
 
       with ops.device(self._worker_device):
         local_center_variable = variables.Variable(
-          name='%s/%s' % ('local_center_variable', name),
+          name='%s/%s' % (LOCAL_VARIABLE_NAME, name),
           initial_value=local_var.initialized_value(),
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES,
-                       'local_center_variable'])
+                       LOCAL_CENTER_VARIABLE])
     return local_var
 
 
@@ -196,16 +200,15 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     """
     elastic_difference = [math_ops.subtract(v, lv) for v, lv in zip(
       variables.trainable_variables(),
-      ops.get_collection_ref('local_center_variable'))]
+      ops.get_collection_ref(LOCAL_CENTER_VARIABLE))]
 
-    distance_loss = self._rho * \
-                    math_ops.add_n(
+    distance_loss = self._rho * math_ops.add_n(
                       [gen_nn_ops.l2_loss(ed) for ed in elastic_difference])
 
     total_loss = loss + distance_loss
     return self._opt.compute_gradients(total_loss, var_list,
-                                       gate_gradients,aggregation_method,
-                                       colocate_gradients_with_ops,grad_loss)
+                                       gate_gradients, aggregation_method,
+                                       colocate_gradients_with_ops, grad_loss)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to global variables.
@@ -237,9 +240,8 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     # update global variables.
     def _Update_global_variables():
       local_vars = variables.trainable_variables()
-      global_center_vars = ops.get_collection_ref(
-        'global_center_variable')
-      local_center_vars = ops.get_collection_ref('local_center_variable')
+      global_center_vars = ops.get_collection_ref(GLOBAL_CENTER_VARIABLE)
+      local_center_vars = ops.get_collection_ref(LOCAL_CENTER_VARIABLE)
       local_center_vars_update = []
       for lvar, var in zip(local_center_vars, global_center_vars):
         local_center_vars_update.append(lvar.assign(var))
@@ -296,8 +298,8 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
 
     init_ops = []
     local_vars = variables.trainable_variables()
-    global_center_vars = ops.get_collection_ref('global_center_variable')
-    local_center_vars = ops.get_collection_ref('local_center_variable')
+    global_center_vars = ops.get_collection_ref(GLOBAL_CENTER_VARIABLE)
+    local_center_vars = ops.get_collection_ref(LOCAL_CENTER_VARIABLE)
     if not (local_vars and global_center_vars and local_center_vars):
       raise ValueError(
         'The lists of local_variables, global_center_variables, '
@@ -312,7 +314,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     return sync_queue_op
 
   def make_session_run_hook(self, is_chief, task_index):
-    """Creates a hook to handle SyncReplicasHook ops such as initialization."""
+    """Creates a hook to handle ElasticAverageOptimizerHook ops such as initialization."""
     return _ElasticAverageOptimizerHook(self, is_chief, task_index)
 
 
