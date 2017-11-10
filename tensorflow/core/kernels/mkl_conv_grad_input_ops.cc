@@ -370,14 +370,17 @@ class MklConv2DCustomBackpropInputOp :
   void ValidateMklShapes(const MklDnnShape& input_mkl_shape,
                          const MklDnnShape& filter_mkl_shape,
                          const MklDnnShape& obp_mkl_shape) {
+    // Tensor that feeds to 'Input' slot of BackpropInput is always just a shape
+    // of the Tensor and never an actual tensor. So it will never be in MKL
+    // layout.
     CHECK(!input_mkl_shape.IsMklTensor())
       << "Conv2DBackpropInput: input should not be in MKL Layout";
   }
 
   size_t GetInputTensorIndexWithSizes() { return 0; /* input index */ }
 
-  TensorShape GetInputTfShape(OpKernelContext* context,
-                              const Tensor& input_tensor) {
+  TensorShape MakeInputTfShape(OpKernelContext* context,
+                               const Tensor& input_tensor) {
     TensorShape input_tf_shape;
     CHECK_EQ(TensorShapeUtils::IsVector(input_tensor.shape()), true);
     CHECK_EQ(TensorShapeUtils::MakeShape(input_tensor.vec<int32>(),
@@ -385,8 +388,8 @@ class MklConv2DCustomBackpropInputOp :
     return input_tf_shape;
   }
 
-  TensorShape GetFilterTfShape(OpKernelContext* context,
-                               const Tensor& filter_tensor) {
+  TensorShape MakeFilterTfShape(OpKernelContext* context,
+                                const Tensor& filter_tensor) {
     size_t filter_idx = 1;
     return GetTfShape(context, filter_idx);
   }
@@ -457,7 +460,8 @@ class MklConv2DCustomBackpropInputOp :
       output_mkl_shape.SetMklTensor(true);
       output_mkl_shape.SetMklLayout(&dst_pd);
       output_mkl_shape.SetElemType(MklDnnType<T>());
-      output_mkl_shape.SetTfLayout(4, output_dims_mkl_order, output_tf_format);
+      output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
+                                   output_dims_mkl_order, output_tf_format);
 
       // Allocate shape of TF tensor.
       TensorShape output_tf_shape;

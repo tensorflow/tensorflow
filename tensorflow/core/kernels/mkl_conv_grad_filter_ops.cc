@@ -452,14 +452,14 @@ class MklConv2DCustomBackpropFilterOp :
 
   size_t GetInputTensorIndexWithSizes() { return 1; /* filter index */ }
 
-  TensorShape GetInputTfShape(OpKernelContext* context,
-                              const Tensor& input_tensor) {
+  TensorShape MakeInputTfShape(OpKernelContext* context,
+                               const Tensor& input_tensor) {
     size_t input_idx = 0;
     return GetTfShape(context, input_idx);
   }
 
-  TensorShape GetFilterTfShape(OpKernelContext* context,
-                               const Tensor& filter_tensor) {
+  TensorShape MakeFilterTfShape(OpKernelContext* context,
+                                const Tensor& filter_tensor) {
     TensorShape filter_tf_shape;
     CHECK_EQ(TensorShapeUtils::IsVector(filter_tensor.shape()), true);
     CHECK_EQ(TensorShapeUtils::MakeShape(
@@ -540,6 +540,7 @@ class MklConv2DCustomBackpropFilterOp :
       Tensor* bias_grad_tensor = nullptr;
       AllocateBiasGradTensor(context, bias_grad_shape, &bias_grad_tensor);
       memory::dims bias_grad_dims = {depth};
+      // Since Bias is 1D, we use format::x from MKLDNN to represent it.
       auto bias_grad_md = memory::desc({bias_grad_dims}, MklDnnType<T>(),
                                        memory::format::x);
       bias_grad->SetUsrMem(bias_grad_md, bias_grad_tensor);
@@ -561,7 +562,11 @@ class MklConv2DCustomBackpropFilterOp :
       CHECK_NOTNULL(output_tensor);
 
       // For BackpropFilter, we convert the output tensor back in Tensorflow
-      // layout.
+      // layout. Because typically, BackpropFilter is the last operator in the
+      // graph that emit filter gradient that is provided to ApplyGradient
+      // method to update the filter. But it may be possible to eliminate this
+      // by forwarding filter in MKL layout if we support ApplyGradient method
+      // for MKL layout propagation.
       MklDnnShape output_mkl_shape;
       output_mkl_shape.SetMklTensor(false);
       // output_dims_mkl_order is in OIHW format.

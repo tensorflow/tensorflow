@@ -539,10 +539,7 @@ class MklConv2DOp : public OpKernel {
       if (!context->status().ok()) return;
 
       // Check for corner case - if there is nothing to compute, return.
-      TensorShape output_tf_shape({output_dims_tf_order[0],
-                                   output_dims_tf_order[1],
-                                   output_dims_tf_order[2],
-                                   output_dims_tf_order[3]});
+      TensorShape output_tf_shape = MklDnnDimsToTFShape(output_dims_tf_order);
 
       // Forward filter in TF format from input at index 1 to output at index 1.
       ForwardTfTensorInToOut(context, 1, 1);
@@ -553,7 +550,7 @@ class MklConv2DOp : public OpKernel {
           output_dims_tf_order[0] == 0) {
         // TODO(jbobba): Verify correctness here
         //               Need semantics for Null MKL tensor
-        MklShape output_mkl_shape;
+        MklDnnShape output_mkl_shape;
         output_mkl_shape.SetMklTensor(false);
         AllocateOutputSetMklShape(context, 0, &output_tensor, src_tf_shape,
                                 output_mkl_shape);
@@ -563,14 +560,14 @@ class MklConv2DOp : public OpKernel {
       // Create memory for user data.
       // Describe how the inputs and outputs of Convolution look like. Also
       // specify buffers containing actual input and output data.
-      auto tf_dafm = TFDataFormatToMklDnnDataFormat(data_format_);
+      auto tf_fmt = TFDataFormatToMklDnnDataFormat(data_format_);
       // If input is in MKL layout, then simply grab input layout; otherwise,
       // construct input Tf layout. For TF layout, although input shape
       // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
       // layout (NHWC or NCHW depending on data format).
       auto src_md = src_mkl_shape.IsMklTensor()
                     ? src_mkl_shape.GetMklLayout()
-                    : memory::desc(src_dims, MklDnnType<T>(), tf_dafm);
+                    : memory::desc(src_dims, MklDnnType<T>(), tf_fmt);
       src.SetUsrMem(src_md, &src_tensor);
       // Although filter shape (filter_dims) required is in MKL-DNN order,
       // the layout is Tensorflow's layout (HWIO).
@@ -582,7 +579,7 @@ class MklConv2DOp : public OpKernel {
       // Currently, we set output layout as Tensorflow's layout (NHWC or NCHW
       // depending on data format). But later we propagate Mkl layout of the
       // output to the next op directly.
-      output.SetUsrMem(output_dims_mkl_order, tf_dafm);
+      output.SetUsrMem(output_dims_mkl_order, tf_fmt);
 
       // Create memory descriptors for convolution data w/ no specified format.
       src.SetOpMemDesc(src_dims, memory::format::any);
@@ -607,7 +604,7 @@ class MklConv2DOp : public OpKernel {
         auto conv_prim_desc = convolution_forward::primitive_desc(conv_desc,
                                                                 cpu_engine);
         AllocateOutputTensor(context, conv_prim_desc,
-                             output_dims_mkl_order, tf_dafm, &output_tensor);
+                             output_dims_mkl_order, tf_fmt, &output_tensor);
         // Set data handle for output.
         output.SetUsrMemDataHandle(output_tensor);
         PrepareAndExecuteNet(conv_prim_desc, &src, &filter, &bias, &output);
@@ -621,7 +618,7 @@ class MklConv2DOp : public OpKernel {
         auto conv_prim_desc = convolution_forward::primitive_desc(conv_desc,
                                                                 cpu_engine);
         AllocateOutputTensor(context, conv_prim_desc, output_dims_mkl_order,
-                             tf_dafm, &output_tensor);
+                             tf_fmt, &output_tensor);
         // Set data handle for output.
         output.SetUsrMemDataHandle(output_tensor);
         PrepareAndExecuteNet(conv_prim_desc, &src, &filter, nullptr, &output);
@@ -655,14 +652,16 @@ class MklConv2DOp : public OpKernel {
       output_mkl_shape.SetMklTensor(true);
       output_mkl_shape.SetMklLayout(&dst_pd);
       output_mkl_shape.SetElemType(MklDnnType<T>());
-      output_mkl_shape.SetTfLayout(4, output_dims_mkl_order, output_tf_format);
+      output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
+                                   output_dims_mkl_order, output_tf_format);
 
       // Allocate shape of TF tensor.
       TensorShape output_tf_shape;
       output_tf_shape.AddDim((dst_pd.get_size() / sizeof(T)));
 
-      AllocateOutputSetMklShape(context, 0, output_tensor, output_tf_shape,
-                                output_mkl_shape);
+      const int kOutputSlotIdx = 0;
+      AllocateOutputSetMklShape(context, kOutputSlotIdx, output_tensor,
+                                output_tf_shape, output_mkl_shape);
   }
 
   // Prepare and execute net - checks for input and output reorders.
