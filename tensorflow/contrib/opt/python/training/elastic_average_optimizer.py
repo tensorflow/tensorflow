@@ -76,14 +76,11 @@ class ElasticAverageCustomGetter(object):
     self._worker_device = worker_device
 
   def __call__(self, getter, name, *args, **kwargs):
-    if name.find('global_step') != -1:
-      return getter(name, *args, **kwargs)
-
-    kwargs['collections'] = [ops.GraphKeys.LOCAL_VARIABLES]
-    with ops.device(self._worker_device):
-      local_var = getter(name, *args, **kwargs)
-
     if kwargs['trainable']:
+      kwargs['collections'] = [ops.GraphKeys.LOCAL_VARIABLES]
+      with ops.device(self._worker_device):
+        local_var = getter(name, *args, **kwargs)
+        
       global_center_variable = variable_scope.variable(
         name='%s/%s' %
              (GLOBAL_VARIABLE_NAME,
@@ -101,7 +98,9 @@ class ElasticAverageCustomGetter(object):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES,
                        LOCAL_CENTER_VARIABLE])
-    return local_var
+      return local_var
+    else:
+      return getter(name, *args, **kwargs)
 
 
 class ElasticAverageOptimizer(optimizer.Optimizer):
