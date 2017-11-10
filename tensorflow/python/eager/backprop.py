@@ -835,5 +835,5 @@ class GradientTape(object):
                for x in sources]
     grad = imperative_grad.imperative_grad(
         _default_vspace, self._tape, [target], sources)
-    self.tape = None
+    self._tape = None
     return grad
