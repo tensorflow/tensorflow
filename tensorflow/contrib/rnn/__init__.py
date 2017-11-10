@@ -57,6 +57,9 @@ See @{$python/contrib.rnn} guide.
 @@Conv3DLSTMCell
 @@HighwayWrapper
 @@GLSTMCell
+@@MultiplicativeIntegrationRNNCell
+@@MultiplicativeIntegrationGRUCell
+@@MultiplicativeIntegrationLSTMCell
 
 <!--RNNCell wrappers-->
 @@AttentionCellWrapper
