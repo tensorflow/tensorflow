@@ -145,6 +145,7 @@ class Conv3DOp : public BinaryOp<T> {
   REGISTER_KERNEL_BUILDER(                                      \
       Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       Conv3DOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL

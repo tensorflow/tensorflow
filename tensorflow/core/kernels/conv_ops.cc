@@ -409,6 +409,7 @@ class Conv2DOp : public BinaryOp<T> {
 #if !defined(USE_GEMM_FOR_CONV)
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.

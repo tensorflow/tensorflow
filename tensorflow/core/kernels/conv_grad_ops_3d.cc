@@ -236,6 +236,7 @@ class Conv3DBackpropInputOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Conv3DBackpropInputV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       Conv3DBackpropInputOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -383,6 +384,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<T>("T"),                        \
                           Conv3DBackpropFilterOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
