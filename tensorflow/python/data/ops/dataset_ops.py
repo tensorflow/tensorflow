@@ -22,6 +22,7 @@ import collections
 import threading
 
 import numpy as np
+import six
 
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
@@ -105,7 +106,7 @@ class Dataset(object):
   def make_one_shot_iterator(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
-    **N.B.** The returned iterator will be initialized automatically.
+    Note: The returned iterator will be initialized automatically.
     A "one-shot" iterator does not currently support re-initialization.
 
     Returns:
@@ -124,7 +125,18 @@ class Dataset(object):
     def _make_dataset():
       return self._as_variant_tensor()  # pylint: disable=protected-access
 
-    _make_dataset.add_to_graph(ops.get_default_graph())
+    try:
+      _make_dataset.add_to_graph(ops.get_default_graph())
+    except ValueError as err:
+      if "Cannot capture a stateful node" in str(err):
+        raise ValueError(
+            "Failed to create a one-shot iterator for a dataset. "
+            "`Dataset.make_one_shot_iterator()` does not support datasets that "
+            "capture stateful objects, such as a `Variable` or `LookupTable`. "
+            "In these cases, use `Dataset.make_initializable_iterator()`. "
+            "(Original error: %s)" % err)
+      else:
+        six.reraise(ValueError, err)
 
     return iterator_ops.Iterator(
         gen_dataset_ops.one_shot_iterator(
