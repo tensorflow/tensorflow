@@ -499,7 +499,7 @@ class KerasCallbacksTest(test.TestCase):
 
       values = []
       # In windows, due to \r\n line ends we may end up reading empty lines
-      # after each line. OPen the file with 'rU' to read them correctly.
+      # after each line. Open the file with 'rU' to read them correctly.
       with open(fp, 'rU') as f:
         for x in csv.reader(f):
           values.append(x)
