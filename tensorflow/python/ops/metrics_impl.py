@@ -33,6 +33,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.util.deprecation import deprecated
 
 
 def metric_variable(shape, dtype, validate_shape=True, name=None):
@@ -793,7 +794,7 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
                                      reduction_indices=[dim,],
-                                     keep_dims=True)
+                                     keepdims=True)
   mean_distance, update_op = mean(radial_diffs, weights,
                                   None,
                                   None,
@@ -2835,6 +2836,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
     return mean_average_precision, update
 
 
+@deprecated(None, 'Use average_precision_at_k instead')
 def sparse_average_precision_at_k(labels,
                                   predictions,
                                   k,
@@ -2842,9 +2844,27 @@ def sparse_average_precision_at_k(labels,
                                   metrics_collections=None,
                                   updates_collections=None,
                                   name=None):
+  """Renamed to `average_precision_at_k`, please use that method instead."""
+  return average_precision_at_k(
+      labels=labels,
+      predictions=predictions,
+      k=k,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      updates_collections=updates_collections,
+      name=name)
+
+
+def average_precision_at_k(labels,
+                           predictions,
+                           k,
+                           weights=None,
+                           metrics_collections=None,
+                           updates_collections=None,
+                           name=None):
   """Computes average precision@k of predictions with respect to sparse labels.
 
-  `sparse_average_precision_at_k` creates two local variables,
+  `average_precision_at_k` creates two local variables,
   `average_precision_at_<k>/total` and `average_precision_at_<k>/max`, that
   are used to compute the frequency. This frequency is ultimately returned as
   `average_precision_at_<k>`: an idempotent operation that simply divides
@@ -3088,6 +3108,7 @@ def precision_at_top_k(labels,
     return metric, update
 
 
+@deprecated(None, 'Use precision_at_k instead')
 def sparse_precision_at_k(labels,
                           predictions,
                           k,
@@ -3096,6 +3117,26 @@ def sparse_precision_at_k(labels,
                           metrics_collections=None,
                           updates_collections=None,
                           name=None):
+  """Renamed to `precision_at_k`, please use that method instead."""
+  return precision_at_k(
+      labels=labels,
+      predictions=predictions,
+      k=k,
+      class_id=class_id,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      updates_collections=updates_collections,
+      name=name)
+
+
+def precision_at_k(labels,
+                   predictions,
+                   k,
+                   class_id=None,
+                   weights=None,
+                   metrics_collections=None,
+                   updates_collections=None,
+                   name=None):
   """Computes precision@k of the predictions with respect to sparse labels.
 
   If `class_id` is specified, we calculate precision by considering only the
@@ -3106,7 +3147,7 @@ def sparse_precision_at_k(labels,
       average a class among the top-k classes with the highest predicted values
       of a batch entry is correct and can be found in the label for that entry.
 
-  `sparse_precision_at_k` creates two local variables,
+  `precision_at_k` creates two local variables,
   `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
   the precision@k frequency. This frequency is ultimately returned as
   `precision_at_<k>`: an idempotent operation that simply divides

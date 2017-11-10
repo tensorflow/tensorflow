@@ -206,9 +206,16 @@ class DatasetSerializationTestBase(test.TestCase):
     # Generate `break_point` items from ds_fn1 and save checkpoint.
     self.gen_outputs(ds_fn1, [], break_point)
 
+    actual = []
     # Build graph for ds_fn2 but load checkpoint for ds_fn1.
-    actual = self.gen_outputs(
-        ds_fn2, [], break_point, ckpt_saved=True, verify_exhausted=True)
+    with ops.Graph().as_default() as g:
+      _, get_next_op, saver = self._build_graph(ds_fn2)
+      with self.test_session(graph=g) as sess:
+        self._restore(saver, sess)
+        for _ in range(num_outputs - break_point):
+          actual.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
 
     self.match(expected, actual)
 

@@ -217,6 +217,10 @@ bool StreamExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
   return implementation_->GetKernel(spec, kernel);
 }
 
+void StreamExecutor::UnloadKernel(const KernelBase *kernel) {
+  implementation_->UnloadKernel(kernel);
+}
+
 void StreamExecutor::Deallocate(DeviceMemoryBase *mem) {
   VLOG(1) << "Called StreamExecutor::Deallocate(mem=" << mem->opaque()
           << ") mem->size()=" << mem->size() << StackTraceIfVLOG10();

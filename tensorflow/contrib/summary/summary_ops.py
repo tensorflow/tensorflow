@@ -246,8 +246,8 @@ def image(name, tensor, bad_color=None, max_images=3, family=None):
   """Writes an image summary if possible."""
 
   def function(tag, scope):
-    if bad_color is None:
-      bad_color_ = constant_op.constant([255, 0, 0, 255], dtype=dtypes.uint8)
+    bad_color_ = (constant_op.constant([255, 0, 0, 255], dtype=dtypes.uint8)
+                  if bad_color is None else bad_color)
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_image_summary(
         context.context().summary_writer_resource,

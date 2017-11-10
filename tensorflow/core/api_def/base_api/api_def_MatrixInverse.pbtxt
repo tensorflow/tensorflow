@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "MatrixInverse"
+  in_arg {
+    name: "input"
+    description: <<END
+Shape is `[..., M, M]`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Shape is `[..., M, M]`.
+
+@compatibility(numpy)
+Equivalent to np.linalg.inv
+@end_compatibility
+END
+  }
+  summary: "Computes the inverse of one or more square invertible matrices or their"
+  description: <<END
+adjoints (conjugate transposes).
+
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. The output is a tensor of the same shape as the input
+containing the inverse for all input submatrices `[..., :, :]`.
+
+The op uses LU decomposition with partial pivoting to compute the inverses.
+
+If a matrix is not invertible there is no guarantee what the op does. It
+may detect the condition and raise an exception or it may simply return a
+garbage result.
+END
+}

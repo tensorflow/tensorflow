@@ -914,8 +914,8 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   // new names, and as a result users would not be able to fetch the node any
   // more with the original node name.
   for (const auto& fetch : item.fetch) {
-    auto fetch_node = node_map_->GetNode(fetch);
-    if (NumOutputs(*fetch_node) == 1) {
+    const NodeDef* fetch_node = node_map_->GetNode(fetch);
+    if (fetch_node && NumOutputs(*fetch_node) == 1) {
       nodes_whitelist_.insert(fetch_node->name());
     }
   }

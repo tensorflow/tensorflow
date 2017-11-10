@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -61,23 +60,12 @@ std::set<string> GetOpsFormatSupported() {
 }
 
 std::set<string> GetOpsFormatAgnostic() {
-  std::set<string> ops_format_agnostic = {"Add",
-                                          "AddN",
-                                          "Concat",
-                                          "ConcatV2",
-                                          "Floor",
-                                          "Identity",
-                                          "Mul",
-                                          "Neg",
-                                          "RealDiv",
-                                          "Relu",
-                                          "Relu6",
-                                          "ReluGrad",
-                                          "Sigmoid",
-                                          "Slice",
-                                          "SquaredDifference",
-                                          "Squeeze",
-                                          "Sub"};
+  std::set<string> ops_format_agnostic = {
+      "Add",      "AddN",     "Concat", "ConcatV2",
+      "Floor",    "Identity", "Mul",    "Neg",
+      "Pad",      "RealDiv",  "Relu",   "Relu6",
+      "ReluGrad", "Sigmoid",  "Slice",  "SquaredDifference",
+      "Squeeze",  "Sub"};
   return ops_format_agnostic;
 }
 
@@ -279,10 +267,23 @@ class NodeProcessor : public GraphProcessor {
     if (!success) {
       LOG(ERROR) << "Failed to parse TensorProto.";
     }
-    int c = tensor.flat<int>()(3);
-    tensor.flat<int>()(3) = tensor.flat<int>()(2);
-    tensor.flat<int>()(2) = tensor.flat<int>()(1);
-    tensor.flat<int>()(1) = c;
+    if (tensor.dims() == 1) {
+      int c = tensor.flat<int>()(3);
+      tensor.flat<int>()(3) = tensor.flat<int>()(2);
+      tensor.flat<int>()(2) = tensor.flat<int>()(1);
+      tensor.flat<int>()(1) = c;
+    } else if (tensor.dims() == 2) {
+      for (int i = 0; i < 2; i++) {
+        int c = tensor.matrix<int>()(3, i);
+        tensor.matrix<int>()(3, i) = tensor.matrix<int>()(2, i);
+        tensor.matrix<int>()(2, i) = tensor.matrix<int>()(1, i);
+        tensor.matrix<int>()(1, i) = c;
+      }
+    } else {
+      return Status(
+          error::INVALID_ARGUMENT,
+          strings::StrCat("Unsupported dimension size: ", tensor.dims()));
+    }
     tensor.AsProtoTensorContent(
         node->mutable_attr()->at({"value"}).mutable_tensor());
     return Status::OK();
@@ -290,6 +291,8 @@ class NodeProcessor : public GraphProcessor {
 
   Status UpdateAttrValueOfInput(int input_index) {
     auto input_node = node_map_->GetNode(node_->input(input_index));
+    // We created a copy of the node, so that we don't modify the original node,
+    // which might be used elsewhere.
     NodeDef* added_node = graph_->add_node();
     *added_node = *input_node;
     string base_name = strings::StrCat(node_->name(), "-", input_node->name());
@@ -876,6 +879,38 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 };
 
+class PadProcessor : public AgnosticNodeProcessor {
+ public:
+  PadProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
+               bool is_in_frame)
+      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           PaddingSupported();
+  }
+  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
+
+ private:
+  bool PaddingSupported() const {
+    auto pad_const = node_map_->GetNode(node_->input(1));
+    bool is_const = IsConstant(*pad_const);
+    bool is_4D = false;
+    if (HasAttribute(*pad_const, "value").ok()) {
+      Tensor tensor;
+      if (tensor.FromProto(pad_const->mutable_attr()->at({"value"}).tensor())) {
+        if (tensor.dims() == 2) {
+          if (tensor.dim_size(0) == 4 && tensor.dim_size(1) == 2) {
+            is_4D = true;
+          }
+        }
+      }
+    }
+    return is_const && is_4D;
+  }
+};
+
 class ReluGradProcessor : public AgnosticNodeProcessor {
  public:
   ReluGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
@@ -1179,21 +1214,11 @@ class SumProcessor : public AgnosticNodeProcessor {
   }
 };
 
-struct TuningConfig {
-  // If true, do not use the NHWC GEMM implementation. When filter size is
-  // one or filter size is equal to input image size,
-  // the NHWC implementation of Conv2D, Conv2DBackpropInput, and
-  // Conv2DBackpropFilter will use a specialized GEMM implementation, which is
-  // usually faster than the NCHW implementation. The downside is that this
-  // might result in more non-cancellable layout conversion nodes (implemented
-  // by the Transpose op).
-  bool no_gemm;
-};
-
 class DataLayoutOptimizer : GraphProcessor {
  public:
   explicit DataLayoutOptimizer(const string& default_device, GraphDef* graph,
-                               NodeMap* node_map, TuningConfig config)
+                               NodeMap* node_map,
+                               LayoutOptimizer::TuningConfig config)
       : GraphProcessor(graph, node_map),
         default_device_(default_device),
         config_(config) {}
@@ -1303,6 +1328,9 @@ class DataLayoutOptimizer : GraphProcessor {
                      node->op().compare("ConcatV2") == 0) {
             node_processor.reset(
                 new ConcatProcessor(graph_, node, node_map_, is_in_frame));
+          } else if (node->op().compare("Pad") == 0) {
+            node_processor.reset(
+                new PadProcessor(graph_, node, node_map_, is_in_frame));
           } else if (node->op().compare("ReluGrad") == 0) {
             node_processor.reset(
                 new ReluGradProcessor(graph_, node, node_map_, is_in_frame));
@@ -1375,7 +1403,7 @@ class DataLayoutOptimizer : GraphProcessor {
   }
 
   string default_device_;
-  TuningConfig config_;
+  LayoutOptimizer::TuningConfig config_;
 };
 
 int GetNumTranspose(const GraphDef& graph) {
@@ -1387,6 +1415,22 @@ int GetNumTranspose(const GraphDef& graph) {
   }
   LOG(INFO) << "Number of Transpose nodes: " << number;
   return number;
+}
+
+Status LayoutOptimizer::Tune(const GrapplerItem& item,
+                             const GraphProperties& graph_properties,
+                             const string& default_device,
+                             const TuningConfig& config, GraphDef* output) {
+  auto status = graph_properties.AnnotateOutputShapes(output);
+  if (!status.ok()) {
+    *output = item.graph;
+    return status;
+  }
+  NodeMap node_map(output);
+  DataLayoutOptimizer layout_optimizer(default_device, output, &node_map,
+                                       config);
+  status = layout_optimizer.Optimize();
+  return status;
 }
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -1406,11 +1450,6 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     *output = item.graph;
     return status;
   }
-  status = graph_properties.AnnotateOutputShapes(output);
-  if (!status.ok()) {
-    *output = item.graph;
-    return status;
-  }
 
   TuningConfig config;
   config.no_gemm = false;
@@ -1420,19 +1459,14 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       default_device = cluster->GetDevices().begin()->first;
     }
   }
-  std::unique_ptr<NodeMap> node_map(new NodeMap(output));
-  std::unique_ptr<DataLayoutOptimizer> layout_optimizer(
-      new DataLayoutOptimizer(default_device, output, node_map.get(), config));
-  status = layout_optimizer->Optimize();
+
+  status = Tune(item, graph_properties, default_device, config, output);
   // This is based on an empirical observation that if the introduced Transpose
   // nodes is more than 30, not using GEMM implementation would result in better
   // performance.
   if (status.ok() && GetNumTranspose(*output) > 30) {
     config.no_gemm = true;
-    node_map.reset(new NodeMap(output));
-    layout_optimizer.reset(new DataLayoutOptimizer(default_device, output,
-                                                   node_map.get(), config));
-    status = layout_optimizer->Optimize();
+    status = Tune(item, graph_properties, default_device, config, output);
   }
 
   if (!status.ok()) {

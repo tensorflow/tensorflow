@@ -1982,7 +1982,7 @@ def streaming_sparse_precision_at_k(predictions,
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
-  return metrics.sparse_precision_at_k(
+  return metrics.precision_at_k(
       k=k,
       class_id=class_id,
       predictions=predictions,
@@ -2323,7 +2323,7 @@ def streaming_sparse_average_precision_at_k(predictions,
     update: `Operation` that increments variables appropriately, and whose
       value matches `metric`.
   """
-  return metrics.sparse_average_precision_at_k(
+  return metrics.average_precision_at_k(
       k=k,
       predictions=predictions,
       labels=labels,

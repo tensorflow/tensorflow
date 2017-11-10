@@ -657,14 +657,14 @@ def make_vjp(f, params=None):
       for i in parameter_positions:
         sources.append(args[i])
         tape.watch(args[i])
-        result = f(*args)
-        if result is None:
-          raise ValueError("Cannot differentiate a function that returns None; "
-                           "did you forget to return a value from {}?".format(
-                               f.__name__))
-        flat_result = nest.flatten(result)
-        flat_result = [gen_array_ops.identity(x) for x in flat_result]
-        result = nest.pack_sequence_as(result, flat_result)
+      result = f(*args)
+      if result is None:
+        raise ValueError("Cannot differentiate a function that returns None; "
+                         "did you forget to return a value from {}?".format(
+                             f.__name__))
+      flat_result = nest.flatten(result)
+      flat_result = [gen_array_ops.identity(x) for x in flat_result]
+      result = nest.pack_sequence_as(result, flat_result)
     finally:
       t = tape.pop_tape()
     def vjp(dy=None):

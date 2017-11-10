@@ -29,9 +29,10 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.4.0-rc1'
+_VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
+    'absl-py',
     'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',

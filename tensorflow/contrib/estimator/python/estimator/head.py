@@ -172,7 +172,8 @@ def multi_label_head(n_classes,
     weight_column: A string or a `_NumericColumn` created by
       `tf.feature_column.numeric_column` defining feature column representing
       weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
+      will be multiplied by the loss of the example.  Per-class weighting is
+      not supported.
     thresholds: Iterable of floats in the range `(0, 1)`. Accuracy, precision
       and recall metrics are evaluated for each threshold value. The threshold
       is applied to the predicted probabilities, i.e. above the threshold is

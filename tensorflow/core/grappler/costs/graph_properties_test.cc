@@ -54,7 +54,8 @@ class GraphPropertiesTest : public ::testing::Test {
     } else {
       strings::StrAppend(&s, "[");
       for (int i = 0; i < p.shape().dim_size(); ++i) {
-        strings::StrAppend(&s, i == 0 ? "" : ",", p.shape().dim(i).size());
+        strings::StrAppend(&s, i == 0 ? "" : ",",
+                           std::max<int64>(p.shape().dim(i).size(), -1));
       }
       strings::StrAppend(&s, "]");
     }
@@ -731,6 +732,56 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   EXPECT_EQ(2, prop.shape().dim_size());
   EXPECT_EQ(1, prop.shape().dim(0).size());
   EXPECT_EQ(2, prop.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, SymbolicShapes) {
+  // Build a simple graph with placeholders of unknown dimensions. These
+  // dimensions will be encoded symbolically.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a =
+      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
+  Output b =
+      ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1})));
+  Output c = ops::Identity(s.WithOpName("c"), a);
+  Output d = ops::Identity(s.WithOpName("d"), b);
+  Output e = ops::Add(s.WithOpName("e"), c, d);
+  Output f = ops::Add(s.WithOpName("f"), a, c);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
+  const auto shape_c = properties.GetOutputProperties("c").at(0).shape();
+  EXPECT_EQ(2, shape_a.dim_size());
+  EXPECT_EQ(shape_a.dim_size(), shape_c.dim_size());
+  EXPECT_GE(-2, shape_a.dim(0).size());
+  EXPECT_EQ(shape_a.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_GE(-2, shape_a.dim(1).size());
+  EXPECT_EQ(shape_a.dim(1).size(), shape_c.dim(1).size());
+
+  const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
+  const auto shape_d = properties.GetOutputProperties("d").at(0).shape();
+  EXPECT_EQ(1, shape_b.dim_size());
+  EXPECT_EQ(shape_b.dim_size(), shape_d.dim_size());
+  EXPECT_GE(-2, shape_b.dim(0).size());
+  EXPECT_NE(shape_a.dim(0).size(), shape_b.dim(0).size());
+  EXPECT_EQ(shape_b.dim(0).size(), shape_d.dim(0).size());
+
+  const auto shape_e = properties.GetOutputProperties("e").at(0).shape();
+  EXPECT_EQ(2, shape_e.dim_size());
+  EXPECT_EQ(shape_e.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_NE(shape_e.dim(1).size(), shape_c.dim(1).size());
+  EXPECT_NE(shape_e.dim(0).size(), shape_d.dim(0).size());
+
+  const auto shape_f = properties.GetOutputProperties("f").at(0).shape();
+  EXPECT_EQ(2, shape_f.dim_size());
+  EXPECT_EQ(shape_f.dim(0).size(), shape_a.dim(0).size());
+  EXPECT_EQ(shape_f.dim(1).size(), shape_a.dim(1).size());
 }
 
 }  // namespace

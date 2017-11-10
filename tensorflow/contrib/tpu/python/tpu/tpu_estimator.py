@@ -66,7 +66,7 @@ _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
 # TODO(b/65703635): Flip the value and remove all dead code.
-_WRAP_INPUT_FN_INTO_WHILE_LOOP = False
+_WRAP_INPUT_FN_INTO_WHILE_LOOP = True
 
 
 def _create_global_step(graph):

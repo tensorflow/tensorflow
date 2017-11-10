@@ -226,7 +226,7 @@ class MultiLabelHead(test.TestCase):
 
   def test_weight_should_not_impact_prediction(self):
     n_classes = 4
-    head = head_lib.multi_label_head(n_classes, weight_column='label_weights')
+    head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
     self.assertEqual(n_classes, head.logits_dimension)
 
     logits = np.array(
@@ -237,7 +237,7 @@ class MultiLabelHead(test.TestCase):
     spec = head.create_estimator_spec(
         features={
             'x': np.array(((42,),), dtype=np.int32),
-            'label_weights': weights_2x1,
+            'example_weights': weights_2x1,
         },
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
@@ -549,7 +549,7 @@ class MultiLabelHead(test.TestCase):
 
   def test_eval_with_weights(self):
     n_classes = 2
-    head = head_lib.multi_label_head(n_classes, weight_column='label_weights')
+    head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
 
     logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
@@ -563,7 +563,7 @@ class MultiLabelHead(test.TestCase):
     spec = head.create_estimator_spec(
         features={
             'x': np.array([[41], [42]], dtype=np.int32),
-            'label_weights': np.array([[1.], [2.]], dtype=np.float32),
+            'example_weights': np.array([[1.], [2.]], dtype=np.float32),
         },
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
@@ -605,7 +605,7 @@ class MultiLabelHead(test.TestCase):
   def test_train_create_loss_large_logits(self):
     """Tests head.create_loss for train mode and large logits."""
     n_classes = 2
-    head = head_lib.multi_label_head(n_classes, weight_column='label_weights')
+    head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
 
     logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
@@ -623,7 +623,7 @@ class MultiLabelHead(test.TestCase):
     actual_weighted_sum_loss, actual_example_weight_sum, _ = head.create_loss(
         features={
             'x': np.array(((42,),), dtype=np.int32),
-            'label_weights': weights
+            'example_weights': weights
         },
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
@@ -742,7 +742,7 @@ class MultiLabelHead(test.TestCase):
 
   def test_train_with_weights(self):
     n_classes = 2
-    head = head_lib.multi_label_head(n_classes, weight_column='label_weights')
+    head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
 
     logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
@@ -761,7 +761,7 @@ class MultiLabelHead(test.TestCase):
     spec = head.create_estimator_spec(
         features={
             'x': np.array([[41], [42]], dtype=np.int32),
-            'label_weights': np.array([[1.], [2.]], dtype=np.float32),
+            'example_weights': np.array([[1.], [2.]], dtype=np.float32),
         },
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,

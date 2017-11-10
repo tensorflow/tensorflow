@@ -26,11 +26,204 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
+using shape_inference::Shape;
 using shape_inference::ShapeAndType;
 using shape_inference::ShapeHandle;
 
 namespace {
+
+template <typename Handle>
+struct HashHandle {
+  std::size_t operator()(const Handle& h) const { return h.Handle(); }
+};
+template <typename Handle>
+struct CompareHandle {
+  bool operator()(const Handle& h1, const Handle& h2) const {
+    return h1.SameHandle(h2);
+  }
+};
+
+template <typename Handle>
+struct HandleToObject {};
+template <>
+struct HandleToObject<ShapeHandle> {
+  typedef TensorShapeProto Object;
+
+  static TensorShapeProto Unknown() {
+    TensorShapeProto result;
+    result.set_unknown_rank(true);
+    return result;
+  }
+};
+
+template <>
+struct HandleToObject<DimensionHandle> {
+  typedef int64 Object;
+
+  static int64 Unknown() { return -1; }
+};
+
+template <typename Handle>
+struct Processor {
+  // Extract the shape or dim denoted by the handle.
+  void ExtractValue(Handle /*t1*/,
+                    typename HandleToObject<Handle>::Object* result) {}
+  // Merge the shapes or dims.
+  Status Merge(Handle /*t1*/, Handle /*t2*/,
+               typename HandleToObject<Handle>::Object* result) {
+    return Status::OK();
+  }
+};
+
+template <>
+struct Processor<DimensionHandle> {
+  // Assign a negative id to unknown dimensions, starting at -2 (the -1 id
+  // reserved by TensorFlow).
+  void ExtractValue(DimensionHandle d, int64* result) {
+    if (!InferenceContext::ValueKnown(d)) {
+      *result = -counter;
+      counter++;
+    } else {
+      CHECK_LE(0, InferenceContext::Value(d));
+      *result = InferenceContext::Value(d);
+    }
+  }
+
+  // Merge the dimensions d1 and d2. Return the known shape if there is one,
+  // otherwise look for a symbolic shape. If there is no symbolic shape and no
+  // known shape, the shape if fully unknown so return -1.
+  Status Merge(DimensionHandle d1, DimensionHandle d2, int64* result) {
+    const int64 dim1 = InferenceContext::Value(d1);
+    const int64 dim2 = InferenceContext::Value(d2);
+
+    if (dim1 >= 0 && dim2 >= 0) {
+      CHECK_EQ(dim1, dim2);
+      *result = dim1;
+    } else if (dim1 >= 0 && dim2 < 0) {
+      *result = dim1;
+    } else if (dim1 < 0 && dim2 >= 0) {
+      *result = dim2;
+    } else if (dim1 < -1) {
+      *result = dim1;
+    } else if (dim2 < -1) {
+      *result = dim2;
+    } else {
+      CHECK_EQ(dim1, dim2);
+      CHECK_EQ(-1, dim1);
+      *result = -1;
+    }
+    return Status::OK();
+  }
+
+ private:
+  int64 counter = 2;
+};
+
+// Traditional Disjoint-Set datastructure with path compression.
+// (https://en.wikipedia.org/wiki/Disjoint-set_data_structure)
+template <typename Handle>
+class DisjointSet {
+ public:
+  DisjointSet(const Processor<Handle>& processor) : processor_(processor) {}
+  ~DisjointSet() {
+    for (auto rep : nodes_) {
+      delete rep.second;
+    }
+  }
+
+  Status Merge(Handle x, Handle y);
+  const typename HandleToObject<Handle>::Object GetMergedValue(Handle value);
+
+ private:
+  // All the handles that belong to the same set are part of the same tree, and
+  // utimately represented by the root of that tree.
+  struct Rep {
+    // Parent in the tree used to encode the set.
+    Rep* parent;
+    // Rank in the tree, used to figure out how to compress the path to the root
+    // of the tree.
+    int rank;
+    // The handle.
+    typename HandleToObject<Handle>::Object value;
+  };
+
+  // Create a new set for the value if none exists, or return its representative
+  // node otherwise.
+  Rep* Find(Handle value);
+
+ private:
+  Processor<Handle> processor_;
+  std::unordered_map<Handle, Rep*, HashHandle<Handle>, CompareHandle<Handle>>
+      nodes_;
+};
+
+template <typename Handle>
+const typename HandleToObject<Handle>::Object
+DisjointSet<Handle>::GetMergedValue(Handle value) {
+  Rep* rep = Find(value);
+  if (!rep) {
+    // We don't know anything about this handle.
+    return HandleToObject<Handle>::Unknown();
+  }
+  return rep->value;
+}
+
+template <typename Handle>
+Status DisjointSet<Handle>::Merge(Handle x, Handle y) {
+  Rep* x_root = Find(x);
+  Rep* y_root = Find(y);
+
+  // x and y are already in the same set
+  if (x_root == y_root) {
+    return Status::OK();
+  }
+  // x and y are not in same set, so we merge them
+  // Use the occasion to strengthen what we know about the handle by merging the
+  // information about the 2 subsets.
+  if (x_root->rank < y_root->rank) {
+    TF_RETURN_IF_ERROR(processor_.Merge(y, x, &y_root->value));
+    x_root->parent = y_root;
+  } else if (x_root->rank > y_root->rank) {
+    TF_RETURN_IF_ERROR(processor_.Merge(x, y, &x_root->value));
+    y_root->parent = x_root;
+  } else {
+    TF_RETURN_IF_ERROR(processor_.Merge(x, y, &x_root->value));
+    // Arbitrarily make one root the new parent
+    y_root->parent = x_root;
+    x_root->rank = x_root->rank + 1;
+  }
+  return Status::OK();
+}
+
+template <typename Handle>
+typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
+  auto it = nodes_.find(value);
+  if (it == nodes_.end()) {
+    // This is the first time we process this handle, create an entry for it.
+    Rep* node = new Rep;
+    node->parent = node;
+    node->rank = 0;
+    processor_.ExtractValue(value, &node->value);
+    nodes_[value] = node;
+    return node;
+  }
+  // Return the representative for the set, which is the root of the tree. Apply
+  // path compression to speedup future queries.
+  Rep* node = it->second;
+  Rep* root = node->parent;
+  while (root != root->parent) {
+    root = root->parent;
+  }
+  while (node->parent != root) {
+    Rep* next = node->parent;
+    node->parent = root;
+    node = next;
+  }
+  return root;
+}
 
 // If a Merge node has a NextIteration node as an input then that input will
 // try to forward an UnknownShape at graph construction time. However, the
@@ -132,6 +325,58 @@ bool IsEnterWithQueue(const Node& node) {
 }
 
 }  // namespace
+
+// Keep track of shapes and dimensions in a graph.
+// In particular, use disjoint sets to track equivalence between shapes and
+// dims, and consolidate the information globally.
+class SymbolicShapeManager {
+ public:
+  SymbolicShapeManager() : shapes_(shape_processor_), dims_(dim_processor_) {}
+
+  Status Merge(ShapeHandle s1, ShapeHandle s2) {
+    if (!s1.IsSet() || !s2.IsSet()) {
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(shapes_.Merge(s1, s2));
+    if (InferenceContext::Rank(s1) > 0 && InferenceContext::Rank(s2) > 0) {
+      CHECK_EQ(InferenceContext::Rank(s1), InferenceContext::Rank(s2));
+      for (int i = 0; i < InferenceContext::Rank(s1); ++i) {
+        TF_RETURN_IF_ERROR(dims_.Merge(InferenceContext::DimKnownRank(s1, i),
+                                       InferenceContext::DimKnownRank(s2, i)));
+      }
+    }
+    return Status::OK();
+  }
+  Status Merge(DimensionHandle d1, DimensionHandle d2) {
+    if (!d1.IsSet() || !d2.IsSet()) {
+      return Status::OK();
+    }
+    return dims_.Merge(d1, d2);
+  }
+
+  int64 Value(DimensionHandle d) { return dims_.GetMergedValue(d); }
+
+  void AsTensorProperties(const ShapeHandle& shape, const DataType& type,
+                          InferenceContext* ctx,
+                          OpInfo::TensorProperties* properties) {
+    properties->set_dtype(type);
+    if (!ctx->RankKnown(shape)) {
+      properties->mutable_shape()->set_unknown_rank(true);
+    } else {
+      for (int j = 0; j < ctx->Rank(shape); ++j) {
+        shape_inference::DimensionHandle dim = ctx->Dim(shape, j);
+        int64 d = Value(dim);
+        properties->mutable_shape()->add_dim()->set_size(d);
+      }
+    }
+  }
+
+ private:
+  Processor<ShapeHandle> shape_processor_;
+  DisjointSet<shape_inference::ShapeHandle> shapes_;
+  Processor<DimensionHandle> dim_processor_;
+  DisjointSet<shape_inference::DimensionHandle> dims_;
+};
 
 void GraphProperties::Relax(InferenceContext* c, ShapeHandle s0, ShapeHandle s1,
                             ShapeHandle* out) {
@@ -394,6 +639,37 @@ Status GraphProperties::InferStatically() {
     } while (!done);
   }
 
+  std::unordered_map<const shape_inference::Dimension*, int> dim_ids;
+
+  // Track shapes globally accross the graph.
+  SymbolicShapeManager shape_manager;
+  bool found_error = false;
+  for (const Node* const node : graph.nodes()) {
+    auto node_ctx = shape_refiner.GetContext(node);
+    if (!node_ctx) {
+      continue;
+    }
+    for (const auto& merged_shapes : node_ctx->MergedShapes()) {
+      if (!shape_manager.Merge(merged_shapes.first, merged_shapes.second)
+               .ok()) {
+        found_error = true;
+        break;
+      }
+    }
+    for (const auto& merged_dims : node_ctx->MergedDims()) {
+      if (!shape_manager.Merge(merged_dims.first, merged_dims.second).ok()) {
+        found_error = true;
+        break;
+      }
+    }
+    if (found_error) {
+      // The shapes aren't consistent, we can't infer safely: discard all the
+      // information discovered so far.
+      shape_manager = SymbolicShapeManager();
+      break;
+    }
+  }
+
   for (const Node* const node : graph.nodes()) {
     VLOG(1) << "<Node> " << node->name();
     auto ctx = shape_refiner.GetContext(node);
@@ -411,8 +687,8 @@ Status GraphProperties::InferStatically() {
 
       input_properties.resize(ctx->num_inputs());
       for (int i = 0; i < ctx->num_inputs(); ++i) {
-        FillTensorPropertiesFromContext(ctx->input(i), node->input_type(i), ctx,
-                                        &input_properties[i]);
+        shape_manager.AsTensorProperties(ctx->input(i), node->input_type(i),
+                                         ctx, &input_properties[i]);
       }
       for (const auto& edge : node->in_edges()) {
         if (!edge->src()->IsConstant()) {
@@ -438,8 +714,8 @@ Status GraphProperties::InferStatically() {
 
       output_properties.resize(ctx->num_outputs());
       for (int i = 0; i < ctx->num_outputs(); ++i) {
-        FillTensorPropertiesFromContext(ctx->output(i), node->output_type(i),
-                                        ctx, &output_properties[i]);
+        shape_manager.AsTensorProperties(ctx->output(i), node->output_type(i),
+                                         ctx, &output_properties[i]);
       }
     }
   }
@@ -458,7 +734,7 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return InferFromCostGraph(metadata.cost_graph());
 }
 
-Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) {
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
   *output_graph_def = item_.graph;
   for (int i = 0; i < output_graph_def->node_size(); i++) {
     auto node = output_graph_def->mutable_node(i);
@@ -529,21 +805,6 @@ GraphProperties::GetOutputProperties(const string& node_name) const {
     return it->second;
   }
   return missing_properties_;
-}
-
-void GraphProperties::FillTensorPropertiesFromContext(
-    const ShapeHandle& shape, const DataType& type, InferenceContext* ctx,
-    OpInfo::TensorProperties* properties) {
-  properties->set_dtype(type);
-  if (!ctx->RankKnown(shape)) {
-    properties->mutable_shape()->set_unknown_rank(true);
-  } else {
-    for (int j = 0; j < ctx->Rank(shape); ++j) {
-      shape_inference::DimensionHandle dim = ctx->Dim(shape, j);
-      int64 d = ctx->Value(dim);
-      properties->mutable_shape()->add_dim()->set_size(d);
-    }
-  }
 }
 
 }  // end namespace grappler
