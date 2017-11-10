@@ -390,8 +390,8 @@ port::Status CudnnSupport::Init() {
                  << DriverVersionStatusToString(result);
     } else {
       const auto& version = result.ValueOrDie();
-      LOG(INFO) << "possibly insufficient driver version: "
-                << DriverVersionToString(version);
+      LOG(ERROR) << "possibly insufficient driver version: "
+                 << DriverVersionToString(version);
       // OS X kernel driver does not report version accurately
 #if !defined(__APPLE__)
       if (std::get<0>(version) < 340) {
