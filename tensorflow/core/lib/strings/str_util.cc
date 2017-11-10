@@ -407,11 +407,11 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   }
   const size_t n = p - s->data();
   if (n > 0) {
-    val->set(s->data(), n);
+    *val = StringPiece(s->data(), n);
     s->remove_prefix(n);
     return true;
   } else {
-    val->clear();
+    *val = StringPiece();
     return false;
   }
 }
