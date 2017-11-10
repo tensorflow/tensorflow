@@ -223,34 +223,34 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
                                            features, labels, self.params)
       del estimator_spec
 
-# TODO(isaprykin):  Resolve the source of flakinness.
-#   def test_eval(self):
-#     features = np.array([[0.01], [0.002]])
-#     labels = np.array([[0.01], [0.02]])
-#
-#     with self.test_session() as session:
-#       replicated_model_fn = replicate_model_fn.replicate_model_fn(
-#           self.model_fn, self.optimizer_fn, devices=['/gpu:0', '/gpu:1'])
-#     estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.EVAL, features,
-#                                            labels, self.params)
-#       session.run(variables.local_variables_initializer())
-#       session.run(variables.global_variables_initializer())
-#
-#       accuracy, a = estimator_spec.eval_metric_ops['accuracy']
-#       auc, b = estimator_spec.eval_metric_ops['auc']
-#
-#       session.run([a, b])
-#       accuracy = session.run(accuracy)
-#       auc = session.run(auc)
-#
-#       # Accuracy is 0.0 (no match) in the first tower.
-#       # Accuracy is 1.0 (match) in the second tower, since the feature
-#       # times weight "c" happened to be equal to the label.
-#       total_loss = ((0.01 * 10 - 0.01) + (0.002 * 10 - 0.02))
-#
-#       self.assertNear((0.0 + 1.0) / 2.0, accuracy, 0.01)
-#       self.assertEqual(0, auc)
-#       self.assertNear(total_loss, session.run(estimator_spec.loss), 0.01)
+  def test_eval(self):
+    features = np.array([[0.01], [0.002]])
+    labels = np.array([[0.01], [0.02]])
+
+    with self.test_session() as session:
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn, self.optimizer_fn, devices=['/gpu:0', '/gpu:1'])
+      estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.EVAL, features,
+                                           labels, self.params)
+      session.run(variables.local_variables_initializer())
+      session.run(variables.global_variables_initializer())
+
+      accuracy, a = estimator_spec.eval_metric_ops['accuracy']
+      auc, b = estimator_spec.eval_metric_ops['auc']
+
+      session.run([a, b])
+      accuracy = session.run(accuracy)
+      auc = session.run(auc)
+
+      # loss[i] = features[i] * 10 - labels[i].
+      # Accuracy is 0.0 (no match) in the first tower.
+      # Accuracy is 1.0 (match) in the second tower, since the feature
+      # times weight "c" happened to be equal to the label.
+      total_loss = ((0.01 * 10 - 0.01) + (0.002 * 10 - 0.02))
+
+      self.assertNear((0.0 + 1.0) / 2.0, accuracy, 0.01)
+      self.assertEqual(0, auc)
+      self.assertNear(total_loss, session.run(estimator_spec.loss), 0.01)
 
   def test_predict(self):
     features = np.array([[0.01], [0.002]])
@@ -524,33 +524,31 @@ class EvalSpecTest(test_util.TensorFlowTestCase):
     }
     return metrics
 
-# TODO(isaprykin):  Resolve the source of flakinness.
-#   def test_example(self):
-#     with self.test_session() as session:
-#       tower_losses = map(self.create_constant_loss, [2, 4, 6])
-#       tower_metrics = map(self.create_eval_metrics, [0, 0.2, 0.3])
-#       tower_specs = [
-#           self.create_estimator_spec(l, m)
-#           for l, m in zip(tower_losses, tower_metrics)
-#       ]
-#       session.run(variables.local_variables_initializer())
-#
-#       estimator_spec = replicate_model_fn._eval_spec(
-#           tower_specs, aggregation_device='/device:GPU:0')
-#
-#       accuracy, a = estimator_spec.eval_metric_ops['accuracy']
-#       auc, b = estimator_spec.eval_metric_ops['auc']
-#
-#       self.assertEqual('/device:CPU:0', accuracy.device)
-#       self.assertEqual('/device:CPU:0', auc.device)
-#
-#       session.run([a, b])
-#       accuracy = session.run(accuracy)
-#       auc = session.run(auc)
-#
-#       self.assertNear((12 - 2) / 12, accuracy, 0.01)
-#       self.assertEqual(0, auc)
-#       self.assertEqual(2 + 4 + 6, session.run(estimator_spec.loss))
+  def test_example(self):
+    with self.test_session() as session:
+      tower_losses = map(self.create_constant_loss, [2, 4, 6])
+      tower_metrics = map(self.create_eval_metrics, [0, 0.2, 0.3])
+      tower_specs = [
+          self.create_estimator_spec(l, m)
+          for l, m in zip(tower_losses, tower_metrics)
+      ]
+      session.run(variables.local_variables_initializer())
+
+      estimator_spec = replicate_model_fn._eval_spec(
+          tower_specs, aggregation_device='/device:GPU:0')
+
+      accuracy, a = estimator_spec.eval_metric_ops['accuracy']
+      auc, b = estimator_spec.eval_metric_ops['auc']
+
+      self.assertEqual('/device:CPU:0', accuracy.device)
+      self.assertEqual('/device:CPU:0', auc.device)
+
+      session.run([a, b])
+      accuracy, auc = session.run([accuracy, auc])
+
+      self.assertNear((12 - 2) / 12, accuracy, 0.01)
+      self.assertEqual(0, auc)
+      self.assertEqual(2 + 4 + 6, session.run(estimator_spec.loss))
 
   def test_handles_single_tower(self):
     with self.test_session() as session:
