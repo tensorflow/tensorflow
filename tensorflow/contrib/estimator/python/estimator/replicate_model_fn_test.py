@@ -89,11 +89,11 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
 
     feature_columns = [
         feature_column.numeric_column('x', shape=(input_dimension,)),
-        feature_column.indicator_column(
+        feature_column.embedding_column(
             feature_column.categorical_column_with_vocabulary_list(
                 'categories',
                 vocabulary_list=np.linspace(
-                    0., len(x_data), len(x_data), dtype=np.int64)))
+                    0., len(x_data), len(x_data), dtype=np.int64)), 1)
     ]
 
     estimator = dnn.DNNClassifier(
