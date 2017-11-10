@@ -962,7 +962,8 @@ class CudnnDropoutDescriptor : public CudnnDescriptorCommon<void> {
       if (!allocated.ok() ||
           (state_memory = allocated.ValueOrDie()) == nullptr) {
         string error_msg =
-            port::StrCat("Fail to allocate Cudnn dropout state memory");
+            port::StrCat("Failed to allocate Cudnn dropout state memory of ",
+                         state_sizes_in_bytes, " bytes.");
         status_ = port::Status(port::error::UNKNOWN, error_msg);
         LOG(ERROR) << error_msg;
         return;
@@ -971,7 +972,10 @@ class CudnnDropoutDescriptor : public CudnnDescriptorCommon<void> {
     status = wrap::cudnnSetDropoutDescriptor(parent_, handle_, cudnn_handle,
                                              dropout, state_memory.opaque(),
                                              state_memory.size(), seed);
-    CUDNN_RETURN_IF_FAIL(status, "Failed to set dropout descriptor");
+    CUDNN_RETURN_IF_FAIL(
+        status, port::StrCat(
+                    "Failed to set dropout descriptor with state memory size: ",
+                    state_memory.size(), " bytes."));
   }
 
   ~CudnnDropoutDescriptor() {
@@ -1476,7 +1480,8 @@ bool CreateRnnWorkspace(Stream* stream, CUDAExecutor* parent,
     auto allocated =
         workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
     if (!allocated.ok() || (*workspace = allocated.ValueOrDie()) == nullptr) {
-      LOG(ERROR) << "Failed to allocate RNN workspace";
+      LOG(ERROR) << port::StrCat("Failed to allocate RNN workspace of ",
+                                 workspace_size_in_bytes, " bytes.");
       return false;
     }
   } else {
@@ -1553,7 +1558,8 @@ bool CudnnSupport::DoRnnForwardImpl(
           stream, reserve_space_size_in_bytes);
       if (!allocated.ok() ||
           (reserve_space = allocated.ValueOrDie()) == nullptr) {
-        LOG(ERROR) << "Fail to allocate RNN reserve space";
+        LOG(ERROR) << "Failed to allocate RNN reserve space of "
+                   << reserve_space_size_in_bytes << " bytes.";
         return false;
       }
     }
