@@ -75,6 +75,10 @@ class ShapedBuffer {
   // Set all device memory pointers in the object to null.
   void clear();
 
+  // Adds a new buffer at the given shape index.
+  void AddBufferAtIndex(const perftools::gputools::DeviceMemoryBase& buffer,
+                        const ShapeIndex& shape_index);
+
  protected:
   // The shape of the device buffer with layout.
   const Shape shape_;
