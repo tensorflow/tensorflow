@@ -99,6 +99,7 @@ class HloParser {
     kSharding,
     kInstructionList,
     kSliceRanges,
+    kPaddingConfig,
   };
 
   struct AttrConfig {
@@ -134,6 +135,7 @@ class HloParser {
   bool ParseInstructionNames(std::vector<HloInstruction*>* instructions);
   bool ParseWindow(Window* window);
   bool ParseConvolutionDimensionNumbers(ConvolutionDimensionNumbers* dnums);
+  bool ParsePaddingConfig(PaddingConfig* padding);
   bool ParseSharding(OpSharding* sharding);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
 
@@ -727,9 +729,19 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           /*grad_output=*/operands[4], *epsilon, *feature_index));
       break;
     }
+    case HloOpcode::kPad: {
+      optional<PaddingConfig> padding;
+      attrs["padding"] = {/*required=*/true, AttrTy::kPaddingConfig, &padding};
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreatePad(
+          shape, operands[0], /*padding_value=*/operands[1], *padding));
+      break;
+    }
     case HloOpcode::kCustomCall:
     case HloOpcode::kReducePrecision:
-    case HloOpcode::kPad:
     case HloOpcode::kRng:
     case HloOpcode::kFusion:
     case HloOpcode::kInfeed:
@@ -1374,6 +1386,14 @@ bool HloParser::ParseAttributes(
           static_cast<optional<SliceRanges>*>(attr_out_ptr)->emplace(result);
           return true;
         }
+        case AttrTy::kPaddingConfig: {
+          PaddingConfig result;
+          if (!ParsePaddingConfig(&result)) {
+            return false;
+          }
+          static_cast<optional<PaddingConfig>*>(attr_out_ptr)->emplace(result);
+          return true;
+        }
       }
     }();
     if (!success) {
@@ -1774,7 +1794,7 @@ bool HloParser::ParseWindowPad(std::vector<std::vector<int64>>* pad) {
   if (!pad->empty()) {
     return TokenError("sub-attribute 'pad=' already exists");
   }
-  if (lexer_.GetKind() != TokKind::kWindowPad) {
+  if (lexer_.GetKind() != TokKind::kPad) {
     return TokenError("expects window pad pattern, e.g., '0_0x3_3'");
   }
   string str = lexer_.GetStrVal();
@@ -1787,6 +1807,33 @@ bool HloParser::ParseWindowPad(std::vector<std::vector<int64>>* pad) {
           "expects padding_low and padding_high separated by '_'");
     }
     pad->push_back(low_high);
+  }
+  lexer_.Lex();
+  return true;
+}
+
+// This is the inverse xla::ToString(PaddingConfig). The padding config string
+// looks like "0_0_0x3_3_1". The string is first separated by 'x', each
+// substring represents one PaddingConfigDimension. The substring is 3 (or 2)
+// numbers joined by '_'.
+bool HloParser::ParsePaddingConfig(PaddingConfig* padding) {
+  if (lexer_.GetKind() != TokKind::kPad) {
+    return TokenError("expects padding config, e.g., '0_0_0x3_3_1'");
+  }
+  string str = lexer_.GetStrVal();
+  std::vector<string> padding_str = Split(str, 'x');
+  for (const auto& padding_dim_str : padding_str) {
+    std::vector<int64> padding_dim;
+    if (!SplitAndParseAsInts(padding_dim_str, '_', &padding_dim) ||
+        (padding_dim.size() != 2 && padding_dim.size() != 3)) {
+      return TokenError(
+          "expects padding config pattern like 'low_high_interior' or "
+          "'low_high'");
+    }
+    auto* dim = padding->add_dimensions();
+    dim->set_edge_padding_low(padding_dim[0]);
+    dim->set_edge_padding_high(padding_dim[1]);
+    dim->set_interior_padding(padding_dim.size() == 3 ? padding_dim[2] : 0);
   }
   lexer_.Lex();
   return true;

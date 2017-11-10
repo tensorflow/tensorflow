@@ -1234,6 +1234,8 @@ string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
 
+string PaddingConfigToString(const PaddingConfig& padding);
+
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
 // Map classes that guarantee a deterministic iteration order when the key is
