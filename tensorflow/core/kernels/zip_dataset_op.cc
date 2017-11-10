@@ -109,6 +109,10 @@ class ZipDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        if (input_impls_.empty()) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
         out_tensors->clear();
         out_tensors->reserve(dataset()->output_dtypes().size());
         for (const auto& input_impl : input_impls_) {
@@ -116,28 +120,43 @@ class ZipDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(
               input_impl->GetNext(ctx, &input_tensors, end_of_sequence));
           if (*end_of_sequence) {
-            return Status::OK();
+            break;
           }
           out_tensors->insert(out_tensors->end(), input_tensors.begin(),
                               input_tensors.end());
         }
-        *end_of_sequence = false;
+        if (*end_of_sequence) {
+          out_tensors->clear();
+          input_impls_.clear();
+        } else {
+          *end_of_sequence = false;
+        }
         return Status::OK();
       }
 
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        for (auto& input_impl : input_impls_)
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl));
+        if (input_impls_.empty()) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("input_impls_empty"), ""));
+        } else {
+          for (auto& input_impl : input_impls_)
+            TF_RETURN_IF_ERROR(SaveParent(writer, input_impl));
+        }
         return Status::OK();
       }
 
       Status RestoreInternal(OpKernelContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        for (auto& input_impl : input_impls_)
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl));
+        if (reader->Contains(full_name("input_impls_empty"))) {
+          input_impls_.clear();
+        } else {
+          DCHECK_EQ(input_impls_.size(), dataset()->inputs_.size());
+          for (auto& input_impl : input_impls_)
+            TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl));
+        }
         return Status::OK();
       }
 
