@@ -755,46 +755,146 @@ class VariableScopeTest(test.TestCase):
           self.assertEqual(variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
           self.assertEqual(constant_op.constant([], name="c1").name, "outer/inner_1/c1:0")
 
-  def testAuxiliaryNameScopeIsFalse(self):
+  def testAuxiliaryNameScopeIsNoneOrFalse(self):
     with self.test_session():
       with variable_scope.variable_scope(None, default_name="default",
-                                         auxiliary_name_scope=False):
+                                         auxiliary_name_scope=None):
         self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
         self.assertEqual(constant_op.constant([], name="c").name, "c:0")
       with variable_scope.variable_scope("scope", auxiliary_name_scope=False) as scope:
         self.assertEqual(variable_scope.get_variable("w1", []).name, "scope/w1:0")
         self.assertEqual(constant_op.constant([], name="c1").name, "c1:0")
-      with variable_scope.variable_scope(scope, auxiliary_name_scope=False):
+      with variable_scope.variable_scope(scope, auxiliary_name_scope=None):
         self.assertEqual(variable_scope.get_variable("w2", []).name, "scope/w2:0")
         self.assertEqual(constant_op.constant([], name="c2").name, "c2:0")
+      # Recheck: new name scope is NOT created before
+      with ops.name_scope("default"):
+        self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
+      with ops.name_scope("scope"):
+        self.assertEqual(constant_op.constant([], name="c").name, "scope/c:0")
 
       with variable_scope.variable_scope("outer"):
         with variable_scope.variable_scope(None, default_name="default",
-                                           auxiliary_name_scope=False):
+                                           auxiliary_name_scope=None):
           self.assertEqual(variable_scope.get_variable("w", []).name, "outer/default/w:0")
           self.assertEqual(constant_op.constant([], name="c").name, "outer/c:0")
         with variable_scope.variable_scope("inner", auxiliary_name_scope=False) as inner:
           self.assertEqual(variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
           self.assertEqual(constant_op.constant([], name="c1").name, "outer/c1:0")
-        with variable_scope.variable_scope(inner, auxiliary_name_scope=False):
+        with variable_scope.variable_scope(inner, auxiliary_name_scope=None):
           self.assertEqual(variable_scope.get_variable("w2", []).name, "outer/inner/w2:0")
           self.assertEqual(constant_op.constant([], name="c2").name, "outer/c2:0")
+        # Recheck: new name scope is NOT created before
+        with ops.name_scope("default"):
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/default/c:0")
+        with ops.name_scope("inner"):
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/inner/c:0")
+
+  def testAuxiliaryNameScopeIsNameScope(self):
+    with self.test_session():
+      with variable_scope.variable_scope(None, default_name="default",
+                                         auxiliary_name_scope=ops.name_scope("name")):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "name/c:0")
+      with variable_scope.variable_scope("scope",
+                                         auxiliary_name_scope=ops.name_scope("name")) as scope:
+        self.assertEqual(variable_scope.get_variable("w1", []).name, "scope/w1:0")
+        self.assertEqual(constant_op.constant([], name="c1").name, "name_1/c1:0")
+      with variable_scope.variable_scope(scope, auxiliary_name_scope=ops.name_scope("name")):
+        self.assertEqual(variable_scope.get_variable("w2", []).name, "scope/w2:0")
+        self.assertEqual(constant_op.constant([], name="c2").name, "name_2/c2:0")
+      # Recheck: new name scope is NOT created before
+      with ops.name_scope("default"):
+        self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
+      with ops.name_scope("scope"):
+        self.assertEqual(constant_op.constant([], name="c").name, "scope/c:0")
+
+      with variable_scope.variable_scope("outer"):
+        with variable_scope.variable_scope(None, default_name="default",
+                                           auxiliary_name_scope=ops.name_scope("name")):
+          self.assertEqual(variable_scope.get_variable("w", []).name, "outer/default/w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/name/c:0")
+        with variable_scope.variable_scope("inner",
+                                           auxiliary_name_scope=ops.name_scope("name")) as inner:
+          self.assertEqual(variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
+          self.assertEqual(constant_op.constant([], name="c1").name, "outer/name_1/c1:0")
+        with variable_scope.variable_scope(inner, auxiliary_name_scope=ops.name_scope("name")):
+          self.assertEqual(variable_scope.get_variable("w2", []).name, "outer/inner/w2:0")
+          self.assertEqual(constant_op.constant([], name="c2").name, "outer/name_2/c2:0")
+        # Recheck: new name scope is NOT created before
+        with ops.name_scope("default"):
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/default/c:0")
+        with ops.name_scope("inner"):
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/inner/c:0")
+
+  def testAuxiliaryNameScopeIsYieldedByContextManager(self):
+    with self.test_session():
+      with ops.name_scope("name") as name:
+        pass
+      with variable_scope.variable_scope(None, default_name="default",
+                                         auxiliary_name_scope=name):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "name/c:0")
+      with variable_scope.variable_scope("scope",
+                                         auxiliary_name_scope=name) as scope:
+        self.assertEqual(variable_scope.get_variable("w1", []).name, "scope/w1:0")
+        self.assertEqual(constant_op.constant([], name="c1").name, "name/c1:0")
+      with variable_scope.variable_scope(scope, auxiliary_name_scope=name):
+        self.assertEqual(variable_scope.get_variable("w2", []).name, "scope/w2:0")
+        self.assertEqual(constant_op.constant([], name="c2").name, "name/c2:0")
+      # Recheck: new name scope is NOT created before
+      with ops.name_scope("default"):
+        self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
+      with ops.name_scope("scope"):
+        self.assertEqual(constant_op.constant([], name="c").name, "scope/c:0")
+
+      with variable_scope.variable_scope("outer"):
+        with ops.name_scope("name") as inner_name:
+          pass
+        with variable_scope.variable_scope(None, default_name="default",
+                                           auxiliary_name_scope=inner_name):
+          self.assertEqual(variable_scope.get_variable("w", []).name, "outer/default/w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/name/c:0")
+        with variable_scope.variable_scope("inner",
+                                           auxiliary_name_scope=inner_name) as inner:
+          self.assertEqual(variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
+          self.assertEqual(constant_op.constant([], name="c1").name, "outer/name/c1:0")
+        with variable_scope.variable_scope(inner, auxiliary_name_scope=inner_name):
+          self.assertEqual(variable_scope.get_variable("w2", []).name, "outer/inner/w2:0")
+          self.assertEqual(constant_op.constant([], name="c2").name, "outer/name/c2:0")
+        # Recheck: new name scope is NOT created before
+        with ops.name_scope("default"):
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/default/c:0")
+        with ops.name_scope("inner"):
+          self.assertEqual(constant_op.constant([], name="c").name, "outer/inner/c:0")
+
+      # Reenter varialbe_scope with its name_scope
+      with variable_scope.variable_scope("outer2"):
+        with variable_scope.variable_scope("inner2") as inner2:
+          pass
+        with variable_scope.variable_scope(inner2,
+                                           auxiliary_name_scope=inner2.original_name_scope):
+          self.assertEqual(variable_scope.get_variable("w", []).name, "outer2/inner2/w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "outer2/inner2/c:0")
+        # Recheck: new name scope is NOT created before
+        with ops.name_scope("inner2"):
+          self.assertEqual(constant_op.constant([], name="c").name, "outer2/inner2_1/c:0")
 
   def testAuxiliaryNameScopeIsInvalid(self):
     with self.test_session():
       with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(None, default_name="scope",
-                                           auxiliary_name_scope="invalid"):
+                                           auxiliary_name_scope=["invalid"]):
           pass
 
       with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
-        with variable_scope.variable_scope("scope", auxiliary_name_scope="invalid"):
+        with variable_scope.variable_scope("scope", auxiliary_name_scope=["invalid"]):
           pass
 
       with variable_scope.variable_scope("scope") as scope:
         pass
       with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
-        with variable_scope.variable_scope(scope, auxiliary_name_scope="invalid"):
+        with variable_scope.variable_scope(scope, auxiliary_name_scope=["invalid"]):
           pass
 
   @test_util.run_in_graph_and_eager_modes()
