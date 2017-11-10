@@ -19,12 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import getpass
 import os
-import re
-import time
-
-import six
 
 from tensorflow.contrib.summary import gen_summary_ops
 from tensorflow.python.eager import context
@@ -47,10 +42,6 @@ _SHOULD_RECORD_SUMMARIES_NAME = "ShouldRecordSummaries"
 _SUMMARY_COLLECTION_NAME = "_SUMMARY_V2"
 _SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
 
-_EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
-_RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
-_USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
-
 
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
@@ -66,14 +57,12 @@ def should_record_summaries():
 
 # TODO(apassos) consider how to handle local step here.
 @tf_contextlib.contextmanager
-def record_summaries_every_n_global_steps(n, global_step=None):
+def record_summaries_every_n_global_steps(n):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
   with ops.device("cpu:0"):
-    collection_ref[:] = [math_ops.equal(global_step % n, 0)]
+    collection_ref[:] = [math_ops.equal(training_util.get_global_step() % n, 0)]
   yield
   collection_ref[:] = old
 
@@ -141,8 +130,7 @@ def create_summary_file_writer(logdir,
      flush once the queue gets bigger than this.
     flush_millis: the largest interval between flushes.
     filename_suffix: optional suffix for the event file name.
-    name: Shared name for this SummaryWriter resource stored to default
-      Graph.
+    name: name for the summary writer.
 
   Returns:
     Either a summary writer or an empty object which can be used as a
@@ -157,81 +145,14 @@ def create_summary_file_writer(logdir,
       flush_millis = constant_op.constant(2 * 60 * 1000)
     if filename_suffix is None:
       filename_suffix = constant_op.constant("")
-    return _make_summary_writer(
-        name,
-        gen_summary_ops.create_summary_file_writer,
-        logdir=logdir,
-        max_queue=max_queue,
-        flush_millis=flush_millis,
-        filename_suffix=filename_suffix)
-
-
-def create_summary_db_writer(db_uri,
-                             experiment_name=None,
-                             run_name=None,
-                             user_name=None,
-                             name=None):
-  """Creates a summary database writer in the current context.
-
-  This can be used to write tensors from the execution graph directly
-  to a database. Only SQLite is supported right now. This function
-  will create the schema if it doesn't exist. Entries in the Users,
-  Experiments, and Runs tables will be created automatically if they
-  don't already exist.
-
-  Args:
-    db_uri: For example "file:/tmp/foo.sqlite".
-    experiment_name: Defaults to YYYY-MM-DD in local time if None.
-      Empty string means the Run will not be associated with an
-      Experiment. Can't contain ASCII control characters or <>. Case
-      sensitive.
-    run_name: Defaults to HH:MM:SS in local time if None. Empty string
-      means a Tag will not be associated with any Run. Can't contain
-      ASCII control characters or <>. Case sensitive.
-    user_name: Defaults to system username if None. Empty means the
-      Experiment will not be associated with a User. Must be valid as
-      both a DNS label and Linux username.
-    name: Shared name for this SummaryWriter resource stored to default
-      Graph.
-
-  Returns:
-    A new SummaryWriter instance.
-  """
-  with ops.device("cpu:0"):
-    if experiment_name is None:
-      experiment_name = time.strftime("%Y-%m-%d", time.localtime(time.time()))
-    if run_name is None:
-      run_name = time.strftime("%H:%M:%S", time.localtime(time.time()))
-    if user_name is None:
-      user_name = getpass.getuser()
-    experiment_name = _cleanse_string(
-        "experiment_name", _EXPERIMENT_NAME_PATTERNS, experiment_name)
-    run_name = _cleanse_string("run_name", _RUN_NAME_PATTERNS, run_name)
-    user_name = _cleanse_string("user_name", _USER_NAME_PATTERNS, user_name)
-    return _make_summary_writer(
-        name,
-        gen_summary_ops.create_summary_db_writer,
-        db_uri=db_uri,
-        experiment_name=experiment_name,
-        run_name=run_name,
-        user_name=user_name)
-
-
-def _make_summary_writer(name, factory, **kwargs):
-  resource = gen_summary_ops.summary_writer(shared_name=name)
-  # TODO(apassos): Consider doing this instead.
-  # node = factory(resource, **kwargs)
-  # if not context.in_eager_mode():
-  #   ops.get_default_session().run(node)
-  ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME,
-                        factory(resource, **kwargs))
-  return SummaryWriter(resource)
-
-
-def _cleanse_string(name, pattern, value):
-  if isinstance(value, six.string_types) and pattern.search(value) is None:
-    raise ValueError("%s (%s) must match %s" % (name, value, pattern.pattern))
-  return ops.convert_to_tensor(value, dtypes.string)
+    resource = gen_summary_ops.summary_writer(shared_name=name)
+    # TODO(apassos) ensure the initialization op runs when in graph mode;
+    # consider calling session.run here.
+    ops.add_to_collection(
+        _SUMMARY_WRITER_INIT_COLLECTION_NAME,
+        gen_summary_ops.create_summary_file_writer(
+            resource, logdir, max_queue, flush_millis, filename_suffix))
+    return SummaryWriter(resource)
 
 
 def _nothing():
@@ -283,81 +204,68 @@ def summary_writer_function(name, tensor, function, family=None):
   return op
 
 
-def generic(name, tensor, metadata=None, family=None, global_step=None):
+def generic(name, tensor, metadata, family=None):
   """Writes a tensor summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
-    if metadata is None:
-      serialized_metadata = constant_op.constant("")
-    elif hasattr(metadata, "SerializeToString"):
-      serialized_metadata = constant_op.constant(metadata.SerializeToString())
-    else:
-      serialized_metadata = metadata
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_summary(
         context.context().summary_writer_resource,
-        global_step, array_ops.identity(tensor),
-        tag, serialized_metadata, name=scope)
+        training_util.get_global_step(), array_ops.identity(tensor),
+        tag, metadata, name=scope)
   return summary_writer_function(name, tensor, function, family=family)
 
 
-def scalar(name, tensor, family=None, global_step=None):
+def scalar(name, tensor, family=None):
   """Writes a scalar summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_scalar_summary(
         context.context().summary_writer_resource,
-        global_step, tag, array_ops.identity(tensor),
+        training_util.get_global_step(), tag, array_ops.identity(tensor),
         name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
 
 
-def histogram(name, tensor, family=None, global_step=None):
+def histogram(name, tensor, family=None):
   """Writes a histogram summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_histogram_summary(
         context.context().summary_writer_resource,
-        global_step, tag, array_ops.identity(tensor),
+        training_util.get_global_step(), tag, array_ops.identity(tensor),
         name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
 
 
-def image(name, tensor, bad_color=None, max_images=3, family=None,
-          global_step=None):
+def image(name, tensor, bad_color=None, max_images=3, family=None):
   """Writes an image summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
     bad_color_ = (constant_op.constant([255, 0, 0, 255], dtype=dtypes.uint8)
                   if bad_color is None else bad_color)
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_image_summary(
         context.context().summary_writer_resource,
-        global_step, tag, array_ops.identity(tensor),
+        training_util.get_global_step(), tag, array_ops.identity(tensor),
         bad_color_,
         max_images, name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
 
 
-def audio(name, tensor, sample_rate, max_outputs, family=None,
-          global_step=None):
+def audio(name, tensor, sample_rate, max_outputs, family=None):
   """Writes an audio summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_audio_summary(
         context.context().summary_writer_resource,
-        global_step,
+        training_util.get_global_step(),
         tag,
         array_ops.identity(tensor),
         sample_rate=sample_rate,
@@ -365,26 +273,6 @@ def audio(name, tensor, sample_rate, max_outputs, family=None,
         name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
-
-
-def import_event(tensor, name=None):
-  """Writes a tf.Event binary proto.
-
-  When using create_summary_db_writer(), this can be used alongside
-  tf.TFRecordReader to load event logs into the database. Please note
-  that this is lower level than the other summary functions and will
-  ignore any conditions set by methods like should_record_summaries().
-
-  Args:
-    tensor: A `Tensor` of type `string` containing a serialized `Event`
-      proto.
-    name: A name for the operation (optional).
-
-  Returns:
-    The created Operation.
-  """
-  return gen_summary_ops.import_event(
-      context.context().summary_writer_resource, tensor, name=name)
 
 
 def eval_dir(model_dir, name=None):

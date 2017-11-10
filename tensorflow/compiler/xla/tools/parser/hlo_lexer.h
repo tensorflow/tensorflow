@@ -37,15 +37,11 @@ class HloLexer {
   }
 
   TokKind Lex() { return current_kind_ = LexToken(); }
-
   TokKind GetKind() const { return current_kind_; }
   string GetStrVal() const {
     switch (GetKind()) {
       case TokKind::kName:
       case TokKind::kAttributeName:
-      case TokKind::kDimLabels:
-      case TokKind::kDxD:
-      case TokKind::kPad:
         return str_val_;
       default:
         LOG(FATAL) << "This token does not have string value";
@@ -96,7 +92,7 @@ class HloLexer {
   TokKind LexPercent();
   TokKind LexShape();
   TokKind LexConstant();
-  TokKind LexNumberOrPattern();
+  TokKind LexDigitOrNegative();
   TokKind LexComment();
 
   const tensorflow::StringPiece buf_;

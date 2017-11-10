@@ -1186,7 +1186,6 @@ cuda_py_test(
     srcs = ["check_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",

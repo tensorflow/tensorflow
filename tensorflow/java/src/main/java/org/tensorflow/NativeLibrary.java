@@ -43,6 +43,7 @@ final class NativeLibrary {
   private static final boolean DEBUG =
       System.getProperty("org.tensorflow.NativeLibrary.DEBUG") != null;
   private static final String JNI_LIBNAME = "tensorflow_jni";
+  private static final String FRAMEWORK_LIBNAME = "tensorflow_framework";
 
   public static void load() {
     if (isLoaded() || tryLoadLibrary()) {
@@ -58,15 +59,12 @@ final class NativeLibrary {
     }
     // Native code is not present, perhaps it has been packaged into the .jar file containing this.
     // Extract the JNI library itself
-    final String jniLibName = System.mapLibraryName(JNI_LIBNAME);
-    final String jniResourceName = makeResourceName(jniLibName);
+    final String jniResourceName = makeResourceName(JNI_LIBNAME);
     log("jniResourceName: " + jniResourceName);
     final InputStream jniResource =
         NativeLibrary.class.getClassLoader().getResourceAsStream(jniResourceName);
     // Extract the JNI's dependency
-    final String frameworkLibName =
-        maybeAdjustForMacOS(System.mapLibraryName("tensorflow_framework"));
-    final String frameworkResourceName = makeResourceName(frameworkLibName);
+    final String frameworkResourceName = makeResourceName(FRAMEWORK_LIBNAME);
     log("frameworkResourceName: " + frameworkResourceName);
     final InputStream frameworkResource =
         NativeLibrary.class.getClassLoader().getResourceAsStream(frameworkResourceName);
@@ -90,15 +88,12 @@ final class NativeLibrary {
       tempPath.deleteOnExit();
       final String tempDirectory = tempPath.toString();
       if (frameworkResource != null) {
-        extractResource(frameworkResource, frameworkLibName, tempDirectory);
+        extractResource(frameworkResource, FRAMEWORK_LIBNAME, tempDirectory);
       } else {
-        log(
-            frameworkResourceName
-                + " not found. This is fine assuming "
-                + jniResourceName
-                + " is not built to depend on it.");
+        log(frameworkResourceName + " not found. This is fine assuming " + jniResourceName
+            + " is not built to depend on it.");
       }
-      System.load(extractResource(jniResource, jniLibName, tempDirectory));
+      System.load(extractResource(jniResource, JNI_LIBNAME, tempDirectory));
     } catch (IOException e) {
       throw new UnsatisfiedLinkError(
           String.format(
@@ -126,27 +121,9 @@ final class NativeLibrary {
     }
   }
 
-  private static String maybeAdjustForMacOS(String libFilename) {
-    if (!System.getProperty("os.name").contains("OS X")) {
-      return libFilename;
-    }
-    // This is macOS, and the TensorFlow release process might have setup dependencies on
-    // libtensorflow_framework.so instead of libtensorflow_framework.dylib. Adjust for that.
-    final ClassLoader cl = NativeLibrary.class.getClassLoader();
-    if (cl.getResource(makeResourceName(libFilename)) != null) {
-      return libFilename;
-    }
-    // liftensorflow_framework.dylib not found, try libtensorflow_framework.so
-    final String suffix = ".dylib";
-    if (!libFilename.endsWith(suffix)) {
-      return libFilename;
-    }
-    return libFilename.substring(0, libFilename.length() - suffix.length()) + ".so";
-  }
-
   private static String extractResource(
       InputStream resource, String resourceName, String extractToDirectory) throws IOException {
-    final File dst = new File(extractToDirectory, resourceName);
+    final File dst = new File(extractToDirectory, System.mapLibraryName(resourceName));
     dst.deleteOnExit();
     final String dstPath = dst.toString();
     log("extracting native library to: " + dstPath);
@@ -180,7 +157,9 @@ final class NativeLibrary {
   }
 
   private static String makeResourceName(String baseName) {
-    return "org/tensorflow/native/" + String.format("%s-%s/", os(), architecture()) + baseName;
+    return "org/tensorflow/native/"
+        + String.format("%s-%s/", os(), architecture())
+        + System.mapLibraryName(baseName);
   }
 
   private static long copy(InputStream src, File dstFile) throws IOException {

@@ -38,8 +38,8 @@ TEST_F(ArithmeticOptimizerTest, NoOp) {
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  Status s = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(s);
 
   EXPECT_EQ(item.graph.node_size(), output.node_size());
   for (int i = 0; i < item.graph.node_size(); ++i) {
@@ -66,10 +66,6 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
 
   EXPECT_EQ(2, output.node_size());
   const NodeDef& new_c1 = output.node(0);
@@ -94,10 +90,6 @@ TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
   ArithmeticOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(4, output.node_size());
@@ -154,17 +146,13 @@ TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsWithChain) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
 
   EXPECT_EQ(6, output.node_size());
   EXPECT_EQ("squeeze", output.node(5).input(0));
   EXPECT_EQ("c", output.node(2).input(0));
 }
 
-TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
+TEST_F(ArithmeticOptimizerTest, SimplifyReplaceTrivialSums) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
   Output add = ops::Add(s.WithOpName("add"), x, x);
@@ -176,10 +164,6 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   ArithmeticOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(5, output.node_size());
@@ -194,61 +178,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   EXPECT_EQ("add_mul", new_id.input(0));
 }
 
-TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
-  // Test case from b/69059093.
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output p = ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({10, 10}));
-  Output add = ops::Add(s.WithOpName("Add"), p, p);
-  Output add1 = ops::Add(s.WithOpName("Add_1"), p, p);
-  Output add4 = ops::Add(s.WithOpName("Add_4"), add, add1);
-  Output add5 = ops::Add(s.WithOpName("Add_5"), add, add1);
-  Output add6 = ops::Add(s.WithOpName("Add_6"), add4, add5);
-  Output id = ops::Identity(s.WithOpName("id"), add6);
-
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  ArithmeticOptimizer optimizer;
-  GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-
-  EXPECT_EQ(11, output.node_size());
-  const NodeDef& new_id = output.node(4);
-  EXPECT_EQ("id", new_id.name());
-  EXPECT_EQ("Add_6_mul", new_id.input(0));
-
-  // Add4 and add5 get deduped, and we rewrite each of the 3 remaining add nodes
-  // of the form Add(x,x) into Mul(Const(2), x).
-  const NodeDef& new_add_4_const = output.node(5);
-  EXPECT_EQ("Add_4_const", new_add_4_const.name());
-  EXPECT_EQ("^Add", new_add_4_const.input(0));
-  const NodeDef& new_add_4_mul = output.node(6);
-  EXPECT_EQ("Add_4_mul", new_add_4_mul.name());
-  EXPECT_EQ("Add_4_const", new_add_4_mul.input(0));
-  EXPECT_EQ("Add_mul", new_add_4_mul.input(1));
-
-  const NodeDef& new_add_6_const = output.node(7);
-  EXPECT_EQ("Add_6_const", new_add_6_const.name());
-  EXPECT_EQ("^Add_4_mul", new_add_6_const.input(0));
-  const NodeDef& new_add_6_mul = output.node(8);
-  EXPECT_EQ("Add_6_mul", new_add_6_mul.name());
-  EXPECT_EQ("Add_6_const", new_add_6_mul.input(0));
-  EXPECT_EQ("Add_4_mul", new_add_6_mul.input(1));
-
-  const NodeDef& new_add_const = output.node(9);
-  EXPECT_EQ("Add_const", new_add_const.name());
-  EXPECT_EQ("^Placeholder", new_add_const.input(0));
-  const NodeDef& new_add_mul = output.node(10);
-  EXPECT_EQ("Add_mul", new_add_mul.name());
-  EXPECT_EQ("Add_const", new_add_mul.input(0));
-  EXPECT_EQ("Placeholder", new_add_mul.input(1));
-}
-
-TEST_F(ArithmeticOptimizerTest, HoistFactor) {
+TEST_F(ArithmeticOptimizerTest, SimplifyHoistFactor) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
   Output y1 = ops::Const(s.WithOpName("y1"), {3.0f, 4.0f}, {1, 2});
@@ -264,10 +194,6 @@ TEST_F(ArithmeticOptimizerTest, HoistFactor) {
   ArithmeticOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(9, output.node_size());
@@ -298,10 +224,6 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
   ArithmeticOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(7, output.node_size());
@@ -350,10 +272,6 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
 
   EXPECT_EQ(7, output.node_size());
   EXPECT_EQ("conj_fused", output.node(6).name());
@@ -385,10 +303,6 @@ TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
     ArithmeticOptimizer optimizer;
     GraphDef output;
     Status status = optimizer.Optimize(nullptr, item, &output);
-    TF_EXPECT_OK(status);
-    // Run the optimizer twice to make sure the rewrite is idempotent.
-    item.graph.Swap(&output);
-    status = optimizer.Optimize(nullptr, item, &output);
     TF_EXPECT_OK(status);
 
     EXPECT_EQ(7, output.node_size());

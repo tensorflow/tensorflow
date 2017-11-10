@@ -448,10 +448,10 @@ class LayerCollection(object):
         tf.get_variable_scope().reuse.
 
     Raises:
-      ValueError: If reuse == True and name == None.
-      ValueError: If reuse == True and seed != None.
-      KeyError: If reuse == True and no existing LossFunction with 'name' found.
-      KeyError: If reuse == False and existing LossFunction with 'name' found.
+      ValueError: If reuse=True and name != None.
+      ValueError: If reuse=True and seed != None.
+      KeyError: If reuse=True and no existing LossFunction with 'name' found.
+      KeyError: If reuse=False and existing LossFunction with 'name' found.
     """
     name = name or self._graph.unique_name(
         "register_categorical_predictive_distribution")

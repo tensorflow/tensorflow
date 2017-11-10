@@ -36,7 +36,7 @@ class LMDBReader : public ReaderBase {
 
   Status OnWorkStartedLocked() override {
     MDB_CHECK(mdb_env_create(&mdb_env_));
-    int flags = MDB_RDONLY | MDB_NOTLS;
+    int flags = MDB_RDONLY | MDB_NOTLS | MDB_NOLOCK;
 
     // Check if the LMDB filename is actually a file instead of a directory.
     // If so, set appropriate flags so we can open it.
@@ -57,10 +57,13 @@ class LMDBReader : public ReaderBase {
     if (mdb_env_ != nullptr) {
       if (mdb_cursor_) {
         mdb_cursor_close(mdb_cursor_);
+        mdb_cursor_ = nullptr;
       }
-      mdb_txn_abort(mdb_txn_);
       mdb_dbi_close(mdb_env_, mdb_dbi_);
+      mdb_txn_abort(mdb_txn_);
       mdb_env_close(mdb_env_);
+      mdb_txn_ = nullptr;
+      mdb_dbi_ = 0;
       mdb_env_ = nullptr;
     }
     return Status::OK();
