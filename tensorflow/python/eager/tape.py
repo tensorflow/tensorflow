@@ -23,7 +23,6 @@ import contextlib
 import threading
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.util import compat
 
 
 def tid(tensor):
@@ -87,9 +86,9 @@ class Tape(object):
     """Records an operation in the tape."""
     pywrap_tensorflow.TFE_Py_TapeRecordOperation(
         self._tape,
-        compat.as_bytes(op_type),
+        op_type,
         output_tensors,
-        [x._id for x in input_tensors],  # pylint: disable=protected-access
+        input_tensors,
         backward_function)
 
   def _delete_tensor_id(self, i):
