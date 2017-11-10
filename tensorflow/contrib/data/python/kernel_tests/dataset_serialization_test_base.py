@@ -337,11 +337,11 @@ class DatasetSerializationTestBase(test.TestCase):
           num_iters = end - start
           for _ in range(num_iters):
             outputs.append(sess.run(get_next_op))
-          self._save(sess, saver)
-          ckpt_saved = True
           if i == len(break_points) and verify_exhausted:
             with self.assertRaises(errors.OutOfRangeError):
               sess.run(get_next_op)
+          self._save(sess, saver)
+          ckpt_saved = True
 
     return outputs
 
