@@ -106,8 +106,9 @@ class QuantizeNodesTest : public ::testing::Test {
     // Reshape is not included here because it can be added as part of the
     // quantization process.
     const std::set<string> quantizable_ops = {
-        "Add",   "BiasAdd",        "Concat",  "Conv2D",  "MatMul", "Relu",
-        "Relu6", "ResizeBilinear", "AvgPool", "MaxPool", "Mul"};
+        "Add",     "BiasAdd", "Concat", "Conv2D",         "Conv2DBackpropInput",
+        "MatMul",  "Relu",    "Relu6",  "ResizeBilinear", "AvgPool",
+        "MaxPool", "Mul"};
     for (const NodeDef& node : quantized_graph_def.node()) {
       EXPECT_EQ(0, quantizable_ops.count(node.op()))
           << "Found quantizable node " << node.op() << " for node named "

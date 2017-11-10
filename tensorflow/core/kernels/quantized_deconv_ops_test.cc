@@ -78,11 +78,11 @@ TEST_F(QuantizedConv2DTransposeTest, Small) {
   Tensor filter_quantized =
       FloatTensorToQuantized<quint8>(filter_float, filter_min, filter_max);
 
-  AddInputFromArray<quint8>(input_quantized.shape(),
-                            input_quantized.flat<quint8>());
+  AddInputFromArray<int32>(TensorShape({4}), {1, 4, 4, 1});
   AddInputFromArray<quint8>(filter_quantized.shape(),
                             filter_quantized.flat<quint8>());
-  AddInputFromArray<int32>(TensorShape({4}), {1, 4, 4, 1});
+  AddInputFromArray<quint8>(input_quantized.shape(),
+                            input_quantized.flat<quint8>());
   AddInputFromArray<float>(TensorShape({1}), {input_min});
   AddInputFromArray<float>(TensorShape({1}), {input_max});
   AddInputFromArray<float>(TensorShape({1}), {filter_min});
@@ -146,11 +146,11 @@ TEST_F(QuantizedConv2DTransposeTest, SmallWithStrideLargerThanOne) {
   Tensor filter_quantized =
       FloatTensorToQuantized<quint8>(filter_float, filter_min, filter_max);
 
-  AddInputFromArray<quint8>(input_quantized.shape(),
-                            input_quantized.flat<quint8>());
+  AddInputFromArray<int32>(TensorShape({4}), {1, 5, 5, 1});
   AddInputFromArray<quint8>(filter_quantized.shape(),
                             filter_quantized.flat<quint8>());
-  AddInputFromArray<int32>(TensorShape({4}), {1, 5, 5, 1});
+  AddInputFromArray<quint8>(input_quantized.shape(),
+                            input_quantized.flat<quint8>());
   AddInputFromArray<float>(TensorShape({1}), {input_min});
   AddInputFromArray<float>(TensorShape({1}), {input_max});
   AddInputFromArray<float>(TensorShape({1}), {filter_min});

@@ -191,16 +191,16 @@ class QuantizedConv2DTransposeOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // fetch tensors from the context
-    // input is the gradient w.r.t. to the output of the original convolution
-    // layer
-    // shape [batch, in_rows, in_cols, in_depth]
-    const Tensor& input = context->input(0);
+    // 1-D Tensor
+    const Tensor& output_sizes = context->input(0);
 
     // shape [filter_rows, filter_cols, out_depth, in_depth]
     const Tensor& filter = context->input(1);
 
-    // 1-D Tensor
-    const Tensor& output_sizes = context->input(2);
+    // input is the gradient w.r.t. to the output of the original convolution
+    // layer
+    // shape [batch, in_rows, in_cols, in_depth]
+    const Tensor& input = context->input(2);
 
     // Check output_shape's dimension
     OP_REQUIRES(context, TensorShapeUtils::IsVector(output_sizes.shape()),
