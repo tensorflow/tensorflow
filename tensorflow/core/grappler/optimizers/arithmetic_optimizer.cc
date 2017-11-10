@@ -703,7 +703,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           node_map->AddOutput(new_transpose->name(), new_cast->name());
 
           new_nodes->push_back(new_transpose);
-          new_nodes->push_back(new_cast);
           //  Add frame dependencies that the original node might have had.
           AddFrameControlDeps(node, {new_transpose, new_cast},
                               new_transpose->input(0), {new_transpose},
@@ -880,7 +879,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       new_mul_node->set_device(node->device());
       SetDataTypeToAttr(type, "T", new_mul_node);
       node_map->AddNode(new_mul_node->name(), new_mul_node);
-      new_nodes->push_back(new_mul_node);
       new_mul_node->add_input(new_const_node->name());
       node_map->AddOutput(new_const_node->name(), new_mul_node->name());
       new_mul_node->add_input(node->input(0));
@@ -945,7 +943,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           new_mul_node->set_name(new_mul_node->name() + "_hoist");
           new_mul_node->set_input(0, common_factor);
           new_mul_node->set_input(1, new_add_node->name());
-          new_nodes->push_back(new_mul_node);
           node_map->AddNode(new_mul_node->name(), new_mul_node);
         }
       }
@@ -1045,10 +1042,14 @@ namespace {
 template <class T>
 class SetVector {
  public:
-  void PushBack(const T& value) {
-    CHECK(!Exists(value)) << "Value " << value << " is already in the set.";
-    set_.insert(value);
+  // Returns false if value already existed in the set, true otherwise.
+  bool PushBack(const T& value) {
+    if (!set_.insert(value).second) {
+      VLOG(2) << "Value " << value << " is already in the set.";
+      return false;
+    }
     vector_.push_back(value);
+    return true;
   }
 
   T PopBack() {
@@ -1089,6 +1090,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(
     }
 
     if (NodeName(simplified_tensor) != node->name()) {
+      // Always consider simplified_tensor for further optimizations.
+      const NodeDef* simplified_node = node_map.GetNode(simplified_tensor);
+      if (simplified_node != nullptr) {
+        nodes_to_simplify.PushBack(simplified_node);
+      }
       // When `node` is simplifed to another node rather than in-place, the
       // consumers of `node` are already redirected to `simplified_tensor`.
       // Re-push the consumers into `nodes_to_simplify` for further
