@@ -1845,7 +1845,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
       # Reenter the current name scope
       name_scope = ops.get_name_scope()
       if name_scope:
-        # Hack to reenter the current name scope
+        # Hack to reenter
         name_scope = name_scope + "/"
         current_name_scope = ops.name_scope(name_scope)
       else:
@@ -1871,7 +1871,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
         name_scope = self._name_or_scope
       else:
         name_scope = self._name_or_scope.name.split("/")[-1]
-      if name_scope:
+      if name_scope or current_name_scope:
         self._current_name_scope = current_name_scope or ops.name_scope(name_scope)
         current_name_scope_name = self._current_name_scope.__enter__()
         if isinstance(self._name_or_scope, six.string_types):
