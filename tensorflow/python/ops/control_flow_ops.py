@@ -1877,8 +1877,8 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   with ops.name_scope(name, "cond", [pred]):
     if context.in_eager_mode():
       if pred:
-        return true_fn()
-      return false_fn()
+        return _UnpackIfSingleton(true_fn())
+      return _UnpackIfSingleton(false_fn())
 
     # Add the Switch to the graph.
     if isinstance(pred, bool):
