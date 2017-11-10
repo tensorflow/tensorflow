@@ -181,17 +181,27 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::StringPiece outfeed_config);
 
-  // Creates a send instruction with the given channel id, which sends the
-  // operand data to a unique receive instruction in another computation that
-  // has the same channel id.
+  // Creates an asynchronous send instruction with the given channel id, which
+  // initiates sending the operand data to a unique receive instruction in
+  // another computation that has the same channel id.
   static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand,
                                                     int64 channel_id);
 
-  // Creates a receive instruction with the given channel id, which receives
-  // data of the given shape from a unique send instruction in another
-  // computation that has the same channel id.
+  // Blocks until data transfer for the Send instruction (operand) is complete.
+  // The operand must be kSend.
+  static std::unique_ptr<HloInstruction> CreateSendDone(
+      HloInstruction* operand);
+
+  // Creates an asynchronous receive instruction with the given channel id,
+  // which allocates resources to receive data of the given shape from a unique
+  // send instruction in another computation that has the same channel id.
   static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape,
                                                     int64 channel_id);
+
+  // Blocks until data transfer for the Recv instruction (operand) is complete
+  // and returns the receive buffer. The operand must be kRecv.
+  static std::unique_ptr<HloInstruction> CreateRecvDone(
+      HloInstruction* operand);
 
   // Creates a slice instruction, where the operand is sliced by the given
   // start/limit indices.
@@ -202,7 +212,7 @@ class HloInstruction {
       tensorflow::gtl::ArraySlice<int64> strides);
 
   // Creates a slice instruction, where the first operand is sliced by
-  // start indices specified in the second operand, and by size specified in
+  // start indices specified in the second operand, and by size specfied in
   // 'slice_sizes'.
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
@@ -853,6 +863,11 @@ class HloInstruction {
     return *window_;
   }
 
+  // Sets the window data in a windowed operation such as convolution.
+  void set_window(const Window& window) {
+    window_ = MakeUnique<Window>(window);
+  }
+
   // Returns the padding configuration for a pad node.
   //
   // Precondition: opcode() == HloOpcode::kPad
@@ -1223,6 +1238,8 @@ class HloInstruction {
 string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
+
+string PaddingConfigToString(const PaddingConfig& padding);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

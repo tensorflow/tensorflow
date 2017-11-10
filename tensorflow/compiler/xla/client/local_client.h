@@ -37,14 +37,6 @@ namespace xla {
 // LocalClient::Compile.
 class ExecutableBuildOptions {
  public:
-  // If set, this is the platform to build the computation for. This must match
-  // the underlying platform of the service. A value of nullptr indicates the
-  // option has not been set.
-  //
-  // TODO(b/28616830): Support multiple platforms.
-  ExecutableBuildOptions& set_platform(perftools::gputools::Platform* platform);
-  perftools::gputools::Platform* platform() const;
-
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
   // identical to the device ordinal values used by StreamExecutor. The built
@@ -61,18 +53,10 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
   const Shape* result_layout() const;
 
-  // If set, the executable will be built to output a hybrid
-  // ShapedBuffer with top-level tuple pointers in host memory and
-  // result buffers in device memory.
-  ExecutableBuildOptions& set_has_hybrid_result(bool has_hybrid_result);
-  bool has_hybrid_result() const;
-
  private:
-  perftools::gputools::Platform* platform_ = nullptr;
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
-  bool has_hybrid_result_ = true;
 };
 
 class LocalExecutable {

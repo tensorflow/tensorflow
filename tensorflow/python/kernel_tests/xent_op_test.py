@@ -181,6 +181,24 @@ class XentTest(test.TestCase):
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
+  def testGradientLabelWithV2(self):
+    with self.test_session():
+      l = constant_op.constant(
+          [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
+          shape=[3, 4],
+          dtype=dtypes.float64,
+          name="l")
+      f = constant_op.constant(
+          [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
+          shape=[3, 4],
+          dtype=dtypes.float64,
+          name="f")
+      x = nn_ops.softmax_cross_entropy_with_logits_v2(labels=l, logits=f,
+                                                      name="xent")
+      err = gradient_checker.compute_gradient_error(l, [3, 4], x, [3])
+
+    self.assertLess(err, 5e-8)
+
   def testSecondGradient(self):
     with self.test_session() as sess:
       l = constant_op.constant([0.0, 0.0, 1.0/3, 0.0,

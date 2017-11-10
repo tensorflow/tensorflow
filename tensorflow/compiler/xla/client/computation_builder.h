@@ -68,6 +68,7 @@ class ShardingBuilder {
                          const TileAssignment& tile_assignment) {
     OpSharding result;
     result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    *result.mutable_tile_shape() = tile_shape;
     for (int64 dim : tile_assignment.dimensions()) {
       result.add_tile_assignment_dimensions(dim);
     }

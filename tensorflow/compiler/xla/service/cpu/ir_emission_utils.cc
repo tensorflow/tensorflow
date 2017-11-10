@@ -105,7 +105,9 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
       return false;
     }
 
-    if (ProfitableToImplementDotInLlvmIr(hlo) == DotInLlvmIrProfitable::kYes) {
+    if (ProfitableToImplementDotInUntiledLlvmIr(hlo) ==
+            DotInLlvmIrProfitable::kYes ||
+        ProfitableToImplementDotInTiledLlvmIr(hlo)) {
       return false;
     }
 
@@ -136,7 +138,7 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
   return false;
 }
 
-DotInLlvmIrProfitable ProfitableToImplementDotInLlvmIr(
+DotInLlvmIrProfitable ProfitableToImplementDotInUntiledLlvmIr(
     const HloInstruction& dot) {
   if (dot.opcode() == HloOpcode::kDot && dot.shape().dimensions_size() == 2) {
     const Shape& result_shape = dot.shape();
@@ -176,6 +178,17 @@ DotInLlvmIrProfitable ProfitableToImplementDotInLlvmIr(
     }
   }
   return DotInLlvmIrProfitable::kNo;
+}
+
+bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot) {
+  // Any Matrix-Vector product of floating point or integral type, or
+  // a transpose-dot fusion of the same can be lowered to a tiled LLVM
+  // IR implementation.
+  const Shape& shape = dot.shape();
+  return shape.dimensions_size() == 2 &&
+         (shape.dimensions(0) == 1 || shape.dimensions(1) == 1) &&
+         (primitive_util::IsFloatingPointType(shape.element_type()) ||
+          primitive_util::IsIntegralType(shape.element_type()));
 }
 
 }  // namespace cpu

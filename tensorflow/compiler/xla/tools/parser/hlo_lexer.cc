@@ -122,7 +122,7 @@ TokKind HloLexer::LexToken() {
           current_ptr_++;
           return TokKind::kArrow;
         }
-        return LexDigitOrNegative();
+        return LexNumberOrPattern();
       case '=':
         return TokKind::kEqual;
       case ',':
@@ -149,12 +149,15 @@ TokKind HloLexer::LexToken() {
   }
 }
 
-// Lex a shape, name, keyword, or opcode.
+// Lex a shape, name, keyword, opcode, attribute name, or the dim labels
+// pattern.
+//
 // shape    ::= ([a-zA-Z0-9_]*[0-9]*)\[([0-9,]*)\](?:\s*{([0-9,]*)})?
 // name     ::= [a-zA-Z_][a-zA-Z0-9_.-]*:
 // keyword  ::= HloModule, ENTRY, ...
 // opcode   ::= add, greater-than, ...
 // attribute_name ::= condition, body, dimensions, ...
+// dim_labels_pattern ::= [0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,}
 TokKind HloLexer::LexIdentifier() {
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
@@ -220,6 +223,16 @@ TokKind HloLexer::LexIdentifier() {
     return TokKind::kOpcode;
   }
 
+  {
+    auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+    static LazyRE2 dim_labels_pattern = {
+        R"([0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,})"};
+    if (RE2::Consume(&consumable, *dim_labels_pattern)) {
+      current_ptr_ = consumable.begin();
+      str_val_.assign(token_start_, current_ptr_);
+      return TokKind::kDimLabels;
+    }
+  }
   current_ptr_ = token_start_ + 1;
   return TokKind::kError;
 }
@@ -240,20 +253,49 @@ TokKind HloLexer::LexPercent() {
   return TokKind::kError;
 }
 
-// Lex integer and floating-point values, and -inf.
-// int             [-]?[0-9]+
-// fp with exp     [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
-// fp without exp  [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
-// negative inf    -inf
-TokKind HloLexer::LexDigitOrNegative() {
+// Lex integer and floating-point values, -inf, and patterns for dim labels,
+// dxd (e.g. 1x2x3), and pad.
+//
+// fp with exp ::= [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
+// fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
+// dim_labels_pattern ::= [0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,}
+// dxd_pattern ::= [0-9]+(x[0-9]+)+
+// pad_pattern ::= [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
+// int ::=  [-]?[0-9]+
+// negative inf ::= '-inf'
+TokKind HloLexer::LexNumberOrPattern() {
   auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
   static LazyRE2 float_pattern = {
-      R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|(\d+[.]\d*|\d*[.]\d+))"};
+      R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
     tensorflow::strings::safe_strtod(string(token_start_, current_ptr_).c_str(),
                                      &decimal_val_);
     return TokKind::kDecimal;
+  }
+
+  static LazyRE2 dim_labels_pattern = {
+      R"([0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,})"};
+  static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
+  static LazyRE2 pad_pattern = {
+      R"([0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*)"};
+
+  if (RE2::Consume(&consumable, *dim_labels_pattern)) {
+    current_ptr_ = consumable.begin();
+    str_val_.assign(token_start_, current_ptr_);
+    return TokKind::kDimLabels;
+  }
+
+  if (RE2::Consume(&consumable, *dxd_pattern)) {
+    current_ptr_ = consumable.begin();
+    str_val_.assign(token_start_, current_ptr_);
+    return TokKind::kDxD;
+  }
+
+  if (RE2::Consume(&consumable, *pad_pattern)) {
+    current_ptr_ = consumable.begin();
+    str_val_.assign(token_start_, current_ptr_);
+    return TokKind::kPad;
   }
 
   static LazyRE2 int_pattern = {R"([-]?\d+)"};
@@ -350,6 +392,12 @@ string TokKindToString(TokKind kind) {
       return "kName";
     case TokKind::kAttributeName:
       return "kAttributeName";
+    case TokKind::kDimLabels:
+      return "kDimLabels";
+    case TokKind::kDxD:
+      return "kDxD";
+    case TokKind::kPad:
+      return "kPad";
     case TokKind::kShape:
       return "kShape";
     case TokKind::kOpcode:

@@ -72,7 +72,7 @@ error::Code ErrnoToCode(int err_number) {
     case EBUSY:       // Device or resource busy
     case ECHILD:      // No child processes
     case EISCONN:     // Socket is connected
-#if !defined(_WIN32) && !defined(__HAIKU__)
+#if !defined(_WIN32)
     case ENOTBLK:     // Block device required
 #endif
     case ENOTCONN:    // The socket is not connected
@@ -94,7 +94,7 @@ error::Code ErrnoToCode(int err_number) {
     case ENODATA:  // No message is available on the STREAM read queue
     case ENOMEM:   // Not enough space
     case ENOSR:    // No STREAM resources
-#if !defined(_WIN32) && !defined(__HAIKU__)
+#if !defined(_WIN32)
     case EUSERS:   // Too many users
 #endif
       code = error::RESOURCE_EXHAUSTED;
@@ -111,7 +111,7 @@ error::Code ErrnoToCode(int err_number) {
     case EPFNOSUPPORT:     // Protocol family not supported
 #endif
     case EPROTONOSUPPORT:  // Protocol not supported
-#if !defined(_WIN32) && !defined(__HAIKU__)
+#if !defined(_WIN32)
     case ESOCKTNOSUPPORT:  // Socket type not supported
 #endif
     case EXDEV:            // Improper link
@@ -131,8 +131,7 @@ error::Code ErrnoToCode(int err_number) {
     case ENETUNREACH:   // Network unreachable
     case ENOLCK:        // No locks available
     case ENOLINK:       // Link has been severed
-#if !(defined(__APPLE__) || defined(__FreeBSD__) || defined(_WIN32) \
-	|| defined(__HAIKU__))
+#if !(defined(__APPLE__) || defined(__FreeBSD__) || defined(_WIN32))
     case ENONET:  // Machine is not on the network
 #endif
       code = error::UNAVAILABLE;
@@ -157,7 +156,7 @@ error::Code ErrnoToCode(int err_number) {
     case ENOEXEC:      // Exec format error
     case ENOMSG:       // No message of the desired type
     case EPROTO:       // Protocol error
-#if !defined(_WIN32) && !defined(__HAIKU__)
+#if !defined(_WIN32)
     case EREMOTE:      // Object is remote
 #endif
       code = error::UNKNOWN;
