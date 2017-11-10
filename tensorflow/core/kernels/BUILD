@@ -2576,8 +2576,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bucketize_op",
+    gpu_srcs = ["cuda_device_array.h"],
     prefix = "bucketize_op",
-    deps = MATH_DEPS,
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
