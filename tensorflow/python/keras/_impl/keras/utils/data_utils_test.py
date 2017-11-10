@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from itertools import cycle
 import os
-import platform
 import tarfile
 import threading
 import unittest
@@ -163,7 +162,7 @@ class TestEnqueuers(test.TestCase):
     enqueuer.stop()
 
   @unittest.skipIf(
-      platform.system() == 'Windows',
+      os.name == 'nt',
       'use_multiprocessing=True does not work on windows properly.')
   def test_generator_enqueuer_processes(self):
     enqueuer = keras.utils.data_utils.GeneratorEnqueuer(
@@ -187,7 +186,7 @@ class TestEnqueuers(test.TestCase):
       next(gen_output)
 
   @unittest.skipIf(
-      platform.system() == 'Windows',
+      os.name == 'nt',
       'use_multiprocessing=True does not work on windows properly.')
   def test_generator_enqueuer_fail_processes(self):
     enqueuer = keras.utils.data_utils.GeneratorEnqueuer(
