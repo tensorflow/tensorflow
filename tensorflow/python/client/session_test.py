@@ -1744,8 +1744,8 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testAutoConvertAndCheckData(self):
     with self.test_session() as sess:
-      a = array_ops.placeholder(tf.string)
-      with self.assertRaisesRegexp(TypeError, 'Type of feed value 1 with type int is not'):
+      a = array_ops.placeholder(dtype=dtypes.string)
+      with self.assertRaisesRegexp(TypeError, "Type of feed value 1 with type <type 'int'> is not"):
         sess.run(a, feed_dict={a: 1})
 
 if __name__ == '__main__':
