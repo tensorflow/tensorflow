@@ -13,33 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
+#include "tensorflow/compiler/tf2xla/lib/cholesky.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 namespace tensorflow {
 namespace {
 
-class BatchMatMulOp : public XlaOpKernel {
+class CholeskyOp : public XlaOpKernel {
  public:
-  explicit BatchMatMulOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adj_x", &adj_x_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adj_y", &adj_y_));
-  }
-
+  explicit CholeskyOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    auto result =
-        BatchDot(ctx->builder(), ctx->Input(0), ctx->Input(1), adj_x_, adj_y_);
-    OP_REQUIRES_OK(ctx, result.status());
+    auto result = Cholesky(ctx->builder(), ctx->Input(0));
+    if (!result.ok()) {
+      ctx->SetStatus(result.status());
+      return;
+    }
     ctx->SetOutput(0, result.ValueOrDie());
   }
-
- private:
-  bool adj_x_;
-  bool adj_y_;
 };
 
-REGISTER_XLA_OP(Name("BatchMatMul"), BatchMatMulOp);
+REGISTER_XLA_OP(Name("Cholesky"), CholeskyOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -403,6 +403,7 @@ filegroup(
         "//tensorflow/compiler/tf2xla:all_files",
         "//tensorflow/compiler/tf2xla/cc:all_files",
         "//tensorflow/compiler/tf2xla/kernels:all_files",
+        "//tensorflow/compiler/tf2xla/lib:all_files",
         "//tensorflow/compiler/tf2xla/ops:all_files",
         "//tensorflow/compiler/xla:all_files",
         "//tensorflow/compiler/xla/client:all_files",
