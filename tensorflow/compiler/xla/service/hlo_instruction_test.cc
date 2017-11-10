@@ -792,8 +792,8 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
   //   sub = Sub(mul, clamp)
   //   tuple = Tuple({sub, sub, mul, C1})
   //
-  // Notable complexities are repeated operands in a same instruction, different
-  // shapes, use of value in different expressions.
+  // Notable complexities are repeated operands in the same instruction,
+  // different shapes, use of value in different expressions.
   auto c1 = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
   auto c2 = builder.AddInstruction(

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
-#include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 
 #include "tensorflow/c/c_api.h"
@@ -574,7 +573,7 @@ bool EagerTensor_CheckExact(const PyObject* o) {
   return Py_TYPE(o) == EagerTensorType;
 }
 
-TFE_TensorHandle* EagerTensor_Handle(const PyObject* o) {
+TFE_TensorHandle* EagerTensorHandle(const PyObject* o) {
   return reinterpret_cast<const EagerTensor*>(o)->handle;
 }
 
@@ -593,11 +592,6 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     t->handle = handle;
   }
   return reinterpret_cast<PyObject*>(t);
-}
-
-tensorflow::int64 EagerTensor_id(const PyObject* tensor) {
-  CHECK(EagerTensor_CheckExact(tensor));
-  return reinterpret_cast<const EagerTensor*>(tensor)->id;
 }
 
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {

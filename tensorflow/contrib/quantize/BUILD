@@ -133,29 +133,13 @@ py_library(
     deps = [
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
-    ],
-)
-
-py_test(
-    name = "quant_ops_test",
-    size = "small",
-    srcs = ["python/quant_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":quant_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:session",
-        "//tensorflow/python:variables",
     ],
 )
 

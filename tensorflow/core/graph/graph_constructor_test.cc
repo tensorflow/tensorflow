@@ -2978,20 +2978,5 @@ versions {
   EXPECT_EQ(17, refiner.graph_def_version());
 }
 
-TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
-  GraphDef def;
-  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
-      "node { name: 'A' op: 'TestInput' attr { key: '_class' value { list { "
-      "s:'loc:@missing' } } } }",
-      &def));
-  ImportGraphDefOptions options;
-  // TODO(yaozhang): Extend ExpectError to check error type and use ExpectError
-  // and ExpectOK to replace the code below.
-  Status s = ImportGraphDef(options, def, &graph_, nullptr);
-  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
-  options.validate_colocation_constraints = false;
-  TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
-}
-
 }  // namespace
 }  // namespace tensorflow

@@ -141,6 +141,23 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "cauchy_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/cauchy_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
     name = "chi2_test",
     srcs = ["python/kernel_tests/chi2_test.py"],
     additional_deps = [

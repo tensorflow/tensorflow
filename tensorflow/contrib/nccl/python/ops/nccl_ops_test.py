@@ -72,14 +72,13 @@ class NcclTestCase(test.TestCase):
           two.
       device_sets: Tuple of virtual devices to run test on.
     """
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
+
     for dtype in [np.float32, np.int32, np.int64, np.float64]:
       # Create session inside outer loop to test use of
       # same communicator across multiple sessions.
       with self.test_session(use_gpu=True) as sess:
-
-        # Check GPU availability *after* creating test session, see b/68975239.
-        if not test.is_gpu_available():
-          return  # Test requires access to a GPU
 
         for devices in device_sets:
           shape = (3, 4)

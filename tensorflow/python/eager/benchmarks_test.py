@@ -66,8 +66,7 @@ class MicroBenchmarks(test.Benchmark):
       func()
     end = time.time()
     mean_us = (end - start) * 1e6 / num_iters
-    self.report_benchmark(iters=num_iters, wall_time=mean_us,
-                          extras={"examples_per_sec": num_iters/(end-start)})
+    self.report_benchmark(iters=num_iters, wall_time=mean_us)
 
   def benchmark_create_np_array(self):
     func = lambda: np.array([3.0])

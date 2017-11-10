@@ -65,35 +65,20 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
     data = np.linspace(
         0., n_classes - 1., batch_size * input_dimension, dtype=np.float32)
     x_data = data.reshape(batch_size, input_dimension)
-    categorical_data = np.random.random_integers(
-        0, len(x_data), size=len(x_data))
     y_data = np.reshape(self._as_label(data[:batch_size]), (batch_size, 1))
     train_input_fn = numpy_io.numpy_input_fn(
-        x={'x': x_data,
-           'categories': categorical_data},
+        x={'x': x_data},
         y=y_data,
         batch_size=batch_size,
         num_epochs=None,
         shuffle=True)
     eval_input_fn = numpy_io.numpy_input_fn(
-        x={'x': x_data,
-           'categories': categorical_data},
-        y=y_data,
-        batch_size=batch_size,
-        shuffle=False)
+        x={'x': x_data}, y=y_data, batch_size=batch_size, shuffle=False)
     predict_input_fn = numpy_io.numpy_input_fn(
-        x={'x': x_data,
-           'categories': categorical_data},
-        batch_size=batch_size,
-        shuffle=False)
+        x={'x': x_data}, batch_size=batch_size, shuffle=False)
 
     feature_columns = [
-        feature_column.numeric_column('x', shape=(input_dimension,)),
-        feature_column.indicator_column(
-            feature_column.categorical_column_with_vocabulary_list(
-                'categories',
-                vocabulary_list=np.linspace(
-                    0., len(x_data), len(x_data), dtype=np.int64)))
+        feature_column.numeric_column('x', shape=(input_dimension,))
     ]
 
     estimator = dnn.DNNClassifier(
@@ -105,11 +90,14 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
     def optimizer_fn():
       return optimizers.get_optimizer_instance('Adagrad', learning_rate=0.05)
 
+    # TODO(isaprykin):  Switch Estimator to use allow_soft_placement=True
+    # during export_savedmodel and then switch this test to replicate over
+    # GPUs instead of CPUs.
     estimator = estimator_lib.Estimator(
         model_fn=replicate_model_fn.replicate_model_fn(
             estimator.model_fn,
             optimizer_fn,
-            devices=['/gpu:0', '/gpu:1', '/gpu:2']),
+            devices=['/cpu:0', '/cpu:0', '/cpu:0']),
         model_dir=estimator.model_dir,
         config=estimator.config,
         params=estimator.params)
@@ -242,7 +230,6 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       accuracy = session.run(accuracy)
       auc = session.run(auc)
 
-      # loss[i] = features[i] * 10 - labels[i].
       # Accuracy is 0.0 (no match) in the first tower.
       # Accuracy is 1.0 (match) in the second tower, since the feature
       # times weight "c" happened to be equal to the label.
@@ -544,7 +531,8 @@ class EvalSpecTest(test_util.TensorFlowTestCase):
       self.assertEqual('/device:CPU:0', auc.device)
 
       session.run([a, b])
-      accuracy, auc = session.run([accuracy, auc])
+      accuracy = session.run(accuracy)
+      auc = session.run(auc)
 
       self.assertNear((12 - 2) / 12, accuracy, 0.01)
       self.assertEqual(0, auc)
@@ -873,7 +861,7 @@ class LocalDeviceSetterTest(test_util.TensorFlowTestCase):
 
 class ComputeSumWithDevicePlacementTest(test_util.TensorFlowTestCase):
 
-  def test_vectors(self):
+  def test_example(self):
     with self.test_session() as session:
       total = replicate_model_fn._compute_sum_on_device(
           [1.0, 2.0, 3.0, 4.0], device='/device:GPU:0', name='test_sum')
@@ -881,68 +869,6 @@ class ComputeSumWithDevicePlacementTest(test_util.TensorFlowTestCase):
       self.assertEqual('/device:GPU:0', total.device)
       self.assertEqual('test_sum', total.op.name)
       self.assertEqual(10.0, session.run(total))
-
-  def test_tensors(self):
-    with self.test_session() as session:
-      total = replicate_model_fn._compute_sum_on_device(
-          [[1.0, 2.0], [3.0, 4.0]], device='/device:GPU:0', name='test_sum')
-
-      self.assertEqual('/device:GPU:0', total.device)
-      self.assertEqual('test_sum', total.op.name)
-      self.assertAllEqual([4.0, 6.0], session.run(total))
-
-  def test_indexedslices(self):
-    with self.test_session() as session:
-      a = ops_lib.IndexedSlices(
-          constant_op.constant([1.0, 2.0]), [0, 1],
-          dense_shape=constant_op.constant([2]))
-      b = ops_lib.IndexedSlices(constant_op.constant([3.0, 4.0]), [0, 1])
-
-      total = replicate_model_fn._compute_sum_on_device(
-          [a, b], device='/device:GPU:0')
-
-      self.assertEqual('/device:GPU:0', total.device)
-      self.assertAllEqual([4.0, 6.0],
-                          session.run(ops_lib.convert_to_tensor(total)))
-
-  def test_indexedslices_higher_dimensions(self):
-    with self.test_session() as session:
-      a = ops_lib.IndexedSlices(
-          constant_op.constant([[1.0, 5.0], [2.0, 6.0]]), [0, 1],
-          dense_shape=constant_op.constant([2, 4]))
-      b = ops_lib.IndexedSlices(
-          constant_op.constant([[3.0, 7.0], [4.0, 8.0]]), [0, 1])
-
-      total = replicate_model_fn._compute_sum_on_device(
-          [a, b], device='/device:GPU:0')
-
-      self.assertEqual('/device:GPU:0', total.device)
-      self.assertAllEqual([[4.0, 12.0], [6.0, 14.0]],
-                          session.run(ops_lib.convert_to_tensor(total)))
-
-  def test_indexedslices_some_dont_overlap(self):
-    with self.test_session() as session:
-      a = ops_lib.IndexedSlices(
-          constant_op.constant([1.0, 2.0]), [0, 3],
-          dense_shape=constant_op.constant([4]))
-      b = ops_lib.IndexedSlices(constant_op.constant([3.0, 4.0]), [0, 1])
-
-      total = replicate_model_fn._compute_sum_on_device(
-          [a, b], device='/device:GPU:0')
-
-      self.assertEqual('/device:GPU:0', total.device)
-      self.assertAllEqual([4.0, 4.0, 0.0, 2.0],
-                          session.run(ops_lib.convert_to_tensor(total)))
-
-  def test_no_name_for_indexslices(self):
-    a = ops_lib.IndexedSlices(
-        constant_op.constant([1.0, 2.0]), [0, 1],
-        dense_shape=constant_op.constant([2]))
-    b = ops_lib.IndexedSlices(constant_op.constant([3.0, 4.0]), [0, 1])
-
-    with self.assertRaisesRegexp(ValueError, ''):
-      _ = replicate_model_fn._compute_sum_on_device(
-          [a, b], device='/device:GPU:0', name='cant_name_indexslices')
 
 
 class ConcatTensorDictsTest(test_util.TensorFlowTestCase):

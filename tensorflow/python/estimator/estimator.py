@@ -537,7 +537,7 @@ class Estimator(object):
       temp_export_dir = get_temp_export_dir(export_dir)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
-      with tf_session.Session(config=self._session_config) as session:
+      with tf_session.Session() as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
             sharded=True)

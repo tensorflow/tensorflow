@@ -98,8 +98,7 @@ do_pylint() {
 "^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden "\
 "^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
-"^tensorflow/python/keras/_impl/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition"
+"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
