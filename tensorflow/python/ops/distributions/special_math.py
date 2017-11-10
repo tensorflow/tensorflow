@@ -368,7 +368,7 @@ def erfinv(x, name="erfinv"):
     if x.dtype.as_numpy_dtype not in [np.float32, np.float64]:
       raise TypeError(
           "x.dtype=%s is not handled, see docstring for supported types."
-          % p.dtype)
+          % x.dtype)
     return ndtri((x + 1.0) / 2.0) / np.sqrt(2)
 
 

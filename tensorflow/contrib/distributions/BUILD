@@ -179,7 +179,7 @@ cuda_py_test(
 cuda_py_test(
     name = "half_normal_test",
     size = "medium",
-    srcs = ["half_normal_test.py"],
+    srcs = ["python/kernel_tests/half_normal_test.py"],
     additional_deps = [
         ":distributions_py",
         "//third_party/py/numpy",

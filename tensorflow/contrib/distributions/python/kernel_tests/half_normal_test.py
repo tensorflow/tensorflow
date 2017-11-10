@@ -128,7 +128,7 @@ class HalfNormalTest(test.TestCase):
     with self.test_session():
       batch_size = 50
       scale = self._rng.rand(batch_size) + 1.0
-      x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
+      x = np.linspace(0.0, 8.0, batch_size).astype(np.float64)
       halfnorm = hn_lib.HalfNormal(scale=scale)
 
       cdf = halfnorm.cdf(x)
@@ -147,7 +147,7 @@ class HalfNormalTest(test.TestCase):
     with self.test_session():
       batch_size = 50
       scale = self._rng.rand(batch_size) + 1.0
-      x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
+      x = np.linspace(-1.0, 8.0, batch_size).astype(np.float64)
       halfnorm = hn_lib.HalfNormal(scale=scale)
 
       sf = halfnorm.survival_function(x)
@@ -183,7 +183,7 @@ class HalfNormalTest(test.TestCase):
       with g.as_default():
         scale = variables.Variable(dtype(1.0))
         dist = hn_lib.HalfNormal(scale=scale)
-        x = np.array([-20., -5., -0.1, 0.1, 5., 20., 100.]).astype(dtype)
+        x = np.array([0.1, 1.0, 5., 20., 100.]).astype(dtype)
         for func in [
             dist.cdf, dist.log_cdf, dist.survival_function,
             dist.log_survival_function, dist.log_prob, dist.prob
@@ -198,7 +198,7 @@ class HalfNormalTest(test.TestCase):
   def testHalfNormalEntropy(self):
     with self.test_session():
       scale = np.array([[1.0, 2.0, 3.0]])
-      halfnorm = hn_lib.HalfNormal(scale=scale_v)
+      halfnorm = hn_lib.HalfNormal(scale=scale)
 
       # scipy.stats.norm cannot deal with these shapes.
       expected_entropy = 0.5 * np.log(np.pi * scale ** 2.0 / 2.0) + 0.5
@@ -209,29 +209,29 @@ class HalfNormalTest(test.TestCase):
 
   def testHalfNormalMeanAndMode(self):
     with self.test_session():
-      scale = [11., 12., 13.]
+      scale = constant_op.constant([11., 12., 13.])
 
       halfnorm = hn_lib.HalfNormal(scale=scale)
       expected_mean = scale * np.sqrt(2.0) / np.sqrt(np.pi)
 
-      self.assertAllEqual((3,), halfnorm.mean().shape)
+      self.assertAllEqual((3,), halfnorm.mean().eval().shape)
       self.assertAllEqual(expected_mean, halfnorm.mean().eval())
 
-      self.assertAllEqual((3,), halfnorm.mode().shape)
+      self.assertAllEqual((3,), halfnorm.mode().eval().shape)
       self.assertAllEqual([0., 0., 0.], halfnorm.mode().eval())
 
   def testHalfNormalVariance(self):
     with self.test_session():
-      scale = [7., 7., 7.]
+      scale = np.array([7., 7., 7.])
       halfnorm = hn_lib.HalfNormal(scale=scale)
       expected_variance = scale ** 2.0 * (1.0 - 2.0 / np.pi)
 
-      self.assertAllEqual((3,), halfnorm.variance().shape)
+      self.assertAllEqual((3,), halfnorm.variance().eval().shape)
       self.assertAllEqual(expected_variance, halfnorm.variance().eval())
 
   def testHalfNormalStandardDeviation(self):
     with self.test_session():
-      scale = [7., 7., 7.]
+      scale = np.array([7., 7., 7.])
       halfnorm = hn_lib.HalfNormal(scale=scale)
       expected_variance = scale ** 2.0 * (1.0 - 2.0 / np.pi)
 
@@ -240,14 +240,15 @@ class HalfNormalTest(test.TestCase):
 
   def testHalfNormalSample(self):
     with self.test_session():
-      scale = constant_op.constant(np.sqrt(3.0))
+      scale = constant_op.constant(3.0)
       n = constant_op.constant(100000)
       halfnorm = hn_lib.HalfNormal(scale=scale)
 
       sample = halfnorm.sample(n)
 
       self.assertEqual(sample.eval().shape, (100000,))
-      self.assertAllClose(sample.eval().std(), np.sqrt(3.0), atol=1e-1)
+      self.assertAllClose(sample.eval().mean(),
+                          3.0 * np.sqrt(2.0) / np.sqrt(np.pi), atol=1e-1)
 
       expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
           tensor_shape.TensorShape(halfnorm.batch_shape_tensor().eval()))
@@ -268,8 +269,10 @@ class HalfNormalTest(test.TestCase):
 
       sample = halfnorm.sample(n)
       self.assertEqual(sample.shape, (100000, batch_size, 2))
-      self.assertAllClose(sample.eval()[:, 0, 0].std(), 2.0, atol=1e-1)
-      self.assertAllClose(sample.eval()[:, 0, 1].std(), 3.0, atol=1e-1)
+      self.assertAllClose(sample.eval()[:, 0, 0].mean(),
+                          2.0 * np.sqrt(2.0) / np.sqrt(np.pi), atol=1e-1)
+      self.assertAllClose(sample.eval()[:, 0, 1].mean(),
+                          3.0 * np.sqrt(2.0) / np.sqrt(np.pi), atol=1e-1)
 
       expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
           tensor_shape.TensorShape(halfnorm.batch_shape_tensor().eval()))

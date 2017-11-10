@@ -147,7 +147,7 @@ class HalfNormal(distribution.Distribution):
 
   def _prob(self, x):
     coeff = np.sqrt(2) / self.scale / np.sqrt(np.pi)
-    pdf = coeff * tf.exp(- 0.5 * (x / self.scale) ** 2)
+    pdf = coeff * math_ops.exp(- 0.5 * (x / self.scale) ** 2)
     return pdf * math_ops.cast(x >= 0, self.dtype)
 
   def _cdf(self, x):

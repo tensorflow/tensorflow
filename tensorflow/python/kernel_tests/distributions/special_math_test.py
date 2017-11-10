@@ -332,11 +332,11 @@ class ErfInvTest(test.TestCase):
   def testErfInvIntegerInput(self):
     with self.test_session():
 
-      with self.raises(TypeError):
+      with self.assertRaises(TypeError):
         x = np.array([1, 2, 3]).astype(np.int32)
         special_math.erfinv(x)
 
-      with self.raises(TypeError):
+      with self.assertRaises(TypeError):
         x = np.array([1, 2, 3]).astype(np.int64)
         special_math.erfinv(x)
 
