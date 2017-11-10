@@ -849,9 +849,17 @@ TEST_F(ConstantFoldingTest, ConstantMaterialization) {
   Output c = ops::Mul(s.WithOpName("c"), a, b);
   Output d = ops::Shape(s.WithOpName("d"), a);
   Output e = ops::Shape(s.WithOpName("e"), b);
+
   auto f = ops::internal::BroadcastGradientArgs(s.WithOpName("f"), d, e);
   Output o1 = ops::Identity(s.WithOpName("o1"), f.r0);
   Output o2 = ops::Identity(s.WithOpName("o2"), f.r1);
+
+  Output g = ops::Placeholder(s.WithOpName("g"), DT_FLOAT,
+                              ops::Placeholder::Shape(PartialTensorShape({1})));
+  Output h = ops::Shape(s.WithOpName("h"), g);
+  auto i = ops::internal::BroadcastGradientArgs(s.WithOpName("i"), d, h);
+  Output p1 = ops::Identity(s.WithOpName("p1"), i.r0);
+  Output p2 = ops::Identity(s.WithOpName("p2"), i.r1);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -881,14 +889,33 @@ TEST_F(ConstantFoldingTest, ConstantMaterialization) {
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("^f", node.input(0));
+      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
     } else if (node.name() == "ConstantFolding/f-1") {
       ++found;
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("^f", node.input(0));
+      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
+    } else if (node.name() == "p1") {
+      ++found;
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ConstantFolding/i-0", node.input(0));
+    } else if (node.name() == "p2") {
+      ++found;
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("i:1", node.input(0));
+    } else if (node.name() == "ConstantFolding/i-0") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^i", node.input(0));
+      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
     }
   }
-  EXPECT_EQ(4, found);
+  EXPECT_EQ(7, found);
 }
 
 }  // namespace
