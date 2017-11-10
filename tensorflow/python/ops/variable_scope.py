@@ -1227,6 +1227,11 @@ class EagerVariableStore(object):
   def variables(self):
     return self._store._vars.values()  # pylint: disable=protected-access
 
+  def trainable_variables(self):
+    # pylint: disable=protected-access
+    return [x for x in self._store._vars.values() if x._trainable]
+    # pylint: enable=protected-access
+
 
 def get_variable(name,
                  shape=None,

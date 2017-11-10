@@ -20,8 +20,16 @@ namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Acosh", functor::acosh, float, double,
           complex64, complex128);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Acosh", functor::acosh, float, double);
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Acosh")                               \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("T"),                 \
+                          UnaryOp<SYCLDevice, functor::acosh<TYPE>>);
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+#undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA

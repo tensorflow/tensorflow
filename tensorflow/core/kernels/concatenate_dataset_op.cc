@@ -104,6 +104,10 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        if (!input_impl_) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
         while (i_ < 2) {
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -140,7 +144,9 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
         } else if (i_ == 2) {
           input_impl_.reset();
         }
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        if (input_impl_) {
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        }
         return Status::OK();
       }
 

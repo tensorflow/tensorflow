@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -295,10 +296,9 @@ TEST_F(GraphPropertiesTest, Queues) {
   ASSERT_EQ(1, props2.size());
   EXPECT_EQ("float: [3,7]", PropToString(props2[0]));
 
-  // The dequeue3 op shape is unknown.
   const auto props3 = properties.GetOutputProperties("Dequeue3");
   ASSERT_EQ(1, props3.size());
-  EXPECT_EQ("float: ?", PropToString(props3[0]));
+  EXPECT_EQ("float: [3,7]", PropToString(props3[0]));
 
   // The dequeue3 op shape is unknown. The square2 op shape is known. Verify
   // that we merge the 2 properly to determine the shape of the data coming out
@@ -677,8 +677,8 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
 
 TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output var =
-      ops::Variable(s.WithOpName("var"), TensorShape(), DataType::DT_FLOAT);
+  Output var = ops::Variable(s.WithOpName("var"), PartialTensorShape(),
+                             DataType::DT_FLOAT);
   Output var2 = ops::Variable(s.WithOpName("var2"), TensorShape({128, 256}),
                               DataType::DT_FLOAT);
   Output filename =
@@ -782,6 +782,30 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   EXPECT_EQ(2, shape_f.dim_size());
   EXPECT_EQ(shape_f.dim(0).size(), shape_a.dim(0).size());
   EXPECT_EQ(shape_f.dim(1).size(), shape_a.dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 1.0f, {1});
+  Output b = ops::Const(s.WithOpName("b"), 2.0f, {1});
+  Output c = ops::Const(s.WithOpName("c").ColocateWith(a), 3.0f, {1});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  // Create a graph with node a removed (say by some graph optimization
+  // pass), noting that node c is colocated with a. This is fine as it
+  // is in the late stage of graph execution, the colocation constraints have
+  // been validated previously and the device placement of nodes has completed.
+  GraphDef optimized_graph;
+  for (const auto& node : item.graph.node()) {
+    if (node.name() != "a") {
+      *optimized_graph.add_node() = node;
+    }
+  }
+  item.graph.Swap(&optimized_graph);
+  GraphProperties properties(item);
+  // This function should return OK, since it doesn't validate the colocation
+  // constraints internally.
+  TF_EXPECT_OK(properties.InferStatically());
 }
 
 }  // namespace

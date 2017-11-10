@@ -128,8 +128,16 @@ Status IrEmitter::HandleSend(HloInstruction*) {
   return Unimplemented("Send is not implemented on GPU");
 }
 
+Status IrEmitter::HandleSendDone(HloInstruction*) {
+  return Unimplemented("Send-Done is not implemented on GPU");
+}
+
 Status IrEmitter::HandleRecv(HloInstruction*) {
   return Unimplemented("Recv is not implemented on GPU");
+}
+
+Status IrEmitter::HandleRecvDone(HloInstruction*) {
+  return Unimplemented("Recv-done is not implemented on GPU");
 }
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {

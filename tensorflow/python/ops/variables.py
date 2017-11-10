@@ -1063,13 +1063,13 @@ class Variable(object):
 class PartitionedVariable(object):
   """A container for partitioned `Variable` objects.
 
-  @compatibility(eager) `tf.PartitionedVariable` is not compatible with
+  @compatiblity(eager) `tf.PartitionedVariable` is not compatible with
   eager execution.  Use `tfe.Variable` instead which is compatable
   with both eager execution and graph construction.  See [the
   TensorFlow Eager Execution
   guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
   for details on how variables work in eager execution.
-  @end_compatibility
+  @end_compatiblity
   """
 
   class PartitionedVariableIterator(object):
