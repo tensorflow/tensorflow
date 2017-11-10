@@ -142,18 +142,22 @@ class HloSharding {
   bool HasUniqueDevice() const;
 
   // Returns the ShapeTree containing the shardings for each element of this
-  // tuple. Only the leaf elements are populated. This creates a new ShapeTree
-  // object so is not cheap. REQUIRES: IsTuple()
-  ShapeTree<HloSharding> GetTupleShardingsAsShapeTree(
-      const Shape& tuple_shape) const {
-    ShapeTree<HloSharding> result(tuple_shape, HloSharding::Replicate());
-    CHECK_EQ(std::distance(result.leaf_begin(), result.leaf_end()),
-             tuple_elements_.size());
-    auto it = tuple_elements_.begin();
-    for (auto& index_to_sharding : result.leaves()) {
-      index_to_sharding.second = *it++;
+  // tuple, if IsTuple, or a ShapeTree with a single element containing this
+  // sharding. Only the leaf elements are populated. This creates a new
+  // ShapeTree object so is not cheap.
+  ShapeTree<HloSharding> GetAsShapeTree(const Shape& shape) const {
+    if (IsTuple()) {
+      ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
+      CHECK_EQ(std::distance(result.leaf_begin(), result.leaf_end()),
+               tuple_elements_.size());
+      auto it = tuple_elements_.begin();
+      for (auto& index_to_sharding : result.leaves()) {
+        index_to_sharding.second = *it++;
+      }
+      return result;
+    } else {
+      return ShapeTree<HloSharding>(shape, *this);
     }
-    return result;
   }
 
   bool operator==(const HloSharding& other) const {

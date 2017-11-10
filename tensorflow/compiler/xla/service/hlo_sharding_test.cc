@@ -70,6 +70,11 @@ TEST_F(HloShardingTest, DevicePlacement) {
                                  /*num_devices=*/6));
   EXPECT_IS_NOT_OK(
       sharding.Validate(ShapeUtil::MakeShape(U32, {4}), /*num_devices=*/5));
+
+  ShapeTree<HloSharding> shape_tree =
+      sharding.GetAsShapeTree(ShapeUtil::MakeShape(U32, {4}));
+  EXPECT_EQ(shape_tree.element({}), sharding);
+  EXPECT_TRUE(shape_tree.IsLeaf({}));
 }
 
 TEST_F(HloShardingTest, Tile) {
@@ -149,7 +154,7 @@ TEST_F(HloShardingTest, NestedTuple) {
       HloSharding::FromProto(proto).ConsumeValueOrDie();
 
   ShapeTree<HloSharding> shape_tree =
-      tuple_sharding.GetTupleShardingsAsShapeTree(nested_tuple_shape);
+      tuple_sharding.GetAsShapeTree(nested_tuple_shape);
   EXPECT_EQ(shape_tree.element({0}), HloSharding::Replicate());
   EXPECT_EQ(shape_tree.element({1, 0}), HloSharding::AssignDevice(0));
   EXPECT_EQ(shape_tree.element({2}), HloSharding::AssignDevice(1));
