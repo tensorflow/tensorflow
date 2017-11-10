@@ -498,11 +498,12 @@ class KerasCallbacksTest(test.TestCase):
       assert loss[-1] == np.inf or np.isnan(loss[-1])
 
       values = []
-      # In windows, due to \r\n line ends we may end up reading empty lines
-      # after each line. Open the file with 'rU' to read them correctly.
-      with open(fp, 'rU') as f:
+      with open(fp) as f:
         for x in csv.reader(f):
-          values.append(x)
+          # In windows, due to \r\n line ends we may end up reading empty lines
+          # after each line. Skip empty lines.
+          if x:
+            values.append(x)
       assert 'nan' in values[-1], 'The last epoch was not logged.'
 
   def test_TerminateOnNaN(self):
