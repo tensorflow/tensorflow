@@ -357,25 +357,17 @@ def _eval_spec(tower_specs, aggregation_device, aggregated_loss_name='loss'):
       [spec.loss for spec in tower_specs], aggregation_device,
       aggregated_loss_name)
 
-  eval_metric_ops_lists = {}
+  update_ops = []
   for tower_spec in tower_specs:
-    metrics = tower_spec.eval_metric_ops or {}
-    for name, (_, update_op) in six.iteritems(metrics):
-      update_ops = eval_metric_ops_lists.setdefault(name, ([]))
+    for name, (_, update_op) in six.iteritems(tower_spec.eval_metric_ops):
       update_ops.append(update_op)
+
+  with ops_lib.control_dependencies(update_ops):
+    reduced_update_op = _reduce_metric_variables(len(tower_specs))
 
   eval_metric_ops = {}
   for name, (metric_tensor, _) in six.iteritems(tower_specs[0].eval_metric_ops):
-    with ops_lib.control_dependencies(eval_metric_ops_lists[name]):
-      # This operation reduces local variables across all metrics, yet is
-      # called for every metric.  This is redundant and it's done because
-      # it is hard to know what local variables correspond to what metric.
-      # Estimator is going to execute all `reduced_update_op`s as part of
-      # a group inside a single `Session.run()` call, which will avoid duplicate
-      # computation.
-      reduced_update_op = _reduce_metric_variables(len(tower_specs))
     eval_metric_ops[name] = (metric_tensor, reduced_update_op)
-
   estimator_spec['eval_metric_ops'] = eval_metric_ops
   return model_fn_lib.EstimatorSpec(**estimator_spec)
 
