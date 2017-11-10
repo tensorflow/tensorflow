@@ -72,8 +72,8 @@ class _MaskedConv(base.Layer):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used.
+    bias_initializer: An initializer for the bias vector. If None, no bias will
+      be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -279,8 +279,8 @@ class MaskedConv2D(_MaskedConv):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used.
+    bias_initializer: An initializer for the bias vector. If None, no bias will
+      be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
