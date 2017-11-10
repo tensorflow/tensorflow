@@ -27,7 +27,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import device_setter
 
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import \
-  ElasticAverageOptimizer, ElasticAverageCustomGetter
+  ElasticAverageOptimizer, ElasticAverageCustomGetter, GLOBAL_VARIABLE_NAME, \
+  GLOBAL_CENTER_VARIABLE
 
 
 def create_local_cluster(num_workers, num_ps, protocol="grpc"):
@@ -123,8 +124,8 @@ class ElasticAverageOptimizerTest(test.TestCase):
     var_0 = graphs[0].get_tensor_by_name('v0:0')
     var_1 = graphs[0].get_tensor_by_name('v1:0')
     global_step = training_util.get_global_step(graphs[0])
-    var_0_g = graphs[0].get_tensor_by_name("global_center_variable/v0:0")
-    var_1_g = graphs[0].get_tensor_by_name("global_center_variable/v1:0")
+    var_0_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v0:0")
+    var_1_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v1:0")
     # Verify the initialized value.
     self.assertAllEqual(0.0, sessions[0].run(var_0))
     self.assertAllEqual(1.0, sessions[0].run(var_1))
@@ -175,8 +176,8 @@ class ElasticAverageOptimizerTest(test.TestCase):
     var_0_1 = graphs[1].get_tensor_by_name('v0:0')
     var_1_1 = graphs[1].get_tensor_by_name('v1:0')
 
-    var_0_g = graphs[0].get_tensor_by_name("global_center_variable/v0:0")
-    var_1_g = graphs[0].get_tensor_by_name("global_center_variable/v1:0")
+    var_0_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v0:0")
+    var_1_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v1:0")
     # Verify the initialized value.
     self.assertAllEqual(0.0, sessions[0].run(var_0))
     self.assertAllEqual(1.0, sessions[0].run(var_1))
@@ -210,7 +211,7 @@ class ElasticAverageOptimizerTest(test.TestCase):
          variable_scope.variable_scope('', custom_getter=ea_coustom):
       v = variable_scope.get_variable(initializer=[1, 2], name="v")
       w = variable_scope.get_variable(initializer=[2, 1], name='w')
-      v_g, w_g = ops.get_collection_ref('global_center_variable')
+      v_g, w_g = ops.get_collection_ref(GLOBAL_CENTER_VARIABLE)
       self.assertDeviceEqual("/job:worker/task:0", v.device)
       self.assertDeviceEqual("job:ps/task:0", v_g.device)
       self.assertDeviceEqual("/job:worker/task:0", w.device)
