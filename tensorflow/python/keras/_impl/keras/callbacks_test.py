@@ -680,23 +680,35 @@ class KerasCallbacksTest(test.TestCase):
             batch_size=5)]
 
       # fit w/o validation data should raise ValueError if histogram_freq > 0
+      cbs = callbacks_factory(histogram_freq=1)
       with self.assertRaises(ValueError):
         model.fit(x_train, y_train, batch_size=BATCH_SIZE,
-                  callbacks=callbacks_factory(histogram_freq=1), epochs=3)
+                  callbacks=cbs, epochs=3)
+
+      for cb in cbs:
+        cb.on_train_end()
 
       # fit generator without validation data should raise ValueError if
       # histogram_freq > 0
+      cbs = callbacks_factory(histogram_freq=1)
       with self.assertRaises(ValueError):
         model.fit_generator(data_generator(True), len(x_train), epochs=2,
-                            callbacks=callbacks_factory(histogram_freq=1))
+                            callbacks=cbs)
+
+      for cb in cbs:
+        cb.on_train_end()
 
       # fit generator with validation data generator should raise ValueError if
       # histogram_freq > 0
+      cbs = callbacks_factory(histogram_freq=1)
       with self.assertRaises(ValueError):
         model.fit_generator(data_generator(True), len(x_train), epochs=2,
                             validation_data=data_generator(False),
                             validation_steps=1,
-                            callbacks=callbacks_factory(histogram_freq=1))
+                            callbacks=cbs)
+
+      for cb in cbs:
+        cb.on_train_end()
 
       # Make sure file writer cache is clear to avoid failures during cleanup.
       writer_cache.FileWriterCache.clear()
