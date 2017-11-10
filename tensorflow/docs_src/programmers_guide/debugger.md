@@ -9,11 +9,19 @@ lets you view the internal structure and states of running TensorFlow graphs
 during training and inference, which is difficult to debug with general-purpose
 debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
 
-> NOTE: The system requirements of tfdbg on supported external platforms include
-> the following. On Mac OS X, the `ncurses` library is required. It can be
-> installed with `brew install homebrew/dupes/ncurses`. On Windows, `pyreadline`
-> is required. If you use Anaconda3, you can install it with a command
+> NOTE: TensorFlow debugger uses a
+> [curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based
+> text user interface. On Mac OS X, the `ncurses` library is required and can
+> be installed with `brew install homebrew/dupes/ncurses`. On Windows, curses
+> isn't as well supported, so a
+> [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based interface can
+> be used with tfdbg by installing `pyreadline` with pip.
+> If you use Anaconda3, you can install it with a command
 > such as `"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`.
+> Unofficial Windows curses packages can be downloaded
+> [here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
+> installed using `pip install <your_version>.whl`, however curses on Windows
+> may not work as reliably as curses on Linux or Mac.
 
 This tutorial demonstrates how to use the **tfdbg** command-line interface
 (CLI) to debug the appearance of [`nan`s](https://en.wikipedia.org/wiki/NaN)
