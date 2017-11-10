@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import csv
 import os
+import platform
 import re
 import shutil
 import threading
+import unittest
 
 import numpy as np
 
@@ -787,6 +789,9 @@ class KerasCallbacksTest(test.TestCase):
                           callbacks=callbacks_factory(histogram_freq=1))
       assert os.path.isdir(filepath)
 
+  @unittest.skipIf(
+      platform.system() == 'Windows',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_LambdaCallback(self):
     with self.test_session():
       np.random.seed(1337)
