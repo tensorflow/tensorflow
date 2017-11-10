@@ -428,6 +428,22 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   VLOG(2) << "PTX:";
   XLA_VLOG_LINES(2, ptx);
 
+  // Write PTX to IR dump directory, if IR dumping was requested.
+  if (!ir_dump_directory.empty()) {
+    const string ptx_outfile = tensorflow::io::JoinPath(
+        ir_dump_directory, StrCat(module->name(), ".ptx"));
+    auto status = [&] {
+      auto* env = tensorflow::Env::Default();
+      TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(ir_dump_directory));
+      TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(env, ptx_outfile, ptx));
+      return Status::OK();
+    }();
+    if (!status.ok()) {
+      LOG(WARNING) << "Couldn't dump PTX for module " << module->name()
+                   << " to " << ptx_outfile << ": " << status;
+    }
+  }
+
   const std::vector<uint8> cubin =
       CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor);
 
