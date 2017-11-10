@@ -340,6 +340,7 @@ cc_library(
     name = "array",
     hdrs = ["array.h"],
     deps = [
+        ":status",
         ":types",
         "//tensorflow/core:lib",
     ],
