@@ -110,6 +110,18 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
 
   auto c64_lit = Literal::CreateR0<complex64>({3.14f, 2.78f});
   ASSERT_EQ("(3.14, 2.78)", c64_lit->ToString());
+
+  auto bf16_lit = Literal::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
+  ASSERT_EQ("0.5", bf16_lit->ToString());
+
+  // 3.14 will be rounded to 3.125 in bfloat16 format (Round to nearest even).
+  auto bf16_lit_truncated =
+      Literal::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
+  ASSERT_EQ("3.140625", bf16_lit_truncated->ToString());
+
+  auto bf16_lit_truncated2 =
+      Literal::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
+  ASSERT_EQ("9", bf16_lit_truncated2->ToString());
 }
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
@@ -396,6 +408,18 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_TRUE(Literal::CreateR2<half>({{h8}, {h8}})->IsAll(8));
   EXPECT_FALSE(Literal::CreateR2<half>({{h8}, {h9}})->IsAll(8));
   EXPECT_FALSE(Literal::CreateR2<half>({{h9}, {h8}})->IsAll(8));
+
+  bfloat16 b8(8.0f);
+  bfloat16 b9(9.0f);
+
+  EXPECT_TRUE(Literal::CreateR2<bfloat16>({{b8}, {b8}})->IsAll(8));
+  EXPECT_FALSE(Literal::CreateR2<bfloat16>({{b8}, {b9}})->IsAll(8));
+  EXPECT_FALSE(Literal::CreateR2<bfloat16>({{b9}, {b8}})->IsAll(8));
+
+  // 9.001 will be truncated to 9.0
+  bfloat16 b91(9.001f);
+  bfloat16 b90(9.00f);
+  EXPECT_TRUE(Literal::CreateR2<bfloat16>({{b91}, {b90}})->IsAll(9.0));
 
   complex64 c8_9 = {8, 9};
   EXPECT_FALSE(Literal::CreateR2<complex64>({{c8_9}, {c8_9}})->IsAll(8));
@@ -691,6 +715,30 @@ TEST_F(LiteralUtilTest, PopulateR2C64) {
   EXPECT_EQ(output, *expected);
 }
 
+TEST_F(LiteralUtilTest, PopulateWithValueR0BF16) {
+  Literal output;
+  bfloat16 h(0.25f);
+  output.PopulateWithValue<bfloat16>(h, {});
+  auto expected = Literal::CreateR0<bfloat16>(h);
+  EXPECT_EQ(output, *expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateWithValueR1BF16) {
+  Literal output;
+  bfloat16 h(0.5f);
+  output.PopulateWithValue<bfloat16>(h, {3});
+  auto expected = Literal::CreateR1<bfloat16>({h, h, h});
+  EXPECT_EQ(output, *expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateWithValueR2BF16) {
+  Literal output;
+  bfloat16 h(2.0f);
+  output.PopulateWithValue<bfloat16>(h, {2, 2});
+  auto expected = Literal::CreateR2<bfloat16>({{h, h}, {h, h}});
+  EXPECT_EQ(output, *expected);
+}
+
 TEST_F(LiteralUtilTest, PopulateWithValueR0F32) {
   Literal output;
   output.PopulateWithValue<float>(2.5f, {});
@@ -975,6 +1023,14 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{half(26.0), half(0.0), half(28.0), half(0.0)},
      {half(0.0), half(31.0), half(0.0), half(33.0)}},
   }}, layout_r4_dim0major_);
+  auto bf16 = Literal::CreateR4WithLayout<bfloat16>({{
+    {{bfloat16(10.0), bfloat16(0.0), bfloat16(12.0), bfloat16(0.0)},
+     {bfloat16(0.0), bfloat16(15.0), bfloat16(0.0), bfloat16(17.0)}},
+    {{bfloat16(0.0), bfloat16(19.0), bfloat16(0.0), bfloat16(21.0)},
+     {bfloat16(22.0), bfloat16(0.0), bfloat16(24.0), bfloat16(0.0)}},
+    {{bfloat16(26.0), bfloat16(0.0), bfloat16(28.0), bfloat16(0.0)},
+     {bfloat16(0.0), bfloat16(31.0), bfloat16(0.0), bfloat16(33.0)}},
+  }}, layout_r4_dim0major_);
   auto f32 = Literal::CreateR4WithLayout<float>({{
     {{10.0f, 0.0f, 12.0f, 0.0f}, {0.0f, 15.0f, 0.0f, 17.0f}},
     {{0.0f, 19.0f, 0.0f, 21.0f}, {22.0f, 0.0f, 24.0f, 0.0f}},
@@ -1007,6 +1063,12 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
 
   conv = s8->Convert(PRED).ConsumeValueOrDie();
   EXPECT_EQ(*conv, *pred);
+
+  conv = bf16->Convert(S32).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *s32);
+
+  conv = bf16->Convert(F32).ConsumeValueOrDie();
+  EXPECT_EQ(*conv, *f32);
 
   conv = pred->Convert(S32).ConsumeValueOrDie();
   EXPECT_EQ(*conv, *int32_pred);

@@ -661,10 +661,6 @@ class PoolingDescriptor {
     SetDim(&strides_, dim, value);
     return *this;
   }
-  PoolingDescriptor& set_propagate_nans(bool value) {
-    propagate_nans_ = value;
-    return *this;
-  }
 
   int ndims() const { return ndims_; }
   void CloneFrom(const PoolingDescriptor& other);
@@ -685,12 +681,10 @@ class PoolingDescriptor {
   std::vector<int64> window() const { return window_; }
   std::vector<int64> padding() const { return padding_; }
   std::vector<int64> strides() const { return strides_; }
-  bool propagate_nans() const { return propagate_nans_; }
 
  private:
   PoolingMode mode_;
   int ndims_;
-  bool propagate_nans_;
 
   // Stored as: ..., y, x.
   std::vector<int64> window_;

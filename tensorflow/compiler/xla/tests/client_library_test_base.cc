@@ -346,6 +346,60 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
   LiteralTestUtil::ExpectNearTuple(expected, *actual, error);
 }
 
+void ClientLibraryTestBase::ComputeAndCompare(
+    ComputationBuilder* builder, const ComputationDataHandle& operand,
+    tensorflow::gtl::ArraySlice<Literal> arguments) {
+  auto status_or_data = ComputeValueAndReference(builder, operand, arguments);
+  EXPECT_IS_OK(status_or_data);
+  if (!status_or_data.ok()) {
+    return;
+  }
+  std::unique_ptr<Literal> reference, result;
+  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
+  LiteralTestUtil::ExpectEqual(*reference, *result);
+}
+
+void ClientLibraryTestBase::ComputeAndCompare(
+    ComputationBuilder* builder, const ComputationDataHandle& operand,
+    tensorflow::gtl::ArraySlice<Literal> arguments, ErrorSpec error) {
+  auto status_or_data = ComputeValueAndReference(builder, operand, arguments);
+  EXPECT_IS_OK(status_or_data);
+  if (!status_or_data.ok()) {
+    return;
+  }
+  std::unique_ptr<Literal> reference, result;
+  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
+  LiteralTestUtil::ExpectNear(*reference, *result, error);
+}
+
+StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
+ClientLibraryTestBase::ComputeValueAndReference(
+    ComputationBuilder* builder, const ComputationDataHandle& operand,
+    tensorflow::gtl::ArraySlice<Literal> arguments) {
+  // Transfer the arguments to the executor service. We put the unique_ptr's
+  // into a vector to keep the data alive on the service until the end of this
+  // function.
+  std::vector<std::unique_ptr<GlobalData>> argument_data;
+  for (const auto& arg : arguments) {
+    TF_ASSIGN_OR_RETURN(auto data, client_->TransferToServer(arg));
+    argument_data.push_back(std::move(data));
+  }
+
+  // Create raw pointers to the GlobalData for the rest of the call stack.
+  std::vector<GlobalData*> argument_data_ptr;
+  std::transform(
+      argument_data.begin(), argument_data.end(),
+      std::back_inserter(argument_data_ptr),
+      [](const std::unique_ptr<GlobalData>& data) { return data.get(); });
+
+  TF_ASSIGN_OR_RETURN(
+      auto reference,
+      builder->ComputeConstant(operand, /*output_layout=*/nullptr, arguments));
+  TF_ASSIGN_OR_RETURN(auto result,
+                      ExecuteAndTransfer(builder, argument_data_ptr));
+  return std::make_pair(std::move(reference), std::move(result));
+}
+
 Computation ClientLibraryTestBase::CreateScalarRelu() {
   ComputationBuilder builder(client_, "relu");
   auto z_value = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "z_value");

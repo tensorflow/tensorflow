@@ -264,8 +264,8 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
       ASSERT_TRUE(computed.ok()) << computed.status();
 
       std::unique_ptr<Literal> expected_literal =
-          test_utils::CreateR2LiteralWithLayout<int32>({{11, 22}, {33, 44}},
-                                                       layout);
+          Literal::CreateR2WithLayout<int32>({{11, 22}, {33, 44}},
+                                             LayoutUtil::MakeLayout(layout));
       LiteralTestUtil::AssertEqualShapesAndLayouts(
           expected_literal->shape(), computed.ValueOrDie()->shape());
       LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());

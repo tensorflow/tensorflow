@@ -34,8 +34,3 @@ target_link_libraries(tf_tutorials_example_trainer PUBLIC
     ${tf_core_gpu_kernels_lib}
     ${tensorflow_EXTERNAL_LIBRARIES}
 )
-
-install(TARGETS tf_tutorials_example_trainer
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib)

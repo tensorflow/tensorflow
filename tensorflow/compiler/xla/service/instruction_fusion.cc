@@ -113,7 +113,9 @@ namespace xla {
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
     case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
       return true;
   }
 

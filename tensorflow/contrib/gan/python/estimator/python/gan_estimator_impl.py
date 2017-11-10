@@ -76,7 +76,7 @@ class GANEstimator(estimator.Estimator):
         return logits
 
       # Create GAN estimator.
-      gan_estimator = estimator.GANEstimator(
+      gan_estimator = tfgan.estimator.GANEstimator(
           model_dir,
           generator_fn=generator_fn,
           discriminator_fn=discriminator_fn,

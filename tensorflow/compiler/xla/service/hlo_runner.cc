@@ -12,14 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#define EIGEN_USE_THREADS
 
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 
 #include <set>
 #include <string>
 #include <utility>
-
-#define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
