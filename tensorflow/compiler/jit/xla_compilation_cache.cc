@@ -227,10 +227,7 @@ Status XlaCompilationCache::BuildExecutable(
   }
   xla::ExecutableBuildOptions build_options;
   build_options.set_device_ordinal(client_->default_device_ordinal());
-  build_options.set_platform(client_->platform());
   build_options.set_result_layout(result.xla_output_shape);
-  build_options.set_has_hybrid_result(
-      options.local_executable_has_hybrid_result);
 
   auto compile_result =
       client_->Compile(*result.computation, argument_layouts, build_options);

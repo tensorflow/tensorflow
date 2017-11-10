@@ -153,8 +153,7 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
     if (data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(
           context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
-          stride_, padding_, data_format_, tensor_in, output_shape,
-          /*propagate_nans=*/false);
+          stride_, padding_, data_format_, tensor_in, output_shape);
     } else {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
@@ -409,7 +408,7 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
     DnnPoolingGradOp<T>::Compute(
         context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
         stride_, padding_, data_format_, nullptr, nullptr, out_backprop,
-        output_shape, /*propagate_nans=*/false);
+        output_shape);
   }
 
  private:
@@ -533,7 +532,7 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
       DnnPoolingGradOp<T>::Compute(
           context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
           stride_, padding_, data_format_, nullptr, nullptr, out_backprop,
-          output_shape, /*propagate_nans=*/false);
+          output_shape);
     }
   }
 

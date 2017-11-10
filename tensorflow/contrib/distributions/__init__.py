@@ -24,7 +24,6 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops.binomial import *
-from tensorflow.contrib.distributions.python.ops.cauchy import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
@@ -84,7 +83,6 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'bijectors',
-    'Cauchy',
     'ConditionalDistribution',
     'ConditionalTransformedDistribution',
     'FULLY_REPARAMETERIZED',

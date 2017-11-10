@@ -119,6 +119,9 @@ struct ImportGraphDefOptions {
   // TODO(skyewm): make this work with `skip_mapped_nodes` if there's a need.
   std::vector<string> return_nodes;
 
+  // If true, checks that all colocation constraints are nodes in the GraphDef.
+  bool validate_colocation_constraints = true;
+
   // TODO(ashankar): Enable handling of GraphDefs produced by newer binaries
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the

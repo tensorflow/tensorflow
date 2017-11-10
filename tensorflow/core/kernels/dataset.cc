@@ -126,7 +126,6 @@ void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
   MakeDataset(ctx, input, another_input, output);
 }
 
-const char IteratorBase::kIteratorExhausted[] = "ITERATOR_EXHAUSTED";
 const char GraphDatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
 const char GraphDatasetBase::kDatasetGraphOutputNodeKey[] =
     "_DATASET_GRAPH_OUTPUT_NODE";

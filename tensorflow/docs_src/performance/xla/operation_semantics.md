@@ -901,6 +901,95 @@ are all 0. Figure below shows examples of different `edge_padding` and
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">
 </div>
 
+## Recv
+
+See also
+[`ComputationBuilder::Recv`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Recv(shape, channel_handle)` </b>
+
+| Arguments        | Type            | Semantics                            |
+| ---------------- | --------------- | ------------------------------------ |
+| `shape`          | `Shape`         | shape of the data to receive         |
+| `channel_handle` | `ChannelHandle` | unique identifier for each send/recv pair |
+
+Receives data of the given shape from a `Send` instruction in another
+computation that shares the same channel handle. Returns a
+ComputationDataHandle for the received data.
+
+The client API of `Recv` operation represents synchronous communication.
+However, the instruction is internally decomposed into 2 HLO instructions
+(`Recv` and `RecvDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+
+<b>`Recv(const Shape& shape, int64 channel_id)`</b>
+
+Allocates resources required to receive data from a `Send` instruction with the
+same channel_id. Returns a context for the allocated resources, which is used
+by a following `RecvDone` instruction to wait for the completion of the data
+transfer. The context is a tuple of {receive buffer (shape), request identifier
+(U32)} and it can only be used by a `RecvDone` instruction.
+
+<b> `RecvDone(HloInstruction context)` </b>
+
+Given a context created by a `Recv` instruction, waits for the data transfer to
+complete and returns the received data.
+
+## Send
+
+See also
+[`ComputationBuilder::Send`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Send(operand, channel_handle)` </b>
+
+| Arguments        | Type                    | Semantics                        |
+| ---------------- | ----------------------- | -------------------------------- |
+| `operand`        | `ComputationDataHandle` | data to send (array of type T)   |
+| `channel_handle` | `ChannelHandle`         | unique identifier for each send/recv pair |
+
+Sends the given operand data to a `Recv` instruction in another computation
+that shares the same channel handle. Does not return any data.
+
+Similar to the `Recv` operation, the client API of `Send` operation represents
+synchronous communication, and is internally decomposed into 2 HLO instructions
+(`Send` and `SendDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+
+<b>`Send(HloInstruction operand, int64 channel_id)`</b>
+
+Initiates an asynchronous transfer of the operand to the resources allocated by
+the `Recv` instruction with the same channel id. Returns a context, which is
+used by a following `SendDone` instruction to wait for the completion of the
+data transfer. The context is a tuple of {operand (shape), request identifier
+(U32)} and it can only be used by a `SendDone` instruction.
+
+<b> `SendDone(HloInstruction context)` </b>
+
+Given a context created by a `Send` instruction, waits for the data transfer to
+complete.  The instruction does not return any data.
+
+<b> Scheduling of channel instructions </b>
+
+The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
+`Send`, `SendDone`) is as below.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:70%" src="../../images/send_recv_order.png">
+</div>
+
+* `Recv` happens before `Send`
+* `Send` happens before `RecvDone`
+* `Recv` happens before `RecvDone`
+* `Send` happens before `SendDone`
+
+When the backend compilers generate a linear schedule for each computation that
+communicates via channel instructions, there must not be cycles across the
+computations. For example, below schedules lead to deadlocks.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/send_recv_schedule.png">
+</div>
+
 ## Reduce
 
 See also

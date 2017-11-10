@@ -49,7 +49,7 @@ cc_library(
         ":windows_msvc": [],
         "//conditions:default": [
             "-Wno-shift-negative-value",
-            "-DZ_HAVE_UNISTD_H",
+            "-Wno-implicit-function-declaration",
         ],
     }),
     includes = ["."],

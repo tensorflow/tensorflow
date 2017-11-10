@@ -25,6 +25,7 @@ py_library(
     srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":baseline",
         ":dnn",
         ":dnn_linear_combined",
         ":estimator",
@@ -183,6 +184,68 @@ py_test(
         ":run_config",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "baseline",
+    srcs = ["canned/baseline.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":head",
+        ":model_fn",
+        ":optimizers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/feature_column",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "baseline_test",
+    size = "medium",
+    srcs = ["canned/baseline_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
+    deps = [
+        ":baseline",
+        ":estimator",
+        ":export_export",
+        ":metric_keys",
+        ":numpy_io",
+        ":pandas_io",
+        ":run_config",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+        "@six_archive//:six",
     ],
 )
 

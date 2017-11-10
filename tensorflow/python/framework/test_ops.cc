@@ -341,4 +341,27 @@ REGISTER_OP("StringListAttr")
     .Attr("b: string")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("DefaultAttrs")
+    .Attr("string_val: string = 'abc'")
+    .Attr("string_list_val: list(string) = ['abc', '']")
+    .Attr("int_val: int = 123")
+    .Attr("int_list_val: list(int) = [1, 2, 3]")
+    .Attr("float_val: float = 10.0")
+    .Attr("float_list_val: list(float) = [10.0]")
+    .Attr("bool_val: bool = true")
+    .Attr("bool_list_val: list(bool) = [true, false]")
+    .Attr("type_val: type = DT_INT32")
+    .Attr("type_list_val: list(type) = [DT_INT32, DT_FLOAT]")
+    .Attr("shape_val: shape = { dim { size: 2 } dim { size: 1 } }")
+    .Attr("shape_list_val: list(shape) = [{}, { dim { size: 1} }]")
+    .Attr("tensor_val: tensor = { dtype: DT_INT32 tensor_shape: {} int_val: 1}")
+    .Attr(
+        "tensor_list_val: list(tensor) = "
+        "[{ dtype: DT_INT32 tensor_shape: {} int_val: 1}]")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("FuncAttr")
+    .Attr("f: func")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // end namespace tensorflow

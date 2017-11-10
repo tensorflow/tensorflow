@@ -32,8 +32,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.util.deprecation import deprecated_args
-from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
 
 def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
@@ -277,9 +275,6 @@ def _swish_shape(op):
   return [op.inputs[0].shape]
 
 
-# Set noinline=True so that sigmoid(features) is re-computed during
-# backprop, and we can free the sigmoid(features) expression immediately
-# after use during the forward pass.
 @function.Defun(shape_func=_swish_shape, func_name="swish_grad", noinline=True)
 def _swish_grad(features, grad):
   """Gradient of Swish function defined below."""
@@ -289,6 +284,11 @@ def _swish_grad(features, grad):
   return grad * activation_grad
 
 
+# Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x) around
+# for backprop, effectively doubling the tensor's memory consumption. We use a
+# @Defun decorator with noinline=True so that sigmoid(features) is re-computed
+# during backprop, and we can free the sigmoid(features) expression immediately
+# after use during the forward pass.
 @function.Defun(
     grad_func=_swish_grad,
     shape_func=_swish_shape,
@@ -298,7 +298,7 @@ def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
 
-  Source: "Swish: a Self-Gated Activation Function" (Ramachandran et al. 2017)
+  Source: "Searching for Activation Functions" (Ramachandran et al. 2017)
   https://arxiv.org/abs/1710.05941
 
   Args:
@@ -313,20 +313,19 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
-@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
-def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
-  """Normalizes along dimension `axis` using an L2 norm.
+def l2_normalize(x, dim, epsilon=1e-12, name=None):
+  """Normalizes along dimension `dim` using an L2 norm.
 
-  For a 1-D tensor with `axis = 0`, computes
+  For a 1-D tensor with `dim = 0`, computes
 
       output = x / sqrt(max(sum(x**2), epsilon))
 
   For `x` with more dimensions, independently normalizes each 1-D slice along
-  dimension `axis`.
+  dimension `dim`.
 
   Args:
     x: A `Tensor`.
-    axis: Dimension along which to normalize.  A scalar or a vector of
+    dim: Dimension along which to normalize.  A scalar or a vector of
       integers.
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
@@ -336,9 +335,8 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     A `Tensor` with the same shape as `x`.
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
-    axis = deprecated_argument_lookup("axis", axis, "dim", dim)
     x = ops.convert_to_tensor(x, name="x")
-    square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keep_dims=True)
+    square_sum = math_ops.reduce_sum(math_ops.square(x), dim, keep_dims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)
 

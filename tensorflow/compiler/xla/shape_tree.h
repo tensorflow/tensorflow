@@ -116,6 +116,7 @@ class ShapeTree {
   ShapeTree(const Shape* shape, const T& init_value);
 
   ShapeTree(const ShapeTree& other) { *this = other; }
+  ShapeTree(ShapeTree&&) = default;
 
   ShapeTree& operator=(const ShapeTree& other) {
     root_ = other.root_;
@@ -131,6 +132,8 @@ class ShapeTree {
 
     return *this;
   }
+
+  ShapeTree& operator=(ShapeTree&& other) = default;
 
   // Returns the data element associated with the array in the shape at the
   // given index (see ShapeUtil::GetSubshape for how indexes are defined).

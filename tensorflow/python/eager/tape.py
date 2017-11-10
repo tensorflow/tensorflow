@@ -72,7 +72,7 @@ class Tape(object):
       True if any of the tensors is in the tape.
     """
     return pywrap_tensorflow.TFE_Py_TapeShouldRecord(
-        self._tape, [x._id  for x in tensors])  # pylint: disable=protected-access
+        self._tape, tensors)
 
   def watch(self, tensor):
     """Adds a tensor to the tape."""
@@ -98,16 +98,6 @@ class Tape(object):
   def delete_trace(self, tensor_id):
     """Deletes any trace we have for this tensor."""
     self._delete_tensor_id(tensor_id)
-
-  def export(self):
-    """Exports the internal state of this tape.
-
-    Returns:
-      tensor_tape: a map from tensor_id(tensor) to <identifier for op>
-       responsible for generating that tensor.
-      op_tape: a map from <identifier for op> to TapeEntry for that op.
-    """
-    return pywrap_tensorflow.TFE_Py_TapeExport(self._tape)
 
 
 class _TapeStack(threading.local):
