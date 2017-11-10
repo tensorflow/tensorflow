@@ -8,7 +8,6 @@ tensorflow/core/kernels/xent_op.cc
 tensorflow/core/kernels/where_op.cc
 tensorflow/core/kernels/variable_ops.cc
 tensorflow/core/kernels/unpack_op.cc
-tensorflow/core/kernels/unique_op.cc
 tensorflow/core/kernels/transpose_op.cc
 tensorflow/core/kernels/transpose_functor_cpu.cc
 tensorflow/core/kernels/training_op_helpers.cc
@@ -42,9 +41,6 @@ tensorflow/core/kernels/spectrogram_op.cc
 tensorflow/core/kernels/spectrogram.cc
 tensorflow/core/kernels/sparse_to_dense_op.cc
 tensorflow/core/kernels/sparse_matmul_op.cc
-tensorflow/core/kernels/sparse_fill_empty_rows_op.cc
-tensorflow/core/kernels/sparse_reshape_op.c
-tensorflow/core/kernels/segment_reduction_ops.cc
 tensorflow/core/kernels/softsign_op.cc
 tensorflow/core/kernels/softplus_op.cc
 tensorflow/core/kernels/softmax_op.cc
@@ -113,10 +109,6 @@ tensorflow/core/kernels/maxpooling_op.cc
 tensorflow/core/kernels/matmul_op.cc
 tensorflow/core/kernels/lrn_op.cc
 tensorflow/core/kernels/logging_ops.cc
-tensorflow/core/kernels/initializable_lookup_table.c
-tensorflow/core/kernels/lookup_table_init_op.cc
-tensorflow/core/kernels/lookup_table_op.cc
-tensorflow/core/kernels/lookup_util.cc
 tensorflow/core/kernels/inplace_ops.cc
 tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/immutable_constant_op.cc
@@ -124,18 +116,10 @@ tensorflow/core/kernels/identity_op.cc
 tensorflow/core/kernels/identity_n_op.cc
 tensorflow/core/kernels/gather_op.cc
 tensorflow/core/kernels/gather_functor.cc
-tensorflow/core/kernels/gather_nd_op.cc
-tensorflow/core/kernels/gather_nd_op_cpu_impl_0.cc
-tensorflow/core/kernels/gather_nd_op_cpu_impl_1.cc
-tensorflow/core/kernels/gather_nd_op_cpu_impl_2.cc
-tensorflow/core/kernels/gather_nd_op_cpu_impl_3.cc
-tensorflow/core/kernels/gather_nd_op_cpu_impl_4.cc
-tensorflow/core/kernels/gather_nd_op_cpu_impl_5.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
 tensorflow/core/kernels/function_ops.cc
 tensorflow/core/kernels/fill_functor.cc
 tensorflow/core/kernels/fifo_queue.cc
-tensorflow/core/kernels/fifo_queue_op.cc
 tensorflow/core/kernels/fake_quant_ops.cc
 tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/encode_wav_op.cc
@@ -182,8 +166,6 @@ tensorflow/core/kernels/cwise_op_floor.cc
 tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
 tensorflow/core/kernels/cwise_op_equal_to_1.cc
-tensorflow/core/kernels/cwise_op_not_equal_to_2.cc
-tensorflow/core/kernels/cwise_op_not_equal_to_1.cc
 tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_bitwise_xor.cc
 tensorflow/core/kernels/cwise_op_bitwise_or.cc

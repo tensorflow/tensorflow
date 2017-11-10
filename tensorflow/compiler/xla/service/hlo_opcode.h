@@ -97,7 +97,6 @@ namespace xla {
   V(kPower, "power")                                         \
   V(kReal, "real")                                           \
   V(kRecv, "recv")                                           \
-  V(kRecvDone, "recv-done")                                  \
   V(kReduce, "reduce")                                       \
   V(kReducePrecision, "reduce-precision")                    \
   V(kReduceWindow, "reduce-window")                          \
@@ -109,7 +108,6 @@ namespace xla {
   V(kSelect, "select")                                       \
   V(kSelectAndScatter, "select-and-scatter")                 \
   V(kSend, "send")                                           \
-  V(kSendDone, "send-done")                                  \
   V(kShiftLeft, "shift-left")                                \
   V(kShiftRightArithmetic, "shift-right-arithmetic")         \
   V(kShiftRightLogical, "shift-right-logical")               \

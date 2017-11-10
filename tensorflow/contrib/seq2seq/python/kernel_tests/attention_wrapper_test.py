@@ -33,7 +33,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
@@ -590,24 +589,6 @@ class AttentionWrapperTest(test.TestCase):
         expected_final_alignment_history=expected_final_alignment_history,
         name='testBahdanauMonotonicNormalized')
 
-  def testBahdanauMonotonicHard(self):
-    # Run attention mechanism with mode='hard', make sure probabilities are hard
-    b, t, u, d = 10, 20, 30, 40
-    with self.test_session(use_gpu=True) as sess:
-      a = wrapper.BahdanauMonotonicAttention(
-          d,
-          random_ops.random_normal((b, t, u)),
-          mode='hard')
-      # Just feed previous attention as [1, 0, 0, ...]
-      attn = a(random_ops.random_normal((b, d)), array_ops.one_hot([0]*b, t))
-      sess.run(variables.global_variables_initializer())
-      attn_out = attn.eval()
-      # All values should be 0 or 1
-      self.assertTrue(np.all(np.logical_or(attn_out == 0, attn_out == 1)))
-      # Sum of distributions should be 0 or 1 (0 when all p_choose_i are 0)
-      self.assertTrue(np.all(np.logical_or(attn_out.sum(axis=1) == 1,
-                                           attn_out.sum(axis=1) == 0)))
-
   def testLuongMonotonicNotNormalized(self):
     create_attention_mechanism = functools.partial(
         wrapper.LuongMonotonicAttention, sigmoid_noise=1.0,
@@ -713,24 +694,6 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=True,
         expected_final_alignment_history=expected_final_alignment_history,
         name='testMultiAttention')
-
-  def testLuongMonotonicHard(self):
-    # Run attention mechanism with mode='hard', make sure probabilities are hard
-    b, t, u, d = 10, 20, 30, 40
-    with self.test_session(use_gpu=True) as sess:
-      a = wrapper.LuongMonotonicAttention(
-          d,
-          random_ops.random_normal((b, t, u)),
-          mode='hard')
-      # Just feed previous attention as [1, 0, 0, ...]
-      attn = a(random_ops.random_normal((b, d)), array_ops.one_hot([0]*b, t))
-      sess.run(variables.global_variables_initializer())
-      attn_out = attn.eval()
-      # All values should be 0 or 1
-      self.assertTrue(np.all(np.logical_or(attn_out == 0, attn_out == 1)))
-      # Sum of distributions should be 0 or 1 (0 when all p_choose_i are 0)
-      self.assertTrue(np.all(np.logical_or(attn_out.sum(axis=1) == 1,
-                                           attn_out.sum(axis=1) == 0)))
 
   def testMultiAttentionNoAttentionLayer(self):
     create_attention_mechanisms = (

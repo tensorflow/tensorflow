@@ -116,6 +116,7 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   if (fullname == "/") {
     return true;
   }
+  StringPiece tmp;
   while (!fullname.empty()) {
     bool progress = false;
     if (str_util::ConsumePrefix(&fullname, "/job:")) {

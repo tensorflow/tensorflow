@@ -70,6 +70,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/kernels/cudnn_rnn_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/ops/cudnn_rnn_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/prefetching_kernels.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/ops/dataset_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/ops/prefetching_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/masked_matmul_ops.cc"
@@ -183,6 +184,7 @@ file(GLOB_RECURSE tf_core_gpu_kernels_srcs
     "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/*.cu.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/*.cu.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/resampler/kernels/*.cu.cc"
 )
 
 if(WIN32 AND tensorflow_ENABLE_GPU)
@@ -206,16 +208,16 @@ endif(WIN32 AND tensorflow_ENABLE_GPU)
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 add_dependencies(tf_core_kernels tf_core_cpu)
 
-if(WIN32)
+if (WIN32)
   target_compile_options(tf_core_kernels PRIVATE /MP)
-  if (tensorflow_ENABLE_GPU)
-    set_source_files_properties(${tf_core_gpu_kernels_srcs} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
-    set(tf_core_gpu_kernels_lib tf_core_gpu_kernels)
-    cuda_add_library(${tf_core_gpu_kernels_lib} ${tf_core_gpu_kernels_srcs})
-    set_target_properties(${tf_core_gpu_kernels_lib}
-                          PROPERTIES DEBUG_POSTFIX ""
-                          COMPILE_FLAGS "${TF_REGULAR_CXX_FLAGS}"
-    )
-    add_dependencies(${tf_core_gpu_kernels_lib} tf_core_cpu)
-  endif()
+endif (WIN32)
+if (tensorflow_ENABLE_GPU)
+  set_source_files_properties(${tf_core_gpu_kernels_srcs} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
+  set(tf_core_gpu_kernels_lib tf_core_gpu_kernels)
+  cuda_add_library(${tf_core_gpu_kernels_lib} ${tf_core_gpu_kernels_srcs})
+  set_target_properties(${tf_core_gpu_kernels_lib}
+                        PROPERTIES DEBUG_POSTFIX ""
+                        COMPILE_FLAGS "${TF_REGULAR_CXX_FLAGS}"
+  )
+  add_dependencies(${tf_core_gpu_kernels_lib} tf_core_cpu)
 endif()

@@ -58,9 +58,7 @@ static bool ContainsSendOrRecv(const HloComputation* comp) {
 
 static bool IsOrContainsSendOrRecv(const HloInstruction* instr) {
   if (instr->opcode() == HloOpcode::kSend ||
-      instr->opcode() == HloOpcode::kSendDone ||
-      instr->opcode() == HloOpcode::kRecv ||
-      instr->opcode() == HloOpcode::kRecvDone) {
+      instr->opcode() == HloOpcode::kRecv) {
     return true;
   }
   for (const auto& subcomp : instr->called_computations()) {

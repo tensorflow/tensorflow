@@ -122,7 +122,9 @@ class DepthwiseConv2DTest(test.TestCase):
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
     with self.test_session(use_gpu=use_gpu) as sess:
-      if data_type == dtypes.float32:
+      if data_type == dtypes.float16:
+        tolerance = 1e-5
+      elif data_type == dtypes.float32:
         tolerance = 1e-5
       else:
         self.assertEqual(data_type, dtypes.float64)
@@ -169,7 +171,7 @@ class DepthwiseConv2DTest(test.TestCase):
                 padding) in enumerate(ConfigsToTest()):
       print("Testing DepthwiseConv2D,", index, "th config:", input_size, "*",
             filter_size, "stride:", stride, "padding:", padding)
-      for data_type in [dtypes.float32, dtypes.float64]:
+      for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
         self._VerifyValues(
             input_size, filter_size, stride, padding, data_type, use_gpu=True)
 
@@ -181,7 +183,7 @@ class DepthwiseConv2DTest(test.TestCase):
                 padding) in enumerate(ConfigsToTest()):
       print("Testing DepthwiseConv2DFormat,", index, "th config:", input_size,
             "*", filter_size, "stride:", stride, "padding:", padding)
-      for data_type in [dtypes.float32, dtypes.float64]:
+      for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
         self._VerifyValues(
             input_size,
             filter_size,
@@ -318,7 +320,9 @@ class DepthwiseConv2DTest(test.TestCase):
     input_data = [x * 1.0 / input_size for x in range(0, input_size)]
     filter_data = [x * 1.0 / filter_size for x in range(0, filter_size)]
     with self.test_session(use_gpu=use_gpu):
-      if data_type == dtypes.float32:
+      if data_type == dtypes.float16:
+        tolerance = 0.002
+      elif data_type == dtypes.float32:
         tolerance = 0.002
       else:
         self.assertEqual(data_type, dtypes.float64)
@@ -369,6 +373,8 @@ class DepthwiseConv2DTest(test.TestCase):
       print("Testing DepthwiseConv2DInputGrad,", index, "th config:",
             input_size, "*", filter_size, "stride:", stride, "padding:",
             padding)
+      # Note: float16 test for DepthwiseConv2DInputGrad is not enabled,
+      # calculations are not very precise.
       for data_type in [dtypes.float32, dtypes.float64]:
         self._ConstructAndTestGradient(
             input_size,
@@ -389,6 +395,8 @@ class DepthwiseConv2DTest(test.TestCase):
       print("Testing DepthwiseConv2DInputGradFormat,", index, "th config:",
             input_size, "*", filter_size, "stride:", stride, "padding:",
             padding)
+      # Note: float16 test for DepthwiseConv2DInputGradFormat is not enabled,
+      # calculations are not very precise.
       for data_type in [dtypes.float32, dtypes.float64]:
         self._ConstructAndTestGradient(
             input_size,
@@ -407,6 +415,8 @@ class DepthwiseConv2DTest(test.TestCase):
       print("Testing DepthwiseConv2DFilterGrad,", index, "th config:",
             input_size, "*", filter_size, "stride:", stride, "padding:",
             padding)
+      # Note: float16 test for DepthwiseConv2DFilterGrad is not enabled,
+      # calculations are not very precise.
       for data_type in [dtypes.float32, dtypes.float64]:
         self._ConstructAndTestGradient(
             input_size,
@@ -427,6 +437,8 @@ class DepthwiseConv2DTest(test.TestCase):
       print("Testing DepthwiseConv2DFilterGradFormat,", index, "th config:",
             input_size, "*", filter_size, "stride:", stride, "padding:",
             padding)
+      # Note: float16 test for DepthwiseConv2DFilterGradFormat is not enabled,
+      # calculations are not very precise.
       for data_type in [dtypes.float32, dtypes.float64]:
         self._ConstructAndTestGradient(
             input_size,

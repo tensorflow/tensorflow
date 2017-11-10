@@ -337,15 +337,7 @@ Status HloCostAnalysis::HandleSend(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSendDone(const HloInstruction*) {
-  return Status::OK();
-}
-
 Status HloCostAnalysis::HandleRecv(const HloInstruction*) {
-  return Status::OK();
-}
-
-Status HloCostAnalysis::HandleRecvDone(const HloInstruction*) {
   return Status::OK();
 }
 

@@ -71,10 +71,12 @@ class ForLoop {
   //
   // If `prevent_unrolling` is true then emit metadata that directs LLVM to not
   // unroll the generated loop.
-  static std::unique_ptr<ForLoop> EmitForLoop(
-      tensorflow::StringPiece prefix, llvm::Value* start_index,
-      llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* ir_builder,
-      bool prevent_unrolling = false, bool prevent_vectorization = false);
+  static std::unique_ptr<ForLoop> EmitForLoop(tensorflow::StringPiece prefix,
+                                              llvm::Value* start_index,
+                                              llvm::Value* end_index,
+                                              llvm::Value* step,
+                                              llvm::IRBuilder<>* ir_builder,
+                                              bool prevent_unrolling = false);
 
   // The names of the blocks follow LLVM's conventions. Control flow amongst the
   // blocks for the example C code looks like:
@@ -128,7 +130,7 @@ class ForLoop {
 
   ForLoop(tensorflow::StringPiece prefix, tensorflow::StringPiece suffix,
           llvm::Value* start_index, llvm::Value* end_index, llvm::Value* step,
-          bool prevent_unrolling, bool prevent_vectorization);
+          bool prevent_unrolling);
 
   // Emit the loop at the insert point of the builder.
   void Emit(llvm::IRBuilder<>* ir_builder);
@@ -139,10 +141,6 @@ class ForLoop {
   // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
   // they are set.
   string GetQualifiedName(tensorflow::StringPiece name);
-
-  // Return a list of metadata nodes that should be associated with the
-  // llvm::Loop for this `ForLoop`.
-  std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* ir_builder);
 
   string prefix_;
   string suffix_;
@@ -162,7 +160,6 @@ class ForLoop {
   llvm::BasicBlock* exit_bb_;
   llvm::Value* indvar_;
   bool prevent_unrolling_;
-  bool prevent_vectorization_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ForLoop);
 };
@@ -188,28 +185,24 @@ class ForLoopNest {
   std::unique_ptr<ForLoop> AddLoop(tensorflow::StringPiece suffix,
                                    llvm::Value* start_index,
                                    llvm::Value* end_index, llvm::Value* stride,
-                                   bool prevent_unrolling = false,
-                                   bool prevent_vectorization = false);
+                                   bool prevent_unrolling = false);
 
   // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(tensorflow::StringPiece suffix,
                                    llvm::Value* start_index,
                                    llvm::Value* end_index,
-                                   bool prevent_unrolling = false,
-                                   bool prevent_vectorization = false);
+                                   bool prevent_unrolling = false);
 
   // A convenient wrapper of the other flavor of AddLoop. The given start and
   // end index are constant.
   std::unique_ptr<ForLoop> AddLoop(int64 start_index, int64 end_index,
                                    int64 stride, tensorflow::StringPiece suffix,
-                                   bool prevent_unrolling = false,
-                                   bool prevent_vectorization = false);
+                                   bool prevent_unrolling = false);
 
   // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(int64 start_index, int64 end_index,
                                    tensorflow::StringPiece suffix,
-                                   bool prevent_unrolling = false,
-                                   bool prevent_vectorization = false);
+                                   bool prevent_unrolling = false);
 
   // Add loops to iterate through the indices within the specified
   // shape. The returned index collects the induction variables of the
