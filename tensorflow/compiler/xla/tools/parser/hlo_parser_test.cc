@@ -36,6 +36,10 @@ string TestDataToString(const ::testing::TestParamInfo<TestData>& data) {
   return data.param.test_name;
 }
 
+// For each string below, we check that:
+//  - we parse it to an HloModule successfully, and
+//  - the stringification of the resulting HloModule is equal to our original
+//    string.
 std::vector<TestData> CreateTestCases() {
   // clang-format off
   return std::vector<TestData>({
@@ -510,6 +514,32 @@ ENTRY %BatchNormGrad.v4 (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], varia
 }
 
 )"
+},
+// pad
+{
+"Pad",
+R"(HloModule Pad1DS3Array_module:
+
+ENTRY %Pad1DS3Array.v3 () -> f32[8] {
+  %constant = f32[3]{0} constant({1, 2, 3})
+  %constant.1 = f32[] constant(0.1)
+  ROOT %pad = f32[8]{0} pad(f32[3]{0} %constant, f32[] %constant.1), padding=3_1
+}
+
+)"
+},
+// pad has interior
+{
+"PadHasInterior",
+R"(HloModule PadHasInterior_module:
+
+ENTRY %PadHasInterior.v3 (input: f32[1,25,7,7]) -> f32[1,25,17,11] {
+  %input = f32[1,25,7,7]{3,2,1,0} parameter(0)
+  %constant = f32[] constant(-5.123)
+  ROOT %pad = f32[1,25,17,11]{3,2,1,0} pad(f32[1,25,7,7]{3,2,1,0} %input, f32[] %constant), padding=0_0_0x0_0_0x2_2_1x2_2_0
+}
+
+)"
 }
   });
   // clang-format on
@@ -523,7 +553,10 @@ class HloParserTest : public ::testing::Test,
         << "'" << s << "' does not contain '" << expected << "'";
   }
 
-  void ExpectSuccess() {
+  // Expects "ToString(Parse(string)) == string", that is, parses the string,
+  // asserts that it succeeded, stringifies the parsed module, and checks that
+  // the it equals the original string.
+  void ExpectEqual() {
     const string& original = GetParam().module_string;
     auto result = Parse(original);
     TF_EXPECT_OK(result.status());
@@ -532,7 +565,7 @@ class HloParserTest : public ::testing::Test,
   }
 };
 
-TEST_P(HloParserTest, Run) { ExpectSuccess(); }
+TEST_P(HloParserTest, Run) { ExpectEqual(); }
 
 INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTest,
                         ::testing::ValuesIn(CreateTestCases()),
@@ -791,6 +824,21 @@ ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
 
 )";
   TF_EXPECT_OK(Parse(original).status());
+}
+
+TEST_F(HloParserTest, PaddingConfigIsNotWindowPad) {
+  const string original = R"(HloModule window_pad_module:
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), dim_labels=b0f_0io->b0f, window={pad=1_1_0 size=1}
+}
+
+)";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "expects padding_low and padding_high separated by '_'");
 }
 
 }  // namespace

@@ -254,13 +254,13 @@ TokKind HloLexer::LexPercent() {
 }
 
 // Lex integer and floating-point values, -inf, and patterns for dim labels,
-// dxd (e.g. 1x2x3), and window pad.
+// dxd (e.g. 1x2x3), and pad.
 //
 // fp with exp ::= [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
 // fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
 // dim_labels_pattern ::= [0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,}
 // dxd_pattern ::= [0-9]+(x[0-9]+)+
-// window_pad_pattern ::= [0-9]+_[0-9]+(x[0-9]+_[0-9]+)*
+// pad_pattern ::= [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
 // int ::=  [-]?[0-9]+
 // negative inf ::= '-inf'
 TokKind HloLexer::LexNumberOrPattern() {
@@ -277,7 +277,8 @@ TokKind HloLexer::LexNumberOrPattern() {
   static LazyRE2 dim_labels_pattern = {
       R"([0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,})"};
   static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
-  static LazyRE2 pad_pattern = {R"([0-9]+_[0-9]+(x[0-9]+_[0-9]+)*)"};
+  static LazyRE2 pad_pattern = {
+      R"([0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*)"};
 
   if (RE2::Consume(&consumable, *dim_labels_pattern)) {
     current_ptr_ = consumable.begin();
@@ -294,7 +295,7 @@ TokKind HloLexer::LexNumberOrPattern() {
   if (RE2::Consume(&consumable, *pad_pattern)) {
     current_ptr_ = consumable.begin();
     str_val_.assign(token_start_, current_ptr_);
-    return TokKind::kWindowPad;
+    return TokKind::kPad;
   }
 
   static LazyRE2 int_pattern = {R"([-]?\d+)"};
@@ -395,8 +396,8 @@ string TokKindToString(TokKind kind) {
       return "kDimLabels";
     case TokKind::kDxD:
       return "kDxD";
-    case TokKind::kWindowPad:
-      return "kWindowPad";
+    case TokKind::kPad:
+      return "kPad";
     case TokKind::kShape:
       return "kShape";
     case TokKind::kOpcode:
