@@ -445,14 +445,14 @@ TEST(SplitUTF8, Basic) {
       Status::OK(),
       str_util::SplitUTF8("\xE6\x82\xA8\xE5\xA5\xBD\xE4\xB8\x96\xE7\x95\x8C",
                           "", false, &result));
-  EXPECT_EQ(result.size(), 4);
+  ASSERT_EQ(result.size(), 4);
 
   // UTF8 \xE6\x82\xA8 \xE5\xA5\xBD \xE4\xB8\x96 \xE7\x95\x8C
   EXPECT_EQ(
       Status::OK(),
       str_util::SplitUTF8("\xE6\x82\xA8\xE5\xA5\xBD\xE4\xB8\x96\xE7\x95\x8C",
                           "\xE5\xA5\xBD", false, &result));
-  EXPECT_EQ(result.size(), 2);
+  ASSERT_EQ(result.size(), 2);
 
   EXPECT_EQ(errors::InvalidArgument("Invalid UTF8 encoding at byte 1"),
             str_util::SplitUTF8("\xE2\x28\xA1", "", false, &result));
@@ -463,7 +463,7 @@ TEST(SplitUTF8, Basic) {
 
   // split("###a#", "#") -> { "", "", "", "a", ""}
   EXPECT_EQ(Status::OK(), str_util::SplitUTF8("###a#", "#", false, &result));
-  EXPECT_EQ(result.size(), 5);
+  ASSERT_EQ(result.size(), 5);
   EXPECT_EQ(result[0], "");
   EXPECT_EQ(result[1], "");
   EXPECT_EQ(result[2], "");
@@ -473,7 +473,7 @@ TEST(SplitUTF8, Basic) {
   // split("##a##b##c##", "#") -> {"", "", "a", "", "b", "", "c", "", ""}
   EXPECT_EQ(Status::OK(),
             str_util::SplitUTF8("##a##b##c##", "#", false, &result));
-  EXPECT_EQ(result.size(), 9);
+  ASSERT_EQ(result.size(), 9);
   EXPECT_EQ(result[0], "");
   EXPECT_EQ(result[1], "");
   EXPECT_EQ(result[2], "a");
@@ -485,8 +485,11 @@ TEST(SplitUTF8, Basic) {
   EXPECT_EQ(result[8], "");
 
   // ASCII should work as well
+  EXPECT_EQ(Status::OK(), str_util::SplitUTF8("", ",", true, &result));
+  ASSERT_EQ(result.size(), 0);
+
   EXPECT_EQ(Status::OK(), str_util::SplitUTF8("", ",", false, &result));
-  EXPECT_EQ(result.size(), 0);
+  ASSERT_EQ(result.size(), 0);
 
   EXPECT_EQ(Status::OK(), str_util::SplitUTF8("a", ",", false, &result));
   EXPECT_EQ(str_util::Join(result, "|"), "a");

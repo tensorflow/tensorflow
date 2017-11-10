@@ -466,11 +466,6 @@ Status SplitUTF8(StringPiece text, const string& delim, const bool skip_empty,
           result->emplace_back("");
         }
         last_char_was_a_delimiter = true;
-        if (i + 1 == text.size() && !skip_empty) {
-          // If this is the last we always add an empty one
-          // to handle split(",",",") -> ["", ""]
-          result->emplace_back("");
-        }
       } else if (last_char_was_a_delimiter) {
         last_char_was_a_delimiter = false;
         result->emplace_back(entry.ToString());
@@ -481,6 +476,12 @@ Status SplitUTF8(StringPiece text, const string& delim, const bool skip_empty,
       }
       char_start += char_len;
     }
+  }
+  if (last_char_was_a_delimiter && !skip_empty && delim != "" &&
+      !text.empty()) {
+    // If this is the last we always add an empty one
+    // to handle split(",",",") -> ["", ""]
+    result->emplace_back("");
   }
   if (TF_PREDICT_FALSE(char_start < text.size())) {
     return errors::InvalidArgument(
