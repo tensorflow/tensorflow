@@ -868,18 +868,6 @@ class VariableScopeTest(test.TestCase):
         with ops.name_scope("inner"):
           self.assertEqual(constant_op.constant([], name="c").name, "outer/inner/c:0")
 
-      # Reenter varialbe_scope with its name_scope
-      with variable_scope.variable_scope("outer2"):
-        with variable_scope.variable_scope("inner2") as inner2:
-          pass
-        with variable_scope.variable_scope(inner2,
-                                           auxiliary_name_scope=inner2.original_name_scope):
-          self.assertEqual(variable_scope.get_variable("w", []).name, "outer2/inner2/w:0")
-          self.assertEqual(constant_op.constant([], name="c").name, "outer2/inner2/c:0")
-        # Recheck: new name scope is NOT created before
-        with ops.name_scope("inner2"):
-          self.assertEqual(constant_op.constant([], name="c").name, "outer2/inner2_1/c:0")
-
   def testAuxiliaryNameScopeIsInvalid(self):
     with self.test_session():
       with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
@@ -896,6 +884,25 @@ class VariableScopeTest(test.TestCase):
       with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(scope, auxiliary_name_scope=["invalid"]):
           pass
+
+  def testAuxiliaryNameScopeWhenReenterVariableScope(self):
+    with variable_scope.variable_scope("outer"):
+      with variable_scope.variable_scope("inner") as inner:
+        pass
+
+      with variable_scope.variable_scope(inner,
+                                         auxiliary_name_scope=inner.original_name_scope):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "outer/inner/w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "outer/inner/c:0")
+
+      with variable_scope.variable_scope(inner, auxiliary_name_scope=None) as inner2:
+        with ops.name_scope(inner2.original_name_scope):
+          self.assertEqual(variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
+          self.assertEqual(constant_op.constant([], name="c1").name, "outer/inner/c1:0")
+
+      # Recheck: next name scope is NOT created before
+      with ops.name_scope("inner"):
+        self.assertEqual(constant_op.constant([], name="c").name, "outer/inner_1/c:0")
 
   @test_util.run_in_graph_and_eager_modes()
   def testGetLocalVar(self):
