@@ -15,20 +15,27 @@ limitations under the License.
 
 package org.tensorflow.contrib.android;
 
+import android.content.Context;
 import android.content.res.AssetManager;
 import android.os.Build.VERSION;
 import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 import org.tensorflow.Graph;
@@ -49,6 +56,98 @@ import org.tensorflow.types.UInt8;
 public class TensorFlowInferenceInterface {
   private static final String TAG = "TensorFlowInferenceInterface";
   private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
+
+  /**
+   * Copies raw resource to a cache file.
+   *
+   * @return File reference to cache file.
+   */
+  private File createCacheFile(Context context, int resourceId, String filename)
+      throws IOException {
+    File cacheFile = new File(context.getCacheDir(), filename);
+
+    if (cacheFile.createNewFile() == false) {
+      cacheFile.delete();
+      cacheFile.createNewFile();
+    }
+
+    InputStream inputStream = context.getResources().openRawResource(resourceId);
+    FileOutputStream fileOutputStream = new FileOutputStream(cacheFile);
+    byte[] buffer = new byte[1024 * 512];
+    int count;
+    while ((count = inputStream.read(buffer)) != -1) {
+      fileOutputStream.write(buffer, 0, count);
+    }
+
+    fileOutputStream.close();
+    inputStream.close();
+
+    return cacheFile;
+  }
+
+  /*
+   * Load a TensorFlow model via FileChannel mmap
+   * This requires that assets files are copied to internal storage already
+   * getFileStreamPath() points to that directory; context used must be passed in here
+   *
+   * @param ctx The context to use to load the model file; same as one used to copy files
+   * @param model The filepath to the GraphDef proto representing the model.
+   */
+  public TensorFlowInferenceInterface(Context ctx, int model) {
+    prepareNativeRuntime();
+    File modelFile = null;
+    this.g = new Graph();
+    this.sess = new Session(g);
+    this.runner = sess.runner();
+    this.modelName = String.valueOf(model);
+    MappedByteBuffer buffer = null;
+    FileChannel fileChannel = null;
+    RandomAccessFile raf = null;
+    File cacheFile = null;
+
+    try {
+      cacheFile = createCacheFile(ctx, model, modelName);
+      raf = new RandomAccessFile(cacheFile, "r");
+      fileChannel = raf.getChannel();
+    } catch (FileNotFoundException f) {
+      throw new RuntimeException("Failed to create cache file: " + modelFile, f);
+    } catch (IOException ioe) {
+      throw new RuntimeException("Failed to create random access file: " + modelFile, ioe);
+    }
+
+    try {
+      buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
+      if (!buffer.isLoaded()) {
+        buffer.load();
+      }
+      byte[] graphDef = new byte[buffer.limit()];
+      buffer.get(graphDef);
+      loadGraph(graphDef, g);
+      Log.i(TAG, "Successfully loaded model from map" + model);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to map  model from" + model, e);
+    } finally {
+      try {
+        if (raf != null) {
+          raf.close();
+        }
+        if (cacheFile != null) {
+          cacheFile.delete();
+        }
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to close RandomAccessFile " + raf, e);
+      }
+      try {
+        fileChannel.close();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to close FileChannel " + fileChannel, e);
+      }
+      if (buffer != null) {
+        buffer.clear();
+        buffer = null;
+      }
+    }
+  }
 
   /*
    * Load a TensorFlow model from the AssetManager or from disk if it is not an asset file.
@@ -249,7 +348,7 @@ public class TensorFlowInferenceInterface {
     }
     return operation;
   }
-
+    
   /** Returns the last stat summary string if logging is enabled. */
   public String getStatString() {
     return (runStats == null) ? "" : runStats.summary();
