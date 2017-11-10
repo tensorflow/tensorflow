@@ -794,7 +794,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
               scale_tensor.tensor_shape().dim_size() == 0) {
             // Create new node `scaled_weights`.
             NodeDef* scaled_weights = graph_def->add_node();
-            scaled_weights->set_name(weights->name() + "_scaled");
+            scaled_weights->set_name(weights->name() + "_scaled_" +
+                                     conv->name());
             scaled_weights->set_op("Mul");
             scaled_weights->set_device(weights->device());
             (*scaled_weights->mutable_attr())["T"] =

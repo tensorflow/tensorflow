@@ -1,0 +1,126 @@
+// Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+syntax = "proto2";
+package toco;
+
+// Supported I/O file formats. Some formats may be input-only or output-only.
+enum FileFormat {
+  FILE_FORMAT_UNKNOWN = 0;
+
+  // GraphDef, third_party/tensorflow/core/framework/graph.proto
+  TENSORFLOW_GRAPHDEF = 1;
+
+  // Tensorflow's mobile inference model.
+  // third_party/tensorflow/contrib/tflite/schema.fbs
+  TFLITE = 2;
+
+  // GraphViz
+  // Export-only.
+  GRAPHVIZ_DOT = 3;
+}
+
+// IODataType describes the numeric data types to be used by the output format.
+// See input_type and inference_type below.
+enum IODataType {
+  IO_DATA_TYPE_UNKNOWN = 0;
+
+  // Float32, not quantized
+  FLOAT = 1;
+
+  // Uint8, quantized
+  QUANTIZED_UINT8 = 2;
+
+  // Int32, not quantized
+  INT32 = 3;
+
+  // Int64, not quantized
+  INT64 = 4;
+
+  // String, not quantized
+  STRING = 5;
+}
+
+// TocoFlags encodes extra parameters that drive tooling operations, that
+// are not normally encoded in model files and in general may not be thought
+// of as properties of models, instead describing how models are to be
+// processed in the context of the present tooling job.
+// Next Id: 11
+message TocoFlags {
+  // Input file format
+  optional FileFormat input_format = 1;
+
+  // Output file format
+  optional FileFormat output_format = 2;
+
+  // Numeric data types of the input arrays in the output format.
+  // This controls what input types the output file will be expecting.
+  // This is not a description of the input types of the input file.
+  // For example, the input file may have a float input placeholder,
+  // but we may want to generate a quantized TFLite file from it,
+  // or a float TFLite file taking a quantized input.
+  //
+  // The length of this list should match the length of the input_arrays
+  // list in ModelFlags.
+  repeated IODataType input_types = 9;
+
+  // Numeric data type of the internal activations array and output array.
+  //
+  // As a matter of implementation detail, most model
+  // parameter arrays (weights, etc) will tend to also use this data type.
+  // Not all will, though: for instance, bias vectors will typically
+  // get quantized as int32 when weights and activations get quantized as uint8.
+  optional IODataType inference_type = 4;
+
+  // default_ranges_min and default_ranges_max are helpers to experiment
+  // with quantization of models. Normally, quantization requires the input
+  // model to have (min, max) range information for every activations array.
+  // This is needed in order to know how to quantize arrays and still achieve
+  // satisfactory accuracy. However, in some circumstances one would just like
+  // to estimate the performance of quantized inference, without caring about
+  // accuracy. That is what default_ranges_min and default_ranges_max are for:
+  // when specified, they will be used as default (min, max) range boundaries
+  // for all activation arrays that lack (min, max) range information, thus
+  // allowing for quantization to proceed.
+  //
+  // It should be clear from the above explanation that these parameters are
+  // for experimentation purposes only and should not be used in production:
+  // they make it easy to quantize models, but the resulting quantized model
+  // will be inaccurate.
+  optional float default_ranges_min = 5;
+  optional float default_ranges_max = 6;
+
+  // Ignore and discard FakeQuant nodes. For instance, that can be used to
+  // generate plain float code without fake-quantization from a quantized
+  // graph.
+  optional bool drop_fake_quant = 7;
+
+  // Normally, FakeQuant nodes must be strict boundaries for graph
+  // transformations, in order to ensure that quantized inference has the
+  // exact same arithmetic behavior as quantized training --- which is the
+  // whole point of quantized training and of FakeQuant nodes in the first
+  // place. However, that entails subtle requirements on where exactly
+  // FakeQuant nodes must be placed in the graph. Some quantized graphs
+  // have FakeQuant nodes at unexpected locations, that prevent graph
+  // transformations that are necessary in order to generate inference
+  // code for these graphs. Such graphs should be fixed, but as a
+  // temporary work-around, setting this reorder_across_fake_quant flag
+  // allows toco to perform necessary graph transformaitons on them,
+  // at the cost of no longer faithfully matching inference and training
+  // arithmetic.
+  optional bool reorder_across_fake_quant = 8;
+
+  // If true, allow TOCO to create TF Lite Custom operators for all the
+  // unsupported Tensorflow ops.
+  optional bool allow_custom_ops = 10;
+}
