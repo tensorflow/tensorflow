@@ -734,6 +734,10 @@ class VariableScopeTest(test.TestCase):
 
   def testAuxiliaryNameScopeIsTrueByDefault(self):
     with self.test_session():
+      root_scope = variable_scope.get_variable_scope()
+      with variable_scope.variable_scope(root_scope):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "c:0")
       with variable_scope.variable_scope(None, default_name="default"):
         self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
         self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
@@ -757,16 +761,20 @@ class VariableScopeTest(test.TestCase):
 
   def testAuxiliaryNameScopeIsNoneOrFalse(self):
     with self.test_session():
+      root_scope = variable_scope.get_variable_scope()
+      with variable_scope.variable_scope(root_scope, auxiliary_name_scope=None):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "c:0")
       with variable_scope.variable_scope(None, default_name="default",
                                          auxiliary_name_scope=None):
-        self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
-        self.assertEqual(constant_op.constant([], name="c").name, "c:0")
-      with variable_scope.variable_scope("scope", auxiliary_name_scope=False) as scope:
-        self.assertEqual(variable_scope.get_variable("w1", []).name, "scope/w1:0")
+        self.assertEqual(variable_scope.get_variable("w1", []).name, "default/w1:0")
         self.assertEqual(constant_op.constant([], name="c1").name, "c1:0")
-      with variable_scope.variable_scope(scope, auxiliary_name_scope=None):
+      with variable_scope.variable_scope("scope", auxiliary_name_scope=False) as scope:
         self.assertEqual(variable_scope.get_variable("w2", []).name, "scope/w2:0")
         self.assertEqual(constant_op.constant([], name="c2").name, "c2:0")
+      with variable_scope.variable_scope(scope, auxiliary_name_scope=None):
+        self.assertEqual(variable_scope.get_variable("w3", []).name, "scope/w3:0")
+        self.assertEqual(constant_op.constant([], name="c3").name, "c3:0")
       # Recheck: new name scope is NOT created before
       with ops.name_scope("default"):
         self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
@@ -792,17 +800,22 @@ class VariableScopeTest(test.TestCase):
 
   def testAuxiliaryNameScopeIsNameScope(self):
     with self.test_session():
+      root_scope = variable_scope.get_variable_scope()
+      with variable_scope.variable_scope(root_scope,
+                                         auxiliary_name_scope=ops.name_scope("name")):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "name/c:0")
       with variable_scope.variable_scope(None, default_name="default",
                                          auxiliary_name_scope=ops.name_scope("name")):
-        self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
-        self.assertEqual(constant_op.constant([], name="c").name, "name/c:0")
+        self.assertEqual(variable_scope.get_variable("w1", []).name, "default/w1:0")
+        self.assertEqual(constant_op.constant([], name="c1").name, "name_1/c1:0")
       with variable_scope.variable_scope("scope",
                                          auxiliary_name_scope=ops.name_scope("name")) as scope:
-        self.assertEqual(variable_scope.get_variable("w1", []).name, "scope/w1:0")
-        self.assertEqual(constant_op.constant([], name="c1").name, "name_1/c1:0")
-      with variable_scope.variable_scope(scope, auxiliary_name_scope=ops.name_scope("name")):
         self.assertEqual(variable_scope.get_variable("w2", []).name, "scope/w2:0")
         self.assertEqual(constant_op.constant([], name="c2").name, "name_2/c2:0")
+      with variable_scope.variable_scope(scope, auxiliary_name_scope=ops.name_scope("name")):
+        self.assertEqual(variable_scope.get_variable("w3", []).name, "scope/w3:0")
+        self.assertEqual(constant_op.constant([], name="c3").name, "name_3/c3:0")
       # Recheck: new name scope is NOT created before
       with ops.name_scope("default"):
         self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
@@ -831,17 +844,21 @@ class VariableScopeTest(test.TestCase):
     with self.test_session():
       with ops.name_scope("name") as name:
         pass
+      root_scope = variable_scope.get_variable_scope()
+      with variable_scope.variable_scope(root_scope, auxiliary_name_scope=name):
+        self.assertEqual(variable_scope.get_variable("w", []).name, "w:0")
+        self.assertEqual(constant_op.constant([], name="c").name, "name/c:0")
       with variable_scope.variable_scope(None, default_name="default",
                                          auxiliary_name_scope=name):
-        self.assertEqual(variable_scope.get_variable("w", []).name, "default/w:0")
-        self.assertEqual(constant_op.constant([], name="c").name, "name/c:0")
+        self.assertEqual(variable_scope.get_variable("w1", []).name, "default/w1:0")
+        self.assertEqual(constant_op.constant([], name="c1").name, "name/c1:0")
       with variable_scope.variable_scope("scope",
                                          auxiliary_name_scope=name) as scope:
-        self.assertEqual(variable_scope.get_variable("w1", []).name, "scope/w1:0")
-        self.assertEqual(constant_op.constant([], name="c1").name, "name/c1:0")
-      with variable_scope.variable_scope(scope, auxiliary_name_scope=name):
         self.assertEqual(variable_scope.get_variable("w2", []).name, "scope/w2:0")
         self.assertEqual(constant_op.constant([], name="c2").name, "name/c2:0")
+      with variable_scope.variable_scope(scope, auxiliary_name_scope=name):
+        self.assertEqual(variable_scope.get_variable("w3", []).name, "scope/w3:0")
+        self.assertEqual(constant_op.constant([], name="c3").name, "name/c3:0")
       # Recheck: new name scope is NOT created before
       with ops.name_scope("default"):
         self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
