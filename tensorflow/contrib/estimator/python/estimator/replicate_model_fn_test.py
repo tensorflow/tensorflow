@@ -78,7 +78,12 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
         x={'x': x_data}, batch_size=batch_size, shuffle=False)
 
     feature_columns = [
-        feature_column.numeric_column('x', shape=(input_dimension,))
+        feature_column.numeric_column('x', shape=(input_dimension,)),
+        feature_column.embedding_column(
+            feature_column.categorical_column_with_vocabulary_list(
+                'categories',
+                vocabulary_list=np.linspace(
+                    0., len(x_data), len(x_data), dtype=np.int64)), 1)
     ]
 
     estimator = dnn.DNNClassifier(
@@ -230,6 +235,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       accuracy = session.run(accuracy)
       auc = session.run(auc)
 
+      # loss[i] = features[i] * 10 - labels[i].
       # Accuracy is 0.0 (no match) in the first tower.
       # Accuracy is 1.0 (match) in the second tower, since the feature
       # times weight "c" happened to be equal to the label.
@@ -531,8 +537,7 @@ class EvalSpecTest(test_util.TensorFlowTestCase):
       self.assertEqual('/device:CPU:0', auc.device)
 
       session.run([a, b])
-      accuracy = session.run(accuracy)
-      auc = session.run(auc)
+      accuracy, auc = session.run([accuracy, auc])
 
       self.assertNear((12 - 2) / 12, accuracy, 0.01)
       self.assertEqual(0, auc)

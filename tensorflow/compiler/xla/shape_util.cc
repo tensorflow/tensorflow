@@ -263,6 +263,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     case S32:
     case S64:
     case F16:
+    case BF16:
     case F32:
     case F64:
       return true;

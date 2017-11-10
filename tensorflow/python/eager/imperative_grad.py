@@ -120,7 +120,7 @@ def _initial_gradients(vspace, target, output_gradients, tensor_usage_counts):
 
 VSpace = collections.namedtuple(
     "VSpace",
-    ["aggregate_fn", "num_elements_fn", "tensor_id", "zeros", "ones_like"])
+    ["aggregate_fn", "num_elements_fn", "tensor_id", "zeros", "ones"])
 
 
 # If over MIN_AGGREGATE_COUNT gradients are accumulated and the total

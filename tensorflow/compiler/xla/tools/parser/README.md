@@ -51,6 +51,15 @@ extra_attributes
 extra_attribute
   : attribute_name attribute_value
   ;
+attribute_value
+  : kInt
+  | kName
+  | [0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,}                /*dim_labels_pattern*/
+  | [0-9]+(x[0-9]+)+                                    /*dxd_pattern*/
+  | [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*  /*pad_pattern*/
+  | '{' sub_attributes '}'
+  ;
+
 
 param_list
   : '(' param_list1 ')'

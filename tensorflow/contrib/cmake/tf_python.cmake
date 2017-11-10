@@ -499,6 +499,19 @@ add_python_module("tensorflow/contrib/linear_optimizer/kernels/g3doc")
 add_python_module("tensorflow/contrib/linear_optimizer/python")
 add_python_module("tensorflow/contrib/linear_optimizer/python/kernel_tests")
 add_python_module("tensorflow/contrib/linear_optimizer/python/ops")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E touch
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/__init__.py")
+add_custom_command(
+    TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E touch
+    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/lite.py)
 add_python_module("tensorflow/contrib/lookup")
 add_python_module("tensorflow/contrib/losses")
 add_python_module("tensorflow/contrib/losses/python")

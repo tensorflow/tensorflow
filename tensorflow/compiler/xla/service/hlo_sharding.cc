@@ -195,7 +195,8 @@ Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
     const OpSharding& proto) {
   if (proto.type() == OpSharding::Type::OpSharding_Type_REPLICATED) {
     return Replicate();
-  } else if (proto.type() == OpSharding::Type::OpSharding_Type_MAXIMAL) {
+  } else if (proto.type() == OpSharding::Type::OpSharding_Type_MAXIMAL ||
+             proto.tile_assignment_devices().size() == 1) {
     return HloSharding(proto.tile_assignment_devices(0));
   }
   // Some versions of gcc cannot infer the TileAssignment constructor from a

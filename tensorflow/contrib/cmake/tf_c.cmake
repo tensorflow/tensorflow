@@ -47,4 +47,5 @@ add_dependencies(
   tf_c_python_api
   tf_c
   tf_core_lib
+  tf_core_framework
   tf_protos_cc)
