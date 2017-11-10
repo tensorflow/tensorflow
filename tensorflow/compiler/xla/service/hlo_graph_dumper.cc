@@ -1303,7 +1303,9 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
 
   auto is_displayed = [&](const HloInstruction* instr) {
     // Constants are displayed inline with their users; they're never omitted.
-    return nodes.count(instr) > 0 || instr->opcode() == HloOpcode::kConstant;
+    // Nodes in subcomputations are always shown.
+    return nodes.count(instr) > 0 || instr->opcode() == HloOpcode::kConstant ||
+           instr->parent() != root->parent();
   };
 
   // Make a second pass over 'nodes' to fix up the NodeFilterResults now that we
