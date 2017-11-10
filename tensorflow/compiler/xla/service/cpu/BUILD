@@ -280,6 +280,7 @@ cc_library(
     srcs = ["dot_op_emitter.cc"],
     hdrs = ["dot_op_emitter.h"],
     deps = [
+        ":cpu_options",
         ":cpu_runtime",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -719,6 +720,7 @@ cc_library(
     hdrs = ["cpu_options.h"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core:lib",
     ],
 )
 

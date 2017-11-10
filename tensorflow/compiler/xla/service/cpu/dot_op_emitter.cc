@@ -366,7 +366,7 @@ class RowMajorMatrixVectorProductEmitter {
         result_(result),
         ir_builder_(ir_builder),
         ksl_(ir_builder_),
-        vsl_(scalar_type_, /*vector_size=*/tile_rows_, ir_builder_, "") {
+        vsl_(scalar_type_, /*vector_size=*/tile_cols_, ir_builder_, "") {
     CHECK(tile_cols_ > 0 && IsPowerOfTwo(static_cast<uint64>(tile_cols_)));
   }
 
@@ -573,11 +573,15 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
     return false;
   }
 
+  int64 tiling_factor = GetGemvTilingFactor();
+  CHECK_GT(tiling_factor, 0);
+
   if (is_column_major_matrix_vector) {
     VLOG(2) << "Emitting column major matrix-vector multiply with m = " << m
             << " and k = " << k;
     ColumnMajorMatrixVectorProductEmitter emitter(
-        dot_.shape().element_type(), 8, 8, m, k,
+        dot_.shape().element_type(), /*tile_rows=*/8,
+        /*tile_cols=*/tiling_factor, m, k,
         swap_operands ? rhs_array_.GetBasePointer()
                       : lhs_array_.GetBasePointer(),
         swap_operands ? lhs_array_.GetBasePointer()
@@ -588,7 +592,8 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
     VLOG(2) << "Emitting row major matrix-vector multiply with m = " << m
             << " and k = " << k;
     RowMajorMatrixVectorProductEmitter emitter(
-        dot_.shape().element_type(), 8, 8, m, k,
+        dot_.shape().element_type(), /*tile_rows=*/tiling_factor,
+        /*tile_cols=*/8, m, k,
         swap_operands ? rhs_array_.GetBasePointer()
                       : lhs_array_.GetBasePointer(),
         swap_operands ? lhs_array_.GetBasePointer()
