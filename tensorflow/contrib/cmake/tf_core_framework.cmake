@@ -267,7 +267,11 @@ list(REMOVE_ITEM tf_core_lib_srcs ${tf_core_lib_test_srcs})
 
 add_library(tf_core_lib OBJECT ${tf_core_lib_srcs})
 add_dependencies(tf_core_lib ${tensorflow_EXTERNAL_DEPENDENCIES} tf_protos_cc)
-
+target_include_directories(tf_core_lib PUBLIC  
+    $<BUILD_INTERFACE:${nsync_INCLUDE_DIR}>
+    $<INSTALL_INTERFACE:include/external/nsync/public>
+)
+    
 # Tricky setup to force always rebuilding
 # force_rebuild always runs forcing ${VERSION_INFO_CC} target to run
 # ${VERSION_INFO_CC} would cache, but it depends on a phony never produced
