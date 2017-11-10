@@ -257,9 +257,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     Summary::Value* v = e->mutable_summary()->add_value();
     t.AsProtoTensorContent(v->mutable_tensor());
     v->set_tag(tag);
-    if (!serialized_metadata.empty()) {
-      v->mutable_metadata()->ParseFromString(serialized_metadata);
-    }
+    v->mutable_metadata()->ParseFromString(serialized_metadata);
     return WriteEvent(std::move(e));
   }
 

@@ -55,6 +55,15 @@ config_setting(
 )
 
 config_setting(
+    name = "raspberry_pi_armeabi",
+    values = {
+        "crosstool_top": "@local_config_arm_compiler//:toolchain",
+        "cpu": "armeabi",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
@@ -110,7 +119,7 @@ config_setting(
 
 config_setting(
     name = "no_tensorflow_py_deps",
-    define_values = {"no_tensorflow_py_deps": "true"},
+    values = {"define": "no_tensorflow_py_deps=true"},
     visibility = ["//visibility:public"],
 )
 
@@ -166,122 +175,55 @@ config_setting(
 # TODO(jhseu): Enable on other platforms other than Linux.
 config_setting(
     name = "with_jemalloc_linux_x86_64",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "k8"},
+    values = {
+        "cpu": "k8",
+        "define": "with_jemalloc=true",
+    },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "with_jemalloc_linux_ppc64le",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "ppc"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_default_optimizations",
-    define_values = {"with_default_optimizations": "true"},
+    values = {
+        "cpu": "ppc",
+        "define": "with_jemalloc=true",
+    },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "with_gcp_support",
-    define_values = {"with_gcp_support": "true"},
+    values = {"define": "with_gcp_support=true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "with_hdfs_support",
-    define_values = {"with_hdfs_support": "true"},
+    values = {"define": "with_hdfs_support=true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "with_s3_support",
-    define_values = {"with_s3_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-# Crosses between platforms and file system libraries not supported on those
-# platforms due to limitations in nested select() statements.
-config_setting(
-    name = "with_gcp_support_windows_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_windows_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_s3_support_windows_override",
-    define_values = {"with_s3_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gcp_support_android_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_android_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_s3_support_android_override",
-    define_values = {"with_s3_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gcp_support_ios_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_ios_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_s3_support_ios_override",
-    define_values = {"with_s3_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
+    values = {"define": "with_s3_support=true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "with_xla_support",
-    define_values = {"with_xla_support": "true"},
+    values = {"define": "with_xla_support=true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "with_gdr_support",
-    define_values = {"with_gdr_support": "true"},
+    values = {"define": "with_gdr_support=true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "with_verbs_support",
-    define_values = {"with_verbs_support": "true"},
+    values = {"define": "with_verbs_support=true"},
     visibility = ["//visibility:public"],
 )
 
@@ -355,7 +297,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# Make a dummy rule that we can change "default" in select statements to.
+# Make a dummy rule that we can chaqnge "default" in select statements to.
 # to disable dependencies in copybara.
 config_setting(
     name = "dummy_disabled_internal",
@@ -382,6 +324,14 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+py_library(
+    name = "tensorflow_py",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/python"],
 )
 
 filegroup(
@@ -736,12 +686,4 @@ tf_cc_shared_object(
         "//tensorflow/cc:scope",
         "//tensorflow/core:tensorflow",
     ],
-)
-
-py_library(
-    name = "tensorflow_py",
-    srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python"],
 )

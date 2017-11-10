@@ -97,8 +97,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                 quantization_node_name)
     self.assertEqual(weights_quant.type, quantization_node_name)
     expected_inputs = [
-        scope + '/weights_quant/AssignMinLast',
-        scope + '/weights_quant/AssignMaxLast', scope + '/weights/read'
+        scope + '/weights_quant/Minimum', scope + '/weights_quant/Maximum',
+        scope + '/weights/read'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
     output_op_name = scope + '/Conv2D'
@@ -109,8 +109,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                quantization_node_name)
       self.assertEqual(conv_quant.type, quantization_node_name)
       expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/BiasAdd'
+          scope + '/conv_quant/min/read', scope + '/conv_quant/max/read',
+          scope + '/BiasAdd'
       ]
       self._AssertInputOpsAre(conv_quant, expected_inputs)
       output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
@@ -122,7 +122,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self.assertEqual(act_quant.type, quantization_node_name)
 
     expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
+        'test/act_quant/min/read', 'test/act_quant/max/read',
         'test/' + activation_op_name
     ]
     self._AssertInputOpsAre(act_quant, expected_inputs)
@@ -172,8 +172,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                 quantization_node_name)
     self.assertEqual(weights_quant.type, quantization_node_name)
     expected_inputs = [
-        scope + '/weights_quant/AssignMinLast',
-        scope + '/weights_quant/AssignMaxLast', scope + '/weights/read'
+        scope + '/weights_quant/Minimum', scope + '/weights_quant/Maximum',
+        scope + '/weights/read'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
     output_op_name = scope + '/MatMul'
@@ -184,8 +184,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                quantization_node_name)
       self.assertEqual(conv_quant.type, quantization_node_name)
       expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/BiasAdd'
+          scope + '/conv_quant/min/read', scope + '/conv_quant/max/read',
+          scope + '/BiasAdd'
       ]
       self._AssertInputOpsAre(conv_quant, expected_inputs)
       output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
@@ -196,7 +196,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                             quantization_node_name)
     self.assertEqual(act_quant.type, quantization_node_name)
     expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
+        'test/act_quant/min/read', 'test/act_quant/max/read',
         'test/' + activation_op_name
     ]
     self._AssertInputOpsAre(act_quant, expected_inputs)
@@ -247,8 +247,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                 quantization_node_name)
     self.assertEqual(weights_quant.type, quantization_node_name)
     expected_inputs = [
-        scope + '/weights_quant/AssignMinLast',
-        scope + '/weights_quant/AssignMaxLast',
+        scope + '/weights_quant/Minimum', scope + '/weights_quant/Maximum',
         scope + '/depthwise_weights/read'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
@@ -260,8 +259,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                quantization_node_name)
       self.assertEqual(conv_quant.type, quantization_node_name)
       expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/BiasAdd'
+          scope + '/conv_quant/min/read', scope + '/conv_quant/max/read',
+          scope + '/BiasAdd'
       ]
       self._AssertInputOpsAre(conv_quant, expected_inputs)
       output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
@@ -272,7 +271,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                             quantization_node_name)
     self.assertEqual(act_quant.type, quantization_node_name)
     expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
+        'test/act_quant/min/read', 'test/act_quant/max/read',
         'test/' + activation_op_name
     ]
     self._AssertInputOpsAre(act_quant, expected_inputs)
@@ -402,10 +401,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                 quantization_node_name)
     self.assertEqual(weights_quant.type, quantization_node_name)
     expected_inputs = [
-        scope + '/weights_quant/' + ('AssignMinEma'
-                                     if use_ema else 'AssignMinLast'),
-        scope + '/weights_quant/' + ('AssignMaxEma'
-                                     if use_ema else 'AssignMaxLast'),
+        scope + '/weights_quant/' + ('min/read' if use_ema else 'Minimum'),
+        scope + '/weights_quant/' + ('max/read' if use_ema else 'Maximum'),
         scope + '/mul_fold'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
@@ -418,8 +415,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                quantization_node_name)
       self.assertEqual(conv_quant.type, quantization_node_name)
       expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/add_fold'
+          scope + '/conv_quant/min/read', scope + '/conv_quant/max/read',
+          scope + '/add_fold'
       ]
       self._AssertInputOpsAre(conv_quant, expected_inputs)
       output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
@@ -430,7 +427,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                             quantization_node_name)
     self.assertEqual(act_quant.type, quantization_node_name)
     expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
+        'test/act_quant/min/read', 'test/act_quant/max/read',
         'test/' + activation_op_name
     ]
     self._AssertInputOpsAre(act_quant, expected_inputs)
@@ -521,10 +518,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                 quantization_node_name)
     self.assertEqual(weights_quant.type, quantization_node_name)
     expected_inputs = [
-        scope + '/weights_quant/' + ('AssignMinEma'
-                                     if use_ema else 'AssignMinLast'),
-        scope + '/weights_quant/' + ('AssignMaxEma'
-                                     if use_ema else 'AssignMaxLast'),
+        scope + '/weights_quant/' + ('min/read' if use_ema else 'Minimum'),
+        scope + '/weights_quant/' + ('max/read' if use_ema else 'Maximum'),
         scope + '/mul_fold'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
@@ -537,8 +532,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                quantization_node_name)
       self.assertEqual(conv_quant.type, quantization_node_name)
       expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/add_fold'
+          scope + '/conv_quant/min/read', scope + '/conv_quant/max/read',
+          scope + '/add_fold'
       ]
       self._AssertInputOpsAre(conv_quant, expected_inputs)
       output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
@@ -549,7 +544,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                             quantization_node_name)
     self.assertEqual(act_quant.type, quantization_node_name)
     expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
+        'test/act_quant/min/read', 'test/act_quant/max/read',
         'test/' + activation_op_name
     ]
     self._AssertInputOpsAre(act_quant, expected_inputs)
@@ -644,10 +639,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                 quantization_node_name)
     self.assertEqual(weights_quant.type, quantization_node_name)
     expected_inputs = [
-        scope + '/weights_quant/' + ('AssignMinEma'
-                                     if use_ema else 'AssignMinLast'),
-        scope + '/weights_quant/' + ('AssignMaxEma'
-                                     if use_ema else 'AssignMaxLast'),
+        scope + '/weights_quant/' + ('min/read' if use_ema else 'Minimum'),
+        scope + '/weights_quant/' + ('max/read' if use_ema else 'Maximum'),
         scope + '/mul_fold'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
@@ -660,8 +653,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                                quantization_node_name)
       self.assertEqual(conv_quant.type, quantization_node_name)
       expected_inputs = [
-          scope + '/conv_quant/AssignMinEma',
-          scope + '/conv_quant/AssignMaxEma', scope + '/add_fold'
+          scope + '/conv_quant/min/read', scope + '/conv_quant/max/read',
+          scope + '/add_fold'
       ]
       self._AssertInputOpsAre(conv_quant, expected_inputs)
       output_op_name = (scope + '/conv_quant/delayed_quant/Switch_1'
@@ -672,7 +665,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                             quantization_node_name)
     self.assertEqual(act_quant.type, quantization_node_name)
     expected_inputs = [
-        'test/act_quant/AssignMinEma', 'test/act_quant/AssignMaxEma',
+        'test/act_quant/min/read', 'test/act_quant/max/read',
         'test/' + activation_op_name
     ]
     self._AssertInputOpsAre(act_quant, expected_inputs)

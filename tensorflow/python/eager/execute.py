@@ -47,7 +47,8 @@ def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
     name: Customized name for the operation.
 
   Returns:
-    List of output Tensor objects. The list is empty if there are no outputs
+    None if there are no outputs, a single Tensor object if there is one output
+    and a list of Tensor objects if there are multiple outputs.
 
   Raises:
     An exception on error.

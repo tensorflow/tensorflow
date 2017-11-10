@@ -220,7 +220,7 @@ class Layer(object):
 
     Weight updates (for instance, the updates of the moving mean and variance
     in a BatchNormalization layer) may be dependent on the inputs passed
-    when calling a layer. Hence, when reusing a same layer on
+    when calling a layer. Hence, when reusing the same layer on
     different inputs `a` and `b`, some entries in `layer.updates` may be
     dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
@@ -294,9 +294,9 @@ class Layer(object):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
     Some losses (for instance, activity regularization losses) may be dependent
-    on the inputs passed when calling a layer. Hence, when reusing a same layer
-    on different inputs `a` and `b`, some entries in `layer.losses` may be
-    dependent on `a` and some on `b`. This method automatically keeps track
+    on the inputs passed when calling a layer. Hence, when reusing the same
+    layer on different inputs `a` and `b`, some entries in `layer.losses` may
+    be dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
 
     The `get_losses_for` method allows to retrieve the losses relevant to a
@@ -401,11 +401,10 @@ class Layer(object):
     """
     return input_shape
 
-  def _make_unique_name(self, name_uid_map=None, avoid_names=None,
-                        namespace=''):
+  def _make_unique_name(self, name_uid_map=None, avoid_names=None):
     base_name = _to_snake_case(self.__class__.__name__)
     name = _unique_layer_name(base_name, name_uid_map=name_uid_map,
-                              avoid_names=avoid_names, namespace=namespace)
+                              avoid_names=avoid_names)
     return (name, base_name)
 
   def _set_scope(self, scope=None):
@@ -642,7 +641,7 @@ class Layer(object):
             for output in output_list:
               with ops.name_scope('ActivityRegularizer'):
                 activity_regularization = self._activity_regularizer(output)
-              self.add_loss(activity_regularization, inputs=inputs)
+              self.add_loss(activity_regularization)
 
         if not in_deferred_mode:
           # TODO(fchollet): consider how masking will work with deferred mode.
@@ -2371,7 +2370,7 @@ def _get_default_graph_uid_map():
   return name_uid_map
 
 
-def _unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace=''):
+def _unique_layer_name(name, name_uid_map=None, avoid_names=None):
   """Makes a layer name (or arbitrary string) unique within a TensorFlow graph.
 
   Arguments:
@@ -2380,9 +2379,6 @@ def _unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace=''):
       names. If None (default), uses a per-Graph dictionary.
     avoid_names: An optional set or dict with names which should not be used. If
       None (default) does not avoid any names.
-    namespace: Gets a name which is unique within the (graph, namespace). Layers
-      which are not Networks use a blank namespace and so get graph-global
-      names.
 
   Returns:
     Unique string name.
@@ -2400,7 +2396,6 @@ def _unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace=''):
     avoid_names = set()
   proposed_name = None
   while proposed_name is None or proposed_name in avoid_names:
-    name_key = (namespace, name)
-    name_uid_map[name_key] += 1
-    proposed_name = name + '_' + str(name_uid_map[name_key])
+    name_uid_map[name] += 1
+    proposed_name = name + '_' + str(name_uid_map[name])
   return proposed_name

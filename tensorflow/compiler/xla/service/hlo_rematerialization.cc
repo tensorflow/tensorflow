@@ -66,9 +66,7 @@ bool IsRematerializable(const HloInstruction* instruction) {
     case HloOpcode::kInfeed:
     case HloOpcode::kParameter:
     case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
       return false;

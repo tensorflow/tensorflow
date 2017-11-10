@@ -104,21 +104,6 @@ Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction*) {
-  // RecvDone doesn't create a new buffer but rather aliases its input (Recv)
-  // tuple element at {0} to its output.
-  return Status::OK();
-}
-
-Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
-  // Send creates new buffers for the top-level tuple and the context (tuple
-  // element at {1}). Tuple element at {0} is an alias of the Send operand, so
-  // we don't need to create a new Logical Buffer for that.
-  NewLogicalBuffer(send, /*index=*/{});
-  NewLogicalBuffer(send, /*index=*/{1});
-  return Status::OK();
-}
-
 Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});
