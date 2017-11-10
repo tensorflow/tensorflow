@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 
 #include "llvm/IR/IRBuilder.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -104,6 +105,14 @@ class DotOpEmitter {
   // represents.  Precondition: the dot is of rank 2 (and thus its operands are
   // of rank 2 as well).
   MatMultDims GetMatMultDims() const;
+
+  // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
+  // registers.
+  int64 GetGemvTilingFactor() const {
+    const int64 kDefaultTilingFactor = 8;
+    return options::LlvmIrGemvTilingFactor(hlo_module_config_)
+        .value_or(kDefaultTilingFactor);
+  }
 
   const HloInstruction& dot_;
   const bool transpose_lhs_;
