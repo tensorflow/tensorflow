@@ -84,7 +84,7 @@ class ElasticAverageCustomGetter(object):
       local_var = getter(name, *args, **kwargs)
 
     if kwargs['trainable']:
-      global_center_variable = variables.Variable(
+      global_center_variable = variable_scope.variable(
         name='%s/%s' %
              (GLOBAL_VARIABLE_NAME,
               name),
@@ -95,7 +95,7 @@ class ElasticAverageCustomGetter(object):
           GLOBAL_CENTER_VARIABLE])
 
       with ops.device(self._worker_device):
-        local_center_variable = variables.Variable(
+        local_center_variable = variable_scope.variable(
           name='%s/%s' % (LOCAL_VARIABLE_NAME, name),
           initial_value=local_var.initialized_value(),
           trainable=False,
