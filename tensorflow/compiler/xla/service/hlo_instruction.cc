@@ -1853,9 +1853,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
     extra.push_back(window_util::ToString(*window_));
   }
   if (padding_config_ != nullptr) {
-    extra.push_back(StrCat("padding=", padding_config_->ShortDebugString()));
+    extra.push_back(
+        StrCat("padding=", xla::PaddingConfigToString(*padding_config_)));
   }
-  if (!slice_starts_.empty() && !slice_limits_.empty()) {
+  if (opcode() == HloOpcode::kSlice) {
     std::vector<string> bounds;
     bounds.reserve(slice_starts_.size());
     const bool omit_stride =
@@ -1867,6 +1868,16 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
                               stride_str, "]"));
     }
     extra.push_back(StrCat("slice={", Join(bounds, ", "), "}"));
+  }
+  if (opcode() == HloOpcode::kDynamicSlice) {
+    extra.push_back(
+        StrCat("dynamic_slice_sizes={", Join(dynamic_slice_sizes(), ","), "}"));
+  }
+  if (opcode() == HloOpcode::kBatchNormTraining ||
+      opcode() == HloOpcode::kBatchNormInference ||
+      opcode() == HloOpcode::kBatchNormGrad) {
+    extra.push_back(StrCat("epsilon=", epsilon()));
+    extra.push_back(StrCat("feature_index=", feature_index()));
   }
 
   if (convolution_dimension_numbers_ != nullptr) {
@@ -2839,6 +2850,21 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     return HloInstruction::FusionKind::kCustom;
   }
   return InvalidArgument("Unknown fusion kind: %s", kind_name.c_str());
+}
+
+string PaddingConfigToString(const PaddingConfig& padding) {
+  bool has_interior_padding =
+      std::any_of(padding.dimensions().begin(), padding.dimensions().end(),
+                  [](const PaddingConfig::PaddingConfigDimension& dim) {
+                    return dim.interior_padding() != 0;
+                  });
+  return Join(
+      padding.dimensions(), "x",
+      [&](string* out, const PaddingConfig::PaddingConfigDimension& dim) {
+        StrAppend(
+            out, dim.edge_padding_low(), "_", dim.edge_padding_high(),
+            has_interior_padding ? StrCat("_", dim.interior_padding()) : "");
+      });
 }
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {

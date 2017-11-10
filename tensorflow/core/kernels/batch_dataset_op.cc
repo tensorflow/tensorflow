@@ -143,9 +143,13 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
         // Each row of `batch_elements` is a tuple of tensors from the
         // input iterator.
         std::vector<std::vector<Tensor>> batch_elements;
-        batch_elements.reserve(dataset()->batch_size_);
         {
           mutex_lock l(mu_);
+          if (!input_impl_) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          batch_elements.reserve(dataset()->batch_size_);
           *end_of_sequence = false;
           for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence;
                ++i) {
@@ -154,6 +158,8 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
                                                     end_of_sequence));
             if (!*end_of_sequence) {
               batch_elements.emplace_back(std::move(batch_element_tuple));
+            } else {
+              input_impl_.reset();
             }
           }
         }
@@ -194,14 +200,23 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        if (!input_impl_) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("input_impl_empty"), ""));
+        } else {
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        }
         return Status::OK();
       }
 
       Status RestoreInternal(OpKernelContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        if (!reader->Contains(full_name("input_impl_empty"))) {
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        } else {
+          input_impl_.reset();
+        }
         return Status::OK();
       }
 
