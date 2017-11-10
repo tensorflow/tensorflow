@@ -887,7 +887,7 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
       CHECK_NOTNULL(node_map.GetNode("Transpose_uint8"));
   const NodeDef* cast_node = CHECK_NOTNULL(node_map.GetNode("Cast_new"));
   const NodeDef* weights_node =
-      CHECK_NOTNULL(node_map.GetNode("weights_scaled"));
+      CHECK_NOTNULL(node_map.GetNode("weights_scaled_Conv2D"));
   const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
 
   EXPECT_EQ(output.node_size(), 7);
@@ -895,6 +895,50 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   EXPECT_EQ(cast_node->input(0), transpose_node->name());
   EXPECT_EQ(conv_node->input(0), cast_node->name());
   EXPECT_EQ(conv_node->input(1), weights_node->name());
+}
+
+TEST_F(ArithmeticOptimizerTest, OptimizeMultipleMulTransposeConv) {
+  // This unit test exercises optimization of folding mul into conv for
+  // multiple nodes in the graph.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/gpu:0");
+
+  GrapplerItem item;
+  Output conv[2];
+
+  for (int i = 0; i < 2; ++i) {
+    Output inputs =
+        ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({8, 3, 28, 28}));
+    Output mul = ops::Mul(s, inputs, ops::Const(s, 1.0f / 255.0f));
+    Output weights = ops::Const(s.WithOpName("weights"),
+                                Input::Initializer(127.0f, {5, 5, 3, 16}));
+    conv[i] = ops::Conv2D(s, mul, weights, {1, 1, 1, 1}, "VALID",
+                          ops::Conv2D::DataFormat("NCHW"));
+  }
+  Output outputs = ops::Add(s.WithOpName("outputs"), conv[0], conv[1]);
+
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(
+      ConstantFolding(/*cpu_device=*/nullptr).Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* weights_node =
+      CHECK_NOTNULL(node_map.GetNode("weights_scaled_Conv2D"));
+  const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
+
+  const NodeDef* weights_node_1 =
+      CHECK_NOTNULL(node_map.GetNode("weights_scaled_Conv2D_1"));
+  const NodeDef* conv_node_1 = CHECK_NOTNULL(node_map.GetNode("Conv2D_1"));
+  EXPECT_EQ(conv_node->input(1), weights_node->name());
+  EXPECT_EQ(conv_node_1->input(1), weights_node_1->name());
 }
 
 TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
