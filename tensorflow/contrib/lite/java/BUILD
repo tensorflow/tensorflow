@@ -76,60 +76,6 @@ java_test(
     ],
 )
 
-java_test(
-    name = "NativeInterpreterWrapperTest",
-    size = "small",
-    srcs = ["src/test/java/org/tensorflow/lite/NativeInterpreterWrapperTest.java"],
-    data = [
-        "src/testdata/add.bin",
-        "src/testdata/int32.bin",
-        "src/testdata/int64.bin",
-        "src/testdata/invalid.model.tflite",
-        "src/testdata/uint8.bin",
-    ],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
-    deps = [
-        ":tensorflowlitelib",
-        "@com_google_truth",
-        "@junit",
-    ],
-)
-
-# TODO: generate large models at runtime, instead of storing them.
-java_test(
-    name = "InterpreterTest",
-    size = "small",
-    srcs = ["src/test/java/org/tensorflow/lite/InterpreterTest.java"],
-    data = [
-        "src/testdata/add.bin",
-        "src/testdata/mobilenet.tflite.bin",
-    ],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.lite.InterpreterTest",
-    deps = [
-        ":tensorflowlitelib",
-        "@com_google_truth",
-        "@junit",
-    ],
-)
-
-java_test(
-    name = "TensorTest",
-    size = "small",
-    srcs = ["src/test/java/org/tensorflow/lite/TensorTest.java"],
-    data = [
-        "src/testdata/add.bin",
-    ],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.lite.TensorTest",
-    deps = [
-        ":tensorflowlitelib",
-        "@com_google_truth",
-        "@junit",
-    ],
-)
-
 filegroup(
     name = "libtensorflowlite_jni",
     srcs = select({
