@@ -45,7 +45,7 @@ class HloLexer {
       case TokKind::kAttributeName:
       case TokKind::kDimLabels:
       case TokKind::kDxD:
-      case TokKind::kWindowPad:
+      case TokKind::kPad:
         return str_val_;
       default:
         LOG(FATAL) << "This token does not have string value";
