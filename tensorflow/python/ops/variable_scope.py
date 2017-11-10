@@ -1858,8 +1858,9 @@ class variable_scope(object):  # pylint: disable=invalid-name
       elif isinstance(self._auxiliary_name_scope, ops.name_scope):
         current_name_scope = self._auxiliary_name_scope
       else:
-        raise TypeError("The auxiliary_name_scope must be bool or name scope,"
-                        "while get {}".format(self._auxiliary_name_scope))
+        raise TypeError(
+          "The auxiliary_name_scope must be `None`, `True`, `False` "
+          "or name scope, while get {}".format(self._auxiliary_name_scope))
 
     if self._name_or_scope is not None:
       if not isinstance(self._name_or_scope,
