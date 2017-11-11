@@ -5,8 +5,8 @@ package(
     default_visibility = [
         "//engedu/ml/tf_from_scratch:__pkg__",
         "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
         "//tensorflow/contrib/lite/toco/python:__pkg__",
+        "//tensorflow_models:__subpackages__",
     ],
 )
 
