@@ -379,12 +379,13 @@ def make_zip_of_tests(zip_path,
         report["toco_log"] = ""
         tf.reset_default_graph()
 
-        try:
-          inputs, outputs = make_graph(param_dict_real)
-        except (tf.errors.UnimplementedError, tf.errors.InvalidArgumentError,
-                ValueError):
-          report["tf_log"] += traceback.format_exc()
-          return None, report
+        with tf.device('/cpu:0'):
+          try:
+            inputs, outputs = make_graph(param_dict_real)
+          except (tf.errors.UnimplementedError, tf.errors.InvalidArgumentError,
+                  ValueError):
+            report["tf_log"] += traceback.format_exc()
+            return None, report
 
         sess = tf.Session()
         try:
