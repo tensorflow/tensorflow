@@ -22,6 +22,7 @@ cc_library(
 tf_py_wrap_cc(
     name = "tensorflow_wrap_toco",
     srcs = ["toco.i"],
+    hdrs = ["toco_python_api.h"],
     deps = [
         ":toco_python_api",
         "//tensorflow/contrib/lite/toco:model_flags_proto_cc",
