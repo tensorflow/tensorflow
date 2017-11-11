@@ -23,6 +23,7 @@ from __future__ import print_function
 # pylint: disable=unused-import,line-too-long
 from tensorflow.contrib.bayesflow.python.ops import csiszar_divergence
 from tensorflow.contrib.bayesflow.python.ops import custom_grad
+from tensorflow.contrib.bayesflow.python.ops import halton_sequence
 from tensorflow.contrib.bayesflow.python.ops import hmc
 from tensorflow.contrib.bayesflow.python.ops import metropolis_hastings
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
@@ -32,7 +33,8 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = ['csiszar_divergence', 'custom_grad', 'entropy',
-                    'metropolis_hastings', 'monte_carlo', 'hmc', 'special_math',
-                    'stochastic_variables', 'variational_inference']
+                    'metropolis_hastings', 'monte_carlo', 'halton_sequence',
+                    'hmc', 'special_math', 'stochastic_variables',
+                    'variational_inference']
 
 remove_undocumented(__name__, _allowed_symbols)
