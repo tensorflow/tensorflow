@@ -846,7 +846,7 @@ TEST_F(HloParserTest, CommaBetweenSubAttributes) {
   const string original = R"(HloModule test_comma_module:
 
 ENTRY %test_comma.v4 () -> f32[] {
-  ROOT %constant = f32[] constant(-4.2), metadata={source_line=5, op_type="::const"}
+  ROOT %constant = f32[] constant(-4.2), metadata={source_line=5, op_type="const"}
 }
 
 )";
