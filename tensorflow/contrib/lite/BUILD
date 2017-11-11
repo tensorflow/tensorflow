@@ -178,7 +178,7 @@ cc_library(
     deps = select({
         "//tensorflow:android": [],
         "//conditions:default": [
-            #"//file/base:path",
+            "@com_google_absl//absl/strings",
             "//tensorflow/core:test",
         ],
     }),
@@ -198,8 +198,8 @@ cc_test(
     deps = [
         ":framework",
         ":models_test_utils",
-        #"//file/base:path",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -224,9 +224,9 @@ cc_test(
     deps = [
         ":framework",
         ":models_test_utils",
-        #"//file/base:path",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/tools:mutable_op_resolver",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -261,8 +261,8 @@ cc_test(
     deps = [
         ":framework",
         ":models_test_utils",
-        #"//file/base:path",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
