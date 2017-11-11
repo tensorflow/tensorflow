@@ -6,6 +6,7 @@ package(
         "//engedu/ml/tf_from_scratch:__pkg__",
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//tensorflow/contrib/lite/toco/python:__pkg__",
     ],
 )
 
@@ -134,10 +135,6 @@ py_library(
         "@absl_py//absl/flags",
         "@six_archive//:six",
     ],
-    visibility = [
-        # TODO(b/34059704): remove when fixed
-        "//tensorflow/contrib/lite/toco/python:__pkg__",
-    ]
 )
 
 py_library(
