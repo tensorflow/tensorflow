@@ -96,8 +96,8 @@ py_test(
         "nomac",  # b/62040583
     ],
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -109,7 +109,6 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
@@ -125,9 +124,11 @@ py_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/contrib/data/python/ops:iterator_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
