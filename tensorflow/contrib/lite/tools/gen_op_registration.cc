@@ -15,8 +15,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/re2/re2.h"
+#include "re2/re2.h"
 #include "tensorflow/contrib/lite/model.h"
+#include "tensorflow/contrib/lite/tools/gen_op_registration.h"
 
 namespace tflite {
 
