@@ -505,7 +505,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker2[...]
         _ = checker2[tuple()]
 
-  def testFloatSlicedArrayAndInt64IndicesGPU(self):
+  def testInt64GPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
     with self.test_session(use_gpu=True, force_gpu=True):
@@ -515,17 +515,6 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       strides = constant_op.constant([1], dtype=dtypes.int64)
       s = array_ops.strided_slice(x, begin, end, strides)
       self.assertAllEqual([3.], self.evaluate(s))
-
-  def testInt64SlicedArrayAndIndicesGPU(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-    with self.test_session(use_gpu=True, force_gpu=True):
-      x = constant_op.constant([1, 2, 3], dtype=dtypes.int64)
-      begin = constant_op.constant([2], dtype=dtypes.int64)
-      end = constant_op.constant([3], dtype=dtypes.int64)
-      strides = constant_op.constant([1], dtype=dtypes.int64)
-      s = array_ops.strided_slice(x, begin, end, strides)
-      self.assertAllEqual([3], self.evaluate(s))
 
   def testDegenerateSlices(self):
     with self.test_session(use_gpu=True):
