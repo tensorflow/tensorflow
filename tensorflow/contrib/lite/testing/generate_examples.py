@@ -36,6 +36,10 @@ import traceback
 import zipfile
 import numpy as np
 from six import StringIO
+
+# TODO(aselle): Disable GPU for now
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 import tensorflow as tf
 from google.protobuf import text_format
 # TODO(aselle): switch to TensorFlow's resource_loader
