@@ -1824,6 +1824,9 @@ class variable_scope(object):  # pylint: disable=invalid-name
       self._graph = ops._get_graph_from_inputs(self._values)  # pylint: disable=protected-access
     self._cached_pure_variable_scope = None
     self._current_name_scope = None
+    if not isinstance(auxiliary_name_scope, bool):
+      raise TypeError("The auxiliary_name_scope must be `True` or `False`, "
+                      "while get {}".format(auxiliary_name_scope))
     self._auxiliary_name_scope = auxiliary_name_scope
 
   def __enter__(self):
@@ -1838,10 +1841,10 @@ class variable_scope(object):  # pylint: disable=invalid-name
         self._current_name_scope.__enter__()
       return self._cached_pure_variable_scope.__enter__()
 
-    if self._auxiliary_name_scope is True:
+    if self._auxiliary_name_scope:
       # Create a new name scope later
       current_name_scope = None
-    elif not self._auxiliary_name_scope:
+    else:
       # Reenter the current name scope
       name_scope = ops.get_name_scope()
       if name_scope:
@@ -1851,16 +1854,6 @@ class variable_scope(object):  # pylint: disable=invalid-name
       else:
         # Root scope
         current_name_scope = ops.name_scope(name_scope)
-    else:
-      # Reuse the given name scope
-      if isinstance(self._auxiliary_name_scope, six.string_types):
-        current_name_scope = ops.name_scope(self._auxiliary_name_scope)
-      elif isinstance(self._auxiliary_name_scope, ops.name_scope):
-        current_name_scope = self._auxiliary_name_scope
-      else:
-        raise TypeError(
-          "The auxiliary_name_scope must be `None`, `True`, `False` "
-          "or name scope, while get {}".format(self._auxiliary_name_scope))
 
     if self._name_or_scope is not None:
       if not isinstance(self._name_or_scope,
