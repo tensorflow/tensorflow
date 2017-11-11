@@ -401,10 +401,11 @@ class Layer(object):
     """
     return input_shape
 
-  def _make_unique_name(self, name_uid_map=None, avoid_names=None):
+  def _make_unique_name(self, name_uid_map=None, avoid_names=None,
+                        namespace=''):
     base_name = _to_snake_case(self.__class__.__name__)
     name = _unique_layer_name(base_name, name_uid_map=name_uid_map,
-                              avoid_names=avoid_names)
+                              avoid_names=avoid_names, namespace=namespace)
     return (name, base_name)
 
   def _set_scope(self, scope=None):
@@ -641,7 +642,7 @@ class Layer(object):
             for output in output_list:
               with ops.name_scope('ActivityRegularizer'):
                 activity_regularization = self._activity_regularizer(output)
-              self.add_loss(activity_regularization)
+              self.add_loss(activity_regularization, inputs=inputs)
 
         if not in_deferred_mode:
           # TODO(fchollet): consider how masking will work with deferred mode.
@@ -2370,7 +2371,7 @@ def _get_default_graph_uid_map():
   return name_uid_map
 
 
-def _unique_layer_name(name, name_uid_map=None, avoid_names=None):
+def _unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace=''):
   """Makes a layer name (or arbitrary string) unique within a TensorFlow graph.
 
   Arguments:
@@ -2379,6 +2380,9 @@ def _unique_layer_name(name, name_uid_map=None, avoid_names=None):
       names. If None (default), uses a per-Graph dictionary.
     avoid_names: An optional set or dict with names which should not be used. If
       None (default) does not avoid any names.
+    namespace: Gets a name which is unique within the (graph, namespace). Layers
+      which are not Networks use a blank namespace and so get graph-global
+      names.
 
   Returns:
     Unique string name.
@@ -2396,6 +2400,7 @@ def _unique_layer_name(name, name_uid_map=None, avoid_names=None):
     avoid_names = set()
   proposed_name = None
   while proposed_name is None or proposed_name in avoid_names:
-    name_uid_map[name] += 1
-    proposed_name = name + '_' + str(name_uid_map[name])
+    name_key = (namespace, name)
+    name_uid_map[name_key] += 1
+    proposed_name = name + '_' + str(name_uid_map[name_key])
   return proposed_name

@@ -344,16 +344,6 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 
-// Create temporary int64_t to pass to TF_OperationGetAttrInt
-%typemap(in, numinputs=0) int64_t* value (int64_t val) {
-  $1 = &val;
-}
-
-// Convert value to Python int
-%typemap(argout) int64_t* value {
-  $result = PyInt_FromLong(*$1);
-}
-
 %include "tensorflow/c/c_api.h"
 %include "tensorflow/c/python_api.h"
 

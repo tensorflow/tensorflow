@@ -47,7 +47,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.trainable_variables, [])
     self.assertEqual(layer.non_trainable_variables, [])
     if context.in_graph_mode():
-      # updates, losses only suppported in GRAPH mode
+      # updates, losses only supported in GRAPH mode
       self.assertEqual(layer.updates, [])
       self.assertEqual(layer.losses, [])
     self.assertEqual(layer.built, False)
@@ -573,6 +573,13 @@ class BaseLayerTest(test.TestCase):
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
       self.assertEqual(3, result['label'].numpy())
       self.assertEqual(4.0, result['logits'].numpy())
+
+  def testActivityRegularizer(self):
+    regularizer = math_ops.reduce_sum
+    layer = base_layers.Layer(activity_regularizer=regularizer)
+    x = array_ops.placeholder('int32')
+    layer.apply(x)
+    self.assertEqual(len(layer.get_losses_for(x)), 1)
 
 
 class NetworkTest(test.TestCase):

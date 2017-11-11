@@ -17,12 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -31,10 +33,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -53,6 +58,15 @@ class IteratorTest(test.TestCase):
       gradients_impl.gradients(value, side)
     with self.assertRaisesRegexp(LookupError, "No gradient defined"):
       gradients_impl.gradients(value, [component, side])
+
+  def testCapturingStateInOneShotRaisesException(self):
+    var = variables.Variable(37.0, name="myvar")
+    dataset = (dataset_ops.Dataset.from_tensor_slices([0.0, 1.0, 2.0])
+               .map(lambda x: x + var))
+    with self.assertRaisesRegexp(
+        ValueError, r"`Dataset.make_one_shot_iterator\(\)` does not support "
+        "datasets that capture stateful objects.+myvar"):
+      dataset.make_one_shot_iterator()
 
   def testOneShotIterator(self):
     components = (np.arange(7),
@@ -532,6 +546,64 @@ class IteratorTest(test.TestCase):
             feed_dict={
                 target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
             })
+
+  def testIncorrectIteratorRestore(self):
+
+    def _path():
+      return os.path.join(self.get_temp_dir(), "iterator")
+
+    def _save_op(iterator_resource):
+      iterator_state_variant = gen_dataset_ops.serialize_iterator(
+          iterator_resource)
+      save_op = io_ops.write_file(
+          _path(), parsing_ops.serialize_tensor(iterator_state_variant))
+      return save_op
+
+    def _restore_op(iterator_resource):
+      iterator_state_variant = parsing_ops.parse_tensor(
+          io_ops.read_file(_path()), dtypes.variant)
+      restore_op = gen_dataset_ops.deserialize_iterator(iterator_resource,
+                                                        iterator_state_variant)
+      return restore_op
+
+    def _build_range_dataset_graph():
+      start = 1
+      stop = 10
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      save_op = _save_op(iterator._iterator_resource)
+      restore_op = _restore_op(iterator._iterator_resource)
+      return init_op, get_next, save_op, restore_op
+
+    def _build_reader_dataset_graph():
+      filenames = ["test"]  # Does not exist but we don't care in this test.
+      iterator = readers.FixedLengthRecordDataset(
+          filenames, 1, 0, 0).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next_op = iterator.get_next()
+      save_op = _save_op(iterator._iterator_resource)
+      restore_op = _restore_op(iterator._iterator_resource)
+      return init_op, get_next_op, save_op, restore_op
+
+    # Saving iterator for RangeDataset graph.
+    with ops.Graph().as_default() as g:
+      init_op, _, save_op, _ = _build_range_dataset_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(save_op)
+
+    # Attempt to restore the saved iterator into an IteratorResource of
+    # incompatible type. An iterator of RangeDataset has output type int64,
+    # while an iterator of FixedLengthRecordDataset has output type string.
+    # So an InvalidArgumentError should be raised by
+    # IteratorResource::set_iterator.
+    with ops.Graph().as_default() as g:
+      _, _, _, restore_op = _build_reader_dataset_graph()
+      with self.test_session(graph=g) as sess:
+        with self.assertRaises(errors.InvalidArgumentError):
+          sess.run(restore_op)
 
 
 if __name__ == "__main__":

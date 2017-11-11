@@ -125,6 +125,7 @@ cc_library(
         ":functionalize_control_flow",
         ":sharding_util",
         ":tf2xla_util",
+        "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
