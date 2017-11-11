@@ -247,7 +247,9 @@ def _get_graph_callable_inputs(shape_and_dtypes):
       ret.append(_get_graph_callable_inputs(x))
     else:
       raise errors.InvalidArgumentError(
-          None, None, "shape_and_dtypes not ShapeAndDtype, type: %s " % type(x))
+          None, None, "Expected the argument to @graph_callable to be a "
+          "(possibly nested) list or tuple of ShapeAndDtype objects, "
+          "but got an object of type: %s" % type(x))
 
   return tuple(ret) if isinstance(shape_and_dtypes, tuple) else ret
 
@@ -267,7 +269,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   Args:
     func: The tfe Python function to compile.
-    shape_and_dtypes: A list of type ShapeAndDtype.
+    shape_and_dtypes: A possibly nested list or tuple of ShapeAndDtype objects.
 
   Raises:
     ValueError: If any one of func's outputs is not a Tensor.
@@ -430,9 +432,10 @@ def graph_callable(shape_and_dtypes):
   ret = foo(tfe.Tensor(2.0))  # `ret` here now is a Tensor with value 9.0.
   ```
   Args:
-    shape_and_dtypes: A list of type ShapeAndDtype that specifies shape and type
-      information for each of the callable's arguments. The length of this list
-      must be equal to the number of arguments accepted by the wrapped function.
+    shape_and_dtypes: A possibly nested list or tuple of ShapeAndDtype objects
+      that specifies shape and type information for each of the callable's
+      arguments. The length of this list must be equal to the number of
+      arguments accepted by the wrapped function.
 
   Returns:
     A callable graph object.

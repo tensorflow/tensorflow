@@ -1139,6 +1139,54 @@ TEST_P(HloDataflowAnalysisTest, TupleCopy) {
       analysis.GetValueDefinedAt(copy, /*index=*/{}).live_out_of_module());
 }
 
+TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
+  // Test that a Send forwards its operand to the output tuple at {0}.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
+  auto send = builder.AddInstruction(
+      HloInstruction::CreateSend(param, /*channel_id=*/0));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  module_->AddEntryComputation(builder.Build());
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  EXPECT_EQ(analysis.values().size(), 4);
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(param));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(send, /*index=*/{0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(send_done));
+  EXPECT_THAT(HloValuesAt(send, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(param)));
+}
+
+TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
+  // Test that a RecvDone forwards its operand tuple element at {0} to the
+  // output.
+  auto builder = HloComputation::Builder(TestName());
+  auto recv = builder.AddInstruction(
+      HloInstruction::CreateRecv(scalar_shape_, /*channel_id=*/0));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+  module_->AddEntryComputation(builder.Build());
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  EXPECT_EQ(analysis.values().size(), 3);
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{1}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(recv_done));
+  EXPECT_THAT(HloValuesAt(recv_done),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(recv, {0})));
+  EXPECT_TRUE(
+      analysis.GetValueDefinedAt(recv, /*index=*/{0}).live_out_of_module());
+}
+
 TEST_P(HloDataflowAnalysisTest, ElementwiseChainInterference) {
   // A simple chain of elementwise operations. No values should interfere.
   //

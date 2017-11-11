@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace se = ::perftools::gputools;
 
@@ -87,6 +88,7 @@ namespace gpu {
 
 namespace {
 
+using tensorflow::port::Tracing;
 using tensorflow::strings::StrCat;
 
 // Any address of a variable residing in global memory or returned by one of the
@@ -231,6 +233,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
 // code (i.e. a cubin) as a byte array.
 StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
                                         int cc_minor) {
+  Tracing::TraceMe annotation("Compile PTX", /*is_expensive=*/true);
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin", "ptxas");
   VLOG(2) << "Using ptxas at " << ptxas_path;
@@ -295,11 +298,15 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(),
-                                       stream_exec->GetDeviceDescription(),
-                                       ShapeSizeBytesFunction()));
-  TF_RETURN_IF_ERROR(
-      PrepareHloModuleForIrEmitting(module.get(), ShapeSizeBytesFunction()));
+  {
+    Tracing::TraceMe annotation("HLO Transforms", module->name(),
+                                /*is_expensive=*/true);
+    TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(),
+                                         stream_exec->GetDeviceDescription(),
+                                         ShapeSizeBytesFunction()));
+    TF_RETURN_IF_ERROR(
+        PrepareHloModuleForIrEmitting(module.get(), ShapeSizeBytesFunction()));
+  }
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -421,6 +428,22 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   VLOG(2) << "PTX:";
   XLA_VLOG_LINES(2, ptx);
 
+  // Write PTX to IR dump directory, if IR dumping was requested.
+  if (!ir_dump_directory.empty()) {
+    const string ptx_outfile = tensorflow::io::JoinPath(
+        ir_dump_directory, StrCat(module->name(), ".ptx"));
+    auto status = [&] {
+      auto* env = tensorflow::Env::Default();
+      TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(ir_dump_directory));
+      TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(env, ptx_outfile, ptx));
+      return Status::OK();
+    }();
+    if (!status.ok()) {
+      LOG(WARNING) << "Couldn't dump PTX for module " << module->name()
+                   << " to " << ptx_outfile << ": " << status;
+    }
+  }
+
   const std::vector<uint8> cubin =
       CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor);
 
@@ -444,6 +467,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
                                                             int cc_major,
                                                             int cc_minor) {
+  Tracing::TraceMe annotation("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are

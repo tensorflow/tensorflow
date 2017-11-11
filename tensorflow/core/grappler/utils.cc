@@ -45,7 +45,6 @@ NodeDef* NodeMap::GetNode(const string& name) const {
   string node_name = NodeName(name);
   auto it = nodes_.find(node_name);
   if (it == nodes_.end()) {
-    LOG(WARNING) << "Node " << node_name << " is not in the graph.";
     return nullptr;
   }
   return it->second;

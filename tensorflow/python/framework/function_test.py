@@ -370,7 +370,7 @@ class FunctionTest(test.TestCase):
 
     @function.Defun(dtypes.float32)
     def Foo(x):
-      y = logging_ops.Print(x, [x], "Hello")
+      y = logging_ops.Print(x, [], "Hello")
       with ops.control_dependencies([y]):
         z = control_flow_ops.no_op()
       with ops.control_dependencies([z]):

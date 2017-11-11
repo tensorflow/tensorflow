@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 
 #include "llvm/IR/IRBuilder.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -59,6 +60,10 @@ class DotOpEmitter {
   // LHS and RHS) and store the results in the target.
   tensorflow::Status EmitScalarDot();
 
+  // Emit an LLVM IR implementation of the dot operation if we can.  Returns
+  // true if an LLVM IR implementation was emitted.
+  bool EmitLlvmIrDotIfProfitable();
+
   // Emits a call to the CPU runtime to perform the matrix multiply.
   tensorflow::Status EmitCallToRuntime();
 
@@ -76,6 +81,38 @@ class DotOpEmitter {
   // Our runtime operation requires that all arrays have the same layout,
   // no padding, and a rank of two.
   bool ShapesAreLegalForRuntimeDot() const;
+
+  // Represents the dimensions of a matrix-matrix multiply operation.
+  struct MatMultDims {
+    // The number of rows in the LHS.
+    int64 m;
+
+    // The number of columns in the LHS, which is also must be equal to the
+    // number of rows in the RHS.
+    int64 k;
+
+    // The number of columns on the RHS.
+    int64 n;
+
+    // True if the LHS matrix column major.
+    bool lhs_column_major;
+
+    // True if the RHS matrix column major.
+    bool rhs_column_major;
+  };
+
+  // Get the MatMultDims instance for the dot product this DotOpEmitter
+  // represents.  Precondition: the dot is of rank 2 (and thus its operands are
+  // of rank 2 as well).
+  MatMultDims GetMatMultDims() const;
+
+  // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
+  // registers.
+  int64 GetGemvTilingFactor() const {
+    const int64 kDefaultTilingFactor = 8;
+    return options::LlvmIrGemvTilingFactor(hlo_module_config_)
+        .value_or(kDefaultTilingFactor);
+  }
 
   const HloInstruction& dot_;
   const bool transpose_lhs_;

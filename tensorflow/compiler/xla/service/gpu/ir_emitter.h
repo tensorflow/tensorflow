@@ -84,7 +84,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSort(HloInstruction* sort) override;
   Status HandleSend(HloInstruction* send) override;
+  Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecv(HloInstruction* recv) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleTuple(HloInstruction* tuple) override;

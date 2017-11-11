@@ -2927,8 +2927,9 @@ void ComputationLowerer::Visit(
 
     case OpRequest::kRecvRequest: {
       const RecvRequest& recv_request = request.request().recv_request();
-      hlo_instruction = add_instruction(HloInstruction::CreateRecv(
+      HloInstruction* recv = add_instruction(HloInstruction::CreateRecv(
           request.output_shape(), recv_request.channel_handle().handle()));
+      hlo_instruction = add_instruction(HloInstruction::CreateRecvDone(recv));
       break;
     }
 
@@ -3120,8 +3121,9 @@ void ComputationLowerer::Visit(
     case OpRequest::kSendRequest: {
       const SendRequest& send_request = request.request().send_request();
       HloInstruction* operand = lookup_instruction(send_request.operand());
-      hlo_instruction = add_instruction(HloInstruction::CreateSend(
+      HloInstruction* send = add_instruction(HloInstruction::CreateSend(
           operand, send_request.channel_handle().handle()));
+      hlo_instruction = add_instruction(HloInstruction::CreateSendDone(send));
       break;
     }
 
