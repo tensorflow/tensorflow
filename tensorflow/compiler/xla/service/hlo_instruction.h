@@ -1239,7 +1239,9 @@ string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
 
+// Custom stringification functions for protos that live inside HloInstruction.
 string PaddingConfigToString(const PaddingConfig& padding);
+string OpMetadataToString(const OpMetadata& metadata);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

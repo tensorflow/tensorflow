@@ -1826,7 +1826,7 @@ string HloInstruction::ToString(bool compact_operands, bool include_metadata,
   if (include_metadata &&
       (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
        !metadata_.source_file().empty())) {
-    StrAppend(&result, " # metadata=", metadata_.ShortDebugString());
+    StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
   }
   return result;
 }
@@ -2908,6 +2908,25 @@ string PaddingConfigToString(const PaddingConfig& padding) {
             out, dim.edge_padding_low(), "_", dim.edge_padding_high(),
             has_interior_padding ? StrCat("_", dim.interior_padding()) : "");
       });
+}
+
+string OpMetadataToString(const OpMetadata& metadata) {
+  std::vector<string> result;
+  using tensorflow::str_util::CEscape;
+  if (!metadata.op_type().empty()) {
+    result.push_back(StrCat("op_type=\"", CEscape(metadata.op_type()), "\""));
+  }
+  if (!metadata.op_name().empty()) {
+    result.push_back(StrCat("op_name=\"", CEscape(metadata.op_name()), "\""));
+  }
+  if (!metadata.source_file().empty()) {
+    result.push_back(
+        StrCat("source_file=\"", CEscape(metadata.source_file()), "\""));
+  }
+  if (metadata.source_line() != 0) {
+    result.push_back(StrCat("source_line=", metadata.source_line()));
+  }
+  return Join(result, " ");
 }
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {

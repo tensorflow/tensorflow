@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
@@ -145,6 +146,8 @@ TokKind HloLexer::LexToken() {
         return TokKind::kRparen;
       case '/':
         return LexComment();
+      case '"':
+        return LexString();
     }
   }
 }
@@ -340,6 +343,25 @@ TokKind HloLexer::LexComment() {
   return TokKind::kError;
 }
 
+// Lexes quoted string with escaping characters. If matched, the quoted string
+// will be unescaped and stored to str_val_.
+TokKind HloLexer::LexString() {
+  auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+  static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
+  if (RE2::Consume(&consumable, *escaping_pattern)) {
+    current_ptr_ = consumable.begin();
+    StringPiece raw =
+        StringPieceFromPointers(token_start_ + 1, current_ptr_ - 1);
+    string error;
+    if (!tensorflow::str_util::CUnescape(raw, &str_val_, &error)) {
+      LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
+      return TokKind::kError;
+    }
+    return TokKind::kString;
+  }
+  return TokKind::kError;
+}
+
 string TokKindToString(TokKind kind) {
   switch (kind) {
     case TokKind::kEof:
@@ -398,6 +420,8 @@ string TokKindToString(TokKind kind) {
       return "kDxD";
     case TokKind::kPad:
       return "kPad";
+    case TokKind::kString:
+      return "kString";
     case TokKind::kShape:
       return "kShape";
     case TokKind::kOpcode:

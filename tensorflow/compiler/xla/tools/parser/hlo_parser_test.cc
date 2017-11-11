@@ -65,7 +65,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 R"(HloModule constant_pred_module:
 
 ENTRY %constant_pred () -> pred[] {
-  ROOT %constant = pred[] constant(true)
+  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="\"it\'s not a problem\n" source_file="path/to/test.cc" source_line=68}
 }
 
 )"
@@ -83,7 +83,8 @@ ENTRY %constant_s32 () -> s32[] {
 },
 // f32 constant, but the value is not a decimal
 {
-"ConstantF32", R"(HloModule ConstantF32_module:
+"ConstantF32",
+R"(HloModule ConstantF32_module:
 
 ENTRY %ConstantF32.v4 () -> f32[] {
   ROOT %constant = f32[] constant(42)
@@ -839,6 +840,17 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 )";
   ExpectHasSubstr(Parse(original).status().error_message(),
                   "expects padding_low and padding_high separated by '_'");
+}
+
+TEST_F(HloParserTest, CommaBetweenSubAttributes) {
+  const string original = R"(HloModule test_comma_module:
+
+ENTRY %test_comma.v4 () -> f32[] {
+  ROOT %constant = f32[] constant(-4.2), metadata={source_line=5, op_type="::const"}
+}
+
+)";
+  TF_EXPECT_OK(Parse(original).status());
 }
 
 }  // namespace

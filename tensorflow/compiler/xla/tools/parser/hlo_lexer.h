@@ -46,6 +46,7 @@ class HloLexer {
       case TokKind::kDimLabels:
       case TokKind::kDxD:
       case TokKind::kPad:
+      case TokKind::kString:
         return str_val_;
       default:
         LOG(FATAL) << "This token does not have string value";
@@ -98,6 +99,7 @@ class HloLexer {
   TokKind LexConstant();
   TokKind LexNumberOrPattern();
   TokKind LexComment();
+  TokKind LexString();
 
   const tensorflow::StringPiece buf_;
   const char* current_ptr_;

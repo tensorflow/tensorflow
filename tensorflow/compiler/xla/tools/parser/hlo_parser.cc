@@ -91,7 +91,9 @@ class HloParser {
   // Types of attributes.
   enum class AttrTy {
     kInt64,
+    kInt32,
     kFloat,
+    kString,
     kBracedInt64List,
     kHloComputation,
     kWindow,
@@ -100,6 +102,7 @@ class HloParser {
     kInstructionList,
     kSliceRanges,
     kPaddingConfig,
+    kMetadata,
   };
 
   struct AttrConfig {
@@ -108,6 +111,8 @@ class HloParser {
     void* result;      // where to store the parsed result.
   };
 
+  // attributes ::= (',' attribute)*
+  //
   // Parses attributes given names and configs of the attributes. Each parsed
   // result is passed back through the result pointer in corresponding
   // AttrConfig. Note that the result pointer must point to a optional<T> typed
@@ -121,13 +126,25 @@ class HloParser {
   //  attrs["foo"] = {/*required=*/false, AttrTy::kInt64, &foo};
   //  optional<Window> bar;
   //  attrs["bar"] = {/*required=*/true, AttrTy::kWindow, &bar};
-  //  if (!ParseAttribute(attrs)) {
+  //  if (!ParseAttributes(attrs)) {
   //    return false; // Do not use 'foo' 'bar' if failed.
   //  }
   //  // Do something with 'bar'.
   //  if (foo) { // If attr foo is seen, do something with 'foo'. }
   //
   bool ParseAttributes(const std::unordered_map<string, AttrConfig>& attrs);
+
+  // sub_attributes ::= '{' (','? attribute)* '}'
+  //
+  // Usage is the same as ParseAttributes. See immediately above.
+  bool ParseSubAttributes(const std::unordered_map<string, AttrConfig>& attrs);
+
+  // Parses one attribute. If it has already been seen, return error. Returns
+  // true and adds to seen_attrs on success.
+  //
+  // Do not call this except in ParseAttributes or ParseSubAttributes.
+  bool ParseAttributeHelper(const std::unordered_map<string, AttrConfig>& attrs,
+                            std::unordered_set<string>* seen_attrs);
 
   // Parses a name and finds the corresponding hlo computation.
   bool ParseComputationName(HloComputation** value);
@@ -136,6 +153,7 @@ class HloParser {
   bool ParseWindow(Window* window);
   bool ParseConvolutionDimensionNumbers(ConvolutionDimensionNumbers* dnums);
   bool ParsePaddingConfig(PaddingConfig* padding);
+  bool ParseMetadata(OpMetadata* metadata);
   bool ParseSharding(OpSharding* sharding);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
 
@@ -151,6 +169,7 @@ class HloParser {
   bool ParseParamList();
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
+  bool ParseString(string* result);
   bool ParseShape(Shape* result);
   bool ParseOpcode(HloOpcode* result);
   bool ParseInt64(int64* result);
@@ -303,6 +322,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   optional<std::vector<HloInstruction*>> predecessors;
   attrs["control-predecessors"] = {/*required=*/false, AttrTy::kInstructionList,
                                    &predecessors};
+  optional<OpMetadata> metadata;
+  attrs["metadata"] = {/*required=*/false, AttrTy::kMetadata, &metadata};
 
   HloInstruction* instruction;
   switch (opcode) {
@@ -765,6 +786,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                                  " status: ", status.ToString()));
       }
     }
+  }
+  if (metadata) {
+    instruction->set_metadata(*metadata);
   }
   return AddInstruction(name, instruction);
 }
@@ -1284,120 +1308,41 @@ bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands,
   return true;
 }
 
+// sub_attributes ::= '{' (','? attribute)* '}'
+bool HloParser::ParseSubAttributes(
+    const std::unordered_map<string, AttrConfig>& attrs) {
+  if (!ParseToken(TokKind::kLbrace, "expects '{' to start sub attributes")) {
+    return false;
+  }
+  std::unordered_set<string> seen_attrs;
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    // empty
+  } else {
+    do {
+      EatIfPresent(TokKind::kComma);
+      if (!ParseAttributeHelper(attrs, &seen_attrs)) {
+        return false;
+      }
+    } while (lexer_.GetKind() != TokKind::kRbrace);
+  }
+  // Check that all required attrs were seen.
+  for (const auto& attr_it : attrs) {
+    if (attr_it.second.required &&
+        seen_attrs.find(attr_it.first) == seen_attrs.end()) {
+      return TokenError(Printf("sub-attribute %s is expected but not seen",
+                               attr_it.first.c_str()));
+    }
+  }
+  return ParseToken(TokKind::kRbrace, "expects '}' to end sub attributes");
+}
+
+// attributes ::= (',' attribute)*
 bool HloParser::ParseAttributes(
     const std::unordered_map<string, AttrConfig>& attrs) {
   std::unordered_set<string> seen_attrs;
   while (EatIfPresent(TokKind::kComma)) {
-    string name;
-    if (!ParseAttributeName(&name)) {
-      return TokenError("error parsing attributes");
-    }
-    VLOG(1) << "Parsing attribute " << name;
-    if (!seen_attrs.insert(name).second) {
-      return TokenError(Printf("attribute %s already exists", name.c_str()));
-    }
-    auto attr_it = attrs.find(name);
-    if (attr_it == attrs.end()) {
-      return TokenError(Printf("unexpected attribute %s", name.c_str()));
-    }
-    AttrTy attr_type = attr_it->second.attr_type;
-    void* attr_out_ptr = attr_it->second.result;
-    bool success = [&] {
-      switch (attr_type) {
-        case AttrTy::kInt64: {
-          int64 result;
-          if (!ParseInt64(&result)) {
-            return false;
-          }
-          static_cast<optional<int64>*>(attr_out_ptr)->emplace(result);
-          return true;
-        }
-        case AttrTy::kFloat: {
-          double result;
-          if (!ParseDouble(&result)) {
-            return false;
-          }
-          if (result > std::numeric_limits<float>::max() ||
-              result < std::numeric_limits<float>::lowest()) {
-            return TokenError("value out of range for float");
-          }
-          static_cast<optional<float>*>(attr_out_ptr)
-              ->emplace(static_cast<float>(result));
-          return true;
-        }
-        case AttrTy::kHloComputation: {
-          HloComputation* result;
-          if (!ParseComputationName(&result)) {
-            return false;
-          }
-          static_cast<optional<HloComputation*>*>(attr_out_ptr)
-              ->emplace(result);
-          return true;
-        }
-        case AttrTy::kWindow: {
-          Window result;
-          if (!ParseWindow(&result)) {
-            return false;
-          }
-          static_cast<optional<Window>*>(attr_out_ptr)->emplace(result);
-          return true;
-        }
-        case AttrTy::kConvolutionDimensionNumbers: {
-          ConvolutionDimensionNumbers result;
-          if (!ParseConvolutionDimensionNumbers(&result)) {
-            return false;
-          }
-          static_cast<optional<ConvolutionDimensionNumbers>*>(attr_out_ptr)
-              ->emplace(result);
-          return true;
-        }
-        case AttrTy::kSharding: {
-          OpSharding sharding;
-          if (!ParseSharding(&sharding)) {
-            return false;
-          }
-          static_cast<optional<OpSharding>*>(attr_out_ptr)->emplace(sharding);
-          return true;
-        }
-        case AttrTy::kInstructionList: {
-          std::vector<HloInstruction*> result;
-          if (!ParseInstructionNames(&result)) {
-            return false;
-          }
-          static_cast<optional<std::vector<HloInstruction*>>*>(attr_out_ptr)
-              ->emplace(result);
-          return true;
-        }
-        case AttrTy::kBracedInt64List: {
-          std::vector<int64> result;
-          if (!ParseInt64List(TokKind::kLbrace, TokKind::kRbrace,
-                              TokKind::kComma, &result)) {
-            return false;
-          }
-          static_cast<optional<std::vector<int64>>*>(attr_out_ptr)
-              ->emplace(result);
-          return true;
-        }
-        case AttrTy::kSliceRanges: {
-          SliceRanges result;
-          if (!ParseSliceRanges(&result)) {
-            return false;
-          }
-          static_cast<optional<SliceRanges>*>(attr_out_ptr)->emplace(result);
-          return true;
-        }
-        case AttrTy::kPaddingConfig: {
-          PaddingConfig result;
-          if (!ParsePaddingConfig(&result)) {
-            return false;
-          }
-          static_cast<optional<PaddingConfig>*>(attr_out_ptr)->emplace(result);
-          return true;
-        }
-      }
-    }();
-    if (!success) {
-      return TokenError(Printf("error parsing attribute %s", name.c_str()));
+    if (!ParseAttributeHelper(attrs, &seen_attrs)) {
+      return false;
     }
   }
   // Check that all required attrs were seen.
@@ -1407,6 +1352,150 @@ bool HloParser::ParseAttributes(
       return TokenError(Printf("attribute %s is expected but not seen",
                                attr_it.first.c_str()));
     }
+  }
+  return true;
+}
+
+bool HloParser::ParseAttributeHelper(
+    const std::unordered_map<string, AttrConfig>& attrs,
+    std::unordered_set<string>* seen_attrs) {
+  string name;
+  if (!ParseAttributeName(&name)) {
+    return TokenError("error parsing attributes");
+  }
+  VLOG(1) << "Parsing attribute " << name;
+  if (!seen_attrs->insert(name).second) {
+    return TokenError(Printf("attribute %s already exists", name.c_str()));
+  }
+  auto attr_it = attrs.find(name);
+  if (attr_it == attrs.end()) {
+    return TokenError(Printf("unexpected attribute %s", name.c_str()));
+  }
+  AttrTy attr_type = attr_it->second.attr_type;
+  void* attr_out_ptr = attr_it->second.result;
+  bool success = [&] {
+    switch (attr_type) {
+      case AttrTy::kInt64: {
+        int64 result;
+        if (!ParseInt64(&result)) {
+          return false;
+        }
+        static_cast<optional<int64>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kInt32: {
+        int64 result;
+        if (!ParseInt64(&result)) {
+          return false;
+        }
+        if (result != static_cast<int32>(result)) {
+          return TokenError("value out of range for int32");
+        }
+        static_cast<optional<int32>*>(attr_out_ptr)
+            ->emplace(static_cast<int32>(result));
+        return true;
+      }
+      case AttrTy::kFloat: {
+        double result;
+        if (!ParseDouble(&result)) {
+          return false;
+        }
+        if (result > std::numeric_limits<float>::max() ||
+            result < std::numeric_limits<float>::lowest()) {
+          return TokenError("value out of range for float");
+        }
+        static_cast<optional<float>*>(attr_out_ptr)
+            ->emplace(static_cast<float>(result));
+        return true;
+      }
+      case AttrTy::kHloComputation: {
+        HloComputation* result;
+        if (!ParseComputationName(&result)) {
+          return false;
+        }
+        static_cast<optional<HloComputation*>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kWindow: {
+        Window result;
+        if (!ParseWindow(&result)) {
+          return false;
+        }
+        static_cast<optional<Window>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kConvolutionDimensionNumbers: {
+        ConvolutionDimensionNumbers result;
+        if (!ParseConvolutionDimensionNumbers(&result)) {
+          return false;
+        }
+        static_cast<optional<ConvolutionDimensionNumbers>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
+      case AttrTy::kSharding: {
+        OpSharding sharding;
+        if (!ParseSharding(&sharding)) {
+          return false;
+        }
+        static_cast<optional<OpSharding>*>(attr_out_ptr)->emplace(sharding);
+        return true;
+      }
+      case AttrTy::kInstructionList: {
+        std::vector<HloInstruction*> result;
+        if (!ParseInstructionNames(&result)) {
+          return false;
+        }
+        static_cast<optional<std::vector<HloInstruction*>>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
+      case AttrTy::kBracedInt64List: {
+        std::vector<int64> result;
+        if (!ParseInt64List(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                            &result)) {
+          return false;
+        }
+        static_cast<optional<std::vector<int64>>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
+      case AttrTy::kSliceRanges: {
+        SliceRanges result;
+        if (!ParseSliceRanges(&result)) {
+          return false;
+        }
+        static_cast<optional<SliceRanges>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kPaddingConfig: {
+        PaddingConfig result;
+        if (!ParsePaddingConfig(&result)) {
+          return false;
+        }
+        static_cast<optional<PaddingConfig>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kString: {
+        string result;
+        if (!ParseString(&result)) {
+          return false;
+        }
+        static_cast<optional<string>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kMetadata: {
+        OpMetadata result;
+        if (!ParseMetadata(&result)) {
+          return false;
+        }
+        static_cast<optional<OpMetadata>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+    }
+  }();
+  if (!success) {
+    return TokenError(Printf("error parsing attribute %s", name.c_str()));
   }
   return true;
 }
@@ -1763,6 +1852,16 @@ bool HloParser::ParseAttributeName(string* result) {
   return true;
 }
 
+bool HloParser::ParseString(string* result) {
+  VLOG(1) << "ParseString";
+  if (lexer_.GetKind() != TokKind::kString) {
+    return TokenError("expects string");
+  }
+  *result = lexer_.GetStrVal();
+  lexer_.Lex();
+  return true;
+}
+
 bool HloParser::ParseDxD(const string& name, std::vector<int64>* result) {
   if (!result->empty()) {
     return TokenError(
@@ -1836,6 +1935,35 @@ bool HloParser::ParsePaddingConfig(PaddingConfig* padding) {
     dim->set_interior_padding(padding_dim.size() == 3 ? padding_dim[2] : 0);
   }
   lexer_.Lex();
+  return true;
+}
+
+// '{' metadata_string '}'
+bool HloParser::ParseMetadata(OpMetadata* metadata) {
+  std::unordered_map<string, AttrConfig> attrs;
+  optional<string> op_type;
+  optional<string> op_name;
+  optional<string> source_file;
+  optional<int32> source_line;
+  attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
+  attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
+  attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
+  attrs["source_line"] = {/*required=*/false, AttrTy::kInt32, &source_line};
+  if (!ParseSubAttributes(attrs)) {
+    return false;
+  }
+  if (op_type) {
+    metadata->set_op_type(*op_type);
+  }
+  if (op_name) {
+    metadata->set_op_name(*op_name);
+  }
+  if (source_file) {
+    metadata->set_source_file(*source_file);
+  }
+  if (source_line) {
+    metadata->set_source_line(*source_line);
+  }
   return true;
 }
 
