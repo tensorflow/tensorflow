@@ -20,6 +20,7 @@ cc_library(
     hdrs = ["gen_op_registration.h"],
     deps = [
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string",
         "@com_googlesource_code_re2//:re2",
     ],
 )
