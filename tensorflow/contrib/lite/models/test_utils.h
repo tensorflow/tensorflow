@@ -30,12 +30,12 @@ using Frames = std::vector<std::vector<float>>;
 }  // namespace tflite
 
 #ifndef __ANDROID__
-#include "file/base/path.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/test.h"
 
 inline string TestDataPath() {
-  return string(file::JoinPath(tensorflow::testing::TensorFlowSrcRoot(),
-                               "contrib/lite/models/testdata/"));
+  return string(StrCat(tensorflow::testing::TensorFlowSrcRoot(), "/",
+                       "contrib/lite/models/testdata/"));
 }
 inline int TestInputSize(const tflite::models::Frames& input_frames) {
   return input_frames.size();
