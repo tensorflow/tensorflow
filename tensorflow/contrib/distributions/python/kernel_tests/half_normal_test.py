@@ -120,7 +120,7 @@ class HalfNormalTest(test.TestCase):
 
       if not stats:
         return
-      expected_log_pdf = stats.halfnorm(scale.eval()).logpdf(x)
+      expected_log_pdf = stats.halfnorm(scale=scale.eval()).logpdf(x)
       self.assertAllClose(expected_log_pdf, log_pdf.eval())
       self.assertAllClose(np.exp(expected_log_pdf), pdf.eval())
 
@@ -128,7 +128,7 @@ class HalfNormalTest(test.TestCase):
     with self.test_session():
       batch_size = 50
       scale = self._rng.rand(batch_size) + 1.0
-      x = np.linspace(0.0, 8.0, batch_size).astype(np.float64)
+      x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
       halfnorm = hn_lib.HalfNormal(scale=scale)
 
       cdf = halfnorm.cdf(x)
@@ -139,7 +139,7 @@ class HalfNormalTest(test.TestCase):
 
       if not stats:
         return
-      expected_logcdf = stats.halfnorm(scale).logcdf(x)
+      expected_logcdf = stats.halfnorm(scale=scale).logcdf(x)
       self.assertAllClose(expected_logcdf, log_cdf.eval(), atol=0)
       self.assertAllClose(np.exp(expected_logcdf), cdf.eval(), atol=0)
 
@@ -147,7 +147,7 @@ class HalfNormalTest(test.TestCase):
     with self.test_session():
       batch_size = 50
       scale = self._rng.rand(batch_size) + 1.0
-      x = np.linspace(-1.0, 8.0, batch_size).astype(np.float64)
+      x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
       halfnorm = hn_lib.HalfNormal(scale=scale)
 
       sf = halfnorm.survival_function(x)
@@ -158,7 +158,7 @@ class HalfNormalTest(test.TestCase):
 
       if not stats:
         return
-      expected_logsf = stats.halfnorm(scale).logsf(x)
+      expected_logsf = stats.halfnorm(scale=scale).logsf(x)
       self.assertAllClose(expected_logsf, log_sf.eval(), atol=0)
       self.assertAllClose(np.exp(expected_logsf), sf.eval(), atol=0)
 
@@ -174,20 +174,21 @@ class HalfNormalTest(test.TestCase):
 
       if not stats:
         return
-      expected_x = stats.halfnorm(scale).ppf(p)
-      self.assertAllClose(expected_x, x.eval(), atol=0.)
+      expected_x = stats.halfnorm(scale=scale).ppf(p)
+      self.assertAllClose(expected_x, x.eval(), atol=0)
 
-  def testFiniteGradientAtDifficultPoints(self):
+  def testFiniteGradients(self):
     for dtype in [np.float32, np.float64]:
       g = ops.Graph()
       with g.as_default():
-        scale = variables.Variable(dtype(1.0))
+        scale = variables.Variable(dtype(3.0))
         dist = hn_lib.HalfNormal(scale=scale)
-        x = np.array([0.1, 1.0, 5., 20., 100.]).astype(dtype)
+        x = np.array([0.01, 0.1, 1., 5., 10.]).astype(dtype)
         for func in [
             dist.cdf, dist.log_cdf, dist.survival_function,
-            dist.log_survival_function, dist.log_prob, dist.prob
+            dist.log_prob, dist.prob, dist.log_survival_function,
         ]:
+          print(func.__name__)
           value = func(x)
           grads = gradients_impl.gradients(value, [scale])
           with self.test_session(graph=g):
@@ -200,7 +201,6 @@ class HalfNormalTest(test.TestCase):
       scale = np.array([[1.0, 2.0, 3.0]])
       halfnorm = hn_lib.HalfNormal(scale=scale)
 
-      # scipy.stats.norm cannot deal with these shapes.
       expected_entropy = 0.5 * np.log(np.pi * scale ** 2.0 / 2.0) + 0.5
 
       entropy = halfnorm.entropy()
@@ -209,7 +209,7 @@ class HalfNormalTest(test.TestCase):
 
   def testHalfNormalMeanAndMode(self):
     with self.test_session():
-      scale = constant_op.constant([11., 12., 13.])
+      scale = np.array([11., 12., 13.])
 
       halfnorm = hn_lib.HalfNormal(scale=scale)
       expected_mean = scale * np.sqrt(2.0) / np.sqrt(np.pi)
