@@ -266,7 +266,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -274,7 +273,6 @@ py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:lookup_ops",
@@ -282,7 +280,6 @@ py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//third_party/py/numpy",
@@ -431,14 +428,10 @@ py_test(
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
 )
@@ -450,20 +443,26 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_oss"],  # b/68785503
     deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:prefetching_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:function",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["**/*"],
+        include = [
+            "**/*",
+        ],
         exclude = [
             "**/METADATA",
             "**/OWNERS",
