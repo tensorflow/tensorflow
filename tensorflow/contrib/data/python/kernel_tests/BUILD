@@ -366,6 +366,7 @@ py_test(
     srcs = ["sequence_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -429,6 +430,7 @@ py_test(
     srcs = ["zip_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/python:array_ops",
@@ -449,7 +451,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
-        "no_oss",
+        "no_oss",  # b/68785503
     ],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",

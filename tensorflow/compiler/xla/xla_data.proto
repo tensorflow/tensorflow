@@ -46,6 +46,12 @@ enum PrimitiveType {
   // converted to f16 from f32 at arbirary points in the computation.
   F16 = 10;
   F32 = 11;
+
+  // Truncated 16 bit floating-point format. This is similar to IEEE's 16 bit
+  // floating-point format, but uses 1 bit for the sign, 8 bits for the exponent
+  // and 7 bits for the mantissa.
+  BF16 = 16;
+
   F64 = 12;
 
   // Complex values of fixed width.
@@ -63,6 +69,8 @@ enum PrimitiveType {
   // An opaque type used for passing context specific data to a custom
   // operation.
   OPAQUE = 14;
+
+  // Next = 17
 }
 
 // Describes the value held inside padding elements.
@@ -310,7 +318,10 @@ message LiteralProto {
   repeated double f64s = 9;
   repeated float c64s = 12;  // Stored as interleaved real, imag floats.
   repeated LiteralProto tuple_literals = 10;
-  bytes f16s = 11;  // Note: the F16s are encoded in little endian byte order
+  // The F16s and BF16s are encoded in little endian byte order
+  bytes f16s = 11;
+  bytes bf16s = 13;
+  // Next = 14
 }
 
 message WindowDimension {
@@ -825,8 +836,10 @@ message OpSharding {
     REPLICATED = 0;
     // This sharding is maximal - one device runs the entire operation.
     MAXIMAL = 1;
-    // Neither of the above; tile_shape and tile_assignment are both used.
-    OTHER = 2;
+    // This sharding is a tuple - only the tuple_shardings field is valid.
+    TUPLE = 2;
+    // None of the above; tile_shape and tile_assignment are both used.
+    OTHER = 3;
   }
   Type type = 1;
   // The shape of the sharded tile.
@@ -838,6 +851,13 @@ message OpSharding {
   // Flattened list of device IDs. The order of flattening is the same as used
   // by IndexUtil::MultiToLinearIndex(tile_assignment_shape).
   repeated int64 tile_assignment_devices = 4;
+  // If type == TUPLE, the sub-shardings, one per leaf node in the tuple shape,
+  // in pre-order. The tuple shape could be nested; here we store just a
+  // flattened list of all leaves in the tuple shape. Note that the tuple shape
+  // is not stored here; shardings do not store the shapes to which they are
+  // applied, this is inferred from the instruction this sharding gets attached
+  // to.
+  repeated OpSharding tuple_shardings = 5;
 }
 
 message OpRequest {

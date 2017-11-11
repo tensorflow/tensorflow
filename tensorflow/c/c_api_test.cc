@@ -383,7 +383,7 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
 
   ASSERT_FALSE(GetAttrValue(feed, "missing", &attr_value, s));
-  EXPECT_EQ(string("Operation has no attr named 'missing'."),
+  EXPECT_EQ(string("Operation 'feed' has no attr named 'missing'."),
             string(TF_Message(s)));
 
   // Make a constant oper with the scalar "3".
@@ -1054,7 +1054,7 @@ class CApiColocationTest : public ::testing::Test {
         TF_OperationGetAttrMetadata(op, tensorflow::kColocationAttrName, s_);
     if (expected.empty()) {
       ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
-      EXPECT_EQ(std::string("Operation has no attr named '_class'."),
+      EXPECT_EQ(std::string("Operation 'add' has no attr named '_class'."),
                 std::string(TF_Message(s_)));
       return;
     }

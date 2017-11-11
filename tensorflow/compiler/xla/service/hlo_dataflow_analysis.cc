@@ -242,6 +242,51 @@ bool HloDataflowAnalysis::UpdateBitcastValueSet(HloInstruction* bitcast) {
   return false;
 }
 
+bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
+  CHECK_EQ(send->opcode(), HloOpcode::kSend);
+  bool changed = false;
+  // Send forwards the operand value to the output tuple at {0}.
+  for (auto& pair : GetInstructionValueSet(send->operand(0))) {
+    const ShapeIndex& operand_index = pair.first;
+    const HloValueSet& operand_value_set = pair.second;
+
+    ShapeIndex index = {0};
+    for (int64 i : operand_index) {
+      index.push_back(i);
+    }
+
+    HloValueSet& value_set = GetValueSet(send, index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
+  CHECK_EQ(recv_done->opcode(), HloOpcode::kRecvDone);
+  bool changed = false;
+  // RecvDone forwards the operand value at {0} to the output.
+  for (auto& pair : GetInstructionValueSet(recv_done)) {
+    ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+
+    ShapeIndex operand_index = {0};
+    for (int64 i : index) {
+      operand_index.push_back(i);
+    }
+
+    const HloValueSet& operand_value_set =
+        GetValueSet(recv_done->operand(0), operand_index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
   CHECK_EQ(call->opcode(), HloOpcode::kCall);
   InstructionValueSet& value_set = GetInstructionValueSet(call);
@@ -429,6 +474,10 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCallValueSet(instruction);
     case HloOpcode::kWhile:
       return UpdateWhileValueSet(instruction);
+    case HloOpcode::kSend:
+      return UpdateSendValueSet(instruction);
+    case HloOpcode::kRecvDone:
+      return UpdateRecvDoneValueSet(instruction);
     default:
       // Instruction does not forward HloValues (it defines all values in its
       // output). No update is necessary.
@@ -537,6 +586,12 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         GetValueSet(instruction, /*index=*/{}).AddValue(value);
       };
 
+      // Lambda to set the value set at the given index of the output.
+      auto define_value_at = [this, &instruction](const ShapeIndex& index) {
+        HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
+        GetValueSet(instruction, index).AddValue(value);
+      };
+
       switch (instruction->opcode()) {
         case HloOpcode::kBitcast:
           if (bitcast_defines_value_) {
@@ -576,6 +631,16 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
           define_top_level_only();
+          break;
+        case HloOpcode::kRecvDone:
+          // RecvDone aliases its input tuple element {0}, therefore does not
+          // define any values.
+          break;
+        case HloOpcode::kSend:
+          // Send produces a tuple of {aliased operand, U32 context}, therefore
+          // only defines the top-level tuple and the tuple element at {1}.
+          define_value_at(/*index=*/{});
+          define_value_at(/*index=*/{1});
           break;
         default:
           define_all_values();

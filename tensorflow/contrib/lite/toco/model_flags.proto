@@ -1,0 +1,119 @@
+// Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+syntax = "proto2";
+
+package toco;
+
+// Next ID to USE: 5.
+message InputArray {
+  // Name of the input arrays, i.e. the arrays from which input activations
+  // will be read.
+  optional string name = 1;
+
+  // Shape of the input.  For many applications the dimensions are {batch,
+  // height, width, depth}.  Often the batch is left "unspecified" by providing
+  // a value of -1.
+  //
+  // The last dimension is typically called 'depth' or 'channels'. For example,
+  // for an image model taking RGB images as input, this would have the value 3.
+  repeated int32 shape = 2;
+
+  // mean_value and std_value parameters control the interpretation of raw input
+  // activation values (elements of the input array) as real numbers. The
+  // mapping is given by:
+  //
+  //    real_value = (raw_input_value - mean_value) / std_value
+  //
+  // In particular, the defaults (mean_value=0, std_value=1) yield
+  // real_value = raw_input_value. Often, non-default values are used in image
+  // models. For example, an image model taking uint8 image channel values as
+  // its raw inputs, in [0, 255] range, may use mean_value=128, std_value=128 to
+  // map them into the interval [-1, 1).
+  //
+  // Note: this matches exactly the meaning of mean_value and std_value in
+  // (TensorFlow via LegacyFedInput).
+  optional float mean_value = 3;
+  optional float std_value = 4 [default = 1.];
+}
+
+// ModelFlags encodes properties of a model that, depending on the file
+// format, may or may not be recorded in the model file. The purpose of
+// representing these properties in ModelFlags is to allow passing them
+// separately from the input model file, for instance as command-line
+// parameters, so that we can offer a single uniform interface that can
+// handle files from different input formats.
+//
+// For each of these properties, and each supported file format, we
+// detail in comments below whether the property exists in the given file
+// format.
+//
+// Obsolete flags that have been removed:
+//   optional int32 input_depth = 3;
+//   optional int32 input_width = 4;
+//   optional int32 input_height = 5;
+//   optional int32 batch = 6 [ default = 1];
+//   optional float mean_value = 7;
+//   optional float std_value = 8 [default = 1.];
+//   optional int32 input_dims = 11 [ default = 4];
+//   repeated int32 input_shape = 13;
+//
+// Next ID to USE: 16.
+message ModelFlags {
+  // Information about the input arrays, i.e. the arrays from which input
+  // activations will be read.
+  repeated InputArray input_arrays = 1;
+
+  // Name of the output arrays, i.e. the arrays into which output activations
+  // will be written.
+  repeated string output_arrays = 2;
+
+  // If true, the model accepts an arbitrary batch size. Mutually exclusive with
+  // the 'batch' field: at most one of these two fields can be set.
+  optional bool variable_batch = 10;
+
+  message RnnState {
+    optional string state_array = 1;
+    optional string back_edge_source_array = 2;
+    optional int32 size = 3;
+    // TODO(benoitjacob): manually_create is a temporary hack:
+    // due to discrepancies between the current toco dims tracking and
+    // TensorFlow shapes, for some models we need to manually create RNN state
+    // arrays with a specified shape.
+    // Maybe we should actually implement back-edges as operators of their own,
+    // which would remove the need for much special-casing, including here,
+    // we could probably consistently let PropagateFixedSizes handle state
+    // arrays.
+    optional bool manually_create = 4;
+  }
+  repeated RnnState rnn_states = 12;
+
+  // Checks applied to the model, typically after toco's comprehensive
+  // graph transformations.
+  // Next ID to USE: 4.
+  message ModelCheck {
+    // Use the name of a type of operator to check its counts.
+    // Use "Total" for overall operator counts.
+    // Use "Arrays" for overall array counts.
+    optional string count_type = 1 [default = "None"];
+    // A count of zero is a meaningful check, so negative used to mean disable.
+    optional int32 count_min = 2 [default = -1];
+    // If count_max < count_min, then count_min is only allowed value.
+    optional int32 count_max = 3 [default = -1];
+  }
+  repeated ModelCheck model_checks = 14;
+
+  // If true, ignore control dependency requirements in input TensorFlow
+  // GraphDef. Otherwise an error will be raised upon control dependency inputs.
+  optional bool drop_control_dependency = 15;
+}

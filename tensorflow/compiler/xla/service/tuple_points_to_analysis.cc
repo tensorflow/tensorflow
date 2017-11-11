@@ -120,6 +120,23 @@ void PointsToSet::add_tuple_source(const ShapeIndex& index,
   tree_.mutable_element(index)->tuple_sources.insert(tuple);
 }
 
+namespace {
+
+// Gather fusion instructions from 'instruction' into 'fusion_instructions'.
+void GatherFusionInstructions(
+    HloInstruction* instruction,
+    std::vector<HloInstruction*>* fusion_instructions) {
+  CHECK_EQ(HloOpcode::kFusion, instruction->opcode());
+  for (auto* fused : instruction->fused_instructions()) {
+    if (fused->opcode() == HloOpcode::kFusion) {
+      GatherFusionInstructions(fused, fusion_instructions);
+    }
+  }
+  fusion_instructions->push_back(instruction);
+}
+
+}  // namespace
+
 /* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
 TuplePointsToAnalysis::Run(const HloModule* module) {
   auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
@@ -137,19 +154,22 @@ Status TuplePointsToAnalysis::Analyze() {
   logical_buffer_aliases_.resize(
       logical_buffer_analysis_->num_logical_buffers());
 
+  std::vector<HloInstruction*> fusion_instructions;
   for (auto* computation : module_->MakeNonfusionComputations()) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
-    // Run points-to analysis on fusion instructions in 'computation'.
     for (auto* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kFusion) {
-        continue;
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        GatherFusionInstructions(instruction, &fusion_instructions);
       }
-      TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
-      TF_RETURN_IF_ERROR(
-          PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
     }
+  }
+  // Run points-to analysis on fusion instructions in 'computation'.
+  for (auto* instruction : fusion_instructions) {
+    TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
+    TF_RETURN_IF_ERROR(
+        PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
   }
 
   XLA_VLOG_LINES(3, ToString());
@@ -250,6 +270,64 @@ Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
   // result *is* the buffer of its operand, so just copy the operands points-to
   // set.
   CreateCopiedPointsToSet(bitcast, bitcast->operand(0));
+  return Status::OK();
+}
+
+Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
+  // RecvDone aliases its input (Recv) tuple element {0} to its output.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(recv_done);
+  const PointsToSet& operand_points_to_set =
+      GetPointsToSet(recv_done->operand(0));
+
+  // Recursively copy the points to set of the operand tuple {0}.
+  points_to_set.ForEachMutableElement(
+      [this, &points_to_set, &operand_points_to_set](
+          const ShapeIndex& index, PointsToSet::BufferList* buffers) {
+        ShapeIndex src_index({0});
+        for (auto element : index) {
+          src_index.push_back(element);
+        }
+        *buffers = operand_points_to_set.element(src_index);
+        for (auto& tuple_source :
+             operand_points_to_set.tuple_sources(src_index)) {
+          points_to_set.add_tuple_source(index, tuple_source);
+        }
+      });
+  return Status::OK();
+}
+
+Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
+  // Send creates a tuple of {aliased operand, U32 context}.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(send);
+
+  // Creates the points to set for the tuple and its element at {1}.
+  auto top_buffer = points_to_set.mutable_element(ShapeIndex({}));
+  top_buffer->push_back(
+      &logical_buffer_analysis_->GetBuffer(send, ShapeIndex({})));
+  points_to_set.add_tuple_source({}, send);
+
+  auto context_buffer = points_to_set.mutable_element(ShapeIndex({1}));
+  context_buffer->push_back(
+      &logical_buffer_analysis_->GetBuffer(send, ShapeIndex({1})));
+
+  // Recursively copy the points to set of the operand to output tuple {0}.
+  const PointsToSet& operand_points_to_set = GetPointsToSet(send->operand(0));
+  operand_points_to_set.ForEachElement(
+      [&points_to_set, &operand_points_to_set](
+          const ShapeIndex& src_index,
+          const PointsToSet::BufferList& points_to) {
+        ShapeIndex target_index({0});
+        for (auto element : src_index) {
+          target_index.push_back(element);
+        }
+        *points_to_set.mutable_element(target_index) = points_to;
+
+        for (HloInstruction* tuple :
+             operand_points_to_set.tuple_sources(src_index)) {
+          points_to_set.add_tuple_source(target_index, tuple);
+        }
+      });
+
   return Status::OK();
 }
 

@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
+from tensorflow.python.estimator.canned.baseline import BaselineClassifier
+from tensorflow.python.estimator.canned.baseline import BaselineRegressor
 from tensorflow.python.estimator.canned.dnn import DNNClassifier
 from tensorflow.python.estimator.canned.dnn import DNNRegressor
 from tensorflow.python.estimator.canned.dnn_linear_combined import DNNLinearCombinedClassifier
@@ -46,6 +48,8 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     # Canned Estimators
+    'BaselineClassifier',
+    'BaselineRegressor',
     'DNNClassifier',
     'DNNRegressor',
     'DNNLinearCombinedClassifier',

@@ -2856,11 +2856,12 @@ class EagerTest(test.TestCase):
   def testCond(self):
     with context.eager_mode():
       pred = math_ops.less(1, 2)
-      fn1 = lambda: constant_op.constant(10)
-      fn2 = lambda: constant_op.constant(20)
+      fn1 = lambda: [constant_op.constant(10)]
+      fn2 = lambda: [constant_op.constant(20)]
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       self.assertAllEqual(r.numpy(), 10)
+      self.assertFalse(isinstance(r, list))
 
   def testWhileLoop(self):
     with context.eager_mode():

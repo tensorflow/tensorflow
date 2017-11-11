@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -838,6 +839,85 @@ TEST_F(ConstantFoldingTest, Packing) {
   // size needed to naively encode 1000 floats folded twice).
   EXPECT_GT(8000, output.ByteSizeLong());
 }
+
+TEST_F(ConstantFoldingTest, ConstantMaterialization) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a =
+      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
+  Output b = ops::Square(s.WithOpName("b"), a);
+  Output c = ops::Mul(s.WithOpName("c"), a, b);
+  Output d = ops::Shape(s.WithOpName("d"), a);
+  Output e = ops::Shape(s.WithOpName("e"), b);
+
+  auto f = ops::internal::BroadcastGradientArgs(s.WithOpName("f"), d, e);
+  Output o1 = ops::Identity(s.WithOpName("o1"), f.r0);
+  Output o2 = ops::Identity(s.WithOpName("o2"), f.r1);
+
+  Output g = ops::Placeholder(s.WithOpName("g"), DT_FLOAT,
+                              ops::Placeholder::Shape(PartialTensorShape({1})));
+  Output h = ops::Shape(s.WithOpName("h"), g);
+  auto i = ops::internal::BroadcastGradientArgs(s.WithOpName("i"), d, h);
+  Output p1 = ops::Identity(s.WithOpName("p1"), i.r0);
+  Output p2 = ops::Identity(s.WithOpName("p2"), i.r1);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding fold(RewriterConfig::AGGRESSIVE, nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // Run a second time to make sure the optimization is idempotent.
+  item.graph.Swap(&output);
+  status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  int found = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "o1") {
+      ++found;
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ConstantFolding/f-0", node.input(0));
+    } else if (node.name() == "o2") {
+      ++found;
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ConstantFolding/f-1", node.input(0));
+    } else if (node.name() == "ConstantFolding/f-0") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^f", node.input(0));
+      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
+    } else if (node.name() == "ConstantFolding/f-1") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^f", node.input(0));
+      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
+    } else if (node.name() == "p1") {
+      ++found;
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ConstantFolding/i-0", node.input(0));
+    } else if (node.name() == "p2") {
+      ++found;
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("i:1", node.input(0));
+    } else if (node.name() == "ConstantFolding/i-0") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^i", node.input(0));
+      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
+    }
+  }
+  EXPECT_EQ(7, found);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

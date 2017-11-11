@@ -68,9 +68,7 @@ BCast::BCast(const Vec& sx, const Vec& sy, const bool fewer_dims_optimization) {
       // Output shape.
       State curr = UNKNOWN;
       const int64 x_i = x[i];  // i-th dimension of x.
-      CHECK_GE(x_i, 0);
       const int64 y_i = y[i];  // i-th dimension of y.
-      CHECK_GE(y_i, 0);
       int64 o_i;   // i-th dimension of the output.
       int64 bx_i;  // i-th broadcast for x.
       int64 by_i;  // i-th broadcast for y.
