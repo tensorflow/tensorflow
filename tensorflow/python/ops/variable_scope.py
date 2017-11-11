@@ -1785,8 +1785,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
       auxiliary_name_scope: If `True`, we create an auxiliary name scope with
-        the scope. If `None` or `False`, we don't touch name scope.
-        If name scope, we reuse the name scope if possible.
+        the scope. If `False`, we don't touch name scope.
 
     Returns:
       A scope that can be captured and reused.
