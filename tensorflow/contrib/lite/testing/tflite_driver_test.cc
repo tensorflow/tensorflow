@@ -26,7 +26,7 @@ using ::testing::ElementsAre;
 TEST(TfliteDriverTest, SimpleTest) {
   std::unique_ptr<TestRunner> runner(new TfLiteDriver(/*use_nnapi=*/false));
 
-  runner->SetModelBaseDir("third_party/tensorflow/contrib/lite");
+  runner->SetModelBaseDir("tensorflow/contrib/lite");
   runner->LoadModel("testdata/multi_add.bin");
   ASSERT_TRUE(runner->IsValid());
 

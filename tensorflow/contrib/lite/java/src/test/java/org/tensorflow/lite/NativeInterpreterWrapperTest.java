@@ -41,7 +41,7 @@ public final class NativeInterpreterWrapperTest {
       "third_party/tensorflow/contrib/lite/java/src/testdata/uint8.bin";
 
   private static final String INVALID_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/src/testdata/invalid.model.tflite";
+      "third_party/tensorflow/contrib/lite/java/src/testdata/invalid_model.bin";
 
   @Test
   public void testConstructor() {
