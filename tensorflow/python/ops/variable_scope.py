@@ -1572,6 +1572,10 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           else self._name_or_scope)
       self._reuse = (self._reuse
                      or self._old.reuse)  # Re-using is inherited by sub-scopes.
+      if self._old_name_scope is None:  # Root scope is an empty string.
+        name_scope = self._name_or_scope
+      else:
+        name_scope = self._old_name_scope
       variable_scope_object = VariableScope(
           self._reuse,
           name=self._new_name,
@@ -1582,7 +1586,7 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           dtype=self._old.dtype,
           use_resource=self._old.use_resource,
           custom_getter=self._old.custom_getter,
-          name_scope=self._old_name_scope or self._name_or_scope,
+          name_scope=name_scope,
           constraint=self._constraint)
       if self._initializer is not None:
         variable_scope_object.set_initializer(self._initializer)
