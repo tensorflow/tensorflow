@@ -49,6 +49,8 @@ class Iterator(object):
     self._initializer = initializer
     self._output_types = output_types
     self._output_shapes = output_shapes
+    self._string_handle = gen_dataset_ops.iterator_to_string_handle(
+        self._iterator_resource)
 
   @staticmethod
   def from_structure(output_types, output_shapes=None, shared_name=None):
@@ -267,8 +269,11 @@ class Iterator(object):
     Returns:
       A scalar `tf.Tensor` of type `tf.string`.
     """
-    return gen_dataset_ops.iterator_to_string_handle(
-        self._iterator_resource, name=name)
+    if name is None:
+      return self._string_handle
+    else:
+      return gen_dataset_ops.iterator_to_string_handle(
+          self._iterator_resource, name=name)
 
   @property
   def output_shapes(self):
