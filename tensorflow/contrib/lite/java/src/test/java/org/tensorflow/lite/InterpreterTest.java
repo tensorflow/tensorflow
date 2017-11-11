@@ -36,10 +36,10 @@ import org.junit.runners.JUnit4;
 public final class InterpreterTest {
 
   private static final File MODEL_FILE =
-      new File("third_party/tensorflow/contrib/lite/java/src/testdata/add.bin");
+      new File("tensorflow/contrib/lite/java/src/testdata/add.bin");
 
   private static final File MOBILENET_MODEL_FILE =
-      new File("third_party/tensorflow/contrib/lite/java/src/testdata/mobilenet.tflite.bin");
+      new File("tensorflow/contrib/lite/java/src/testdata/mobilenet.tflite.bin");
 
   @Test
   public void testInterpreter() throws Exception {

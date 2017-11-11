@@ -29,19 +29,19 @@ import org.junit.runners.JUnit4;
 public final class NativeInterpreterWrapperTest {
 
   private static final String FLOAT_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/src/testdata/add.bin";
+      "tensorflow/contrib/lite/java/src/testdata/add.bin";
 
   private static final String INT_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/src/testdata/int32.bin";
+      "tensorflow/contrib/lite/java/src/testdata/int32.bin";
 
   private static final String LONG_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/src/testdata/int64.bin";
+      "tensorflow/contrib/lite/java/src/testdata/int64.bin";
 
   private static final String BYTE_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/src/testdata/uint8.bin";
+      "tensorflow/contrib/lite/java/src/testdata/uint8.bin";
 
   private static final String INVALID_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/src/testdata/invalid_model.bin";
+      "tensorflow/contrib/lite/java/src/testdata/invalid_model.bin";
 
   @Test
   public void testConstructor() {

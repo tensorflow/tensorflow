@@ -29,7 +29,7 @@ import org.junit.runners.JUnit4;
 public final class TensorTest {
 
   private static final String MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/src/testdata/add.bin";
+      "tensorflow/contrib/lite/java/src/testdata/add.bin";
 
   private NativeInterpreterWrapper wrapper;
   private long nativeHandle;
