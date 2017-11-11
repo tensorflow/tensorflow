@@ -774,3 +774,10 @@ tf_cc_shared_object(
         "//tensorflow/core:tensorflow",
     ],
 )
+
+exports_files(
+    [
+        "tf_version_script.lds",
+        "tf_exported_symbols.lds",
+    ],
+)
