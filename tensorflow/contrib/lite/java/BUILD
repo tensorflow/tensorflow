@@ -45,6 +45,7 @@ java_library(
     javacopts = JAVACOPTS,
     visibility = ["//visibility:public"],
     deps = [
+        ":libtensorflowlite_jni.so",
         "//tensorflow/contrib/lite/java/src/main/native",
         "@javax_validation",
     ],
