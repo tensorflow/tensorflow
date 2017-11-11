@@ -58,10 +58,10 @@ tf_py_test(
         "//tensorflow/contrib/lite/toco:model_flags_proto_py",
         "//tensorflow/contrib/lite/toco:toco_flags_proto_py",
     ],
-    tags = ["no_pip"],
     data = [
         ":toco_from_protos",
     ],
+    tags = ["no_pip"],
 )
 
 filegroup(
