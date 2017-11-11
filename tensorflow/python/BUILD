@@ -7,6 +7,8 @@ package(
         "//tensorflow:internal",
         "//tensorflow/contrib/lite/toco/python:__pkg__",
         "//tensorflow_models:__subpackages__",
+        # TODO(aselle): to pass open source test.
+        "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
     ],
 )
 
