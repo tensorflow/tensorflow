@@ -38,8 +38,8 @@ class PoolingTest(test.TestCase):
     height, width, channel = 5, 6, 3
     images = array_ops.placeholder(dtype='float32',
                                    shape=(None, height, width, channel))
-    layer = SpatialPyramidPooling(dimensions=[3, 4, 5])
-    expected_output_size_for_each_channel = sum(d * d for d in layer.dimensions)
+    layer = SpatialPyramidPooling(spatial_bin_dimensions=[3, 4, 5])
+    expected_output_size_for_each_channel = sum(d * d for d in layer.spatial_bin_dimensions)
     output = layer.apply(images)
     self.assertListEqual(output.get_shape().as_list(), [None, channel * expected_output_size_for_each_channel])
 
@@ -47,14 +47,14 @@ class PoolingTest(test.TestCase):
     batch_size, height, width, channel = 4, 5, 6, 3
     images = array_ops.placeholder(dtype='float32',
                                    shape=(batch_size, height, width, channel))
-    layer = SpatialPyramidPooling(dimensions=[3, 4, 5])
-    expected_output_size_for_each_channel = sum(d * d for d in layer.dimensions)
+    layer = SpatialPyramidPooling(spatial_bin_dimensions=[3, 4, 5])
+    expected_output_size_for_each_channel = sum(d * d for d in layer.spatial_bin_dimensions)
     output = layer.apply(images)
     self.assertListEqual(output.get_shape().as_list(), [batch_size, channel * expected_output_size_for_each_channel])
 
   def testSpatialPyramidPoolingAssertOutDimensionFixedForAnyInput(self):
     layer = SpatialPyramidPooling(dimensions=[3, 4, 5])
-    expected_output_size_for_each_channel = sum(d * d for d in layer.dimensions)
+    expected_output_size_for_each_channel = sum(d * d for d in layer.spatial_bin_dimensions)
     output_arrays = []
     check_for_images = 10
     batch_size, channel = 2, 3
@@ -69,7 +69,7 @@ class PoolingTest(test.TestCase):
 
   def testSpatialPyramidPoolingComputeOutputShape(self):
     batch_size, height, width, channel = 4, 5, 6, 3
-    layer = SpatialPyramidPooling(dimensions=[3, 4, 5])
+    layer = SpatialPyramidPooling(spatial_bin_dimensions=[3, 4, 5])
     image = array_ops.placeholder(dtype='float32',
                                   shape=(batch_size, height, width, channel))
     output_shape = layer._compute_output_shape(input_shape=image._shape)
@@ -78,7 +78,7 @@ class PoolingTest(test.TestCase):
   def testSpatialPyramidPoolingMode(self):
     batch_size, height, width, channel = 4, 5, 6, 3
     mode = 'invalid_mode'
-    layer = SpatialPyramidPooling(dimensions=[3, 4, 5], mode=mode)
+    layer = SpatialPyramidPooling(spatial_bin_dimensions=[3, 4, 5], mode=mode)
     images = array_ops.placeholder(dtype='float32',
                                    shape=(batch_size, height, width, channel))
     with self.assertRaisesRegexp(
