@@ -795,8 +795,8 @@ REGISTER_GRADIENT_OP("Min", MinOrMaxGrad);
 REGISTER_GRADIENT_OP("Max", MinOrMaxGrad);
 
 Status ProdGrad(const Scope& scope, const Operation& op,
-  const std::vector<Output>& grad_inputs,
-  std::vector<Output>* grad_outputs) {
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
   auto zero = Const(scope, 0);
   auto one = Const(scope, 1);
 
