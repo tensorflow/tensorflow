@@ -215,7 +215,8 @@ bool CanShareOperandBufferWithUser(
       auto add_operand_it =
           std::find_if(add->operands().begin(), add->operands().end(),
                        [&](HloInstruction* operand) {
-                         return operand->opcode() == HloOpcode::kDot ||
+                         return operand->opcode() == HloOpcode::kConvolution ||
+                                operand->opcode() == HloOpcode::kDot ||
                                 (operand->opcode() == HloOpcode::kFusion &&
                                  operand->fusion_kind() ==
                                      HloInstruction::FusionKind::kTransposeDot);
@@ -294,7 +295,8 @@ bool CanShareOperandBufferWithUser(HloInstruction* operand,
       auto add_operand_it =
           std::find_if(add->operands().begin(), add->operands().end(),
                        [&](HloInstruction* operand) {
-                         return operand->opcode() == HloOpcode::kDot ||
+                         return operand->opcode() == HloOpcode::kConvolution ||
+                                operand->opcode() == HloOpcode::kDot ||
                                 (operand->opcode() == HloOpcode::kFusion &&
                                  operand->fusion_kind() ==
                                      HloInstruction::FusionKind::kTransposeDot);

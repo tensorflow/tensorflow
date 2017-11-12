@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -25,6 +26,97 @@ TEST(Bfloat16Test, Simple) {
   bfloat16 a(12);
   // Floating point representation of 12: 0x41400000
   EXPECT_EQ(0x4140, a.value);
+}
+
+float BinaryToFloat(uint32_t sign, uint32_t exponent, uint32_t high_mantissa,
+                    uint32_t low_mantissa) {
+  return bit_cast<float>((sign << 31) + (exponent << 23) +
+                         (high_mantissa << 16) + low_mantissa);
+}
+
+struct Bfloat16TestParam {
+  float input;
+  float expected;
+};
+
+class Bfloat16Test : public ::testing::Test,
+                     public ::testing::WithParamInterface<Bfloat16TestParam> {};
+
+TEST_P(Bfloat16Test, RoundOrTruncate) {
+  bfloat16 a(GetParam().input);
+  if (std::isnan(GetParam().input)) {
+    EXPECT_TRUE(std::isnan(float(a)));
+    return;
+  }
+  EXPECT_EQ(GetParam().expected, float(a));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    Bfloat16Test_Instantiation, Bfloat16Test,
+    ::testing::Values(
+        // More than half.
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b1111010111000011),
+            BinaryToFloat(0, 0b10000000, 0b1001001, 0b0000000000000000)},
+
+        Bfloat16TestParam{
+            BinaryToFloat(1, 0b10000000, 0b1001000, 0b1111010111000011),
+            BinaryToFloat(1, 0b10000000, 0b1001001, 0b0000000000000000)},
+
+        // Exact half.
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
+
+        // NaN stays at NaN.
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b11111111, 0b0000000, 0b0000000000000001),
+            BinaryToFloat(0, 0b11111111, 0b1000000, 0b0000000000000000)},
+
+        // NaN stays at NaN -- no exponents overflow.
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b11111111, 0b1111111, 0b1111111111111111),
+            BinaryToFloat(0, 0b11111111, 0b1000000, 0b0000000000000000)},
+
+        // More than half, round to an odd number.
+        Bfloat16TestParam{
+            BinaryToFloat(1, 0b10000000, 0b1001000, 0b1100000000000000),
+            BinaryToFloat(1, 0b10000000, 0b1001001, 0b0000000000000000)},
+
+        // Less than half, truncate.
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
+
+        // Less than half, truncate.
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0100000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
+
+        // Exact at half, but result is already even.
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
+
+        // Denormal values.
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b00000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b00000000, 0b1001000, 0b0000000000000000)},
+        Bfloat16TestParam{
+            BinaryToFloat(0, 0b00000000, 0b1111111, 0b1100000000000000),
+            BinaryToFloat(0, 0b00000001, 0b0000000, 0b0000000000000000)}));
+TEST(Bfloat16Test, RoundWithFractionOverflow) {
+  // Still works with fraction overflow -- round to 4./
+  //
+  // Input 3.9960938:
+  // Sign |  Exp (8 bit) | Frac (first 7 bit) | Frac (last 16 bit)
+  //  0     1 0 0 0 0 0 0      1 1 1 1 1 1 1     1100000000000000
+  //
+  // Should round to 4.0:
+  // Sign |  Exp (8 bit)  | Frac (first 7 bit)
+  //  0     1 0 0 0 0 0 1      0 0 0 0 0 0 0
+  bfloat16 a(3.9960938f);
+  EXPECT_EQ(4.0, float(a));
 }
 
 TEST(Bfloat16Test, Conversion) {

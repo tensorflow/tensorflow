@@ -68,6 +68,9 @@ class ShapeIndex {
 
   const int64* data() const { return indices_.data(); }
 
+  int64 back() const { return indices_.back(); }
+  int64& back() { return indices_.back(); }
+
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }
 

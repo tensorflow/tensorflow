@@ -26,8 +26,8 @@ namespace xla {
 namespace window_util {
 
 /* static */ string ToString(const WindowDimension& dim) {
-  using tensorflow::strings::StrCat;
   using tensorflow::strings::StrAppend;
+  using tensorflow::strings::StrCat;
   string str = StrCat("(size=", dim.size());
   if (dim.stride() != 1) {
     StrAppend(&str, ",stride=", dim.stride());
@@ -49,22 +49,22 @@ namespace window_util {
 }
 
 string ToString(const Window& window) {
-  using tensorflow::strings::StrCat;
   using tensorflow::strings::StrAppend;
+  using tensorflow::strings::StrCat;
 
   string str;
-  const auto add_field = [&](
-      const char* heading,
-      std::function<string(const WindowDimension&)> format) {
-    StrAppend(&str, heading, "=");
-    const char* prefix = "";
-    for (const auto& window_dimension : window.dimensions()) {
-      StrAppend(&str, prefix, format(window_dimension));
-      prefix = "x";
-    }
-  };
+  const auto add_field =
+      [&](const char* heading,
+          std::function<string(const WindowDimension&)> format) {
+        StrAppend(&str, heading, "=");
+        const char* prefix = "";
+        for (const auto& window_dimension : window.dimensions()) {
+          StrAppend(&str, prefix, format(window_dimension));
+          prefix = "x";
+        }
+      };
 
-  add_field("window",
+  add_field("size",
             [](const WindowDimension& dim) { return StrCat(dim.size()); });
   if (HasStride(window)) {
     add_field(" stride",

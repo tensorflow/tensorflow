@@ -116,16 +116,18 @@ template <typename FloatT, typename UnsignedT>
 ::testing::AssertionResult CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
   auto ulhs = tensorflow::bit_cast<UnsignedT>(lhs);
   auto urhs = tensorflow::bit_cast<UnsignedT>(rhs);
+  auto lhs_double = static_cast<double>(lhs);
+  auto rhs_double = static_cast<double>(rhs);
   if (ulhs != urhs) {
     return ::testing::AssertionFailure() << tensorflow::strings::Printf(
                "floating values are not bitwise-equal; and equality testing "
                "was requested: %s=%g=%a vs %s=%g=%a",
                tensorflow::strings::StrCat(tensorflow::strings::Hex(ulhs))
                    .c_str(),
-               lhs, lhs,
+               lhs_double, lhs_double,
                tensorflow::strings::StrCat(tensorflow::strings::Hex(urhs))
                    .c_str(),
-               rhs, rhs);
+               rhs_double, rhs_double);
   }
   return ::testing::AssertionSuccess();
 }
@@ -148,6 +150,10 @@ template <typename NativeT>
 
 // Specializations for floating types that do bitwise comparisons when equality
 // comparison is requested.
+template <>
+::testing::AssertionResult CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs) {
+  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs);
+}
 template <>
 ::testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
   return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
@@ -237,6 +243,9 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
       break;
     case U64:
       match = ExpectLiteralsEqual<uint64>(expected, actual, &multi_index, 0);
+      break;
+    case BF16:
+      match = ExpectLiteralsEqual<bfloat16>(expected, actual, &multi_index, 0);
       break;
     case F32:
       match = ExpectLiteralsEqual<float>(expected, actual, &multi_index, 0);

@@ -289,6 +289,10 @@ tf_module {
     argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\'], "
   }
   member_method {
+    name: "softmax_cross_entropy_with_logits_v2"
+    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\'], "
+  }
+  member_method {
     name: "softplus"
     argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

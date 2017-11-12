@@ -537,6 +537,14 @@ void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
   builder->SetInsertPoint(blk, blk->getFirstInsertionPt());
 }
 
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
+  if (llvm::Instruction* terminator = blk->getTerminator()) {
+    builder->SetInsertPoint(terminator);
+  } else {
+    builder->SetInsertPoint(blk);
+  }
+}
+
 llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
                        llvm::IRBuilder<>* builder) {
   auto size = rotand->getType()->getPrimitiveSizeInBits();

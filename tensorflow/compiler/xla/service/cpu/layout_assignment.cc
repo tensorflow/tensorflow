@@ -51,7 +51,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
   tensorflow::gtl::FlatMap<const HloInstruction*, bool>
       should_make_rhs_col_major_cache;
   auto should_make_rhs_col_major = [&](const HloInstruction& instruction) {
-    if (ProfitableToImplementDotInLlvmIr(instruction) !=
+    if (ProfitableToImplementDotInUntiledLlvmIr(instruction) !=
         DotInLlvmIrProfitable::kWithColumnMajorRhs) {
       return false;
     }
@@ -68,7 +68,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
 
     bool result = std::all_of(
         rhs->users().begin(), rhs->users().end(), [&](HloInstruction* user) {
-          return ProfitableToImplementDotInLlvmIr(*user) ==
+          return ProfitableToImplementDotInUntiledLlvmIr(*user) ==
                      DotInLlvmIrProfitable::kWithColumnMajorRhs &&
                  user->operand(0) != rhs;
         });
