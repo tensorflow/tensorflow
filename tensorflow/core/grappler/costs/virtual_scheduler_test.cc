@@ -265,6 +265,127 @@ class VirtualSchedulerTest : public ::testing::Test {
     dependency_["z4"] = {"bn"};
   }
 
+  void CreateGrapplerItemWithSendRecv() {
+    const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 3.1415
+      }
+    }
+  }
+}
+node {
+  name: "Send"
+  op: "_Send"
+  input: "Const"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "client_terminated"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "recv_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device_incarnation"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "tensor_name"
+    value {
+      s: "test"
+    }
+  }
+}
+node {
+  name: "Recv"
+  op: "_Recv"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "client_terminated"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "recv_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device_incarnation"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "tensor_name"
+    value {
+      s: "test"
+    }
+  }
+  attr {
+    key: "tensor_type"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 24
+}
+    )EOF";
+
+    grappler_item_.reset(new GrapplerItem);
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
+                                                &grappler_item_->graph));
+    grappler_item_->id = "test_graph";
+    grappler_item_->fetch = {"Recv"};
+  }
+
   // A simple while loop
   void CreateGrapplerItemWithLoop() {
     // Test graph produced in python using:
@@ -743,6 +864,7 @@ versions {
     do {
       OpContext op_context = scheduler_->GetCurrNode();
       ops_executed[op_context.name] = op_context;
+      std::cout << op_context.name << std::endl;
 
       Costs node_costs = SimplePredictCosts(op_context);
 
@@ -1529,6 +1651,55 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   // Control dependency size is 4B.
   EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
   EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
+}
+
+TEST_F(VirtualSchedulerTest, GraphWithSendRecv) {
+  // Init.
+  CreateGrapplerItemWithSendRecv();
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  EXPECT_GT(ops_executed.count("Const"), 0);
+  EXPECT_GT(ops_executed.count("Send"), 0);
+  EXPECT_GT(ops_executed.count("Recv"), 0);
+}
+
+TEST_F(VirtualSchedulerTest, GraphWithSendRecvDifferentDevice) {
+  // Init.
+  CreateGrapplerItemWithSendRecv();
+  // Change Recv node's device so that Send and Recv are placed on different
+  // devices.
+  auto& graph = grappler_item_->graph;
+  const string recv_device = kCPU1;
+  for (int i = 0; i < graph.node_size(); i++) {
+    auto* node = graph.mutable_node(i);
+    if (node->name() == "Recv") {
+      node->set_device(recv_device);
+      auto* attr = node->mutable_attr();
+      (*attr)["recv_device"].set_s(recv_device);
+    } else if (node->name() == "Send") {
+      auto* attr = node->mutable_attr();
+      (*attr)["recv_device"].set_s(recv_device);
+    }
+  }
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  // Expect Const, Send, Recv, and VirtualScheduler created Send and Recv ops.
+  EXPECT_GT(ops_executed.count("Const"), 0);
+  EXPECT_GT(ops_executed.count("Send"), 0);
+  EXPECT_GT(ops_executed.count("Send_Send_0_from_/job_localhost/replica_0/"
+                               "task_0/cpu_0_to_/job_localhost"
+                               "/replica_0/task_0/cpu_1"),
+            0);
+  EXPECT_GT(ops_executed.count(
+                "Recv_Send_0_on_/job_localhost/replica_0/task_0/cpu_1"),
+            0);
+  EXPECT_GT(ops_executed.count("Recv"), 0);
 }
 }  // end namespace grappler
 }  // end namespace tensorflow

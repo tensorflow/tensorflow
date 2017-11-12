@@ -58,12 +58,13 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
   Status Read(uint64 offset, size_t to_read, StringPiece* result,
               char* scratch) const override {
     if (offset >= length_) {
-      result->set(scratch, 0);
+      *result = StringPiece(scratch, 0);
       return Status(error::OUT_OF_RANGE, "Read after file end");
     }
     const uint64 region_left =
         std::min(length_ - offset, static_cast<uint64>(to_read));
-    result->set(reinterpret_cast<const uint8*>(data_) + offset, region_left);
+    *result =
+        StringPiece(reinterpret_cast<const char*>(data_) + offset, region_left);
     return (region_left == to_read)
                ? Status::OK()
                : Status(error::OUT_OF_RANGE, "Read less bytes than requested");

@@ -1450,6 +1450,10 @@ HloEvaluator::HloEvaluator() {
   typed_visitors_[F32] = MakeUnique<TypedVisitor<float>>(this);
   typed_visitors_[F64] = MakeUnique<TypedVisitor<double>>(this);
   typed_visitors_[C64] = MakeUnique<TypedVisitor<complex64>>(this);
+
+  typed_visitors_[BF16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
+    return Unimplemented("HloEvaluator: unhandled primitive type: BF16.");
+  });
   typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
     return Unimplemented("HloEvaluator: unhandled primitive type: TUPLE.");
   });

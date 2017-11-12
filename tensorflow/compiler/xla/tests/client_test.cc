@@ -54,8 +54,8 @@ TEST_F(ClientTest, ExecuteWithLayout) {
               .ConsumeValueOrDie();
 
       std::unique_ptr<Literal> expected_literal =
-          test_utils::CreateR2LiteralWithLayout<int32>({{11, 22}, {33, 44}},
-                                                       transfer_layout);
+          Literal::CreateR2WithLayout<int32>(
+              {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
 
       auto computed = client_->Transfer(*data, &expected_literal->shape());
 

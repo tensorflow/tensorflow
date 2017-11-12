@@ -139,6 +139,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
 )

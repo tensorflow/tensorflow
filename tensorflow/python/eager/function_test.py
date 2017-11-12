@@ -62,12 +62,39 @@ class FunctionTest(test.TestCase):
     @function.defun
     def step():
       def inner():
-        tape.watch_variable(v)
         return v * v
 
       return backprop.implicit_grad(inner)()[0][0]
 
     self.assertAllEqual(step(), 2.0)
+
+  def testDefunReadVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def f():
+      return v.read_value()
+
+    self.assertEqual(1.0, float(f()))
+
+  def testDefunAssignAddVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def f():
+      v.assign_add(2.0)
+      return v.read_value()
+
+    self.assertEqual(3.0, float(f()))
+
+  def testDefunDifferentiable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def f():
+      return v * v
+
+    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
   def testGraphModeCaptureVariable(self):
     with context.graph_mode(), self.test_session() as sess:

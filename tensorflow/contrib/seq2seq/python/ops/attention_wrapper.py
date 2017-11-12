@@ -691,7 +691,11 @@ def _monotonic_probability_fn(score, previous_alignments, sigmoid_noise, mode,
                                      seed=seed)
     score += sigmoid_noise*noise
   # Compute "choosing" probabilities from the attention scores
-  p_choose_i = math_ops.sigmoid(score)
+  if mode == "hard":
+    # When mode is hard, use a hard sigmoid
+    p_choose_i = math_ops.cast(score > 0, score.dtype)
+  else:
+    p_choose_i = math_ops.sigmoid(score)
   # Convert from choosing probabilities to attention distribution
   return monotonic_attention(p_choose_i, previous_alignments, mode)
 
