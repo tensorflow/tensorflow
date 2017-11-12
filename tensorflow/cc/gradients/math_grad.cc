@@ -797,172 +797,177 @@ REGISTER_GRADIENT_OP("Max", MinOrMaxGrad);
 Status ProdGrad(const Scope& scope, const Operation& op,
   const std::vector<Output>& grad_inputs,
   std::vector<Output>* grad_outputs) {
-auto zero = Const(scope, 0);
-auto one = Const(scope, 1);
+  auto zero = Const(scope, 0);
+  auto one = Const(scope, 1);
 
-// The gradient can be expressed by dividing the product by each entry of
-// the input tensor. If our input is
-// [
-//  [3, 4],
-//  [5, 6],
-//  [7, 8]
-// ]
-// and we do a Prod operation on the axis 1, we will obtain [[105, 192]].
-// The gradient will have the same shape as the input
-//     [
-//       [105/3, 192/4],
-// dz *  [105/5, 192/6],
-//       [105/7, 192/6]
-//     ]
-// If the input contains a zero, the division is impossible but
-// if we take the calculation that gave the first gradient
-// (3 * 5 * 6)/3 is equal to 5 * 6
-// the trick will be to cumprod the elements on the axis without
-// the element at the current position (3 in the example above).
-// We will take as example:
-// [
-//   [
-//     [3.0, 4.0],
-//     [5.0, 6.0],
-//     [7.0, 8.0]
-//   ],
-//   [
-//     [3.0, 5.0],
-//     [0.0, 6.0],
-//     [5.0, 6.0]
-//   ]
-// ]
+  // The gradient can be expressed by dividing the product by each entry of
+  // the input tensor. If our input is
+  // [
+  //  [3, 4],
+  //  [5, 6],
+  //  [7, 8]
+  // ]
+  // and we do a Prod operation on the axis 1, we will obtain [[105, 192]].
+  // The gradient will have the same shape as the input
+  //     [
+  //       [105/3, 192/4],
+  // dz *  [105/5, 192/6],
+  //       [105/7, 192/6]
+  //     ]
+  // If the input contains a zero, the division is impossible but
+  // if we take the calculation that gave the first gradient
+  // (3 * 5 * 6)/3 is equal to 5 * 6
+  // the trick will be to cumprod the elements on the axis without
+  // the element at the current position (3 in the example above).
+  // We will take as example:
+  // [
+  //   [
+  //     [3.0, 4.0],
+  //     [5.0, 6.0],
+  //     [7.0, 8.0]
+  //   ],
+  //   [
+  //     [3.0, 5.0],
+  //     [0.0, 6.0],
+  //     [5.0, 6.0]
+  //   ]
+  // ]
 
-// [2, 3, 2]
-auto input_shape = Shape(scope, op.input(0));
+  // [2, 3, 2]
+  auto input_shape = Shape(scope, op.input(0));
 
-// [1]
-auto reduction_indices = op.input(1);
+  // The Reshape with -1 flattens the reduction indices.
+  // [1]
+  auto reduction_indices = Reshape(scope, op.input(1), {-1});
 
-// [2, 1, 2]
-auto output_shape_kept_dims =
-    ReducedShapeHelper(scope, input_shape, reduction_indices);
+  // [2, 1, 2]
+  auto output_shape_kept_dims =
+      ReducedShapeHelper(scope, input_shape, reduction_indices);
 
-// [1, 3, 1]
-auto tile_scaling = SafeDivHelper(scope, input_shape, output_shape_kept_dims);
+  // [1, 3, 1]
+  auto tile_scaling = SafeDivHelper(scope, input_shape, output_shape_kept_dims);
 
-// [[[105, 192]], [[0, 180]]]
-auto grad = Reshape(scope, grad_inputs[0], output_shape_kept_dims);
+  // [[[105, 192]], [[0, 180]]]
+  auto grad = Reshape(scope, grad_inputs[0], output_shape_kept_dims);
 
-// [[[105, 192], [105, 192], [105, 192]], [[0, 180], [0, 180], [0, 180]]]
-auto grad_tiled = Tile(scope, grad, tile_scaling);
+  // [[[105, 192], [105, 192], [105, 192]], [[0, 180], [0, 180], [0, 180]]]
+  auto grad_tiled = Tile(scope, grad, tile_scaling);
 
-Scope cpu_scope = scope.WithDevice("/cpu:0");
+  Scope cpu_scope = scope.WithDevice("/cpu:0");
 
-// [3]
-auto rank = Rank(cpu_scope, op.input(0));
+  // [3]
+  auto rank = Rank(cpu_scope, op.input(0));
 
-// [1]
-auto reduced = Cast(cpu_scope, reduction_indices, DataType::DT_INT32);
 
-// [0, 1, 2]
-auto idx = Range(cpu_scope, zero, rank, one);
+  // Normalize any negative indices in the reduction_axes to positive values.
+  auto reduction_indices_pos = Mod(scope, Add(scope, reduction_indices, rank), rank);
 
-// [0, 2]
-auto other = SetDiff1D(cpu_scope, idx, reduced).out;
+  // [1]
+  auto reduced = Cast(cpu_scope, reduction_indices_pos, DataType::DT_INT32);
 
-// [1, 0, 2]
-auto perm =
-    Concat(cpu_scope, std::initializer_list<Input>{reduced, other}, 0);
+  // [0, 1, 2]
+  auto idx = Range(cpu_scope, zero, rank, one);
 
-// 3 => [3]
-auto reduced_num = Prod(cpu_scope, Gather(scope, input_shape, reduced), 0);
+  // [0, 2]
+  auto other = SetDiff1D(cpu_scope, idx, reduced).out;
 
-// 2 * 2 => [2]
-auto other_num = Prod(cpu_scope, Gather(scope, input_shape, other), 0);
+  // [1, 0, 2]
+  auto perm =
+      Concat(cpu_scope, std::initializer_list<Input>{reduced, other}, 0);
 
-// [
-//    [
-//       [ 3.,  4.],
-//       [ 3.,  5.]
-//   ],
-//   [
-//       [ 5.,  6.],
-//       [ 0.,  6.]
-//   ],
-//   [
-//       [ 7.,  8.],
-//       [ 5.,  6.]
-//   ]
-// ]
-auto permuted = Transpose(scope, op.input(0), perm);
+  // 3 => [3]
+  auto reduced_num = Prod(cpu_scope, Gather(scope, input_shape, reduced), 0);
 
-// [3, 2, 2]
-auto permuted_shape = Shape(scope, permuted);
+  // 2 * 2 => [2]
+  auto other_num = Prod(cpu_scope, Gather(scope, input_shape, other), 0);
 
-// [
-//   [ 3.,  4.,  3.,  5.],
-//   [ 5.,  6.,  0.,  6.],
-//   [ 7.,  8.,  5.,  6.]
-// ]
-auto reshaped = Reshape(
-    scope, permuted,
-    Stack(scope, std::initializer_list<Input>{reduced_num, other_num}));
+  // [
+  //    [
+  //       [ 3.,  4.],
+  //       [ 3.,  5.]
+  //   ],
+  //   [
+  //       [ 5.,  6.],
+  //       [ 0.,  6.]
+  //   ],
+  //   [
+  //       [ 7.,  8.],
+  //       [ 5.,  6.]
+  //   ]
+  // ]
+  auto permuted = Transpose(scope, op.input(0), perm);
 
-// [
-//   [ 1.,  1.,  1.,  1.],
-//   [ 3.,  4.,  3.,  5.],
-//   [ 15.,  24.,  0.,  30.]
-// ]
-auto left = Cumprod(scope, reshaped, zero, Cumprod::Exclusive(true));
+  // [3, 2, 2]
+  auto permuted_shape = Shape(scope, permuted);
 
-// [
-//   [ 35.,  48.,  0.,  36.],
-//   [  7.,   8.,   5.,   6.],
-//   [  1.,   1.,   1.,   1.]
-// ]
-auto right =
-    Cumprod(scope, reshaped, zero, Cumprod::Exclusive(true).Reverse(true));
+  // [
+  //   [ 3.,  4.,  3.,  5.],
+  //   [ 5.,  6.,  0.,  6.],
+  //   [ 7.,  8.,  5.,  6.]
+  // ]
+  auto reshaped = Reshape(
+      scope, permuted,
+      Stack(scope, std::initializer_list<Input>{reduced_num, other_num}));
 
-// left * right =
-// [
-//   [ 35.,  48.,  0.,  36.],
-//   [ 21.,  32.,  15.,  30.],
-//   [ 15.,  24.,  0.,  30.]
-// ]
-// y =
-// [
-//   [
-//     [ 35.,  48.],
-//     [ 0.,  36.]
-//   ],
-//   [
-//     [ 21.,  32.],
-//     [ 15.,  30.]
-//   ],
-//   [
-//     [ 15.,  24.],
-//     [ 0.,  30.]
-//   ]
-// ]
-auto y = Reshape(scope, Mul(scope, left, right), permuted_shape);
+  // [
+  //   [ 1.,  1.,  1.,  1.],
+  //   [ 3.,  4.,  3.,  5.],
+  //   [ 15.,  24.,  0.,  30.]
+  // ]
+  auto left = Cumprod(scope, reshaped, zero, Cumprod::Exclusive(true));
 
-// out = 
-// [
-//   [
-//     [ 35.,  48.],
-//     [ 21.,  32.],
-//     [ 15.,  24.]
-//   ],
-//   [
-//     [ 0.,   36.],
-//     [ 15.,  30.],
-//     [ 0.,  30.]
-//   ]
-// ]
-auto out =
-    Mul(scope, grad_tiled, Transpose(scope, y, InvertPermutation(scope, perm)));
+  // [
+  //   [ 35.,  48.,  0.,  36.],
+  //   [  7.,   8.,   5.,   6.],
+  //   [  1.,   1.,   1.,   1.]
+  // ]
+  auto right =
+      Cumprod(scope, reshaped, zero, Cumprod::Exclusive(true).Reverse(true));
 
-grad_outputs->push_back(Reshape(scope, out, input_shape));
+  // left * right =
+  // [
+  //   [ 35.,  48.,  0.,  36.],
+  //   [ 21.,  32.,  15.,  30.],
+  //   [ 15.,  24.,  0.,  30.]
+  // ]
+  // y =
+  // [
+  //   [
+  //     [ 35.,  48.],
+  //     [ 0.,  36.]
+  //   ],
+  //   [
+  //     [ 21.,  32.],
+  //     [ 15.,  30.]
+  //   ],
+  //   [
+  //     [ 15.,  24.],
+  //     [ 0.,  30.]
+  //   ]
+  // ]
+  auto y = Reshape(scope, Mul(scope, left, right), permuted_shape);
 
-// stop propagation along reduction_indices
-grad_outputs->push_back(NoGradient());
-return scope.status();
+  // out = 
+  // [
+  //   [
+  //     [ 35.,  48.],
+  //     [ 21.,  32.],
+  //     [ 15.,  24.]
+  //   ],
+  //   [
+  //     [ 0.,   36.],
+  //     [ 15.,  30.],
+  //     [ 0.,  30.]
+  //   ]
+  // ]
+  auto out =
+      Mul(scope, grad_tiled, Transpose(scope, y, InvertPermutation(scope, perm)));
+
+  grad_outputs->push_back(Reshape(scope, out, input_shape));
+
+  // stop propagation along reduction_indices
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
 }
 REGISTER_GRADIENT_OP("Prod", ProdGrad);
 
