@@ -377,9 +377,6 @@ Status WriteStringToFile(Env* env, const string& fname,
 
 Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
                 const string& target) {
-  uint64 size;
-  TF_RETURN_IF_ERROR(src_fs->GetFileSize(src, &size));
-
   std::unique_ptr<RandomAccessFile> src_file;
   TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
 
@@ -388,18 +385,15 @@ Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
 
   uint64 offset = 0;
   std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
-  while (offset < size) {
+  Status s = Status::OK();
+  while (s.ok()) {
     StringPiece result;
-    size_t bytes_to_read = kCopyFileBufferSize;
-    if (offset + bytes_to_read > size) {
-      bytes_to_read = size - offset;
+    s = src_file->Read(offset, kCopyFileBufferSize, &result, scratch.get());
+    if (!(s.ok() || s.code() == error::OUT_OF_RANGE)) {
+      return s;
     }
-    TF_RETURN_IF_ERROR(
-        src_file->Read(offset, bytes_to_read, &result, scratch.get()));
-
     TF_RETURN_IF_ERROR(target_file->Append(result));
-
-    offset += bytes_to_read;
+    offset += result.size();
   }
   return target_file->Close();
 }
