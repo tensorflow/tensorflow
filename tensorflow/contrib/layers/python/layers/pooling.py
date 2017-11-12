@@ -61,7 +61,7 @@ class SpatialPyramidPooling(base.Layer):
   def call(self, inputs):
     pool_list = []
     for bin_dimension in self.spatial_bin_dimensions:
-      pool_list += self.max_pool_2d_nxn_regions(inputs, bin_dimension)
+      pool_list += self.__spatial_pooling_in_bins(inputs, bin_dimension)
     return array_ops.concat(values=pool_list, axis=1)
 
   def _compute_output_shape(self, input_shape):
@@ -69,7 +69,7 @@ class SpatialPyramidPooling(base.Layer):
     return tensor_shape.TensorShape([None, input_shape[0] * num_features])
 
 
-  def max_pool_2d_nxn_regions(self, inputs, bin_dimension):
+  def __spatial_pooling_in_bins(self, inputs, bin_dimension):
     """
     Args:
       inputs: The tensor over which to pool. Must have rank 4.
