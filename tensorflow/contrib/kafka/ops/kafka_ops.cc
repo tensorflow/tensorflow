@@ -26,6 +26,7 @@ REGISTER_OP("KafkaReader")
     .Attr("servers: string")
     .Attr("group: string")
     .Attr("eof: bool")
+    .Attr("timeout: int")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(2));
@@ -42,6 +43,7 @@ shared_name: If non-empty, this reader is named in the given bucket
 servers: The list of bootstrap servers, separated by ','.
 group: The consumer group id.
 eof: If True, the kafka reader will stop on EOF.
+timeout: The timeout value for the Kafka Consumer to wait (in millisecond).
 )doc");
 
 }  // namespace tensorflow

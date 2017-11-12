@@ -34,8 +34,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:reader_base",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//third_party/eigen3",
+        "@kafka//:kafka",
     ],
 )
 

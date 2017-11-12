@@ -32,11 +32,12 @@ namespace tensorflow {
 class KafkaReader : public ReaderBase {
  public:
   KafkaReader(const string& servers, const string& group, const bool eof,
-              const string& name)
+              const int timeout, const string& name)
       : ReaderBase(strings::StrCat("KafkaReader '", name, "'")),
         servers_(servers),
         group_(group),
-        eof_(eof) {}
+        eof_(eof),
+        timeout_(timeout) {}
 
   Status OnWorkStartedLocked() override {
     std::vector<string> parts = str_util::Split(current_work(), ":");
@@ -124,7 +125,7 @@ class KafkaReader : public ReaderBase {
       return Status::OK();
     }
     while (true) {
-      std::unique_ptr<RdKafka::Message> message(consumer_->consume(1000));
+      std::unique_ptr<RdKafka::Message> message(consumer_->consume(timeout_));
       if (message->err() == RdKafka::ERR_NO_ERROR) {
         if (message->key()) {
           *key = strings::StrCat(message->offset(), ":", *message->key());
@@ -163,6 +164,7 @@ class KafkaReader : public ReaderBase {
   std::string servers_;
   std::string group_;
   bool eof_;
+  int timeout_;
   int64 limit_;
   std::unique_ptr<RdKafka::KafkaConsumer> consumer_;
   std::unique_ptr<RdKafka::TopicPartition> topic_partition_;
@@ -179,8 +181,13 @@ class KafkaReaderOp : public ReaderOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("group", &group));
     bool eof;
     OP_REQUIRES_OK(context, context->GetAttr("eof", &eof));
-    SetReaderFactory([this, servers, group, eof]() {
-      return new KafkaReader(servers, group, eof, name());
+    int timeout;
+    OP_REQUIRES_OK(context, context->GetAttr("timeout", &timeout));
+    OP_REQUIRES(context, (timeout > 0),
+                errors::InvalidArgument(
+                    "Timeout value should be large than 0, got ", timeout));
+    SetReaderFactory([this, servers, group, eof, timeout]() {
+      return new KafkaReader(servers, group, eof, timeout, name());
     });
   }
 };
