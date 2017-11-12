@@ -37,7 +37,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-constexpr size_t kPosixCopyFileBufferSize = 1024 * 1024;
+// 128KB of copy buffer
+constexpr size_t kPosixCopyFileBufferSize = 128 * 1024;
 
 // pread() based random-access
 class PosixRandomAccessFile : public RandomAccessFile {
@@ -294,43 +295,56 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
   string translated_target = TranslateName(target);
   // O_WRONLY | O_CREAT:
   //   Open file for write and if file does not exist, create the file.
-  // S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH:
-  //   Create the file with permission of 0666
-  int target_fd =
-      open(translated_target.c_str(), O_WRONLY | O_CREAT,
-           S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  // S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH:
+  //   Create the file with permission of 0644
+  int target_fd = open(translated_target.c_str(), O_WRONLY | O_CREAT,
+                       S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (target_fd < 0) {
     close(src_fd);
     return IOError(target, errno);
   }
   int rc = 0;
   off_t offset = 0;
+  std::unique_ptr<char[]> buffer(new char[kPosixCopyFileBufferSize]);
   while (offset < sbuf.st_size) {
-    size_t chunk = (sbuf.st_size - offset) < SSIZE_MAX ? (sbuf.st_size - offset)
-                                                       : SSIZE_MAX;
-#if !defined(__APPLE__)
-    rc = sendfile(target_fd, src_fd, &offset, chunk);
+    // Use uint64 for safe comapre SSIZE_MAX
+    uint64 chunk = sbuf.st_size - offset;
+    if (chunk > SSIZE_MAX) {
+      chunk = SSIZE_MAX;
+    }
+#if defined(__linux__) && !defined(__ANDROID__)
+    rc = sendfile(target_fd, src_fd, &offset, static_cast<size_t>(chunk));
 #else
-    char buffer[kPosixCopyFileBufferSize];
-    chunk = chunk < sizeof(buffer) ? chunk : sizeof(buffer);
-    rc = read(src_fd, buffer, chunk);
+    if (chunk > kPosixCopyFileBufferSize) {
+      chunk = kPosixCopyFileBufferSize;
+    }
+    rc = read(src_fd, buffer, static_cast<size_t>(chunk));
     if (rc <= 0) {
       break;
     }
-    rc = write(target_fd, buffer, chunk);
+    rc = write(target_fd, buffer, static_cast<size_t>(chunk));
     offset += chunk;
 #endif
     if (rc <= 0) {
       break;
     }
   }
-  close(target_fd);
-  close(src_fd);
 
-  Status result;
+  Status result = Status::OK();
   if (rc < 0) {
     result = IOError(target, errno);
   }
+
+  // Keep the error code
+  rc = close(target_fd);
+  if (rc < 0 && result == Status::OK()) {
+    result = IOError(target, errno);
+  }
+  rc = close(src_fd);
+  if (rc < 0 && result == Status::OK()) {
+    result = IOError(target, errno);
+  }
+
   return result;
 }
 

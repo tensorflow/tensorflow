@@ -40,7 +40,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-constexpr size_t kCopyFileBufferSize = 1024 * 1024;
+// 128KB copy buffer
+constexpr size_t kCopyFileBufferSize = 128 * 1024;
 
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
@@ -386,12 +387,15 @@ Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
   TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
 
   uint64 offset = 0;
+  std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
   while (offset < size) {
-    char scratch[kCopyFileBufferSize];
     StringPiece result;
-    size_t bytes_to_read =
-        offset + sizeof(scratch) < size ? sizeof(scratch) : size - offset;
-    TF_RETURN_IF_ERROR(src_file->Read(offset, bytes_to_read, &result, scratch));
+    size_t bytes_to_read = kCopyFileBufferSize;
+    if (offset + bytes_to_read > size) {
+      bytes_to_read = size - offset;
+    }
+    TF_RETURN_IF_ERROR(
+        src_file->Read(offset, bytes_to_read, &result, scratch.get()));
 
     TF_RETURN_IF_ERROR(target_file->Append(result));
 
