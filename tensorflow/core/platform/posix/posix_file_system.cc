@@ -307,7 +307,7 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
   off_t offset = 0;
   std::unique_ptr<char[]> buffer(new char[kPosixCopyFileBufferSize]);
   while (offset < sbuf.st_size) {
-    // Use uint64 for safe comapre SSIZE_MAX
+    // Use uint64 for safe compare SSIZE_MAX
     uint64 chunk = sbuf.st_size - offset;
     if (chunk > SSIZE_MAX) {
       chunk = SSIZE_MAX;
@@ -318,11 +318,11 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
     if (chunk > kPosixCopyFileBufferSize) {
       chunk = kPosixCopyFileBufferSize;
     }
-    rc = read(src_fd, buffer, static_cast<size_t>(chunk));
+    rc = read(src_fd, buffer.get(), static_cast<size_t>(chunk));
     if (rc <= 0) {
       break;
     }
-    rc = write(target_fd, buffer, static_cast<size_t>(chunk));
+    rc = write(target_fd, buffer.get(), static_cast<size_t>(chunk));
     offset += chunk;
 #endif
     if (rc <= 0) {
