@@ -19,6 +19,17 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/model.h"
 
+// Needed to resolve unordered_set hash on older compilers.
+namespace std
+{
+template<>
+  struct hash<tflite::BuiltinOperator> {
+    size_t operator()(const tflite::BuiltinOperator &op) const {
+      return std::hash<int>()(op);
+    }
+  };
+}
+
 namespace tflite {
 
 // An OpResolver that is mutable, also used as the op in gen_op_registration.

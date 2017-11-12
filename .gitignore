@@ -22,3 +22,5 @@ Pods
 Podfile.lock
 *.pbxproj
 *.xcworkspacedata
+/tensorflow/contrib/lite/downloads/**
+/tensorflow/contrib/lite/gen/**
