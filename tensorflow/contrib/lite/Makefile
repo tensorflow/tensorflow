@@ -60,6 +60,8 @@ ifeq ($(OS),LINUX)
 	LIBS += -ldl -lpthread
 endif
 
+include $(MAKEFILE_DIR)/ios_makefile.inc
+
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
 LIB_NAME := libtensorflow-lite.a
