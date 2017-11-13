@@ -680,7 +680,7 @@ void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
     }
   }
   Py_DECREF(seq);
-  char* op_type_str = nullptr;
+  string op_type_str;
   if (PyBytes_Check(op_type)) {
     op_type_str = PyBytes_AsString(op_type);
   } else if (PyUnicode_Check(op_type)) {
