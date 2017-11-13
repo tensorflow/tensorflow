@@ -171,6 +171,8 @@ def read_batch_features(file_pattern,
     dataset = reader(filenames, *reader_args)
   else:
     dataset = reader(filenames)
+  if dataset.output_types == (dtypes.string, dtypes.string):
+    dataset = dataset.map(lambda _, v: v)
   if num_epochs != 1:
     dataset = dataset.repeat(num_epochs)
   if randomize_input:
