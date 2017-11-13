@@ -1123,8 +1123,10 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocabulary_file` is empty.
     ValueError: when `vocab_size` is invalid.
   """
-  if not vocabulary_file:
-    raise ValueError("vocabulary_file must be specified.")
+  if vocabulary_file is None or (
+        isinstance(vocabulary_file, str) and not vocabulary_file):
+    raise ValueError("vocabulary_file must be specified and must not be empty.")
+
   if vocab_size is not None and vocab_size < 1:
     raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
 
