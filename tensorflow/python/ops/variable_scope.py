@@ -1572,7 +1572,7 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           else self._name_or_scope)
       self._reuse = (self._reuse
                      or self._old.reuse)  # Re-using is inherited by sub-scopes.
-      if self._old_name_scope is None:  # Root scope is an empty string.
+      if self._old_name_scope is None:
         name_scope = self._name_or_scope
       else:
         name_scope = self._old_name_scope
