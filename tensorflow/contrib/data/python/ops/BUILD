@@ -88,6 +88,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
         "//third_party/py/numpy",
     ],
 )

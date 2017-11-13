@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -137,13 +138,17 @@ class GroupByWindowDataset(dataset_ops.Dataset):
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping Defun for key_func."""
 
-    @function.Defun(*nest.flatten(input_dataset.output_types))
+    @function.Defun(
+        *nest.flatten(sparse.unwrap_sparse_types(input_dataset.output_types)))
     def tf_key_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       # Pass in shape information from the input_dataset.
       for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
         arg.set_shape(shape)
+
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
+      nested_args = sparse.deserialize_sparse_tensors(
+          nested_args, input_dataset.output_types)
       # pylint: disable=protected-access
       if dataset_ops._should_unpack_args(nested_args):
         ret = key_func(*nested_args)
@@ -197,5 +202,6 @@ class GroupByWindowDataset(dataset_ops.Dataset):
         key_func=self._key_func,
         reduce_func=self._reduce_func,
         window_size_func=self._window_size_func,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))

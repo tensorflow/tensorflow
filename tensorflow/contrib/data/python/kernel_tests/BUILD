@@ -187,6 +187,8 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],

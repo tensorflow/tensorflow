@@ -354,6 +354,7 @@ DestroyTemporaryVariable
 AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
+DeserializeSparse
 DeserializeManySparse
 SerializeManySparse
 SerializeSparse
