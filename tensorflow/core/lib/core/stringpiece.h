@@ -103,10 +103,6 @@ class StringPiece {
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 
-  struct Hasher {
-    size_t operator()(StringPiece arg) const;
-  };
-
   // Return a string that contains the copy of the referenced data.
   std::string ToString() const { return std::string(data_, size_); }
 
@@ -131,6 +127,10 @@ class StringPiece {
   size_t size_;
 
   // Intentionally copyable
+};
+
+struct StringPieceHasher {
+  size_t operator()(StringPiece s) const;
 };
 
 inline bool operator==(StringPiece x, StringPiece y) {
