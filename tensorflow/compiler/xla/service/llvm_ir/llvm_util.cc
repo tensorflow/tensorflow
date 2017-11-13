@@ -163,8 +163,9 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
         // z, and reinterpret_cast<cv T(&)[2]>(z)[1] shall designate the
         // imaginary part of z.
         return llvm::StructType::create(
-            "complex64", llvm::Type::getFloatTy(module->getContext()),
-            llvm::Type::getFloatTy(module->getContext()));
+            {llvm::Type::getFloatTy(module->getContext()),
+             llvm::Type::getFloatTy(module->getContext())},
+            "complex64", /*isPacked=*/true);
       }
       return cplx_t;
     }
@@ -176,6 +177,21 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
+}
+
+int GetSizeInBits(llvm::Type* type) {
+  const llvm::StructType* struct_ty = llvm::dyn_cast<llvm::StructType>(type);
+  if (struct_ty) {
+    CHECK(struct_ty->isPacked());
+    int bits = 0;
+    for (auto element_type : struct_ty->elements()) {
+      bits += GetSizeInBits(element_type);
+    }
+    return bits;
+  }
+  int bits = type->getPrimitiveSizeInBits();
+  CHECK_GT(bits, 0) << "type is not sized";
+  return bits;
 }
 
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
