@@ -2538,6 +2538,7 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
   if (ShapeUtil::IsScalar(operand->shape())) {
     HloInstruction* broadcast = hlo_builder_.AddInstruction(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
+    broadcast->set_metadata(operand->metadata());
     if (operand->has_sharding()) {
       broadcast->set_sharding(operand->sharding());
     }
@@ -2558,6 +2559,7 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
           ShapeUtil::MakeShape(operand->shape().element_type(),
                                reshaped_dimensions),
           operand));
+  reshaped_operand->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
     reshaped_operand->set_sharding(operand->sharding());
   }
@@ -2565,6 +2567,7 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
   HloInstruction* broadcast =
       hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
           broadcast_shape, reshaped_operand, broadcast_dimensions));
+  broadcast->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
     broadcast->set_sharding(operand->sharding());
   }
