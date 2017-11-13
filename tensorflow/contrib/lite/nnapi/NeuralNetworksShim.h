@@ -1454,7 +1454,7 @@ inline int ANeuralNetworksModel_finish(ANeuralNetworksModel* model) {
  * {@link ANeuralNetworksExecution_setOutputFromMemory} and
  * {@link ANeuralNetworksExecution_setOperandValue}.
  *
- * To build a model that can accomodate inputs of various sizes, as you may want
+ * To build a model that can accommodate inputs of various sizes, as you may want
  * to do for a CNN, set the size of the dimensions that will vary at run time to
  * 0. If you do so, provide the full dimensions when calling
  * {@link ANeuralNetworksExecution_setInput} or {@link
