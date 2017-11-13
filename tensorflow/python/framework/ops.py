@@ -1805,7 +1805,7 @@ class Operation(object):
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
 
-  def _update_input(self, index, tensor, dtype=None):
+  def _update_input(self, index, tensor):
     """Update the input to this operation at the given index.
 
     NOTE: This is for TF internal use only. Please don't use it.
@@ -1813,8 +1813,6 @@ class Operation(object):
     Args:
       index: the index of the input to update.
       tensor: the Tensor to be used as the input at the given index.
-      dtype: tf.DType: type of the input; defaults to
-        the tensor's dtype.
 
     Raises:
       TypeError: if tensor is not a Tensor,
@@ -1832,17 +1830,9 @@ class Operation(object):
             self._tf_input(index),
             status)
     else:
-      if dtype is None:
-        dtype = tensor.dtype
-      else:
-        dtype = dtypes.as_dtype(dtype)
-        if not dtype.is_compatible_with(tensor.dtype):
-          raise TypeError(
-              "Cannot convert a tensor of type %s to an input of type %s" %
-              (tensor.dtype.name, dtype.name))
       self._inputs[index].consumers().remove(self)
       self._inputs[index] = tensor
-      self._input_types_val[index] = dtype
+      self._input_types_val[index] = tensor.dtype
       tensor._add_consumer(self)  # pylint: disable=protected-access
       self._recompute_node_def()
 
