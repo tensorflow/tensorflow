@@ -77,6 +77,7 @@ cc_library(
     hdrs = ["types.h"],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
