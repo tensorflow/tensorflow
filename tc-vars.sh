@@ -66,6 +66,8 @@ export TF_ENABLE_XLA=1
 export TF_NEED_MKL=0
 export TF_NEED_VERBS=0
 export TF_NEED_MPI=0
+export TF_NEED_S3=0
+export TF_NEED_GDR=0
 export GCC_HOST_COMPILER_PATH=/usr/bin/gcc
 
 ## Below, define or export some build variables
