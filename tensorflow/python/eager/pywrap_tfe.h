@@ -114,6 +114,12 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
                               PyObject* target, PyObject* sources,
                               PyObject* output_gradients, TF_Status* status);
 
+// Watches the given variable object on the given tape.
+void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable);
+
+// Returns the set of variables watched by the given tape.
+PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
+
 // Returns an EagerTensor of dimension [len(`tensor_list`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensor_list`. In other words,
 // TFE_Py_TensorShapeSlice takes a slice of dimensions of tensors in

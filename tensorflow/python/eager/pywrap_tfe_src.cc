@@ -443,7 +443,53 @@ void TFE_DeleteContextCapsule(PyObject* context) {
   TF_DeleteStatus(status);
 }
 
-using GradientTape = tensorflow::eager::GradientTape<PyObject, PyObject>;
+static tensorflow::int64 MakeInt(PyObject* integer) {
+#if PY_MAJOR_VERSION >= 3
+  return PyLong_AsLong(integer);
+#else
+  return PyInt_AsLong(integer);
+#endif
+}
+
+static tensorflow::int64 FastTensorId(PyObject* tensor) {
+  if (EagerTensor_CheckExact(tensor)) {
+    return EagerTensor_id(tensor);
+  }
+  PyObject* id_field = PyObject_GetAttrString(tensor, "_id");
+  if (id_field == nullptr) {
+    return -1;
+  }
+  tensorflow::int64 id = MakeInt(id_field);
+  Py_DECREF(id_field);
+  return id;
+}
+
+class GradientTape
+    : public tensorflow::eager::GradientTape<PyObject, PyObject> {
+ public:
+  GradientTape() {}
+
+  void WatchVariable(PyObject* v) {
+    watched_variables_.insert(v);
+    Py_INCREF(v);
+    PyObject* handle = PyObject_GetAttrString(v, "handle");
+    if (handle == nullptr) {
+      return;
+    }
+    tensorflow::int64 id = FastTensorId(handle);
+    Py_DECREF(handle);
+    if (!PyErr_Occurred()) {
+      this->Watch(id);
+    }
+  }
+
+  const std::unordered_set<PyObject*> WatchedVariables() {
+    return watched_variables_;
+  }
+
+ private:
+  std::unordered_set<PyObject*> watched_variables_;
+};
 
 typedef struct {
   PyObject_HEAD
@@ -487,14 +533,6 @@ PyObject* TFE_Py_NewTape() {
   return reinterpret_cast<PyObject*>(tape);
 }
 
-static tensorflow::int64 MakeInt(PyObject* integer) {
-#if PY_MAJOR_VERSION >= 3
-  return PyLong_AsLong(integer);
-#else
-  return PyInt_AsLong(integer);
-#endif
-}
-
 static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
   if (list == Py_None) {
     return {};
@@ -534,16 +572,7 @@ PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors) {
   tensor_ids.reserve(len);
   for (int i = 0; i < len; ++i) {
     PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
-    if (EagerTensor_CheckExact(item)) {
-      tensor_ids.push_back(EagerTensor_id(item));
-    } else {
-      PyObject* id_field = PyObject_GetAttrString(item, "_id");
-      if (id_field == nullptr) {
-        return nullptr;
-      }
-      tensor_ids.push_back(MakeInt(id_field));
-      Py_DECREF(id_field);
-    }
+    tensor_ids.push_back(FastTensorId(item));
   }
   Py_DECREF(seq);
   TFE_Py_Tape* tape = reinterpret_cast<TFE_Py_Tape*>(py_tape);
@@ -564,10 +593,8 @@ static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
     tensorflow::int64 id = EagerTensor_id(tensor);
     return tensorflow::eager::TapeTensor{id, t->t.dtype(), t->t.shape()};
   }
-  PyObject* id_field = PyObject_GetAttrString(tensor, "_id");
-  tensorflow::int64 id = MakeInt(id_field);
-  Py_DECREF(id_field);
-  if (PyErr_Occurred() != nullptr) {
+  tensorflow::int64 id = FastTensorId(tensor);
+  if (PyErr_Occurred()) {
     return tensorflow::eager::TapeTensor{
         id, static_cast<tensorflow::DataType>(0), tensorflow::TensorShape({})};
   }
@@ -610,16 +637,28 @@ std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
   list.reserve(len);
   for (int i = 0; i < len; ++i) {
     PyObject* tensor = PySequence_Fast_GET_ITEM(seq, i);
-    if (EagerTensor_CheckExact(tensor)) {
-      list.push_back(EagerTensor_id(tensor));
-    } else {
-      PyObject* id_field = PyObject_GetAttrString(tensor, "_id");
-      list.push_back(MakeInt(id_field));
-      Py_DECREF(id_field);
+    list.push_back(FastTensorId(tensor));
+    if (PyErr_Occurred()) {
+      return list;
     }
   }
   Py_DECREF(seq);
   return list;
+}
+
+void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
+  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->WatchVariable(variable);
+}
+
+PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
+  const std::unordered_set<PyObject*>& watched_variables =
+      reinterpret_cast<TFE_Py_Tape*>(tape)->tape->WatchedVariables();
+  PyObject* result = PySet_New(nullptr);
+  for (PyObject* variable : watched_variables) {
+    PySet_Add(result, variable);
+    Py_DECREF(variable);
+  }
+  return result;
 }
 
 void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,

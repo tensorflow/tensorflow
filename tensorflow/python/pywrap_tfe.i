@@ -30,6 +30,8 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeDeleteTrace;
 %rename("%s") TFE_Py_TapeRecordOperation;
 %rename("%s") TFE_Py_TapeGradient;
+%rename("%s") TFE_Py_TapeWatchVariable;
+%rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
