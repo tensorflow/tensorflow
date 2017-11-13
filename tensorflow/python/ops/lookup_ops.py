@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -922,7 +923,7 @@ def index_table_from_file(vocabulary_file=None,
       than zero.
   """
   if vocabulary_file is None or (
-      isinstance(vocabulary_file, str) and not vocabulary_file):
+      isinstance(vocabulary_file, six.string_types) and not vocabulary_file):
     raise ValueError("vocabulary_file must be specified and must not be empty.")
   if num_oov_buckets < 0:
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
@@ -1124,7 +1125,7 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocab_size` is invalid.
   """
   if vocabulary_file is None or (
-        isinstance(vocabulary_file, str) and not vocabulary_file):
+        isinstance(vocabulary_file, six.string_types) and not vocabulary_file):
     raise ValueError("vocabulary_file must be specified and must not be empty.")
 
   if vocab_size is not None and vocab_size < 1:
