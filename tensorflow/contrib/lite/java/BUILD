@@ -58,6 +58,7 @@ java_test(
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     deps = [
+        ":libtensorflowlite_jni.so",
         ":tensorflowlitelib",
         "@com_google_truth",
         "@junit",
@@ -71,6 +72,7 @@ java_test(
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.DataTypeTest",
     deps = [
+        ":libtensorflowlite_jni.so",
         ":tensorflowlitelib",
         "@com_google_truth",
         "@junit",
