@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #include "tensorflow/core/platform/platform.h"
 #ifdef IS_MOBILE_PLATFORM
-#include "tensorflow/core/lib/monitoring/mobile_counter.h"
+#include "tensorflow/core/lib/monitoring/mobile_gauge.h"
 #else
 
 #include <array>
@@ -29,15 +29,15 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace monitoring {
 
-// CounterCell stores each value of an Counter.
+// GaugeCell stores each value of a gauge.
 //
 // A cell can be passed off to a module which may repeatedly update it without
 // needing further map-indexing computations. This improves both encapsulation
@@ -46,14 +46,36 @@ namespace monitoring {
 // associated locking are both avoided).
 //
 // This class is thread-safe.
-class CounterCell {
+template <typename T>
+class GaugeCell {
  public:
-  CounterCell(int64 value) : value_(value) {}
-  ~CounterCell() {}
+  explicit GaugeCell(const T& value) : value_(value) {}
+  ~GaugeCell() {}
 
-  // Atomically increments the value by step.
-  // REQUIRES: Step be non-negative.
-  void IncrementBy(int64 step);
+  // Atomically sets the value.
+  void Set(const T& value) LOCKS_EXCLUDED(mu_);
+
+  // Retrieves the current value.
+  T value() const LOCKS_EXCLUDED(mu_);
+
+ private:
+  T value_ GUARDED_BY(mu_);
+  mutable mutex mu_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
+};
+
+// Explicit specialization of GaugeCell<int64>. Compared to the primary
+// template, it uses atomic values as opposed to mutex. This class is
+// thread-safe.
+template <>
+class GaugeCell<int64> {
+ public:
+  explicit GaugeCell(int64 value) : value_(value) {}
+  ~GaugeCell() {}
+
+  // Atomically sets the value.
+  void Set(int64 value);
 
   // Retrieves the current value.
   int64 value() const;
@@ -61,45 +83,51 @@ class CounterCell {
  private:
   std::atomic<int64> value_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CounterCell);
+  TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
 };
 
-// A stateful class for updating a cumulative integer metric.
+// A stateful class for updating a gauge-like metric. Allowed ValueType are
+// int64 and string.
 //
 // This class encapsulates a set of values (or a single value for a label-less
 // metric). Each value is identified by a tuple of labels. The class allows the
-// user to increment each value.
+// user to set each value.
 //
-// Counter allocates storage and maintains a cell for each value. You can
+// Gauge allocates storage and maintains a cell for each value. You can
 // retrieve an individual cell using a label-tuple and update it separately.
 // This improves performance since operations related to retrieval, like
 // map-indexing and locking, are avoided.
 //
 // This class is thread-safe.
-template <int NumLabels>
-class Counter {
+template <typename ValueType, int NumLabels>
+class Gauge {
  public:
-  ~Counter() {
+  ~Gauge() {
     // Deleted here, before the metric_def is destroyed.
     registration_handle_.reset();
   }
 
   // Creates the metric based on the metric-definition arguments.
   //
-  // Example;
-  // auto* counter_with_label = Counter<1>::New("/tensorflow/counter",
-  //   "Tensorflow counter", "MyLabelName");
+  // Example:
+  //
+  // auto* string_gauge_with_label = Gauge<string,1>::New(
+  //   "/tensorflow/string_gauge_with_label",
+  //   "String gauge with one label.", "MyLabelName");
+  //
+  // auto* integer_gauge = Gauge<int64, 0>::New("/tensorflow/integer_gauge",
+  //   "Integer gauge")
   template <typename... MetricDefArgs>
-  static Counter* New(MetricDefArgs&&... metric_def_args);
+  static Gauge* New(MetricDefArgs&&... metric_def_args);
 
-  // Retrieves the cell for the specified labels, creating it on demand if
-  // not already present.
+  // Retrieves the cell for the specified labels, creating it on demand if not
+  // already present.
   template <typename... Labels>
-  CounterCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
+  GaugeCell<ValueType>* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
 
  private:
-  explicit Counter(
-      const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def)
+  explicit Gauge(
+      const MetricDef<MetricKind::kGauge, ValueType, NumLabels>& metric_def)
       : metric_def_(metric_def),
         registration_handle_(CollectionRegistry::Default()->Register(
             &metric_def_, [&](MetricCollectorGetter getter) {
@@ -115,45 +143,57 @@ class Counter {
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
-  const MetricDef<MetricKind::kCumulative, int64, NumLabels> metric_def_;
+  const MetricDef<MetricKind::kGauge, ValueType, NumLabels> metric_def_;
 
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
   using LabelArray = std::array<string, NumLabels>;
-  std::map<LabelArray, CounterCell> cells_ GUARDED_BY(mu_);
+  std::map<LabelArray, GaugeCell<ValueType> > cells_ GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Counter);
+  TF_DISALLOW_COPY_AND_ASSIGN(Gauge);
 };
 
 ////
 //  Implementation details follow. API readers may skip.
 ////
-
-inline void CounterCell::IncrementBy(const int64 step) {
-  DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
-  value_ += step;
+template <typename T>
+void GaugeCell<T>::Set(const T& value) {
+  mutex_lock l(mu_);
+  value_ = value;
 }
 
-inline int64 CounterCell::value() const { return value_; }
+template <typename T>
+T GaugeCell<T>::value() const {
+  mutex_lock l(mu_);
+  return value_;
+}
 
-template <int NumLabels>
+inline void GaugeCell<int64>::Set(int64 value) { value_ = value; }
+
+inline int64 GaugeCell<int64>::value() const { return value_; }
+
+template <typename ValueType, int NumLabels>
 template <typename... MetricDefArgs>
-Counter<NumLabels>* Counter<NumLabels>::New(
+Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
-  return new Counter<NumLabels>(
-      MetricDef<MetricKind::kCumulative, int64, NumLabels>(
+  static_assert(std::is_same<ValueType, int64>::value ||
+                    std::is_same<ValueType, string>::value,
+                "Gauge only allows int64 and string types.");
+  return new Gauge<ValueType, NumLabels>(
+      MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));
 }
 
-template <int NumLabels>
+template <typename ValueType, int NumLabels>
 template <typename... Labels>
-CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
-    LOCKS_EXCLUDED(mu_) {
+GaugeCell<ValueType>* Gauge<ValueType, NumLabels>::GetCell(
+    const Labels&... labels) LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
-  static_assert(sizeof...(Labels) == NumLabels,
-                "Mismatch between Counter<NumLabels> and number of labels "
-                "provided in GetCell(...).");
+  static_assert(
+      sizeof...(Labels) == NumLabels,
+      "Mismatch between Gauge<ValueType, NumLabels> and number of labels "
+      "provided in GetCell(...).");
 
   const LabelArray& label_array = {{labels...}};
   mutex_lock l(mu_);
@@ -164,7 +204,7 @@ CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
   return &(cells_
                .emplace(std::piecewise_construct,
                         std::forward_as_tuple(label_array),
-                        std::forward_as_tuple(0))
+                        std::forward_as_tuple(ValueType()))
                .first->second);
 }
 
@@ -172,4 +212,4 @@ CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
 }  // namespace tensorflow
 
 #endif  // IS_MOBILE_PLATFORM
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
