@@ -76,28 +76,6 @@ void InitImpl(const std::string& graph, const std::vector<int>& sizes,
   if (interpreter->AllocateTensors() != kTfLiteOk) {
     LOG(FATAL) << "Failed to allocate tensors!";
   }
-
-  if (input_layer_type == "float") {
-    // 0-th dimension is batch.
-    // FillRandomValue<float>(
-    //     interpreter->typed_tensor<float>(input),
-    //     std::vector<int>(sizes.begin() + 1, sizes.end()),
-    //     []() { return static_cast<float>(rand()) / RAND_MAX - 0.5f; });
-  } else if (input_layer_type == "uint8") {
-    // 0-th dimension is batch.
-    // FillRandomValue<uint8_t>(
-    //     interpreter->typed_tensor<uint8_t>(input),
-    //     std::vector<int>(sizes.begin() + 1, sizes.end()),
-    //     []() { return static_cast<uint8_t>(rand()) % 255; });
-  } else if (input_layer_type == "string") {
-    tflite::DynamicBuffer buffer;
-    // FillRandomString(&buffer, sizes, []() {
-    //   return "we're have some friends over saturday to hang out in the yard";
-    // });
-    buffer.WriteToTensor(interpreter->tensor(input));
-  } else {
-    LOG(FATAL) << "Unknown input type: " << input_layer_type;
-  }
 }
 
 int Main(int argc, char** argv) {

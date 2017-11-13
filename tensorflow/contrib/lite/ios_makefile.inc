@@ -28,13 +28,15 @@ ifeq ($(TARGET), IOS)
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT} \
-		-arch $(IOS_ARCH)
+		-arch $(IOS_ARCH) \
+		-O3
 	CCFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-fembed-bitcode \
 		-mno-thumb \
 		-isysroot \
 		${IPHONEOS_SYSROOT} \
-		-arch $(IOS_ARCH)
+		-arch $(IOS_ARCH) \
+		-O3
 	LDFLAGS := -fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-arch $(IOS_ARCH)
