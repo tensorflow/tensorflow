@@ -39,9 +39,9 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 namespace {
-using StringPieceSet = std::unordered_set<StringPiece, StringPieceHasher>;
+using StringPieceSet = std::unordered_set<StringPiece, StringPiece::Hasher>;
 template <typename T>
-using StringPieceMap = std::unordered_map<StringPiece, T, StringPieceHasher>;
+using StringPieceMap = std::unordered_map<StringPiece, T, StringPiece::Hasher>;
 }  // namespace
 
 Status ReplaceSendRecvs(const GraphDef& original_graph_def,

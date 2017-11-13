@@ -208,7 +208,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const bool is_partial_;
   const DebugOptions& debug_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
-  std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node_;
+  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
 
   // Graph partitioned into per-location subgraphs.
   struct Part {
@@ -486,7 +486,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
+  std::unordered_map<StringPiece, size_t, StringPiece::Hasher> feeds(3);
 
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     if (!feeds.insert({req.feed_name(i), i}).second) {

@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
-typedef std::unordered_map<StringPiece, int32, StringPieceHasher>
+typedef std::unordered_map<StringPiece, int32, StringPiece::Hasher>
     NodeNameToCostIdMap;
 
 class StepStats;

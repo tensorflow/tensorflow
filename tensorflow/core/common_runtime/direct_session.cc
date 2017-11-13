@@ -1135,7 +1135,7 @@ Status DirectSession::GetOrCreateExecutors(
 
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
-    std::unordered_set<StringPiece, StringPieceHasher> names;
+    std::unordered_set<StringPiece, StringPiece::Hasher> names;
     for (const string& input : inputs) {
       TensorId id(ParseTensorName(input));
       names.emplace(id.first);
