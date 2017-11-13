@@ -89,6 +89,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddBatchNormTrainingInstruction(
       const BatchNormTrainingRequest& batch_norm_training_request);
 
+  // Enqueues a batch norm inference instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddBatchNormInferenceInstruction(
+      const BatchNormInferenceRequest& batch_norm_inference_request);
+
   // Enqueues a batch norm grad instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddBatchNormGradInstruction(
       const BatchNormGradRequest& batch_norm_grad_request);
@@ -256,6 +260,10 @@ class UserComputation {
   // Sets metadata on the Hlo instruction referenced by the given handle.
   Status SetOpMetadata(const ComputationDataHandle& handle,
                        const OpMetadata& metadata);
+
+  // Sets the device assignment on the Hlo instruction referenced by 'handle'.
+  Status SetOpDeviceAssignment(const ComputationDataHandle& handle,
+                               const OpDeviceAssignment& device_assignment);
 
   // Builds a HLO computation from the UserComputation. The parameter "resolver"
   // is a function which returns a pointer to the HloComputation corresponding

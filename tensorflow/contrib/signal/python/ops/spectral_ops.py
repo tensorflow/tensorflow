@@ -28,6 +28,7 @@ from tensorflow.contrib.signal.python.ops import window_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops
 
@@ -59,8 +60,7 @@ def stft(signals, frame_length, frame_step, fft_length=None,
 
   Raises:
     ValueError: If `signals` is not at least rank 1, `frame_length` is
-      not scalar, `frame_step` is not scalar, or `frame_length`
-      is greater than `fft_length`.
+      not scalar, or `frame_step` is not scalar.
 
   [stft]: https://en.wikipedia.org/wiki/Short-time_Fourier_transform
   """
@@ -78,15 +78,6 @@ def stft(signals, frame_length, frame_step, fft_length=None,
     else:
       fft_length = ops.convert_to_tensor(fft_length, name='fft_length')
 
-    frame_length_static = tensor_util.constant_value(
-        frame_length)
-    fft_length_static = tensor_util.constant_value(fft_length)
-    if (frame_length_static is not None and fft_length_static is not None and
-        frame_length_static > fft_length_static):
-      raise ValueError('frame_length (%d) may not be larger than '
-                       'fft_length (%d)' % (frame_length_static,
-                                            fft_length_static))
-
     framed_signals = shape_ops.frame(
         signals, frame_length, frame_step, pad_end=pad_end)
 
@@ -103,7 +94,7 @@ def stft(signals, frame_length, frame_step, fft_length=None,
 def inverse_stft(stfts,
                  frame_length,
                  frame_step,
-                 fft_length,
+                 fft_length=None,
                  window_fn=functools.partial(window_ops.hann_window,
                                              periodic=True),
                  name=None):
@@ -118,7 +109,8 @@ def inverse_stft(stfts,
     frame_length: An integer scalar `Tensor`. The window length in samples.
     frame_step: An integer scalar `Tensor`. The number of samples to step.
     fft_length: An integer scalar `Tensor`. The size of the FFT that produced
-      `stfts`.
+      `stfts`. If not provided, uses the smallest power of 2 enclosing
+      `frame_length`.
     window_fn: A callable that takes a window length and a `dtype` keyword
       argument and returns a `[window_length]` `Tensor` of samples in the
       provided datatype. If set to `None`, no windowing is used.
@@ -141,9 +133,46 @@ def inverse_stft(stfts,
     frame_length.shape.assert_has_rank(0)
     frame_step = ops.convert_to_tensor(frame_step, name='frame_step')
     frame_step.shape.assert_has_rank(0)
-    fft_length = ops.convert_to_tensor(fft_length, name='fft_length')
-    fft_length.shape.assert_has_rank(0)
-    real_frames = spectral_ops.irfft(stfts, [fft_length])[..., :frame_length]
+    if fft_length is None:
+      fft_length = _enclosing_power_of_two(frame_length)
+    else:
+      fft_length = ops.convert_to_tensor(fft_length, name='fft_length')
+      fft_length.shape.assert_has_rank(0)
+
+    real_frames = spectral_ops.irfft(stfts, [fft_length])
+
+    # frame_length may be larger or smaller than fft_length, so we pad or
+    # truncate real_frames to frame_length.
+    frame_length_static = tensor_util.constant_value(frame_length)
+    # If we don't know the shape of real_frames's inner dimension, pad and
+    # truncate to frame_length.
+    if (frame_length_static is None or
+        real_frames.shape.ndims is None or
+        real_frames.shape[-1].value is None):
+      real_frames = real_frames[..., :frame_length]
+      real_frames_rank = array_ops.rank(real_frames)
+      real_frames_shape = array_ops.shape(real_frames)
+      paddings = array_ops.concat(
+          [array_ops.zeros([real_frames_rank - 1, 2],
+                           dtype=frame_length.dtype),
+           [[0, math_ops.maximum(0, frame_length - real_frames_shape[-1])]]], 0)
+      real_frames = array_ops.pad(real_frames, paddings)
+    # We know real_frames's last dimension and frame_length statically. If they
+    # are different, then pad or truncate real_frames to frame_length.
+    elif real_frames.shape[-1].value > frame_length_static:
+      real_frames = real_frames[..., :frame_length_static]
+    elif real_frames.shape[-1].value < frame_length_static:
+      pad_amount = frame_length_static - real_frames.shape[-1].value
+      real_frames = array_ops.pad(real_frames,
+                                  [[0, 0]] * (real_frames.shape.ndims - 1) +
+                                  [[0, pad_amount]])
+
+    # The above code pads the inner dimension of real_frames to frame_length,
+    # but it does so in a way that may not be shape-inference friendly.
+    # Restore shape information if we are able to.
+    if frame_length_static is not None and real_frames.shape.ndims is not None:
+      real_frames.set_shape([None] * (real_frames.shape.ndims - 1) +
+                            [frame_length_static])
 
     # Optionally window and overlap-add the inner 2 dimensions of real_frames
     # into a single [samples] dimension.

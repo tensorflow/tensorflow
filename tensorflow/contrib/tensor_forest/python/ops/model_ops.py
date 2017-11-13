@@ -103,7 +103,7 @@ def tree_variable(params, tree_config, stats_handle, name, container=None):
   """
   with ops.name_scope(name, "TreeVariable") as name:
     resource_handle = gen_model_ops.decision_tree_resource_handle_op(
-        container, name, name=name)
+        container, shared_name=name, name=name)
 
     create_op = gen_model_ops.create_tree_variable(
         resource_handle,
@@ -113,7 +113,7 @@ def tree_variable(params, tree_config, stats_handle, name, container=None):
     # Adds the variable to the savable list.
     saveable = TreeVariableSavable(params, resource_handle, stats_handle,
                                    create_op,
-                                   "tree_checkpoint_{0}".format(name))
+                                   resource_handle.name)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
     resources.register_resource(resource_handle, create_op, is_initialized_op)
     return resource_handle

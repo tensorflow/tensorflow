@@ -90,6 +90,7 @@ REGISTER_OP("TreePredictionsV4")
     .Input("sparse_input_values: float")
     .Input("sparse_input_shape: int64")
     .Output("predictions: float")
+    .Output("tree_paths: string")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle num_points = c->UnknownDim();
 
@@ -99,6 +100,7 @@ REGISTER_OP("TreePredictionsV4")
       }
 
       c->set_output(0, c->Matrix(num_points, c->UnknownDim()));
+      c->set_output(1, c->Vector(c->UnknownDim()));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -112,6 +114,7 @@ sparse_input_indices: The indices tensor from the SparseTensor input.
 sparse_input_values: The values tensor from the SparseTensor input.
 sparse_input_shape: The shape tensor from the SparseTensor input.
 predictions: `predictions[i][j]` is the probability that input i is class j.
+tree_paths: `tree_paths[i]` is a serialized TreePath proto for example i.
 )doc");
 
 REGISTER_OP("TraverseTreeV4")

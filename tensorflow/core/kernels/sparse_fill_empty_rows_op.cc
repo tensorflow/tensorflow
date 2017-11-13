@@ -114,13 +114,11 @@ class SparseFillEmptyRowsOp : public OpKernel {
                                           &scratch_t));
     auto scratch = scratch_t.vec<int64>();
     scratch.device(d) = scratch.constant(0);
-    int64 prev_row = -1;
     for (int i = 0; i < N; ++i) {
       const int64 row = indices(i, 0);
-      OP_REQUIRES(context, indices(i, 0) >= 0 && indices(i, 0) < dense_rows,
+      OP_REQUIRES(context, row >= 0 && row < dense_rows,
                   errors::InvalidArgument("indices(", i, ", 0) is invalid: ",
-                                          indices(i, 0), " >= ", dense_rows));
-      prev_row = row;
+                                          row, " >= ", dense_rows));
       ++scratch(indices(i, 0));
     }
     for (int row = 0; row < dense_rows; ++row) {

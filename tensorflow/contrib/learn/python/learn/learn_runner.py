@@ -65,7 +65,8 @@ def _wrapped_experiment_fn_with_uid_check(experiment_fn, require_hparams=False):
   def wrapped_experiment_fn(run_config, hparams):
     """Calls experiment_fn and checks the uid of `RunConfig`."""
     if not isinstance(run_config, run_config_lib.RunConfig):
-      raise ValueError('`run_config` must be `RunConfig` instance')
+      raise ValueError(
+          '`run_config` must be `tf.contrib.learn.RunConfig` instance')
     if not run_config.model_dir:
       raise ValueError(
           'Must specify a model directory `model_dir` in `run_config`.')
@@ -81,7 +82,15 @@ def _wrapped_experiment_fn_with_uid_check(experiment_fn, require_hparams=False):
       raise TypeError('Experiment builder did not return an Experiment '
                       'instance, got %s instead.' % type(experiment))
 
-    if experiment.estimator.config.uid() != expected_uid:
+    config_from_estimator = experiment.estimator.config
+    if not hasattr(config_from_estimator, 'uid'):
+      raise RuntimeError(
+          'Pass `run_config` argument of the `experiment_fn` to the Estimator '
+          'in Experiment. It is likely a different `RunConfig` is passed to '
+          '`Estimator` or the `config` constructor argument in `Estimator` '
+          'is not set.')
+
+    if config_from_estimator.uid() != expected_uid:
       raise RuntimeError(
           '`RunConfig` instance is expected to be used by the `Estimator` '
           'inside the `Experiment`. expected {}, but got {}'.format(
@@ -156,10 +165,10 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
       must be None.
       2) It accepts two arguments `run_config` and `hparams`, which should be
       used to create the `Estimator` (`run_config` passed as `config` to its
-      constructor; `hparams` used as the hyper-paremeters of the model).
+      constructor; `hparams` used as the hyper-parameters of the model).
       It must return an `Experiment`. For this case, `output_dir` must be None.
     output_dir: Base output directory [Deprecated].
-    schedule: The name of the  method in the `Experiment` to run.
+    schedule: The name of the method in the `Experiment` to run.
     run_config: `RunConfig` instance. The `run_config.model_dir` must be
       non-empty. If `run_config` is set, `output_dir` must be None.
     hparams: `HParams` instance. The default hyper-parameters, which will be

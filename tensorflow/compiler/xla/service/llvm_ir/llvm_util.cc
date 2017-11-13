@@ -16,18 +16,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 #include <algorithm>
+#include <memory>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/MDBuilder.h"
-#include "external/llvm/include/llvm/IR/Operator.h"
-#include "external/llvm/include/llvm/Target/TargetOptions.h"
+#include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Operator.h"
+#include "llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -67,6 +71,28 @@ llvm::Value* EmitCallToIntrinsic(
     operands_vec.push_back(operand);
   }
   return ir_builder->CreateCall(intrinsic, operands_vec);
+}
+
+llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder) {
+  if (ir_builder->getFastMathFlags().noNaNs()) {
+    auto cmp = ir_builder->CreateFCmpUGE(lhs_value, rhs_value);
+    return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    return EmitCallToIntrinsic(llvm::Intrinsic::maxnum, {lhs_value, rhs_value},
+                               {lhs_value->getType()}, ir_builder);
+  }
+}
+
+llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder) {
+  if (ir_builder->getFastMathFlags().noNaNs()) {
+    auto cmp = ir_builder->CreateFCmpULE(lhs_value, rhs_value);
+    return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    return EmitCallToIntrinsic(llvm::Intrinsic::minnum, {lhs_value, rhs_value},
+                               {lhs_value->getType()}, ir_builder);
+  }
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
@@ -307,17 +333,20 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, tensorflow::StringPiece name,
                                    ir_builder)
                 : nullptr;
 
-  // There is no reason this function cannot work without a
-  // terminator, that is just a different case that has not been
-  // implemented yet. It is a different case because splitBasicBlock
-  // requires a terminator.
-  CHECK_NE(nullptr, if_data.if_block->getTerminator());
-  if_data.after_block = if_data.if_block->splitBasicBlock(
-      ir_builder->GetInsertPoint(),
-      AsStringRef(tensorflow::strings::StrCat(name, "-after")));
+  // Add a terminator to the if block, if necessary.
+  if (if_data.if_block->getTerminator() == nullptr) {
+    ir_builder->SetInsertPoint(if_data.if_block);
+    if_data.after_block = CreateBasicBlock(
+        nullptr, tensorflow::strings::StrCat(name, "-after"), ir_builder);
+    ir_builder->CreateBr(if_data.after_block);
+  } else {
+    if_data.after_block = if_data.if_block->splitBasicBlock(
+        ir_builder->GetInsertPoint(),
+        AsStringRef(tensorflow::strings::StrCat(name, "-after")));
+  }
 
-  // splitBasicBlock inserts an unconditional terminator that we have
-  // to remove as we want a conditional branch there.
+  // Our basic block should now end with an unconditional branch.  Remove it;
+  // we're going to replace it with a conditional branch.
   if_data.if_block->getTerminator()->eraseFromParent();
 
   ir_builder->SetInsertPoint(if_data.if_block);
@@ -418,11 +447,56 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
   return inst;
 }
 
-string SanitizeIrName(string function_name) {
-  // Replace some characters that cannot occur in LLVM names with '_'
-  std::replace(function_name.begin(), function_name.end(), '.', '_');
-  std::replace(function_name.begin(), function_name.end(), '%', '_');
-  std::replace(function_name.begin(), function_name.end(), '-', '_');
+string IrName(string a) {
+  a.erase(std::remove(a.begin(), a.end(), '%'), a.end());
+  return a;
+}
+
+string IrName(tensorflow::StringPiece a, tensorflow::StringPiece b) {
+  if (!a.empty() && !b.empty()) {
+    return IrName(tensorflow::strings::StrCat(a, ".", b));
+  }
+  return IrName(tensorflow::strings::StrCat(a, b));
+}
+
+string IrName(const HloInstruction* a, tensorflow::StringPiece b) {
+  return IrName(a->name(), b);
+}
+
+string SanitizeFunctionName(string function_name) {
+  // The backend with the strictest requirements on function names is NVPTX, so
+  // we sanitize to its requirements.
+  //
+  // A slightly stricter version of the NVPTX requirements is that names match
+  // /[a-zA-Z_$][a-zA-Z0-9_$]*/, with the exception that the names "_" and "$"
+  // are illegal.
+
+  // Sanitize chars in function_name.
+  std::transform(function_name.begin(), function_name.end(),
+                 function_name.begin(), [](char c) {
+                   if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
+                       ('0' <= c && c <= '9') || c == '_' || c == '$') {
+                     return c;
+                   }
+                   return '_';
+                 });
+
+  // Ensure the name isn't empty.
+  if (function_name.empty()) {
+    function_name = "__unnamed";
+  }
+
+  // Ensure the name doesn't start with a number.
+  if (!function_name.empty() && function_name[0] >= '0' &&
+      function_name[0] <= '9') {
+    function_name.insert(function_name.begin(), '_');
+  }
+
+  // Ensure the name isn't "_" or "$".
+  if (function_name == "_" || function_name == "$") {
+    function_name += '_';
+  }
+
   return function_name;
 }
 
@@ -462,6 +536,72 @@ void SetTargetOptions(bool fast_math_enabled,
   target_options->NoInfsFPMath = fast_math_enabled;
   target_options->NoNaNsFPMath = fast_math_enabled;
   target_options->NoSignedZerosFPMath = fast_math_enabled;
+}
+
+std::map<int, llvm::MDNode*> MergeMetadata(
+    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
+    const std::map<int, llvm::MDNode*>& b) {
+  // We should extend this as needed to deal with other kinds of metadata like
+  // !dereferenceable and !range.
+
+  std::map<int, llvm::MDNode*> result;
+  for (auto kind_md_pair : a) {
+    if (kind_md_pair.first == llvm::LLVMContext::MD_alias_scope) {
+      llvm::SmallVector<llvm::Metadata*, 8> union_of_scopes;
+      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
+      for (const auto& scope_a : kind_md_pair.second->operands()) {
+        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
+        union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_a.get()));
+      }
+      auto it = b.find(kind_md_pair.first);
+      if (it != b.end()) {
+        for (const auto& scope_b : it->second->operands()) {
+          if (!scope_set.count(llvm::cast<llvm::MDNode>(scope_b.get()))) {
+            union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b.get()));
+          }
+        }
+      }
+      result[llvm::LLVMContext::MD_alias_scope] =
+          llvm::MDNode::get(*context, union_of_scopes);
+    } else if (kind_md_pair.first == llvm::LLVMContext::MD_noalias) {
+      llvm::SmallVector<llvm::Metadata*, 8> intersection_of_scopes;
+      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
+      for (const auto& scope_a : kind_md_pair.second->operands()) {
+        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
+      }
+      auto it = b.find(kind_md_pair.first);
+      if (it != b.end()) {
+        for (const auto& scope_b : it->second->operands()) {
+          if (scope_set.count(llvm::cast<llvm::MDNode>(scope_b))) {
+            intersection_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b));
+          }
+        }
+      }
+      if (!intersection_of_scopes.empty()) {
+        result[llvm::LLVMContext::MD_noalias] =
+            llvm::MDNode::get(*context, intersection_of_scopes);
+      }
+    }
+  }
+  return result;
+}
+
+Status DumpIRToDirectory(const string& directory_name,
+                         const string& hlo_module_name,
+                         const llvm::Module& llvm_module, bool optimized) {
+  string safe_file_name_base = SanitizeFileName(hlo_module_name);
+  string ir_file_name = tensorflow::io::JoinPath(
+      directory_name,
+      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-",
+                                  optimized ? "with" : "no", "-opt.ll"));
+
+  std::unique_ptr<tensorflow::WritableFile> f;
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->NewWritableFile(ir_file_name, &f));
+  TF_RETURN_IF_ERROR(f->Append(DumpModuleToString(llvm_module)));
+  return f->Close();
 }
 
 }  // namespace llvm_ir

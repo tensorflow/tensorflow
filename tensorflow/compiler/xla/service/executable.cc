@@ -69,23 +69,18 @@ Status Executable::DumpSessionModule() {
                                      *session_module_);
 }
 
-// Removes illegal characters from filenames.
-static void SanitizeFilename(string* name) {
-  for (char& c : *name) {
-    if (c == '/' || c == '\\' || c == '[' || c == ']') {
-      c = '_';
-    }
-  }
-}
-
 /* static */ Status Executable::DumpToDirectory(
     const string& directory_path, string filename,
     const SessionModule& session_module) {
   tensorflow::Env* env = tensorflow::Env::Default();
   if (!env->IsDirectory(directory_path).ok()) {
-    TF_RETURN_IF_ERROR(env->CreateDir(directory_path));
+    // NB! CreateDir does not work reliably with multiple XLA threads -- two
+    // threads can race to observe the absence of the dump directory and
+    // simultaneously try to create it, causing the "losing" thread to get a
+    // "directory already exists" error.
+    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
   }
-  SanitizeFilename(&filename);
+  filename = SanitizeFileName(std::move(filename));
   string file_path = tensorflow::io::JoinPath(directory_path, filename);
   return tensorflow::WriteBinaryProto(env, file_path, session_module);
 }

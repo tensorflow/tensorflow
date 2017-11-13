@@ -71,12 +71,12 @@ void CleanNodeName(string* name) {
 Status HloTfGraphBuilder::AddComputation(const HloComputation& computation) {
   VLOG(2) << "Adding computation " << computation.name();
   for (auto embedded : computation.MakeEmbeddedComputationsList()) {
-    for (auto& instruction : embedded->instructions()) {
-      TF_RETURN_IF_ERROR(AddInstruction(instruction.get()));
+    for (auto* instruction : embedded->instructions()) {
+      TF_RETURN_IF_ERROR(AddInstruction(instruction));
     }
   }
-  for (auto& instruction : computation.instructions()) {
-    TF_RETURN_IF_ERROR(AddInstruction(instruction.get()));
+  for (auto* instruction : computation.instructions()) {
+    TF_RETURN_IF_ERROR(AddInstruction(instruction));
   }
   return Status::OK();
 }
@@ -91,10 +91,11 @@ const string& HloTfGraphBuilder::GetNodeNameForInstruction(
   string node_name;
   // If an instruction is fused, put it in the subgraph of the fusion;
   // otherwise, put it in the computation subgraph.
-  if (instruction->IsFused()) {
-    node_name = GetNodeNameForInstruction(instruction->fusion_instruction());
+  const HloComputation* computation = instruction->parent();
+  if (computation->IsFusionComputation()) {
+    node_name = GetNodeNameForInstruction(computation->FusionInstruction());
   } else {
-    node_name = instruction->parent()->name();
+    node_name = computation->name();
     if (!instruction->metadata().op_name().empty()) {
       // Always make computations contain TF ops but not the other way around.
       StrAppend(&node_name, "/", instruction->metadata().op_name());
@@ -193,8 +194,8 @@ Status HloTfGraphBuilder::AddInstruction(const HloInstruction* instruction) {
   node_def->set_op(GetOpDefName(instruction));
   SetNodeAttrs(instruction, node_def);
   if (instruction->opcode() == HloOpcode::kFusion) {
-    for (auto& fused_instruction : instruction->fused_instructions()) {
-      TF_RETURN_IF_ERROR(AddInstruction(fused_instruction.get()));
+    for (auto* fused_instruction : instruction->fused_instructions()) {
+      TF_RETURN_IF_ERROR(AddInstruction(fused_instruction));
     }
   }
   // Add all edges including control edges.

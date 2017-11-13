@@ -15,10 +15,13 @@ limitations under the License.
 
 // Native XLA implementations of indexing ops.
 
+#include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
+
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,115 +30,92 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
+XlaArgMinMaxOp::XlaArgMinMaxOp(OpKernelConstruction* ctx, bool is_min)
+    : XlaOpKernel(ctx), is_min_(is_min) {}
+
+void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
+  const TensorShape input_shape = ctx->InputShape(0);
+  const TensorShape dimension_shape = ctx->InputShape(1);
+
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(dimension_shape),
+              errors::InvalidArgument(
+                  "dim must be a scalar, but received tensor of shape: ",
+                  dimension_shape.DebugString()));
+
+  int64 dim;
+  OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &dim));
+
+  const int input_dims = input_shape.dims();
+  const int axis = dim < 0 ? dim + input_dims : dim;
+
+  OP_REQUIRES(
+      ctx, axis >= 0 && axis < input_dims,
+      errors::InvalidArgument("Expected dimension in the range [", -input_dims,
+                              ", ", input_dims, "), but got ", dim));
+  const int64 axis_size = input_shape.dim_size(axis);
+  OP_REQUIRES(
+      ctx, axis_size > 0,
+      errors::InvalidArgument("Reduction axis ", dim, " is empty in shape ",
+                              input_shape.DebugString()));
+
+  DataType index_type = output_type(0);
+  xla::PrimitiveType xla_input_type;
+  OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(0), &xla_input_type));
+  xla::PrimitiveType xla_index_type;
+  OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(index_type, &xla_index_type));
+
+  xla::ComputationBuilder* b = ctx->builder();
+  xla::ComputationDataHandle input = ctx->Input(0);
+
+  xla::ComputationDataHandle init_value;
+  const xla::Computation* reducer;
+  if (is_min_) {
+    init_value = XlaHelpers::MaxValue(b, input_type(0));
+    reducer = ctx->GetOrCreateMin(input_type(0));
+  } else {
+    init_value = XlaHelpers::MinValue(b, input_type(0));
+    reducer = ctx->GetOrCreateMax(input_type(0));
+  }
+  xla::ComputationDataHandle input_max =
+      b->Reduce(input, init_value, *reducer, /*dimensions_to_reduce=*/{axis});
+  std::vector<int64> broadcast_dims(input_dims - 1);
+  std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
+  std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
+  // Compute a mask that has 1s for elements equal to the maximum.
+  xla::ComputationDataHandle mask = b->ConvertElementType(
+      b->Eq(input, input_max, broadcast_dims), xla_index_type);
+
+  // Multiply by the vector [0, 1, 2, ...] to convert each 1 into its index.
+  // TODO(phawkins): add a bitwise And operator to HLO, use a bitwise and
+  // instead of a multiplication here.
+  xla::ComputationDataHandle iota;
+  OP_REQUIRES_OK(ctx, XlaHelpers::Iota(b, index_type, axis_size, &iota));
+  xla::ComputationDataHandle product =
+      b->Mul(mask, iota, /*broadcast_dimensions=*/{axis});
+
+  // If there are multiple maximum elements, choose the one with the highest
+  // index.
+  xla::ComputationDataHandle output =
+      b->Reduce(product, XlaHelpers::MinValue(b, index_type),
+                *ctx->GetOrCreateMax(index_type),
+                /*dimensions_to_reduce=*/{axis});
+
+  ctx->SetOutput(0, output);
+}
+
+XlaArgMaxOp::XlaArgMaxOp(OpKernelConstruction* ctx)
+    : XlaArgMinMaxOp(ctx, /*is_min=*/false) {}
+REGISTER_XLA_OP(Name("ArgMax").Device(DEVICE_GPU_XLA_JIT), XlaArgMaxOp);
+
 namespace {
 
-// The logic below uses a custom-call to implement argmax.
-//
-// TODO(toddw): We can implement argmax using existing XLA ops.  The idea is
-// to use SelectAndScatter to create a tensor initialized to 0, where the max
-// value along dim is set to 1.  Then take the dot-product of that against a
-// vector of indices [0,dim_size), which yields the result.  As a detail, we
-// might need to reshape before and afterwards, since the XLA Dot operator
-// only performs the sum of products over dimension 0.
-//
-//   rs = Reshape(input, ...) // reshape so dim is inner-most
-//   one_max = SelectAndScatter(rs, greater_than,
-//                              {1,1,...,dim_size}, {1,1,...,dim_size},
-//                              VALID, [1], 0, add)
-//   indices = [0,1,2,...,dim_size-1]
-//   max_index = Dot(one_max, indices)
-//   result = Reshape(max_index, ...) // reshape back to original
-//
-// Also see b/29507024 for first-class XLA support for indexing ops.
-
-class ArgMaxOp : public XlaOpKernel {
+class XlaArgMinOp : public XlaArgMinMaxOp {
  public:
-  explicit ArgMaxOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
-    const TensorShape dimension_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(dimension_shape),
-                errors::InvalidArgument(
-                    "dim must be a scalar, but received tensor of shape: ",
-                    dimension_shape.DebugString()));
-
-    // We require that the dimension argument is a constant, since it lets us
-    // dispatch to a specialized custom-call function without any run-time
-    // overhead, when compiling ahead-of-time.
-    //
-    // TODO(toddw): We could remove this requirement if necessary; we'd also
-    // need to update const_analysis.cc.  However it seems likely that a native
-    // XLA op would have the same requirement.
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &literal));
-    const int32 dim = literal.Get<int32>({});
-    OP_REQUIRES(ctx, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
-    OP_REQUIRES(
-        ctx, dim < input_shape.dims(),
-        errors::InvalidArgument("dim must be < input rank (",
-                                input_shape.dims(), "), but got: ", dim));
-    const int64 dim_size = input_shape.dim_size(dim);
-    OP_REQUIRES(
-        ctx, dim_size > 0,
-        errors::InvalidArgument("Reduction axis ", dim, " is empty in shape: ",
-                                input_shape.DebugString()));
-
-    // The output shape is the input shape contracted along dim.
-    TensorShape output_shape;
-    for (int d = 0; d < input_shape.dims() - 1; ++d) {
-      output_shape.AddDim(input_shape.dim_size((d < dim) ? d : d + 1));
-    }
-
-    // For now we use a custom-call, only for the 1d and 2d cases.
-    OP_REQUIRES(ctx, XlaContext::Get(ctx).allow_cpu_custom_calls(),
-                errors::InvalidArgument(
-                    "ArgMax implementation requires a CustomCall on CPU"));
-    xla::ComputationBuilder& b = *ctx->builder();
-
-    // XLA passes <out> to the function, so it is not included here.
-    std::vector<xla::ComputationDataHandle> args;
-    args.push_back(ctx->Input(0));
-    args.push_back(b.ConstantLiteral(
-        *xla::Literal::CreateR1<int64>(input_shape.dim_sizes())));
-    if (input_shape.dims() > 1) {
-      // Don't bother passing the output shape and dim for the 1d case, since
-      // the shape is always a scalar and the dim is always 0.
-      args.push_back(b.ConstantLiteral(
-          *xla::Literal::CreateR1<int64>(output_shape.dim_sizes())));
-      args.push_back(b.ConstantLiteral(*xla::Literal::CreateR0<int32>(dim)));
-    }
-
-    xla::Shape xla_shape =
-        xla::ShapeUtil::MakeShape(xla::S64, output_shape.dim_sizes());
-
-    // Tell XLA to call the custom code, defined in
-    // index_ops_kernel_argmax_float_1d.cc.
-    xla::ComputationDataHandle output;
-    switch (input_shape.dims()) {
-      case 1:
-        output = b.CustomCall("argmax_float_1d_xla_impl", args, xla_shape);
-        break;
-      case 2:
-        output = b.CustomCall("argmax_float_2d_xla_impl", args, xla_shape);
-        break;
-      default:
-        OP_REQUIRES(ctx, false,
-                    errors::Unimplemented(
-                        "Argmax is only implemented for 1d and 2d tensors"
-                        ", but got shape: ",
-                        input_shape.DebugString()));
-    }
-    ctx->SetOutput(0, output);
-  }
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ArgMaxOp);
+  explicit XlaArgMinOp(OpKernelConstruction* ctx);
 };
-
-REGISTER_XLA_OP(
-    Name("ArgMax").TypeConstraint("T", DT_FLOAT).Device(DEVICE_CPU_XLA_JIT),
-    ArgMaxOp);
+XlaArgMinOp::XlaArgMinOp(OpKernelConstruction* ctx)
+    : XlaArgMinMaxOp(ctx, /*is_min=*/true) {}
+REGISTER_XLA_OP(Name("ArgMin"), XlaArgMinOp);
 
 }  // namespace
 }  // namespace tensorflow

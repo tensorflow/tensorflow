@@ -3,15 +3,14 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
+
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "wav_to_spectrogram_lib",
@@ -23,11 +22,12 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "wav_to_spectrogram",
     srcs = ["main.cc"],
     deps = [
@@ -37,7 +37,7 @@ cc_binary(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "wav_to_spectrogram_test",
     size = "medium",
     srcs = ["wav_to_spectrogram_test.cc"],

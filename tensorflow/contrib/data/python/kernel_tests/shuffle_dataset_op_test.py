@@ -22,6 +22,7 @@ import collections
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -52,7 +53,7 @@ class ShuffleDatasetTest(test.TestCase):
 
     # Create initialization ops for iterators without and with
     # shuffling, respectively.
-    iterator = dataset_ops.Iterator.from_structure(
+    iterator = iterator_ops.Iterator.from_structure(
         shuffle_dataset.output_types, shuffle_dataset.output_shapes)
     init_fifo_op = iterator.make_initializer(repeat_dataset)
     init_shuffle_op = iterator.make_initializer(shuffle_dataset)

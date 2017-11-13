@@ -49,7 +49,9 @@ namespace xla {
       AssertEqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
     }
   } else {
-    ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual));
+    ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual))
+        << "want rank of: " << ShapeUtil::HumanString(expected)
+        << " got rank of: " << ShapeUtil::HumanString(actual);
     ASSERT_EQ(expected.element_type(), actual.element_type())
         << PrimitiveType_Name(expected.element_type()) << " vs "
         << PrimitiveType_Name(actual.element_type());
@@ -170,8 +172,10 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::Equal(
     const Literal& expected, const Literal& actual) {
-  VLOG(1) << "expected: " << expected.ToString();
-  VLOG(1) << "actual:   " << actual.ToString();
+  VLOG(1) << "expected:";
+  XLA_VLOG_LINES(1, expected.ToString());
+  VLOG(1) << "actual:";
+  XLA_VLOG_LINES(1, actual.ToString());
 
   AssertEqualShapes(expected.shape(), actual.shape());
   std::vector<int64> multi_index(expected.shape().dimensions_size(), 0);
@@ -256,8 +260,10 @@ class NearComparator {
   // within the error bound. Emits useful log messages and dumps literals to
   // temporary files on failure. Returns true if  literals match.
   bool ExpectNear(const Literal& expected, const Literal& actual) {
-    VLOG(1) << "expected: " << expected.ToString();
-    VLOG(1) << "actual:   " << actual.ToString();
+    VLOG(1) << "expected:";
+    XLA_VLOG_LINES(1, expected.ToString());
+    VLOG(1) << "actual:";
+    XLA_VLOG_LINES(1, actual.ToString());
 
     LiteralTestUtil::AssertEqualShapes(expected.shape(), actual.shape());
 

@@ -24,16 +24,12 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
-#include "tensorflow/core/framework/function.h"  // TODO(b/62899350): Remove
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
-#include "tensorflow/core/framework/kernel_def.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/session_state.h"
-#include "tensorflow/core/framework/step_stats.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // TODO(b/62899350): Remove
@@ -314,7 +310,7 @@ class OpKernelConstruction {
   FunctionLibraryRuntime* function_library() const { return flib_; }
 
   // The GraphDef version whose behavior we should follow.
-  const int graph_def_version() const { return graph_def_version_; }
+  int graph_def_version() const { return graph_def_version_; }
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);
@@ -1498,13 +1494,13 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
     return;                           \
   }
 
-#define OP_REQUIRES_OK(CTX, STATUS)     \
-  do {                                  \
-    ::tensorflow::Status _s(STATUS);    \
-    if (!TF_PREDICT_TRUE(_s.ok())) {    \
-      (CTX)->CtxFailureWithWarning(_s); \
-      return;                           \
-    }                                   \
+#define OP_REQUIRES_OK(CTX, ...)          \
+  do {                                    \
+    ::tensorflow::Status _s(__VA_ARGS__); \
+    if (!TF_PREDICT_TRUE(_s.ok())) {      \
+      (CTX)->CtxFailureWithWarning(_s);   \
+      return;                             \
+    }                                     \
   } while (0)
 
 #define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK) \

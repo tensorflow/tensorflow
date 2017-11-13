@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/training_op_helpers.h"
-#include "tensorflow/core/kernels/variable_ops.h"
 
 namespace tensorflow {
 
@@ -64,27 +63,6 @@ std::vector<mutex_lock> MaybeLockVariableInputMutexesInOrder(
     }
   }
   return locks;
-}
-
-Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
-                                  bool lock_held, Tensor* out) {
-  if (ctx->input_dtype(input) == DT_RESOURCE) {
-    Var* var;
-    if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
-      core::ScopedUnref unref_var(var);
-      if (lock_held) {
-        *out = *var->tensor();
-      } else {
-        mutex_lock ml(*var->mu());
-        *out = *var->tensor();
-      }
-      return Status::OK();
-    } else {
-      return errors::Internal("Invalid variable reference.");
-    }
-  }
-  *out = ctx->mutable_input(input, lock_held);
-  return Status::OK();
 }
 
 void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,

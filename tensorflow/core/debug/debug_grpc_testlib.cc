@@ -37,8 +37,10 @@ namespace test {
   while (stream->Read(&event)) {
     if (event.has_log_message()) {
       debug_metadata_strings.push_back(event.log_message().message());
+      stream->Write(EventReply());
     } else if (!event.graph_def().empty()) {
       encoded_graph_defs.push_back(event.graph_def());
+      stream->Write(EventReply());
     } else if (event.has_summary()) {
       const Summary::Value& val = event.summary().value(0);
 
@@ -56,17 +58,15 @@ namespace test {
 
       // Obtain the device name, which is encoded in JSON.
       third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
-      for (int i = 0; i < val.metadata().plugin_data_size(); i++) {
-        if (val.metadata().plugin_data(i).plugin_name() != "debugger") {
-          // This plugin data was meant for another plugin.
-          continue;
-        }
-        auto status = tensorflow::protobuf::util::JsonStringToMessage(
-            val.metadata().plugin_data(i).content(), &metadata);
-        if (status.ok()) {
-          // The device name has been determined.
-          break;
-        }
+      if (val.metadata().plugin_data().plugin_name() != "debugger") {
+        // This plugin data was meant for another plugin.
+        continue;
+      }
+      auto status = tensorflow::protobuf::util::JsonStringToMessage(
+          val.metadata().plugin_data().content(), &metadata);
+      if (!status.ok()) {
+        // The device name could not be determined.
+        continue;
       }
 
       device_names.push_back(metadata.device());
@@ -74,27 +74,44 @@ namespace test {
       output_slots.push_back(metadata.output_slot());
       debug_ops.push_back(debug_op);
       debug_tensors.push_back(tensor);
+
+      // If the debug node is currently in the READ_WRITE mode, send an
+      // EventReply to 1) unblock the execution and 2) optionally modify the
+      // value.
+      const DebugNodeKey debug_node_key(metadata.device(), node_name,
+                                        metadata.output_slot(), debug_op);
+      if (write_enabled_debug_node_keys_.find(debug_node_key) !=
+          write_enabled_debug_node_keys_.end()) {
+        stream->Write(EventReply());
+      }
     }
   }
 
   {
-    mutex_lock l(changes_mu_);
-    for (size_t i = 0; i < changes_to_enable_.size(); ++i) {
+    mutex_lock l(states_mu_);
+    for (size_t i = 0; i < new_states_.size(); ++i) {
       EventReply event_reply;
       EventReply::DebugOpStateChange* change =
           event_reply.add_debug_op_state_changes();
-      change->set_change(changes_to_enable_[i]
-                             ? EventReply::DebugOpStateChange::ENABLE
-                             : EventReply::DebugOpStateChange::DISABLE);
-      change->set_node_name(changes_node_names_[i]);
-      change->set_output_slot(changes_output_slots_[i]);
-      change->set_debug_op(changes_debug_ops_[i]);
+
+      // State changes will take effect in the next stream, i.e., next debugged
+      // Session.run() call.
+      change->set_state(new_states_[i]);
+      const DebugNodeKey& debug_node_key = debug_node_keys_[i];
+      change->set_node_name(debug_node_key.node_name);
+      change->set_output_slot(debug_node_key.output_slot);
+      change->set_debug_op(debug_node_key.debug_op);
       stream->Write(event_reply);
+
+      if (new_states_[i] == EventReply::DebugOpStateChange::READ_WRITE) {
+        write_enabled_debug_node_keys_.insert(debug_node_key);
+      } else {
+        write_enabled_debug_node_keys_.erase(debug_node_key);
+      }
     }
-    changes_to_enable_.clear();
-    changes_node_names_.clear();
-    changes_output_slots_.clear();
-    changes_debug_ops_.clear();
+
+    debug_node_keys_.clear();
+    new_states_.clear();
   }
 
   return ::grpc::Status::OK;
@@ -111,13 +128,12 @@ void TestEventListenerImpl::ClearReceivedDebugData() {
 }
 
 void TestEventListenerImpl::RequestDebugOpStateChangeAtNextStream(
-    bool to_enable, const DebugNodeKey& debug_node_key) {
-  mutex_lock l(changes_mu_);
+    const EventReply::DebugOpStateChange::State new_state,
+    const DebugNodeKey& debug_node_key) {
+  mutex_lock l(states_mu_);
 
-  changes_to_enable_.push_back(to_enable);
-  changes_node_names_.push_back(debug_node_key.node_name);
-  changes_output_slots_.push_back(debug_node_key.output_slot);
-  changes_debug_ops_.push_back(debug_node_key.debug_op);
+  debug_node_keys_.push_back(debug_node_key);
+  new_states_.push_back(new_state);
 }
 
 void TestEventListenerImpl::RunServer(const int server_port) {

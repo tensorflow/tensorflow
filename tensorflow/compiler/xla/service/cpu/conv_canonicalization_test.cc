@@ -144,7 +144,3 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
 
 }  // namespace cpu
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

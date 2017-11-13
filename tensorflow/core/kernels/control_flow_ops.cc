@@ -645,7 +645,7 @@ class AbortOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     if (!exit_without_error_) {
-      CHECK(false) << "Abort_op intentional failure; " << error_msg_;
+      LOG(FATAL) << "Abort_op intentional failure; " << error_msg_;
     } else {
       LOG(WARNING) << "Exiting the process: " << error_msg_;
       exit(0);

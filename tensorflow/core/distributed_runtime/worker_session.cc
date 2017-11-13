@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
 namespace tensorflow {
@@ -27,7 +26,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
       : wrapped_(std::move(w)) {}
 
   ~WorkerFreeListCache() final {
-    for (auto p : workers_) {
+    for (auto& p : workers_) {
       wrapped_->ReleaseWorker(p.first, p.second.worker);
     }
   }
@@ -88,13 +87,16 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
 }  // namespace
 
-WorkerSession::WorkerSession(const string& worker_name,
+WorkerSession::WorkerSession(const string& session_name,
+                             const string& worker_name,
                              std::unique_ptr<WorkerCacheInterface> worker_cache,
                              std::unique_ptr<DeviceMgr> device_mgr,
                              std::unique_ptr<GraphMgr> graph_mgr)
-    : worker_name(worker_name),
+    : session_name(session_name),
+      worker_name(worker_name),
       worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
       device_mgr(std::move(device_mgr)),
-      graph_mgr(std::move(graph_mgr)) {}
+      graph_mgr(std::move(graph_mgr)),
+      cluster_flr(new ClusterFunctionLibraryRuntime(this)) {}
 
 }  // namespace tensorflow

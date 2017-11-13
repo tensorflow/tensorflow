@@ -26,7 +26,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace {
-enum { QUANTIZE_MODE_MIN_COMBINED, QUANTIZE_MODE_MIN_FIRST };
+enum {
+  QUANTIZE_MODE_MIN_COMBINED,
+  QUANTIZE_MODE_MIN_FIRST,
+  QUANTIZE_MODE_SCALED,
+};
 }  // namespace
 
 namespace tensorflow {
@@ -45,14 +49,17 @@ class DequantizeOp : public OpKernel {
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(ctx,
-                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST"),
-                errors::InvalidArgument("Mode string must be 'MIN_COMBINED' or"
-                                        " 'MIN_FIRST', is '" +
+                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
+                 mode_string == "SCALED"),
+                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
+                                        " 'MIN_FIRST', or 'SCALED', is '" +
                                         mode_string + "'"));
     if (mode_string == "MIN_COMBINED") {
       mode_ = QUANTIZE_MODE_MIN_COMBINED;
     } else if (mode_string == "MIN_FIRST") {
       mode_ = QUANTIZE_MODE_MIN_FIRST;
+    } else if (mode_string == "SCALED") {
+      mode_ = QUANTIZE_MODE_SCALED;
     }
   }
 
@@ -87,6 +94,30 @@ class DequantizeOp : public OpKernel {
         QuantizedTensorToFloatInPlaceUsingEigen<T>(
             ctx->template eigen_device<Device>(), input, min_range, max_range,
             output);
+      }
+    } else if (mode_ == QUANTIZE_MODE_SCALED) {
+      // The quantization logic for mode SCALED matches that of
+      // QuantizeAndDequantizeV2 and QuantizeAndDequantizeV3.
+      static constexpr int num_bits = sizeof(T) * 8;
+      const float max_abs = std::max(std::abs(min_range), std::abs(max_range));
+      bool is_signed = std::is_signed<T>::value;
+      // If it is signed, we try to keep 0.0 being 0 and drop one bucket. For
+      // example, if it is 8 bits, we have the range [-127, 127]. So for input
+      // range of [-x, x], the scale should be 254/(2*x).
+      //
+      // If it is unsigned and num_bits == 8, the range with 8 bits is [0, 255].
+      // If the input range is [0, x], then the scale is x/255 instead of 254 as
+      // in the case above.
+      const int target_bits = is_signed ? (num_bits - 1) : num_bits;
+      const float target_range =
+          static_cast<float>((uint64_t{1} << target_bits) - 1);
+      const float scale_factor = max_abs / target_range;
+      float* out_ptr = output->flat<float>().data();
+      const T* in_ptr = input.flat<T>().data();
+
+      const int64 num_elements = input.NumElements();
+      for (int i = 0; i < num_elements; ++i) {
+        out_ptr[i] = static_cast<int>(in_ptr[i]) * scale_factor;
       }
     }
   }

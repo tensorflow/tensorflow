@@ -113,7 +113,7 @@ struct GatherTree<CPUDevice, int32> {
         const int32 batch = i / beam_width;
         const int32 beam = i % beam_width;
         int32 seq_len_b = sequence_length(batch, beam);
-        if (seq_len_b == 0) {
+        if (seq_len_b <= 0) {
           continue;
         }
         beams(seq_len_b - 1, batch, beam) =

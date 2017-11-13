@@ -2,10 +2,11 @@
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-layering_check"],
 )
 
 licenses(["notice"])  # Apache 2.0
+
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "batch_scheduler_hdrs",
@@ -23,9 +24,8 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "batch_scheduler_test",
-    size = "small",
     srcs = ["batch_scheduler_test.cc"],
     deps = [
         ":batch_scheduler",
@@ -56,9 +56,8 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_test(
+tf_cc_test(
     name = "shared_batch_scheduler_test",
-    size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
         ":shared_batch_scheduler",
@@ -78,9 +77,8 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "basic_batch_scheduler_test",
-    size = "small",
     srcs = ["basic_batch_scheduler_test.cc"],
     deps = [
         ":basic_batch_scheduler",
@@ -91,7 +89,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "basic_batch_scheduler_benchmark",
     srcs = ["basic_batch_scheduler_benchmark.cc"],
     tags = [

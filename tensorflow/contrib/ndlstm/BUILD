@@ -55,7 +55,6 @@ tf_py_test(
 
 tf_py_test(
     name = "lstm2d_test",
-    size = "small",
     srcs = ["python/lstm2d_test.py"],
     additional_deps = [
         ":ndlstm",
@@ -69,7 +68,6 @@ tf_py_test(
 
 tf_py_test(
     name = "misc_test",
-    size = "small",
     srcs = ["python/misc_test.py"],
     additional_deps = [
         ":ndlstm",

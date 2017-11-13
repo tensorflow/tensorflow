@@ -50,6 +50,8 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.h"
     "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"

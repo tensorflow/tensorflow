@@ -6,6 +6,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
+    "tf_cc_binary",
 )
 
 exports_files(["LICENSE"])
@@ -24,7 +25,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "clock_cycle_profiling",
     testonly = 1,
     srcs = ["clock_cycle_profiling_main.cc"],

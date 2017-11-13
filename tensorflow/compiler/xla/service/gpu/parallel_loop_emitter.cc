@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -50,7 +50,8 @@ ParallelLoopEmitter::ParallelLoopEmitter(
     : LoopEmitter(target_element_generator, target_array, ir_builder),
       launch_dimensions_(launch_dimensions) {}
 
-llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock() {
+llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
+    tensorflow::StringPiece loop_name) {
   // Emit the following code in LLVM IR:
   //   linear_index = blockIdx.x * blockDim.x + threadIdx.x;
   //   if (linear_index < num_elements) {
@@ -90,7 +91,7 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock() {
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
       ir_builder_->CreateICmpULT(
           linear_index, ir_builder_->getInt64(ShapeUtil::ElementsIn(shape_))),
-      "in_bounds", ir_builder_, false);
+      llvm_ir::IrName(loop_name, "in_bounds"), ir_builder_, false);
 
   // Set exit_bb_ to the exit block of the if structure.
   exit_bb_ = if_in_bounds.after_block;

@@ -54,8 +54,10 @@ class TensorDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::FromTensor")}));
     }
 
     const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -68,11 +70,12 @@ class TensorDatasetOp : public DatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset), produced_(false) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params), produced_(false) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (!produced_) {
           *out_tensors = dataset()->tensors_;

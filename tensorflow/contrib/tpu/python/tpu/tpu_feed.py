@@ -597,8 +597,13 @@ class InfeedQueue(object):
     if self.number_of_shards == 1:
       transposed_sharded_inputs = [[inp] for inp in inputs]
     else:
+
+      def split_fn(inp, num_shards, axis, name):
+        with ops.colocate_with(inp):
+          return array_ops.split(inp, num_shards, axis=axis, name=name)
+
       transposed_sharded_inputs = [
-          array_ops.split(
+          split_fn(
               inp,
               self.number_of_shards,
               axis=policy.shard_dimension,

@@ -51,7 +51,7 @@ class CategoricalFeatureColumnHandlerTest : public ::testing::Test {
         values_(test::AsTensor<int64>({1, 2, 2, 0}, {4})) {
     // Set L2 regularization.
     learner_config_.mutable_regularization()->set_l2(2.0f);
-
+    learner_config_.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
     // Create handler.
     handler_.reset(new CategoricalFeatureColumnHandler(
         kClassId, kSlotId, kBatchSize, kFeatureColumn, indices_.matrix<int64>(),

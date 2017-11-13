@@ -36,7 +36,7 @@ namespace tensorflow {
 // It guarantees that:
 //   1) all records in tfrecords are yielded within every epoch;
 //   2) each record is yielded only once within every epoch;
-//   3) the order in which records are yielded are highly randomized.
+//   3) the order in which records are yielded is highly randomized.
 //   4) the peak memory usage is roughly avg record size *
 //      (opts.bufsize + opts.parellelism * 16).
 //

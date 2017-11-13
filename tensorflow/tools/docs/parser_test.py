@@ -502,7 +502,7 @@ class TestParseFunctionDetails(googletest.TestCase):
     self.assertEqual(args.items[0][0], 'features')
     self.assertEqual(args.items[1][0], 'name')
     self.assertEqual(args.items[1][1],
-                     ' A name for the operation (optional)\n\n')
+                     'A name for the operation (optional)\n\n')
     returns = function_details[1]
     self.assertEqual(returns.keyword, 'Returns')
 

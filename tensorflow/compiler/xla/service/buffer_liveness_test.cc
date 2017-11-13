@@ -37,10 +37,9 @@ class BufferLivenessTest : public HloTestBase {
   const LogicalBuffer& GetBuffer(const BufferLiveness& liveness,
                                  const HloInstruction* instruction,
                                  const ShapeIndex& index) {
-    const std::vector<const LogicalBuffer*>& pointed_to =
-        liveness.points_to_analysis()
-            .GetPointsToSet(instruction)
-            .element(index);
+    const auto& pointed_to = liveness.points_to_analysis()
+                                 .GetPointsToSet(instruction)
+                                 .element(index);
     CHECK_EQ(1, pointed_to.size());
     CHECK_EQ(instruction, pointed_to[0]->instruction());
     CHECK(index == pointed_to[0]->index());
@@ -72,9 +71,9 @@ class BufferLivenessTest : public HloTestBase {
                               ShapeUtil::GetSubshape(b->shape(), index)));
     // Lookup PointsTo set for instructions 'a' and 'b'.
     auto& points_to_analysis = liveness.points_to_analysis();
-    const std::vector<const LogicalBuffer*>& points_to_a =
+    const auto& points_to_a =
         points_to_analysis.GetPointsToSet(a).element(index);
-    const std::vector<const LogicalBuffer*>& points_to_b =
+    const auto& points_to_b =
         points_to_analysis.GetPointsToSet(b).element(index);
     // Make sure PointsTo sets for 'a' and 'b' are unambiguous.
     EXPECT_EQ(1, points_to_a.size());
@@ -435,8 +434,9 @@ TEST_F(BufferLivenessTest, IndependentTupleElements) {
   auto builder = HloComputation::Builder(TestName());
   // Create param0 Tuple.
   auto tuple_param0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape(
-             {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(S32, {4})}),
+      0,
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(S32, {4})}),
       "param0"));
   // Create independent computations for each tuple elememt.
 
@@ -498,8 +498,9 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
   auto builder = HloComputation::Builder(TestName());
   // Create param0 Tuple.
   auto tuple_param0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape(
-             {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F32, {8})}),
+      0,
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F32, {8})}),
       "param0"));
   // Create dependent computations for each tuple elememt.
 
@@ -783,7 +784,3 @@ TEST_F(DynamicUpdateSliceLivenessTest, WithInterference) {
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

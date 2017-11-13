@@ -60,12 +60,12 @@ class HloExecutionProfile {
   // Returns a version of the execution profile suitable for performance
   // debugging; e.g. emits cycle counts, execution time at the nominal device
   // frequency, and the effective throughput given the provided cost_analysis
-  // for the operations in a given computation.
-  // Returns an empty string if it wasn't possible to generate a printable
-  // version.
+  // for the operations in a given computation. Returns an empty string if it
+  // wasn't possible to generate a printable version. cost_analysis should be a
+  // clean analysis that can be used to visit the computation.
   string ToString(const HloComputation& computation,
                   const DeviceDescription& device_description,
-                  const HloCostAnalysis::ShapeSizeFunction& shape_size) const;
+                  HloCostAnalysis* cost_analysis) const;
 
   // Returns the computations we have profiled.
   std::unordered_set<const HloComputation*> profiled_computations() const {

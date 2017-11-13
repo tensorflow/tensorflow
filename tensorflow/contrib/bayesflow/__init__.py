@@ -24,6 +24,8 @@ from __future__ import print_function
 from tensorflow.contrib.bayesflow.python.ops import csiszar_divergence
 from tensorflow.contrib.bayesflow.python.ops import custom_grad
 from tensorflow.contrib.bayesflow.python.ops import entropy
+from tensorflow.contrib.bayesflow.python.ops import hmc
+from tensorflow.contrib.bayesflow.python.ops import metropolis_hastings
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
 from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators
 from tensorflow.contrib.bayesflow.python.ops import stochastic_graph
@@ -36,7 +38,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = ['csiszar_divergence', 'custom_grad', 'entropy',
-                    'monte_carlo', 'special_math',
+                    'metropolis_hastings', 'monte_carlo', 'hmc', 'special_math',
                     'stochastic_gradient_estimators', 'stochastic_graph',
                     'stochastic_tensor', 'stochastic_variables',
                     'variational_inference']

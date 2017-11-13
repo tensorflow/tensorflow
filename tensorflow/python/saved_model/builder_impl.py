@@ -140,11 +140,16 @@ class SavedModelBuilder(object):
 
     Raises:
       TypeError if legacy init op is not of type `Operation`.
+      AssertionError if the graph already contains one or more legacy init ops.
     """
     if legacy_init_op is not None:
       if not isinstance(legacy_init_op, ops.Operation):
         raise TypeError("legacy_init_op needs to be an Operation: %r" %
                         legacy_init_op)
+      if ops.get_collection(constants.LEGACY_INIT_OP_KEY):
+        raise AssertionError(
+            "graph already contains one or more legacy init ops under the "
+            "collection {}.".format(constants.LEGACY_INIT_OP_KEY))
       ops.add_to_collection(constants.LEGACY_INIT_OP_KEY, legacy_init_op)
 
   def _add_main_op(self, main_op):
@@ -252,11 +257,13 @@ class SavedModelBuilder(object):
           restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded.
+      main_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the main_op is specified it is run after the restore op at
+          load-time.
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
-          yet.
+          yet, or if the graph already contains one or more legacy init ops.
     """
     if not self._has_saved_variables:
       raise AssertionError(
@@ -324,7 +331,9 @@ class SavedModelBuilder(object):
           restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded.
+      main_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the main_op is specified it is run after the restore op at
+          load-time.
     """
     if self._has_saved_variables:
       raise AssertionError("Graph state including variables and assets has "

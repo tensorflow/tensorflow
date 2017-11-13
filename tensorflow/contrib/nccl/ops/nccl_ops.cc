@@ -45,6 +45,51 @@ num_devices: The number of devices participating in this reduction.
 shared_name: Identifier that shared between ops of the same reduction.
 )doc");
 
+REGISTER_OP("NcclReduceSend")
+    .Input("input: T")
+    .Attr("reduction: {'min', 'max', 'prod', 'sum'}")
+    .Attr("T: {float, float64, int32, int64}")
+    .Attr("num_devices: int")
+    .Attr("shared_name: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Reduces `input` to the NcclReduceRecv op registered in the same `shared_name`.
+
+The graph should be constructed so that 'num_devices-1' devices run
+`NcclReduceSend` and one device runs NcclReduceRecv op with shared_name value
+`c`. Failure to do so will cause the graph execution to fail to complete.
+
+input: The input to the reduction
+reduction: the reduction operation to perform.
+num_devices: The number of devices participating in this reduction.
+shared_name: Identifier that is shared between ops of the same reduce.
+    )doc");
+
+REGISTER_OP("NcclReduceRecv")
+    .Input("input: T")
+    .Output("data: T")
+    .Attr("reduction: {'min', 'max', 'prod', 'sum'}")
+    .Attr("T: {float, float64, int32, int64}")
+    .Attr("num_devices: int")
+    .Attr("shared_name: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Reduces 'input' from this op and the NcclReduceSend ops registered in the same
+`shared_name`.
+
+The graph should be constructed so that 'num_devices-1' devices run
+`NcclReduceSend` and one device runs NcclReduceRecv op with shared_name value
+`c`. Failure to do so will cause the graph execution to fail to complete.
+
+input: The input to the reduction
+data: The reduced data received from this op and the NcclReduceSend op.
+reduction: the reduction operation to perform.
+num_devices: The number of devices participating in this reduction.
+shared_name: Identifier that is shared between ops of the same reduce.
+    )doc");
+
 REGISTER_OP("NcclBroadcastSend")
     .Input("input: T")
     .Attr("T: {float, float64, int32, int64}")

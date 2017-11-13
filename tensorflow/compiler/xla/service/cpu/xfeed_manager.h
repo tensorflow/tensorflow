@@ -63,7 +63,8 @@ class XfeedQueueManager {
   // called when the buffer will no longer be accessed by the XfeedManager,
   // either as a result of a call to Reset or because the runtime has dequeued
   // and used the buffer.
-  void EnqueueBuffers(tensorflow::gtl::ArraySlice<XfeedBuffer*> buffers);
+  void EnqueueBuffersAtomically(
+      tensorflow::gtl::ArraySlice<XfeedBuffer*> buffers);
 
   // Blocks until the queue is non-empty, then returns the buffer at the head of
   // the queue. Sets the current buffer to be the returned buffer. It is an

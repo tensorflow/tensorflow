@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Constants.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
@@ -45,6 +45,7 @@ limitations under the License.
 
 namespace xla {
 
+using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 
 namespace gpu {
@@ -382,7 +383,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
   // Create loop nests which loop through the LHS operand dimensions and the RHS
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
-  llvm_ir::ForLoopNest loop_nest(&ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(IrName(dot), &ir_builder_);
   llvm_ir::IrArray::Index lhs_index = EmitOperandArrayLoopNest(
       lhs_array, lhs_reduction_dimension, "lhs", &loop_nest);
   llvm_ir::IrArray::Index rhs_index = EmitOperandArrayLoopNest(
@@ -504,7 +505,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
         // AddLoopsForShapeOnDimensions will return an Index where induction
         // Value*s are placed for each dimension in dimensions, and all the rest
         // are nullptrs.
-        llvm_ir::ForLoopNest loops(&ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(reduce, "inner"), &ir_builder_);
         const llvm_ir::IrArray::Index reduced_dims_index =
             loops.AddLoopsForShapeOnDimensions(arg->shape(), dimensions,
                                                "reduction_dim");
@@ -595,7 +596,7 @@ Status IrEmitter::HandleRng(HloInstruction* random,
                                    &ir_builder_, GetNestedComputer())
                  .MakeElementGenerator(random, operand_to_generator),
              GetIrArray(*random), &ir_builder_)
-      .EmitLoop();
+      .EmitLoop(IrName(random));
 }
 
 llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(

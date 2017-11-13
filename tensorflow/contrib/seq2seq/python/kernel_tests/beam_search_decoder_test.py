@@ -121,7 +121,7 @@ class TestBeamStep(test.TestCase):
         log_probs=nn_ops.log_softmax(
             array_ops.ones([self.batch_size, self.beam_width])),
         lengths=constant_op.constant(
-            2, shape=[self.batch_size, self.beam_width], dtype=dtypes.int32),
+            2, shape=[self.batch_size, self.beam_width], dtype=dtypes.int64),
         finished=array_ops.zeros(
             [self.batch_size, self.beam_width], dtype=dtypes.bool))
 
@@ -176,7 +176,7 @@ class TestBeamStep(test.TestCase):
         log_probs=nn_ops.log_softmax(
             array_ops.ones([self.batch_size, self.beam_width])),
         lengths=ops.convert_to_tensor(
-            [[2, 1, 2], [2, 2, 1]], dtype=dtypes.int32),
+            [[2, 1, 2], [2, 2, 1]], dtype=dtypes.int64),
         finished=ops.convert_to_tensor(
             [[False, True, False], [False, False, True]], dtype=dtypes.bool))
 

@@ -138,6 +138,7 @@ class ConcatOpTest(test.TestCase):
         self.assertAllClose(result[ind], params[p[i]], 0.01)
 
   def testRandom(self):
+    self._testRandom(dtypes.bool)
     self._testRandom(dtypes.float32)
     self._testRandom(dtypes.int16)
     self._testRandom(dtypes.int32)

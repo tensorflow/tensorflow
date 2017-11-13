@@ -21,6 +21,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -279,9 +280,10 @@ def _set_checkpoint_initializer(variable,
     name: Name of the operation.
   """
   base_type = variable.dtype.base_dtype
-  restore_op = io_ops.restore_v2(
-      ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
-  variable._initializer_op = state_ops.assign(variable, restore_op)  # pylint:disable=protected-access
+  with ops.colocate_with(variable):
+    restore_op = io_ops.restore_v2(
+        ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
+    variable._initializer_op = state_ops.assign(variable, restore_op)  # pylint:disable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

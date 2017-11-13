@@ -93,7 +93,7 @@ class CudnnRNNBenchmark(test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with ops.Graph().as_default(), ops.device("/gpu:0"):
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
         model = cudnn_rnn_ops.CudnnLSTM(num_layers, num_units, num_units)
         params_size_t = model.params_size()
         input_data = variables.Variable(
@@ -125,7 +125,7 @@ class CudnnRNNBenchmark(test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with ops.Graph().as_default(), ops.device("/gpu:0"):
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
         inputs = seq_length * [
             array_ops.zeros([batch_size, num_units], dtypes.float32)
         ]
@@ -153,7 +153,7 @@ class CudnnRNNBenchmark(test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with ops.Graph().as_default(), ops.device("/gpu:0"):
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
         inputs = seq_length * [
             array_ops.zeros([batch_size, num_units], dtypes.float32)
         ]

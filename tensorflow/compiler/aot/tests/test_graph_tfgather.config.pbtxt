@@ -1,4 +1,4 @@
-# Text form of tensorflow.tfcompile.Config proto.
+# Text form of tensorflow.tf2xla.Config proto.
 feed {
   id { node_name: "params" }
   shape {

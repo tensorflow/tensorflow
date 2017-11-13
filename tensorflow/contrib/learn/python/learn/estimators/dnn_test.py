@@ -771,7 +771,7 @@ class DNNClassifierTest(test.TestCase):
         hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn, steps=200)
+    classifier.fit(input_fn=_input_fn, steps=300)
 
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])

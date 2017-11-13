@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -67,6 +68,7 @@ REGISTER_OP("TPUReplicate")
     .Input("broadcast_inputs: Tbroadcast_inputs")
     .Input("variables: NumVariables * resource")
     .Output("outputs: output_types")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Runs replicated computations on a distributed TPU system.
 

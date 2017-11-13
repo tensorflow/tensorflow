@@ -23,6 +23,7 @@ from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -97,6 +98,29 @@ class FilterDatasetTest(test.TestCase):
       for i in range(10):
         if (i ** 2) % 2 == 0:
           self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testUseStepContainerInFilter(self):
+    input_data = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int64)
+
+    # Define a predicate that returns true for the first element of
+    # the sequence and not the second, and uses `tf.map_fn()`.
+    def _predicate(xs):
+      squared_xs = functional_ops.map_fn(lambda x: x * x, xs)
+      summed = math_ops.reduce_sum(squared_xs)
+      return math_ops.equal(summed, 1 + 4 + 9)
+
+    iterator = (
+        dataset_ops.Dataset.from_tensor_slices([[1, 2, 3], [4, 5, 6]])
+        .filter(_predicate)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual(input_data[0], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -475,7 +477,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     vx.scalar<float>()() = 1.0;
     Node* x = test::graph::Constant(&g, vx);
     Node* y = test::graph::Unary(&g, "Darth", x);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
     test::graph::ToGraphDef(&g, &def);
 
@@ -493,7 +495,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     vx.scalar<float>()() = 1.0;
     Node* x = test::graph::Constant(&g, vx);
     Node* y = test::graph::Unary(&g, "Darth", x);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
     test::graph::ToGraphDef(&g, &def);
 
@@ -946,6 +948,9 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_constant_folding(RewriterConfig::OFF);
   (*options.config.mutable_device_count())["CPU"] = 2;
   (*options.config.mutable_device_count())["GPU"] = 0;
   (*options.config.mutable_device_count())["SYCL"] = 0;
@@ -1246,6 +1251,16 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   Status s = session->Run({} /* inputs */, {},
                           {var_assign->name()} /* target_nodes */, nullptr);
   EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+}
+
+TEST(DirectSessionTest, LocalDeviceManager) {
+  SessionOptions options;
+  std::unique_ptr<Session> session(NewSession(options));
+
+  const DeviceMgr* mgr = nullptr;
+  TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
+  ASSERT_TRUE(mgr != nullptr);
+  EXPECT_GT(mgr->ListDevices().size(), 0);
 }
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls

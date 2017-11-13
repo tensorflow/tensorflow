@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -749,7 +748,8 @@ XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
   ComputationBuilder builder(client_, TestName());
   const auto& bounds = GetParam().bounds;
   Array3D<float> input_array(bounds[0], bounds[1], bounds[2]);
-  input_array.FillRandom(3.14f, 0.05);
+  //  input_array.FillRandom(3.14f, 0.05);
+  input_array.Fill(1.0f);
 
   auto input_literal = Literal::CreateR3FromArray3D(input_array);
   input_literal =
@@ -795,22 +795,24 @@ INSTANTIATE_TEST_CASE_P(
                       BoundsLayout{{2, 300, 784}, {2, 1, 0}, {1}},
                       BoundsLayout{{2, 300, 784}, {2, 1, 0}, {0}}));
 
+// TODO(b/64093391) Disabled on GPU due to an assertion failure when running
+// IrEmitterUnnested::EmitInitializer() for the Reduce operator.  Failed on
+// 2017-07-26.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OperationOnConstantAsInitValue)) {
+  ComputationBuilder builder(client_, TestName());
+  Computation max_f32 = CreateScalarMaxComputation(F32, &builder);
+
+  auto a = builder.ConstantR0<float>(2.0f);
+  auto a2 = builder.Abs(a);
+
+  std::unique_ptr<Literal> b_literal = Literal::CreateR1<float>({1.0f, 4.0f});
+  std::unique_ptr<GlobalData> b_data =
+      client_->TransferToServer(*b_literal).ConsumeValueOrDie();
+  auto b = builder.Parameter(0, b_literal->shape(), "b");
+  auto max = builder.Reduce(b, a2, max_f32, {0});
+
+  ComputeAndCompareR0<float>(&builder, 4.0f, {b_data.get()});
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

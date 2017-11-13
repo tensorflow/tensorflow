@@ -25,6 +25,42 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
+const char kDecodeJpegCommonDocStr[] = R"doc(
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the JPEG-encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+
+If needed, the JPEG-encoded image is transformed to match the requested number
+of color channels.
+
+The attr `ratio` allows downscaling the image by an integer factor during
+decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+downscaling the image later.
+
+)doc";
+
+const char kDecodeJpegCommonParamsDocStr[] = R"doc(
+channels: Number of color channels for the decoded image.
+ratio: Downscaling ratio.
+fancy_upscaling: If true use a slower but nicer upscaling of the
+  chroma planes (yuv420/422 only).
+try_recover_truncated:  If true try to recover an image from truncated input.
+acceptable_fraction: The minimum required fraction of lines before a truncated
+  input is accepted.
+dct_method: string specifying a hint about the algorithm used for
+  decompression.  Defaults to "" which maps to a system-specific
+  default.  Currently valid values are ["INTEGER_FAST",
+  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+  jpeg library changes to a version that does not have that specific
+  option.)
+image: 3-D with shape `[height, width, channels]`..
+)doc";
+
 // Sets output[0] to shape [batch_dim,height,width,channel_dim], where
 // height and width come from the size_tensor.
 Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
@@ -123,6 +159,11 @@ Resize `images` to `size` using area interpolation.
 
 Input images can be of different types but output images are always float.
 
+Each output pixel is computed by first transforming the pixel's footprint into
+the input tensor and then averaging the pixels that intersect the footprint. An
+input pixel's contribution to the average is weighted by the fraction of its
+area that intersects the footprint.  This is the same as OpenCV's INTER_AREA.
+
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
@@ -154,6 +195,31 @@ align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
   by new_height / height. Treat similarly the width dimension.
 resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ResizeBicubicGrad")
+    .Input("grads: float")
+    .Input("original_image: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("align_corners: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes the gradient of bicubic interpolation.
+
+grads: 4-D with shape `[batch, height, width, channels]`.
+original_image: 4-D with shape `[batch, orig_height, orig_width, channels]`,
+  The image tensor that was resized.
+align_corners: If true, rescale grads by (orig_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of grads and original_image. If false, rescale by
+  orig_height / height. Treat similarly the width dimension.
+output: 4-D with shape `[batch, orig_height, orig_width, channels]`.
+  Gradients with respect to the input image. Input image must have been
+  float or double.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -365,44 +431,40 @@ REGISTER_OP("DecodeJpeg")
     .Attr("dct_method: string = ''")
     .Output("image: uint8")
     .SetShapeFn(DecodeImageShapeFn)
-    .Doc(R"doc(
+    .Doc(strings::StrCat(R"doc(
 Decode a JPEG-encoded image to a uint8 tensor.
-
-The attr `channels` indicates the desired number of color channels for the
-decoded image.
-
-Accepted values are:
-
-*   0: Use the number of channels in the JPEG-encoded image.
-*   1: output a grayscale image.
-*   3: output an RGB image.
-
-If needed, the JPEG-encoded image is transformed to match the requested number
-of color channels.
-
-The attr `ratio` allows downscaling the image by an integer factor during
-decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
-downscaling the image later.
-
+)doc",
+                         kDecodeJpegCommonDocStr, R"doc(
 This op also supports decoding PNGs and non-animated GIFs since the interface is
 the same, though it is cleaner to use `tf.image.decode_image`.
 
 contents: 0-D.  The JPEG-encoded image.
-channels: Number of color channels for the decoded image.
-ratio: Downscaling ratio.
-fancy_upscaling: If true use a slower but nicer upscaling of the
-  chroma planes (yuv420/422 only).
-try_recover_truncated:  If true try to recover an image from truncated input.
-acceptable_fraction: The minimum required fraction of lines before a truncated
-  input is accepted.
-dct_method: string specifying a hint about the algorithm used for
-  decompression.  Defaults to "" which maps to a system-specific
-  default.  Currently valid values are ["INTEGER_FAST",
-  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
-  jpeg library changes to a version that does not have that specific
-  option.)
-image: 3-D with shape `[height, width, channels]`..
-)doc");
+)doc",
+                         kDecodeJpegCommonParamsDocStr));
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DecodeAndCropJpeg")
+    .Input("contents: string")
+    .Input("crop_window: int32")
+    .Attr("channels: int = 0")
+    .Attr("ratio: int = 1")
+    .Attr("fancy_upscaling: bool = true")
+    .Attr("try_recover_truncated: bool = false")
+    .Attr("acceptable_fraction: float = 1.0")
+    .Attr("dct_method: string = ''")
+    .Output("image: uint8")
+    .SetShapeFn(DecodeImageShapeFn)
+    .Doc(strings::StrCat(R"doc(
+Decode and Crop a JPEG-encoded image to a uint8 tensor.
+)doc",
+                         kDecodeJpegCommonDocStr, R"doc(
+It is equivalent to a combination of decode and crop, but much faster by only
+decoding partial jpeg image.
+
+contents: 0-D.  The JPEG-encoded image.
+crop_window: 1-D.  The crop window: [crop_y, crop_x, crop_height, crop_width].
+)doc",
+                         kDecodeJpegCommonParamsDocStr));
 
 // --------------------------------------------------------------------------
 REGISTER_OP("EncodeJpeg")
@@ -450,6 +512,28 @@ x_density: Horizontal pixels per density unit.
 y_density: Vertical pixels per density unit.
 xmp_metadata: If not empty, embed this XMP metadata in the image header.
 contents: 0-D. JPEG-encoded image.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ExtractJpegShape")
+    .Input("contents: string")
+    .Output("image_shape: output_type")
+    .Attr("output_type: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      c->set_output(0, c->Vector(3));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Extract the shape information of a JPEG-encoded image.
+
+This op only parses the image header, so it is much faster than DecodeJpeg.
+
+contents: 0-D. The JPEG-encoded image.
+image_shape: 1-D. The image shape with format [height, width, channels].
+output_type: (Optional) The output type of the operation (int32 or int64).
+    Defaults to int32.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -705,9 +789,9 @@ bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
 bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 
-For example, if an image is 100 x 200 pixels and the bounding box is
-`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the
-bounding box will be `(10, 40)` to `(50, 180)`.
+For example, if an image is 100 x 200 pixels (height x width) and the bounding 
+box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of 
+the bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).
 
 Parts of the bounding box may fall outside the image.
 

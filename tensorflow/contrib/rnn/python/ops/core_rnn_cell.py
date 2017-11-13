@@ -33,7 +33,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 
 RNNCell = rnn_cell_impl.RNNCell  # pylint: disable=invalid-name
-_linear = rnn_cell_impl._linear  # pylint: disable=invalid-name, protected-access
+_Linear = rnn_cell_impl._Linear  # pylint: disable=invalid-name, protected-access
 _like_rnncell = rnn_cell_impl._like_rnncell  # pylint: disable=invalid-name, protected-access
 
 
@@ -154,6 +154,7 @@ class InputProjectionWrapper(RNNCell):
     self._cell = cell
     self._num_proj = num_proj
     self._activation = activation
+    self._linear = None
 
   @property
   def state_size(self):
@@ -170,7 +171,9 @@ class InputProjectionWrapper(RNNCell):
   def call(self, inputs, state):
     """Run the input projection and then the cell."""
     # Default scope: "InputProjectionWrapper"
-    projected = _linear(inputs, self._num_proj, True)
+    if self._linear is None:
+      self._linear = _Linear(inputs, self._num_proj, True)
+    projected = self._linear(inputs)
     if self._activation:
       projected = self._activation(projected)
     return self._cell(projected, state)
@@ -208,6 +211,7 @@ class OutputProjectionWrapper(RNNCell):
     self._cell = cell
     self._output_size = output_size
     self._activation = activation
+    self._linear = None
 
   @property
   def state_size(self):
@@ -224,7 +228,9 @@ class OutputProjectionWrapper(RNNCell):
   def call(self, inputs, state):
     """Run the cell and output projection on inputs, starting from state."""
     output, res_state = self._cell(inputs, state)
-    projected = _linear(output, self._output_size, True)
+    if self._linear is None:
+      self._linear = _Linear(output, self._output_size, True)
+    projected = self._linear(output)
     if self._activation:
       projected = self._activation(projected)
     return projected, res_state

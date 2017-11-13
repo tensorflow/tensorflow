@@ -75,15 +75,23 @@ open (TYPEDESC, $typedesc);
 
 my @info = ([]);
 
+sub trim {
+    (my $ret) = @_;
+    $ret =~ s/^\s*//g;
+    $ret =~ s/\s*$//g;
+    return $ret;
+}
+
 while (<TYPEDESC>) {
     chomp;
     my $line = $_;
     if ($line =~ m/^TF type/) { next }
     $line =~ s/\r$//;
-    (my $name, my $jtype, my $creat, my $default, my $desc) =
-        split /,/, $line, 5;
-    $desc =~ s/^ *//g;
-    $desc =~ s/ *$//g;
+    my @items = split /,/, $line, 6;
+    for (my $i = 0; $i <= $#items; $i++) {
+        $items[$i] = trim $items[$i];
+    }
+    my $jtype = $items[2];
     $jtypecount{$jtype}++;
     if ($jtypecount{$jtype} > 1) {
 # currently allowing Java types to stand for more than one TF type, but
@@ -92,63 +100,85 @@ while (<TYPEDESC>) {
 #       exit 1
     }
 
-    push @info, [$name, $jtype, $creat, $default, $desc];
+    push @info, \@items;
+}
+
+sub article {
+    (my $s) = @_;
+    if (substr($s, 0, 1) =~ m/^[aeoiu8]$/i) {
+        return "an $s"
+    } else {
+        return "a $s"
+    }
 }
 
 for (my $i = 1; $i <= $#info; $i++) {
-    (my $name, my $jtype, my $creat, my $default, my $desc) =
+    (my $name, my $builtin, my $jtype, my $creat, my $default, my $desc) =
         @{$info[$i]};
-    my $tfname = "TF".$name;
+    my $tfname = $name;
     my $ucname = uc $name;
+
+    print STDERR "$name $desc\n";
 
     if ($option eq '-t') {
         if ($jtype eq '') { next }
+        if ($builtin eq 'y') { next }
         # Generate class declarations
         # print STDERR "Creating $dirname/$tfname.java\n";
         open (CLASSFILE, ">$dirname/$tfname.java") || die "Can't open $tfname.java";
-        print CLASSFILE $copyright;
-        print CLASSFILE "// GENERATED FILE. To update, edit tftypes.pl instead.\n\n";
+        print CLASSFILE $copyright, "\n";
+        # print CLASSFILE "// GENERATED FILE. To update, edit tftypes.pl instead.\n\n";
 
-        my $fulldesc = $desc;
-        if (substr($desc, 0, 1) =~ m/^[aeoiu8]$/i) {
-            $fulldesc = "an $desc"
-        } else {
-            $fulldesc = "a $desc"
-        }
-        print CLASSFILE  "package org.tensorflow.types;\n\n"
-                        ."import org.tensorflow.DataType;\n\n";
+        my $fulldesc = article($desc);
+        print CLASSFILE  "package org.tensorflow.types;\n\n";
         print CLASSFILE  "/** Represents $fulldesc. */\n"
-                        ."public class $tfname implements TFType {\n"
-                        ."  private $tfname() {}\n"
-                        ."  static {\n"
-                        ."    Types.typeCodes.put($tfname.class, DataType.$ucname);\n"
-                        ."  }\n";
-        if ($default ne '') {
-            print CLASSFILE
-                         "  static {\n"
-                        ."    Types.scalars.put($tfname.class, $default);\n"
-                        ."  }\n";
-        }
-        print CLASSFILE  "}\n";
+                        ."public class $tfname {\n"
+                        ."  private $tfname() {\n"
+                        ."  }\n"
+                        ."}\n";
         close(CLASSFILE);
     } elsif ($option eq '-c') {
       # Generate creator declarations for Tensors.java
       if ($jtype ne '' && $creat eq 'y') {
-        for (my $brackets = ''; length $brackets <= 12; $brackets .= '[]') {
+        for (my $brackets = '', my $rank = 0; length $brackets <= 12; $brackets .= '[]', $rank++) {
+            my $datainfo = "   *  \@param data An array containing the values to put into the new tensor.\n"
+                          ."   *  The dimensions of the new tensor will match those of the array.\n";
+            if ($rank == 0) {
+                $datainfo = "   *  \@param data The value to put into the new scalar tensor.\n"
+            }
+
+            my $trank = $rank;
+            if ($tfname eq 'String') {
+                $trank = $rank-1;
+                next if $trank < 0;
+
+                $datainfo = "   *  \@param data An array containing the data to put into the new tensor.\n"
+                           ."   *  String elements are sequences of bytes from the last array dimension.\n";
+            }
+
+    
+            my $intro = ($trank > 0)
+                ?  "Creates a rank-$trank tensor of {\@code $jtype} elements."
+                :  "Creates a scalar tensor containing a single {\@code $jtype} element.";
             $typeinfo .=
-                "  public static Tensor<$tfname> create($jtype$brackets data) {\n"
-               ."    return Tensor.create(data, $tfname.class);\n"
-               ."  }\n";
+             "  /**\n"
+            ."   * $intro\n"
+            ."   * \n"
+            .$datainfo
+            ."   */\n"
+            ."  public static Tensor<$tfname> create($jtype$brackets data) {\n"
+            ."    return Tensor.create(data, $tfname.class);\n"
+            ."  }\n\n";
         }
       }
-      if ($text =~ m/\b$tfname\b/ || $creat eq 'y') {
+      if ($text =~ m/\b$tfname\b/ && $builtin eq 'n' && $creat eq 'y') {
             $imports .= "import org.tensorflow.types.$tfname;\n";
       }
     }
 }
 
 if ($option ne '-t') {
-  print "// GENERATED FILE. Edits to this file will be lost -- edit $tmpl instead.\n";
+# print "// GENERATED FILE. Edits to this file will be lost -- edit $tmpl instead.\n";
 
   $text =~ s/\@TYPEINFO\@/$typeinfo/;
   $text =~ s/\@IMPORTS\@/$imports/;

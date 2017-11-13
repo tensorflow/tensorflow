@@ -32,7 +32,10 @@ DeviceSet::~DeviceSet() {}
 
 void DeviceSet::AddDevice(Device* device) {
   devices_.push_back(device);
-  device_by_name_.insert({device->name(), device});
+  for (const string& name :
+       DeviceNameUtils::GetNamesForDeviceMappings(device->parsed_name())) {
+    device_by_name_.insert({name, device});
+  }
 }
 
 void DeviceSet::FindMatchingDevices(const DeviceNameUtils::ParsedName& spec,

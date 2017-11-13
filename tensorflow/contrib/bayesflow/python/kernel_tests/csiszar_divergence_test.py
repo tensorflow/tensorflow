@@ -727,8 +727,12 @@ class MonteCarloCsiszarFDivergenceTest(test.TestCase):
 
 class CsiszarVIMCOTest(test.TestCase):
 
-  def _numpy_csiszar_vimco_helper(self, logu):
+  def _csiszar_vimco_helper(self, logu):
     """Numpy implementation of `csiszar_vimco_helper`."""
+
+    # Since this is a naive/intuitive implementation, we compensate by using the
+    # highest precision we can.
+    logu = np.float128(logu)
     n = logu.shape[0]
     u = np.exp(logu)
     loogeoavg_u = []  # Leave-one-out geometric-average of exp(logu).
@@ -752,26 +756,148 @@ class CsiszarVIMCOTest(test.TestCase):
     log_avg_u = np.log(np.mean(u, axis=0))
     return log_avg_u, log_sooavg_u
 
-  def test_vimco_helper(self):
+  def _csiszar_vimco_helper_grad(self, logu, delta):
+    """Finite difference approximation of `grad(csiszar_vimco_helper, logu)`."""
 
+    # This code actually estimates the sum of the Jacobiab because thats what
+    # TF's `gradients` does.
+    np_log_avg_u1, np_log_sooavg_u1 = self._csiszar_vimco_helper(
+        logu[..., None] + np.diag([delta]*len(logu)))
+    np_log_avg_u, np_log_sooavg_u = self._csiszar_vimco_helper(
+        logu[..., None])
+    return [
+        (np_log_avg_u1 - np_log_avg_u) / delta,
+        np.sum(np_log_sooavg_u1 - np_log_sooavg_u, axis=0) / delta,
+    ]
+
+  def test_vimco_helper_1(self):
+    """Tests that function calculation correctly handles batches."""
+
+    logu = np.linspace(-100., 100., 100).reshape([10, 2, 5])
     with self.test_session() as sess:
-      logu = np.linspace(-20, 20, 100)
-      np_log_avg_u, np_log_sooavg_u = self._numpy_csiszar_vimco_helper(logu)
+      np_log_avg_u, np_log_sooavg_u = self._csiszar_vimco_helper(logu)
       [log_avg_u, log_sooavg_u] = sess.run(cd.csiszar_vimco_helper(logu))
       self.assertAllClose(np_log_avg_u, log_avg_u,
-                          rtol=1e-2, atol=0.)
+                          rtol=1e-8, atol=0.)
       self.assertAllClose(np_log_sooavg_u, log_sooavg_u,
-                          rtol=1e-2, atol=0.)
+                          rtol=1e-8, atol=0.)
 
-  def test_vimco_helper_gradient(self):
+  def test_vimco_helper_2(self):
+    """Tests that function calculation correctly handles overflow."""
 
-    with self.test_session():
-      logu = array_ops.constant(
-          np.linspace(-1e2, 100., 100).reshape([50, 2]))
+    # Using 700 (rather than 1e3) since naive numpy version can't handle higher.
+    logu = np.float32([0., 700, -1, 1])
+    with self.test_session() as sess:
+      np_log_avg_u, np_log_sooavg_u = self._csiszar_vimco_helper(logu)
+      [log_avg_u, log_sooavg_u] = sess.run(cd.csiszar_vimco_helper(logu))
+      self.assertAllClose(np_log_avg_u, log_avg_u,
+                          rtol=1e-6, atol=0.)
+      self.assertAllClose(np_log_sooavg_u, log_sooavg_u,
+                          rtol=1e-5, atol=0.)
+
+  def test_vimco_helper_3(self):
+    """Tests that function calculation correctly handles underlow."""
+
+    logu = np.float32([0., -1000, -1, 1])
+    with self.test_session() as sess:
+      np_log_avg_u, np_log_sooavg_u = self._csiszar_vimco_helper(logu)
+      [log_avg_u, log_sooavg_u] = sess.run(cd.csiszar_vimco_helper(logu))
+      self.assertAllClose(np_log_avg_u, log_avg_u,
+                          rtol=1e-5, atol=0.)
+      self.assertAllClose(np_log_sooavg_u, log_sooavg_u,
+                          rtol=1e-4, atol=1e-15)
+
+  def test_vimco_helper_gradient_using_finite_difference_1(self):
+    """Tests that gradient calculation correctly handles batches."""
+
+    logu_ = np.linspace(-100., 100., 100).reshape([10, 2, 5])
+    with self.test_session() as sess:
+      logu = array_ops.constant(logu_)
+
+      grad = lambda flogu: gradients_impl.gradients(flogu, logu)[0]
       log_avg_u, log_sooavg_u = cd.csiszar_vimco_helper(logu)
-      g = gradients_impl.gradients(log_avg_u - log_sooavg_u, logu)[0].eval()
-      self.assertAllEqual(np.ones_like(g, dtype=np.bool), np.isfinite(g))
-      self.assertAllEqual(np.ones_like(g, dtype=np.bool), g != 0.)
+
+      [
+          grad_log_avg_u,
+          grad_log_sooavg_u,
+      ] = sess.run([grad(log_avg_u), grad(log_sooavg_u)])
+
+      # We skip checking against finite-difference approximation since it
+      # doesn't support batches.
+
+      # Verify claim in docstring.
+      self.assertAllClose(
+          np.ones_like(grad_log_avg_u.sum(axis=0)),
+          grad_log_avg_u.sum(axis=0))
+      self.assertAllClose(
+          np.ones_like(grad_log_sooavg_u.mean(axis=0)),
+          grad_log_sooavg_u.mean(axis=0))
+
+  def test_vimco_helper_gradient_using_finite_difference_2(self):
+    """Tests that gradient calculation correctly handles overflow."""
+
+    delta = 1e-3
+    logu_ = np.float32([0., 1000, -1, 1])
+    with self.test_session() as sess:
+      logu = array_ops.constant(logu_)
+
+      [
+          np_grad_log_avg_u,
+          np_grad_log_sooavg_u,
+      ] = self._csiszar_vimco_helper_grad(logu_, delta)
+
+      grad = lambda flogu: gradients_impl.gradients(flogu, logu)[0]
+      log_avg_u, log_sooavg_u = cd.csiszar_vimco_helper(logu)
+
+      [
+          grad_log_avg_u,
+          grad_log_sooavg_u,
+      ] = sess.run([grad(log_avg_u), grad(log_sooavg_u)])
+
+      self.assertAllClose(np_grad_log_avg_u, grad_log_avg_u,
+                          rtol=delta, atol=0.)
+      self.assertAllClose(np_grad_log_sooavg_u, grad_log_sooavg_u,
+                          rtol=delta, atol=0.)
+      # Verify claim in docstring.
+      self.assertAllClose(
+          np.ones_like(grad_log_avg_u.sum(axis=0)),
+          grad_log_avg_u.sum(axis=0))
+      self.assertAllClose(
+          np.ones_like(grad_log_sooavg_u.mean(axis=0)),
+          grad_log_sooavg_u.mean(axis=0))
+
+  def test_vimco_helper_gradient_using_finite_difference_3(self):
+    """Tests that gradient calculation correctly handles underlow."""
+
+    delta = 1e-3
+    logu_ = np.float32([0., -1000, -1, 1])
+    with self.test_session() as sess:
+      logu = array_ops.constant(logu_)
+
+      [
+          np_grad_log_avg_u,
+          np_grad_log_sooavg_u,
+      ] = self._csiszar_vimco_helper_grad(logu_, delta)
+
+      grad = lambda flogu: gradients_impl.gradients(flogu, logu)[0]
+      log_avg_u, log_sooavg_u = cd.csiszar_vimco_helper(logu)
+
+      [
+          grad_log_avg_u,
+          grad_log_sooavg_u,
+      ] = sess.run([grad(log_avg_u), grad(log_sooavg_u)])
+
+      self.assertAllClose(np_grad_log_avg_u, grad_log_avg_u,
+                          rtol=delta, atol=0.)
+      self.assertAllClose(np_grad_log_sooavg_u, grad_log_sooavg_u,
+                          rtol=delta, atol=0.)
+      # Verify claim in docstring.
+      self.assertAllClose(
+          np.ones_like(grad_log_avg_u.sum(axis=0)),
+          grad_log_avg_u.sum(axis=0))
+      self.assertAllClose(
+          np.ones_like(grad_log_sooavg_u.mean(axis=0)),
+          grad_log_sooavg_u.mean(axis=0))
 
   def test_vimco_and_gradient(self):
 
@@ -835,7 +961,7 @@ class CsiszarVIMCOTest(test.TestCase):
           grad_sum(f_log_sum_u) / num_batch_draws,
       ])
 
-      np_log_avg_u, np_log_sooavg_u = self._numpy_csiszar_vimco_helper(logu_)
+      np_log_avg_u, np_log_sooavg_u = self._csiszar_vimco_helper(logu_)
 
       # Test VIMCO loss is correct.
       self.assertAllClose(np_f(np_log_avg_u).mean(axis=0), vimco_,

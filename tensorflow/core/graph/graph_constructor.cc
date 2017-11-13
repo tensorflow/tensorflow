@@ -76,6 +76,7 @@ class GraphConstructor {
                      ? in.prefix
                      : in.prefix + "/"),
           input_map(in.input_map),
+          skip_mapped_nodes(in.skip_mapped_nodes),
           control_dependencies(in.control_dependencies),
           return_tensors(in.return_tensors),
           importing(true) {}
@@ -85,6 +86,7 @@ class GraphConstructor {
 
     string prefix;
     std::map<TensorId, TensorId> input_map;
+    bool skip_mapped_nodes;
     std::vector<string> control_dependencies;
     std::vector<TensorId> return_tensors;
 
@@ -106,14 +108,15 @@ class GraphConstructor {
                           const VersionDef* versions,
                           const FunctionDefLibrary* library, Graph* g,
                           ShapeRefiner* refiner,
-                          std::vector<std::pair<Node*, int>>* return_tensors) {
+                          std::vector<std::pair<Node*, int>>* return_tensors,
+                          std::vector<TensorId>* unused_input_map_keys) {
     if (versions) {
       TF_RETURN_IF_ERROR(CheckVersions(*versions, TF_GRAPH_DEF_VERSION,
                                        TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
                                        "GraphDef", "graph"));
     }
     GraphConstructor c(opts, node_defs, versions, library, g, refiner,
-                       return_tensors);
+                       return_tensors, unused_input_map_keys);
     const Status s = c.TryImport();
     if (!s.ok()) c.Undo();
     return s;
@@ -124,7 +127,8 @@ class GraphConstructor {
                    const VersionDef* versions,
                    const FunctionDefLibrary* library, Graph* g,
                    ShapeRefiner* refiner,
-                   std::vector<std::pair<Node*, int>>* return_tensors)
+                   std::vector<std::pair<Node*, int>>* return_tensors,
+                   std::vector<TensorId>* unused_input_map_keys)
       : opts_(opts),
         node_defs_(node_defs),
         versions_(versions),
@@ -132,7 +136,8 @@ class GraphConstructor {
         g_(g),
         original_versions_(g->versions()),
         refiner_(refiner),
-        return_tensors_(return_tensors) {}
+        return_tensors_(return_tensors),
+        unused_input_map_keys_(unused_input_map_keys) {}
 
   Status TryImport() {
     TF_RETURN_IF_ERROR(EnsureNoNameCollisions());
@@ -158,6 +163,7 @@ class GraphConstructor {
 
   void Undo();
 
+  Status IsNodeFullyMapped(const NodeDef& node_def, bool* is_node_mapped);
   Status ValidateColocationConstraints(const NodeDef& node_def);
   Status MakeNode(const NodeDef& node_def, Node** node);
   Status MakeEdge(Node* src, int output_index, Node* dst, int input_index);
@@ -190,7 +196,13 @@ class GraphConstructor {
   // May be null. Not owned.
   std::vector<std::pair<Node*, int>>* return_tensors_;
 
-  // Mapping from node name to the index within node_defs_
+  // May be null. Not owned.
+  std::vector<TensorId>* unused_input_map_keys_;
+
+  // Intermediate datastructure used to populate `unused_input_map_keys_`.
+  std::set<TensorId> used_input_map_keys_;
+
+  // Mapping from node name to the index within node_defs_.
   struct NodeInfo {
     explicit NodeInfo(int i) : gdef_index(i), node(nullptr) {}
     // std::unordered_map<> requires that we have a default constructor.
@@ -580,6 +592,7 @@ void GraphConstructor::RemapNodeDefInputs(
   for (int i = 0; i < node_def->input_size(); ++i) {
     auto iter = opts_.input_map.find(ParseTensorName(node_def->input(i)));
     if (iter == opts_.input_map.end()) continue;
+    used_input_map_keys_.insert(iter->first);
 
     TensorId new_input = iter->second;
     if (new_input.second == Graph::kControlSlot) {
@@ -668,6 +681,36 @@ void GraphConstructor::AddPrefixToNodeDef(
   }
 }
 
+Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
+                                           bool* is_node_mapped) {
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(g_->op_registry()->LookUpOpDef(node_def.op(), &op_def));
+  for (int i = 0; i < op_def->output_arg_size(); ++i) {
+    if (opts_.input_map.find({node_def.name(), i}) == opts_.input_map.end()) {
+      *is_node_mapped = false;
+      return Status::OK();
+    }
+  }
+  *is_node_mapped = true;
+  return Status::OK();
+}
+
+namespace {
+
+void UpdatePendingCountAndReady(
+    const std::vector<gtl::InlinedVector<int, 4>>& outputs, int o,
+    std::vector<int>* pending_count, std::vector<int>* ready) {
+  for (size_t i = 0; i < outputs[o].size(); ++i) {
+    const int output = outputs[o][i];
+    (*pending_count)[output]--;
+    if ((*pending_count)[output] == 0) {
+      ready->push_back(output);
+    }
+  }
+}
+
+}  // anonymous namespace
+
 Status GraphConstructor::Convert() {
   // Import functions before adding nodes, since imported nodes may refer to
   // functions
@@ -703,6 +746,17 @@ Status GraphConstructor::Convert() {
     input_already_exists.resize(original_node_def.input_size(), false);
 
     if (opts_.importing) {
+      if (opts_.skip_mapped_nodes) {
+        bool is_node_mapped = false;
+        TF_RETURN_IF_ERROR(
+            IsNodeFullyMapped(original_node_def, &is_node_mapped));
+        if (is_node_mapped) {
+          // Skip this node after updating pending_count_ for outputs
+          UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
+          continue;
+        }
+      }
+
       // TODO(ashankar): The line below means an additional copy of the NodeDef,
       // which can be expensive if the NodeDef contains large tensors in it.
       // Might make sense to change the API for ImportGraphDef to take a mutable
@@ -789,19 +843,23 @@ Status GraphConstructor::Convert() {
     }
 
     // Update pending_count_ for outputs.
-    for (size_t i = 0; i < outputs_[o].size(); ++i) {
-      const int output = outputs_[o][i];
-      pending_count_[output]--;
-      if (pending_count_[output] == 0) {
-        ready_.push_back(output);
-      }
-    }
+    UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
   }
 
   if (processed < node_defs_.size()) {
     return errors::InvalidArgument(node_defs_.size() - processed,
                                    " nodes in a cycle");
   }
+
+  // Update unused_input_map_keys_
+  if (unused_input_map_keys_ != nullptr) {
+    for (const auto& pair : opts_.input_map) {
+      if (used_input_map_keys_.find(pair.first) == used_input_map_keys_.end()) {
+        unused_input_map_keys_->push_back(pair.first);
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -863,7 +921,7 @@ Status GraphConstructor::PopulateReturnTensors() {
           id.second != Graph::kControlSlot) {
         return errors::InvalidArgument("Invalid return output ", id.second,
                                        " of node '", id.first, "', which has ",
-                                       num_outputs, " outputs");
+                                       num_outputs, " output(s)");
       }
       return_tensors_->push_back({iter->second.node, id.second});
     } else {
@@ -905,8 +963,9 @@ Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
 Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                               const GraphDef& gdef, Graph* g) {
   ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
-  return GraphConstructor::Construct(opts, gdef.node(), &gdef.versions(),
-                                     &gdef.library(), g, &refiner, nullptr);
+  return GraphConstructor::Construct(
+      opts, gdef.node(), &gdef.versions(), &gdef.library(), g, &refiner,
+      /*return_tensors=*/nullptr, /*unused_input_map_keys=*/nullptr);
 }
 
 Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
@@ -918,24 +977,32 @@ Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
     node_defs.push_back(&n);
   }
   return GraphConstructor::Construct(opts, node_defs, nullptr, nullptr, g,
-                                     &refiner, nullptr);
+                                     &refiner, /*return_tensors=*/nullptr,
+                                     /*unused_input_map_keys=*/nullptr);
 }
 
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
                       Graph* g, ShapeRefiner* refiner,
-                      std::vector<std::pair<Node*, int>>* return_tensors) {
+                      std::vector<std::pair<Node*, int>>* return_tensors,
+                      std::vector<TensorId>* unused_input_map_keys) {
   if (!opts.return_tensors.empty()) {
     if (return_tensors == nullptr) {
       return errors::InvalidArgument(
-          "return_tensors argument to ImportNodeDef() must be non-null if "
+          "return_tensors argument to ImportGraphDef() must be non-null if "
           "opts.return_tensors is non-empty");
     }
     if (!return_tensors->empty()) {
       return errors::InvalidArgument(
-          "return_tensors argument to ImportNodeDef() should be empty (has "
+          "return_tensors argument to ImportGraphDef() should be empty (has "
           "size ",
           return_tensors->size(), ")");
     }
+  }
+  if (unused_input_map_keys != nullptr && !unused_input_map_keys->empty()) {
+    return errors::InvalidArgument(
+        "If non-null, unused_input_map_keys argument to ImportGraphDef() should"
+        " be empty (has size ",
+        unused_input_map_keys->size(), ")");
   }
 
   ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
@@ -969,7 +1036,7 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
 
   return GraphConstructor::Construct(opts, gdef.node(), &gdef.versions(),
                                      &gdef.library(), g, refiner,
-                                     return_tensors);
+                                     return_tensors, unused_input_map_keys);
 }
 
 void CopyGraph(const Graph& src, Graph* dest) {

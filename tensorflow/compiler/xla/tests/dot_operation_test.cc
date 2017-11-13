@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -150,6 +149,27 @@ XLA_TEST_F(DotOperationTest, Dot_2x0_0x2) {
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(2, 2, 0.0f), {},
                              error_spec_);
+}
+
+XLA_TEST_F(DotOperationTest, FusedDot) {
+  ComputationBuilder builder(client_, TestName());
+  auto param0 = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 4}), "arg0");
+  auto param1 = builder.Parameter(1, ShapeUtil::MakeShape(F32, {4, 1}), "arg1");
+  auto exp0 = builder.Exp(param0);
+  auto result = builder.Dot(exp0, param1);
+
+  auto lhs_handle = client_
+                        ->TransferToServer(*Literal::CreateR2<float>(
+                            {{1.0, 2.0, 3.0, 4.0}, {-1.0, -2.0, -3.0, -4.0}}))
+                        .ConsumeValueOrDie();
+  auto rhs_handle = client_
+                        ->TransferToServer(*Literal::CreateR2<float>(
+                            {{1.0}, {2.0}, {3.0}, {4.0}}))
+                        .ConsumeValueOrDie();
+
+  ComputeAndCompareR2<float>(
+      &builder, Array2D<float>({{296.14560492846033}, {0.8611737683031964}}),
+      {lhs_handle.get(), rhs_handle.get()}, error_spec_);
 }
 
 template <typename Element>
@@ -454,20 +474,3 @@ TEST_F(DotOperationTest, TransposeFolding) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

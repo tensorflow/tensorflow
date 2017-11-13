@@ -105,8 +105,10 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         split_after_samples=25).fill()
 
     graph_builder = tensor_forest.RandomForestGraphs(params)
-    graph = graph_builder.inference_graph(input_data)
-    self.assertTrue(isinstance(graph, ops.Tensor))
+    probs, paths, var = graph_builder.inference_graph(input_data)
+    self.assertTrue(isinstance(probs, ops.Tensor))
+    self.assertTrue(isinstance(paths, ops.Tensor))
+    self.assertIsNone(var)
 
   def testTrainingConstructionClassificationSparse(self):
     input_data = sparse_tensor.SparseTensor(
@@ -143,11 +145,14 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         num_features=10,
         num_trees=10,
         max_nodes=1000,
+        regression=True,
         split_after_samples=25).fill()
 
     graph_builder = tensor_forest.RandomForestGraphs(params)
-    graph = graph_builder.inference_graph(input_data)
-    self.assertTrue(isinstance(graph, ops.Tensor))
+    probs, paths, var = graph_builder.inference_graph(input_data)
+    self.assertTrue(isinstance(probs, ops.Tensor))
+    self.assertTrue(isinstance(paths, ops.Tensor))
+    self.assertTrue(isinstance(var, ops.Tensor))
 
 
 if __name__ == "__main__":

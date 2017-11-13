@@ -32,6 +32,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # For platform specific build config
 load(
@@ -297,7 +298,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "grpc_tensorflow_server",
     srcs = [
         "grpc_tensorflow_server.cc",
@@ -326,7 +327,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_binary(
+tf_cc_binary(
     name = "grpc_testlib_server",
     testonly = 1,
     srcs = [
@@ -463,7 +464,9 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["grpc_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["no_oss"],  # b/62956105: port conflicts.
+    tags = tf_cuda_tests_tags() + [
+        "no_oss",  # b/62956105: port conflicts.
+    ],
     deps = [
         ":grpc_channel",
         ":grpc_server_lib",

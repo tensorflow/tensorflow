@@ -86,7 +86,7 @@ void DebugGateway::CopyTensor(const string& node_name, const int output_slot,
     // Determine if the tensor is on device (GPU) or host (CPU).
     // The second part of the check is necessary because even an OpKernel on
     // may have output tensors allocated on CPU.
-    if ((device->name().find("gpu:") != string::npos || device->name().find("SYCL:") != string::npos) &&
+    if ((device->name().find("GPU:") != string::npos || device->name().find("SYCL:") != string::npos) &&
         !ctx->output_alloc_attr(output_slot).on_host()) {
       // GPU tensors: Copy it to host (CPU).
       DeviceContext* device_ctxt = ctx->op_device_context();

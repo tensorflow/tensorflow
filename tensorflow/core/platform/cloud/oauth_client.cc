@@ -21,9 +21,10 @@ limitations under the License.
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -161,7 +162,7 @@ Status EncodeJwtHeader(StringPiece key_id, string* encoded) {
 
 OAuthClient::OAuthClient()
     : OAuthClient(
-          std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory()),
+          std::unique_ptr<HttpRequest::Factory>(new CurlHttpRequest::Factory()),
           Env::Default()) {}
 
 OAuthClient::OAuthClient(

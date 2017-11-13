@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/ADT/APInt.h"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Type.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -49,6 +49,7 @@ namespace xla {
 namespace gpu {
 
 using llvm_ir::IrArray;
+using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 using tensorflow::strings::StrAppend;
 
@@ -322,7 +323,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
           ir_builder_->CreateStore(init_value, accum_ptr);
         }
 
-        llvm_ir::ForLoopNest loops(ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
         std::vector<int64> window_size;
         for (const auto& dim : window.dimensions()) {
           window_size.push_back(dim.size());
@@ -334,7 +335,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder_);
 
         IrArray::Index input_index(index.size());
-        llvm::Value* in_bounds = ir_builder_->getInt1(1);
+        llvm::Value* in_bounds = ir_builder_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = ir_builder_->CreateNSWMul(
               index[i], ir_builder_->getInt64(window.dimensions(i).stride()));
@@ -381,7 +382,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
                             operand_to_generator.at(hlo->operand(1))({}));
         ir_builder()->CreateStore(init_value, accum_ptr);
 
-        llvm_ir::ForLoopNest loops(ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
         IrArray::Index input_index = loops.AddLoopsForShapeOnDimensions(
             operand->shape(), hlo->dimensions(), "reduction_dim");
         if (!ShapeUtil::IsScalar(hlo->shape())) {

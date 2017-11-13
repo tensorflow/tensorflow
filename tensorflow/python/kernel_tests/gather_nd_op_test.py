@@ -49,6 +49,7 @@ class GatherNdTest(test.TestCase):
     self._testSimpleDtype(np.int32)
     self._testSimpleDtype(np.int64)
     self._testSimpleDtype(np.complex64)
+    self._testSimpleDtype(np.complex128)
     self._testSimpleDtype("|S")  # byte strings in python2 + 3
 
   def testEmptyIndicesAndParamsOKButJustEmptyParamsFails(self):

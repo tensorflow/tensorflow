@@ -20,6 +20,7 @@
 #include "tensorflow/contrib/boosted_trees/lib/learner/common/accumulators/feature-stats-accumulator.h"
 #include "tensorflow/contrib/boosted_trees/lib/learner/stochastic/stats/feature-split-candidate.h"
 #include "tensorflow/contrib/boosted_trees/proto/learner.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 

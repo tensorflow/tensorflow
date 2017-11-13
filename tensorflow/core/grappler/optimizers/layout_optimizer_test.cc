@@ -182,7 +182,7 @@ TEST_F(LayoutOptimizerTest, EqualSizeWithSamePadding) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   NodeMap node_map(&output);
   EXPECT_TRUE(
-      node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input"));
+      node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input-0"));
 }
 
 TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
@@ -197,7 +197,7 @@ TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   NodeMap node_map(&output);
   EXPECT_TRUE(
-      node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input"));
+      node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input-0"));
 }
 
 }  // namespace

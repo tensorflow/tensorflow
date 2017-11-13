@@ -391,5 +391,80 @@ TEST_F(ShapeTreeTest, CopyAssignWithPointerToShape) {
   EXPECT_EQ(&dest.shape(), &nested_tuple_shape_);
 }
 
+TEST_F(ShapeTreeTest, IterateSimple) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  for (auto index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    ++num_nodes;
+  }
+  EXPECT_EQ(10, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, ConstIterate) {
+  const ShapeTree<int> t(nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  for (const auto& index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    ++num_nodes;
+  }
+  EXPECT_EQ(10, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, IterateAndMutate) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  int i = 0;
+  for (auto& index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    if (i == 1) {
+      index_to_data.second = 98;
+    }
+    ++i;
+  }
+  t.begin()->second = 78;
+  EXPECT_EQ(78, t.begin()->second);
+  i = 0;
+  for (auto& index_to_data : t) {
+    if (i == 0) {
+      EXPECT_EQ(78, index_to_data.second);
+    } else if (i == 1) {
+      EXPECT_EQ(98, index_to_data.second);
+    } else {
+      EXPECT_EQ(42, index_to_data.second);
+    }
+    ++i;
+  }
+  EXPECT_EQ(78, t.begin()->second);
+  EXPECT_EQ(98, std::next(t.begin())->second);
+}
+
+TEST_F(ShapeTreeTest, IterateOrder) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto& index_to_data : t) {
+    v.push_back(index_to_data.first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{{},
+                                        {0},
+                                        {1},
+                                        {1, 0},
+                                        {1, 1},
+                                        {2},
+                                        {2, 0},
+                                        {2, 0, 0},
+                                        {2, 0, 1},
+                                        {2, 1}}));
+}
+
+TEST_F(ShapeTreeTest, IterateOrderLeaves) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto& index_to_data : t.leaves()) {
+    v.push_back(index_to_data.first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{
+                   {0}, {1, 0}, {1, 1}, {2, 0, 0}, {2, 0, 1}, {2, 1}}));
+}
+
 }  // namespace
 }  // namespace xla

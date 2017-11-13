@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -33,7 +33,7 @@ limitations under the License.
 namespace tensorflow {
 
 /// Fake HttpRequest for testing.
-class FakeHttpRequest : public HttpRequest {
+class FakeHttpRequest : public CurlHttpRequest {
  public:
   /// Return the response for the given request.
   FakeHttpRequest(const string& request, const string& response)

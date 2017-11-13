@@ -1,0 +1,330 @@
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 7
+      }
+    }
+  }
+}
+node {
+  name: "Const_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 5
+      }
+    }
+  }
+}
+node {
+  name: "ones"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+        }
+        float_val: 1.0
+      }
+    }
+  }
+}
+node {
+  name: "Less"
+  op: "Less"
+  input: "Const"
+  input: "Const_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/Switch"
+  op: "Switch"
+  input: "Less"
+  input: "Less"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/switch_t"
+  op: "Identity"
+  input: "cond/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/switch_f"
+  op: "Identity"
+  input: "cond/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/pred_id"
+  op: "Identity"
+  input: "Less"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/concat/axis"
+  op: "Const"
+  input: "^cond/switch_t"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "cond/concat/Switch"
+  op: "Switch"
+  input: "ones"
+  input: "cond/pred_id"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ones"
+      }
+    }
+  }
+}
+node {
+  name: "cond/concat"
+  op: "ConcatV2"
+  input: "cond/concat/Switch:1"
+  input: "cond/concat/Switch:1"
+  input: "cond/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/concat_1/axis"
+  op: "Const"
+  input: "^cond/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "cond/concat_1/Switch"
+  op: "Switch"
+  input: "ones"
+  input: "cond/pred_id"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ones"
+      }
+    }
+  }
+}
+node {
+  name: "cond/concat_1"
+  op: "ConcatV2"
+  input: "cond/concat_1/Switch"
+  input: "cond/concat_1/Switch"
+  input: "cond/concat_1/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/Merge"
+  op: "Merge"
+  input: "cond/concat"
+  input: "cond/concat_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "concat/axis"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "concat"
+  op: "ConcatV2"
+  input: "cond/Merge"
+  input: "cond/Merge"
+  input: "concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 21
+}

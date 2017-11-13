@@ -28,6 +28,13 @@ class HloRematerialization {
  public:
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
 
+  // Helper struct that communicates the before / after sizes for the
+  // rematerialization process.
+  struct RematerializationSizes {
+    int64 before_bytes;
+    int64 after_bytes;
+  };
+
   // Rematerialize HLO instructions in the given module to reduce peak memory
   // use below memory_limit_bytes where memory use is defined as the total size
   // of all live HLO instruction values. Parameters and constants are included
@@ -46,6 +53,9 @@ class HloRematerialization {
   //     rematerialization. This is the order in which HLO instructions should
   //     be emitted to minimize memory use.
   //
+  //   sizes: Optional outparam that indicates the peak memory usage of the HLO
+  //     module before/after rematerialization.
+  //
   // Returns whether any instructions were rematerialized. If memory use is
   // already below the given limit then no instructions are rematerialized and
   // false is returned.
@@ -55,8 +65,8 @@ class HloRematerialization {
   // code generation.
   static StatusOr<bool> RematerializeAndSchedule(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
-      HloModule* hlo_module,
-      SequentialHloOrdering::HloModuleSequence* sequence);
+      HloModule* hlo_module, SequentialHloOrdering::HloModuleSequence* sequence,
+      RematerializationSizes* sizes = nullptr);
 
  protected:
   HloRematerialization(const ShapeSizeFunction& size_function)
@@ -69,7 +79,7 @@ class HloRematerialization {
   // contains the memory-minimizing order in which to emit the HLO instructions.
   StatusOr<bool> Run(HloModule* module,
                      SequentialHloOrdering::HloModuleSequence* sequence,
-                     int64 memory_limit);
+                     int64 memory_limit, RematerializationSizes* sizes);
 
   // Rematerializes instructions within the given computation. 'order' is the
   // order in which the computation's instructions will be emitted in the

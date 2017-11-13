@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -172,7 +171,7 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
     return tensorflow::Status::OK();
   };
 
-  for (auto& comp : module->computations()) {
+  for (auto* comp : module->MakeNonfusionComputations()) {
     TF_RETURN_IF_ERROR(comp->Accept(visit_fn));
   }
 

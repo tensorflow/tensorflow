@@ -41,12 +41,15 @@ HloModule::HloModule(const string& name,
       entry_computation_handle_(entry_computation_handle) {}
 
 HloModule::HloModule(const string& name) : name_(name) {}
+HloModule::HloModule(const string& name, const HloModuleConfig& config)
+    : name_(name), config_(config) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
   computation->UniquifyName(&computation_name_uniquer_);
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     instruction->UniquifyName(&instruction_name_uniquer_);
+    instruction->SetUniqueId(NewUniqueInstructionId());
   }
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
@@ -67,6 +70,17 @@ HloComputation* HloModule::AddEntryComputation(
   return AddComputationInternal(std::move(computation));
 }
 
+Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
+  auto it =
+      std::find_if(computations_.begin(), computations_.end(),
+                   [&to_remove](const std::unique_ptr<HloComputation>& comp) {
+                     return comp.get() == to_remove;
+                   });
+  TF_RET_CHECK(it->get() == to_remove);
+  computations_.erase(it);
+  return Status::OK();
+}
+
 HloComputation* HloModule::AddEmbeddedComputation(
     std::unique_ptr<HloComputation> computation) {
   return AddComputationInternal(std::move(computation));
@@ -80,7 +94,7 @@ void HloModule::ReplaceComputations(
   new_computations.reserve(computations_.size());
 
   for (std::unique_ptr<HloComputation>& computation : computations_) {
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kCall:
         case HloOpcode::kMap:
@@ -252,7 +266,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   VLOG(2) << "as a call " << call->ToString();
   VLOG(2) << "to " << nested_computation->ToString();
 
-  TF_CHECK_OK(computation->ReplaceUsesOfInstruction(output, call));
+  TF_CHECK_OK(output->ReplaceAllUsesWith(call));
   for (auto i = instructions_to_outline.rbegin();
        i != instructions_to_outline.rend(); ++i) {
     TF_CHECK_OK(computation->RemoveInstruction(*i));
@@ -267,7 +281,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // module).
   std::set<HloComputation*> nonroot_computations;
   for (auto& computation : computations_) {
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
            instruction->called_computations()) {
         nonroot_computations.insert(called_computation);
@@ -299,7 +313,18 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) {
+std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
+  std::vector<HloComputation*> result;
+  for (auto* c : computations()) {
+    if (c->IsFusionComputation()) {
+      continue;
+    }
+    result.push_back(c);
+  }
+  return result;
+}
+
+std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = MakeUnique<HloModule>(name_ + "-" + suffix);
   module->config_ = config_;
@@ -319,7 +344,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) {
   }
 
   for (auto& cloned_computation : module->computations_) {
-    for (auto& instruction : cloned_computation->instructions()) {
+    for (auto* instruction : cloned_computation->instructions()) {
       // Rewrite instruction's called_computation to point to the cloned
       // computations.
       instruction->ReplaceCalledComputations(

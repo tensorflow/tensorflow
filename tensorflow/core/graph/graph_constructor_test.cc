@@ -68,17 +68,17 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_EQ(original_graph_description, GraphDebugString());
   }
 
-  void ExpectError(
-      const string& gdef_ascii, const ImportGraphDefOptions& opts,
-      const std::vector<string>& expected_error_strs,
-      ShapeRefiner* refiner = nullptr,
-      std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
+  void ExpectError(const string& gdef_ascii, const ImportGraphDefOptions& opts,
+                   const std::vector<string>& expected_error_strs,
+                   ShapeRefiner* refiner = nullptr,
+                   std::vector<std::pair<Node*, int>>* return_tensors = nullptr,
+                   std::vector<TensorId>* unused_input_map_keys = nullptr) {
     // Used to verify that errors don't change graph
     const string original_graph_description = GraphDebugString();
 
     Convert(gdef_ascii);
-    Status status =
-        ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
+    Status status = ImportGraphDef(opts, gdef_, &graph_, refiner,
+                                   return_tensors, unused_input_map_keys);
     EXPECT_FALSE(status.ok());
 
     for (const string& error : expected_error_strs) {
@@ -97,9 +97,11 @@ class GraphConstructorTest : public ::testing::Test {
 
   void ExpectOK(const string& gdef_ascii, const ImportGraphDefOptions& opts,
                 ShapeRefiner* refiner = nullptr,
-                std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
+                std::vector<std::pair<Node*, int>>* return_tensors = nullptr,
+                std::vector<TensorId>* unused_input_map_keys = nullptr) {
     Convert(gdef_ascii);
-    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
+    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors,
+                              unused_input_map_keys);
     EXPECT_EQ(Status::OK(), s) << s;
   }
 
@@ -1279,8 +1281,9 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
 
   // Create input_map containing control edges and use it to import more nodes
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("W1", -1);
-  opts.input_map[TensorId("W3", -1)] = TensorId("W1", -1);
+  const int kControlSlot = Graph::kControlSlot;
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("W3", kControlSlot)] = TensorId("W1", kControlSlot);
   ExpectOK(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1316,7 +1319,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
   // node
   opts.prefix = "import";
   opts.input_map.clear();
-  opts.input_map[TensorId("W1", -1)] = TensorId("W1", -1);
+  opts.input_map[TensorId("W1", kControlSlot)] = TensorId("W1", kControlSlot);
   ExpectOK(
       R"EOF(
       node { name: 'W1' op: 'TestParams' }
@@ -1343,7 +1346,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
 
   // Create input_map with bad control edge mapping
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("W1", 0);
+  opts.input_map[TensorId("W2", Graph::kControlSlot)] = TensorId("W1", 0);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1355,7 +1358,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
 
   opts.input_map.clear();
   // "W2:0" isn't used in the imported graph but still causes an error
-  opts.input_map[TensorId("W2", 0)] = TensorId("W1", -1);
+  opts.input_map[TensorId("W2", 0)] = TensorId("W1", Graph::kControlSlot);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1396,7 +1399,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithMissingEntries) {
 
   // Create input_map referencing node that doesn't exist in graph
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("DNE", -1);
+  const int kControlSlot = Graph::kControlSlot;
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("DNE", kControlSlot);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1431,6 +1435,129 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
       opts,
       {"cannot resolve input_map because multiple nodes exist with name 'dup'"},
       &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapUnusedKeys) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  std::vector<TensorId> unused_input_map_keys;
+
+  // No input map
+  ImportGraphDefOptions opts;
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'input' op: 'TestInput' }",
+      opts, &refiner, nullptr, &unused_input_map_keys);
+  EXPECT_TRUE(unused_input_map_keys.empty());
+
+  // Non-empty unused_input_map_keys
+  unused_input_map_keys.push_back(TensorId());
+  ExpectError("node { name: 'W2' op: 'TestParams' }", opts,
+              {"If non-null, unused_input_map_keys argument to ImportGraphDef()"
+               " should be empty (has size 1)"},
+              &refiner, nullptr, &unused_input_map_keys);
+
+  // Input map with some used, some unused keys
+  const int kControlSlot = Graph::kControlSlot;
+  unused_input_map_keys.clear();
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+  opts.input_map[TensorId("new_input", kControlSlot)] =
+      TensorId("input", kControlSlot);
+  opts.input_map[TensorId("t1", 1)] = TensorId("input", 0);
+  ExpectOK(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'new_input' op: 'TestInput' input: [ '^W2' ] }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner, nullptr, &unused_input_map_keys);
+
+  std::vector<TensorId> expected_unused_keys = {
+      TensorId("new_input", kControlSlot), TensorId("t1", 1)};
+  EXPECT_EQ(unused_input_map_keys, expected_unused_keys);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_SkipMappedNodes_FullyMapped) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map and use it to import more nodes
+  ImportGraphDefOptions opts;
+  opts.skip_mapped_nodes = true;
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 1);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+
+  ExpectOK(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasNode("t2"));
+  // `new_input` node is not imported because we set skip_mapped_nodes = true
+  // and all of its inputs are mapped
+  EXPECT_FALSE(HasNode("new_input"));
+
+  EXPECT_TRUE(HasEdge("input", 1, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 1));
+  // Test that t2 is unaffected
+  EXPECT_TRUE(HasEdge("t1", 0, "t2", 0));
+
+  // Check that t1's NodeDef is consistent with graph
+  Node* t1 = FindNode("t1");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  ASSERT_EQ(t1->requested_inputs()[0], "input:1");
+  ASSERT_EQ(t1->requested_inputs()[1], "input:0");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_SkipMappedNodes_NotFullyMapped) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map and use it to import more nodes
+  ImportGraphDefOptions opts;
+  opts.skip_mapped_nodes = true;
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+
+  ExpectOK(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasNode("t2"));
+  // `new_input` node is imported because not all of its inputs are mapped
+  EXPECT_TRUE(HasNode("new_input"));
+
+  EXPECT_FALSE(HasEdge("input", 1, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 1));
+  EXPECT_TRUE(HasEdge("new_input", 0, "t1", 0));
+  EXPECT_FALSE(HasEdge("new_input", 1, "t1", 1));
+  // Test that t2 is unaffected
+  EXPECT_TRUE(HasEdge("t1", 0, "t2", 0));
+
+  // Check that t1's NodeDef is consistent with graph
+  Node* t1 = FindNode("t1");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  ASSERT_EQ(t1->requested_inputs()[0], "new_input:0");
+  ASSERT_EQ(t1->requested_inputs()[1], "input:0");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensors) {
@@ -1506,13 +1633,13 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
   // Null return_tensors with non-empty opts.return_tensors
   opts.return_tensors.push_back({"new_input", 0});
   ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
-              {"return_tensors argument to ImportNodeDef() must be non-null "
+              {"return_tensors argument to ImportGraphDef() must be non-null "
                "if opts.return_tensors is non-empty"});
 
   // Non-empty return_tensors
   return_tensors.push_back({nullptr, 0});
   ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
-              {"return_tensors argument to ImportNodeDef() should be empty "
+              {"return_tensors argument to ImportGraphDef() should be empty "
                "(has size 1)"},
               nullptr, &return_tensors);
 
@@ -1527,7 +1654,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
   opts.return_tensors.push_back({"new_input", 2});
   ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
               {"Invalid return output 2 of node 'new_input', which has 2 "
-               "outputs"},
+               "output(s)"},
               nullptr, &return_tensors);
 }
 
@@ -2325,7 +2452,93 @@ TEST_F(GraphConstructorTest, ImportGraphDefProvidedShapeRefinerVersions) {
   ImportGraphDefOptions opts;
   // A valid graph at producer version 20, but one
   // that would not import if the graph_def_version were 21.
-  string gdef_ascii = strings::StrCat(R"EOF(
+  string gdef_ascii;
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "Sum/input"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\001\000\000\000\002"
+      }
+    }
+  }
+}
+node {
+  name: "Sum/reduction_indices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\000\000\000\000\001"
+      }
+    }
+  }
+}
+node {
+  name: "Sum"
+  op: "Sum"
+  input: "Sum/input"
+  input: "Sum/reduction_indices"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+versions {
+  producer: 20
+})EOF");
+
+#else
+  gdef_ascii = strings::StrCat(R"EOF(
 node {
   name: "Sum/input"
   op: "Const"
@@ -2407,7 +2620,7 @@ node {
 versions {
   producer: 20
 })EOF");
-
+#endif
   // Create a shape refiner with the latest TF_GRAPH_DEF_VERSION.
   // Importing the graphdef with an existing refiner should
   // make the refiner inherit the graphdef version from the
@@ -2416,6 +2629,40 @@ versions {
   ExpectOK(gdef_ascii, opts, &refiner);
 
   // Add another node with a higher producer
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "RandomConst"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\001\000\000\000\002"
+      }
+    }
+  }
+}
+versions {
+  producer: 21
+})EOF");
+
+#else
   gdef_ascii = strings::StrCat(R"EOF(
 node {
   name: "RandomConst"
@@ -2447,6 +2694,7 @@ node {
 versions {
   producer: 21
 })EOF");
+#endif
 
   ExpectOK(gdef_ascii, opts, &refiner);
   // Check that the refiner's graph def version is the lowest of
@@ -2454,6 +2702,40 @@ versions {
   EXPECT_EQ(20, refiner.graph_def_version());
 
   // Add another node with a lower producer
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "RandomConst2"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\001\000\000\000\002"
+      }
+    }
+  }
+}
+versions {
+  producer: 17
+})EOF");
+
+#else
   gdef_ascii = strings::StrCat(R"EOF(
 node {
   name: "RandomConst2"
@@ -2485,6 +2767,7 @@ node {
 versions {
   producer: 17
 })EOF");
+#endif
   ExpectOK(gdef_ascii, opts, &refiner);
 
   // Check that the refiner's graph def version is the lowest of

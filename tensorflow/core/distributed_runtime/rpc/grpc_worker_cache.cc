@@ -69,9 +69,8 @@ class GrpcWorkerCache : public WorkerCachePartial {
     } else {
       SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
       if (!channel) return nullptr;
-      WorkerInterface* ret = NewGrpcRemoteWorker(&live_rpc_counter_, channel,
-                                                 &completion_queue_, &logger_);
-      return ret;
+      return NewGrpcRemoteWorker(&live_rpc_counter_, channel,
+                                 &completion_queue_, &logger_);
     }
   }
 

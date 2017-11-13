@@ -147,7 +147,7 @@ Passing a single number, however, returns a subvector of a matrix, as follows:
 
 
 ```python
-my_row_vetor = my_matrix[2]
+my_row_vector = my_matrix[2]
 my_column_vector = my_matrix[:, 3]
 ```
 

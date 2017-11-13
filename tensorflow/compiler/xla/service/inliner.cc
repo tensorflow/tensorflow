@@ -113,10 +113,8 @@ Status InlinerVisitor::HandleMap(
 StatusOr<bool> Inliner::Run(HloModule* module) {
   InlinerVisitor visitor(/*computation=*/nullptr);
   bool changed = false;
-  for (const std::unique_ptr<HloComputation>& computation :
-       module->computations()) {
-    TF_ASSIGN_OR_RETURN(bool computation_changed,
-                        visitor.Run(computation.get()));
+  for (HloComputation* computation : module->computations()) {
+    TF_ASSIGN_OR_RETURN(bool computation_changed, visitor.Run(computation));
     changed |= computation_changed;
   }
   return changed;

@@ -177,5 +177,19 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
       self.assertLess(error, 1e-4)
 
 
+class FloorModGradientTest(test.TestCase):
+
+  def testFloorModGradient(self):
+    # Making sure the input is not near the discontinuity point where
+    # x/y == floor(x/y)
+    ns = constant_op.constant([17.], dtype=dtypes.float32)
+    inputs = constant_op.constant([131.], dtype=dtypes.float32)
+    floor_mod = math_ops.floormod(inputs, ns)
+    with self.test_session():
+      error = gradient_checker.compute_gradient_error(inputs, [1],
+                                                      floor_mod, [1])
+      self.assertLess(error, 1e-4)
+
+
 if __name__ == "__main__":
   test.main()

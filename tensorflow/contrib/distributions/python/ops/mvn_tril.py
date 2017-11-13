@@ -76,7 +76,7 @@ class MultivariateNormalTriL(
   ```
 
   Trainable (batch) lower-triangular matrices can be created with
-  `ds.matrix_diag_transform()` and/or `ds.fill_lower_triangular()`
+  `ds.matrix_diag_transform()` and/or `ds.fill_triangular()`
 
   #### Examples
 

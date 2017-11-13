@@ -55,14 +55,16 @@ string MaybeDumpHloModule(const HloModule& module, const string& label,
 // registry is used.
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
-                 const HloExecutionProfile* hlo_execution_profile = nullptr);
+                 const HloExecutionProfile* hlo_execution_profile = nullptr,
+                 bool show_metadata = false);
 
 // Like DumpGraph, but renders only nodes "near" the given node in the graph.
 //
 // The number of nodes dumped is controlled by the radius parameter, which
 // (roughly) corresponds to the max distance a node may be from the primary node
 // before it's omitted from the graph.
-string DumpNeighborhoodAround(const HloInstruction& node, int radius);
+string DumpNeighborhoodAround(const HloInstruction& node, int radius,
+                              bool show_metadata = false);
 
 // Dumps the HloModule::ToString() as a file into the provided directory path
 // suffixed with the provided label.

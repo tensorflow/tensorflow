@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
+#include "tensorflow/core/kernels/mkl_conv_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -41,9 +42,23 @@ limitations under the License.
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
 
+#ifdef INTEL_MKL_DNN
+#include "mkldnn.hpp"
+
+using mkldnn::stream;
+using mkldnn::prop_kind;
+
+using mkldnn::convolution_forward;
+using mkldnn::convolution_backward_weights;
+using mkldnn::convolution_direct;
+
+#endif
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
+
+#ifndef INTEL_MKL_DNN
 
 template <typename Device, class T>
 class MklConv2DCustomBackpropFilterOp : public OpKernel {
@@ -206,15 +221,10 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     // Mkl needs the entities in its native format.
     // So create temporary tensors along with buffers to
     // convert the received entities.
-    Tensor mkl_tmp_input_buf_tensor, mkl_tmp_out_backprop_buf_tensor,
-           mkl_tmp_buf_trans_input;
+    Tensor mkl_tmp_input_buf_tensor, mkl_tmp_out_backprop_buf_tensor;
     // This preparation sets (1) dnnResourceSrc (2) dnnResourceDiffDst
-    mkl_context.MklPrepareInputs(context, data_format_,
-                                 input_in_mkl_format,
-                                 out_backprop_in_mkl_format,
-                                 &mkl_tmp_input_buf_tensor,
-                                 &mkl_tmp_out_backprop_buf_tensor,
-                                 &mkl_tmp_buf_trans_input);
+    mkl_context.MklPrepareInputs(context, &mkl_tmp_input_buf_tensor,
+                                 &mkl_tmp_out_backprop_buf_tensor);
 
     // Final conv-grad-filter should be in TF layout.
     Tensor* grad_filter;
@@ -312,58 +322,34 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
 
     // Compare incoming tensor layouts with MKL preferred layouts and convert
     // data to the preferred layout if necessary
-    void MklPrepareInputs(OpKernelContext* context, TensorFormat format,
-                          bool input_in_mkl_format,
-                          bool out_backprop_in_mkl_format,
+    void MklPrepareInputs(OpKernelContext* context,
                           Tensor* mkl_tmp_input_buf_tensor,
-                          Tensor* mkl_tmp_out_backprop_buf_tensor,
-                          Tensor* mkl_tmp_buf_trans_input) {
+                          Tensor* mkl_tmp_out_backprop_buf_tensor) {
       bool mkl_convert_input, mkl_convert_out_backprop;
       dnnPrimitive_t mkl_prim_convert_input, mkl_prim_convert_out_backprop;
-      dnnLayout_t mkl_lt_internal_input, mkl_lt_internal_out_backprop,
-                  mkl_lt_trans_input;
+      dnnLayout_t mkl_lt_internal_input, mkl_lt_internal_out_backprop;
       void *mkl_buf_convert_input, *mkl_buf_convert_out_backprop;
-      void *mkl_buf_input, *mkl_buf_out_backprop;
 
       mkl_prim_convert_input = nullptr;
       mkl_prim_convert_out_backprop = nullptr;
       mkl_lt_internal_input = nullptr;
       mkl_lt_internal_out_backprop = nullptr;
-      mkl_lt_trans_input = nullptr;
       mkl_buf_convert_input = nullptr;
       mkl_buf_convert_out_backprop = nullptr;
-      mkl_buf_input = nullptr;
-      mkl_buf_out_backprop = nullptr;
 
       // Compare with internal layouts and convert if needed
       const Tensor& input = MklGetInput(context, 0);
-      if (!input_in_mkl_format && format == FORMAT_NHWC){
-        TensorShape nchw_shape = ShapeFromFormat(FORMAT_NCHW,
-            in_sizes[MklDims::N], in_sizes[MklDims::H],
-            in_sizes[MklDims::W], in_sizes[MklDims::C]);
-        OP_REQUIRES_OK(context, context->allocate_temp(
-            DataTypeToEnum<float>::value, nchw_shape, mkl_tmp_buf_trans_input));
-        MklNHWCToNCHW(input, &mkl_tmp_buf_trans_input);
-        mkl_buf_input = const_cast<void*>(static_cast<const void*>(
-            mkl_tmp_buf_trans_input->flat<float>().data()));
-        size_t strides[4];
-        GetStridesFromSizes(FORMAT_NCHW, strides, in_sizes);
-        CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_trans_input, in_dims, in_sizes,
-            strides), E_SUCCESS);
-      }
-      else {
-        mkl_buf_input =
-            const_cast<void*>(static_cast<const void*>(input.flat<T>().data()));
-        mkl_lt_trans_input = lt_input;
-      }
+      void* mkl_buf_input =
+          const_cast<void*>(static_cast<const void*>(input.flat<T>().data()));
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(
                    &mkl_lt_internal_input, prim_conv_bwdfilter, dnnResourceSrc),
                E_SUCCESS);
       mkl_convert_input =
-          !dnnLayoutCompare_F32(mkl_lt_internal_input, mkl_lt_trans_input);
+          !dnnLayoutCompare_F32(mkl_lt_internal_input, lt_input);
       if (mkl_convert_input) {
-        CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_input,
-                     mkl_lt_trans_input, mkl_lt_internal_input), E_SUCCESS);
+        CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_input, lt_input,
+                                         mkl_lt_internal_input),
+                 E_SUCCESS);
         AllocTmpBuffer(context, mkl_tmp_input_buf_tensor, mkl_lt_internal_input,
                        &mkl_buf_convert_input);
         CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_input, mkl_buf_input,
@@ -372,30 +358,26 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
         dnnDelete_F32(mkl_prim_convert_input);
       }
       dnnLayoutDelete_F32(mkl_lt_internal_input);
-      if (!input_in_mkl_format && format == FORMAT_NHWC)
-        dnnLayoutDelete_F32(mkl_lt_trans_input);
-
 
       conv_res[dnnResourceSrc] =
           (mkl_convert_input) ? mkl_buf_convert_input : mkl_buf_input;
 
       const Tensor& out_backprop = MklGetInput(context, 2);
-      mkl_buf_out_backprop = const_cast<void*>(
-                      static_cast<const void*>(out_backprop.flat<T>().data()));
+      void* mkl_buf_out_backprop = const_cast<void*>(static_cast<const void*>(
+                                      out_backprop.flat<T>().data()));
 
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_out_backprop,
                                                 prim_conv_bwdfilter,
                                                 dnnResourceDiffDst),
                E_SUCCESS);
       mkl_convert_out_backprop =
-          !dnnLayoutCompare_F32(mkl_lt_internal_out_backprop,
-                                lt_out_backprop);
+          !dnnLayoutCompare_F32(mkl_lt_internal_out_backprop, lt_out_backprop);
       if (mkl_convert_out_backprop) {
         CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_out_backprop,
                       lt_out_backprop, mkl_lt_internal_out_backprop),
                  E_SUCCESS);
         AllocTmpBuffer(context, mkl_tmp_out_backprop_buf_tensor,
-            mkl_lt_internal_out_backprop, &mkl_buf_convert_out_backprop);
+            lt_out_backprop, &mkl_buf_convert_out_backprop);
         CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_out_backprop,
                                           mkl_buf_out_backprop,
                                           mkl_buf_convert_out_backprop),
@@ -443,6 +425,174 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
   Padding padding_;
   TensorFormat data_format_;
 };
+
+#else
+
+template <typename Device, class T>
+class MklConv2DCustomBackpropFilterOp : public OpKernel {
+ public:
+  explicit MklConv2DCustomBackpropFilterOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    int stride_n = GetTensorDim(strides_, data_format_, 'N');
+    int stride_c = GetTensorDim(strides_, data_format_, 'C');
+    OP_REQUIRES(
+        context, (stride_n == 1 && stride_c == 1),
+        errors::InvalidArgument("Current implementation does not yet support "
+                                "strides in the batch and depth dimensions."));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    try {
+      auto cpu_engine = engine(engine::cpu, 0);
+
+      MklDnnData<T> input(&cpu_engine);
+      MklDnnData<T> outbackprop(&cpu_engine);
+      MklDnnData<T> output(&cpu_engine);
+
+      // Input tensors
+      const Tensor& input_tensor = MklGetInput(context, 0);
+      const Tensor& filter_tensor = MklGetInput(context, 1);
+      const Tensor& obp_tensor = MklGetInput(context, 2);  // Outbackprop
+
+      // Generate input shapes.
+      TensorShape filter_shape;
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_tensor.shape()),
+        errors::InvalidArgument(
+              "Conv2DBackpropFilter: filter_sizes input must be 1-dim, not ",
+              filter_tensor.dims()));
+      OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                        filter_tensor.vec<int32>(), &filter_shape));
+      TensorShape input_shape = input_tensor.shape();
+      TensorShape obp_shape = obp_tensor.shape();
+
+      // By default, all dims are in MKL order. Only dims in TF order
+      // are those with prefix tf_order.
+      memory::dims obp_dims, fwd_input_dims, fwd_filter_dims;
+      memory::dims padding_l, padding_r, strides, fwd_output_dims;
+      memory::dims fwd_output_dims_tf_order;
+
+      // Get forward convolution parameters.
+      MklDnnConvUtil conv_utl(context, strides_, padding_, data_format_);
+      conv_utl.GetConvFwdSizesInMklOrder(input_shape, filter_shape,
+                                         &fwd_input_dims, &fwd_filter_dims,
+                                         &strides,
+                                         &fwd_output_dims_tf_order,
+                                         &fwd_output_dims,
+                                         &padding_l, &padding_r);
+      if (!context->status().ok()) return;
+
+      // Create Convolution forward descriptor since Convolution backward
+      // API needs it. For that, we first need to create input, filter
+      // and output memory descriptors.
+      auto mkl_data_format = TFDataFormatToMklDnnDataFormat(data_format_);
+      auto fwd_src_md = memory::desc(fwd_input_dims, MklDnnType<T>(),
+                                     mkl_data_format);
+      auto fwd_filter_md = memory::desc(fwd_filter_dims, MklDnnType<T>(),
+                                        memory::format::hwio);
+      auto fwd_out_md = memory::desc(fwd_output_dims, MklDnnType<T>(),
+                                     mkl_data_format);
+      auto fwd_desc = convolution_forward::desc(prop_kind::forward,
+            convolution_direct, fwd_src_md, fwd_filter_md, fwd_out_md,
+            strides, padding_l, padding_r, TFPaddingToMklDnnPadding(padding_));
+      auto fwd_pd = convolution_forward::primitive_desc(fwd_desc, cpu_engine);
+
+      // Allocate output tensor and shape
+      // TODO(nhasabni): Update this when support for MKL layout is added.
+      // Shape of output of Conv2DBackpropInput is same as 'input' of Conv2D.
+      TensorShape tf_output_shape(filter_shape);
+      MklShape mkl_output_mkl_shape;
+      mkl_output_mkl_shape.SetMklTensor(false);
+      Tensor* output_tensor = nullptr;
+      AllocateOutputSetMklShape(context, 0, &output_tensor, tf_output_shape,
+                                mkl_output_mkl_shape);
+
+      // Create memory for user data.
+      // Describe how the inputs and outputs of Convolution look like. Also
+      // specify buffers containing actual input and output data.
+      // Although input shape required is in MKL-DNN order, the layout is
+      // Tensorflow's layout (NHWC or NCHW depending on data format).
+      input.SetUsrMem(fwd_input_dims, mkl_data_format, &input_tensor);
+      // Outbackprop shape is NHWC or NCHW depending on data format. Since
+      // GetInputSizeInMklOrder function returns size in that order we just use
+      // use that function directly.
+      conv_utl.GetInputSizeInMklOrder(obp_shape, &obp_dims);
+      if (!context->status().ok()) return;
+      outbackprop.SetUsrMem(obp_dims, mkl_data_format, &obp_tensor);
+      // Although output shape required is in MKL-DNN order,
+      // layout is Tensorflow's filter layout (HWIO)
+      // Shape of output of Conv2DBackpropInput is same as shape of filter.
+      memory::dims bwd_output_dims = fwd_filter_dims;
+      output.SetUsrMem(bwd_output_dims, memory::format::hwio, output_tensor);
+
+      // Create memory descriptors for convolution data w/ no specified format.
+      input.SetOpMemDesc(fwd_input_dims, memory::format::any);
+      outbackprop.SetOpMemDesc(obp_dims, memory::format::any);
+      output.SetOpMemDesc(bwd_output_dims, memory::format::any);
+
+      // Create convolution backward weights primitive.
+      auto bwd_desc = convolution_backward_weights::desc(convolution_direct,
+                          input.GetOpMemDesc(), output.GetOpMemDesc(),
+                          outbackprop.GetOpMemDesc(), strides, padding_l,
+                          padding_r, TFPaddingToMklDnnPadding(padding_));
+
+      auto bwd_pd = convolution_backward_weights::primitive_desc(bwd_desc,
+                                                              cpu_engine,
+                                                              fwd_pd);
+
+      PrepareAndExecutePrimitive(bwd_pd, &input, &outbackprop, &output);
+    } catch (mkldnn::error &e) {
+     string error_msg = "Status: " + std::to_string(e.status) +
+                       ", message: " + string(e.message) +
+                       ", in file " + string(__FILE__) + ":" +
+                       std::to_string(__LINE__);
+     OP_REQUIRES_OK(context, errors::Aborted("Operation received an exception:",
+                                            error_msg));
+    }
+  }
+
+ private:
+  std::vector<int32> strides_;
+  Padding padding_;
+  TensorFormat data_format_;
+
+  // Prepare and execute net - checks for input and output reorders.
+  void PrepareAndExecutePrimitive(
+                  const convolution_backward_weights::primitive_desc& conv_pd,
+                  MklDnnData<T>* input, MklDnnData<T>* obp,
+                  MklDnnData<T>* output) {
+    // Create reorders between user layout and MKL layout if it is needed and
+    // add it to the net before convolution.
+    std::vector<primitive> net;
+    input->CheckReorderToOpMem(conv_pd.src_primitive_desc(), &net);
+    obp->CheckReorderToOpMem(conv_pd.diff_dst_primitive_desc(), &net);
+
+    // Memory for output of convolution. Since we may need reorder on the
+    // output side, we will prepare reorder primitive in case output
+    // reorder to user memory is required.
+    bool output_reorder_required = output->PrepareReorderToUserMemIfReq(
+                                      conv_pd.diff_weights_primitive_desc());
+
+    net.push_back(convolution_backward_weights(conv_pd, input->GetOpMem(),
+                                    obp->GetOpMem(), output->GetOpMem()));
+
+    // Insert reorder primitive in the net for output reorder if reorder is
+    // required.
+    if (output_reorder_required) {
+      output->InsertReorderToUserMem(&net);
+    }
+
+    // Handle output reorder
+    stream(stream::kind::eager).submit(net).wait();
+  }
+};
+#endif
 
 #define REGISTER_MKL_FILTER_KERNELS(T)                              \
   REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")          \
