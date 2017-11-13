@@ -646,6 +646,9 @@ class _EagerTensorBase(Tensor):
   def __array__(self):
     return np.array(self.numpy())
 
+  def __format__(self, format_spec):
+    return self.numpy().__format__(format_spec)
+
   def _numpy(self):
     raise NotImplementedError()
 
