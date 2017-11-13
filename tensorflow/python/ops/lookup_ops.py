@@ -1110,7 +1110,7 @@ def index_to_string_table_from_file(vocabulary_file,
   ```
 
   Args:
-    vocabulary_file: The vocabulary filename.
+    vocabulary_file: The vocabulary filename, may be a constant scalar `Tensor`.
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary indices.
     name: A name for this op (optional).
