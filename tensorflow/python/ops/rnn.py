@@ -27,10 +27,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -131,6 +133,13 @@ def _infer_state_dtype(explicit_dtype, state):
     return inferred_dtypes[0]
   else:
     return state.dtype
+
+
+def _maybe_tensor_shape_from_tensor(shape):
+  if isinstance(shape, ops.Tensor):
+    return tensor_shape.as_shape(tensor_util.constant_value(shape))
+  else:
+    return shape
 
 
 # pylint: disable=unused-argument
@@ -576,8 +585,9 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if varscope.caching_device is None:
-      varscope.set_caching_device(lambda op: op.device)
+    if context.in_graph_mode():
+      if varscope.caching_device is None:
+        varscope.set_caching_device(lambda op: op.device)
     batch_size = _best_effort_input_batch_size(flat_input)
 
     if initial_state is not None:
@@ -595,7 +605,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
           ["Expected shape for Tensor %s is " % x.name,
            packed_shape, " but saw shape: ", x_shape])
 
-    if sequence_length is not None:
+    if context.in_graph_mode() and sequence_length is not None:
       # Perform some shape validation
       with ops.control_dependencies(
           [_assert_has_shape(sequence_length, [batch_size])]):
@@ -713,19 +723,34 @@ def _dynamic_rnn_loop(cell,
   with ops.name_scope("dynamic_rnn") as scope:
     base_name = scope
 
-  def _create_ta(name, dtype):
+  def _create_ta(name, element_shape, dtype):
     return tensor_array_ops.TensorArray(dtype=dtype,
                                         size=time_steps,
+                                        element_shape=element_shape,
                                         tensor_array_name=base_name + name)
 
-  output_ta = tuple(_create_ta("output_%d" % i,
-                               _infer_state_dtype(dtype, state))
-                    for i in range(len(flat_output_size)))
-  input_ta = tuple(_create_ta("input_%d" % i, flat_input[i].dtype)
-                   for i in range(len(flat_input)))
-
-  input_ta = tuple(ta.unstack(input_)
-                   for ta, input_ in zip(input_ta, flat_input))
+  in_graph_mode = context.in_graph_mode()
+  if in_graph_mode:
+    output_ta = tuple(
+        _create_ta(
+            "output_%d" % i,
+            element_shape=(tensor_shape.TensorShape([const_batch_size])
+                           .concatenate(
+                               _maybe_tensor_shape_from_tensor(out_size))),
+            dtype=_infer_state_dtype(dtype, state))
+        for i, out_size in enumerate(flat_output_size))
+    input_ta = tuple(
+        _create_ta(
+            "input_%d" % i,
+            element_shape=flat_input_i.shape[1:],
+            dtype=flat_input_i.dtype)
+        for i, flat_input_i in enumerate(flat_input))
+    input_ta = tuple(ta.unstack(input_)
+                     for ta, input_ in zip(input_ta, flat_input))
+  else:
+    output_ta = tuple([0 for _ in range(time_steps.numpy())]
+                      for i in range(len(flat_output_size)))
+    input_ta = flat_input
 
   def _time_step(time, output_ta_t, state):
     """Take a time step of the dynamic RNN.
@@ -739,10 +764,13 @@ def _dynamic_rnn_loop(cell,
       The tuple (time + 1, output_ta_t with updated flow, new_state).
     """
 
-    input_t = tuple(ta.read(time) for ta in input_ta)
-    # Restore some shape information
-    for input_, shape in zip(input_t, inputs_got_shape):
-      input_.set_shape(shape[1:])
+    if in_graph_mode:
+      input_t = tuple(ta.read(time) for ta in input_ta)
+      # Restore some shape information
+      for input_, shape in zip(input_t, inputs_got_shape):
+        input_.set_shape(shape[1:])
+    else:
+      input_t = tuple(ta[time.numpy()] for ta in input_ta)
 
     input_t = nest.pack_sequence_as(structure=inputs, flat_sequence=input_t)
     call_cell = lambda: cell(input_t, state)
@@ -764,8 +792,12 @@ def _dynamic_rnn_loop(cell,
     # Pack state if using state tuples
     output = nest.flatten(output)
 
-    output_ta_t = tuple(
-        ta.write(time, out) for ta, out in zip(output_ta_t, output))
+    if in_graph_mode:
+      output_ta_t = tuple(
+          ta.write(time, out) for ta, out in zip(output_ta_t, output))
+    else:
+      for ta, out in zip(output_ta_t, output):
+        ta[time.numpy()] = out
 
     return (time + 1, output_ta_t, new_state)
 
@@ -777,16 +809,20 @@ def _dynamic_rnn_loop(cell,
       swap_memory=swap_memory)
 
   # Unpack final output if not using output tuples.
-  final_outputs = tuple(ta.stack() for ta in output_final_ta)
-
-  # Restore some shape information
-  for output, output_size in zip(final_outputs, flat_output_size):
-    shape = _concat(
-        [const_time_steps, const_batch_size], output_size, static=True)
-    output.set_shape(shape)
+  if in_graph_mode:
+    final_outputs = tuple(ta.stack() for ta in output_final_ta)
+    # Restore some shape information
+    for output, output_size in zip(final_outputs, flat_output_size):
+      shape = _concat(
+          [const_time_steps, const_batch_size], output_size, static=True)
+      output.set_shape(shape)
+  else:
+    final_outputs = output_final_ta
 
   final_outputs = nest.pack_sequence_as(
       structure=cell.output_size, flat_sequence=final_outputs)
+  if not in_graph_mode:
+    final_outputs = array_ops.stack(final_outputs, axis=0)
 
   return (final_outputs, final_state)
 
@@ -967,8 +1003,9 @@ def raw_rnn(cell, loop_fn,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if varscope.caching_device is None:
-      varscope.set_caching_device(lambda op: op.device)
+    if context.in_graph_mode():
+      if varscope.caching_device is None:
+        varscope.set_caching_device(lambda op: op.device)
 
     time = constant_op.constant(0, dtype=dtypes.int32)
     (elements_finished, next_input, initial_state, emit_structure,
@@ -988,6 +1025,7 @@ def raw_rnn(cell, loop_fn,
       static_batch_size.merge_with(input_shape_i[0])
 
     batch_size = static_batch_size.value
+    const_batch_size = batch_size
     if batch_size is None:
       batch_size = array_ops.shape(flat_input[0])[0]
 
@@ -1010,8 +1048,15 @@ def raw_rnn(cell, loop_fn,
 
     flat_emit_ta = [
         tensor_array_ops.TensorArray(
-            dtype=dtype_i, dynamic_size=True, size=0, name="rnn_output_%d" % i)
-        for i, dtype_i in enumerate(flat_emit_dtypes)]
+            dtype=dtype_i,
+            dynamic_size=True,
+            element_shape=(tensor_shape.TensorShape([const_batch_size])
+                           .concatenate(
+                               _maybe_tensor_shape_from_tensor(size_i))),
+            size=0,
+            name="rnn_output_%d" % i)
+        for i, (dtype_i, size_i)
+        in enumerate(zip(flat_emit_dtypes, flat_emit_size))]
     emit_ta = nest.pack_sequence_as(structure=emit_structure,
                                     flat_sequence=flat_emit_ta)
     flat_zero_emit = [
@@ -1166,8 +1211,9 @@ def static_rnn(cell,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if varscope.caching_device is None:
-      varscope.set_caching_device(lambda op: op.device)
+    if context.in_graph_mode():
+      if varscope.caching_device is None:
+        varscope.set_caching_device(lambda op: op.device)
 
     # Obtain the first sequence of the input
     first_input = inputs

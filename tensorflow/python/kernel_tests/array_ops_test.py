@@ -51,6 +51,15 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
       self.assertEqual((3, 2), transposed.get_shape())
       self.assertAllEqual(expected_transposed, transposed.eval())
 
+  def testConjugate(self):
+    m = [[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j, 6 + 6j]]
+    expected_transposed = [[1 - 1j, 4 - 4j], [2 - 2j, 5 - 5j], [3 - 3j, 6 - 6j]]
+    with self.test_session():
+      matrix = ops.convert_to_tensor(m)
+      transposed = array_ops.matrix_transpose(matrix, conjugate=True)
+      self.assertEqual((3, 2), transposed.get_shape())
+      self.assertAllEqual(expected_transposed, transposed.eval())
+
   def testBatchMatrix(self):
     matrix_0 = [[1, 2, 3], [4, 5, 6]]
     matrix_0_t = [[1, 4], [2, 5], [3, 6]]
@@ -98,21 +107,40 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self.rng = np.random.RandomState(42)
 
-  def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None):
+  def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None, axis=None):
     """Check equivalence between boolean_mask and numpy masking."""
     if make_mask is None:
       make_mask = lambda shape: self.rng.randint(0, 2, size=shape).astype(bool)
     arr = np.random.rand(*arr_shape)
     mask = make_mask(arr_shape[:ndims_mask])
-    masked_arr = arr[mask]
-    with self.test_session():
-      masked_tensor = array_ops.boolean_mask(arr, mask)
+    if axis is not None:
+      mask = make_mask(arr_shape[axis:ndims_mask+axis])
+    if axis is None or axis == 0:
+      masked_arr = arr[mask]
+    elif axis == 1:
+      masked_arr = arr[:,mask]
+    elif axis == 2:
+      masked_arr = arr[:,:,mask]
+    with self.test_session() as sess:
+      masked_tensor = array_ops.boolean_mask(arr, mask, axis=axis)
 
       # Leading dimension size of masked_tensor is always unknown until runtime
       # since we don't how many elements will be kept.
-      self.assertAllEqual(masked_tensor.get_shape()[1:], masked_arr.shape[1:])
+      leading = 1 if axis is None else axis + 1
+      self.assertAllEqual(masked_tensor.get_shape()[leading:],
+          masked_arr.shape[leading:])
 
       self.assertAllClose(masked_arr, masked_tensor.eval())
+
+  def testMaskDim1ArrDim2Axis1(self):
+    ndims_mask = 1
+    for arr_shape in [(1, 1), (2, 2), (2, 5)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape, axis=1)
+
+  def testMaskDim2ArrDim2Axis1(self):
+    ndims_mask = 2
+    for arr_shape in [(1, 1), (2, 2), (2, 5)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape, axis=1)
 
   def testMaskDim1ArrDim1(self):
     ndims_mask = 1
@@ -940,12 +968,10 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
   def testExceptions(self):
     with self.test_session():
-      with self.assertRaisesRegexp(ValueError, "lengths must be 1D"):
-        array_ops.sequence_mask([[10, 20]], [10, 20])
       with self.assertRaisesRegexp(ValueError, "maxlen must be scalar"):
         array_ops.sequence_mask([10, 20], [10, 20])
 
-  def testNormal(self):
+  def testOneDimensional(self):
     with self.test_session():
       res = array_ops.sequence_mask(constant_op.constant([1, 3, 2]), 5)
       self.assertAllEqual(res.get_shape(), [3, 5])
@@ -960,6 +986,25 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(res.eval(), [[0.0, 0.0, 0.0,
                                         0.0], [1.0, 0.0, 0.0, 0.0],
                                        [1.0, 1.0, 1.0, 1.0]])
+
+  def testTwoDimensional(self):
+    with self.test_session():
+      res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)
+      self.assertAllEqual(res.get_shape(), [1, 3, 5])
+      self.assertAllEqual(res.eval(), [[[True, False, False, False, False],
+                                        [True, True, True, False, False],
+                                        [True, True, False, False, False]]])
+
+      # test dtype and default maxlen:
+      res = array_ops.sequence_mask(
+          constant_op.constant([[0, 1, 4], [1, 2, 3]]), dtype=dtypes.float32)
+      self.assertAllEqual(res.get_shape().as_list(), [2, 3, None])
+      self.assertAllEqual(res.eval(), [[[0.0, 0.0, 0.0, 0.0],
+                                        [1.0, 0.0, 0.0, 0.0],
+                                        [1.0, 1.0, 1.0, 1.0]],
+                                       [[1.0, 0.0, 0.0, 0.0],
+                                        [1.0, 1.0, 0.0, 0.0],
+                                        [1.0, 1.0, 1.0, 0.0]]])
 
   def testDtypes(self):
 
@@ -1032,6 +1077,16 @@ class PadTest(test_util.TensorFlowTestCase):
                            [0, 0, 1, 2, 3, 0, 0],
                            [0, 0, 4, 5, 6, 0, 0],
                            [0, 0, 0, 0, 0, 0, 0]])
+
+class InvertPermutationTest(test_util.TensorFlowTestCase):
+
+  def testInvertPermutation(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
+        y = array_ops.invert_permutation(x)
+        self.assertAllEqual(y.get_shape(), [5])
+        self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
 
 
 if __name__ == "__main__":

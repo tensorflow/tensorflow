@@ -28,15 +28,7 @@ REGISTER_OP("VariableV2")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Holds state in the form of a tensor that persists across steps.
 
@@ -99,14 +91,7 @@ REGISTER_OP("TemporaryVariable")
     .Attr("dtype: type")
     .Attr("var_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
-      c->set_output(0, output);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Returns a tensor that may be mutated, but only persists within a single step.
 
@@ -642,121 +627,6 @@ output_ref: Same as ref. Returned as a convenience for operations that want
   to use the updated values after the update is done.
 )doc");
 
-// TODO(simister): Re-enable once these additional ops do not dramatically
-// increase binary size.
-
-// REGISTER_OP("ScatterNdMul")
-//     .Input("ref: Ref(T)")
-//     .Input("indices: Tindices")
-//     .Input("updates: T")
-//     .Output("output_ref: Ref(T)")
-//     .Attr("T: numbertype")
-//     .Attr("Tindices: {int32, int64}")
-//     .Attr("use_locking: bool = false")
-//     .SetShapeFn(shape_inference::ScatterNdUpdateShape)
-//     .Doc(
-//         R"doc(Applies sparse subtraction between `updates` and individual
-//         values or slices within a given variable according to `indices`.
-
-// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
-
-// `indices` must be integer tensor, containing indices into `ref`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
-
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `ref`.
-
-// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
-
-// ```
-// [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
-// ```
-
-// For example, say we want to multiply 4 scattered elements with a rank-1
-// tensor with 8 elements. In Python, that multiplication would look like this:
-
-//     ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-//     indices = tf.constant([[4], [3], [1], [7]])
-//     updates = tf.constant([9, 10, 11, 12])
-//     sub = tf.scatter_nd_mul(ref, indices, updates)
-//     with tf.Session() as sess:
-//       print sess.run(sub)
-
-// The resulting update to ref would look like this:
-
-//     [1, 22, 3, 40, 45, 6, 7, 96]
-
-// See @{tf.scatter_nd} for more details about how to make updates
-// to slices.
-
-// ref: A mutable Tensor. Should be from a Variable node.
-// indices: A Tensor. Must be one of the following types: int32, int64. A tensor
-// of indices into ref.
-// updates: A Tensor. Must have the same type as ref. A tensor of updated values
-// to subtract from ref.
-// use_locking: An optional bool. Defaults to True. If True, the assignment will
-// be protected by a lock; otherwise the behavior is undefined, but may exhibit
-// less contention.
-// output_ref: Same as ref. Returned as a convenience for operations that want
-// to use the updated values after the update is done.)doc");
-
-// REGISTER_OP("ScatterNdDiv")
-//     .Input("ref: Ref(T)")
-//     .Input("indices: Tindices")
-//     .Input("updates: T")
-//     .Output("output_ref: Ref(T)")
-//     .Attr("T: numbertype")
-//     .Attr("Tindices: {int32, int64}")
-//     .Attr("use_locking: bool = false")
-//     .SetShapeFn(shape_inference::ScatterNdUpdateShape)
-//     .Doc(
-//         R"doc(Applies sparse subtraction between `updates` and individual
-//         values or slices within a given variable according to `indices`.
-
-// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
-
-// `indices` must be integer tensor, containing indices into `ref`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
-
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `ref`.
-
-// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
-
-// ```
-// [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
-// ```
-
-// For example, say we want to divide a rank-1 tensor with 8 elements by 4
-// scattered elements. In Python, that division would look like this:
-
-//     ref = tf.Variable([10, 20, 30, 40, 50, 60, 70, 80])
-//     indices = tf.constant([[4], [3], [1], [7]])
-//     updates = tf.constant([2, 3, 4, 5])
-//     sub = tf.scatter_nd_div(ref, indices, updates)
-//     with tf.Session() as sess:
-//       print sess.run(sub)
-
-// The resulting update to ref would look like this:
-
-//     [10, 5, 30, 13, 25, 60, 70, 16]
-
-// See @{tf.scatter_nd} for more details about how to make updates
-// to slices.
-
-// ref: A mutable Tensor. Should be from a Variable node.
-// indices: A Tensor. Must be one of the following types: int32, int64. A tensor
-// of indices into ref.
-// updates: A Tensor. Must have the same type as ref. A tensor of updated values
-// to subtract from ref.
-// use_locking: An optional bool. Defaults to True. If True, the assignment will
-// be protected by a lock; otherwise the behavior is undefined, but may exhibit
-// less contention.
-// output_ref: Same as ref. Returned as a convenience for operations that want
-// to use the updated values after the update is done.)doc");
-
 REGISTER_OP("CountUpTo")
     .Input("ref: Ref(T)")
     .Output("output: T")
@@ -772,6 +642,39 @@ REGISTER_OP("CountUpTo")
 Increments 'ref' until it reaches 'limit'.
 
 ref: Should be from a scalar `Variable` node.
+limit: If incrementing ref would bring it above limit, instead generates an
+  'OutOfRange' error.
+output: A copy of the input before increment. If nothing else modifies the
+  input, the values produced will all be distinct.
+)doc");
+
+REGISTER_OP("ResourceCountUpTo")
+    .Input("resource: resource")
+    .Output("output: T")
+    .Attr("limit: int")
+    .Attr("T: {int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data == nullptr || handle_data->empty()) {
+        return errors::InvalidArgument("Handle has no shape/type information.");
+      }
+      shape_inference::ShapeAndType shape_and_type = (*handle_data)[0];
+      DataType value_dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("T", &value_dtype));
+      if (value_dtype != shape_and_type.dtype) {
+        return errors::InvalidArgument(
+            "Data types do not match: ", DataTypeString(value_dtype), " and ",
+            DataTypeString(shape_and_type.dtype));
+      }
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->WithRank(shape_and_type.shape, 0, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Increments variable pointed to by 'resource' until it reaches 'limit'.
+
+resource: Should be from a scalar `Variable` node.
 limit: If incrementing ref would bring it above limit, instead generates an
   'OutOfRange' error.
 output: A copy of the input before increment. If nothing else modifies the

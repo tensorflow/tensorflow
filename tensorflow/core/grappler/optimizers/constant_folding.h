@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -32,7 +33,12 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
+  static NodeDef CreateNodeDef(const string& name, const TensorValue& tensor);
+  static string AddControlDependency(const string& input_name, GraphDef* graph,
+                                     NodeMap* node_map);
+
   ConstantFolding(DeviceBase* cpu_device);
+  ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device);
 
   ~ConstantFolding() override {}
 
@@ -45,13 +51,11 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  string AddControlDependency(const string& input_name);
   Status MaterializeShapes(const GrapplerItem& item,
                            const GraphProperties& properties);
-
+  Status MaterializeConstants(const GrapplerItem& item,
+                              const GraphProperties& properties);
   bool IsFoldable(const NodeDef& node) const;
-
-  NodeDef CreateNodeDef(const string& name, const TensorValue& tensor);
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
@@ -60,7 +64,7 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node,
                              std::vector<NodeDef>* outputs);
 
-  Status FoldNode(NodeDef* node);
+  Status FoldNode(NodeDef* node, GraphDef* output_graph);
 
   Status FoldGraph(GraphDef* output);
 
@@ -69,7 +73,11 @@ class ConstantFolding : public GraphOptimizer {
                              const GraphProperties& properties) const;
   Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
 
+  Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
+                             GraphDef* output);
+
   // Points to an externally provided device or to owned_device_;
+  RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
   std::unique_ptr<DeviceBase> owned_device_;
 
@@ -77,7 +85,7 @@ class ConstantFolding : public GraphOptimizer {
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
-  GraphDef added_graph_;
+  std::unordered_set<string> nodes_whitelist_;
   bool has_fetch_;
 };
 

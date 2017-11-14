@@ -34,11 +34,11 @@ tf_module {
   }
   member_method {
     name: "input_layer"
-    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\', \'cols_to_vars\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "linear_model"
-    argspec: "args=[\'features\', \'feature_columns\', \'units\', \'sparse_combiner\', \'weight_collections\', \'trainable\'], varargs=None, keywords=None, defaults=[\'1\', \'sum\', \'None\', \'True\'], "
+    argspec: "args=[\'features\', \'feature_columns\', \'units\', \'sparse_combiner\', \'weight_collections\', \'trainable\', \'cols_to_vars\'], varargs=None, keywords=None, defaults=[\'1\', \'sum\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "make_parse_example_spec"

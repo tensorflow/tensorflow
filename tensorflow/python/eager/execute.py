@@ -18,22 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import six
 
 from google.protobuf import text_format
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.eager import context
 from tensorflow.python.eager import core
-from tensorflow.python.eager import tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 
-def execute(op_name, num_outputs, inputs, attrs=None, name=None):
+def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Execute a TensorFlow operation.
 
   Args:
@@ -46,44 +43,36 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
       a value which can be passed to the Tensor constructor to create one.
     attrs: A tuple with alternating string attr names and attr values for this
       operation.
+    ctx: The value of context.context().
     name: Customized name for the operation.
 
   Returns:
-    None if there are no outputs, a single Tensor object if there is one output
-    and a list of Tensor objects if there are multiple outputs.
+    List of output Tensor objects. The list is empty if there are no outputs
 
   Raises:
     An exception on error.
   """
-  ctx = context.get_default_context()
-  # TODO(apassos) move this to convert_to_tensor
-  inputs = [ag_core.getval(x) for x in inputs]
-  # pylint: disable=protected-access
-  input_handles = [c._handle for c in inputs]
   device_name = ctx.device_name
+  # pylint: disable=protected-access
   try:
-    outh = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
-                                            op_name, input_handles, attrs,
-                                            num_outputs)
+    tensors = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
+                                               op_name, inputs, attrs,
+                                               num_outputs)
   except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
     else:
       message = e.message
-    raise core._status_to_exception(e.code, message)
-  # pylint: enable=protected-access
+    six.raise_from(core._status_to_exception(e.code, message), None)
 
-  tensors = [tensor._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
   # TODO(alive, cais): Use the execution callback mechanism.
   if core.active_trace() is not None:
-    trace_name = name if name else op_name
     for t in tensors:
-      # pylint: disable=protected-access
-      core.active_trace().record_tensor(trace_name,
+      core.active_trace().record_tensor(op_name,
                                         ops.tensor_id(t),
-                                        t._device_name(),
+                                        t.device,
                                         t.shape.num_elements())
-      # pylint: enable=protected-access
+  # pylint: enable=protected-access
 
   # TODO(cais): Optimize this, perhaps by replacing this execute function with
   # a different one when there are execution callback(s).
@@ -93,10 +82,10 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
   return tensors
 
 
-def record_gradient(unused_op_name, unused_inputs, unused_attrs, results,
+def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
                     unused_name):
   """Import backprop if you want gradients recorded."""
-  return results
+  pass
 
 
 def make_float(v, arg_name):
@@ -176,40 +165,48 @@ def make_tensor(v, arg_name):
       (repr(v), arg_name))
 
 
-def args_to_matching_eager(l, default_dtype=None):
+def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
+  EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
+  if all(isinstance(x, EagerTensor) for x in l):
+    return l[0].dtype, l
   # TODO(josh11b): Could we do a better job if we also passed in the
   # allowed dtypes when that was known?
 
   # Is some input already a Tensor with a dtype?
   dtype = None
   for t in l:
-    if isinstance(ag_core.getval(t), tensor.Tensor):
+    if isinstance(t, EagerTensor):
       dtype = t.dtype
       break
 
+  internal_convert_to_tensor = ops.internal_convert_to_tensor
   if dtype is None:
     # Infer a dtype based on the first value, and use that dtype for the
     # remaining values.
     ret = []
     for t in l:
-      ret.append(ops.convert_to_tensor(t, dtype, preferred_dtype=default_dtype))
+      ret.append(internal_convert_to_tensor(
+          t, dtype, preferred_dtype=default_dtype, ctx=ctx))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
-    ret = [ops.convert_to_tensor(t, dtype) for t in l]
+    ret = [internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
   return dtype, ret
 
 
-def convert_to_mixed_eager_tensors(values):
-  v = [t if isinstance(ag_core.getval(t), tensor.Tensor) else tensor.Tensor(t)
-       for t in values]
+def convert_to_mixed_eager_tensors(values, ctx):
+  v = [
+      t if isinstance(t, ops.EagerTensor) else ops.EagerTensor(
+          t, context=ctx._handle, device=ctx.device_name)  # pylint: disable=protected-access
+      for t in values
+  ]
   types = [t.dtype for t in v]
   return types, v
 
 
-def args_to_mixed_eager_tensors(lists):
+def args_to_mixed_eager_tensors(lists, ctx):
   """Converts a list of same-length lists of values to eager tensors."""
   assert len(lists) > 1
 
@@ -228,20 +225,20 @@ def args_to_mixed_eager_tensors(lists):
     dtype = None
     # If any list has a Tensor, use that dtype
     for l in lists:
-      if isinstance(ag_core.getval(l[i]), tensor.Tensor):
+      if isinstance(l[i], ops.EagerTensor):
         dtype = l[i].dtype
         break
     if dtype is None:
       # Convert the first one and use its dtype.
-      lists_ret[0].append(ops.convert_to_tensor(lists[0][i]))
+      lists_ret[0].append(ops.internal_convert_to_tensor(lists[0][i], ctx=ctx))
       dtype = lists_ret[0][i].dtype
       for j in range(1, len(lists)):
         lists_ret[j].append(
-            ops.convert_to_tensor(lists[j][i], dtype=dtype))
+            ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
     else:
       # Convert everything to the found dtype.
       for j in range(len(lists)):
         lists_ret[j].append(
-            ops.convert_to_tensor(lists[j][i], dtype=dtype))
+            ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
     types.append(dtype)
   return types, lists_ret

@@ -122,7 +122,7 @@ struct Resampler2DFunctor<CPUDevice, T>{
     };
     // Rough estimate of work for each batch entry.
     // From third_party/tensorflow/core/util/work_sharder.cc we gather that an
-    // estimate of the cost of each work unit is needed to correclty shard the
+    // estimate of the cost of each work unit is needed to correctly shard the
     // workload. Shard assumes each cost unit is 1ns, minimum cost per shard
     // being 10us.
     const int64 cost =  static_cast<int64>(num_sampling_points) *

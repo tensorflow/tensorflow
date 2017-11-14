@@ -223,7 +223,8 @@ void XlaOpRegistry::RegisterCompilationKernels() {
 }
 
 std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
-    const string& compilation_device_name) {
+    const string& compilation_device_name,
+    bool include_compilation_only_kernels) {
   std::vector<const KernelDef*> kernels;
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
@@ -236,7 +237,8 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
     // The test in IsCompatible ensures that if there are multiple matching
     // registrations for this op name, they all have the same value of
     // compilation_only, so only the first match needs to be tested.
-    if (!op_iter->second->compilation_only) {
+    if (include_compilation_only_kernels ||
+        !op_iter->second->compilation_only) {
       kernels.push_back(k.get());
     }
   }

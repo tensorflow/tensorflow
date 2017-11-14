@@ -157,6 +157,7 @@ class Profiler(object):
       op_log: optional. tensorflow::tfprof::OpLogProto proto. Used to define
           extra op types.
     """
+    self._coverage = 0.0
     self._graph = graph
     # pylint: disable=protected-access
     op_log = tfprof_logger._merge_default_with_oplog(
@@ -183,7 +184,7 @@ class Profiler(object):
         self._graph, run_meta=run_meta)
     # pylint: enable=protected-access
     # TODO(xpan): P1: Better to find the current graph.
-    print_mdl.AddStep(
+    self._coverage = print_mdl.AddStep(
         step,
         self._graph.as_graph_def(add_shapes=True).SerializeToString(),
         run_meta.SerializeToString(), op_log.SerializeToString())
@@ -273,6 +274,10 @@ class Profiler(object):
     advise_pb.ParseFromString(
         print_mdl.Profile('advise'.encode('utf-8'), opts.SerializeToString()))
     return advise_pb
+
+  def _write_profile(self, filename):
+    """Writes the profile to a file."""
+    print_mdl.WriteProfile(filename)
 
 
 def profile(graph,

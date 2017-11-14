@@ -50,7 +50,7 @@ def _is_free_function(py_object, full_name, index):
   return True
 
 
-def write_docs(output_dir, parser_config, yaml_toc):
+def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -65,15 +65,15 @@ def write_docs(output_dir, parser_config, yaml_toc):
     parser_config: A `parser.ParserConfig` object, containing all the necessary
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
+    root_title: The title name for the root level index.md.
 
   Raises:
     ValueError: if `output_dir` is not an absolute path
   """
   # Make output_dir.
   if not os.path.isabs(output_dir):
-    raise ValueError(
-        "'output_dir' must be an absolute path.\n"
-        "    output_dir='%s'" % output_dir)
+    raise ValueError("'output_dir' must be an absolute path.\n"
+                     "    output_dir='%s'" % output_dir)
 
   try:
     if not os.path.exists(output_dir):
@@ -152,24 +152,41 @@ def write_docs(output_dir, parser_config, yaml_toc):
       # Generate header
       f.write('# Automatically generated file; please do not edit\ntoc:\n')
       for module in modules:
-        f.write('  - title: ' + module + '\n'
-                '    section:\n' + '    - title: Overview\n' +
-                '      path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[module]
-                + '\n')
+        indent_num = module.count('.')
+        # Don't list `tf.submodule` inside `tf`
+        indent_num = max(indent_num, 1)
+        indent = '  '*indent_num
+
+        if indent_num > 1:
+          # tf.contrib.baysflow.entropy will be under
+          #   tf.contrib->baysflow->entropy
+          title = module.split('.')[-1]
+        else:
+          title = module
+
+        header = [
+            '- title: ' + title,
+            '  section:',
+            '  - title: Overview',
+            '    path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[module]]
+        header = ''.join([indent+line+'\n' for line in header])
+        f.write(header)
 
         symbols_in_module = module_children.get(module, [])
         # Sort case-insensitive, if equal sort case sensitive (upper first)
         symbols_in_module.sort(key=lambda a: (a.upper(), a))
 
         for full_name in symbols_in_module:
-          f.write('    - title: ' + full_name[len(module) + 1:] + '\n'
-                  '      path: /TARGET_DOC_ROOT/VERSION/' +
-                  symbol_to_file[full_name] + '\n')
+          item = [
+              '  - title: ' + full_name[len(module) + 1:],
+              '    path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[full_name]]
+          item = ''.join([indent+line+'\n' for line in item])
+          f.write(item)
 
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
     f.write(
-        parser.generate_global_index('TensorFlow', parser_config.index,
+        parser.generate_global_index(root_title, parser_config.index,
                                      parser_config.reference_resolver))
 
 
@@ -193,8 +210,9 @@ def _get_default_do_not_descend_map():
       'tf': ['cli', 'lib', 'wrappers'],
       'tf.contrib': [
           'compiler',
-          'factorization',
           'grid_rnn',
+          # Block contrib.keras to de-clutter the docs
+          'keras',
           'labeled_tensor',
           'ndlstm',
           'quantization',
@@ -493,8 +511,8 @@ class DocGenerator(object):
         base_dir=base_dir)
 
   def run_extraction(self):
-    return extract(
-        self._py_modules, self._private_map, self._do_not_descend_map)
+    return extract(self._py_modules, self._private_map,
+                   self._do_not_descend_map)
 
   def build(self, flags):
     """Actually build the docs."""
@@ -502,6 +520,7 @@ class DocGenerator(object):
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
 
+    root_title = getattr(flags, 'root_title', 'TensorFlow')
     guide_index = _build_guide_index(
         os.path.join(flags.src_dir, 'api_guides/python'))
 
@@ -509,7 +528,11 @@ class DocGenerator(object):
                                             guide_index, flags.base_dir)
     output_dir = os.path.join(flags.output_dir, 'api_docs/python')
 
-    write_docs(output_dir, parser_config, yaml_toc=self.yaml_toc)
+    write_docs(
+        output_dir,
+        parser_config,
+        yaml_toc=self.yaml_toc,
+        root_title=root_title)
     _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
 
     parser_config.reference_resolver.log_errors()

@@ -312,11 +312,11 @@ void NcclManager::AddReduceSend(int num_devices, const string& key,
                                 perftools::gputools::StreamExecutor* executor,
                                 int gpu_device_id, EventMgr* event_mgr,
                                 perftools::gputools::Stream* tensor_stream,
-                                const Tensor* in_t, Tensor* temp_t,
+                                const Tensor* in_t,
                                 DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
-      new Participant(in_t, temp_t, event_mgr, tensor_stream, executor,
-                      gpu_device_id, std::move(done_callback)));
+      new Participant(in_t, nullptr /* out_t */, event_mgr, tensor_stream,
+                      executor, gpu_device_id, std::move(done_callback)));
   AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
                  kReduce, reduction_op);
 }
@@ -462,7 +462,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
       }
       case kReduce: {
         const void* sendbuff = p->in_t->tensor_data().data();
-        void* recvbuff = const_cast<char*>(p->out_t->tensor_data().data());
+        void* recvbuff = p->out_t
+                             ? const_cast<char*>(p->out_t->tensor_data().data())
+                             : nullptr;
         nccl_result = ncclReduce(sendbuff, recvbuff, p->in_t->NumElements(),
                                  data_type, collective->reduction_op,
                                  collective->root_rank, nccl_comm, *cu_stream);

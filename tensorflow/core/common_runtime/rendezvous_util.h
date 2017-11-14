@@ -24,17 +24,25 @@ namespace tensorflow {
 typedef std::map<string, Tensor> NamedTensors;
 typedef std::function<void(const Status&)> StatusCallback;
 
-// Uses `rendezvous` to send tensors in `in`.
-Status SendTensorsToRendezvous(Rendezvous* rendezvous,
-                               const Rendezvous::Args& args,
-                               const std::vector<string>& keys,
-                               gtl::ArraySlice<Tensor> tensors_to_send);
+// Uses `rendezvous` to send tensors in `tensors_to_send`. `device_context`
+// should be the DeviceContext associated with the source of the tensors.
+// `alloc_attrs` contains information about how the `tensors_to_send` are
+// allocated. `alloc_attrs` should either be {} or should match the length of
+// `keys`.
+Status SendTensorsToRendezvous(
+    Rendezvous* rendezvous, DeviceContext* device_context,
+    const std::vector<AllocatorAttributes>& alloc_attrs,
+    const std::vector<string>& keys, gtl::ArraySlice<Tensor> tensors_to_send);
 
-void RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
-                                    const Rendezvous::Args& args,
-                                    const std::vector<string>& keys,
-                                    std::vector<Tensor>* received_tensors,
-                                    const StatusCallback& done);
+// Uses `rendezvous` to obtain tensors. `device_context` should be the
+// DeviceContext associated with the receiving device. `alloc_attrs` contains
+// information as how to store the received tensors. Should be {} or match the
+// length of `keys`.
+void RecvOutputsFromRendezvousAsync(
+    Rendezvous* rendezvous, DeviceContext* device_context,
+    const std::vector<AllocatorAttributes>& alloc_attrs,
+    const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
+    const StatusCallback& done);
 
 Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out,
                                  const Rendezvous::Args& args);

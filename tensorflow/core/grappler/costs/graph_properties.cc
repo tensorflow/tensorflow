@@ -26,11 +26,224 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
+using shape_inference::Shape;
 using shape_inference::ShapeAndType;
 using shape_inference::ShapeHandle;
 
 namespace {
+
+template <typename Handle>
+struct HashHandle {
+  std::size_t operator()(const Handle& h) const { return h.Handle(); }
+};
+template <typename Handle>
+struct CompareHandle {
+  bool operator()(const Handle& h1, const Handle& h2) const {
+    return h1.SameHandle(h2);
+  }
+};
+
+template <typename Handle>
+struct HandleToObject {};
+template <>
+struct HandleToObject<ShapeHandle> {
+  typedef ShapeHandle Object;
+
+  static ShapeHandle Unknown() { return ShapeHandle(); }
+};
+
+template <>
+struct HandleToObject<DimensionHandle> {
+  typedef int64 Object;
+
+  static int64 Unknown() { return -1; }
+};
+
+template <typename Handle>
+struct Processor {};
+
+template <>
+struct Processor<ShapeHandle> {
+  // Extract the shape or dim denoted by the handle.
+  void ExtractValue(ShapeHandle h, ShapeHandle* result) { *result = h; }
+  // Merge the shapes or dims.
+  Status Merge(ShapeHandle h1, ShapeHandle h2, ShapeHandle* result) {
+    if (InferenceContext::RankKnown(*result)) {
+      // The result was initialized in a previous merge to a shape of known
+      // rank, make sure we preserve that information.
+      return Status::OK();
+    }
+    if (InferenceContext::RankKnown(h1)) {
+      *result = h1;
+    } else {
+      *result = h2;
+    }
+    return Status::OK();
+  }
+};
+
+template <>
+struct Processor<DimensionHandle> {
+  // Assign a negative id to unknown dimensions, starting at -2 (the -1 id
+  // reserved by TensorFlow).
+  void ExtractValue(DimensionHandle d, int64* result) {
+    if (!InferenceContext::ValueKnown(d)) {
+      *result = -counter;
+      counter++;
+    } else {
+      CHECK_LE(0, InferenceContext::Value(d));
+      *result = InferenceContext::Value(d);
+    }
+  }
+
+  // Merge the dimensions d1 and d2. Return the known shape if there is one,
+  // otherwise look for a symbolic shape. If there is no symbolic shape and no
+  // known shape, the shape if fully unknown so return -1.
+  Status Merge(DimensionHandle d1, DimensionHandle d2, int64* result) {
+    const int64 dim1 = InferenceContext::Value(d1);
+    const int64 dim2 = InferenceContext::Value(d2);
+
+    if (dim1 >= 0 && dim2 >= 0) {
+      CHECK_EQ(dim1, dim2);
+      return RefineDim(dim1, result);
+    } else if (dim1 >= 0 && dim2 < 0) {
+      return RefineDim(dim1, result);
+    } else if (dim1 < 0 && dim2 >= 0) {
+      return RefineDim(dim2, result);
+    } else if (dim1 < -1) {
+      return RefineDim(dim1, result);
+    } else if (dim2 < -1) {
+      return RefineDim(dim2, result);
+    } else {
+      CHECK_EQ(dim1, dim2);
+      CHECK_EQ(-1, dim1);
+      return RefineDim(-1, result);
+    }
+    return Status::OK();
+  }
+
+ private:
+  Status RefineDim(int64 dim, int64* result) {
+    if (*result >= 0) {
+      if (!(*result == dim || dim < 0)) {
+        return errors::InvalidArgument("Inconsistent dimensions detected");
+      }
+    } else if (dim >= 0) {
+      *result = dim;
+    } else if (dim < *result) {
+      *result = dim;
+    }
+    return Status::OK();
+  }
+
+  int64 counter = 2;
+};
+
+// Traditional Disjoint-Set datastructure with path compression.
+// (https://en.wikipedia.org/wiki/Disjoint-set_data_structure)
+template <typename Handle>
+class DisjointSet {
+ public:
+  DisjointSet(const Processor<Handle>& processor) : processor_(processor) {}
+  ~DisjointSet() {
+    for (auto rep : nodes_) {
+      delete rep.second;
+    }
+  }
+
+  Status Merge(Handle x, Handle y);
+  const typename HandleToObject<Handle>::Object GetMergedValue(Handle value);
+
+ private:
+  // All the handles that belong to the same set are part of the same tree, and
+  // utimately represented by the root of that tree.
+  struct Rep {
+    // Parent in the tree used to encode the set.
+    Rep* parent;
+    // Rank in the tree, used to figure out how to compress the path to the root
+    // of the tree.
+    int rank;
+    // The handle.
+    typename HandleToObject<Handle>::Object value;
+  };
+
+  // Create a new set for the value if none exists, or return its representative
+  // node otherwise.
+  Rep* Find(Handle value);
+
+ private:
+  Processor<Handle> processor_;
+  std::unordered_map<Handle, Rep*, HashHandle<Handle>, CompareHandle<Handle>>
+      nodes_;
+};
+
+template <typename Handle>
+const typename HandleToObject<Handle>::Object
+DisjointSet<Handle>::GetMergedValue(Handle value) {
+  Rep* rep = Find(value);
+  if (!rep) {
+    // We don't know anything about this handle.
+    return HandleToObject<Handle>::Unknown();
+  }
+  return rep->value;
+}
+
+template <typename Handle>
+Status DisjointSet<Handle>::Merge(Handle x, Handle y) {
+  Rep* x_root = Find(x);
+  Rep* y_root = Find(y);
+
+  // x and y are already in the same set
+  if (x_root == y_root) {
+    return Status::OK();
+  }
+  // x and y are not in same set, so we merge them
+  // Use the occasion to strengthen what we know about the handle by merging the
+  // information about the 2 subsets.
+  if (x_root->rank < y_root->rank) {
+    TF_RETURN_IF_ERROR(processor_.Merge(y, x, &y_root->value));
+    x_root->parent = y_root;
+  } else if (x_root->rank > y_root->rank) {
+    TF_RETURN_IF_ERROR(processor_.Merge(x, y, &x_root->value));
+    y_root->parent = x_root;
+  } else {
+    TF_RETURN_IF_ERROR(processor_.Merge(x, y, &x_root->value));
+    // Arbitrarily make one root the new parent
+    y_root->parent = x_root;
+    x_root->rank = x_root->rank + 1;
+  }
+  return Status::OK();
+}
+
+template <typename Handle>
+typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
+  auto it = nodes_.find(value);
+  if (it == nodes_.end()) {
+    // This is the first time we process this handle, create an entry for it.
+    Rep* node = new Rep;
+    node->parent = node;
+    node->rank = 0;
+    processor_.ExtractValue(value, &node->value);
+    nodes_[value] = node;
+    return node;
+  }
+  // Return the representative for the set, which is the root of the tree. Apply
+  // path compression to speedup future queries.
+  Rep* node = it->second;
+  Rep* root = node->parent;
+  while (root != root->parent) {
+    root = root->parent;
+  }
+  while (node->parent != root) {
+    Rep* next = node->parent;
+    node->parent = root;
+    node = next;
+  }
+  return root;
+}
 
 // If a Merge node has a NextIteration node as an input then that input will
 // try to forward an UnknownShape at graph construction time. However, the
@@ -116,7 +329,73 @@ Status PropagateShapes(ShapeRefiner* shape_refiner, bool relax,
   return Status::OK();
 }
 
+bool IsQueue(const Node& node) {
+  StringPiece type(node.type_string());
+  return type.ends_with("QueueV2");
+}
+
+// Returns true if the node is an Enter op AND its input is a Queue.
+bool IsEnterWithQueue(const Node& node) {
+  if (node.IsEnter()) {
+    const Node* in_node;
+    TF_CHECK_OK(node.input_node(0, &in_node));
+    return IsQueue(*in_node);
+  }
+  return false;
+}
+
 }  // namespace
+
+// Keep track of shapes and dimensions in a graph.
+// In particular, use disjoint sets to track equivalence between shapes and
+// dims, and consolidate the information globally.
+class SymbolicShapeManager {
+ public:
+  SymbolicShapeManager() : shapes_(shape_processor_), dims_(dim_processor_) {}
+
+  Status Merge(ShapeHandle s1, ShapeHandle s2) {
+    if (!s1.IsSet() || !s2.IsSet()) {
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(shapes_.Merge(s1, s2));
+    if (InferenceContext::Rank(s1) > 0 && InferenceContext::Rank(s2) > 0) {
+      CHECK_EQ(InferenceContext::Rank(s1), InferenceContext::Rank(s2));
+      for (int i = 0; i < InferenceContext::Rank(s1); ++i) {
+        TF_RETURN_IF_ERROR(dims_.Merge(InferenceContext::DimKnownRank(s1, i),
+                                       InferenceContext::DimKnownRank(s2, i)));
+      }
+    }
+    return Status::OK();
+  }
+  Status Merge(DimensionHandle d1, DimensionHandle d2) {
+    if (!d1.IsSet() || !d2.IsSet()) {
+      return Status::OK();
+    }
+    return dims_.Merge(d1, d2);
+  }
+
+  void AsTensorProperties(const ShapeHandle& shape, const DataType& type,
+                          OpInfo::TensorProperties* properties) {
+    properties->set_dtype(type);
+    ShapeHandle actual_shape = shapes_.GetMergedValue(shape);
+    if (!InferenceContext::RankKnown(actual_shape)) {
+      properties->mutable_shape()->set_unknown_rank(true);
+    } else {
+      for (int j = 0; j < InferenceContext::Rank(actual_shape); ++j) {
+        shape_inference::DimensionHandle dim =
+            InferenceContext::DimKnownRank(actual_shape, j);
+        int64 d = dims_.GetMergedValue(dim);
+        properties->mutable_shape()->add_dim()->set_size(d);
+      }
+    }
+  }
+
+ private:
+  Processor<ShapeHandle> shape_processor_;
+  DisjointSet<shape_inference::ShapeHandle> shapes_;
+  Processor<DimensionHandle> dim_processor_;
+  DisjointSet<shape_inference::DimensionHandle> dims_;
+};
 
 void GraphProperties::Relax(InferenceContext* c, ShapeHandle s0, ShapeHandle s1,
                             ShapeHandle* out) {
@@ -180,10 +459,18 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
 
 Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
+  FunctionLibraryDefinition function_library(graph.op_registry(),
+                                             item_.graph.library());
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   shape_refiner.set_disable_constant_propagation(true);
+  shape_refiner.set_function_library_for_shape_inference(&function_library);
   ImportGraphDefOptions options;
+  // Graph optimization happens at the late stage of graph execution,
+  // when colocation constraints are already validated previously and
+  // the device placement of nodes has also completed, so there
+  // is no need to validate colocation constraints again.
+  options.validate_colocation_constraints = false;
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
 
@@ -206,38 +493,6 @@ Status GraphProperties::InferStatically() {
       for (const Node* output : node->out_nodes()) {
         if (output->IsMerge()) {
           merge_nodes.insert(output);
-        }
-      }
-    }
-
-    // Infer output shape for Restore op.
-    if (node->op_def().name() == "Restore" ||
-        node->op_def().name() == "RestoreV2" ||
-        node->op_def().name() == "RestoreSlice") {
-      auto ctx = shape_refiner.GetContext(node);
-      for (const Edge* out_edge : node->out_edges()) {
-        const Node* output = out_edge->dst();
-        int output_idx = out_edge->src_output();
-        if (!ctx->FullyDefined(ctx->output(output_idx)) &&
-            output->op_def().name() == "Assign") {
-          if (!output->attrs().Find("validate_shape") ||
-              !output->attrs().Find("validate_shape")->b()) {
-            continue;
-          }
-          auto output_ctx = shape_refiner.GetContext(output);
-          if (output_ctx->FullyDefined(output_ctx->output(0))) {
-            ctx->set_output(output_idx, output_ctx->output(0));
-            output_ctx->MergeInput(1, output_ctx->output(0));
-          } else {
-            const Node* var;
-            TF_CHECK_OK(node->input_node(0, &var));
-            if (node->IsVariable()) {
-              auto var_ctx = shape_refiner.GetContext(var);
-              CHECK(var_ctx->FullyDefined(var_ctx->output(0)));
-              ctx->set_output(output_idx, var_ctx->output(0));
-              output_ctx->MergeInput(1, var_ctx->output(0));
-            }
-          }
         }
       }
     }
@@ -282,8 +537,8 @@ Status GraphProperties::InferStatically() {
       new_shapes = std::queue<const Node*>();
       for (const auto& resource_data : resources) {
         const Node* qnode = resource_data.first;
-        StringPiece type(qnode->type_string());
-        if (!type.ends_with("QueueV2") && !qnode->IsEnter()) {
+        // Proceed only if qnode is a queue or an Enter with queue input.
+        if (!IsQueue(*qnode) && !IsEnterWithQueue(*qnode)) {
           continue;
         }
         auto qctx = shape_refiner.GetContext(qnode);
@@ -373,62 +628,85 @@ Status GraphProperties::InferStatically() {
     } while (!done);
   }
 
+  std::unordered_map<const shape_inference::Dimension*, int> dim_ids;
+
+  // Track shapes globally accross the graph.
+  SymbolicShapeManager shape_manager;
+  bool found_error = false;
+  for (const Node* const node : graph.nodes()) {
+    auto node_ctx = shape_refiner.GetContext(node);
+    if (!node_ctx) {
+      continue;
+    }
+    for (const auto& merged_shapes : node_ctx->MergedShapes()) {
+      if (!shape_manager.Merge(merged_shapes.first, merged_shapes.second)
+               .ok()) {
+        found_error = true;
+        break;
+      }
+    }
+    for (const auto& merged_dims : node_ctx->MergedDims()) {
+      if (!shape_manager.Merge(merged_dims.first, merged_dims.second).ok()) {
+        found_error = true;
+        break;
+      }
+    }
+    if (found_error) {
+      // The shapes aren't consistent, we can't infer safely: discard all the
+      // information discovered so far.
+      shape_manager = SymbolicShapeManager();
+      break;
+    }
+  }
+
   for (const Node* const node : graph.nodes()) {
     VLOG(1) << "<Node> " << node->name();
     auto ctx = shape_refiner.GetContext(node);
     if (!ctx) {
       continue;
     }
-    CHECK_EQ(ctx->num_inputs(), node->num_inputs());
-    std::vector<OpInfo::TensorProperties> input_properties;
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OpInfo::TensorProperties properties;
-      properties.set_dtype(node->input_type(i));
-      ShapeHandle shp = ctx->input(i);
-      if (!ctx->RankKnown(shp)) {
-        properties.mutable_shape()->set_unknown_rank(true);
-      } else {
-        for (int j = 0; j < ctx->Rank(shp); ++j) {
-          shape_inference::DimensionHandle dim = ctx->Dim(shp, j);
-          int64 d = ctx->Value(dim);
-          properties.mutable_shape()->add_dim()->set_size(d);
-        }
-      }
-      input_properties.push_back(properties);
-    }
-    for (const auto& edge : node->in_edges()) {
-      if (!edge->src()->IsConstant()) {
-        continue;
-      }
-      const int input_id = edge->dst_input();
-      if (input_id >= input_properties.size()) {
-        continue;
-      }
-      const NodeDef& node = edge->src()->def();
-      const TensorProto& raw_val = node.attr().at("value").tensor();
-      *input_properties[input_id].mutable_value() = raw_val;
-    }
-    input_properties_[node->name()] = input_properties;
 
-    // TODO(bsteiner): share this code with the input processing above.
-    CHECK_EQ(ctx->num_outputs(), node->num_outputs());
-    std::vector<OpInfo::TensorProperties> output_properties;
-    for (int i = 0; i < ctx->num_outputs(); ++i) {
-      OpInfo::TensorProperties properties;
-      properties.set_dtype(node->output_type(i));
-      ShapeHandle shp = ctx->output(i);
-      if (!ctx->RankKnown(shp)) {
-        properties.mutable_shape()->set_unknown_rank(true);
-      } else {
-        for (int j = 0; j < ctx->Rank(shp); ++j) {
-          shape_inference::DimensionHandle dim = ctx->Dim(shp, j);
-          int64 d = ctx->Value(dim);
-          properties.mutable_shape()->add_dim()->set_size(d);
-        }
+    // Fill input properties.
+    {
+      CHECK_EQ(ctx->num_inputs(), node->num_inputs());
+      auto& input_properties = input_properties_[node->name()];
+
+      // Should always be empty, node names in graph are supposed to be unique.
+      CHECK_EQ(input_properties.size(), 0);
+
+      input_properties.resize(ctx->num_inputs());
+      for (int i = 0; i < ctx->num_inputs(); ++i) {
+        shape_manager.AsTensorProperties(ctx->input(i), node->input_type(i),
+                                         &input_properties[i]);
       }
-      output_properties.push_back(properties);
+      for (const auto& edge : node->in_edges()) {
+        if (!edge->src()->IsConstant()) {
+          continue;
+        }
+        const int input_id = edge->dst_input();
+        if (input_id >= input_properties.size()) {
+          continue;
+        }
+        const NodeDef& node = edge->src()->def();
+        const TensorProto& raw_val = node.attr().at("value").tensor();
+        *input_properties[input_id].mutable_value() = raw_val;
+      }
     }
-    output_properties_[node->name()] = output_properties;
+
+    // Fill output properties.
+    {
+      CHECK_EQ(ctx->num_outputs(), node->num_outputs());
+      auto& output_properties = output_properties_[node->name()];
+
+      // Should always be empty, node names in graph are supposed to be unique.
+      CHECK_EQ(output_properties.size(), 0);
+
+      output_properties.resize(ctx->num_outputs());
+      for (int i = 0; i < ctx->num_outputs(); ++i) {
+        shape_manager.AsTensorProperties(ctx->output(i), node->output_type(i),
+                                         &output_properties[i]);
+      }
+    }
   }
 
   return Status::OK();
@@ -443,6 +721,20 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
       cluster->Run(item_.graph, item_.feed, item_.fetch, &metadata));
 
   return InferFromCostGraph(metadata.cost_graph());
+}
+
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
+  *output_graph_def = item_.graph;
+  for (int i = 0; i < output_graph_def->node_size(); i++) {
+    auto node = output_graph_def->mutable_node(i);
+    AttrValue attr_output_shape;
+    auto tensor_properties = GetOutputProperties(node->name());
+    for (const auto& tensor_property : tensor_properties) {
+      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+    }
+    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
+  }
+  return Status::OK();
 }
 
 Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {

@@ -30,4 +30,11 @@ Safe_TF_TensorPtr make_safe(TF_Tensor* tensor) {
   return Safe_TF_TensorPtr(tensor, TF_DeleteTensor);
 }
 
+Safe_TFE_TensorHandlePtr make_safe(TFE_TensorHandle* handle) {
+  return Safe_TFE_TensorHandlePtr(handle, TFE_DeleteTensorHandle);
+}
+
+Safe_TF_StatusPtr make_safe(TF_Status* status) {
+  return Safe_TF_StatusPtr(status, TF_DeleteStatus);
+}
 }  // namespace tensorflow

@@ -25,7 +25,15 @@ namespace tensorflow {
 
 void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input);
 
+// Changes an attr value in the node_def Protocol Buffer and sets a status upon
+// completion.
+void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+             TF_Buffer* attr_value_proto, TF_Status* status);
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
+
+void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
+                TF_Status* status);
 
 }  // namespace tensorflow
 

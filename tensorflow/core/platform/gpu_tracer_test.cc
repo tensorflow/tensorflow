@@ -195,6 +195,7 @@ TEST_F(GPUTracerTest, TraceToStepStatsCollector) {
   StepStats stats;
   StepStatsCollector collector(&stats);
   TF_ASSERT_OK(tracer->Collect(&collector));
+  collector.Finalize();
   // Depending on whether this runs on CPU or GPU, we will have a
   // different number of devices.
   EXPECT_GE(stats.dev_stats_size(), 1);

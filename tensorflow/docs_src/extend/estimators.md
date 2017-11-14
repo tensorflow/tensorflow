@@ -44,7 +44,7 @@ feature columns, input functions, and `train()`/`evaluate()`/`predict()`
 operations. If you've never used tf.estimator before, or need a refresher,
 you should first review the following tutorials:
 
-*   @{$estimator$tf.estimator Quickstart}: Quick introduction to
+*   @{$get_started/estimator$tf.estimator Quickstart}: Quick introduction to
     training a neural network using tf.estimator.
 *   @{$wide$TensorFlow Linear Model Tutorial}: Introduction to
     feature columns, and an overview on building a linear classifier in

@@ -45,6 +45,10 @@ class Client {
   // * If execution_options is not nullptr, these options are passed to the
   //   service to affect how it compiles our computation.  (The pointer does not
   //   need to live beyond this call.)
+  // * If execution_options.device_handles is not empty, the computation is
+  //   executed on the devices associated with the handles by partitioning the
+  //   computation based on the attached sharding attributes. Otherwise, a
+  //   device is chosen by the service.
   // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
   //   will be filled with profile data from the execution.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
@@ -54,12 +58,13 @@ class Client {
       ExecutionProfile* execution_profile = nullptr);
 
   // A struct to represent a computation instance to be executed.
-  // * If device_handle is not nullptr, the computation is executed on a device
-  //   associated with the handle. Otherwise, a device is chosen by the service.
+  // * If execution_options.device_handles is not empty, the computation is
+  //   executed on the devices associated with the handles by partitioning the
+  //   computation based on the attached sharding attributes. Otherwise, a
+  //   device is chosen by the service.
   struct ComputationInstance {
     const Computation& computation;
     std::vector<GlobalData*> arguments;
-    const DeviceHandle* device_handle;
     ExecutionOptions execution_options;
     ExecutionProfile* execution_profile;
   };

@@ -328,9 +328,9 @@ placed between each of the entries in that dimension, increasing the size of the
 array. The holes are filled with a no-op value, which for convolution means
 zeroes.
 
-Dilation of the rhs is also called atrous convolution. For more details, see the
-@{tf.nn.atrous_conv2d}. Dilation of the lhs is
-also called deconvolution.
+Dilation of the rhs is also called atrous convolution. For more details, see
+@{tf.nn.atrous_conv2d}. Dilation of the lhs is also called transposed
+convolution. For more details, see @{tf.nn.conv2d_transpose}.
 
 The output shape has these dimensions, in this order:
 
@@ -547,7 +547,7 @@ floating-point types.
 <b> `Op(lhs, rhs)` </b>
 
 Where `Op` is one of `Eq` (equal-to), `Ne` (not equal-to), `Ge`
-(greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Le`
+(greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Lt`
 (less-than).
 
 Arguments | Type                    | Semantics
@@ -844,6 +844,7 @@ See also
 :                   :                          : T_1, ..., T_{N + M -1} -> S`  :
 :                   :                          : with N parameters of type T   :
 :                   :                          : and M of arbitrary type       :
+| `dimensions`       | `int64` array           | array of map dimensions    |
 | `static_operands` | sequence of M            | M arrays of arbitrary type    |
 :                   : `ComputationDataHandle`s :                               :
 
@@ -898,6 +899,95 @@ are all 0. Figure below shows examples of different `edge_padding` and
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">
+</div>
+
+## Recv
+
+See also
+[`ComputationBuilder::Recv`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Recv(shape, channel_handle)` </b>
+
+| Arguments        | Type            | Semantics                            |
+| ---------------- | --------------- | ------------------------------------ |
+| `shape`          | `Shape`         | shape of the data to receive         |
+| `channel_handle` | `ChannelHandle` | unique identifier for each send/recv pair |
+
+Receives data of the given shape from a `Send` instruction in another
+computation that shares the same channel handle. Returns a
+ComputationDataHandle for the received data.
+
+The client API of `Recv` operation represents synchronous communication.
+However, the instruction is internally decomposed into 2 HLO instructions
+(`Recv` and `RecvDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+
+<b>`Recv(const Shape& shape, int64 channel_id)`</b>
+
+Allocates resources required to receive data from a `Send` instruction with the
+same channel_id. Returns a context for the allocated resources, which is used
+by a following `RecvDone` instruction to wait for the completion of the data
+transfer. The context is a tuple of {receive buffer (shape), request identifier
+(U32)} and it can only be used by a `RecvDone` instruction.
+
+<b> `RecvDone(HloInstruction context)` </b>
+
+Given a context created by a `Recv` instruction, waits for the data transfer to
+complete and returns the received data.
+
+## Send
+
+See also
+[`ComputationBuilder::Send`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Send(operand, channel_handle)` </b>
+
+| Arguments        | Type                    | Semantics                        |
+| ---------------- | ----------------------- | -------------------------------- |
+| `operand`        | `ComputationDataHandle` | data to send (array of type T)   |
+| `channel_handle` | `ChannelHandle`         | unique identifier for each send/recv pair |
+
+Sends the given operand data to a `Recv` instruction in another computation
+that shares the same channel handle. Does not return any data.
+
+Similar to the `Recv` operation, the client API of `Send` operation represents
+synchronous communication, and is internally decomposed into 2 HLO instructions
+(`Send` and `SendDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+
+<b>`Send(HloInstruction operand, int64 channel_id)`</b>
+
+Initiates an asynchronous transfer of the operand to the resources allocated by
+the `Recv` instruction with the same channel id. Returns a context, which is
+used by a following `SendDone` instruction to wait for the completion of the
+data transfer. The context is a tuple of {operand (shape), request identifier
+(U32)} and it can only be used by a `SendDone` instruction.
+
+<b> `SendDone(HloInstruction context)` </b>
+
+Given a context created by a `Send` instruction, waits for the data transfer to
+complete.  The instruction does not return any data.
+
+<b> Scheduling of channel instructions </b>
+
+The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
+`Send`, `SendDone`) is as below.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:70%" src="../../images/send_recv_order.png">
+</div>
+
+* `Recv` happens before `Send`
+* `Send` happens before `RecvDone`
+* `Recv` happens before `RecvDone`
+* `Send` happens before `SendDone`
+
+When the backend compilers generate a linear schedule for each computation that
+communicates via channel instructions, there must not be cycles across the
+computations. For example, below schedules lead to deadlocks.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/send_recv_schedule.png">
 </div>
 
 ## Reduce
@@ -1018,6 +1108,41 @@ We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
 the 1D array `| 20 28 36 |`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
+
+## ReducePrecision
+
+See also
+[`ComputationBuilder::ReducePrecision`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Models the effect of converting floating-point values to a lower-precision
+format (such as IEEE-FP16) and back to the original format.  The number of
+exponent and mantissa bits in the lower-precision format can be specified
+arbitrarily, although all bit sizes may not be supported on all hardware
+implementations.
+
+<b> `ReducePrecision(operand, mantissa_bits, exponent_bits)` </b>
+
+| Arguments           | Type                    | Semantics                    |
+| ------------------- | ----------------------- | ---------------------------- |
+| `operand`           | `ComputationDataHandle` | array of floating-point type |
+:                     :                         : `T`.                         :
+| `exponent_bits`     | `int32`                 | number of exponent bits in   |
+:                     :                         : lower-precision format       :
+| `mantissa_bits`     | `int32`                 | number of mantissa bits in   |
+:                     :                         : lower-precision format       :
+
+The result is an array of type `T`.  The input values are rounded to the nearest
+value representable with the given number of mantissa bits (using "ties to even"
+semantics), and any values that exceed the range specified by the number of
+exponent bits are clamped to positive or negative infinity.  `NaN` values are
+retained, although they may be converted to canonical `NaN` values.
+
+The lower-precision format must have at least one exponent bit (in order to
+distinguish a zero value from an infinity, since both have a zero mantissa), and
+must have a non-negative number of mantissa bits.  The number of exponent or
+mantissa bits may exceed the corresponding value for type `T`; the corresponding
+portion of the conversion is then simply a no-op.
+
 
 ## ReduceWindow
 

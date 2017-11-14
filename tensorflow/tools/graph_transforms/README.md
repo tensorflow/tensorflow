@@ -385,7 +385,12 @@ input is collapsed down into a simple constant.
 
 ### fold_constants
 
-Args: None \
+Args:
+
+*   clear_output_shapes: Clears tensor shape information saved as attributes.
+    Some older graphs containes out-of-date information and may cause import
+    errors. Defaults to true.
+
 Prerequisites: None
 
 Looks for any sub-graphs within the model that always evaluate to constant

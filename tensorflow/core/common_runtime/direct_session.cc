@@ -164,7 +164,7 @@ class DirectSessionFactory : public SessionFactory {
       EnableCPUAllocatorFullStats(true);
     }
     std::vector<Device*> devices;
-    Status s = DeviceFactory::AddDevices(
+    const Status s = DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices);
     if (!s.ok()) {
       LOG(ERROR) << s;
@@ -279,7 +279,7 @@ DirectSession::DirectSession(const SessionOptions& options,
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
-  Status status =
+  const Status status =
       ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
   if (!status.ok()) {
     LOG(ERROR) << status.error_message();
@@ -497,7 +497,7 @@ Status DirectSession::Run(const RunOptions& run_options,
       feed_args[executors_and_keys->input_name_to_index[it.first]] = it.second;
     }
   }
-  Status s = call_frame.SetArgs(feed_args);
+  const Status s = call_frame.SetArgs(feed_args);
   if (errors::IsInternal(s)) {
     return errors::InvalidArgument(s.error_message());
   } else if (!s.ok()) {
@@ -566,9 +566,9 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   // Register this step with session's cancellation manager, so that
   // `Session::Close()` will cancel the step.
-  CancellationToken cancellation_token =
+  const CancellationToken cancellation_token =
       cancellation_manager_->get_cancellation_token();
-  bool already_cancelled = !cancellation_manager_->RegisterCallback(
+  const bool already_cancelled = !cancellation_manager_->RegisterCallback(
       cancellation_token, [&step_cancellation_manager]() {
         step_cancellation_manager.StartCancel();
       });
@@ -613,7 +613,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Receive outputs.
   if (outputs) {
     std::vector<Tensor> sorted_outputs;
-    Status s = call_frame.ConsumeRetvals(&sorted_outputs);
+    const Status s = call_frame.ConsumeRetvals(&sorted_outputs);
     if (errors::IsInternal(s)) {
       return errors::InvalidArgument(s.error_message());
     } else if (!s.ok()) {
@@ -652,6 +652,9 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Save the output tensors of this run we choose to keep.
   TF_RETURN_IF_ERROR(
       run_state.tensor_store.SaveTensors(output_names, &session_state_));
+  if (args.stats_collector) {
+    args.stats_collector->Finalize();
+  }
 
   // Build and return the cost model as instructed.
   mutex_lock l(executor_lock_);
@@ -1505,7 +1508,7 @@ bool DirectSession::RunState::PendingDone() const {
 void DirectSession::WaitForNotification(RunState* run_state,
                                         CancellationManager* cm,
                                         int64 timeout_in_ms) {
-  Status status =
+  const Status status =
       WaitForNotification(&run_state->executors_done, timeout_in_ms);
   if (!status.ok()) {
     {
@@ -1523,8 +1526,9 @@ void DirectSession::WaitForNotification(RunState* run_state,
 ::tensorflow::Status DirectSession::WaitForNotification(
     Notification* notification, int64 timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    int64 timeout_in_us = timeout_in_ms * 1000;
-    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_us);
+    const int64 timeout_in_us = timeout_in_ms * 1000;
+    const bool notified =
+        WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
       return Status(error::DEADLINE_EXCEEDED,
                     "Timed out waiting for notification");

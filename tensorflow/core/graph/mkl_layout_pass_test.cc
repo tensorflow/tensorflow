@@ -16,7 +16,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/graph/mkl_layout_pass.h"
-#include "tensorflow/core/util/mkl_util.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 
 #include <algorithm>
 #include <string>
@@ -39,7 +39,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-const char kCPUDevice[] = "/job:a/replica:0/task:0/cpu:0";
+const char kCPUDevice[] = "/job:a/replica:0/task:0/device:CPU:0";
 const char kGPUDevice[] = "/job:a/replica:0/task:0/device:GPU:0";
 
 static void InitGraph(const string& s, Graph* graph,

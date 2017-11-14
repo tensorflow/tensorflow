@@ -24,7 +24,7 @@ from tensorflow.contrib.opt.python.training.external_optimizer import *
 from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
 from tensorflow.contrib.opt.python.training.nadam_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
-from tensorflow.contrib.opt.python.training.nadam_optimizer import *
+from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
 # pylint: enable=wildcard-import
@@ -39,6 +39,7 @@ _allowed_symbols = [
     'ScipyOptimizerInterface', 'VariableClippingOptimizer',
     'MultitaskOptimizerWrapper', 'clip_gradients_by_global_norm',
     'ElasticAverageOptimizer', 'ElasticAverageCustomGetter'
+
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

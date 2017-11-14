@@ -23,17 +23,20 @@ namespace gputools {
 namespace dnn {
 
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
@@ -202,7 +205,8 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
 // -- AlgorithmConfig
 
 string AlgorithmConfig::ToString() const {
-  return port::StrCat(algorithm_, ", ", algorithm_no_scratch_);
+  return port::StrCat(algorithm_.algo_id(), ", ",
+                      algorithm_no_scratch_.algo_id());
 }
 
 // -- BatchDescriptor
@@ -420,6 +424,7 @@ int64 FilterDescriptor::ComputeWeightCount() const {
 ConvolutionDescriptor::ConvolutionDescriptor(int ndims)
     : zero_padding_(ndims, 0),
       filter_strides_(ndims, 1),
+      dilation_rates_(ndims, 1),
       pad_alignment_(PadAlignment::kDefault),
       ndims_(ndims) {}
 
@@ -431,15 +436,18 @@ ConvolutionDescriptor::~ConvolutionDescriptor() {}
 string ConvolutionDescriptor::ToString() const {
   string padding;
   string strides;
+  string dilations;
   for (int i = 0; i < ndims_; i++) {
     port::Appendf(&padding, "%lld ", zero_padding_[i]);
     port::Appendf(&strides, "%lld ", filter_strides_[i]);
+    port::Appendf(&dilations, "%lld ", dilation_rates_[i]);
   }
 
-  return port::Printf("{zero_padding: %s pad_alignment: %s filter_strides: %s}",
-                      padding.c_str(),
-                      PadAlignmentString(pad_alignment_).c_str(),
-                      strides.c_str());
+  return port::Printf(
+      "{zero_padding: %s pad_alignment: %s filter_strides: %s dilation_rates: "
+      "%s}",
+      padding.c_str(), PadAlignmentString(pad_alignment_).c_str(),
+      strides.c_str(), dilations.c_str());
 }
 
 string ConvolutionDescriptor::ToShortString() const {
@@ -451,6 +459,9 @@ string ConvolutionDescriptor::ToShortString() const {
   for (int i = 0; i < ndims_; i++) {
     port::Appendf(&desc, "_s%d:%lld", i, filter_strides_[i]);
   }
+  for (int i = 0; i < ndims_; i++) {
+    port::Appendf(&desc, "_d%d:%lld", i, dilation_rates_[i]);
+  }
   return desc;
 }
 
@@ -461,7 +472,8 @@ PoolingDescriptor::PoolingDescriptor(int ndims)
       ndims_(ndims),
       window_(ndims, 0),
       padding_(ndims, 0),
-      strides_(ndims, 1) {}
+      strides_(ndims, 1),
+      propagate_nans_(false) {}
 
 PoolingDescriptor::PoolingDescriptor() : PoolingDescriptor(/*ndims=*/2) {}
 
@@ -471,6 +483,7 @@ void PoolingDescriptor::CloneFrom(const PoolingDescriptor& other) {
   window_ = other.window_;
   padding_ = other.padding_;
   strides_ = other.strides_;
+  propagate_nans_ = other.propagate_nans_;
 }
 
 string PoolingDescriptor::ToString() const {
@@ -484,9 +497,12 @@ string PoolingDescriptor::ToString() const {
     port::Appendf(&padding, "%lld", padding_[i]);
   }
 
-  return port::Printf("{mode: %s window: %s strides: %s padding: %s}",
-                      mode_string, window.c_str(), strides.c_str(),
-                      padding.c_str());
+  const char* propagate_string = propagate_nans_ ? "Yes" : "No";
+
+  return port::Printf(
+      "{mode: %s window: %s strides: %s padding: %s propagate NaNs: %s}",
+      mode_string, window.c_str(), strides.c_str(), padding.c_str(),
+      propagate_string);
 }
 
 string PoolingDescriptor::ToShortString() const {
@@ -497,7 +513,8 @@ string PoolingDescriptor::ToShortString() const {
     port::Appendf(&padding, "_p%d:%lld", i, padding_[i]);
   }
   return port::StrCat(mode_ == dnn::PoolingMode::kMaximum ? "max" : "avg",
-                      window, strides, padding);
+                      window, strides, padding,
+                      propagate_nans_ ? "propagate_nans" : "ignore_nans");
 }
 
 // -- NormalizeDescriptor

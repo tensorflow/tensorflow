@@ -280,9 +280,54 @@ class Template(object):
         return result
 
   @property
+  def name(self):
+    """Returns the name given to this Template."""
+    return self._name
+
+  @property
+  def func(self):
+    """Returns the func given to this Template."""
+    return self._func
+
+  @property
   def variable_scope(self):
     """Returns the variable scope object created by this Template."""
     return self._variable_scope
+
+  @property
+  def variable_scope_name(self):
+    """Returns the variable scope name created by this Template."""
+    if self._variable_scope:
+      name = self._variable_scope.name
+      # To prevent partial matches on the scope_name, we add '/' at the end.
+      return name if name[-1] == "/" else name + "/"
+
+  @property
+  def trainable_variables(self):
+    """Returns the list of trainable variables created by the Template."""
+    if self._variables_created:
+      return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
+                                self.variable_scope_name)
+    else:
+      return []
+
+  @property
+  def global_variables(self):
+    """Returns the list of global variables created by the Template."""
+    if self._variables_created:
+      return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
+                                self.variable_scope_name)
+    else:
+      return []
+
+  @property
+  def local_variables(self):
+    """Returns the list of global variables created by the Template."""
+    if self._variables_created:
+      return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES,
+                                self.variable_scope_name)
+    else:
+      return []
 
   @property
   @deprecated(

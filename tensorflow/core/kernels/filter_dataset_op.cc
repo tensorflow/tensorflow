@@ -148,7 +148,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
   };
 
  private:
-  const NameAttrList* func_;
+  NameAttrList func_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),

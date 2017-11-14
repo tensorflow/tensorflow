@@ -272,7 +272,7 @@ train = optimizer.minimize(loss)
 ```
 
 ```python
-sess.run(init) # reset values to incorrect defaults.
+sess.run(init) # reset variables to incorrect defaults.
 for i in range(1000):
   sess.run(train, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]})
 
@@ -317,7 +317,7 @@ y_train = [0, -1, -2, -3]
 # training loop
 init = tf.global_variables_initializer()
 sess = tf.Session()
-sess.run(init) # reset values to wrong
+sess.run(init) # initialize variables with incorrect defaults.
 for i in range(1000):
   sess.run(train, {x: x_train, y: y_train})
 
@@ -383,7 +383,7 @@ train_input_fn = tf.estimator.inputs.numpy_input_fn(
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
 
-# We can invoke 1000 training steps by invoking the  method and passing the
+# We can invoke 1000 training steps by invoking the method and passing the
 # training data set.
 estimator.train(input_fn=input_fn, steps=1000)
 
@@ -453,7 +453,7 @@ input_fn = tf.estimator.inputs.numpy_input_fn(
 train_input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
+    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1, shuffle=False)
 
 # train
 estimator.train(input_fn=input_fn, steps=1000)

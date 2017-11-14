@@ -54,6 +54,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitFloatUnaryOp(
       const HloInstruction* op, llvm::Value* operand_value) const override;
 
+  StatusOr<llvm::Value*> EmitComplexUnaryOp(
+      const HloInstruction* op, llvm::Value* operand_value) const override;
+
   StatusOr<llvm::Value*> EmitFloatBinaryOp(
       const HloInstruction* op, llvm::Value* lhs_value,
       llvm::Value* rhs_value) const override;

@@ -374,6 +374,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     """
     return self._opt.get_slot(*args, **kwargs)
 
+  def variables(self):
+    """Fetches a list of optimizer variables in the default graph.
+
+    This wraps `variables()` from the actual optimizer. It does not include
+    the `SyncReplicasOptimizer`'s local step.
+
+    Returns:
+      A list of variables.
+    """
+    return self._opt.variables()
+
   def get_slot_names(self, *args, **kwargs):
     """Return a list of the names of slots created by the `Optimizer`.
 

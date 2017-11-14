@@ -88,25 +88,25 @@ function print_usage {
 }
 
 
+# Build nvidia-cuba-clang base image for GPU image.
+# For CPU the `clang-debian8` from Cloud Launcher will be used directly:
+# https://console.cloud.google.com/launcher/details/google/clang-debian8?filter=category:developer-tools&q=clang
 function build_base_image {
-  if [ "$cpu_build" = true ] ; then
-    base_image="debian8"
-  else
+  if [ "$gpu_build" = true ] ; then
     base_image="nvidia-cuda"
+    # Run a 2-stage build for clang base image, see
+    # https://github.com/llvm-mirror/llvm/blob/master/docs/Docker.rst
+    $base_image_build_script \
+      --source $base_image \
+      --branch branches/google/stable \
+      --docker-repository ${base_image}-clang --docker-tag "latest" \
+      -p clang -i stage2-install-clang -i stage2-install-clang-headers \
+      -- \
+      -DLLVM_TARGETS_TO_BUILD=Native -DCMAKE_BUILD_TYPE=Release \
+      -DBOOTSTRAP_CMAKE_BUILD_TYPE=Release \
+      -DCLANG_ENABLE_BOOTSTRAP=ON \
+      -DCLANG_BOOTSTRAP_TARGETS="install-clang;install-clang-headers"
   fi
-
-  # Run a 2-stage build for clang base image, see
-  # https://github.com/llvm-mirror/llvm/blob/master/docs/Docker.rst
-  $base_image_build_script \
-    --source $base_image \
-    --branch branches/google/stable \
-    --docker-repository ${base_image}-clang --docker-tag "latest" \
-    -p clang -i stage2-install-clang -i stage2-install-clang-headers \
-    -- \
-    -DLLVM_TARGETS_TO_BUILD=Native -DCMAKE_BUILD_TYPE=Release \
-    -DBOOTSTRAP_CMAKE_BUILD_TYPE=Release \
-    -DCLANG_ENABLE_BOOTSTRAP=ON \
-    -DCLANG_BOOTSTRAP_TARGETS="install-clang;install-clang-headers"
 }
 
 

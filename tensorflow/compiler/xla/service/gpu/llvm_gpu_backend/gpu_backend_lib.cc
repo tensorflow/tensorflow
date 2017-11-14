@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace xla {
 namespace gpu {
@@ -76,10 +77,11 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
   // Since CUDA 9.0, all GPU versions are included in a single file
   const char* unified_libdevice_filename = "libdevice.10.bc";
   std::vector<string> unified_libdevice_files;
-  tensorflow::Env::Default()->GetMatchingPaths(
+  const tensorflow::Status status = 
+    tensorflow::Env::Default()->GetMatchingPaths(
       tensorflow::io::JoinPath(libdevice_dir_path, unified_libdevice_filename),
       &unified_libdevice_files);
-  if( unified_libdevice_files.size() == 1 ) {
+  if (status.ok() && unified_libdevice_files.size() == 1) {
     return unified_libdevice_filename;
   }
   // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU
@@ -244,8 +246,8 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 // Emits the given module to a bit code file.
 void EmitBitcodeToFile(const Module& module, tensorflow::StringPiece filename) {
   std::error_code error_code;
-  llvm::tool_output_file outfile(filename.ToString().c_str(), error_code,
-                                 llvm::sys::fs::F_None);
+  llvm::ToolOutputFile outfile(filename.ToString().c_str(), error_code,
+                               llvm::sys::fs::F_None);
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }
@@ -341,6 +343,13 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
                                     std::pair<int, int> compute_capability,
                                     const HloModuleConfig& hlo_module_config,
                                     const string& libdevice_dir_path) {
+  // If the module has no functions or globals, there's nothing to compile. Just
+  // return an empty string.
+  if (module->empty() && module->global_empty()) {
+    VLOG(2) << "Module '" << llvm_ir::AsString(module->getName())
+            << "' is empty. Skipping compilation.";
+    return string();
+  }
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
   TF_RETURN_IF_ERROR(
@@ -480,6 +489,9 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
   string ptx;
   {
+    tensorflow::port::Tracing::TraceMe annotation(
+        "Compiling IR", llvm_ir::AsString(module->getName()),
+        /*is_expensive=*/true);
     ScopedLoggingTimer compilation_timer(
         "Compile module " + llvm_ir::AsString(module->getName()),
         /*vlog_level=*/2);

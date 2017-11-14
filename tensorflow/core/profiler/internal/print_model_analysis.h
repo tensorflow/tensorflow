@@ -35,8 +35,8 @@ bool NewProfiler(const string* graph, const string* op_log);
 
 void DeleteProfiler();
 
-void AddStep(int64 step, const string* graph, const string* run_meta,
-             const string* op_log);
+double AddStep(int64 step, const string* graph, const string* run_meta,
+               const string* op_log);
 
 // Write the profiler's profile to a proto buffer.
 void WriteProfile(const string* filename);

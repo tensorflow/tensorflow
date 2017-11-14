@@ -57,24 +57,33 @@ class FuncRegistry(object):
     self._funcs.pop(token, None)
 
   @staticmethod
-  def _convert(value):
+  def _convert(value, dtype=None):
     """Converts an arg to numpy, avoiding dangerous string and unicode dtypes.
 
     Numpy pads with zeros when using string and unicode dtypes if different
     components of a tensor have different lengths.  This is bad: ignoring the
     padding is wrong for text data, and removing the padding is wrong for binary
     data.  To avoid this bug, we redo the conversion using an object dtype.
+    Additionally, we convert unicode strings to (byte-)strings for Python3
+    compatibility.
 
     Args:
       value: Value to convert to a numpy array.
+      dtype: (Optional.) Desired NumPy type for the returned value.
 
     Returns:
       A numpy array.
     """
-    result = np.asarray(value, order="C")
-    if result.dtype.char in "SU" and result is not value:
+    result = np.asarray(value, dtype=dtype, order="C")
+    if result.dtype.char == "S" and result is not value:
       return np.asarray(value, order="C", dtype=object)
-    return result
+    elif result.dtype.char == "U" and result is not value:
+      value = np.vectorize(lambda x: x.encode())(value)
+      return np.asarray(value, order="C", dtype=object)
+    elif result.dtype.char == "U":
+      return result.astype(np.bytes_)
+    else:
+      return result
 
   def __call__(self, token, args):
     """Calls the registered function for `token` with args."""

@@ -30,5 +30,10 @@ string tensor.
 ## Conversion
 
 *   @{tf.as_string}
+*   @{tf.string_to_number}
+
+*   @{tf.decode_raw}
+*   @{tf.decode_csv}
+
 *   @{tf.encode_base64}
 *   @{tf.decode_base64}

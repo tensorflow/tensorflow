@@ -196,7 +196,7 @@ class Dirichlet(distribution.Distribution):
         alpha=self.concentration,
         dtype=self.dtype,
         seed=seed)
-    return gamma_sample / math_ops.reduce_sum(gamma_sample, -1, keep_dims=True)
+    return gamma_sample / math_ops.reduce_sum(gamma_sample, -1, keepdims=True)
 
   @distribution_util.AppendDocstring(_dirichlet_sample_note)
   def _log_prob(self, x):

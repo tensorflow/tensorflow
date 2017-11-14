@@ -106,7 +106,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     except AttributeError:
       output_shape = 'multiple'
     connections = []
-    for node in layer.inbound_nodes:
+    for node in layer._inbound_nodes:  # pylint: disable=protected-access
       if relevant_nodes and node not in relevant_nodes:
         # node is not part of the current network
         continue

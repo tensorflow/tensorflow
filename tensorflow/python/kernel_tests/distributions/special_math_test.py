@@ -24,6 +24,7 @@ import importlib
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import variables
@@ -89,6 +90,21 @@ class NdtriTest(test.TestCase):
       expected_x = special.ndtri(p)
       x = special_math.ndtri(p)
       self.assertAllClose(expected_x, x.eval(), atol=0.)
+
+  def testNdtriDynamicShape(self):
+    """Verifies that ndtri computation is correct."""
+    with self.test_session() as sess:
+      if not special:
+        return
+
+      p = array_ops.placeholder(np.float32)
+      p_ = np.linspace(0., 1.0, 50).astype(np.float32)
+
+      x = special_math.ndtri(p)
+      x_ = sess.run(x, feed_dict={p: p_})
+
+      expected_x_ = special.ndtri(p_)
+      self.assertAllClose(expected_x_, x_, atol=0.)
 
   def _baseNdtriFiniteGradientTest(self, dtype):
     """Verifies that ndtri has finite gradients at interesting points."""

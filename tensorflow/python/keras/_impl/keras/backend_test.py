@@ -853,44 +853,44 @@ class BackendNNOpsTest(test.TestCase):
         {'go_backwards': False, 'mask': mask},
         {'go_backwards': False, 'mask': mask, 'unroll': True},
     ]
+    with self.test_session():
+      for (i, kwargs) in enumerate(kwargs_list):
+        last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
+                                                             initial_states,
+                                                             **kwargs)
+        last_output_list[i].append(keras.backend.eval(last_output))
+        outputs_list[i].append(keras.backend.eval(outputs))
+        self.assertEqual(len(new_states), 1)
+        state_list[i].append(keras.backend.eval(new_states[0]))
 
-    for (i, kwargs) in enumerate(kwargs_list):
-      last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
-                                                           initial_states,
-                                                           **kwargs)
-      last_output_list[i].append(keras.backend.eval(last_output))
-      outputs_list[i].append(keras.backend.eval(outputs))
-      self.assertEqual(len(new_states), 1)
-      state_list[i].append(keras.backend.eval(new_states[0]))
+      def assert_list_pairwise(z_list, atol=1e-05):
+        for (z1, z2) in zip(z_list[1:], z_list[:-1]):
+          self.assertAllClose(z1, z2, atol=atol)
 
-    def assert_list_pairwise(z_list, atol=1e-05):
-      for (z1, z2) in zip(z_list[1:], z_list[:-1]):
-        self.assertAllClose(z1, z2, atol=atol)
+      assert_list_pairwise(last_output_list[0], atol=1e-04)
+      assert_list_pairwise(outputs_list[0], atol=1e-04)
+      assert_list_pairwise(state_list[0], atol=1e-04)
+      assert_list_pairwise(last_output_list[2], atol=1e-04)
+      assert_list_pairwise(outputs_list[2], atol=1e-04)
+      assert_list_pairwise(state_list[2], atol=1e-04)
 
-    assert_list_pairwise(last_output_list[0], atol=1e-04)
-    assert_list_pairwise(outputs_list[0], atol=1e-04)
-    assert_list_pairwise(state_list[0], atol=1e-04)
-    assert_list_pairwise(last_output_list[2], atol=1e-04)
-    assert_list_pairwise(outputs_list[2], atol=1e-04)
-    assert_list_pairwise(state_list[2], atol=1e-04)
+      for l, u_l in zip(last_output_list[0], last_output_list[1]):
+        self.assertAllClose(l, u_l, atol=1e-04)
 
-    for l, u_l in zip(last_output_list[0], last_output_list[1]):
-      self.assertAllClose(l, u_l, atol=1e-04)
+      for o, u_o in zip(outputs_list[0], outputs_list[1]):
+        self.assertAllClose(o, u_o, atol=1e-04)
 
-    for o, u_o in zip(outputs_list[0], outputs_list[1]):
-      self.assertAllClose(o, u_o, atol=1e-04)
+      for s, u_s in zip(state_list[0], state_list[1]):
+        self.assertAllClose(s, u_s, atol=1e-04)
 
-    for s, u_s in zip(state_list[0], state_list[1]):
-      self.assertAllClose(s, u_s, atol=1e-04)
+      for b_l, b_u_l in zip(last_output_list[2], last_output_list[3]):
+        self.assertAllClose(b_l, b_u_l, atol=1e-04)
 
-    for b_l, b_u_l in zip(last_output_list[2], last_output_list[3]):
-      self.assertAllClose(b_l, b_u_l, atol=1e-04)
+      for b_o, b_u_o in zip(outputs_list[2], outputs_list[3]):
+        self.assertAllClose(b_o, b_u_o, atol=1e-04)
 
-    for b_o, b_u_o in zip(outputs_list[2], outputs_list[3]):
-      self.assertAllClose(b_o, b_u_o, atol=1e-04)
-
-    for b_s, b_u_s in zip(state_list[2], state_list[3]):
-      self.assertAllClose(b_s, b_u_s, atol=1e-04)
+      for b_s, b_u_s in zip(state_list[2], state_list[3]):
+        self.assertAllClose(b_s, b_u_s, atol=1e-04)
 
   def test_normalize_batch_in_training(self):
     val = np.random.random((10, 3, 10, 10))

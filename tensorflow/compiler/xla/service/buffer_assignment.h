@@ -320,6 +320,13 @@ class BufferAssignment {
                           const HloInstruction* hlo_b,
                           const ShapeIndex& shape_index_b) const;
 
+  // Returns true if the top-level buffers of hlo_a and hlo_b are the same.
+  // REQUIRES: HasTopLevelAllocation(hlo_a) && HasTopLevelAllocation(hlo_b).
+  bool SharesTopLevelSlice(const HloInstruction* hlo_a,
+                           const HloInstruction* hlo_b) const {
+    return SharesSliceAtIndex(hlo_a, {}, hlo_b, {});
+  }
+
   // Returns the underlying points-to analysis used for this assignment.
   const TuplePointsToAnalysis& points_to_analysis() const {
     return liveness_->points_to_analysis();

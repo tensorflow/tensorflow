@@ -89,18 +89,18 @@ class SinhArcsinh(bijector.Bijector):
   """
 
   def __init__(self,
-               skewness=0.,
-               tailweight=1.,
+               skewness=None,
+               tailweight=None,
                event_ndims=0,
                validate_args=False,
-               name="sinh_arcsinh"):
+               name="SinhArcsinh"):
     """Instantiates the `SinhArcsinh` bijector.
 
     Args:
-      skewness:  Skewness parameter.  Float-type `Tensor`.
+      skewness:  Skewness parameter.  Float-type `Tensor`.  Default is `0`
+        of type `float32`.
       tailweight:  Tailweight parameter.  Positive `Tensor` of same `dtype` as
-        `skewness`
-        and broadcastable `shape`.
+        `skewness` and broadcastable `shape`.  Default is `1` of type `float32`.
       event_ndims: Python scalar indicating the number of dimensions associated
         with a particular draw from the distribution.
       validate_args: Python `bool` indicating whether arguments should be
@@ -111,8 +111,12 @@ class SinhArcsinh(bijector.Bijector):
     self._name = name
     self._validate_args = validate_args
     with self._name_scope("init", values=[skewness, tailweight]):
-      self._skewness = ops.convert_to_tensor(skewness, name="skewness")
-      self._tailweight = ops.convert_to_tensor(tailweight, name="tailweight")
+      tailweight = 1. if tailweight is None else tailweight
+      skewness = 0. if skewness is None else skewness
+      self._skewness = ops.convert_to_tensor(
+          skewness, name="skewness")
+      self._tailweight = ops.convert_to_tensor(
+          tailweight, name="tailweight", dtype=self._skewness.dtype)
       check_ops.assert_same_float_dtype([self._skewness, self._tailweight])
       if validate_args:
         self._tailweight = control_flow_ops.with_dependencies([

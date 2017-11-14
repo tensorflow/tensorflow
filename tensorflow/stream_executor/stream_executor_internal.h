@@ -169,6 +169,8 @@ class StreamExecutorInterface {
                       const KernelArgsArrayBase &args) {
     return false;
   }
+  // Releases any state associated with the kernel.
+  virtual void UnloadKernel(const KernelBase *kernel) {}
   virtual void *Allocate(uint64 size) = 0;
   virtual void *AllocateSubBuffer(DeviceMemoryBase *parent, uint64 offset,
                                   uint64 size) = 0;
@@ -224,6 +226,8 @@ class StreamExecutorInterface {
   virtual SharedMemoryConfig GetDeviceSharedMemoryConfig() = 0;
   virtual port::Status SetDeviceSharedMemoryConfig(
       SharedMemoryConfig config) = 0;
+
+  virtual int64 GetDeviceLoad() { return -1; }
 
   virtual bool DeviceMemoryUsage(int64 *free, int64 *total) const {
     return false;

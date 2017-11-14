@@ -397,9 +397,10 @@ def central_crop(image, central_fraction):
 
   img_shape = array_ops.shape(image)
   depth = image.get_shape()[2]
-  fraction_offset = int(1 / ((1 - central_fraction) / 2.0))
-  bbox_h_start = math_ops.div(img_shape[0], fraction_offset)
-  bbox_w_start = math_ops.div(img_shape[1], fraction_offset)
+  img_h = math_ops.to_double(img_shape[0])
+  img_w = math_ops.to_double(img_shape[1])
+  bbox_h_start = math_ops.to_int32((img_h - img_h * central_fraction) / 2)
+  bbox_w_start = math_ops.to_int32((img_w - img_w * central_fraction) / 2)
 
   bbox_h_size = img_shape[0] - bbox_h_start * 2
   bbox_w_size = img_shape[1] - bbox_w_start * 2
@@ -707,6 +708,12 @@ def resize_images(images,
   *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
     https://en.wikipedia.org/wiki/Bicubic_interpolation)
   *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
+
+  The return value has the same type as `images` if `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
+  if the size of `images` can be statically determined to be the same as `size`,
+  because `images` is returned in this case. Otherwise, the return value has
+  type `float32`.
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or
@@ -1061,7 +1068,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         # Scaling up, cast first, then scale. The scale will not map in.max to
         # out.max, but converting back and forth should result in no change.
         if saturate:
-          cast = math_ops.saturate_cast(scaled, dtype)
+          cast = math_ops.saturate_cast(image, dtype)
         else:
           cast = math_ops.cast(image, dtype)
         scale = (scale_out + 1) // (scale_in + 1)
@@ -1114,7 +1121,7 @@ def rgb_to_grayscale(images, name=None):
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     gray_float = math_ops.reduce_sum(flt_image * rgb_weights,
                                      rank_1,
-                                     keep_dims=True)
+                                     keepdims=True)
     gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
     return convert_image_dtype(gray_float, orig_dtype, name=name)
 
@@ -1205,26 +1212,7 @@ def adjust_hue(image, delta, name=None):
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
 
-    # TODO(zhengxq): we will switch to the fused version after we add a GPU
-    # kernel for that.
-    fused = os.environ.get('TF_ADJUST_HUE_FUSED', '')
-    fused = fused.lower() in ('true', 't', '1')
-
-    if not fused:
-      hsv = gen_image_ops.rgb_to_hsv(flt_image)
-
-      hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
-      saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
-      value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
-
-      # Note that we add 2*pi to guarantee that the resulting hue is a positive
-      # floating point number since delta is [-0.5, 0.5].
-      hue = math_ops.mod(hue + (delta + 1.), 1.)
-
-      hsv_altered = array_ops.concat([hue, saturation, value], 2)
-      rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
-    else:
-      rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
+    rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
 
@@ -1506,7 +1494,8 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       # Generate a single distorted bounding box.
       begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
           tf.shape(image),
-          bounding_boxes=bounding_boxes)
+          bounding_boxes=bounding_boxes,
+          min_object_covered=0.1)
 
       # Draw the bounding box in an image summary.
       image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
@@ -1534,7 +1523,7 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       seed.
     seed2: An optional `int`. Defaults to `0`.
       A second seed to avoid seed collision.
-    min_object_covered: An optional `float`. Defaults to `0.1`.
+    min_object_covered: A Tensor of type `float32`. Defaults to `0.1`.
       The cropped area of the image must contain at least this
       fraction of any bounding box supplied. The value of this parameter should be
       non-negative. In the case of 0, the cropped area does not need to overlap

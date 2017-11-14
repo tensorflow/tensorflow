@@ -43,6 +43,24 @@ class CholeskyOuterProduct(bijector.Bijector):
 
   Note: the upper-triangular part of X is ignored (whether or not its zero).
 
+  The surjectivity of g as a map from  the set of n x n positive-diagonal
+  lower-triangular matrices to the set of SPD matrices follows immediately from
+  executing the Cholesky factorization algorithm on an SPD matrix A to produce a
+  positive-diagonal lower-triangular matrix L such that `A = L @ L.T`.
+
+  To prove the injectivity of g, suppose that L_1 and L_2 are lower-triangular
+  with positive diagonals and satisfy `A = L_1 @ L_1.T = L_2 @ L_2.T`. Then
+    `inv(L_1) @ A @ inv(L_1).T = [inv(L_1) @ L_2] @ [inv(L_1) @ L_2].T = I`.
+  Setting `L_3 := inv(L_1) @ L_2`, that L_3 is a positive-diagonal
+  lower-triangular matrix follows from `inv(L_1)` being positive-diagonal
+  lower-triangular (which follows from the diagonal of a triangular matrix being
+  its spectrum), and that the product of two positive-diagonal lower-triangular
+  matrices is another positive-diagonal lower-triangular matrix.
+
+  A simple inductive argument (proceding one column of L_3 at a time) shows
+  that, if `I = L_3 @ L_3.T`, with L_3 being lower-triangular with positive-
+  diagonal, then `L_3 = I`. Thus, `L_1 = L_2`, proving injectivity of g.
+
   Examples:
 
   ```python

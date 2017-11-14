@@ -164,6 +164,14 @@ class RelaxedOneHotCategoricalTest(test.TestCase):
         self.assertAllEqual([5, 3],
                             dist.sample(5).eval(feed_dict=feed_dict).shape)
 
+  def testDTypes(self):
+    # check that sampling and log_prob work for a range of dtypes
+    with self.test_session():
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+        logits = random_ops.random_uniform(shape=[3, 3], dtype=dtype)
+        dist = relaxed_onehot_categorical.RelaxedOneHotCategorical(
+            temperature=0.5, logits=logits)
+        dist.log_prob(dist.sample())
 
 if __name__ == "__main__":
   test.main()

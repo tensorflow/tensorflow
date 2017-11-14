@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -86,30 +85,27 @@ void HloDataflowAnalysis::DeleteHloValue(HloValue::Id value_id) {
 string HloDataflowAnalysis::ToString() const {
   string out = StrCat("HloDataflowAnalysis, module ", module_->name(), "\n");
   StrAppend(&out, "  Instruction value sets:\n");
-  for (const std::unique_ptr<HloComputation>& computation :
-       module_->computations()) {
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
+  for (const HloComputation* computation : module_->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
       if (ShapeUtil::IsTuple(instruction->shape())) {
-        GetInstructionValueSet(instruction.get())
+        GetInstructionValueSet(instruction)
             .ForEachElement([this, &instruction, &out](
                                 const ShapeIndex& index,
                                 const HloValueSet& value_set) {
               StrAppend(&out, "      tuple index ", index.ToString(), ":\n");
               for (const HloValue* value : value_set.values()) {
-                StrAppend(
-                    &out, "        ", value->ToShortString(),
-                    ValueIsDefinedAt(instruction.get(), index) ? " (def)" : "",
-                    "\n");
+                StrAppend(&out, "        ", value->ToShortString(),
+                          ValueIsDefinedAt(instruction, index) ? " (def)" : "",
+                          "\n");
               }
             });
       } else {
         const HloValueSet& top_level_value_set =
-            GetValueSet(instruction.get(), /*index=*/{});
+            GetValueSet(instruction, /*index=*/{});
         for (const HloValue* value : top_level_value_set.values()) {
           StrAppend(&out, "      ", value->ToShortString(),
-                    ValueIsDefinedAt(instruction.get()) ? " (def)" : "", "\n");
+                    ValueIsDefinedAt(instruction) ? " (def)" : "", "\n");
         }
       }
     }
@@ -244,6 +240,51 @@ bool HloDataflowAnalysis::UpdateBitcastValueSet(HloInstruction* bitcast) {
     return true;
   }
   return false;
+}
+
+bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
+  CHECK_EQ(send->opcode(), HloOpcode::kSend);
+  bool changed = false;
+  // Send forwards the operand value to the output tuple at {0}.
+  for (auto& pair : GetInstructionValueSet(send->operand(0))) {
+    const ShapeIndex& operand_index = pair.first;
+    const HloValueSet& operand_value_set = pair.second;
+
+    ShapeIndex index = {0};
+    for (int64 i : operand_index) {
+      index.push_back(i);
+    }
+
+    HloValueSet& value_set = GetValueSet(send, index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
+  CHECK_EQ(recv_done->opcode(), HloOpcode::kRecvDone);
+  bool changed = false;
+  // RecvDone forwards the operand value at {0} to the output.
+  for (auto& pair : GetInstructionValueSet(recv_done)) {
+    ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+
+    ShapeIndex operand_index = {0};
+    for (int64 i : index) {
+      operand_index.push_back(i);
+    }
+
+    const HloValueSet& operand_value_set =
+        GetValueSet(recv_done->operand(0), operand_index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
@@ -433,6 +474,10 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCallValueSet(instruction);
     case HloOpcode::kWhile:
       return UpdateWhileValueSet(instruction);
+    case HloOpcode::kSend:
+      return UpdateSendValueSet(instruction);
+    case HloOpcode::kRecvDone:
+      return UpdateRecvDoneValueSet(instruction);
     default:
       // Instruction does not forward HloValues (it defines all values in its
       // output). No update is necessary.
@@ -514,26 +559,21 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
 }
 
 Status HloDataflowAnalysis::InitializeInstructionValueSets() {
-  for (const std::unique_ptr<HloComputation>& computation :
-       module_->computations()) {
-    const CallGraphNode& call_graph_node =
-        call_graph_->GetNode(computation.get());
-
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
+  for (const HloComputation* computation : module_->computations()) {
+    const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
+    for (HloInstruction* instruction : computation->instructions()) {
       // Create an empty shape tree.
       value_sets_.emplace(std::piecewise_construct,
-                          std::forward_as_tuple(instruction.get()),
+                          std::forward_as_tuple(instruction),
                           std::forward_as_tuple(instruction->shape()));
 
       // Lambda to set the value set to define all values in the output of the
       // instruction.
       auto define_all_values = [this, &instruction](bool is_phi = false) {
-        for (auto& pair : GetInstructionValueSet(instruction.get())) {
+        for (auto& pair : GetInstructionValueSet(instruction)) {
           const ShapeIndex& index = pair.first;
-          HloValue* value =
-              NewHloValue(instruction.get(), index, /*is_phi=*/false);
-          GetValueSet(instruction.get(), index).AddValue(value);
+          HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
+          GetValueSet(instruction, index).AddValue(value);
         }
       };
 
@@ -542,8 +582,14 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       // the instruction (or from cross-computation dataflow).
       auto define_top_level_only = [this, &instruction]() {
         HloValue* value =
-            NewHloValue(instruction.get(), /*index=*/{}, /*is_phi=*/false);
-        GetValueSet(instruction.get(), /*index=*/{}).AddValue(value);
+            NewHloValue(instruction, /*index=*/{}, /*is_phi=*/false);
+        GetValueSet(instruction, /*index=*/{}).AddValue(value);
+      };
+
+      // Lambda to set the value set at the given index of the output.
+      auto define_value_at = [this, &instruction](const ShapeIndex& index) {
+        HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
+        GetValueSet(instruction, index).AddValue(value);
       };
 
       switch (instruction->opcode()) {
@@ -586,6 +632,16 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // values flow from their operands.
           define_top_level_only();
           break;
+        case HloOpcode::kRecvDone:
+          // RecvDone aliases its input tuple element {0}, therefore does not
+          // define any values.
+          break;
+        case HloOpcode::kSend:
+          // Send produces a tuple of {aliased operand, U32 context}, therefore
+          // only defines the top-level tuple and the tuple element at {1}.
+          define_value_at(/*index=*/{});
+          define_value_at(/*index=*/{1});
+          break;
         default:
           define_all_values();
           break;
@@ -620,18 +676,16 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   dataflow_analysis->UpdateInstructionsAndPropagate(all_instructions);
 
   // Add in positions to all values.
-  for (const std::unique_ptr<HloComputation>& computation :
-       module->computations()) {
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
+  for (const HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
       for (const auto& pair :
-           dataflow_analysis->GetInstructionValueSet(instruction.get())) {
+           dataflow_analysis->GetInstructionValueSet(instruction)) {
         const ShapeIndex& index = pair.first;
         const HloValueSet& value_set = pair.second;
         for (const HloValue* value : value_set.values()) {
-          if (value->defining_instruction() != instruction.get()) {
+          if (value->defining_instruction() != instruction) {
             dataflow_analysis->GetValue(value->id())
-                .AddPosition(instruction.get(), index);
+                .AddPosition(instruction, index);
           }
         }
       }
@@ -671,10 +725,10 @@ Status HloDataflowAnalysis::Verify() const {
   // appears in the value's positions().
   for (const auto& computation : module_->computations()) {
     for (const auto& instruction : computation->instructions()) {
-      for (const auto& pair : GetInstructionValueSet(instruction.get())) {
+      for (const auto& pair : GetInstructionValueSet(instruction)) {
         const ShapeIndex& index = pair.first;
         const HloValueSet& value_set = pair.second;
-        const HloPosition position{instruction.get(), index};
+        const HloPosition position{instruction, index};
         for (const HloValue* value : value_set.values()) {
           TF_RET_CHECK(std::find(value->positions().begin(),
                                  value->positions().end(),

@@ -83,6 +83,10 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   return CreateDefaultLayoutForRank(shape.dimensions_size());
 }
 
+/* static */ Layout LayoutUtil::GetDefaultLayoutForRank(int64 rank) {
+  return CreateDefaultLayoutForRank(rank);
+}
+
 /* static */ Layout LayoutUtil::GetDefaultLayoutForR2() {
   return CreateDefaultLayoutForRank(2);
 }
@@ -107,6 +111,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     minor_to_major->Resize(shape->dimensions_size(), 0);
     SetDefaultLayoutToContainer(minor_to_major);
   }
+}
+
+/* static */ Shape LayoutUtil::GetWithDefaultLayout(const Shape& shape) {
+  Shape copy(shape);
+  LayoutUtil::SetToDefaultLayout(&copy);
+  return copy;
 }
 
 /* static */ void LayoutUtil::SetToDefaultLayout(ProgramShape* program_shape) {

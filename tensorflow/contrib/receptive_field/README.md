@@ -38,7 +38,7 @@ models are available to you. This can be done in three simple commands:
 
 ```sh
 git clone https://github.com/tensorflow/models
-cd models/slim
+cd models/research/slim
 sudo python setup.py install_lib
 ```
 

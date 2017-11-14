@@ -25,24 +25,50 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Comparator for two nodes. This is used in order to get a stable ording.
+using NodeComparator = std::function<bool(const Node*, const Node*)>;
+
+// Compares two node based on their ids.
+struct NodeComparatorID {
+  bool operator()(const Node* n1, const Node* n2) const {
+    return n1->id() < n2->id();
+  }
+};
+
+// Compare two nodes based on their names.
+struct NodeComparatorName {
+  bool operator()(const Node* n1, const Node* n2) const {
+    return n1->name() < n2->name();
+  }
+};
+
 // Perform a depth-first-search on g starting at the source node.
 // If enter is not empty, calls enter(n) before visiting any children of n.
 // If leave is not empty, calls leave(n) after visiting all children of n.
+// If stable_comparator is set, a stable ordering of visit is achieved by
+// sorting a node's neighbors first before visiting them.
 extern void DFS(const Graph& g, const std::function<void(Node*)>& enter,
-                const std::function<void(Node*)>& leave);
+                const std::function<void(Node*)>& leave,
+                const NodeComparator& stable_comparator = {});
 
 // Perform a reverse depth-first-search on g starting at the sink node.
 // If enter is not empty, calls enter(n) before visiting any parents of n.
 // If leave is not empty, calls leave(n) after visiting all parents of n.
+// If stable_comparator is set, a stable ordering of visit is achieved by
+// sorting a node's neighbors first before visiting them.
 extern void ReverseDFS(const Graph& g, const std::function<void(Node*)>& enter,
-                       const std::function<void(Node*)>& leave);
+                       const std::function<void(Node*)>& leave,
+                       const NodeComparator& stable_comparator = {});
 
 // Perform a reverse depth-first-search on g starting at the 'start' nodes.
 // If enter is not empty, calls enter(n) before visiting any parents of n.
 // If leave is not empty, calls leave(n) after visiting all parents of n.
+// If stable_comparator is set, a stable ordering of visit is achieved by
+// sorting a node's neighbors first before visiting them.
 extern void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
                            const std::function<void(Node*)>& enter,
-                           const std::function<void(Node*)>& leave);
+                           const std::function<void(Node*)>& leave,
+                           const NodeComparator& stable_comparator = {});
 
 // Stores in *order the post-order numbering of all nodes
 // in graph found via a depth first search starting at the source node.
@@ -50,11 +76,18 @@ extern void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
 // Note that this is equivalent to reverse topological sorting when the
 // graph does not have cycles.
 //
+// If stable_comparator is set, a stable ordering of visit is achieved by
+// sorting a node's neighbors first before visiting them.
+//
 // REQUIRES: order is not NULL.
-void GetPostOrder(const Graph& g, std::vector<Node*>* order);
+void GetPostOrder(const Graph& g, std::vector<Node*>* order,
+                  const NodeComparator& stable_comparator = {});
 
 // Stores in *order the reverse post-order numbering of all nodes
-void GetReversePostOrder(const Graph& g, std::vector<Node*>* order);
+// If stable_comparator is set, a stable ordering of visit is achieved by
+// sorting a node's neighbors first before visiting them.
+void GetReversePostOrder(const Graph& g, std::vector<Node*>* order,
+                         const NodeComparator& stable_comparator = {});
 
 // Prune nodes in "g" that are not in some path from the source node
 // to any node in 'nodes'. Returns true if changes were made to the graph.

@@ -57,7 +57,8 @@ from tensorflow.python.training import gradient_descent
 
 def no_rewrite_session_config():
   rewriter_config = rewriter_config_pb2.RewriterConfig(
-      disable_model_pruning=True)
+      disable_model_pruning=True,
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
   return config_pb2.ConfigProto(graph_options=graph_options)
 
@@ -95,7 +96,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     else:
       cls._expected_partition_graph_count = 1
       cls._expected_num_devices = 1
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
   @classmethod
   def tearDownClass(cls):
@@ -837,7 +838,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertIsNone(dump.find_some_path("delta", "v"))
 
   def testCausalityCheckOnDumpsDetectsWrongTemporalOrder(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_name = "testDumpCausalityCheck/u"
       v_name = "testDumpCausalityCheck/v"
       w_name = "testDumpCausalityCheck/w"

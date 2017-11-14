@@ -315,7 +315,7 @@ class GPUTracerImpl : public GPUTracer,
     };
     return new Impl(name);
   }
-  Tracer *StartTracing(StringPiece label) override {
+  Tracer *StartTracing(StringPiece label, bool is_expensive) override {
     // We don't do anything with 'TraceMe' regions yet.
     return nullptr;
   }

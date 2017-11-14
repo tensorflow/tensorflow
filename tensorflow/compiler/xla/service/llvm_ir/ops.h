@@ -13,67 +13,68 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
 
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/types.h"
+
+// Utilities related to emitting LLVM IR for various HLO ops.
 
 namespace xla {
 namespace llvm_ir {
 
-// Selection among tuples is special in how it's lowered, because a tuple is not
-// an HLO array.
+// Checks if we can emit code for the given DynamicUpdateSlice node that updates
+// its input in place.  Returns true if the dynamic-update-slice's
+// array-to-be-updated and output share the same BufferAllocation::Slice.
 //
-//      tuple_on_true                     tuple_on_false
-//           |                                 |
-//           V                                 V
-// ------------------------          ------------------------
-// | address of element 0 |          | address of element 0 |
-// |----------------------|          |----------------------|
-// | address of element 1 |          | address of element 1 |
-// |----------------------|          |----------------------|
-// | address of element 2 |          | address of element 2 |
-// ------------------------          ------------------------
-//                       \            /
-//                        \          /
-//                         ----------
-//         pred ---------> | select |
-//                         ----------
-//                             |
-//                             V
-//      output ----> ------------------------
-//                   | address of element 0 |
-//                   |----------------------|
-//                   | address of element 1 |
-//                   |----------------------|
-//                   | address of element 2 |
-//                   ------------------------
-//
-// Only the addresses are copied to the output. For each element, we emit a copy
-// of the address from the corresponding element in either
-// tuple_on_true or tuple_on_false:
-//   output[i] = pred ? tuple_on_true[i] : tuple_on_false[i]
-void EmitTupleSelect(IrArray select, IrArray pred, llvm::Value* on_true,
-                     llvm::Value* on_false, llvm::IRBuilder<>* ir_builder);
+// dynamic_update_slice must be a DynamicUpdateSlice op.
+bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
+                                  const BufferAssignment& assignment);
 
-// A tuple is an array of pointers, one for each operand. Each pointer points to
-// the output buffer of its corresponding operand.
-void EmitTuple(IrArray tuple,
-               tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-               llvm::IRBuilder<>* ir_builder);
+// Checks if the given fusion node is amenable to being implemented by
+// EmitFusedDynamicUpdateSliceInPlace.
+inline bool CanEmitFusedDynamicUpdateSliceInPlace(
+    HloInstruction* fusion, const BufferAssignment& assignment) {
+  CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
+  return fusion->fusion_kind() == HloInstruction::FusionKind::kLoop &&
+         fusion->fused_expression_root()->opcode() ==
+             HloOpcode::kDynamicUpdateSlice &&
+         CanUpdateDynamicSliceInPlace(fusion->fused_expression_root(),
+                                      assignment);
+}
 
-// A tuple is an array of pointers, one for each operand. Each pointer points to
-// the output buffer of its corresponding operand. A GetTupleElement instruction
-// forwards the pointer to underlying tuple element buffer at the given index.
-// Returns an llvm value representing a pointer to the tuple element buffer.
-llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
-                                 int alignment, llvm::Value* operand,
-                                 llvm::IRBuilder<>* ir_builder);
+// Emits IR for running the given dynamic-update-slice op in-place -- that is,
+// where the input and output buffers share the same slice, so we can simply
+// modify the input/output buffer without touching any of the other elements.
+Status EmitDynamicUpdateSliceInPlace(
+    tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
+    const IrArray& output_array, tensorflow::StringPiece name,
+    llvm::IRBuilder<>* ir_builder);
+
+// Given a loop-fusion node whose root is a dynamic-update-slice op whose
+// array-to-be-updated and output share the same buffer slice, emits
+// (sequential) code for a fusion node that does the dynamic-update-slice in
+// place.
+Status EmitFusedDynamicUpdateSliceInPlace(
+    HloInstruction* fusion,
+    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
+    llvm::IRBuilder<>* ir_builder);
+
+// Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
+// the given launch dimensions.
+Status EmitParallelFusedDynamicUpdateSliceInPlace(
+    HloInstruction* fusion,
+    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
+    const gpu::LaunchDimensions& launch_dimensions,
+    llvm::IRBuilder<>* ir_builder);
+
 }  // namespace llvm_ir
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_

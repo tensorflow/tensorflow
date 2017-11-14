@@ -286,8 +286,8 @@ class Bidirectional(Wrapper):
     config = layer.get_config()
     config['go_backwards'] = not config['go_backwards']
     self.backward_layer = layer.__class__.from_config(config)
-    self.forward_layer.name = 'forward_' + self.forward_layer.name
-    self.backward_layer.name = 'backward_' + self.backward_layer.name
+    self.forward_layer._name = 'forward_' + self.forward_layer.name
+    self.backward_layer._name = 'backward_' + self.backward_layer.name
     self.merge_mode = merge_mode
     if weights:
       nw = len(weights)

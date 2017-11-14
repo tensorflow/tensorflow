@@ -89,7 +89,7 @@ def build_dataset(words, n_words):
 # Filling 4 global variables:
 # data - list of codes (integers from 0 to vocabulary_size-1).
 #   This is the original text but words are replaced by their codes
-# count - map of words(strings) to count of occurences
+# count - map of words(strings) to count of occurrences
 # dictionary - map of words(strings) to their codes(integers)
 # reverse_dictionary - maps codes(integers) to words(strings)
 data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
@@ -115,11 +115,9 @@ def generate_batch(batch_size, num_skips, skip_window):
   data_index += span
   for i in range(batch_size // num_skips):
     context_words = [w for w in range(span) if w != skip_window]
-    random.shuffle(context_words)
-    words_to_use = collections.deque(context_words)
-    for j in range(num_skips):
+    words_to_use = random.sample(context_words, num_skips)
+    for j, context_word in enumerate(words_to_use):
       batch[i * num_skips + j] = buffer[skip_window]
-      context_word = words_to_use.pop()
       labels[i * num_skips + j, 0] = buffer[context_word]
     if data_index == len(data):
       buffer[:] = data[:span]

@@ -79,6 +79,8 @@ pushd "${TMP_DIR}"
 # Obtain paths include and lib paths to the TensorFlow installation
 TF_INC=$("${PYTHON_BIN_PATH}" \
          -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+TF_LIB=$("${PYTHON_BIN_PATH}" \
+         -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
 
 if [[ -z "${TF_INC}" ]]; then
   die "FAILED to determine TensorFlow include path"
@@ -143,7 +145,7 @@ if [[ ${IS_GPU} == "0" ]]; then
 
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
     -shared "${SRC_FILE}" -o "${USER_OP_SO}" \
-    -fPIC ${TF_INCLUDE_PATH} || \
+    -fPIC ${TF_INCLUDE_PATH} -L "${TF_LIB}" -ltensorflow_framework  || \
     die "g++ compilation of ${SRC_FILE} FAILED"
 
 else
@@ -201,8 +203,8 @@ else
   USER_OP_SO="add_one.so"
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" ${TF_INCLUDE_PATH} -L "${CUDA_LIB_DIR}" \
-      -fPIC -lcudart || \
+      "${OP_KERNEL_O}" ${TF_INCLUDE_PATH} -L "${CUDA_LIB_DIR}" -L "${TF_LIB}" \
+      -fPIC -lcudart -ltensorflow_framework || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi
 

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -67,7 +67,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
         // Lookup allocation GetTupleElement operand.
         const BufferAllocation::Slice slice =
             buffer_assignment_
-                ->GetUniqueTopLevelSlice(LatestNonGteAncestor(non_io_hlo))
+                ->GetUniqueTopLevelSlice(non_io_hlo->LatestNonGteAncestor())
                 .ConsumeValueOrDie();
         // We are not in a nested context, so check non-thread-local allocation.
         CHECK(!slice.allocation()->is_thread_local());
@@ -102,7 +102,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
               slice_result.ConsumeValueOrDie();
           if (slice.allocation()->is_thread_local()) {
             llvm::Type* pointee_type =
-                llvm_ir::ShapeToIrType(non_io_hlo->shape(), ir_builder_);
+                llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
             BindHloToIrValue(*non_io_hlo,
                              ir_builder_->CreateAlloca(pointee_type), index);
           } else {
@@ -124,18 +124,18 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
   if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
     return llvm_ir::EmitGetTupleElement(
         gte->shape(), gte->tuple_index(), /*alignment=*/1,
-        GetTypedIrValue(*gte->operand(0), {}, base_ptr), ir_builder_);
+        GetTypedIrValue(*gte->operand(0), {}, base_ptr), ir_builder_, module_);
   }
   return llvm_ir::EmitGetTupleElement(
       gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr), ir_builder_);
+      EmitGetTupleElement(gte->operand(0), base_ptr), ir_builder_, module_);
 }
 
 llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
                                               const ShapeIndex& shape_index,
                                               llvm::Value* ir_value) {
   llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
-      ShapeUtil::GetSubshape(hlo.shape(), shape_index), ir_builder_);
+      ShapeUtil::GetSubshape(hlo.shape(), shape_index), module_);
   llvm::Type* dest_type = pointee_type->getPointerTo();
 
   llvm::Value* typed_ir_value;
@@ -146,9 +146,8 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
     typed_ir_value =
         ir_builder_->CreateBitCast(ir_value, pointee_type->getPointerTo());
   }
-  string ir_value_name = llvm_ir::SanitizeIrName(hlo.name());
-  ir_value->setName(llvm_ir::AsStringRef(ir_value_name + ".raw"));
-  typed_ir_value->setName(llvm_ir::AsStringRef(ir_value_name + ".typed"));
+  ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "raw")));
+  typed_ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "typed")));
   return typed_ir_value;
 }
 

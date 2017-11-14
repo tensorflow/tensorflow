@@ -300,7 +300,7 @@ Status MasterSession::ReffedClientGraph::RegisterPartitions(
       init_done_.WaitForNotification();
       mu_.lock();
     }
-    Status result = init_result_;
+    const Status result = init_result_;
     mu_.unlock();
     return result;
   }
@@ -539,7 +539,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     if (is_partial_) {
       for (size_t i = 0; i < req.num_feeds(); ++i) {
         const string& name = req.feed_name(i);
-        auto iter = part.feed_key.find(name);
+        const auto iter = part.feed_key.find(name);
         if (iter == part.feed_key.end()) {
           // The provided feed must be for a different partition.
           continue;
@@ -594,7 +594,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   // Waits for the RunGraph calls.
   call_opts->SetCancelCallback([&calls]() { calls.StartCancel(); });
   auto token = cm->get_cancellation_token();
-  bool success =
+  const bool success =
       cm->RegisterCallback(token, [&calls]() { calls.StartCancel(); });
   if (!success) {
     calls.StartCancel();
@@ -746,18 +746,22 @@ void MasterSession::ReffedClientGraph::ProcessStats(int64 step_id,
                  Status::OK());
   }
   // Assemble all stats for this timeline into a merged StepStats.
-  StepStats step_stats_proto;
   if (pss->collect_timeline) {
-    step_stats_proto = pss->rpc_stats;
+    StepStats step_stats_proto;
+    step_stats_proto.Swap(&pss->rpc_stats);
     for (size_t i = 0; i < partitions_.size(); ++i) {
-      const StepStats& ss = pss->step_stats[i];
-      step_stats_proto.MergeFrom(ss);
+      step_stats_proto.MergeFrom(pss->step_stats[i]);
+      pss->step_stats[i].Clear();
     }
-    stats_publisher_->PublishStatsProto(step_stats_proto);
+    pss->step_stats.clear();
     // Copy the stats back, but only for on-demand profiling to avoid slowing
     // down calls that trigger the automatic profiling.
     if (options.trace_level() == RunOptions::FULL_TRACE) {
       resp->mutable_step_stats()->Swap(&step_stats_proto);
+    } else {
+      // If FULL_TRACE, it can be fetched from Session API, no need for
+      // duplicated publishing.
+      stats_publisher_->PublishStatsProto(step_stats_proto);
     }
   }
 }
@@ -820,14 +824,14 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
     // Skip if already fed.
     if (input.second) continue;
     TensorId id(ParseTensorName(input.first));
-    auto it = name_to_node_.find(id.first);
+    const auto it = name_to_node_.find(id.first);
     if (it == name_to_node_.end()) {
       return errors::NotFound("Feed ", input.first, ": not found");
     }
     pending_feeds.insert(id);
   }
   for (size_t i = 0; i < req.num_feeds(); ++i) {
-    TensorId id(ParseTensorName(req.feed_name(i)));
+    const TensorId id(ParseTensorName(req.feed_name(i)));
     pending_feeds.erase(id);
   }
 
@@ -835,7 +839,7 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
   std::vector<const Node*> stack;
   for (size_t i = 0; i < req.num_fetches(); ++i) {
     const string& fetch = req.fetch_name(i);
-    TensorId id(ParseTensorName(fetch));
+    const TensorId id(ParseTensorName(fetch));
     auto it = name_to_node_.find(id.first);
     if (it == name_to_node_.end()) {
       return errors::NotFound("Fetch ", fetch, ": not found");
@@ -1361,7 +1365,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     run_state->step_started = true;
     PerStepState pss;
 
-    auto count = run_state->count;
+    const auto count = run_state->count;
     pss.collect_timeline =
         req.options().trace_level() == RunOptions::FULL_TRACE;
 
