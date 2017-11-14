@@ -27,6 +27,7 @@ from tensorflow.contrib.bayesflow.python.ops import halton_sequence
 from tensorflow.contrib.bayesflow.python.ops import hmc
 from tensorflow.contrib.bayesflow.python.ops import metropolis_hastings
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
+from tensorflow.contrib.bayesflow.python.ops import optimizers
 # pylint: enable=unused-import,line-too-long
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -34,7 +35,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['csiszar_divergence', 'custom_grad', 'entropy',
                     'metropolis_hastings', 'monte_carlo', 'halton_sequence',
-                    'hmc', 'special_math', 'stochastic_variables',
+                    'hmc', 'optimizers', 'special_math', 'stochastic_variables',
                     'variational_inference']
 
 remove_undocumented(__name__, _allowed_symbols)
