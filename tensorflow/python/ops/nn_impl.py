@@ -894,7 +894,6 @@ def _compute_sampled_logits(weights,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
                             partition_strategy="mod",
-                            labels_as_indices=False,
                             name=None):
   """Helper function for nce_loss and sampled_softmax_loss functions.
 
@@ -932,18 +931,13 @@ def _compute_sampled_logits(weights,
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
-    labels_as_indices: A `bool`. Whether the returned labels represent the
-        indices of the true classes. Default is `False`.
     name: A name for the operation (optional).
   Returns:
     out_logits: `Tensor` object with shape
         `[batch_size, num_true + num_sampled]`, for passing to either
         `nn.sigmoid_cross_entropy_with_logits` (NCE) or
         `nn.softmax_cross_entropy_with_logits` (sampled softmax).
-    out_labels: If `labels_as_indices` is `False`, a Tensor object with the same
-        shape as `out_logits`. Otherwise a `Tensor` of shape
-        `[batch_size, num_true]` with the indices of the target classes for each
-        row of `out_logits`.
+    out_labels: A Tensor object with the same shape as `out_logits`.
   """
 
   if isinstance(weights, variables.PartitionedVariable):
@@ -1054,21 +1048,16 @@ def _compute_sampled_logits(weights,
 
     # Construct output logits and labels. The true labels/logits start at col 0.
     out_logits = array_ops.concat([true_logits, sampled_logits], 1)
-    if labels_as_indices:
-      # We want each row of labels to be the indices of the targets, which
-      # start at col 0 and end at col num_true-1.
-      out_labels = gen_array_ops.tile(
-          [math_ops.range(num_true)], [array_ops.shape(true_logits)[0], 1])
-    else:
-      # true_logits is a float tensor, ones_like(true_logits) is a float
-      # tensor of ones. We then divide by num_true to ensure the per-example
-      # labels sum to 1.0, i.e. form a proper probability distribution.
-      out_labels = array_ops.concat([
-          array_ops.ones_like(true_logits) / num_true,
-          array_ops.zeros_like(sampled_logits)
-      ], 1)
 
-  return out_logits, out_labels
+    # true_logits is a float tensor, ones_like(true_logits) is a float
+    # tensor of ones. We then divide by num_true to ensure the per-example
+    # labels sum to 1.0, i.e. form a proper probability distribution.
+    out_labels = array_ops.concat([
+        array_ops.ones_like(true_logits) / num_true,
+        array_ops.zeros_like(sampled_logits)
+    ], 1)
+
+    return out_logits, out_labels
 
 
 def nce_loss(weights,
