@@ -19,6 +19,7 @@ py_library(
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -32,7 +33,6 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
     ],
 )
@@ -96,6 +96,25 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "layers_dense_variational_test",
+    size = "small",
+    srcs = ["python/kernel_tests/layers_dense_variational_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
     ],
 )
 
