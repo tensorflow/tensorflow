@@ -167,7 +167,7 @@ def tf_library(name, graph, config,
 
   # The cc_library rule packaging up the header and object file, and needed
   # kernel implementations.
-  need_xla_data_proto = (tfcompile_flags and
+  need_xla_data_proto = ((type(tfcompile_flags) == str) and
                          tfcompile_flags.find("--gen_program_shape") != -1)
   native.cc_library(
       name=name,
