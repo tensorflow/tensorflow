@@ -43,7 +43,7 @@ The simplest way to compile the demo app, and try out changes to the project cod
 ### Install Bazel
 If bazel is not installed on your system, install it now by following [these directions](https://bazel.build/versions/master/docs/install.html)
 
-NOTE: Bazel does not currently support building for Android on Windows. Full support for gradle/cmake builds is coming soon, but in the meantime Windows users should download the [prebuilt binary](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/demo/TfLiteCameraDemo.apk) instead.
+NOTE: Bazel does not currently support building for Android on Windows. Full support for gradle/cmake builds is coming soon, but in the meantime Windows users should download the [prebuilt binary](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk) instead.
 
 ### Install Android NDK and SDK
 Bazel is the primary build system for TensorFlow. Bazel and the Android NDK and SDK must be installed on your system.
@@ -51,9 +51,6 @@ Bazel is the primary build system for TensorFlow. Bazel and the Android NDK and 
  - The Android NDK is required to build the native (C/C++) TensorFlow code. The current recommended version is 14b, which may be found [here](https://developer.android.com/tools/revisions/build-tools.html).
  - The Android SDK and build tools may be obtained [here](https://developer.android.com/tools/revisions/build-tools.html), or alternatively as part of [Android Studio](https://developer.android.com/studio/index.html). Build tools API >= 23 is required to build the TensorFlow Android demo (though it will run on API >= 21 devices).
 
- - The Android NDK is required to build the native (C/C++) TensorFlow Lite code. The current recommended version is 14b, which can be found [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-14b-downloads).
-
- - The Android SDK and build tools may be obtained [here](https://developer.android.com/tools/revisions/build-tools.html), or alternatively as part of [Android Studio](https://developer.android.com/studio/index.html). Build tools API >= 23 is required to build the TF Android demo (though it will run on API >= 21 devices).
  - In the root of the TensorFlow repository update the `WORKSPACE` file with the `api_level` and location of the SDK and NDK. If you installed it with AndroidStudio the SDK path can be found in the SDK manager, and the default NDK path is:`{SDK path}/ndk-bundle.`
 
 ```
@@ -69,7 +66,7 @@ android_ndk_repository(
   api_level=19)
 
 ```
-Additional details on building with Android can be found [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/README.md)
+Additional details on building with Android can be found [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/README.md).
 
 ### Build the  source code
 Run bazel with the following command to build the demo.
@@ -100,7 +97,7 @@ The demo is resizing each camera image frame to (224 width * 224 height) to matc
 
 [On Device Smart Reply](https://research.googleblog.com/2017/02/on-device-machine-intelligence.html)  is an on-device model which provides one-touch replies for an incoming text message by suggesting contextually relevant messages. The model is built specifically for memory constrained devices such as watches & phones and it has been successfully used to surface [Smart Replies on Android Wear](https://research.googleblog.com/2017/02/on-device-machine-intelligence.html). Note that this model only works on Android as of now.
 
-These pre-trained models can be downloaded from [here](models.md).
+These pre-trained models can be downloaded from [here](g3doc/models.md).
 
 ### Retrain Inception-V3 or MobileNet for a custom data set
 The above pre-trained models have been trained on the ImageNet data set, which consists of 1000 predefined classes. A model will need to be re-trained if these classes are not relevant or useful for a given use case. This technique is called transfer learning, which starts with a model that has been already trained on a problem and will then be retrained on a similar problem. Deep learning from scratch can take days, but transfer learning can be done fairly quickly. In order to do this, a developer will need to generate their custom data set labeled with the relevant classes.
@@ -135,7 +132,7 @@ Since we employ several formats, the following definitions may be useful:
 ### Freeze Graph
 To use this .pb GraphDef file within TensorFlow Lite, the application developer will need checkpoints containing trained weight parameters. The .pb contains only the structure of the graph. The process of merging the checkpoint values with the graph structure is known as “freezing” the graph.
 
-The developer should know where the checkpoints folder is present or checkpoints can also be downloaded for a pre-trained model (Example: Here is a link to the [MobileNets](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md)
+The developer should know where the checkpoints folder is present or checkpoints can also be downloaded for a pre-trained model (Example: Here is a link to the [MobileNets](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md)).
 
 Graph freezing can be done using the command below (and modifying the arguments appropriately)
 
@@ -150,7 +147,7 @@ bazel-bin/tensorflow/python/tools/freeze_graph\
 ```
 
 The user has to first build the freeze_graph script using bazel and then run the script.  The input_binary flag has to be enabled to ensure that the protobuf is read and written in binary format.  The user has to input the .pb and the .ckpt files to freeze the graph The output_node_names may not be obvious outside of the code that built the model. The easiest way to find them is to visualize the graph, either with
-graphviz, or [in tensorboard](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2/#3).
+graphviz, or in tensorboard.
 
 This frozen Graphdef is now ready to be converted to flatbuffer format (.lite) for use on Android or iOS.  On Android users have the flexibility to use either the float or quantized versions of the frozen graphdef, if available, using the Tensorflow Optimizing Converter tool.
 
@@ -169,11 +166,11 @@ bazel run --config=opt tensorflow/contrib/lite/toco:toco -- \
 
 - The input_file argument should point to the frozen GraphDef file that holds the model architecture.
 - The output_file argument should point to where the TensorFlow Lite model file should be generated.
-- The input_type and inference_type arguments should be set to FLOAT, unless converted a [quantized](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/g3doc/) model.
-- Setting the input_array, output_array and input_shape arguments are a bit trickier. The easiest way to find these values is to explore the graph in tensorboard .  The user should reuse the arguments that were used for specifying the output nodes for inference in the `freeze_graph`step.
+- The input_type and inference_type arguments should be set to FLOAT, unless converting a quantized model.
+- Setting the input_array, output_array and input_shape arguments are a bit trickier. The easiest way to find these values is to explore the graph in TensorBoard.  The user should reuse the arguments that were used for specifying the output nodes for inference in the `freeze_graph`step.
 
 Note, it is also possible to use the Tensorflow Optimizing Converter through protos either from Python or from the command line see the
-documentation [here](https://github.com/tensorflow/tensorflow/tree/mastertensorflow/contrib/lite/python:toco_from_protos target) A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
+documentation [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/toco/README.md). A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
 
 ```
 import tensorflow as tf
@@ -188,18 +185,18 @@ with tf.Session() as sess:
 ```
 For detailed instructions on how to use the Tensorflow Optimizing Converter, please see [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/toco/g3doc/cmdline_examples.md).
 
-You may refer to the [Ops compatibility guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/tf_ops_compatibility.md) for troubleshooting help. If that doesn’t help, please file an [issue](https://github.com/tensorflow/tensorflow/issues).
+You may refer to the [Ops compatibility guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/g3doc/tf_ops_compatibility.md) for troubleshooting help. If that doesn’t help, please file an [issue](https://github.com/tensorflow/tensorflow/issues).
 
 ## Step 3. Use the TensorFlow Lite model for inference in a mobile app
 
 After completion of Step 2 the developer should have a .lite model.
 
 ### For Android
-Because Android apps need to be written in Java, and core TensorFlow is in C++, a JNI library is provided to interface between the two. Its interface is aimed only at inference, so it provides the ability to load a graph, set up inputs, and run the model to calculate particular outputs. The full documentation for the set of methods can be seen [here](https://github.com/TensorFlow/TensorFlow/blob/master/TensorFlow/contrib/lite/g3doc/). The demo app is also open sourced on [github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/app).
+Because Android apps need to be written in Java, and core TensorFlow is in C++, a JNI library is provided to interface between the two. Its interface is aimed only at inference, so it provides the ability to load a graph, set up inputs, and run the model to calculate particular outputs. The full documentation for the set of methods can be seen [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/). The demo app is also open sourced on [github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/app).
 
-The [demo app] (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/app)  uses this interface, so it’s a good place to look for example usage. You can also download the prebuilt binary [here](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
+The [demo app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/app)  uses this interface, so it’s a good place to look for example usage. You can also download the prebuilt binary [here](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
 
 Note that you’d need to follow instructions for installing TensorFlow on Android, setting up bazel and Android Studio outlined [here](https://www.tensorflow.org/mobile/android_build).
 
 ### For iOS
-Follow the documentation [here](https://github.com/TensorFlow/TensorFlow/blob/master/TensorFlow/contrib/lite/g3doc/ios.md) to get integrate a TFLite model into your app.
+Follow the documentation [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/ios.md) to integrate a TFLite model into your app.
