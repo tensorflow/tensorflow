@@ -93,14 +93,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
         auto to_ir_component_type = llvm_ir::PrimitiveTypeToIrType(
             primitive_util::ComplexComponentType(to_type), module_);
         if (primitive_util::IsSignedIntegralType(from_type)) {
-          return ComposeComplex(
+          return EmitComposeComplex(
               op,
               ir_builder_->CreateSIToFP(operand_value, to_ir_component_type),
               nullptr);
         }
         if (primitive_util::IsUnsignedIntegralType(from_type) ||
             from_type == PRED) {
-          return ComposeComplex(
+          return EmitComposeComplex(
               op,
               ir_builder_->CreateUIToFP(operand_value, to_ir_component_type),
               nullptr);
@@ -178,9 +178,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
         PrimitiveType to_component_type =
             primitive_util::ComplexComponentType(to_type);
         if (from_type == to_component_type) {
-          return ComposeComplex(op, operand_value, nullptr);
+          return EmitComposeComplex(op, operand_value, nullptr);
         }
-        return ComposeComplex(
+        return EmitComposeComplex(
             op,
             ir_builder_->CreateFPCast(
                 operand_value,
@@ -269,15 +269,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) const {
-  auto real = [&](llvm::Value* x) {
-    return ir_builder_->CreateExtractValue(x, {0});
-  };
-  auto imag = [&](llvm::Value* x) {
-    return ir_builder_->CreateExtractValue(x, {1});
-  };
   switch (op->opcode()) {
     // TODO(b/65209142): Angle/Log require atan2.
-    // case HloOpcode::kAngle:
     // case HloOpcode::kLog:  // log(a+bi) = .5*log(a^2+b^2) + i*atan2(b, a)
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
@@ -291,24 +284,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
           primitive_util::ComplexComponentType(to_type);
       auto to_ir_component_type =
           llvm_ir::PrimitiveTypeToIrType(to_component_type, module_);
-      return ComposeComplex(
+      return EmitComposeComplex(
           op,
-          ir_builder_->CreateFPCast(real(operand_value), to_ir_component_type),
-          ir_builder_->CreateFPCast(imag(operand_value), to_ir_component_type));
+          ir_builder_->CreateFPCast(EmitExtractReal(operand_value),
+                                    to_ir_component_type),
+          ir_builder_->CreateFPCast(EmitExtractImag(operand_value),
+                                    to_ir_component_type));
     }
     case HloOpcode::kExp: {
       // e^(a+bi) = e^a*(cos(b)+sin(b)i)
       auto exp_a = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::exp, {real(operand_value)},
-          {real(operand_value)->getType()}, ir_builder_);
+          llvm::Intrinsic::exp, {EmitExtractReal(operand_value)},
+          {EmitExtractReal(operand_value)->getType()}, ir_builder_);
       auto cos_b = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::cos, {imag(operand_value)},
-          {imag(operand_value)->getType()}, ir_builder_);
+          llvm::Intrinsic::cos, {EmitExtractImag(operand_value)},
+          {EmitExtractImag(operand_value)->getType()}, ir_builder_);
       auto sin_b = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::sin, {imag(operand_value)},
-          {imag(operand_value)->getType()}, ir_builder_);
-      return ComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
-                            ir_builder_->CreateFMul(exp_a, sin_b));
+          llvm::Intrinsic::sin, {EmitExtractImag(operand_value)},
+          {EmitExtractImag(operand_value)->getType()}, ir_builder_);
+      return EmitComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
+                                ir_builder_->CreateFMul(exp_a, sin_b));
     }
     case HloOpcode::kCos: {
       // cos(z) = .5(e^(iz) + e^(-iz))
@@ -318,8 +313,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       // cos(-x) = cos(x) and sin(-x) = -sin(x), so
       // cos(a+bi) = .5(e^-b*(cos(a)+sin(a)i) + e^b*(cos(a)-sin(a)i))
       //           = .5(cos(a)*(e^-b+e^b) + i*sin(a)*(e^-b-e^b))
-      auto a = real(operand_value);
-      auto b = imag(operand_value);
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
       auto type = a->getType();
       auto exp_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {b},
                                                 {type}, ir_builder_);
@@ -331,7 +326,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
                                                 {type}, ir_builder_);
       auto sin_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {a},
                                                 {type}, ir_builder_);
-      return ComposeComplex(
+      return EmitComposeComplex(
           op,
           ir_builder_->CreateFMul(
               cos_a, ir_builder_->CreateFAdd(half_exp_neg_b, half_exp_b)),
@@ -348,8 +343,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       // cos(-x) = cos(x) and sin(-x) = -sin(x), so
       //           = 0.5(e^b*(cos(a)i+sin(a)) - e^-b*(cos(a)i-sin(a)))
       //           = 0.5(sin(a)*(e^b+e^-b) + i*cos(a)*(e^b-e^-b)
-      auto a = real(operand_value);
-      auto b = imag(operand_value);
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
       auto type = a->getType();
       auto exp_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {b},
                                                 {type}, ir_builder_);
@@ -361,7 +356,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
                                                 {type}, ir_builder_);
       auto sin_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {a},
                                                 {type}, ir_builder_);
-      return ComposeComplex(
+      return EmitComposeComplex(
           op,
           ir_builder_->CreateFMul(
               sin_a, ir_builder_->CreateFAdd(half_exp_b, half_exp_neg_b)),
@@ -370,33 +365,40 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     }
     case HloOpcode::kAbs: {
       auto sum_sq = ir_builder_->CreateFAdd(
-          ir_builder_->CreateFMul(real(operand_value), real(operand_value)),
-          ir_builder_->CreateFMul(imag(operand_value), imag(operand_value)));
+          ir_builder_->CreateFMul(EmitExtractReal(operand_value),
+                                  EmitExtractReal(operand_value)),
+          ir_builder_->CreateFMul(EmitExtractImag(operand_value),
+                                  EmitExtractImag(operand_value)));
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {sum_sq},
                                           {sum_sq->getType()}, ir_builder_);
     }
     case HloOpcode::kSign: {  // Sign(c) = c / |c|
       auto sum_sq = ir_builder_->CreateFAdd(
-          ir_builder_->CreateFMul(real(operand_value), real(operand_value)),
-          ir_builder_->CreateFMul(imag(operand_value), imag(operand_value)));
+          ir_builder_->CreateFMul(EmitExtractReal(operand_value),
+                                  EmitExtractReal(operand_value)),
+          ir_builder_->CreateFMul(EmitExtractImag(operand_value),
+                                  EmitExtractImag(operand_value)));
       auto cplx_abs = llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::sqrt, {sum_sq}, {sum_sq->getType()}, ir_builder_);
       auto type = cplx_abs->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = ir_builder_->CreateFCmpOEQ(cplx_abs, zero);
       return ir_builder_->CreateSelect(
-          oeq, ComposeComplex(op, zero, zero),
-          ComposeComplex(
-              op, ir_builder_->CreateFDiv(real(operand_value), cplx_abs),
-              ir_builder_->CreateFDiv(imag(operand_value), cplx_abs)));
+          oeq, EmitComposeComplex(op, zero, zero),
+          EmitComposeComplex(
+              op,
+              ir_builder_->CreateFDiv(EmitExtractReal(operand_value), cplx_abs),
+              ir_builder_->CreateFDiv(EmitExtractImag(operand_value),
+                                      cplx_abs)));
     }
     case HloOpcode::kNegate:
-      return ComposeComplex(op, ir_builder_->CreateFNeg(real(operand_value)),
-                            ir_builder_->CreateFNeg(imag(operand_value)));
+      return EmitComposeComplex(
+          op, ir_builder_->CreateFNeg(EmitExtractReal(operand_value)),
+          ir_builder_->CreateFNeg(EmitExtractImag(operand_value)));
     case HloOpcode::kReal:
-      return real(operand_value);
+      return EmitExtractReal(operand_value);
     case HloOpcode::kImag:
-      return imag(operand_value);
+      return EmitExtractImag(operand_value);
     default:
       return Unimplemented("unary complex op '%s'",
                            HloOpcodeString(op->opcode()).c_str());
@@ -424,7 +426,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
   switch (op->opcode()) {
     // case HloOpcode::kAtan2:  // TODO(b/65209142): CPU atan2 support
     case HloOpcode::kComplex:
-      return ComposeComplex(op, lhs_value, rhs_value);
+      return EmitComposeComplex(op, lhs_value, rhs_value);
     case HloOpcode::kAdd:
       return ir_builder_->CreateFAdd(lhs_value, rhs_value);
     case HloOpcode::kSubtract:
@@ -479,54 +481,66 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value,
     llvm::Value* rhs_value) const {
-  auto real = [&](llvm::Value* x) {
-    return ir_builder_->CreateExtractValue(x, {0});
-  };
-  auto imag = [&](llvm::Value* x) {
-    return ir_builder_->CreateExtractValue(x, {1});
-  };
   switch (op->opcode()) {
     case HloOpcode::kAdd:
-      return ComposeComplex(
-          op, ir_builder_->CreateFAdd(real(lhs_value), real(rhs_value)),
-          ir_builder_->CreateFAdd(imag(lhs_value), imag(rhs_value)));
+      return EmitComposeComplex(
+          op,
+          ir_builder_->CreateFAdd(EmitExtractReal(lhs_value),
+                                  EmitExtractReal(rhs_value)),
+          ir_builder_->CreateFAdd(EmitExtractImag(lhs_value),
+                                  EmitExtractImag(rhs_value)));
     case HloOpcode::kSubtract:
-      return ComposeComplex(
-          op, ir_builder_->CreateFSub(real(lhs_value), real(rhs_value)),
-          ir_builder_->CreateFSub(imag(lhs_value), imag(rhs_value)));
+      return EmitComposeComplex(
+          op,
+          ir_builder_->CreateFSub(EmitExtractReal(lhs_value),
+                                  EmitExtractReal(rhs_value)),
+          ir_builder_->CreateFSub(EmitExtractImag(lhs_value),
+                                  EmitExtractImag(rhs_value)));
     case HloOpcode::kMultiply:
-      return ComposeComplex(
+      return EmitComposeComplex(
           op,
           ir_builder_->CreateFSub(
-              ir_builder_->CreateFMul(real(lhs_value), real(rhs_value)),
-              ir_builder_->CreateFMul(imag(lhs_value), imag(rhs_value))),
+              ir_builder_->CreateFMul(EmitExtractReal(lhs_value),
+                                      EmitExtractReal(rhs_value)),
+              ir_builder_->CreateFMul(EmitExtractImag(lhs_value),
+                                      EmitExtractImag(rhs_value))),
           ir_builder_->CreateFAdd(
-              ir_builder_->CreateFMul(real(lhs_value), imag(rhs_value)),
-              ir_builder_->CreateFMul(imag(lhs_value), real(rhs_value))));
+              ir_builder_->CreateFMul(EmitExtractReal(lhs_value),
+                                      EmitExtractImag(rhs_value)),
+              ir_builder_->CreateFMul(EmitExtractImag(lhs_value),
+                                      EmitExtractReal(rhs_value))));
     case HloOpcode::kDivide: {
       // (a+bi) / (c+di) = ((a+bi)(c-di)) / ((c+di)(c-di))
       // = ((ac + bd) + (bc - ad)i) / (c^2 + d^2)
       auto rhs_sum_sq = ir_builder_->CreateFAdd(
-          ir_builder_->CreateFMul(real(rhs_value), real(rhs_value)),
-          ir_builder_->CreateFMul(imag(rhs_value), imag(rhs_value)));
+          ir_builder_->CreateFMul(EmitExtractReal(rhs_value),
+                                  EmitExtractReal(rhs_value)),
+          ir_builder_->CreateFMul(EmitExtractImag(rhs_value),
+                                  EmitExtractImag(rhs_value)));
       auto type = rhs_sum_sq->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = ir_builder_->CreateFCmpOEQ(rhs_sum_sq, zero);
+      auto real_inf_or_nan =
+          ir_builder_->CreateFDiv(EmitExtractReal(lhs_value), zero);
+      auto imag_inf_or_nan =
+          ir_builder_->CreateFDiv(EmitExtractImag(lhs_value), zero);
       return ir_builder_->CreateSelect(
-          oeq, ComposeComplex(op, llvm::ConstantFP::getInfinity(type), zero),
-          ComposeComplex(
+          oeq, EmitComposeComplex(op, real_inf_or_nan, imag_inf_or_nan),
+          EmitComposeComplex(
               op,
               ir_builder_->CreateFDiv(
                   ir_builder_->CreateFAdd(
-                      ir_builder_->CreateFMul(real(lhs_value), real(rhs_value)),
-                      ir_builder_->CreateFMul(imag(lhs_value),
-                                              imag(rhs_value))),
+                      ir_builder_->CreateFMul(EmitExtractReal(lhs_value),
+                                              EmitExtractReal(rhs_value)),
+                      ir_builder_->CreateFMul(EmitExtractImag(lhs_value),
+                                              EmitExtractImag(rhs_value))),
                   rhs_sum_sq),
               ir_builder_->CreateFDiv(
                   ir_builder_->CreateFSub(
-                      ir_builder_->CreateFMul(imag(lhs_value), real(rhs_value)),
-                      ir_builder_->CreateFMul(real(lhs_value),
-                                              imag(rhs_value))),
+                      ir_builder_->CreateFMul(EmitExtractImag(lhs_value),
+                                              EmitExtractReal(rhs_value)),
+                      ir_builder_->CreateFMul(EmitExtractReal(lhs_value),
+                                              EmitExtractImag(rhs_value))),
                   rhs_sum_sq)));
     }
     // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
@@ -538,16 +552,20 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
     // matches C++'s semantics.
     case HloOpcode::kEq:
       return ir_builder_->CreateAnd(
-          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, real(lhs_value),
-                                  real(rhs_value), ir_builder_),
-          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, imag(lhs_value),
-                                  imag(rhs_value), ir_builder_));
+          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
+                                  EmitExtractReal(lhs_value),
+                                  EmitExtractReal(rhs_value), ir_builder_),
+          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
+                                  EmitExtractImag(lhs_value),
+                                  EmitExtractImag(rhs_value), ir_builder_));
     case HloOpcode::kNe:
       return ir_builder_->CreateOr(
-          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, real(lhs_value),
-                                  real(rhs_value), ir_builder_),
-          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, imag(lhs_value),
-                                  imag(rhs_value), ir_builder_));
+          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
+                                  EmitExtractReal(lhs_value),
+                                  EmitExtractReal(rhs_value), ir_builder_),
+          llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
+                                  EmitExtractImag(lhs_value),
+                                  EmitExtractImag(rhs_value), ir_builder_));
 
     // TODO(b/65209142): requires arg(z) -> requires atan|atan2 intrinsic
     // case HloOpcode::kPower:
@@ -1565,25 +1583,25 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         TF_ASSIGN_OR_RETURN(llvm::Value * rhs_value, rhs_generator(rhs_index));
         llvm::Value* next_accumulator;
         if (primitive_util::IsComplexType(primitive_type)) {
-          auto real = [&](llvm::Value* x) {
-            return ir_builder_->CreateExtractValue(x, {0});
-          };
-          auto imag = [&](llvm::Value* x) {
-            return ir_builder_->CreateExtractValue(x, {1});
-          };
           llvm::Value* product_real = ir_builder_->CreateFSub(
-              ir_builder_->CreateFMul(real(lhs_value), real(rhs_value)),
-              ir_builder_->CreateFMul(imag(lhs_value), imag(rhs_value)));
+              ir_builder_->CreateFMul(EmitExtractReal(lhs_value),
+                                      EmitExtractReal(rhs_value)),
+              ir_builder_->CreateFMul(EmitExtractImag(lhs_value),
+                                      EmitExtractImag(rhs_value)));
           llvm::Value* product_imag = ir_builder_->CreateFAdd(
-              ir_builder_->CreateFMul(real(lhs_value), imag(rhs_value)),
-              ir_builder_->CreateFMul(imag(lhs_value), real(rhs_value)));
+              ir_builder_->CreateFMul(EmitExtractReal(lhs_value),
+                                      EmitExtractImag(rhs_value)),
+              ir_builder_->CreateFMul(EmitExtractImag(lhs_value),
+                                      EmitExtractReal(rhs_value)));
           next_accumulator = ir_builder_->CreateInsertValue(
               current_accumulator,
-              ir_builder_->CreateFAdd(real(current_accumulator), product_real),
+              ir_builder_->CreateFAdd(EmitExtractReal(current_accumulator),
+                                      product_real),
               {0});
           next_accumulator = ir_builder_->CreateInsertValue(
               next_accumulator,
-              ir_builder_->CreateFAdd(imag(current_accumulator), product_imag),
+              ir_builder_->CreateFAdd(EmitExtractImag(current_accumulator),
+                                      product_imag),
               {1});
         } else if (primitive_util::IsFloatingPointType(primitive_type)) {
           next_accumulator = ir_builder_->CreateFAdd(
@@ -1607,9 +1625,17 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
   }
 }
 
-llvm::Value* ElementalIrEmitter::ComposeComplex(const HloInstruction* op,
-                                                llvm::Value* real,
-                                                llvm::Value* imag) const {
+llvm::Value* ElementalIrEmitter::EmitExtractReal(llvm::Value* value) const {
+  return ir_builder_->CreateExtractValue(value, {0});
+}
+
+llvm::Value* ElementalIrEmitter::EmitExtractImag(llvm::Value* value) const {
+  return ir_builder_->CreateExtractValue(value, {1});
+}
+
+llvm::Value* ElementalIrEmitter::EmitComposeComplex(const HloInstruction* op,
+                                                    llvm::Value* real,
+                                                    llvm::Value* imag) const {
   auto cplx_type =
       llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
   auto complex = ir_builder_->CreateInsertValue(

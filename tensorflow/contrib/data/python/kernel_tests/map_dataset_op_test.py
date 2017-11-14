@@ -20,15 +20,15 @@ from collections import namedtuple
 
 import os
 import threading
-from collections import namedtuple
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -37,6 +37,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
@@ -613,6 +614,57 @@ class MapDatasetTest(test.TestCase):
       sess.run(init_op)
       for i in range(10):
         self.assertEqual((i, 37.0), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def assertSparseValuesEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
+
+  def testSparse(self):
+    def _sparse(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1])
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_sparse)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[i], dense_shape=[1, 1])
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, expected.eval())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testSparseChain(self):
+    def _sparse(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1])
+    def _check(i):
+      self.assertTrue(isinstance(i, sparse_tensor.SparseTensor))
+      return sparse_ops.sparse_concat(0, [i, i])
+
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_sparse).map(_check)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0], [1, 0]], values=[i, i], dense_shape=[2, 1])
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, expected.eval())
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

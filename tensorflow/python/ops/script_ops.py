@@ -163,6 +163,12 @@ def py_func(func, inp, Tout, stateful=True, name=None):
       having element types that match the corresponding `tf.Tensor` objects
       in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
       having element types that match the corresponding values in `Tout`.
+      Important Note: Input and output numpy `ndarray`s of `func` are not
+      guaranteed to be copies. In some cases their underlying memory will be
+      shared with the corresponding TensorFlow tensors.
+      In-place modification or storing `func` input or return values in
+      python datastructures without explicit (np.)copy
+      can have non-deterministic consequences.
     inp: A list of `Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.

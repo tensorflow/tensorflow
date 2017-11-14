@@ -416,6 +416,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@protobuf_archive//:protobuf",
   )
 
+  native.bind(
+      name = "protobuf_headers",
+      actual = "@protobuf_archive//:protobuf_headers",
+  )
+
   # We need to import the protobuf library under the names com_google_protobuf
   # and com_google_protobuf_cc to enable proto_library support in bazel.
   # Unfortunately there is no way to alias http_archives at the moment.
@@ -528,15 +533,21 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@grpc//third_party/nanopb:nanopb",
   )
 
-  patched_http_archive(
+  native.http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
-          # "https://github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
+          # "https://mirror.bazel.build/github.com/grpc/grpc/archive/54e8f37e537794c2d814c1604c1282125f64f093.tar.gz",
+          "https://github.com/grpc/grpc/archive/54e8f37e537794c2d814c1604c1282125f64f093.tar.gz",
       ],
-      sha256 = "2004635e6a078acfac8ffa71738397796be4f8fb72f572cc44ecee5d99511d9f",
-      strip_prefix = "grpc-781fd6f6ea03645a520cd5c675da67ab61f87e4b",
-      patch_file = str(Label("//third_party/grpc:grpc.patch")),
+     sha256 = "c2166b6d96daddf72fe45b2c594210c65ca17ec3c1b2e12089159a9529edb5e4",
+     strip_prefix = "grpc-54e8f37e537794c2d814c1604c1282125f64f093",
+  )
+
+  # gRPC wants the existence of a cares dependence but its contents are not
+  # actually important since we have set GRPC_ARES=0 in tools/bazel.rc
+  native.bind(
+      name = "cares",
+      actual = "@grpc//third_party/nanopb:nanopb",
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's

@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "base/logging.h"
-#include "file/base/path.h"
 #include "testing/base/public/googletest.h"
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -46,7 +46,7 @@ constexpr int kModelOutputTensor = 66;
 TEST(SpeechSpeakerId, OkGoogleTest) {
   // Read the model.
   string tflite_file_path =
-      file::JoinPath(TestDataPath(), "speech_speakerid_model.tflite");
+      StrCat(TestDataPath(), "/", "speech_speakerid_model.tflite");
   auto model = FlatBufferModel::BuildFromFile(tflite_file_path.c_str());
   CHECK(model) << "Failed to read model from file " << tflite_file_path;
 
@@ -61,13 +61,13 @@ TEST(SpeechSpeakerId, OkGoogleTest) {
   // Load the input frames.
   Frames input_frames;
   const string input_file_path =
-      file::JoinPath(TestDataPath(), "speech_speakerid_model_in.csv");
+      StrCat(TestDataPath(), "/", "speech_speakerid_model_in.csv");
   ReadFrames(input_file_path, &input_frames);
 
   // Load the golden output results.
   Frames output_frames;
   const string output_file_path =
-      file::JoinPath(TestDataPath(), "speech_speakerid_model_out.csv");
+      StrCat(TestDataPath(), "/", "speech_speakerid_model_out.csv");
   ReadFrames(output_file_path, &output_frames);
 
   const int speech_batch_size =

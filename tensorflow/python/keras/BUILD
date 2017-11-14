@@ -69,6 +69,7 @@ py_library(
         "_impl/keras/utils/io_utils.py",
         "_impl/keras/utils/layer_utils.py",
         "_impl/keras/utils/np_utils.py",
+        "_impl/keras/utils/training_utils.py",
         "_impl/keras/utils/vis_utils.py",
         "_impl/keras/wrappers/__init__.py",
         "_impl/keras/wrappers/scikit_learn.py",
@@ -580,6 +581,19 @@ py_test(
     srcs = ["_impl/keras/utils/io_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_utils_test",
+    size = "medium",
+    srcs = ["_impl/keras/utils/training_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["multi_gpu"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

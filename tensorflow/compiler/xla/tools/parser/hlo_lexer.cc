@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -226,6 +227,13 @@ TokKind HloLexer::LexIdentifier() {
     return TokKind::kOpcode;
   }
 
+  // See if this is an fusion kind.
+  auto kind = xla::StringToFusionKind(identifier.ToString());
+  if (kind.ok()) {
+    fusion_kind_val_ = kind.ValueOrDie();
+    return TokKind::kFusionKind;
+  }
+
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     static LazyRE2 dim_labels_pattern = {
@@ -426,6 +434,8 @@ string TokKindToString(TokKind kind) {
       return "kShape";
     case TokKind::kOpcode:
       return "kOpcode";
+    case TokKind::kFusionKind:
+      return "kFusionKind";
     case TokKind::kInt:
       return "kInt";
     case TokKind::kDecimal:

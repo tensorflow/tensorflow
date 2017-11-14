@@ -59,7 +59,6 @@ class Tape(object):
 
   def __init__(self):
     self._tape = pywrap_tensorflow.TFE_Py_NewTape()
-    self._watched_variables = set()
 
   def should_record(self, tensors):
     """Returns true if any tensor should be recorded.
@@ -78,8 +77,10 @@ class Tape(object):
     pywrap_tensorflow.TFE_Py_TapeWatch(self._tape, tid(tensor))
 
   def watch_variable(self, v):
-    self._watched_variables.add(v)
-    self.watch(v.handle)
+    pywrap_tensorflow.TFE_Py_TapeWatchVariable(self._tape, v)
+
+  def watched_variables(self):
+    return pywrap_tensorflow.TFE_Py_TapeWatchedVariables(self._tape)
 
   def record_operation(self, op_type, output_tensors, input_tensors,
                        backward_function):
@@ -175,11 +176,6 @@ def delete_trace(tensor_id):
   """Deletes traces for this Tensor from all tapes in the stack."""
   for t in _tape_stack.stack:
     t.delete_trace(tensor_id)
-
-
-def top_tape_watched_variables():
-  t = _tape_stack.stack[-1]
-  return t._watched_variables  # pylint: disable=protected-access
 
 
 def could_possibly_record():

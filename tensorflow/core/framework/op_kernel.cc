@@ -622,8 +622,10 @@ Status OpKernelContext::allocate_tensor(
   Tensor new_tensor(a, type, shape, logged_attr);
 
   if (!new_tensor.IsInitialized()) {
-    return errors::ResourceExhausted("OOM when allocating tensor with shape",
-                                     shape.DebugString());
+    return errors::ResourceExhausted(
+        "OOM when allocating tensor with shape", shape.DebugString(),
+        " and type ", DataTypeString(type), " on ", params_->device->name(),
+        " by allocator ", a->Name());
   }
   if (params_->log_memory) {
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),

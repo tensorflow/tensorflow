@@ -31,6 +31,34 @@ py_test(
     ],
 )
 
+py_library(
+    name = "sparse",
+    srcs = ["sparse.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nest",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:util",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "sparse_test",
+    size = "small",
+    srcs = ["sparse_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nest",
+        ":sparse",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:sparse_tensor",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

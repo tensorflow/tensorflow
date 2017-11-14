@@ -24,6 +24,7 @@ limitations under the License.
 
 using tensorflow::Flag;
 using tensorflow::Flags;
+using tensorflow::string;
 
 namespace {
 

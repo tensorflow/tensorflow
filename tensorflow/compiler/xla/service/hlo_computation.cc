@@ -385,11 +385,6 @@ string HloComputation::ToString(int nested_level,
              /*include_metadata=*/true,
              /*include_large_constants=*/include_large_constants)
       << "\n";
-    if (instruction->opcode() == HloOpcode::kFusion) {
-      s << instruction->fused_instructions_computation()->ToString(
-               nested_level + 1, include_large_constants)
-        << "\n";
-    }
   }
   for (int i = 0; i < nested_level; i++) {
     s << "    ";
