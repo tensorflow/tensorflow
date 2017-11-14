@@ -334,7 +334,7 @@ def sampled_sparse_softmax_loss(weights,
 
   # There is only one true label. _compute_sampled_logits puts the true logit
   # at index 0.
-  labels = tf.zeros([array_ops.shape(logits)[0], 1], dtype=dtypes.int64)
+  labels = array_ops.zeros([array_ops.shape(logits)[0], 1], dtype=dtypes.int64)
 
   sampled_losses = nn_ops.sparse_softmax_cross_entropy_with_logits(
       labels=array_ops.squeeze(labels), logits=logits)
