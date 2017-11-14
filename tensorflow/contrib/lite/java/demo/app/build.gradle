@@ -36,8 +36,8 @@ android {
 }
 
 repositories {
-    flatDir {
-        dirs 'libs'
+    maven {
+        url 'https://google.bintray.com/tensorflow'
     }
 }
 
