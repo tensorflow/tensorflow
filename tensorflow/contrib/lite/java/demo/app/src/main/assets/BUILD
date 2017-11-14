@@ -2,15 +2,13 @@ package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0
 
-filegroup(
-    name = "assets_files",
-    srcs = glob(
+exports_files(
+    glob(
         ["**/*"],
         exclude = [
             "BUILD",
         ],
     ),
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
