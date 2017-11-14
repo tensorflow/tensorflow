@@ -444,6 +444,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/eager:python_eager_op_gen",
     ],

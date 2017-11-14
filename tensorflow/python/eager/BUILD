@@ -222,6 +222,7 @@ cc_library(
         ":python_eager_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )
