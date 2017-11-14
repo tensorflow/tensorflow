@@ -46,9 +46,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
-
 // Returns whether operand is a literal with the given value.
 bool IsLiteralWithValue(const HloInstruction* operand, int8 value) {
   return operand->opcode() == HloOpcode::kConstant &&
