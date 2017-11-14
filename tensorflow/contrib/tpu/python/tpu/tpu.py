@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 
 
 _SUMMARY_OPS = ("ScalarSummary",)
@@ -111,7 +112,8 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
       raise ValueError("Placeholder %s is not supported." % op.name)
 
     if op.type in _SUMMARY_OPS:
-      raise ValueError("Summary operations are not currently supported.")
+      logging.warning(
+          "Summary operations are not currently supported (%s)" % op.name)
 
     if any(x.dtype._is_ref_dtype for x in op.inputs):
       raise NotImplementedError(
