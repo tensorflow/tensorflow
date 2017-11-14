@@ -864,7 +864,10 @@ def index_table_from_file(vocabulary_file=None,
                           default_value=-1,
                           hasher_spec=FastHashSpec,
                           key_dtype=dtypes.string,
-                          name=None):
+                          name=None,
+                          key_column_index=TextFileIndex.WHOLE_LINE,
+                          value_column_index=TextFileIndex.LINE_NUMBER,
+                          delimiter="\t"):
   """Returns a lookup table that converts a string tensor into int64 IDs.
 
   This operation constructs a lookup table to convert tensor of strings into
@@ -880,6 +883,16 @@ def index_table_from_file(vocabulary_file=None,
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
+
+  To specify multi-column vocabulary files, use key_column_index and
+  value_column_index and delimiter.
+
+  - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
+    expects data type int64.
+  - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
+    type string.
+  - A value >=0 means use the index (starting at zero) of the split line based
+    on `delimiter`.
 
   Sample Usages:
 
@@ -912,6 +925,11 @@ def index_table_from_file(vocabulary_file=None,
       assignation of out-of-vocabulary buckets.
     key_dtype: The `key` data type.
     name: A name for this op (optional).
+    key_column_index: The column index from the text file to get the `key`
+      values from. The default is to use the line number, starting from zero.
+    value_column_index: The column index from the text file ro get the `value`
+      values from. The default is 0 that represents the whole line content.
+    delimiter: The delimiter to separate fields in a line.
 
   Returns:
     The lookup table to map a `key_dtype` `Tensor` to index `int64` `Tensor`.
@@ -944,19 +962,22 @@ def index_table_from_file(vocabulary_file=None,
         # Keep the shared_name:
         # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
         shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
-                                                  TextFileIndex.WHOLE_LINE,
-                                                  TextFileIndex.LINE_NUMBER)
+                                                  key_column_index,
+                                                  value_column_index)
       else:
         # Keep the shared_name
         # <table_type>_<filename>_<key_index>_<value_index>
         shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
-                                               TextFileIndex.WHOLE_LINE,
-                                               TextFileIndex.LINE_NUMBER)
+                                               key_column_index,
+                                               value_column_index)
       init = TextFileIdTableInitializer(
           vocabulary_file,
           vocab_size=vocab_size,
           key_dtype=dtypes.int64 if key_dtype.is_integer else key_dtype,
-          name="table_init")
+          name="table_init",
+          key_column_index=key_column_index,
+          value_column_index=value_column_index,
+          delimiter=delimiter)
 
       table = HashTable(
           init, default_value, shared_name=shared_name, name=hash_table_scope)

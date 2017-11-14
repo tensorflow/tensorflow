@@ -281,6 +281,37 @@ class IndexTableFromFile(test.TestCase):
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, 3), ids.eval())
 
+  def test_string_index_table_from_multicolumn_file(self):
+    vocabulary_file = self._createVocabFile(
+        "f2i_vocab1.txt", values=("brain\t300", "salad\t20", "surgery\t1"))
+    with self.test_session():
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file,
+          num_oov_buckets=1,
+          key_column_index=0,
+          value_column_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+
+      self.assertRaises(errors_impl.OpError, ids.eval)
+      lookup_ops.tables_initializer().run()
+      self.assertAllEqual((1, 2, 3), ids.eval())
+
+  def test_string_index_table_from_multicolumn_file_custom_delimiter(self):
+    vocabulary_file = self._createVocabFile(
+        "f2i_vocab1.txt", values=("brain 300", "salad 20", "surgery 1"))
+    with self.test_session():
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file,
+          num_oov_buckets=1,
+          key_column_index=0,
+          value_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
+          delimiter=" ")
+      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+
+      self.assertRaises(errors_impl.OpError, ids.eval)
+      lookup_ops.tables_initializer().run()
+      self.assertAllEqual((1, 2, 3), ids.eval())
+
   def test_string_index_table_from_file_tensor_filename(self):
     vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
     with self.test_session():
