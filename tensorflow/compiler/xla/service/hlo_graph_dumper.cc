@@ -1001,10 +1001,13 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
           .starts_with(StrCat("%", HloOpcodeString(instr->opcode())))) {
     return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
-
+  string extended_opcode =
+      StrCat(HloOpcodeString(instr->opcode()),
+             instr->opcode() == HloOpcode::kFusion
+                 ? ""
+                 : StrCat(":", xla::ToString(instr->fusion_kind())));
   // If the name does not contain the opcode, render both.
-  return Printf("<b>%s</b><br/>%s",
-                HtmlLikeStringSanitize(instr->ExtendedOpcodeStr()),
+  return Printf("<b>%s</b><br/>%s", HtmlLikeStringSanitize(extended_opcode),
                 HtmlLikeStringSanitize(instr->name()));
 }
 

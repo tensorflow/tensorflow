@@ -312,6 +312,11 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root);
 
+  static std::unique_ptr<HloInstruction> CreateFusion(
+      const Shape& shape, FusionKind fusion_kind,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloComputation* fusion_computation);
+
   // Creates a fusion instruction that represents backward convolution. This is
   // similar to CreateFusion, but with extra arguments indicating the window and
   // dimemsion mapping of the backward convolution.
@@ -976,11 +981,6 @@ class HloInstruction {
   // Precondition: this op must be a reshape.
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
-
-  // Returns the opcode string for this instruction. This is the result from
-  // HloOpcodeString plus, for fusion nodes, the fusion kind, separated by a
-  // ':'.
-  string ExtendedOpcodeStr() const;
 
   // Returns a string identifier for this instruction. If no string identifier
   // has been explicitly set, then the identifier is the serialized pointer to
