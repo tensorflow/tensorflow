@@ -63,6 +63,14 @@ void ShapedBuffer::clear() {
   }
 }
 
+void ShapedBuffer::AddBufferAtIndex(
+    const perftools::gputools::DeviceMemoryBase& buffer,
+    const ShapeIndex& shape_index) {
+  *mutable_shape_index_to_buffer_entry()->mutable_element(shape_index) =
+      buffers().size();
+  mutable_buffers()->push_back(buffer);
+}
+
 const se::DeviceMemoryBase& ShapedBuffer::buffer(
     const ShapeIndex& index) const {
   return buffers_[shape_index_to_buffer_entry_.element(index)];
