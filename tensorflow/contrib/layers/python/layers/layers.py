@@ -1403,7 +1403,8 @@ def dropout(inputs,
             noise_shape=None,
             is_training=True,
             outputs_collections=None,
-            scope=None):
+            scope=None,
+            seed=None):
   """Returns a dropout op applied to the input.
 
   With probability `keep_prob`, outputs the input element scaled up by
@@ -1421,6 +1422,8 @@ def dropout(inputs,
       Otherwise, inputs is returned.
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
+    seed: A Python integer. Used to create random seeds. See
+      @{tf.set_random_seed} for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -1430,6 +1433,7 @@ def dropout(inputs,
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.Dropout(rate=1 - keep_prob,
                                 noise_shape=noise_shape,
+                                seed=seed,
                                 name=sc.name,
                                 _scope=sc)
     outputs = layer.apply(inputs, training=is_training)
