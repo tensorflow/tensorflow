@@ -23,6 +23,8 @@ namespace tensorflow {
 namespace io {
 namespace {
 
+static constexpr int64 kMaxSkipSize = 8 * 1024 * 1024;
+
 class TestStringStream : public InputStreamInterface {
  public:
   explicit TestStringStream(const string& content) : content_(content) {}
@@ -34,6 +36,20 @@ class TestStringStream : public InputStreamInterface {
     }
     *result = content_.substr(pos_, bytes_to_read);
     pos_ += bytes_to_read;
+    return Status::OK();
+  }
+
+  Status SkipNBytes(int64 bytes_to_skip) {
+    if (bytes_to_skip < 0) {
+      return errors::InvalidArgument("Can't skip a negative number of bytes");
+    }
+    string unused;
+    // Read kDefaultSkipSize at a time till bytes_to_skip.
+    while (bytes_to_skip > 0) {
+      int64 bytes_to_read = std::min<int64>(kMaxSkipSize, bytes_to_skip);
+      TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &unused));
+      bytes_to_skip -= bytes_to_read;
+    }
     return Status::OK();
   }
 
