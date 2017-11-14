@@ -30,7 +30,6 @@ from tensorflow.python.ops import sparse_ops
 # latent bugs here.
 ops.NotDifferentiable("SparseAddGrad")
 ops.NotDifferentiable("SparseConcat")
-ops.NotDifferentiable("SparseToDense")
 
 
 @ops.RegisterGradient("SparseReorder")
