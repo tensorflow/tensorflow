@@ -89,6 +89,9 @@ void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
 // return the path.
 string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
 
+// Creates a temporary file name with an extension.
+string GetTempFilename(const string& extension);
+
 }  // namespace io
 }  // namespace tensorflow
 
