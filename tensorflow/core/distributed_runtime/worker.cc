@@ -132,7 +132,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     return;
   }
   StepStatsCollector* collector = nullptr;
-  if (request->exec_opts().record_timeline() ||
+  if (request->exec_opts().report_tensor_allocations_upon_oom() ||
+      request->exec_opts().record_timeline() ||
       request->exec_opts().record_costs()) {
     collector = new StepStatsCollector(response->mutable_step_stats());
     // TODO(mrry,pbar): GPU tracing for distributed steps.
