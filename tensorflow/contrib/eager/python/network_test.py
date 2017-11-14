@@ -46,8 +46,8 @@ class NetworkTest(test.TestCase):
 
   def _save_modify_load_network_built(self, net, global_step=None):
     checkpoint_directory = self.get_temp_dir()
-    checkpoint_path = net.save(
-        save_path=checkpoint_directory, global_step=global_step)
+    checkpoint_path = network.save_network_checkpoint(
+        network=net, save_path=checkpoint_directory, global_step=global_step)
     input_value = constant_op.constant([[42.0]])
     original_output = self.evaluate(net(input_value))
     for var in net.variables:
@@ -56,13 +56,13 @@ class NetworkTest(test.TestCase):
         self.evaluate(net(input_value)),
         original_output)
     # Either the returned explicit checkpoint path or the directory should work.
-    net.restore(save_path=checkpoint_directory)
+    network.restore_network_checkpoint(net, save_path=checkpoint_directory)
     self.assertAllEqual(
         original_output,
         self.evaluate(net(input_value)))
     for var in net.variables:
       self.evaluate(var.assign(var + 2.))
-    net.restore(save_path=checkpoint_path)
+    network.restore_network_checkpoint(net, save_path=checkpoint_path)
     self.assertAllEqual(
         original_output,
         self.evaluate(net(input_value)))
@@ -91,7 +91,7 @@ class NetworkTest(test.TestCase):
     net = MyNetwork(name="abcd")
     with self.assertRaisesRegexp(
         ValueError, "Attempt to save the Network before it was first called"):
-      net.save(self.get_temp_dir())
+      network.save_network_checkpoint(net, self.get_temp_dir())
     net(constant_op.constant([[2.0]]))
     self.evaluate(net.trainable_variables[0].assign([[17.0]]))
     self._save_modify_load_network_built(net, global_step=None)
@@ -105,7 +105,7 @@ class NetworkTest(test.TestCase):
     self.evaluate(net.variables[0].assign([[3.]]))
     default_global_step = training_util.get_or_create_global_step()
     self.evaluate(default_global_step.assign(4242))
-    save_path = net.save(self.get_temp_dir())
+    save_path = network.save_network_checkpoint(net, self.get_temp_dir())
     self.assertIn("abcd-4242", save_path)
 
   # TODO(allenl): This test creates garbage in some Python versions
@@ -116,10 +116,10 @@ class NetworkTest(test.TestCase):
     test_input = constant_op.constant([[2.0]])
     net1(test_input)
     self.evaluate(net1.trainable_variables[0].assign([[17.0]]))
-    save_path = net1.save(save_dir)
+    save_path = network.save_network_checkpoint(net1, save_dir)
     # With a pre-build restore we should have the same value.
     net2 = MyNetwork()
-    net2.restore(save_path)
+    network.restore_network_checkpoint(net2, save_path)
     self.assertAllEqual(self.evaluate(net1(test_input)),
                         self.evaluate(net2(test_input)))
     self.assertIsNot(net1.variables[0], net2.variables[0])
@@ -176,11 +176,12 @@ class NetworkTest(test.TestCase):
         "checkpoint_creator/first_layer/kernel": "owner_1/first_layer/kernel",
         "checkpoint_creator/second_layer/kernel": "second_layer/kernel",
     }
-    save_path = checkpoint_creator.save(
+    save_path = network.save_network_checkpoint(
+        checkpoint_creator,
         self.get_temp_dir(),
         map_func=lambda full_name: name_mapping[full_name])
     load_into = User(use_layer=first_owner.first)
-    load_into.restore(save_path)
+    network.restore_network_checkpoint(load_into, save_path)
     self.assertEqual(0, len(first_owner.variables))
     self.assertAllEqual(self.evaluate(checkpoint_creator(one)),
                         self.evaluate(load_into(one)))
@@ -201,7 +202,8 @@ class NetworkTest(test.TestCase):
       else:
         return "user_2/" + original_name
     with self.assertRaisesRegexp(ValueError, "garbage collected"):
-      load_into.restore(save_path, map_func=_restore_map_func)
+      network.restore_network_checkpoint(
+          load_into, save_path, map_func=_restore_map_func)
 
   @test_util.run_in_graph_and_eager_modes()
   def testRestoreIntoSubNetwork(self):
@@ -221,17 +223,18 @@ class NetworkTest(test.TestCase):
     whole_model_saver(one)
     self.evaluate(whole_model_saver.variables[0].assign([[15.]]))
     self.evaluate(whole_model_saver.variables[1].assign([[16.]]))
-    whole_model_checkpoint = whole_model_saver.save(self.get_temp_dir())
+    whole_model_checkpoint = network.save_network_checkpoint(
+        whole_model_saver, self.get_temp_dir())
 
     save_from = MyNetwork()
     save_from(one)
     self.evaluate(save_from.variables[0].assign([[5.]]))
-    checkpoint = save_from.save(self.get_temp_dir())
+    checkpoint = network.save_network_checkpoint(save_from, self.get_temp_dir())
     save_into_parent = Parent()
-    save_into_parent.restore(whole_model_checkpoint)
-    save_into_parent.first.restore(checkpoint)
-    save_into_parent.first.restore(checkpoint)  # deferred loading multiple
-                                                # times is fine
+    network.restore_network_checkpoint(save_into_parent, whole_model_checkpoint)
+    network.restore_network_checkpoint(save_into_parent.first, checkpoint)
+    # deferred loading multiple times is fine
+    network.restore_network_checkpoint(save_into_parent.first, checkpoint)
     save_into_parent(one)  # deferred loading
     self.assertAllEqual([[5.]], self.evaluate(save_into_parent.variables[0]))
     self.assertAllEqual([[16.]], self.evaluate(save_into_parent.variables[1]))
@@ -240,9 +243,9 @@ class NetworkTest(test.TestCase):
     # (deferred restoration should happen the same way non-deferred happens,
     # with later restorations overwriting older ones).
     save_into_parent = Parent()
-    save_into_parent.first.restore(checkpoint)  # deferred loading multiple
-                                                # times is fine
-    save_into_parent.restore(whole_model_checkpoint)
+    # deferred loading multiple times is fine
+    network.restore_network_checkpoint(save_into_parent.first, checkpoint)
+    network.restore_network_checkpoint(save_into_parent, whole_model_checkpoint)
     save_into_parent(one)  # deferred loading
     # We've overwritten the sub-Network restore.
     self.assertAllEqual([[15.]], self.evaluate(save_into_parent.variables[0]))
@@ -250,12 +253,12 @@ class NetworkTest(test.TestCase):
 
     self.evaluate(save_into_parent.variables[0].assign([[3.]]))
     self.evaluate(save_into_parent.variables[1].assign([[4.]]))
-    save_into_parent.second.restore(checkpoint)
+    network.restore_network_checkpoint(save_into_parent.second, checkpoint)
     self.assertAllEqual([[5.]], self.evaluate(save_into_parent.variables[1]))
     with self.assertRaisesRegexp(errors_impl.NotFoundError,
                                  "not found in checkpoint"):
       # The checkpoint is incompatible.
-      save_into_parent.restore(checkpoint)
+      network.restore_network_checkpoint(save_into_parent, checkpoint)
 
   @test_util.run_in_graph_and_eager_modes()
   def testCustomMapCollisionErrors(self):
@@ -277,25 +280,30 @@ class NetworkTest(test.TestCase):
     self.evaluate(make_checkpoint.variables[1].assign([[3.]]))
     with self.assertRaisesRegexp(
         ValueError,
-        "The map_func passed to Network.save for the Network 'parent_1' "
-        "resulted in two variables named 'foo'"):
-      make_checkpoint.save(self.get_temp_dir(), map_func=lambda n: "foo")
-    checkpoint = make_checkpoint.first.save(
-        self.get_temp_dir(), map_func=lambda n: "foo")
+        "The map_func passed to save_network_checkpoint for the Network "
+        "'parent_1' resulted in two variables named 'foo'"):
+      network.save_network_checkpoint(
+          make_checkpoint, self.get_temp_dir(), map_func=lambda n: "foo")
+    checkpoint = network.save_network_checkpoint(
+        network=make_checkpoint.first,
+        save_path=self.get_temp_dir(),
+        map_func=lambda n: "foo")
     loader = Parent()
-    loader.restore(checkpoint, map_func=lambda n: "foo")
+    network.restore_network_checkpoint(
+        loader, checkpoint, map_func=lambda n: "foo")
     with self.assertRaisesRegexp(
         ValueError,
-        ("The map_func passed to Network.restore for the Network"
+        ("The map_func passed to restore_network_checkpoint for the Network"
          " 'parent_2' resulted in two variables named 'foo'")):
       loader(one)
     loader = Parent()
     loader(one)
     with self.assertRaisesRegexp(
         ValueError,
-        ("The map_func passed to Network.restore for the Network"
+        ("The map_func passed to restore_network_checkpoint for the Network"
          " 'parent_3' resulted in two variables named 'foo'")):
-      loader.restore(checkpoint, map_func=lambda n: "foo")
+      network.restore_network_checkpoint(
+          loader, checkpoint, map_func=lambda n: "foo")
 
   @test_util.run_in_graph_and_eager_modes()
   def testDefaultMapCollisionErrors(self):
@@ -323,7 +331,7 @@ class NetworkTest(test.TestCase):
         ValueError,
         ("The default checkpoint variable name mapping strategy for Network "
          "'parent_1' resulted in a naming conflict.")):
-      make_checkpoint.save(self.get_temp_dir())
+      network.save_network_checkpoint(make_checkpoint, self.get_temp_dir())
 
     class Compatible(network.Network):
 
@@ -337,14 +345,15 @@ class NetworkTest(test.TestCase):
     successful_checkpoint = Compatible()
     successful_checkpoint(one)
     self.evaluate(successful_checkpoint.variables[0].assign([[-1.]]))
-    checkpoint_path = successful_checkpoint.save(self.get_temp_dir())
+    checkpoint_path = network.save_network_checkpoint(
+        successful_checkpoint, self.get_temp_dir())
     load_checkpoint = Parent()
     load_checkpoint(one)
     with self.assertRaisesRegexp(
         ValueError,
         ("The default checkpoint variable name mapping strategy for Network "
          "'parent_2' resulted in a naming conflict.")):
-      load_checkpoint.restore(checkpoint_path)
+      network.restore_network_checkpoint(load_checkpoint, checkpoint_path)
 
   def testNoReferenceCyclesAfterCall(self):
 
@@ -494,17 +503,17 @@ class NetworkTest(test.TestCase):
     self.assertStartsWith(
         expected_start="scope1/scope2/my_network_1/dense_1/",
         actual=net.trainable_weights[0].name)
-    save_path = net.save(self.get_temp_dir())
+    save_path = network.save_network_checkpoint(net, self.get_temp_dir())
     self.assertIn("scope1_scope2_my_network_1", save_path)
     restore_net = MyNetwork()
     # Delayed restoration
-    restore_net.restore(save_path)
+    network.restore_network_checkpoint(restore_net, save_path)
     restore_net(constant_op.constant([[1.0]]))
     self.assertAllEqual([[42.]],
                         self.evaluate(restore_net.variables[0]))
     self.evaluate(restore_net.variables[0].assign([[-1.]]))
     # Immediate restoration
-    restore_net.restore(save_path)
+    network.restore_network_checkpoint(restore_net, save_path)
     self.assertAllEqual([[42.]],
                         self.evaluate(restore_net.variables[0]))
 
