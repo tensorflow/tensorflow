@@ -5,7 +5,10 @@ package(
     default_visibility = [
         "//engedu/ml/tf_from_scratch:__pkg__",
         "//tensorflow:internal",
+        "//tensorflow/contrib/lite/toco/python:__pkg__",
         "//tensorflow_models:__subpackages__",
+        # TODO(aselle): to pass open source test.
+        "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
     ],
 )
 
@@ -45,6 +48,7 @@ py_library(
         "//tensorflow/compiler/aot/tests:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/contrib/learn:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/contrib/learn/python/learn/datasets:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/contrib/lite/toco/python:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/tools/api/generator:__pkg__",
@@ -130,6 +134,7 @@ py_library(
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/flags",
         "@six_archive//:six",
     ],
 )
@@ -1544,6 +1549,7 @@ py_library(
         ":platform",
         ":sparse_tensor",
         ":tensor_array_ops",
+        ":tf_should_use",
         ":util",
         "//tensorflow/core:protos_all_py",
         "@six_archive//:six",
@@ -1833,6 +1839,7 @@ py_library(
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":tf_should_use",
     ],
 )
 
@@ -2307,7 +2314,7 @@ py_library(
         ":math_ops",
         ":tensor_shape",
         ":tensor_util",
-        ":util",
+        ":tf_should_use",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -2344,6 +2351,7 @@ py_library(
         ":math_ops",
         ":state_ops",
         ":tensor_shape",
+        ":tf_should_use",
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
@@ -2727,6 +2735,7 @@ py_library(
         ["util/**/*.py"],
         exclude = [
             "util/example_parser*",
+            "util/tf_should_use.py",
             "util/**/*_test.py",
         ],
     ),
@@ -2789,6 +2798,17 @@ py_test(
     ],
 )
 
+py_library(
+    name = "tf_should_use",
+    srcs = ["util/tf_should_use.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow/python/eager:context",
+        "@six_archive//:six",
+    ],
+)
+
 py_test(
     name = "tf_should_use_test",
     size = "small",
@@ -2796,7 +2816,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
-        ":util",
+        ":tf_should_use",
     ],
 )
 
@@ -4350,8 +4370,16 @@ cuda_py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":array_ops",
+        ":constant_op",
+        ":dtypes",
+        ":functional_ops",
+        ":layers",
+        ":math_ops",
         ":nn",
+        ":ops",
         ":random_ops",
+        ":tf_optimizer",
+        ":training",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],

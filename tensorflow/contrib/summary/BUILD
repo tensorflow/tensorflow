@@ -26,12 +26,18 @@ py_test(
     deps = [
         ":summary_ops",
         ":summary_test_util",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
+        "@six_archive//:six",
     ],
 )
 

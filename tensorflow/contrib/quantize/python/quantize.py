@@ -89,8 +89,8 @@ def Quantize(graph,
           op.name[:-len('/depthwise')])
       if separable_conv and separable_conv.type == 'Conv2D':
         continue
-    if op.type == 'Conv2D':
-      # Quantize add ops that come after Conv2D
+    # Quantize add ops that come after Conv2D or DepthwiseConv2dNative.
+    if op.type in ['Conv2D', 'DepthwiseConv2dNative']:
       add_context_re = re.search(r'^(.*)/[^/]+/', op.name)
       if add_context_re is not None:
         context.add_contexts.add(add_context_re.group(1))
@@ -387,7 +387,7 @@ class _QuantizeContext(object):
 
     if delay_requested and self.quant_delay and self.quant_delay > 0:
       activate_quant = math_ops.greater_equal(
-          training_util.get_global_step(),
+          training_util.get_or_create_global_step(),
           self.quant_delay,
           name=scope + '/activate_quant')
       quant = control_flow_ops.cond(

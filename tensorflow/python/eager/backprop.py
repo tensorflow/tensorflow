@@ -120,6 +120,7 @@ _tracing = False
 # gradient function registration site, to be less error-prone
 # TODO(apassos) add ops other than those in nn_grad and math_grad
 _ops_which_dont_need_outputs = set([
+    "Identity",
     "MatMul",
     "Conv2DBackpropInput",
     "Conv2DBackpropFilter",
@@ -195,6 +196,7 @@ _ops_which_dont_need_outputs = set([
 ])
 
 _ops_which_dont_need_inputs = set([
+    "Identity",
     "Softmax",
     "LogSoftmax",
     "BiasAdd",
@@ -657,14 +659,14 @@ def make_vjp(f, params=None):
       for i in parameter_positions:
         sources.append(args[i])
         tape.watch(args[i])
-        result = f(*args)
-        if result is None:
-          raise ValueError("Cannot differentiate a function that returns None; "
-                           "did you forget to return a value from {}?".format(
-                               f.__name__))
-        flat_result = nest.flatten(result)
-        flat_result = [gen_array_ops.identity(x) for x in flat_result]
-        result = nest.pack_sequence_as(result, flat_result)
+      result = f(*args)
+      if result is None:
+        raise ValueError("Cannot differentiate a function that returns None; "
+                         "did you forget to return a value from {}?".format(
+                             f.__name__))
+      flat_result = nest.flatten(result)
+      flat_result = [gen_array_ops.identity(x) for x in flat_result]
+      result = nest.pack_sequence_as(result, flat_result)
     finally:
       t = tape.pop_tape()
     def vjp(dy=None):
@@ -727,12 +729,24 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
+_last_shape_dtype = [None, None]
+_last_zero = [None]
+
+
+def _zeros(shape, dtype):
+  """Wraps array_ops.zeros to cache last zero for a given shape and dtype."""
+  if [shape, dtype] != _last_shape_dtype:
+    _last_shape_dtype[:] = [shape, dtype]
+    _last_zero[0] = array_ops.zeros(shape, dtype)
+  return _last_zero[0]
+
+
 _default_vspace = imperative_grad.VSpace(
     num_elements_fn=_num_elements,
     aggregate_fn=_aggregate_grads,
     tensor_id=ops.tensor_id,
-    zeros=array_ops.zeros,
-    ones_like=lambda x: ops.convert_to_tensor(array_ops.ones_like(x)))
+    zeros=_zeros,
+    ones=array_ops.ones)
 
 
 class GradientTape(object):
@@ -821,5 +835,5 @@ class GradientTape(object):
                for x in sources]
     grad = imperative_grad.imperative_grad(
         _default_vspace, self._tape, [target], sources)
-    self.tape = None
+    self._tape = None
     return grad

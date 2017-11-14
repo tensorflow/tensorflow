@@ -39,6 +39,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -57,6 +58,15 @@ class IteratorTest(test.TestCase):
       gradients_impl.gradients(value, side)
     with self.assertRaisesRegexp(LookupError, "No gradient defined"):
       gradients_impl.gradients(value, [component, side])
+
+  def testCapturingStateInOneShotRaisesException(self):
+    var = variables.Variable(37.0, name="myvar")
+    dataset = (dataset_ops.Dataset.from_tensor_slices([0.0, 1.0, 2.0])
+               .map(lambda x: x + var))
+    with self.assertRaisesRegexp(
+        ValueError, r"`Dataset.make_one_shot_iterator\(\)` does not support "
+        "datasets that capture stateful objects.+myvar"):
+      dataset.make_one_shot_iterator()
 
   def testOneShotIterator(self):
     components = (np.arange(7),

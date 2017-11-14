@@ -1829,6 +1829,8 @@ need not be sorted and need not cover all values in the full
 range of valid values.
 
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+If the given segment ID `i` is negative, the value is dropped and will not be
+added to the sum of the segment.
 
 `num_segments` should equal the number of distinct segment IDs.
 

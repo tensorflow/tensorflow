@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "RefNextIteration"
+  in_arg {
+    name: "data"
+    description: <<END
+The tensor to be made available to the next iteration.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The same tensor as `data`.
+END
+  }
+  summary: "Makes its input available to the next iteration."
+}

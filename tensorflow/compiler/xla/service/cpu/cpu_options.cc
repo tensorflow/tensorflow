@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 
+#include "tensorflow/core/lib/strings/numbers.h"
+
 namespace {
 
 const char* const kXlaParallelCpuOption = "xla_cpu_parallel";
 const char* const kXlaOptimizeForSizeCpuOption = "xla_cpu_optimize_for_size";
 const char* const kXlaDisableVectorizedReduce = "xla_disable_vectorized_reduce";
+const char* const kLlvmIrDotTilingFactor = "xla_llvm_dot_tiling_factor";
 
 }  // namespace
 
@@ -43,6 +46,19 @@ bool VectorizedReduceDisabled(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   return extra_options_map.count(kXlaOptimizeForSizeCpuOption) > 0;
+}
+
+tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(
+    const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  auto it = extra_options_map.find(kLlvmIrDotTilingFactor);
+  int64 tiling_factor;
+  if (it != extra_options_map.end() &&
+      tensorflow::strings::safe_strto64(it->second, &tiling_factor)) {
+    return tiling_factor;
+  }
+  return tensorflow::gtl::nullopt;
 }
 
 }  // namespace options

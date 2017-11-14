@@ -224,6 +224,7 @@ add_python_module("tensorflow/python/grappler")
 add_python_module("tensorflow/python/keras")
 add_python_module("tensorflow/python/keras/activations")
 add_python_module("tensorflow/python/keras/applications")
+add_python_module("tensorflow/python/keras/applications/inception_resnet_v2")
 add_python_module("tensorflow/python/keras/applications/inception_v3")
 add_python_module("tensorflow/python/keras/applications/mobilenet")
 add_python_module("tensorflow/python/keras/applications/resnet50")
@@ -498,6 +499,19 @@ add_python_module("tensorflow/contrib/linear_optimizer/kernels/g3doc")
 add_python_module("tensorflow/contrib/linear_optimizer/python")
 add_python_module("tensorflow/contrib/linear_optimizer/python/kernel_tests")
 add_python_module("tensorflow/contrib/linear_optimizer/python/ops")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E touch
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/__init__.py")
+add_custom_command(
+    TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E touch
+    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/lite.py)
 add_python_module("tensorflow/contrib/lookup")
 add_python_module("tensorflow/contrib/losses")
 add_python_module("tensorflow/contrib/losses/python")
@@ -699,6 +713,9 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     else()
       set(require_shape_fn 1)
     endif()
+
+    get_filename_component(GENERATE_PYTHON_OP_LIB_MKDIRPATH ${GENERATE_PYTHON_OP_LIB_DESTINATION} PATH)
+    file(MAKE_DIRECTORY ${GENERATE_PYTHON_OP_LIB_MKDIRPATH})
 
     # Create a C++ executable that links in the appropriate op
     # registrations and generates Python wrapper code based on the
@@ -973,7 +990,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
-    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<$<BOOL:${BOOL_WIN32}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
     ${pywrap_tensorflow_deffile}
 )
@@ -1049,25 +1066,23 @@ if(WIN32)
         DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/python/ops/)
 endif(WIN32)
 
-if(WIN32)
-    # include contrib/seq2seq as .so
-    #
-    set(tf_beam_search_srcs
-        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.cc"
-        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.h"
-        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc"
-    )
+# include contrib/seq2seq as .so
+#
+set(tf_beam_search_srcs
+    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.h"
+    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc"
+)
 
-    set(tf_beam_search_gpu_srcs
-        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops_gpu.cu.cc"
-    )
+set(tf_beam_search_gpu_srcs
+    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops_gpu.cu.cc"
+)
 
-    AddUserOps(TARGET _beam_search_ops
-        SOURCES "${tf_beam_search_srcs}"
-        GPUSOURCES ${tf_beam_search_gpu_srcs}
-        DEPENDS pywrap_tensorflow_internal tf_python_ops
-        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/python/ops/)
-endif(WIN32)
+AddUserOps(TARGET _beam_search_ops
+    SOURCES "${tf_beam_search_srcs}"
+    GPUSOURCES ${tf_beam_search_gpu_srcs}
+    DEPENDS pywrap_tensorflow_internal tf_python_ops
+    DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/python/ops/)
 
 ############################################################
 # Build a PIP package containing the TensorFlow runtime.

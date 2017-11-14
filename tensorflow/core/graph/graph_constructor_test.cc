@@ -1731,6 +1731,136 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnNodesErrors) {
                "currently supported"});
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  const char* graph_def_str =
+      "node { name: 'A' op: 'TestInput' }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A'] }";
+
+  // Initial import
+  ImportGraphDefOptions opts;
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("A");
+  opts.return_nodes.push_back("B");
+  ImportGraphDefResults results;
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A");
+
+  // Repeat the same import
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_1");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_1:0");
+
+  // Repeat the same import again
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_2");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_2");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_2:0");
+
+  // Import with existing de-duped node names
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("A_1");
+  opts.return_nodes.push_back("B_1");
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A_1' op: 'TestInput' }"
+      "node { name: 'B_1' op: 'TestOneInputTwoOutputs' input: ['A_1:0'] }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_1_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_1_1");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_1_1:0");
+
+  // Create node with prefix and then import node with same name
+  ExpectOK("node { name: 'foo/abc' op: 'ABC' }");
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("foo");
+  results = ImportGraphDefResults();
+  ExpectOK("node { name: 'foo' op: 'TestInput' }", opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 1);
+  EXPECT_EQ(results.return_nodes[0]->name(), "foo_1");
+
+  // Imported nodes can't conflict with intermediate name (but can conflict with
+  // outer name)
+  ExpectOK("node { name: 'outer/inner/abc' op: 'ABC' }");
+
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("outer");
+  opts.return_nodes.push_back("inner");
+  opts.return_nodes.push_back("abc");
+  opts.return_nodes.push_back("outer/inner");
+  opts.return_nodes.push_back("outer/inner/abc");
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'outer' op: 'TestInput' }"
+      "node { name: 'inner' op: 'TestInput' }"
+      "node { name: 'abc' op: 'TestInput' }"
+      "node { name: 'outer/inner' op: 'TestInput' }"
+      "node { name: 'outer/inner/abc' op: 'TestInput' }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 5);
+  EXPECT_EQ(results.return_nodes[0]->name(), "outer_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "inner");
+  EXPECT_EQ(results.return_nodes[2]->name(), "abc");
+  EXPECT_EQ(results.return_nodes[3]->name(), "outer/inner_1");
+  EXPECT_EQ(results.return_nodes[4]->name(), "outer/inner/abc_1");
+
+  // Import with input map containing conflicting names
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.input_map[TensorId("A", 0)] = TensorId("A", 0);
+  opts.input_map[TensorId("B", 0)] = TensorId("B", 0);
+  opts.return_nodes.push_back("A");
+  opts.return_nodes.push_back("B");
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_3");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_3");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A:0");
+
+  // Check that colocation groups are updated
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("A");
+  opts.return_nodes.push_back("B");
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A:0'] "
+      "       attr { key: '_class' value { list { s:'loc:@A' } } } }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_4");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_4");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_4:0");
+  const AttrValue* class_attr =
+      results.return_nodes[1]->attrs().Find(kColocationAttrName);
+  ASSERT_TRUE(class_attr != nullptr);
+  ASSERT_EQ(class_attr->list().s_size(), 1);
+  EXPECT_EQ(class_attr->list().s(0), "loc:@A_4");
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_WithCycle) {
   // Test graph produced in python using:
   /*
@@ -2157,7 +2287,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   } while (0)
 
   EXPECT_IMPORT_FAILURE(def, opts,
-                        "Node 'scope/A' already exists in the Graph");
+                        "Node name 'scope/A' already exists in the Graph");
 
   GraphDef bad_def;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
@@ -2240,7 +2370,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       "node{name:'scope/A' op:'TestParams'}", &bad_def));
   EXPECT_IMPORT_FAILURE(bad_def, opts,
-                        "Node 'scope/A' already exists in the Graph");
+                        "Node name 'scope/A' already exists in the Graph");
 
   parsed = protobuf::TextFormat::ParseFromString(
       R"EOF(
@@ -2846,6 +2976,21 @@ versions {
   // Check that the refiner's graph def version is the lowest of
   // the graph defs we have seen so far.
   EXPECT_EQ(17, refiner.graph_def_version());
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
+  GraphDef def;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
+      "node { name: 'A' op: 'TestInput' attr { key: '_class' value { list { "
+      "s:'loc:@missing' } } } }",
+      &def));
+  ImportGraphDefOptions options;
+  // TODO(yaozhang): Extend ExpectError to check error type and use ExpectError
+  // and ExpectOK to replace the code below.
+  Status s = ImportGraphDef(options, def, &graph_, nullptr);
+  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+  options.validate_colocation_constraints = false;
+  TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
 }
 
 }  // namespace

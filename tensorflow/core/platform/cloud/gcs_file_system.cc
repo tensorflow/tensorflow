@@ -247,7 +247,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
   /// The implementation of reads with an LRU block cache. Thread safe.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    result->clear();
+    *result = StringPiece();
     std::vector<char> out;
     TF_RETURN_IF_ERROR(file_block_cache_->Read(filename_, offset, n, &out));
     std::memcpy(scratch, out.data(), std::min(out.size(), n));

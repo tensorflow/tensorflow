@@ -505,6 +505,18 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "matrix_exponential_op_test",
+    size = "small",
+    srcs = ["matrix_exponential_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+)
+
 cuda_py_test(
     name = "matrix_inverse_op_test",
     size = "small",
@@ -1174,6 +1186,7 @@ cuda_py_test(
     srcs = ["check_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
@@ -2856,6 +2869,20 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
+    name = "garbage_collection_test",
+    size = "small",
+    srcs = ["garbage_collection_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

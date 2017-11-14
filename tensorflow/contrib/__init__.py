@@ -79,6 +79,7 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
+from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.ndlstm import python as ndlstm
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs

@@ -407,9 +407,15 @@ def _get_defun_inputs(args):
 
 def _defun_internal(name, func, args, kwds):
   """Defines and returns graph-mode version of func."""
+  container_prefix = ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
   with context.graph_mode():
     captures = {}
     tmp_graph = CapturingGraph(captures)
+    # Inherit the container prefix, since this is used for error checking when
+    # isolating eager execution (the container prefix at creation must match the
+    # container prefix when used, and variables accessed in the defun will be
+    # used in the outside context).
+    tmp_graph._container_prefix = container_prefix  # pylint: disable=protected-access
     # Copy the graph collections to ensure summaries and other things work. This
     # lets the function access (but not mutate) collections of the containing
     # graph, such as the global step and the summary writer collections.

@@ -617,15 +617,16 @@ class _EagerTensorBase(Tensor):
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def numpy(self):
-    """Returns a numpy array with the same contents as the Tensor.
+    """Returns a numpy array or a scalar with the same contents as the Tensor.
 
     TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
     buffer but instead always explicitly copy? Note that currently it may or may
     not copy based on whether the numpy data is properly aligned or not.
 
     Returns:
-      A numpy array that may share memory with the Tensor object. Any changes
-      to one may be reflected in the other.
+      A numpy array or a scalar. Numpy array may share memory with the
+      Tensor object. Any changes to one may be reflected in the other. A scalar
+      value is returned when self has rank 0.
 
     Raises:
       ValueError: if the type of this Tensor is not representable in numpy.
@@ -862,6 +863,10 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
   constructors apply this function to each of their Tensor-valued
   inputs, which allows those ops to accept numpy arrays, Python lists,
   and scalars in addition to `Tensor` objects.
+
+  Note: This function diverges from default Numpy behavior for `float` and
+    `string` types when `None` is present in a Python list or scalar. Rather
+    than silently converting `None` values, an error will be thrown.
 
   Args:
     value: An object whose type has a registered `Tensor` conversion function.
@@ -1638,15 +1643,17 @@ class Operation(object):
   def colocation_groups(self):
     """Returns the list of colocation groups of the op."""
     default_colocation_group = [
-        compat.as_bytes("loc:@%s" % self._node_def.name)
+        compat.as_bytes("loc:@%s" % self.name)
     ]
-    if "_class" not in self._node_def.attr:
+    try:
+      class_attr = self.get_attr("_class")
+    except ValueError:
       # This op has no explicit colocation group, so it is itself its
       # own root of a colocation group.
       return default_colocation_group
 
     attr_groups = [
-        class_name for class_name in self.get_attr("_class")
+        class_name for class_name in class_attr
         if class_name.startswith(b"loc:@")
     ]
 
@@ -1891,7 +1898,7 @@ class Operation(object):
           ["^%s" % op.name for op in self._control_inputs])
 
   def __str__(self):
-    return str(self._node_def)
+    return str(self.node_def)
 
   def __repr__(self):
     return "<tf.Operation '%s' type=%s>" % (self.name, self.type)
@@ -2008,7 +2015,7 @@ class Operation(object):
   @property
   def node_def(self):
     # pylint: disable=line-too-long
-    """Returns a serialized `NodeDef` representation of this operation.
+    """Returns the `NodeDef` representation of this operation.
 
     Returns:
       A
@@ -2016,7 +2023,16 @@ class Operation(object):
       protocol buffer.
     """
     # pylint: enable=line-too-long
-    return self._node_def
+    if self._c_op:
+      with c_api_util.tf_buffer() as buf:
+        with errors.raise_exception_on_not_ok_status() as status:
+          c_api.TF_OperationToNodeDef(self._c_op, buf, status)
+        data = c_api.TF_GetBuffer(buf)
+      node_def = node_def_pb2.NodeDef()
+      node_def.ParseFromString(compat.as_bytes(data))
+      return node_def
+    else:
+      return self._node_def
 
   @property
   def op_def(self):
@@ -2030,13 +2046,13 @@ class Operation(object):
     """
     # pylint: enable=line-too-long
     if self._c_op:
-      with errors.raise_exception_on_not_ok_status() as status:
-        with c_api_util.tf_buffer() as buf:
+      with c_api_util.tf_buffer() as buf:
+        with errors.raise_exception_on_not_ok_status() as status:
           # pylint: disable=protected-access
           c_api.TF_GraphGetOpDef(self._graph._c_graph,
                                  compat.as_bytes(self.type), buf, status)
           # pylint: enable=protected-access
-          data = c_api.TF_GetBuffer(buf)
+        data = c_api.TF_GetBuffer(buf)
       op_def = op_def_pb2.OpDef()
       op_def.ParseFromString(compat.as_bytes(data))
       return op_def
@@ -2061,16 +2077,19 @@ class Operation(object):
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""
-    if not _USE_C_API:
-      assert "_set_attr not supported with _USE_C_API == False"
-      return
-    buf = c_api.TF_NewBufferFromString(
-        compat.as_bytes(attr_value.SerializeToString()))
-    try:
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf, status)  # pylint: disable=protected-access
-    finally:
-      c_api.TF_DeleteBuffer(buf)
+    if _USE_C_API:
+      buf = c_api.TF_NewBufferFromString(
+          compat.as_bytes(attr_value.SerializeToString()))
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          # pylint: disable=protected-access
+          c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf,
+                        status)
+          # pylint: enable=protected-access
+      finally:
+        c_api.TF_DeleteBuffer(buf)
+    else:
+      self._node_def.attr[attr_name].CopyFrom(attr_value)
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
@@ -2084,25 +2103,24 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    if _USE_C_API:
-      try:
-        # TODO(b/65162920): remove this try/except block when all attrs are
-        # implemented to use the _set_attr method instead of node_def.attr.
-        with errors.raise_exception_on_not_ok_status() as status:
-          metadata = c_api.TF_OperationGetAttrMetadata(self._c_op, name, status)
-        with errors.raise_exception_on_not_ok_status() as status:
-          if metadata.type == c_api.TF_ATTR_INT and metadata.is_list == 0:
-            return c_api.TF_OperationGetAttrInt(self._c_op, name, status)
-      except errors.InvalidArgumentError:
-        # Colocation ops are failing to find attrs begininning with "_*". They
-        # should fall through to the not-CAPI logic until the attribute is set
-        # via the C-API always.
-        pass
-
     fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
-    if name not in self._node_def.attr:
-      raise ValueError("No attr named '" + name + "' in " + str(self._node_def))
-    x = self._node_def.attr[name]
+    if self._c_op:
+      try:
+        with c_api_util.tf_buffer() as buf:
+          with errors.raise_exception_on_not_ok_status() as status:
+            c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf, status)
+          data = c_api.TF_GetBuffer(buf)
+      except errors.InvalidArgumentError as e:
+        # Convert to ValueError for backwards compatibility.
+        raise ValueError(str(e))
+      x = attr_value_pb2.AttrValue()
+      x.ParseFromString(data)
+    else:
+      if name not in self._node_def.attr:
+        raise ValueError(
+            "No attr named '" + name + "' in " + str(self._node_def))
+      x = self._node_def.attr[name]
+
     # Treat an empty oneof value as an empty list.
     if not x.WhichOneof("value"):
       return []
@@ -2745,10 +2763,10 @@ class Graph(object):
     """
     # pylint: enable=line-too-long
     if self._c_graph:
-      with errors.raise_exception_on_not_ok_status() as status:
-        with c_api_util.tf_buffer() as buf:
+      with c_api_util.tf_buffer() as buf:
+        with errors.raise_exception_on_not_ok_status() as status:
           c_api.TF_GraphVersions(self._c_graph, buf, status)
-          data = c_api.TF_GetBuffer(buf)
+        data = c_api.TF_GetBuffer(buf)
       version_def = versions_pb2.VersionDef()
       version_def.ParseFromString(compat.as_bytes(data))
       return version_def
@@ -2952,7 +2970,11 @@ class Graph(object):
         if previous._hash_str == function._hash_str:
           return
         else:
-          raise ValueError("Another function is already defined with that name")
+          raise ValueError("Cannot add function (%s, hash %s) to graph (%s). "
+                           "Another function (%s, hash %s) is already defined "
+                           "with that name (%s)" % (
+                               function, function._hash_str, self,
+                               previous, previous._hash_str, name))
     # pylint: enable=protected-access
 
     self._functions[name] = function
@@ -3098,9 +3120,10 @@ class Graph(object):
             ret._set_device(colocation_op.device)  # pylint: disable=protected-access
 
       all_colocation_groups = sorted(set(all_colocation_groups))
-      ret.node_def.attr["_class"].CopyFrom(
-          attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
-              s=all_colocation_groups)))
+      # pylint: disable=protected-access
+      ret._set_attr("_class", attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
+      # pylint: enable=protected-access
 
     # Sets "container" attribute if
     # (1) self._container is not None

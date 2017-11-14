@@ -537,6 +537,14 @@ void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
   builder->SetInsertPoint(blk, blk->getFirstInsertionPt());
 }
 
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
+  if (llvm::Instruction* terminator = blk->getTerminator()) {
+    builder->SetInsertPoint(terminator);
+  } else {
+    builder->SetInsertPoint(blk);
+  }
+}
+
 llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
                        llvm::IRBuilder<>* builder) {
   auto size = rotand->getType()->getPrimitiveSizeInBits();
@@ -555,8 +563,9 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
 llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled) {
   llvm::FastMathFlags flags;
   if (fast_math_enabled) {
-    // UnsafeAlgebra implies NoInfs, NoNaNs, NoSignedZeros, and AllowReciprocal.
-    flags.setUnsafeAlgebra();
+    // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros,
+    // AllowReciprocal, AllowContract, and ApproxFunc.
+    flags.setFast();
   }
   return flags;
 }

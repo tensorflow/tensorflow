@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -54,7 +55,8 @@ class GraphPropertiesTest : public ::testing::Test {
     } else {
       strings::StrAppend(&s, "[");
       for (int i = 0; i < p.shape().dim_size(); ++i) {
-        strings::StrAppend(&s, i == 0 ? "" : ",", p.shape().dim(i).size());
+        strings::StrAppend(&s, i == 0 ? "" : ",",
+                           std::max<int64>(p.shape().dim(i).size(), -1));
       }
       strings::StrAppend(&s, "]");
     }
@@ -294,10 +296,9 @@ TEST_F(GraphPropertiesTest, Queues) {
   ASSERT_EQ(1, props2.size());
   EXPECT_EQ("float: [3,7]", PropToString(props2[0]));
 
-  // The dequeue3 op shape is unknown.
   const auto props3 = properties.GetOutputProperties("Dequeue3");
   ASSERT_EQ(1, props3.size());
-  EXPECT_EQ("float: ?", PropToString(props3[0]));
+  EXPECT_EQ("float: [3,7]", PropToString(props3[0]));
 
   // The dequeue3 op shape is unknown. The square2 op shape is known. Verify
   // that we merge the 2 properly to determine the shape of the data coming out
@@ -676,8 +677,8 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
 
 TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output var =
-      ops::Variable(s.WithOpName("var"), TensorShape(), DataType::DT_FLOAT);
+  Output var = ops::Variable(s.WithOpName("var"), PartialTensorShape(),
+                             DataType::DT_FLOAT);
   Output var2 = ops::Variable(s.WithOpName("var2"), TensorShape({128, 256}),
                               DataType::DT_FLOAT);
   Output filename =
@@ -731,6 +732,80 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   EXPECT_EQ(2, prop.shape().dim_size());
   EXPECT_EQ(1, prop.shape().dim(0).size());
   EXPECT_EQ(2, prop.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, SymbolicShapes) {
+  // Build a simple graph with placeholders of unknown dimensions. These
+  // dimensions will be encoded symbolically.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a =
+      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
+  Output b =
+      ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1})));
+  Output c = ops::Identity(s.WithOpName("c"), a);
+  Output d = ops::Identity(s.WithOpName("d"), b);
+  Output e = ops::Add(s.WithOpName("e"), c, d);
+  Output f = ops::Add(s.WithOpName("f"), a, c);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
+  const auto shape_c = properties.GetOutputProperties("c").at(0).shape();
+  EXPECT_EQ(2, shape_a.dim_size());
+  EXPECT_EQ(shape_a.dim_size(), shape_c.dim_size());
+  EXPECT_GE(-2, shape_a.dim(0).size());
+  EXPECT_EQ(shape_a.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_GE(-2, shape_a.dim(1).size());
+  EXPECT_EQ(shape_a.dim(1).size(), shape_c.dim(1).size());
+
+  const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
+  const auto shape_d = properties.GetOutputProperties("d").at(0).shape();
+  EXPECT_EQ(1, shape_b.dim_size());
+  EXPECT_EQ(shape_b.dim_size(), shape_d.dim_size());
+  EXPECT_GE(-2, shape_b.dim(0).size());
+  EXPECT_NE(shape_a.dim(0).size(), shape_b.dim(0).size());
+  EXPECT_EQ(shape_b.dim(0).size(), shape_d.dim(0).size());
+
+  const auto shape_e = properties.GetOutputProperties("e").at(0).shape();
+  EXPECT_EQ(2, shape_e.dim_size());
+  EXPECT_EQ(shape_e.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_NE(shape_e.dim(1).size(), shape_c.dim(1).size());
+  EXPECT_NE(shape_e.dim(0).size(), shape_d.dim(0).size());
+
+  const auto shape_f = properties.GetOutputProperties("f").at(0).shape();
+  EXPECT_EQ(2, shape_f.dim_size());
+  EXPECT_EQ(shape_f.dim(0).size(), shape_a.dim(0).size());
+  EXPECT_EQ(shape_f.dim(1).size(), shape_a.dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 1.0f, {1});
+  Output b = ops::Const(s.WithOpName("b"), 2.0f, {1});
+  Output c = ops::Const(s.WithOpName("c").ColocateWith(a), 3.0f, {1});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  // Create a graph with node a removed (say by some graph optimization
+  // pass), noting that node c is colocated with a. This is fine as it
+  // is in the late stage of graph execution, the colocation constraints have
+  // been validated previously and the device placement of nodes has completed.
+  GraphDef optimized_graph;
+  for (const auto& node : item.graph.node()) {
+    if (node.name() != "a") {
+      *optimized_graph.add_node() = node;
+    }
+  }
+  item.graph.Swap(&optimized_graph);
+  GraphProperties properties(item);
+  // This function should return OK, since it doesn't validate the colocation
+  // constraints internally.
+  TF_EXPECT_OK(properties.InferStatically());
 }
 
 }  // namespace

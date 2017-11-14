@@ -243,6 +243,8 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
 
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
+
 // Create a bitwise rotation of `rotand` by `rotor`.
 llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
                        llvm::IRBuilder<>* builder);
