@@ -572,30 +572,15 @@ Service::ExecuteParallelAndRegisterResult(
   // profile.
   for (auto& index_to_profiled_stream : index_to_profiled_streams) {
     int64 device = index_to_profiled_stream.first;
+    auto& module = executables[device]->module();
     se::Stream* stream = index_to_profiled_stream.second;
-    HloExecutionProfile hlo_profile;
+    HloExecutionProfile hlo_profile(module,
+                                    *executables[device]->CreateCostAnalysis());
     TF_RETURN_IF_ERROR(executables[device]->PopulateExecutionProfile(
         &hlo_profile, stream->parent()));
-
-    std::unordered_set<const xla::HloComputation*> profiled_computations =
-        hlo_profile.profiled_computations();
-    // To ensure we have print the profiles in a stable order, iterate over the
-    // computations in post order.
-    auto& module = executables[device]->module();
-    std::list<xla::HloComputation*> all_computations =
-        module.MakeComputationPostOrder();
-    for (xla::HloComputation* computation : all_computations) {
-      if (profiled_computations.count(computation) > 0) {
-        string profile_string = hlo_profile.ToString(
-            *computation, streams[0]->parent()->GetDeviceDescription(),
-            executables[device]->CreateCostAnalysis().get());
-        if (!profile_string.empty()) {
-          LOG(INFO) << "HLO profile for execution on device " << device
-                    << ":\n";
-          XLA_LOG_LINES(tensorflow::INFO, profile_string);
-        }
-      }
-    }
+    XLA_LOG_LINES(
+        tensorflow::INFO,
+        hlo_profile.ToString(streams[0]->parent()->GetDeviceDescription()));
     hlo_graph_dumper::MaybeDumpHloModule(module, "Service::Execute",
                                          &hlo_profile);
   }

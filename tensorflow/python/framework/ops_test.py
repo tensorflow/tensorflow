@@ -492,8 +492,6 @@ class OperationTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
         z.op._update_input(0, x)  # pylint: disable=protected-access
 
-  # TODO(nolivia): check the shape/type in _update_input() instead of depending
-  # on run to do that.
   def testUpdateInputTypeError(self):
     g = ops.Graph()
     with g.as_default():
@@ -508,6 +506,37 @@ class OperationTest(test_util.TensorFlowTestCase):
           "Input 0 of node add was passed string from Const_1:0 incompatible "
           "with expected int32"):
         sess.run(z)
+
+  def testUpdateInputShapeError(self):
+    # C-API throws the error differently.
+    if ops._USE_C_API:
+      return
+    g = ops.Graph()
+    with g.as_default():
+      w = constant_op.constant(2, shape=[3, 1])
+      x = constant_op.constant(0, shape=[3, 1])
+      y = constant_op.constant(1, shape=[2, 2])
+      z = w + x
+      z.op._update_input(0, y)  # pylint: disable=protected-access
+
+    with session.Session(graph=g) as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   r"Incompatible shapes: \[2,2\] vs. \[3,1\]"):
+        sess.run(z)
+
+  def testUpdateInputShapeErrorC(self):
+    if not ops._USE_C_API:
+      return
+    g = ops.Graph()
+    with g.as_default():
+      w = constant_op.constant(2, shape=[3, 1])
+      x = constant_op.constant(0, shape=[3, 1])
+      y = constant_op.constant(1, shape=[2, 2])
+      z = w + x
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Cannot update edge, incompatible shapes: \[2,2\] and \[3,1\]"):
+      z.op._update_input(0, y)  # pylint: disable=protected-access
 
   def testUpdateInputOutOfRange(self):
     # C-API throws the error differently.
@@ -524,9 +553,11 @@ class OperationTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
     with g.as_default():
       x = constant_op.constant(1)
-    with self.assertRaisesRegexp(errors.OutOfRangeError,
-                                 r"Node 'Const' \(type: 'Const', "
-                                 r"num of inputs: 0\) does not have input 1"):
+    with self.assertRaisesRegexp(
+        errors.OutOfRangeError,
+        r"Cannot update edge. Input index \[1\] is greater than the number of "
+        r"total inputs \[0\]."
+    ):
       x.op._update_input(1, x)  # pylint: disable=protected-access
 
   def testOpDef(self):

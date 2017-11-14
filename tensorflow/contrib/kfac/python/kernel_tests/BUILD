@@ -88,7 +88,6 @@ py_test(
     deps = [
         "//tensorflow/contrib/kfac/python/ops:kfac_optimizer",
         "//tensorflow/contrib/kfac/python/ops:layer_collection",
-        "//tensorflow/contrib/kfac/python/ops:loss_functions",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",

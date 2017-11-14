@@ -183,6 +183,17 @@ gtl::InlinedVector<AllocRecord, 4> TrackingAllocator::GetRecordsAndUnRef() {
   return allocations;
 }
 
+gtl::InlinedVector<AllocRecord, 4> TrackingAllocator::GetCurrentRecords() {
+  gtl::InlinedVector<AllocRecord, 4> allocations;
+  {
+    mutex_lock lock(mu_);
+    for (const AllocRecord& alloc : allocations_) {
+      allocations.push_back(alloc);
+    }
+  }
+  return allocations;
+}
+
 bool TrackingAllocator::UnRef() {
   CHECK_GE(ref_, 1);
   --ref_;

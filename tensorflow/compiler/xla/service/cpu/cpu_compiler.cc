@@ -663,13 +663,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   return std::move(cpu_executable);
 }
 
-StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
-  return Unimplemented(
-      "Compilation of multiple HLO modules is not yet supported on CPU.");
-}
-
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                 const AotCompilationOptions& aot_options) {

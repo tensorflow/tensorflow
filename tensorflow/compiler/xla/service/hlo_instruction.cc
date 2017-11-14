@@ -648,6 +648,20 @@ HloInstruction::CreateSelectAndScatter(
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
+    const Shape& shape, FusionKind fusion_kind,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloComputation* fusion_computation) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
+  for (auto operand : operands) {
+    instruction->AppendOperand(operand);
+  }
+  instruction->fusion_kind_ = fusion_kind;
+  instruction->called_computations_.push_back(fusion_computation);
+  fusion_computation->SetFusionInstruction(instruction.get());
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateFusionForBackwardConvolution(
     const Shape& shape, FusionKind fusion_kind, const Window& window,
@@ -1805,20 +1819,11 @@ string HloInstruction::SignatureString() const {
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
-string HloInstruction::ExtendedOpcodeStr() const {
-  string opc_name = HloOpcodeString(opcode());
-  HloOpcode opc = opcode();
-  if (HloOpcode::kFusion == opc) {
-    opc_name += ":" + xla::ToString(fusion_kind());
-  }
-  return opc_name;
-}
-
 string HloInstruction::ToString(bool compact_operands, bool include_metadata,
                                 bool include_large_constants) const {
   string result =
       StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
-             ExtendedOpcodeStr(), "(",
+             HloOpcodeString(opcode()), "(",
              OperandsToString(compact_operands, include_large_constants), ")");
   for (const string& extra : ExtraAttributesToString()) {
     StrAppend(&result, ", ", extra);
@@ -1882,6 +1887,9 @@ string HloInstruction::OperandsToString(bool compact,
 
 std::vector<string> HloInstruction::ExtraAttributesToString() const {
   std::vector<string> extra;
+  if (opcode() == HloOpcode::kFusion) {
+    extra.push_back(StrCat("kind=", xla::ToString(fusion_kind())));
+  }
   if (CanHaveDimensionsField()) {
     extra.push_back(StrCat("dimensions={", Join(dimensions(), ","), "}"));
   }

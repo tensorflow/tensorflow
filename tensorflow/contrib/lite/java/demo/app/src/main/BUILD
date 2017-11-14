@@ -6,7 +6,8 @@ android_binary(
     name = "TfLiteCameraDemo",
     srcs = glob(["java/**/*.java"]),
     assets = [
-        ":assets",
+        "@tflite_mobilenet//:labels.txt",
+        "@tflite_mobilenet//:mobilenet_quant_v1_224.tflite",
     ],
     assets_dir = "",
     custom_package = "com.example.android.tflitecamerademo",
@@ -24,13 +25,6 @@ android_binary(
         "//tensorflow/contrib/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
         "@androidsdk//com.android.support:support-v13-25.2.0",
         "@androidsdk//com.android.support:support-v4-25.2.0",
-    ],
-)
-
-filegroup(
-    name = "assets",
-    srcs = [
-        "@tflite_mobilenet//:model_files",
     ],
 )
 

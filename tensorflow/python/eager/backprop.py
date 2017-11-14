@@ -350,9 +350,9 @@ def implicit_val_and_grad(f):
         raise ValueError("Cannot differentiate a function that returns None; "
                          "did you forget to return a value from {}?".format(
                              f.__name__))
-      variables = tape.top_tape_watched_variables()
     finally:
       popped_tape = tape.pop_tape()
+      variables = popped_tape.watched_variables()
     sources = [x.handle for x in variables]
 
     if not sources:

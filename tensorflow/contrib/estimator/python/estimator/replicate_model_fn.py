@@ -145,7 +145,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
                   'server device is going to be {}.'.format(
                       devices, local_ps_device))
 
-  def replicated_model_fn(mode, features, labels, params=None, config=None):
+  def replicated_model_fn(features, labels, mode, params=None, config=None):
     """Replicated version of `model_fn` to be used instead."""
     feature_shards, label_shards = _split_batch(
         features, labels, len(devices), device=local_ps_device)

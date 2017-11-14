@@ -1081,16 +1081,25 @@ Status IrEmitterUnnested::EmitRowReduction(
     // from the warp.
     llvm_ir::SetToFirstInsertPoint(if_tile_in_bounds_data.after_block,
                                    &ir_builder_);
+    int bit_width = llvm_ir::GetSizeInBits(element_ir_type);
+    // bitcast cannot be applied to aggregate types (even packed ones), so we
+    // instead bitcast addresses of load/store to intN* of the same bit-width.
+    llvm::Type* shuffle_ir_type = element_ir_type->isStructTy()
+                                      ? ir_builder_.getIntNTy(bit_width)
+                                      : element_ir_type;
     for (int shuffle_distance = 16; shuffle_distance >= 1;
          shuffle_distance /= 2) {
       llvm::Value* partial_reduction_result = ir_builder_.CreateLoad(
-          partial_reduction_result_address, "partial_reduction_result");
+          ir_builder_.CreateBitCast(partial_reduction_result_address,
+                                    shuffle_ir_type->getPointerTo()),
+          "partial_reduction_result");
       llvm::Value* result_from_other_lane = ir_builder_.CreateAlloca(
           element_ir_type, nullptr, "result_from_other_lane");
       ir_builder_.CreateStore(
           EmitShuffleDown(partial_reduction_result,
                           ir_builder_.getInt32(shuffle_distance), &ir_builder_),
-          result_from_other_lane);
+          ir_builder_.CreateBitCast(result_from_other_lane,
+                                    shuffle_ir_type->getPointerTo()));
       TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
           *reducer, {partial_reduction_result_address, result_from_other_lane},
           partial_reduction_result_address));

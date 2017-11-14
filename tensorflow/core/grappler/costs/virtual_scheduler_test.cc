@@ -938,6 +938,18 @@ versions {
     ExpectSetEq(expected, nodes_at_peak_mem_usage);
   }
 
+  // Helper method for checking nodes dependency.
+  void ValidateDependencyChain(
+      const std::unordered_map<string, int64>& start_times,
+      const std::vector<string>& nodes_in_dependency_order) {
+    int64 prev_node_time = -1;
+    for (const auto& node : nodes_in_dependency_order) {
+      int64 curr_node_time = start_times.at(node);
+      EXPECT_GE(curr_node_time, prev_node_time);
+      prev_node_time = curr_node_time;
+    }
+  }
+
   // Helper method for converting shape vector to TensorProperty.
   OpInfo::TensorProperties ShapeToTensorProperty(
       const std::vector<int> shape, const DataType& data_type) const {
@@ -1033,11 +1045,15 @@ TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleFIFOManager) {
   manager.RemoveCurrNode();
   EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.AddNode(&node5_);
+  // GetCurrNode()  should return the same node even if some nodes are added,
+  // until RemoveCurrNode() is called.
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node3", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node4", manager.GetCurrNode()->name());
   manager.AddNode(&node6_);
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node5", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
@@ -1110,11 +1126,15 @@ TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleLIFOManager) {
   manager.RemoveCurrNode();
   EXPECT_EQ("Node3", manager.GetCurrNode()->name());
   manager.AddNode(&node5_);
+  // GetCurrNode()  should return the same node even if some nodes are added,
+  // until RemoveCurrNode() is called.
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node5", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.AddNode(&node6_);
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node6", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
@@ -1181,7 +1201,7 @@ TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
   // should return it.
   EXPECT_EQ("Node6", manager.GetCurrNode()->name());
   // Now insret a few other nodes, but their time_ready's are even smaller than
-  // that of Node6. Befor calling RemoveCurrNode(), GetCurrNode() should return
+  // that of Node6. Before calling RemoveCurrNode(), GetCurrNode() should return
   // the same node, Node6, in this case.
 
   NodeDef node7;
@@ -1505,19 +1525,18 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   RunMetadata metadata;
   scheduler_->Summary(&metadata);
 
-  // Nodes in topological order (each node takes 1 usec) and possible start
-  // time usec:
-  // * const, ones: 0, 1 usec
-  // * while/Enter, while/Enter_1: 2, 3 usec
-  // * while/Merge, while/Merge_1: 4, 5 usec
-  // * while/Less/y: 6 usec
-  // * while/Less: 7 usec
-  // * while/LoopCond: 8 usec
-  // * while/Switch, while/Switch_1: 9, 10 usec
-  // * while/Identity, while/Identity_1, while/Exit, while/Exit_1: 11 - 14 usec
-  // * while/add/y, while/concat/Axis: 15, 16 usec
-  // * while/add, while/concat: 17, 18 usec
-  // * while/NextIteration, while/NextIteration_1: 19, 20 usec
+  // Nodes in topological order:
+  // * const, ones
+  // * while/Enter, while/Enter_1
+  // * while/Merge, while/Merge_1
+  // * while/Less/y
+  // * while/Less
+  // * while/LoopCond
+  // * while/Switch, while/Switch_1
+  // * while/Identity, while/Identity_1, while/Exit, while/Exit_1
+  // * while/add/y, while/concat/axis
+  // * while/add, while/concat
+  // * while/NextIteration, while/NextIteration_1
 
   int num_next_iteration = 0;
   int num_next_iteration_1 = 0;
@@ -1527,45 +1546,23 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   int64 next_iter_1_start_micro;
   int64 exit_start_micro;
   int64 exit_1_start_micro;
+
+  std::unordered_map<string, int64> start_times;
   for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
-      std::cout << stats.DebugString() << std::endl;
-      // Start micro for while/Less/y, while/Less, and while/LoopCond are fixed
-      // regardless of scheduling method.
-      if (stats.node_name() == "while/Less/y") {
-        EXPECT_EQ(6, stats.all_start_micros());
-      } else if (stats.node_name() == "while/Less") {
-        EXPECT_EQ(7, stats.all_start_micros());
-      } else if (stats.node_name() == "while/LoopCond") {
-        EXPECT_EQ(8, stats.all_start_micros());
-      } else if (stats.node_name() == "while/NextIteration") {
+      start_times[stats.node_name()] = stats.all_start_micros();
+      if (stats.node_name() == "while/NextIteration") {
         ++num_next_iteration;
-        // Start time can be either 19 or 20 depending on how the scheduler
-        // picks a node among ready nodes.
         next_iter_start_micro = stats.all_start_micros();
-        EXPECT_LE(19, next_iter_start_micro);
-        EXPECT_GE(20, next_iter_start_micro);
       } else if (stats.node_name() == "while/NextIteration_1") {
         ++num_next_iteration_1;
-        // Start time can be either 19 or 20 depending on how the scheduler
-        // picks a node among ready nodes.
         next_iter_1_start_micro = stats.all_start_micros();
-        EXPECT_LE(19, next_iter_1_start_micro);
-        EXPECT_GE(20, next_iter_1_start_micro);
       } else if (stats.node_name() == "while/Exit") {
         ++num_exit;
-        // Start time can be between 11 and 14 (inclusive) depending on how
-        // the scheduler picks a node among ready nodes.
         exit_start_micro = stats.all_start_micros();
-        EXPECT_LE(11, exit_start_micro);
-        EXPECT_GE(14, exit_start_micro);
       } else if (stats.node_name() == "while/Exit_1") {
         ++num_exit_1;
-        // Start time can be between 11 and 14 (inclusive) depending on how
-        // the scheduler picks a node among ready nodes.
         exit_1_start_micro = stats.all_start_micros();
-        EXPECT_LE(11, exit_1_start_micro);
-        EXPECT_GE(14, exit_1_start_micro);
       }
     }
   }
@@ -1581,6 +1578,30 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   // different, so should be those of while/Exit and while/Exit_1.
   EXPECT_NE(next_iter_start_micro, next_iter_1_start_micro);
   EXPECT_NE(exit_start_micro, exit_1_start_micro);
+
+  // Check dependency among the nodes; no matter what scheduling mechanism we
+  // use, the scheduled ops should follow these depedency chains.
+  // Note that currently, VirtualScheduler executes while/Merge twice; hence,
+  // we're not testing dependency chains related to while/Merge.
+  // TODO(dyoon): after fixing while loop behavior correctly (run nodes in the
+  // order of Enter, Merge, ...loop condition ..., ... loop body ...,
+  // NextIteration, Merge, ... loop condition ..., Exit), re-enable dependency
+  // chaing test w/ Merge nodes.
+  ValidateDependencyChain(
+      start_times,
+      {"Const", "while/Enter",  // "while/Merge",
+       "while/Less/y", "while/Less", "while/LoopCond", "while/Switch",
+       "while/Identity", "while/add/y", "while/add", "while/NextIteration"});
+  // ValidateDependencyChain(start_times, {"while/Merge", "while/Less"});
+  ValidateDependencyChain(start_times,
+                          {"ones", "while/Enter_1",  // "while/Merge_1",
+                           "while/Switch_1", "while/Identity_1", "while/concat",
+                           "while/NextIteration_1"});
+  ValidateDependencyChain(start_times, {"while/Switch", "while/Exit"});
+  ValidateDependencyChain(
+      start_times, {"while/Identity", "while/concat/axis", "while/concat"});
+  ValidateDependencyChain(start_times, {"while/Identity", "while/add"});
+  ValidateDependencyChain(start_times, {"while/Switch_1", "while/Exit_1"});
 }
 
 TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {

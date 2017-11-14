@@ -22,10 +22,8 @@ tf_cc_test(
     srcs = ["schema_test.cc"],
     deps = [
         ":schema",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/lib/db:sqlite",
     ],
 )
 

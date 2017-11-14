@@ -21,7 +21,6 @@ py_library(
     deps = [
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:functional_ops",
@@ -32,12 +31,9 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -121,6 +117,25 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
+    ],
+)
+
+cuda_py_test(
+    name = "halton_sequence_test",
+    size = "small",
+    srcs = ["python/kernel_tests/halton_sequence_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
