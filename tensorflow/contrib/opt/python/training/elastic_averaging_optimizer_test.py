@@ -27,8 +27,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import device_setter
 
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import \
-  ElasticAverageOptimizer, ElasticAverageCustomGetter, GLOBAL_VARIABLE_NAME, \
-  GLOBAL_CENTER_VARIABLE
+  ElasticAverageOptimizer, ElasticAverageCustomGetter, GLOBAL_VARIABLE_NAME
 
 
 def create_local_cluster(num_workers, num_ps, protocol="grpc"):
@@ -87,7 +86,8 @@ def _get_workers(num_workers, period, workers, moving_rate):
           opt=sgd_opt,
           num_worker=num_workers,
           moving_rate=moving_rate,
-          communication_period=period
+          communication_period=period,
+          ea_custom_getter=ea_coustom
         )
         train_op = [
           opt.apply_gradients(
@@ -211,7 +211,7 @@ class ElasticAverageOptimizerTest(test.TestCase):
          variable_scope.variable_scope('', custom_getter=ea_coustom):
       v = variable_scope.get_variable(initializer=[1, 2], name="v")
       w = variable_scope.get_variable(initializer=[2, 1], name='w')
-      v_g, w_g = ops.get_collection_ref(GLOBAL_CENTER_VARIABLE)
+      v_g, w_g = ea_coustom._global_map[v],ea_coustom._global_map[w]
       self.assertDeviceEqual("/job:worker/task:0", v.device)
       self.assertDeviceEqual("job:ps/task:0", v_g.device)
       self.assertDeviceEqual("/job:worker/task:0", w.device)
