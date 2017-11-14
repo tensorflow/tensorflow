@@ -172,7 +172,7 @@ def args_to_matching_eager(l, ctx, default_dtype=None):
     if not isinstance(x, EagerTensor):
       break
   else:  # note: intentional for-else
-    return l[0].dtype, l
+    return l[0]._datatype_enum(), l  # pylint: disable=protected-access
   # TODO(josh11b): Could we do a better job if we also passed in the
   # allowed dtypes when that was known?
 
@@ -196,7 +196,7 @@ def args_to_matching_eager(l, ctx, default_dtype=None):
   else:
     ret = [internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
-  return dtype, ret
+  return dtype.as_datatype_enum, ret
 
 
 def convert_to_mixed_eager_tensors(values, ctx):
@@ -205,7 +205,7 @@ def convert_to_mixed_eager_tensors(values, ctx):
           t, context=ctx._handle, device=ctx.device_name)  # pylint: disable=protected-access
       for t in values
   ]
-  types = [t.dtype for t in v]
+  types = [t._datatype_enum() for t in v]  # pylint: disable=protected-access
   return types, v
 
 
@@ -243,5 +243,5 @@ def args_to_mixed_eager_tensors(lists, ctx):
       for j in range(len(lists)):
         lists_ret[j].append(
             ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
-    types.append(dtype)
+    types.append(dtype.as_datatype_enum)
   return types, lists_ret

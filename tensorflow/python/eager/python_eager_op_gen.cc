@@ -589,8 +589,6 @@ void GenEagerPythonOp::AddEagerInferredAttrs() {
           strings::StrAppend(&result_, "    ", VectorToTuple(p), " = ",
                              inputs_var, "\n");
         }
-        strings::StrAppend(&result_, "    ", var_name, " = ", var_name,
-                           ".as_datatype_enum\n");
       } else if (attr.type() == "list(type)") {
         // NOTE: We ignore default values for these attrs, since it is
         // unclear how you would use it, and the one use case is
@@ -617,9 +615,6 @@ void GenEagerPythonOp::AddEagerInferredAttrs() {
         }
         strings::StrAppend(&result_, "    ", var_name, ", ", inputs_var, " = ",
                            conversion, "(", inputs_var, ", _ctx)\n");
-        strings::StrAppend(&result_, "    ", var_name,
-                           " = [_t.as_datatype_enum for _t in ", var_name,
-                           "]\n");
       }
     }
   }
