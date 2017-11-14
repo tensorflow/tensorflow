@@ -216,4 +216,4 @@ def constant_value(pred):
     """
   if isinstance(pred, variables.Variable):
     return None
-  return control_flow_ops.smart_cond(pred)
+  return control_flow_ops.smart_constant_value(pred)
