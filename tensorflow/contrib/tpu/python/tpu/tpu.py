@@ -31,6 +31,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 
 
+_SUMMARY_OPS = ("ScalarSummary",)
+_PLACEHOLDER_OPS = ("Placeholder",)
+
+
 def initialize_system(embedding_config=None, job=None):
   """Initializes a distributed TPU system for use with TensorFlow.
 
@@ -103,6 +107,12 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
+    if op.type in _PLACEHOLDER_OPS:
+      raise ValueError("Placeholder %s is not supported." % op.name)
+
+    if op.type in _SUMMARY_OPS:
+      raise ValueError("Summary operations are not currently supported.")
+
     if any(x.dtype._is_ref_dtype for x in op.inputs):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
