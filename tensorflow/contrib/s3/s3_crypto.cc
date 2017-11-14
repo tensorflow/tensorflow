@@ -71,7 +71,7 @@ class S3Sha256OpenSSLImpl : public Aws::Utils::Crypto::Hash {
     SHA256_Init(&sha256);
 
     auto currentPos = stream.tellg();
-    if (currentPos == -1) {
+    if (currentPos == std::streampos(std::streamoff(-1))) {
       currentPos = 0;
       stream.clear();
     }

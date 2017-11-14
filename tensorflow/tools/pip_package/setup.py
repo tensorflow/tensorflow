@@ -29,14 +29,14 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.4.0-rc0'
+_VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
     'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.3.0',
-    'tensorflow-tensorboard >= 0.1.0, < 0.2.0',
+    'tensorflow-tensorboard >= 0.4.0rc1, < 0.5.0',
 ]
 
 project_name = 'tensorflow'

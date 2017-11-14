@@ -11,6 +11,9 @@ py_test(
     size = "small",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # b/67958604
+    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
@@ -352,6 +355,9 @@ py_test(
     size = "small",
     srcs = ["sloppy_transformation_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # b/67958761
+    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",

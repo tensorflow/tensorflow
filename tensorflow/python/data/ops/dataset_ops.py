@@ -201,7 +201,10 @@ class Dataset(object):
       with self._lock:
         ret = self._next_id
         self._next_id += 1
-      return ret
+      # NOTE(mrry): Explicitly create an array of `np.int64` because implicit
+      # casting in `py_func()` will create an array of `np.int32` on Windows,
+      # leading to a runtime error.
+      return np.array(ret, dtype=np.int64)
 
     def get_iterator(self, iterator_id):
       return self._iterators[iterator_id]
