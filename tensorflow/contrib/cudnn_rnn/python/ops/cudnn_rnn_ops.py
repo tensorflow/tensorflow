@@ -105,9 +105,6 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   ```python
   r .* (h * R) != (r .* h) * R
   ```
-
-  TODO(jamesqin): update the impl after Cudnn 7.1 when Nvidia would adopt the
-  canonical version compatible with other tf GRU cells.
   """
 
   def __init__(self, num_units, reuse=None, kernel_initializer=None):
