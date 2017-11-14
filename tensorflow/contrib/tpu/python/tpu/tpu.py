@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -79,26 +78,6 @@ def core(num):
     A device name, suitable for passing to tf.device().
   """
   return "device:TPU_REPLICATED_CORE:{}".format(num)
-
-
-# Experimental API to 'break out' of a tpu.rewrite() (or shard(), etc.) context.
-# In
-#
-# XXX
-# with tpu.rewrite(...):
-#   YYY
-#   with tpu.outside_all_rewrites():
-#     ZZZ
-#
-# the Ops in ZZZ are added outside the scope of the rewrite().
-# TODO(phawkins): currently outside_all_rewrites() pops out of all nested
-# control flow scopes, for example loops. It would make more sense if it only
-# popped out of a single scope.
-@contextlib.contextmanager
-def outside_all_rewrites():
-  """Experimental API to 'break out' of a tpu.rewrite() (or shard(), etc.)."""
-  with ops.control_dependencies(None):
-    yield
 
 
 class TPUReplicateContext(control_flow_ops.ControlFlowContext):
