@@ -26,6 +26,7 @@ import six
 
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -95,11 +96,12 @@ class Dataset(object):
     iterator_resource = gen_dataset_ops.iterator(
         container="",
         shared_name=shared_name,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))
     with ops.colocate_with(iterator_resource):
-      initializer = gen_dataset_ops.make_iterator(
-          self._as_variant_tensor(), iterator_resource)
+      initializer = gen_dataset_ops.make_iterator(self._as_variant_tensor(),
+                                                  iterator_resource)
     return iterator_ops.Iterator(iterator_resource, initializer,
                                  self.output_types, self.output_shapes)
 
@@ -141,7 +143,8 @@ class Dataset(object):
     return iterator_ops.Iterator(
         gen_dataset_ops.one_shot_iterator(
             dataset_factory=_make_dataset,
-            output_types=nest.flatten(self.output_types),
+            output_types=nest.flatten(
+                sparse.unwrap_sparse_types(self.output_types)),
             output_shapes=nest.flatten(self.output_shapes)), None,
         self.output_types, self.output_shapes)
 
@@ -160,8 +163,9 @@ class Dataset(object):
     """Returns the type of each component of an element of this dataset.
 
     Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
-      of an element of this dataset.
+      A nested structure of `tf.DType` (or `tf.data.SparseType`) objects
+      corresponding to each `tf.Tensor` (or `tf.SparseTensor`) component of an
+      element of this dataset.
     """
     raise NotImplementedError("Dataset.output_types")
 
@@ -335,8 +339,8 @@ class Dataset(object):
         # pylint: disable=protected-access
         ret_arrays = [
             script_ops.FuncRegistry._convert(ret, dtype=dtype.as_numpy_dtype)
-            for ret, dtype in zip(nest.flatten_up_to(output_types, values),
-                                  flattened_types)
+            for ret, dtype in zip(
+                nest.flatten_up_to(output_types, values), flattened_types)
         ]
         # pylint: enable=protected-access
 
@@ -948,8 +952,8 @@ class SparseTensorSliceDataset(Dataset):
     rank = (indices_shape[1] - 1).merge_with(shape_shape[0] - 1)
     num_values = tensor_shape.Dimension(None)
     return (tensor_shape.TensorShape([num_values, rank]),
-            tensor_shape.TensorShape([num_values]), tensor_shape.TensorShape(
-                [rank]))
+            tensor_shape.TensorShape([num_values]),
+            tensor_shape.TensorShape([rank]))
 
   @property
   def output_types(self):
@@ -992,15 +996,15 @@ class ZipDataset(Dataset):
 
   @property
   def output_shapes(self):
-    return nest.pack_sequence_as(self._datasets, [
-        ds.output_shapes for ds in nest.flatten(self._datasets)
-    ])
+    return nest.pack_sequence_as(
+        self._datasets,
+        [ds.output_shapes for ds in nest.flatten(self._datasets)])
 
   @property
   def output_types(self):
-    return nest.pack_sequence_as(self._datasets, [
-        ds.output_types for ds in nest.flatten(self._datasets)
-    ])
+    return nest.pack_sequence_as(
+        self._datasets,
+        [ds.output_types for ds in nest.flatten(self._datasets)])
 
 
 class ConcatenateDataset(Dataset):
@@ -1027,7 +1031,8 @@ class ConcatenateDataset(Dataset):
         self._input_dataset._as_variant_tensor(),
         self._dataset_to_concatenate._as_variant_tensor(),
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
     # pylint: enable=protected-access
 
   @property
@@ -1062,7 +1067,8 @@ class RepeatDataset(Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):
@@ -1106,7 +1112,8 @@ class RangeDataset(Dataset):
         stop=self._stop,
         step=self._step,
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):
@@ -1132,7 +1139,8 @@ class CacheDataset(Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         filename=self._filename,
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):
@@ -1146,7 +1154,10 @@ class CacheDataset(Dataset):
 class ShuffleDataset(Dataset):
   """A `Dataset` that randomly shuffles the elements of its input."""
 
-  def __init__(self, input_dataset, buffer_size, seed=None,
+  def __init__(self,
+               input_dataset,
+               buffer_size,
+               seed=None,
                reshuffle_each_iteration=None):
     """See `Dataset.shuffle()` for details."""
     super(ShuffleDataset, self).__init__()
@@ -1176,7 +1187,8 @@ class ShuffleDataset(Dataset):
         seed2=self._seed2,
         reshuffle_each_iteration=self._reshuffle_each_iteration,
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):
@@ -1201,7 +1213,8 @@ class TakeDataset(Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):
@@ -1226,7 +1239,8 @@ class SkipDataset(Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):
@@ -1243,16 +1257,20 @@ class BatchDataset(Dataset):
   def __init__(self, input_dataset, batch_size):
     """See `Dataset.batch()` for details."""
     super(BatchDataset, self).__init__()
+    if sparse.any_sparse(input_dataset.output_types):
+      # TODO(b/63669786): support batching of sparse tensors
+      raise TypeError("Batching of sparse tensors is not currently supported")
     self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(batch_size, dtype=dtypes.int64,
-                                             name="batch_size")
+    self._batch_size = ops.convert_to_tensor(
+        batch_size, dtype=dtypes.int64, name="batch_size")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.batch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         batch_size=self._batch_size,
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):
@@ -1312,11 +1330,15 @@ class PaddedBatchDataset(Dataset):
   def __init__(self, input_dataset, batch_size, padded_shapes, padding_values):
     """See `Dataset.batch()` for details."""
     super(PaddedBatchDataset, self).__init__()
+    if sparse.any_sparse(input_dataset.output_types):
+      # TODO(b/63669786): support batching of sparse tensors
+      raise TypeError("Batching of sparse tensors is not currently supported")
     self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(batch_size, dtype=dtypes.int64,
-                                             name="batch_size")
-    padding_values = (padding_values if padding_values is not None else
-                      self._default_padding(input_dataset))
+    self._batch_size = ops.convert_to_tensor(
+        batch_size, dtype=dtypes.int64, name="batch_size")
+    padding_values = (
+        padding_values
+        if padding_values is not None else self._default_padding(input_dataset))
     self._padded_shapes = nest.map_structure_up_to(
         input_dataset.output_shapes, _partial_shape_to_tensor, padded_shapes)
     self._padding_values = nest.map_structure_up_to(
@@ -1374,7 +1396,8 @@ class MapDataset(Dataset):
     self._output_shapes = None
     self._output_types = None
 
-    @function.Defun(*nest.flatten(input_dataset.output_types))
+    @function.Defun(
+        *nest.flatten(sparse.unwrap_sparse_types(input_dataset.output_types)))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       # Pass in shape information from the input_dataset.
@@ -1382,7 +1405,8 @@ class MapDataset(Dataset):
         arg.set_shape(shape)
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-
+      nested_args = sparse.deserialize_sparse_tensors(
+          nested_args, input_dataset.output_types)
       if _should_unpack_args(nested_args):
         ret = map_func(*nested_args)
       else:
@@ -1401,14 +1425,17 @@ class MapDataset(Dataset):
       if isinstance(ret, list):
         ret = tuple(ret)
 
-      # Extract shape information from the returned values.
-      flattened_ret = [ops.convert_to_tensor(t) for t in nest.flatten(ret)]
+      # Identify components that hold sparse tensor values.
+      types = sparse.get_sparse_types(ret)
+      # Serialize any sparse tensors and convert result to tensors.
+      ret = nest.pack_sequence_as(ret, [
+          ops.convert_to_tensor(t)
+          for t in nest.flatten(sparse.serialize_sparse_tensors(ret))
+      ])
       self._output_shapes = nest.pack_sequence_as(
-          ret, [t.get_shape() for t in flattened_ret])
-      self._output_types = nest.pack_sequence_as(
-          ret, [t.dtype for t in flattened_ret])
-
-      return flattened_ret
+          types, [t.get_shape() for t in nest.flatten(ret)])
+      self._output_types = sparse.wrap_sparse_types(ret, types)
+      return nest.flatten(ret)
 
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
@@ -1419,7 +1446,8 @@ class MapDataset(Dataset):
         input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))
 
   @property
@@ -1449,7 +1477,8 @@ class ParallelMapDataset(MapDataset):
         self._map_func.captured_inputs,
         f=self._map_func,
         num_parallel_calls=self._num_parallel_calls,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))
     # pylint: enable=protected-access
 
@@ -1462,7 +1491,8 @@ class FlatMapDataset(Dataset):
     super(FlatMapDataset, self).__init__()
     self._input_dataset = input_dataset
 
-    @function.Defun(*nest.flatten(input_dataset.output_types))
+    @function.Defun(
+        *nest.flatten(sparse.unwrap_sparse_types(input_dataset.output_types)))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       # Pass in shape information from the input_dataset.
@@ -1470,7 +1500,8 @@ class FlatMapDataset(Dataset):
         arg.set_shape(shape)
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-
+      nested_args = sparse.deserialize_sparse_tensors(
+          nested_args, input_dataset.output_types)
       if _should_unpack_args(nested_args):
         dataset = map_func(*nested_args)
       else:
@@ -1492,7 +1523,8 @@ class FlatMapDataset(Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._map_func.captured_inputs,
         f=self._map_func,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))
 
   @property
@@ -1513,7 +1545,8 @@ class InterleaveDataset(Dataset):
     super(InterleaveDataset, self).__init__()
     self._input_dataset = input_dataset
 
-    @function.Defun(*nest.flatten(input_dataset.output_types))
+    @function.Defun(
+        *nest.flatten(sparse.unwrap_sparse_types(input_dataset.output_types)))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       # Pass in shape information from the input_dataset.
@@ -1521,7 +1554,8 @@ class InterleaveDataset(Dataset):
         arg.set_shape(shape)
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-
+      nested_args = sparse.deserialize_sparse_tensors(
+          nested_args, input_dataset.output_types)
       if _should_unpack_args(nested_args):
         dataset = map_func(*nested_args)
       else:
@@ -1538,10 +1572,10 @@ class InterleaveDataset(Dataset):
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
 
-    self._cycle_length = ops.convert_to_tensor(cycle_length, dtype=dtypes.int64,
-                                               name="cycle_length")
-    self._block_length = ops.convert_to_tensor(block_length, dtype=dtypes.int64,
-                                               name="block_length")
+    self._cycle_length = ops.convert_to_tensor(
+        cycle_length, dtype=dtypes.int64, name="cycle_length")
+    self._block_length = ops.convert_to_tensor(
+        block_length, dtype=dtypes.int64, name="block_length")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.interleave_dataset(
@@ -1550,7 +1584,8 @@ class InterleaveDataset(Dataset):
         self._cycle_length,
         self._block_length,
         f=self._map_func,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))
 
   @property
@@ -1570,7 +1605,8 @@ class FilterDataset(Dataset):
     super(FilterDataset, self).__init__()
     self._input_dataset = input_dataset
 
-    @function.Defun(*nest.flatten(input_dataset.output_types))
+    @function.Defun(
+        *nest.flatten(sparse.unwrap_sparse_types(input_dataset.output_types)))
     def tf_predicate(*args):
       """A wrapper for Defun that facilitates shape inference."""
       # Pass in shape information from the input_dataset.
@@ -1578,7 +1614,8 @@ class FilterDataset(Dataset):
         arg.set_shape(shape)
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-
+      nested_args = sparse.deserialize_sparse_tensors(
+          nested_args, input_dataset.output_types)
       if _should_unpack_args(nested_args):
         ret = predicate(*nested_args)
       else:
@@ -1599,7 +1636,8 @@ class FilterDataset(Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         other_arguments=self._predicate.captured_inputs,
         predicate=self._predicate,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))
 
   @property
@@ -1618,15 +1656,16 @@ class PrefetchDataset(Dataset):
     """See `Dataset.prefetch()` for details."""
     super(PrefetchDataset, self).__init__()
     self._input_dataset = input_dataset
-    self._buffer_size = ops.convert_to_tensor(buffer_size, dtype=dtypes.int64,
-                                              name="buffer_size")
+    self._buffer_size = ops.convert_to_tensor(
+        buffer_size, dtype=dtypes.int64, name="buffer_size")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.prefetch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):

@@ -90,6 +90,7 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status.
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  // TODO(shivaniagrawal): Consider changing to gtl::ArraySlice?
   template <typename T>
   Status AddVector(const std::vector<T>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(),

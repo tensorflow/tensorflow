@@ -319,10 +319,12 @@ TEST_F(OperatorTest, BuiltinMul) {
 TEST_F(OperatorTest, Svdf) {
   SvdfOperator op;
   op.fused_activation_function = FusedActivationFunctionType::kRelu;
+  op.rank = 1;
   auto output_toco_op =
       SerializeAndDeserialize(GetOperator("SVDF", OperatorType::kSvdf), op);
   EXPECT_EQ(op.fused_activation_function,
             output_toco_op->fused_activation_function);
+  EXPECT_EQ(op.rank, output_toco_op->rank);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

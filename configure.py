@@ -998,6 +998,10 @@ def create_android_bazelrc_configs():
   write_to_bazelrc('build:android_arm64 --cpu=arm64-v8a')
 
 
+def set_grpc_build_flags():
+  write_to_bazelrc('build --define grpc_no_ares=true')
+
+
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
@@ -1071,6 +1075,7 @@ def main():
     set_mpi_home(environ_cp)
     set_other_mpi_vars(environ_cp)
 
+  set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
   set_mkl()
   set_monolithic()

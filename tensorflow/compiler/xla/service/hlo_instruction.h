@@ -312,6 +312,11 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root);
 
+  static std::unique_ptr<HloInstruction> CreateFusion(
+      const Shape& shape, FusionKind fusion_kind,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloComputation* fusion_computation);
+
   // Creates a fusion instruction that represents backward convolution. This is
   // similar to CreateFusion, but with extra arguments indicating the window and
   // dimemsion mapping of the backward convolution.
@@ -977,11 +982,6 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
-  // Returns the opcode string for this instruction. This is the result from
-  // HloOpcodeString plus, for fusion nodes, the fusion kind, separated by a
-  // ':'.
-  string ExtendedOpcodeStr() const;
-
   // Returns a string identifier for this instruction. If no string identifier
   // has been explicitly set, then the identifier is the serialized pointer to
   // this instruction.
@@ -1250,6 +1250,9 @@ std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 // To make the iteration order over the map deterministic, the comparator
 // should not be using the pointer values, but rather an intrinsic property of
 // the hlo.
+//
+// Note that this cannot be used for HLO instructions across multiple modules
+// since the id of HLO instructions are only unique within each HLO module.
 struct HloPtrComparator {
   bool operator()(const HloInstruction* const& lhs,
                   const HloInstruction* const& rhs) const {

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Base layer code and base model (Container) code.
+"""Base layer code and base model (Network) code.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -450,7 +450,7 @@ class Layer(tf_base_layers.Layer):
 
     The config of a layer does not include connectivity
     information, nor the layer class name. These are handled
-    by `Container` (one layer of abstraction above).
+    by `Network` (one layer of abstraction above).
 
     Returns:
         Python dictionary.
@@ -469,7 +469,7 @@ class Layer(tf_base_layers.Layer):
     This method is the reverse of `get_config`,
     capable of instantiating the same layer from the config
     dictionary. It does not handle layer connectivity
-    (handled by Container), nor weights (handled by `set_weights`).
+    (handled by Network), nor weights (handled by `set_weights`).
 
     Arguments:
         config: A Python dictionary, typically the
@@ -637,10 +637,10 @@ def Input(  # pylint: disable=invalid-name
 
 
 class Network(tf_base_layers.Network, Layer):
-  """A Container is a directed acyclic graph of layers.
+  """A Network is a directed acyclic graph of layers.
 
   It is the topological form of a "model". A Model
-  is simply a Container with added training routines.
+  is simply a Network with added training routines.
 
   # Properties
       name
@@ -792,7 +792,7 @@ class Network(tf_base_layers.Network, Layer):
     node_conversion_map = {}
     for layer in self.layers:
       if issubclass(layer.__class__, Network):
-        # Containers start with a pre-existing node
+        # Networks start with a pre-existing node
         # linking their input to output.
         kept_nodes = 1
       else:
@@ -1195,10 +1195,6 @@ class Network(tf_base_layers.Network, Layer):
                         line_length=line_length,
                         positions=positions,
                         print_fn=print_fn)
-
-
-# Alias for legacy support.
-Container = Network
 
 
 def get_source_inputs(tensor, layer=None, node_index=None):

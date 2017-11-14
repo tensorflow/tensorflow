@@ -263,7 +263,7 @@ class TestSchemaUpgrade(test_util.TensorFlowTestCase):
     invalid_extension = tempfile.mktemp(suffix=".foo")
     with self.assertRaisesRegexp(ValueError, "Invalid extension on input"):
       converter.Convert(invalid_extension, invalid_extension)
-    with tempfile.NamedTemporaryFile(suffix=".json") as in_json:
+    with tempfile.NamedTemporaryFile(suffix=".json", mode="w+") as in_json:
       JsonDumpAndFlush(EMPTY_TEST_SCHEMA_V1, in_json)
       with self.assertRaisesRegexp(ValueError, "Invalid extension on output"):
         converter.Convert(in_json.name, invalid_extension)
@@ -276,10 +276,13 @@ class TestSchemaUpgrade(test_util.TensorFlowTestCase):
         data_expected: TFLite model as a dictionary (upgraded).
     """
     converter = upgrade_schema_lib.Converter()
-    with tempfile.NamedTemporaryFile(suffix=".json") as in_json, \
-            tempfile.NamedTemporaryFile(suffix=".json") as out_json, \
-            tempfile.NamedTemporaryFile(suffix=".bin") as out_bin, \
-            tempfile.NamedTemporaryFile(suffix=".tflite") as out_tflite:
+    with tempfile.NamedTemporaryFile(suffix=".json", mode="w+") as in_json, \
+            tempfile.NamedTemporaryFile(
+                suffix=".json", mode="w+") as out_json, \
+            tempfile.NamedTemporaryFile(
+                suffix=".bin", mode="w+b") as out_bin, \
+            tempfile.NamedTemporaryFile(
+                suffix=".tflite", mode="w+b") as out_tflite:
       JsonDumpAndFlush(data_old, in_json)
       # Test JSON output
       converter.Convert(in_json.name, out_json.name)
@@ -287,7 +290,9 @@ class TestSchemaUpgrade(test_util.TensorFlowTestCase):
       # Convert to .tflite  and then to .bin and check if binary is equal
       converter.Convert(in_json.name, out_tflite.name)
       converter.Convert(out_tflite.name, out_bin.name)
-      self.assertEqual(open(out_bin.name).read(), open(out_tflite.name).read())
+      self.assertEqual(
+          open(out_bin.name, "rb").read(),
+          open(out_tflite.name, "rb").read())
       # Test that conversion actually produced successful new json.
       converted_schema = json.load(out_json)
       self.assertEqual(converted_schema, data_expected)

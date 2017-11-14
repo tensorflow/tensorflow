@@ -228,6 +228,37 @@ TEST_F(LayoutOptimizerTest, Pad) {
   test::ExpectTensorEqual<int>(tensor_expected, tensor);
 }
 
+TEST_F(LayoutOptimizerTest, Connectivity) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto i1 = ops::Identity(s.WithOpName("i1"), conv);
+  auto i2 = ops::Identity(s.WithOpName("i2"), i1);
+  auto i3 = ops::Identity(s.WithOpName("i3"), i2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  // Make the graph not in topological order to test the handling of multi-hop
+  // connectivity (here we say two nodes are connected if all nodes in the
+  // middle are layout agnostic). If the graph is already in topological order,
+  // the problem is easier, where layout optimizer only needs to check
+  // single-hop connectivity.
+  NodeMap node_map_original(&item.graph);
+  auto node_i1 = node_map_original.GetNode("i1");
+  auto node_i2 = node_map_original.GetNode("i2");
+  node_i2->Swap(node_i1);
+  LayoutOptimizer optimizer;
+  optimizer.set_num_gpus(1);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  NodeMap node_map_output(&output);
+  auto node_i2_output = node_map_output.GetNode("i2");
+  // Layout optimizer should process i2, as it detects i2 is connected with the
+  // Conv2D node two hops away. Similarly i1 is processed as well, as i1 is
+  // directly connected to the Conv2D node. The two added transposes between
+  // i1 and i2 should cancel each other, and as a result i2 is directly
+  // connected to i1.
+  EXPECT_EQ(node_i2_output->input(0), "i1");
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

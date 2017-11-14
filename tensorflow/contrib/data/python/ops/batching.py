@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -325,6 +326,9 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_batches):
     """See `Dataset.map()` for details."""
     super(_MapAndBatchDataset, self).__init__(input_dataset, map_func)
+    if sparse.any_sparse(self._output_types):
+      # TODO(b/63669786): support batching of sparse tensors
+      raise TypeError("Batching of sparse tensors is not currently supported")
 
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
@@ -340,7 +344,8 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
         f=self._map_func,
         batch_size=self._batch_size,
         num_parallel_batches=self._num_parallel_batches,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))
     # pylint: enable=protected-access
 
@@ -389,6 +394,9 @@ def map_and_batch(map_func, batch_size, num_parallel_batches=1):
   """
 
   def _apply_fn(dataset):
+    if sparse.any_sparse(dataset.output_types):
+      # TODO(b/63669786): support batching of sparse tensors
+      raise TypeError("Batching of sparse tensors is not currently supported")
     return _MapAndBatchDataset(dataset, map_func, batch_size,
                                num_parallel_batches)
 

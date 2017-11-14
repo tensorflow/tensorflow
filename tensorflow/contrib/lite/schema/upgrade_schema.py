@@ -77,8 +77,13 @@ class Converter(object):
   def __init__(self):
     # TODO(aselle): make this work in the open source version with better
     # path.
-    self._flatc_path = resource_loader.get_path_to_datafile(
-        "../../../../flatbuffers/flatc")
+    paths_to_try = [
+        "../../../../flatbuffers/flatc",  # not bazel
+        "../../../../external/flatbuffers/flatc"  # bazel
+    ]
+    for p in paths_to_try:
+      self._flatc_path = resource_loader.get_path_to_datafile(p)
+      if os.path.exists(self._flatc_path): break
 
     def FindSchema(base_name):
       return resource_loader.get_path_to_datafile("%s" % base_name)
@@ -250,7 +255,9 @@ class Converter(object):
 
     # Upgrade the operator codes
     for operator_code in data["operator_codes"]:
-      if not isinstance(operator_code["builtin_code"], unicode):
+      # Check if builtin_code is the appropriate string type
+      # use type("") instead of str or unicode. for py2and3
+      if not isinstance(operator_code["builtin_code"], type(u"")):
         raise ValueError("builtin_code %r is non-string. this usually means"
                          "your model has consistency problems." %
                          (operator_code["builtin_code"]))

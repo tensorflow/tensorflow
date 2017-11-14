@@ -594,6 +594,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       return sizeof(uint64);
     case F16:
       return sizeof(float) / 2;
+    case BF16:
+      return sizeof(float) / 2;
     case F32:
       return sizeof(float);
     case F64:

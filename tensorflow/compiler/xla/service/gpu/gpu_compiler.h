@@ -42,14 +42,16 @@ class GpuCompiler : public LLVMCompiler {
   GpuCompiler();
   ~GpuCompiler() override {}
 
+  // Bring in
+  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+  //     std::vector<std::unique_ptr<HloModule>> modules,
+  //     std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+  //        stream_execs)
+  using LLVMCompiler::Compile;
+
   StatusOr<std::unique_ptr<Executable>> Compile(
       std::unique_ptr<HloModule> module,
       perftools::gputools::StreamExecutor* stream_exec) override;
-
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
-          stream_execs) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,

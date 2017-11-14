@@ -4,7 +4,9 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
-cc_binary(
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
+tf_cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
     deps = [
@@ -20,6 +22,7 @@ cc_library(
     hdrs = ["gen_op_registration.h"],
     deps = [
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string",
         "@com_googlesource_code_re2//:re2",
     ],
 )

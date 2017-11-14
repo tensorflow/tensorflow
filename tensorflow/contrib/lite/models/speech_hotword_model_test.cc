@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "base/logging.h"
-#include "file/base/path.h"
 #include "testing/base/public/googletest.h"
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
@@ -36,7 +36,7 @@ void RunTest(int model_input_tensor, int svdf_layer_state_tensor,
              int model_output_tensor, const string& model_name,
              const string& golden_in_name, const string& golden_out_name) {
   // Read the model.
-  string tflite_file_path = file::JoinPath(TestDataPath(), model_name);
+  string tflite_file_path = StrCat(TestDataPath(), "/", model_name);
   auto model = FlatBufferModel::BuildFromFile(tflite_file_path.c_str());
   CHECK(model) << "Failed to read model from file " << tflite_file_path;
 
@@ -53,13 +53,12 @@ void RunTest(int model_input_tensor, int svdf_layer_state_tensor,
 
   // Load the input frames.
   Frames input_frames;
-  const string input_file_path = file::JoinPath(TestDataPath(), golden_in_name);
+  const string input_file_path = StrCat(TestDataPath(), "/", golden_in_name);
   ReadFrames(input_file_path, &input_frames);
 
   // Load the golden output results.
   Frames output_frames;
-  const string output_file_path =
-      file::JoinPath(TestDataPath(), golden_out_name);
+  const string output_file_path = StrCat(TestDataPath(), "/", golden_out_name);
   ReadFrames(output_file_path, &output_frames);
 
   const int speech_batch_size =

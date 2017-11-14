@@ -447,6 +447,7 @@ Status GraphConstructor::InitFromEdges() {
   // Parse the inputs for each node.
   for (int n = 0; n < num_nodes; ++n) {
     const NodeDef& node_def = *node_defs_[n];
+    int pending_count = node_def.input_size();
     if (IsMerge(node_def)) {
       // Cycles in the graph are only allowed for while loops. A while loop is
       // identified by an edge from a NextIteration node to a Merge node. For
@@ -467,28 +468,33 @@ Status GraphConstructor::InitFromEdges() {
         }
       }
       if (has_loop_back_edge) {
-        pending_count_.push_back(num_control_edges + 1);
-      } else {
-        pending_count_.push_back(node_def.input_size());
+        pending_count = num_control_edges + 1;
       }
-    } else {
-      pending_count_.push_back(node_def.input_size());
-    }
-    if (node_def.input_size() == 0) {
-      ready_.push_back(n);
-      continue;
     }
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name = node_def.input(i);
       TensorId id(ParseTensorName(input_name));
-      auto iter = gdef_nodes_.find(id.first);
-      if (iter == gdef_nodes_.end()) {
-        return errors::InvalidArgument("Node '", node_def.name(),
-                                       "': Unknown input node '",
-                                       node_def.input(i), "'");
+      if (opts_.input_map.count(id) == 0) {
+        // If an input is not mapped, then the input should appear in the graph
+        // being imported.
+        auto iter = gdef_nodes_.find(id.first);
+        if (iter == gdef_nodes_.end()) {
+          return errors::InvalidArgument("Node '", node_def.name(),
+                                         "': Unknown input node '",
+                                         node_def.input(i), "'");
+        }
+        outputs_[iter->second.gdef_index].push_back(n);
+      } else {
+        // This input is mapped to an existing edge. Therefore this input is
+        // as good as being already processed.
+        --pending_count;
+        DCHECK_GE(pending_count, 0);
       }
-      outputs_[iter->second.gdef_index].push_back(n);
     }
+    if (pending_count == 0) {
+      ready_.push_back(n);
+    }
+    pending_count_.push_back(pending_count);
   }
   return Status::OK();
 }
@@ -565,15 +571,36 @@ Status GraphConstructor::ValidateShape(Node* node) {
       const string& op = node->type_string();
       const std::vector<string> whitelist = {
           // To be removed after 2017/03/08.
-          "RandomShuffleQueue", "PaddingFIFOQueue", "FIFOQueue",
-          "PriorityQueue", "QueueSize", "Stack", "Barrier", "BarrierReadySize",
-          "BarrierIncompleteSize", "HashTable", "MutableHashTable",
-          "MutableHashTableOfTensors", "Mutex", "CuckooTable", "IndexTable",
-          "WholeFileReader", "TextLineReader", "FixedLengthRecordReader",
-          "TFRecordReader", "IdentityReader", "RefSwitch", "RefEnter",
-          "RefNextIteration", "RefMerge", "RefIdentity", "LMDBReader",
+          "RandomShuffleQueue",
+          "PaddingFIFOQueue",
+          "FIFOQueue",
+          "PriorityQueue",
+          "QueueSize",
+          "Stack",
+          "Barrier",
+          "BarrierReadySize",
+          "BarrierIncompleteSize",
+          "HashTable",
+          "MutableHashTable",
+          "MutableHashTableOfTensors",
+          "Mutex",
+          "CuckooTable",
+          "IndexTable",
+          "WholeFileReader",
+          "TextLineReader",
+          "FixedLengthRecordReader",
+          "TFRecordReader",
+          "IdentityReader",
+          "RefSwitch",
+          "RefEnter",
+          "RefNextIteration",
+          "RefMerge",
+          "RefIdentity",
+          "LMDBReader",
           // To be removed after 2017/04/24.
-          "ConditionalAccumulator", "SparseConditionalAccumulator", "Table",
+          "ConditionalAccumulator",
+          "SparseConditionalAccumulator",
+          "Table",
       };
       if (std::find(whitelist.begin(), whitelist.end(), op) ==
           whitelist.end()) {

@@ -371,6 +371,31 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that complex(real(c), imag(c)) is simplified to c.
+TEST_F(AlgebraicSimplifierTest, ComplexOfRealImagC) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape r2c64 = ShapeUtil::MakeShape(C64, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2c64, "param0"));
+  HloInstruction* real = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kReal, param0));
+  HloInstruction* imag = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kImag, param0));
+  HloInstruction* cplx = builder.AddInstruction(
+      HloInstruction::CreateBinary(r2c64, HloOpcode::kComplex, real, imag));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root, cplx);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
 // Test that real(complex(r,i)) is simplified to r.
 TEST_F(AlgebraicSimplifierTest, RealOfComplex) {
   Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});

@@ -293,29 +293,30 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
       computation, {old_output_location, source_address}, new_output_location));
 
   // (old_output, success) = atomicCAS(output_address, old_output, new_output);
-  llvm::Type* element_int_ir_type =
-      ir_builder_.getIntNTy(element_ir_type->getScalarSizeInBits());
-  // cmpxchg accetps integer only, so we bitcast the operands (old_output and
-  // new_output) to integers of the same bit width, and bitcast the result
-  // back to the original element type.
-  llvm::Value* old_output =
-      ir_builder_.CreateLoad(old_output_location, "old_output");
-  llvm::Value* new_output =
-      ir_builder_.CreateLoad(new_output_location, "new_output");
+  int num_bits = llvm_ir::GetSizeInBits(element_ir_type);
+  llvm::Type* element_int_ir_type = ir_builder_.getIntNTy(num_bits);
+  // cmpxchg accepts integer only, and bitcast refuses to operate on aggregate
+  // types, so we bitcast load and store addresses to intN* of the same bit
+  // width.
+  llvm::Value* old_output = ir_builder_.CreateLoad(
+      ir_builder_.CreateBitCast(old_output_location,
+                                element_int_ir_type->getPointerTo()),
+      "old_output");
+  llvm::Value* new_output = ir_builder_.CreateLoad(
+      ir_builder_.CreateBitCast(new_output_location,
+                                element_int_ir_type->getPointerTo()),
+      "new_output");
   llvm::Value* ret_value = ir_builder_.CreateAtomicCmpXchg(
       ir_builder_.CreateBitCast(output_address,
                                 element_int_ir_type->getPointerTo()),
-      ir_builder_.CreateBitCast(old_output, element_int_ir_type),
-      ir_builder_.CreateBitCast(new_output, element_int_ir_type),
-      llvm::AtomicOrdering::SequentiallyConsistent,
+      old_output, new_output, llvm::AtomicOrdering::SequentiallyConsistent,
       llvm::AtomicOrdering::SequentiallyConsistent);
   // cmpxchg returns a pair. The first element is the original value at
   // output_address and the second element is whether the swap is successful.
   ir_builder_.CreateStore(
-      ir_builder_.CreateBitCast(
-          ir_builder_.CreateExtractValue(ret_value, 0, "old_output"),
-          element_ir_type),
-      old_output_location);
+      ir_builder_.CreateExtractValue(ret_value, 0, "old_output"),
+      ir_builder_.CreateBitCast(old_output_location,
+                                element_int_ir_type->getPointerTo()));
   ir_builder_.CreateCondBr(
       ir_builder_.CreateExtractValue(ret_value, 1, "success"), loop_exit_bb,
       loop_body_bb);
