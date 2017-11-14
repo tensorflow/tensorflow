@@ -47,7 +47,7 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
       nested_args = sparse.deserialize_sparse_tensors(
           nested_args, input_dataset.output_types)
-      if nest.is_sequence(nested_args):
+      if dataset_ops._should_unpack_args(nested_args):  # pylint: disable=protected-access
         dataset = map_func(*nested_args)
       else:
         dataset = map_func(nested_args)
