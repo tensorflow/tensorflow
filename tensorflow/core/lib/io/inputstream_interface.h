@@ -38,7 +38,7 @@ class InputStreamInterface {
   // Typical return codes:
   //  * OK - in case of success.
   //  * OUT_OF_RANGE - not enough bytes remaining before end of file.
-  virtual Status SkipNBytes(int64 bytes_to_skip);
+  virtual Status SkipNBytes(int64 bytes_to_skip) = 0;
 
   // Return the offset of the current byte relative to the beginning of the
   // file.

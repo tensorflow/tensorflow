@@ -58,6 +58,12 @@ class ZlibInputStream : public InputStreamInterface {
   // others:       If reading from stream failed.
   Status ReadNBytes(int64 bytes_to_read, string* result) override;
 
+  // Skips bytes_to_skip before next ReadNBytes. bytes_to_skip should be >= 0.
+  // Typical return codes:
+  //  * OK - in case of success.
+  //  * OUT_OF_RANGE - not enough bytes remaining before end of file.
+  Status SkipNBytes(int64 bytes_to_skip) override;
+
   int64 Tell() const override;
 
   Status Reset() override;
