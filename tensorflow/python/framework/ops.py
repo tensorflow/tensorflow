@@ -605,11 +605,6 @@ class Tensor(_TensorLike):
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
 
-  @staticmethod
-  def _delete_trace(tid):
-    """Helper function to be called by __del__ of the subclass."""
-    tape.delete_trace(tid)
-
   @property
   def dtype(self):
     # Note: using the intern table directly here as this is
