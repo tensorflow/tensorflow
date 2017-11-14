@@ -37,6 +37,7 @@ _allowed_symbols = [
     'DropStaleGradientOptimizer', 'ExternalOptimizerInterface',
     'LazyAdamOptimizer', 'NadamOptimizer', 'MovingAverageOptimizer',
     'ScipyOptimizerInterface', 'VariableClippingOptimizer',
+    'MultitaskOptimizerWrapper', 'clip_gradients_by_global_norm',
     'ElasticAverageOptimizer', 'ElasticAverageCustomGetter'
 ]
 
