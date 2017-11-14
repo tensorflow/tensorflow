@@ -1104,6 +1104,80 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(gh_res[:, int(num_units / number_of_groups):],
                             h_res, 1e-5)
 
+
+class LayerNormBasicGRUCellTest(test.TestCase):
+    # NOTE: all the values in the current test case have been calculated.
+    def testMultiCellLayerNormBasicGRUCell(self):
+        with self.test_session() as sess:
+            with variable_scope.variable_scope("root", initializer=init_ops.Identity()):
+                x = array_ops.zeros([1, 3])
+                h0 = array_ops.zeros([1, 3])
+                state0 = rnn_cell.LSTMStateTuple(h0, h0)
+                h1 = array_ops.zeros([1, 3])
+                state1 = rnn_cell.LSTMStateTuple(h1, h1)
+                state = (state0, state1)
+                single_cell = lambda: contrib_rnn_cell.LayerNormBasicGRUCell(3)
+                cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)], state_is_tuple=True)
+
+                g, out_m = cell(x, state)
+                sess.run([variables.global_variables_initializer()])
+                res = sess.run([g, out_m], {
+                    x.name: np.array([[0, 1, 2]]),
+                    h0.name: 0.1 * np.asarray([[3, 4, 5]]),
+                    h1.name: 0.1 * np.asarray([[6, 7, 8]])
+                })
+
+                expected_state0 = np.array([[0.0261896, 0.2, 0.8666091]])
+                expected_state1 = np.array([[ 0.18898079, 0.26299422, 0.94606379]])
+
+                actual_h = res[0]
+                actual_state0 = res[1][0]
+                actual_state1 = res[1][1]
+
+                self.assertAllClose(expected_state1, actual_h, 1e-5)
+                self.assertAllClose(expected_state0, actual_state0, 1e-5)
+                self.assertAllClose(expected_state1, actual_state1, 1e-5)
+
+    def testLayerNormBasicGRUCellWithInputSizeDifferentThanNbUnits(self):
+        with self.test_session() as sess:
+            with variable_scope.variable_scope(
+                    "root", initializer=init_ops.Identity()):
+                x = array_ops.zeros(
+                    [1, 3])
+                h = array_ops.zeros([1, 2])
+                state = rnn_cell.LSTMStateTuple(h, h)
+                cell = contrib_rnn_cell.LayerNormBasicGRUCell(2)
+                g, out_m = cell(x, state)
+                sess.run([variables.global_variables_initializer()])
+                res = sess.run([g, out_m], {
+                    x.name: np.array([[1., 2., 3.]]),
+                    h.name: 0.1 * np.asarray([[4, 5]]),
+                })
+
+                expected_h = np.array([[0.06287911, 0.82106697]])
+                self.assertEqual(len(res), 2)
+                self.assertAllClose(res[1], expected_h, 1e-5)
+
+    def testLayerNormBasicGRUCellWithoutLayerNorm(self):
+        with self.test_session() as sess:
+            with variable_scope.variable_scope(
+                    "root", initializer=init_ops.constant_initializer(0.5)):
+                x = array_ops.zeros(
+                    [1, 3])
+                h = array_ops.zeros([1, 3])
+                state = rnn_cell.LSTMStateTuple(h, h)
+                cell = contrib_rnn_cell.LayerNormBasicGRUCell(3, layer_norm=False)
+                g, out_m = cell(x, state)
+                sess.run([variables.global_variables_initializer()])
+                res = sess.run([g, out_m], {
+                    x.name: np.array([[1., 2., 3.]]),
+                    h.name: 0.1 * np.asarray([[4, 5, 6]]),
+                })
+
+                expected_h = np.array([[0.99140896, 0.99281532, 0.99422168]])
+                self.assertEqual(len(res), 2)
+                self.assertAllClose(res[1], expected_h, 1e-5)
+
 class LayerNormBasicLSTMCellTest(test.TestCase):
 
   # NOTE: all the values in the current test case have been calculated.
