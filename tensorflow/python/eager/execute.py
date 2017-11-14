@@ -168,7 +168,10 @@ def make_tensor(v, arg_name):
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
   EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
-  if all(isinstance(x, EagerTensor) for x in l):
+  for x in l:
+    if not isinstance(x, EagerTensor):
+      break
+  else:  # note: intentional for-else
     return l[0].dtype, l
   # TODO(josh11b): Could we do a better job if we also passed in the
   # allowed dtypes when that was known?
