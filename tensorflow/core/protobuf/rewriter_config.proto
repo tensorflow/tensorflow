@@ -30,7 +30,7 @@ message RewriterConfig {
   }
 
   // Optimize tensor layouts
-  bool optimize_tensor_layout = 1;
+  Toggle layout_optimizer = 1;
   // Fold constants (default is ON)
   Toggle constant_folding = 3;
   // Arithmetic optimizations (default is ON)
