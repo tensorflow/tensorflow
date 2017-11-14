@@ -20,10 +20,21 @@ limitations under the License.
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+namespace {
+const int kMaxAllocReportNodes = 100;
+const float kMaxAllocReportFraction = 0.99;
+
+struct AllocStats {
+  std::map<int64, std::vector<string>> nodes_by_size;
+  int64 total_bytes = 0;
+  int64 total_nodes = 0;
+};
+}  // namespace
 
 NodeExecStatsWrapper::NodeExecStatsWrapper()
     : NodeExecStatsWrapper(new NodeExecStats) {}
@@ -265,6 +276,85 @@ void StepStatsCollector::Save(const string& device,
     dss.push_back(std::unique_ptr<NodeExecStatsWrapper>(stats));
     collectedNodes++;
   }
+}
+
+string StepStatsCollector::ReportAllocsOnResourceExhausted(const string& err) {
+  mutex_lock l(mu_);
+  if (err.find("OOM") == err.npos) {
+    return "";
+  }
+  // <device, allocator> -> AllocStats
+  std::map<std::pair<string, string>, AllocStats> allocs_map;
+  string report = "\n";
+  for (const auto& dev_stat : dev_stats_) {
+    const string& device = dev_stat.first;
+    // Only print the device that has OOM.
+    // TODO(xpan): Extract device from err first to speed it up.
+    if (err.find(device) == err.npos) {
+      continue;
+    }
+    // NodeExecStatsWrapper*
+    for (const auto& stats : dev_stat.second) {
+      // std::pair<AllocatorMemoryUsed*, TrackingAllocator*>
+      for (const auto& alloc : stats->allocations_) {
+        // Only print the allocator that has OOM.
+        // TODO(xpan): Extract device from err first to speed it up.
+        if (err.find(alloc.first->allocator_name()) == err.npos) {
+          continue;
+        }
+        auto dev_allocator =
+            std::make_pair(dev_stat.first, alloc.first->allocator_name());
+        AllocStats& dev_allocs_stats = allocs_map[dev_allocator];
+        TrackingAllocator* tracking_alloc = alloc.second;
+        gtl::InlinedVector<AllocRecord, 4> cur_records =
+            tracking_alloc->GetCurrentRecords();
+        int64 cur_bytes = 0;
+        for (const auto& r : cur_records) {
+          cur_bytes += r.alloc_bytes;
+        }
+        if (cur_bytes > 0) {
+          dev_allocs_stats.total_bytes += cur_bytes;
+          dev_allocs_stats.total_nodes++;
+          dev_allocs_stats.nodes_by_size[cur_bytes].push_back(
+              stats->stats()->node_name());
+        }
+      }
+    }
+  }
+
+  for (const auto& dev_allocs_it : allocs_map) {
+    const auto& dev = dev_allocs_it.first;
+    const AllocStats& dev_allocs_stats = dev_allocs_it.second;
+    int64 reported_bytes = 0;
+    int64 reported_nodes = 0;
+    bool done = false;
+    strings::StrAppend(&report, "\nCurrent usage from device: ", dev.first,
+                       ", allocator: ", dev.second, "\n");
+    // Print allocations stats of the <device, allocator> pair.
+    for (auto it = dev_allocs_stats.nodes_by_size.rbegin();
+         it != dev_allocs_stats.nodes_by_size.rend(); ++it) {
+      for (const string& node_name : it->second) {
+        reported_bytes += it->first;
+        strings::StrAppend(&report, "  ",
+                           strings::HumanReadableNumBytes(it->first), " from ",
+                           node_name, "\n");
+        if (++reported_nodes > kMaxAllocReportNodes ||
+            reported_bytes >=
+                dev_allocs_stats.total_bytes * kMaxAllocReportFraction) {
+          done = true;
+          break;
+        }
+      }
+      if (done) break;
+    }
+    int64 remain_nodes = dev_allocs_stats.total_nodes - reported_nodes;
+    int64 remain_bytes = dev_allocs_stats.total_bytes - reported_bytes;
+    if (remain_nodes > 0) {
+      strings::StrAppend(&report, "  Remaining ", remain_nodes, " nodes with ",
+                         strings::HumanReadableNumBytes(remain_bytes), "\n");
+    }
+  }
+  return report;
 }
 
 void StepStatsCollector::Finalize() {

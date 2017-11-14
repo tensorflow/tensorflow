@@ -2852,6 +2852,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -2862,11 +2863,11 @@ tf_py_test(
     srcs = ["flat_map_dataset_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:session",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
@@ -2901,6 +2902,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "interleave_dataset_op_test",
+    size = "small",
+    srcs = ["interleave_dataset_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "map_dataset_op_test",
     size = "small",
     srcs = ["map_dataset_op_test.py"],
@@ -2917,6 +2935,8 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data/ops:dataset_ops",

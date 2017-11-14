@@ -1804,6 +1804,21 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       LOG(WARNING) << this << " Compute status: " << s;
       DumpState();
     }
+    if (s.code() == error::RESOURCE_EXHAUSTED) {
+      if (stats_collector_) {
+        string err = stats_collector_->ReportAllocsOnResourceExhausted(
+            s.error_message());
+        s = Status(s.code(), strings::StrCat(s.error_message(), err));
+      } else {
+        s = Status(
+            s.code(),
+            strings::StrCat(
+                s.error_message(),
+                "\nHint: If you want to see a list of allocated tensors when "
+                "OOM happens, add report_tensor_allocations_upon_oom "
+                "to RunOptions for current allocation info.\n"));
+      }
+    }
     return s;
   }
 

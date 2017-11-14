@@ -28,15 +28,16 @@ namespace monitoring {
 // The different metric kinds available.
 //
 // Gauge indicates that the metric's values are instantaneous measurements of a
-// (typically) continuously varying quantity. Examples: a process's current heap
-// size, a queue's current length.
+// (typically) continuously varying quantity or a string value. Examples: a
+// process's current heap size, a queue's current length, the name of the binary
+// used by a process.
 //
 // Cumulative indicates that the metric's values represent non-negative changes
 // over specified time periods. Example: the number of rpc calls to a service.
 enum class MetricKind : int { kGauge = 0, kCumulative };
 
 // The type of the metric values.
-enum class ValueType : int { kInt64 = 0, kHistogram };
+enum class ValueType : int { kInt64 = 0, kHistogram, kString };
 
 // Everything in the internal namespace is implementation details. Do not depend
 // on this.
@@ -71,6 +72,11 @@ inline ValueType GetValueType<int64>() {
 template <>
 inline ValueType GetValueType<HistogramProto>() {
   return ValueType::kHistogram;
+}
+
+template <>
+inline ValueType GetValueType<string>() {
+  return ValueType::kString;
 }
 
 }  // namespace internal

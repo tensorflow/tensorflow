@@ -25,15 +25,12 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+namespace {
 
-using shape_inference::Dimension;
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
 using shape_inference::ShapeAndType;
 using shape_inference::ShapeHandle;
-
-namespace {
 
 template <typename Handle>
 struct HashHandle {

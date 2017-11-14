@@ -237,24 +237,19 @@ class InferenceContext {
   // - For any one dimension, if the values for that dimension in both shapes
   //   are known, then the values must match.
   // - If one shape has equal or more information than the other shape in every
-  //   dimension, the shape with more information will be returned. Otherwise a
-  //   new shape holding the combined information of the input shapes will be
-  //   returned.
+  //   dimension, the new shape will become the shape with more information.
   // - Example: merging [2,?] and [?,2] results in [2,2]
   // - Example: [2,2] cannot be merged with [1,2]
   //
   // This requires idx to be in the [0, num_inputs) range. If the merge is
-  // successful and the new shape differs from the old one, store the new shape
-  // and return true. Return false otherwise.
+  // successful, return true. Return false otherwise.
   bool MergeInput(int idx, ShapeHandle shape) {
     ShapeHandle new_shape;
-    if (!Merge(inputs_[idx], shape, &new_shape).ok() ||
-        inputs_[idx].SameHandle(new_shape)) {
-      return false;
-    }
+    if (!Merge(inputs_[idx], shape, &new_shape).ok()) return false;
     inputs_[idx] = new_shape;
     return true;
   }
+
   // Relax the stored shape of the input in position idx with <shape> according
   // to the following rules:
   //

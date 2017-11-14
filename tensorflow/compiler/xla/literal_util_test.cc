@@ -114,10 +114,10 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto bf16_lit = Literal::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   ASSERT_EQ("0.5", bf16_lit->ToString());
 
-  // 3.14 will be rounded to 3.125 in bfloat16 format (Round to nearest even).
+  // 3.14 will be truncated to 3.125 in bfloat16 format.
   auto bf16_lit_truncated =
       Literal::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  ASSERT_EQ("3.140625", bf16_lit_truncated->ToString());
+  ASSERT_EQ("3.125", bf16_lit_truncated->ToString());
 
   auto bf16_lit_truncated2 =
       Literal::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));

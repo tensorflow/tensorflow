@@ -16,11 +16,11 @@ py_binary(
         "schema_v1.fbs",
         "schema_v2.fbs",
         "schema_v3.fbs",
+        "@flatbuffers//:flatc",
     ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
-        "@flatbuffers//:flatc",
     ],
 )
 

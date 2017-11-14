@@ -539,16 +539,9 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
 
   if (parsed.dtype() == DT_VARIANT) {
-    if (parsed.shape().dims() != 0) {
-      // TODO(b/67311047): Expand support to non-singleton variants?
-      return errors::Unimplemented(
-          "GPUDevice::MakeTensorFromProto: Only singleton Variants are "
-          "supported. Tensor has shape: ",
-          parsed.shape().DebugString());
-    }
-    const Variant& from = parsed.scalar<Variant>()();
-    Tensor copy(cpu_allocator(), DT_VARIANT, TensorShape({}));
-    Variant* copy_variant = &(copy.scalar<Variant>()());
+    const Variant* from = parsed.flat<Variant>().data();
+    Tensor copy(cpu_allocator(), DT_VARIANT, parsed.shape());
+    Variant* copy_variant = copy.flat<Variant>().data();
 
     std::list<Notification> notifications;
     Status copy_status;
@@ -566,11 +559,21 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                     n.Notify();
                                   });
     };
-    TF_RETURN_IF_ERROR(
-        VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE, from,
-                          copy_variant, std::move(copier)));
+    Status s;
+    for (int64 ix = 0; ix < parsed.NumElements(); ++ix) {
+      s = VariantDeviceCopy(
+          VariantDeviceCopyDirection::HOST_TO_DEVICE, from[ix],
+          &copy_variant[ix],
+          parsed.NumElements() == 1 ? std::move(copier) : copier);
+      if (!s.ok()) {
+        break;
+      }
+    }
     for (auto& n : notifications) {
       n.WaitForNotification();
+    }
+    if (!s.ok()) {
+      return s;
     }
     *tensor = std::move(copy);
     return copy_status;

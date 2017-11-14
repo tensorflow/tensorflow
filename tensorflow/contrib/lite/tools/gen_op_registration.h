@@ -16,6 +16,7 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOOLS_GEN_OP_REGISTRATION_H_
 
 #include "tensorflow/contrib/lite/model.h"
+#include "tensorflow/contrib/lite/string.h"
 
 namespace tflite {
 

@@ -189,8 +189,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, self.optimizer_fn, devices=['/gpu:0', '/gpu:1'])
-      estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.TRAIN,
-                                           features, labels, self.params)
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
       session.run(variables.global_variables_initializer())
 
       # loss = feature * c - label
@@ -219,8 +219,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
           devices=['/gpu:0', '/gpu:1'])
       # This call is going to fail if `replicated_model_fn` is still passing
       # `params` inside `optimizer_fn`, even though the latter doesn't take any:
-      estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.TRAIN,
-                                           features, labels, self.params)
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
       del estimator_spec
 
   def test_eval(self):
@@ -230,8 +230,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, self.optimizer_fn, devices=['/gpu:0', '/gpu:1'])
-      estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.EVAL, features,
-                                           labels, self.params)
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.EVAL, self.params)
       session.run(variables.local_variables_initializer())
       session.run(variables.global_variables_initializer())
 
@@ -259,8 +259,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, self.optimizer_fn, devices=['/gpu:0', '/gpu:1'])
-      estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.PREDICT,
-                                           features, labels, self.params)
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.PREDICT, self.params)
       session.run(variables.global_variables_initializer())
 
       self.assertAllClose({
@@ -274,8 +274,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, self.optimizer_fn)
-      estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.TRAIN,
-                                           features, labels, self.params)
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
       session.run(variables.global_variables_initializer())
 
       # loss = feature * c - label
@@ -296,8 +296,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, self.optimizer_fn, devices=['/gpu:0'])
-      estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.EVAL, features,
-                                           labels, self.params)
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.EVAL, self.params)
       session.run(variables.local_variables_initializer())
       session.run(variables.global_variables_initializer())
 
@@ -324,8 +324,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, self.optimizer_fn, devices=['/gpu:0'])
-      estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.PREDICT,
-                                           features, labels, self.params)
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.PREDICT, self.params)
       session.run(variables.global_variables_initializer())
 
       self.assertAllClose({
@@ -778,8 +778,8 @@ class MergeExportOutputsTest(test_util.TensorFlowTestCase):
 
     replicated_model_fn = replicate_model_fn.replicate_model_fn(
         self.model_fn, self.optimizer_fn, devices=['/gpu:0', '/gpu:1'])
-    estimator_spec = replicated_model_fn(model_fn_lib.ModeKeys.PREDICT,
-                                         features, labels, {})
+    estimator_spec = replicated_model_fn(features, labels,
+                                         model_fn_lib.ModeKeys.PREDICT, {})
     session.run(variables.global_variables_initializer())
     return estimator_spec
 

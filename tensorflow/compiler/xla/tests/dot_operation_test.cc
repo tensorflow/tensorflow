@@ -386,35 +386,39 @@ void DotOperationTest::TestNonsquareMatrixDot(bool lhs_row_major,
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorFF) {
-  constexpr bool kLhsRowMajor = false;
-  constexpr bool kRhsRowMajor = false;
-  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestNonsquareMatrixDot<float>(false, false);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorFT) {
-  constexpr bool kLhsRowMajor = false;
-  constexpr bool kRhsRowMajor = true;
-  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestNonsquareMatrixDot<float>(false, true);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTF) {
-  constexpr bool kLhsRowMajor = true;
-  constexpr bool kRhsRowMajor = false;
-  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestNonsquareMatrixDot<float>(true, false);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTT) {
-  constexpr bool kLhsRowMajor = true;
-  constexpr bool kRhsRowMajor = true;
-  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestNonsquareMatrixDot<float>(true, true);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF64) {
   TestNonsquareMatrixDot<double>();
 }
 
-XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64) {
-  TestNonsquareMatrixDot<complex64>();
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorFF) {
+  TestNonsquareMatrixDot<complex64>(false, false);
+}
+
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorFT) {
+  TestNonsquareMatrixDot<complex64>(false, true);
+}
+
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorTF) {
+  TestNonsquareMatrixDot<complex64>(true, false);
+}
+
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorTT) {
+  TestNonsquareMatrixDot<complex64>(true, true);
 }
 
 XLA_TEST_F(DotOperationTest, MatrixVectorC64) {

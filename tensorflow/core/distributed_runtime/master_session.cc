@@ -498,6 +498,9 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
 
   // Collect execution cost stats on a smoothly decreasing frequency.
   ExecutorOpts exec_opts;
+  if (pss->report_tensor_allocations_upon_oom) {
+    exec_opts.set_report_tensor_allocations_upon_oom(true);
+  }
   if (pss->collect_costs) {
     exec_opts.set_record_costs(true);
   }
@@ -1368,6 +1371,8 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     const auto count = run_state->count;
     pss.collect_timeline =
         req.options().trace_level() == RunOptions::FULL_TRACE;
+    pss.report_tensor_allocations_upon_oom =
+        req.options().report_tensor_allocations_upon_oom();
 
     // Build the cost model every 'build_cost_model_every' steps after skipping
     // an
@@ -1528,7 +1533,8 @@ Status MasterSession::DoRunWithLocalExecution(
   TRACEPRINTF("stepid %llu", step_id);
 
   pss.collect_timeline = req.options().trace_level() == RunOptions::FULL_TRACE;
-
+  pss.report_tensor_allocations_upon_oom =
+      req.options().report_tensor_allocations_upon_oom();
   // Build the cost model every 'build_cost_model_every' steps after skipping an
   // initial 'build_cost_model_after' steps.
   const int64 build_cost_model_after =

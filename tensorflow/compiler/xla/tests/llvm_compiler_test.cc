@@ -82,6 +82,25 @@ class LLVMCompilerTest : public ::testing::Test {
     EXPECT_EQ(1, post_opt_hook_call_count);
   }
 
+  void TestMultiModuleCompilation(LLVMCompiler *compiler) {
+    HloComputation::Builder builder(TestName());
+    builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+
+    std::unique_ptr<HloModule> hlo_module = CreateNewModule();
+    hlo_module->AddEntryComputation(builder.Build());
+
+    std::vector<std::unique_ptr<HloModule>> modules;
+    modules.push_back(hlo_module->Clone());
+    modules.push_back(std::move(hlo_module));
+
+    std::vector<std::vector<perftools::gputools::StreamExecutor *>> executors;
+    executors.push_back({backend_->default_stream_executor()});
+    executors.push_back({backend_->default_stream_executor()});
+
+    EXPECT_IS_OK(compiler->Compile(std::move(modules), std::move(executors)));
+  }
+
  private:
   Platform *FindPlatform() {
     for (Platform *platform :
@@ -128,5 +147,14 @@ TEST_F(GpuCompilerTest, HooksTest) {
   TestCompilerHooks(&compiler);
 }
 
+TEST_F(CpuCompilerTest, MultiModuleCompilation) {
+  cpu::CpuCompiler compiler;
+  TestMultiModuleCompilation(&compiler);
+}
+
+TEST_F(GpuCompilerTest, MultModuleCompilation) {
+  gpu::GpuCompiler compiler;
+  TestMultiModuleCompilation(&compiler);
+}
 }  // namespace
 }  // namespace xla

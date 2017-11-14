@@ -63,6 +63,7 @@ enum class TokKind {
   kString,         // "abcd\"\n"
   kShape,          // f32[2,3]{1,0}
   kOpcode,         // add
+  kFusionKind,     // kLoop, kOutput, ...
   kInt,            // 42
   kDecimal,        // 4.2
 };

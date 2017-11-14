@@ -200,11 +200,8 @@ py_library(
 # Model Ops.
 cc_library(
     name = "model_ops_lib",
-    srcs = [
-        "kernels/model_ops.cc",
-    ],
+    srcs = ["kernels/model_ops.cc"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource",
         "//tensorflow/contrib/tensor_forest/kernels/v4:input_data",
@@ -269,6 +266,7 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_model_ops_py",
+        ":stats_ops_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",

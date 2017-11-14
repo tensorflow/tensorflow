@@ -208,6 +208,104 @@ TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 template <typename T>
+class DeserializeSparseOp : public OpKernel {
+ public:
+  explicit DeserializeSparseOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& serialized_sparse = context->input(0);
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(serialized_sparse.shape()),
+                errors::InvalidArgument(
+                    "Serialized sparse should be a vector but received shape ",
+                    serialized_sparse.shape().DebugString()));
+    OP_REQUIRES(
+        context, serialized_sparse.shape().dim_size(0) == 3,
+        errors::InvalidArgument(
+            "Serialize sparse should have 3 columns but received shape ",
+            serialized_sparse.shape().DebugString()));
+
+    Tensor output_indices(DT_INT64);
+    Tensor output_values(DataTypeToEnum<T>::value);
+    Tensor output_shape(DT_INT64);
+    TensorProto proto_indices;
+    TensorProto proto_values;
+    TensorProto proto_shape;
+
+    const auto& serialized_sparse_t = serialized_sparse.vec<string>();
+
+    OP_REQUIRES(
+        context, ParseProtoUnlimited(&proto_indices, serialized_sparse_t(0)),
+        errors::InvalidArgument("Could not parse serialized_sparse[0]"));
+    OP_REQUIRES(
+        context, ParseProtoUnlimited(&proto_values, serialized_sparse_t(1)),
+        errors::InvalidArgument("Could not parse serialized_sparse[1]"));
+    OP_REQUIRES(
+        context, ParseProtoUnlimited(&proto_shape, serialized_sparse_t(2)),
+        errors::InvalidArgument("Could not parse serialized_sparse[2]"));
+
+    OP_REQUIRES(
+        context, output_indices.FromProto(proto_indices),
+        errors::InvalidArgument(
+            "Could not construct Tensor serialized_sparse[0] (indices)"));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsMatrix(output_indices.shape()),
+        errors::InvalidArgument("Expected serialized_sparse[0] to represent an "
+                                "index matrix but received shape ",
+                                output_indices.shape().DebugString()));
+    OP_REQUIRES(
+        context, output_values.FromProto(proto_values),
+        errors::InvalidArgument(
+            "Could not construct Tensor serialized_sparse[1] (values)"));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(output_values.shape()),
+        errors::InvalidArgument("Expected serialized_sparse[1] to represent a "
+                                "values vector but received shape ",
+                                output_values.shape().DebugString()));
+    OP_REQUIRES(context, output_shape.FromProto(proto_shape),
+                errors::InvalidArgument(
+                    "Could not construct Tensor serialized_sparse[2] (shape)"));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(output_shape.shape()),
+                errors::InvalidArgument("Expected serialized_sparse[2] to be a "
+                                        "shape vector but its shape is ",
+                                        output_shape.shape().DebugString()));
+
+    OP_REQUIRES(
+        context, DataTypeToEnum<T>::value == output_values.dtype(),
+        errors::InvalidArgument("Requested SparseTensor of type ",
+                                DataTypeString(DataTypeToEnum<T>::value),
+                                " but SparseTensor.values.dtype() == ",
+                                DataTypeString(output_values.dtype())));
+
+    int64 num_entries = output_indices.dim_size(0);
+    OP_REQUIRES(context, num_entries == output_values.dim_size(0),
+                errors::InvalidArgument(
+                    "Expected row counts of SparseTensor.indices and "
+                    "SparseTensor.values to match but they do not: ",
+                    num_entries, " vs. ", output_values.dim_size(0)));
+    int rank = output_indices.dim_size(1);
+    OP_REQUIRES(context, rank == output_shape.dim_size(0),
+                errors::InvalidArgument(
+                    "Expected column counts of SparseTensor.indices to match "
+                    "size of SparseTensor.shape but they do not: ",
+                    rank, " vs. ", output_shape.dim_size(0)));
+
+    context->set_output(0, output_indices);
+    context->set_output(1, output_values);
+    context->set_output(2, output_shape);
+  }
+};
+
+#define REGISTER_KERNELS(type)                                \
+  REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")           \
+                              .Device(DEVICE_CPU)             \
+                              .TypeConstraint<type>("dtype"), \
+                          DeserializeSparseOp<type>)
+
+TF_CALL_ALL_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+template <typename T>
 class DeserializeManySparseOp : public OpKernel {
  public:
   explicit DeserializeManySparseOp(OpKernelConstruction* context)
@@ -246,10 +344,11 @@ class DeserializeManySparseOp : public OpKernel {
       TensorProto proto_values;
       TensorProto proto_shape;
 
-      OP_REQUIRES(context, ParseProtoUnlimited(&proto_indices,
-                                               serialized_sparse_t(i, 0)),
-                  errors::InvalidArgument("Could not parse serialized_sparse[",
-                                          i, ", 0]"));
+      OP_REQUIRES(
+          context,
+          ParseProtoUnlimited(&proto_indices, serialized_sparse_t(i, 0)),
+          errors::InvalidArgument("Could not parse serialized_sparse[", i,
+                                  ", 0]"));
       OP_REQUIRES(context,
                   ParseProtoUnlimited(&proto_values, serialized_sparse_t(i, 1)),
                   errors::InvalidArgument("Could not parse serialized_sparse[",
@@ -266,7 +365,7 @@ class DeserializeManySparseOp : public OpKernel {
       OP_REQUIRES(context, TensorShapeUtils::IsMatrix(output_indices.shape()),
                   errors::InvalidArgument(
                       "Expected serialized_sparse[", i,
-                      ", 1] to represent an index matrix but received shape ",
+                      ", 0] to represent an index matrix but received shape ",
                       output_indices.shape().DebugString()));
       OP_REQUIRES(context, output_values.FromProto(proto_values),
                   errors::InvalidArgument(
