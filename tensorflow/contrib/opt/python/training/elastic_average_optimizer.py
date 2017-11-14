@@ -32,8 +32,6 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import constant_op
 
-LOCAL_CENTER_VARIABLE = '_local_center_variable'
-GLOBAL_CENTER_VARIABLE = '_global_center_variable'
 LOCAL_VARIABLE_NAME = 'local_center_variable'
 GLOBAL_VARIABLE_NAME = 'global_center_variable'
 
@@ -74,12 +72,15 @@ class ElasticAverageCustomGetter(object):
       worker_device: String.  Name of the `worker` job.
     """
     self._worker_device = worker_device
+    self._local_map = {}
+    self._global_map = {}
 
-  def __call__(self, getter, name, *args, **kwargs):
-    if kwargs['trainable']:
-      kwargs['collections'] = [ops.GraphKeys.LOCAL_VARIABLES]
+  def __call__(self, getter, name, trainable, collections, *args, **kwargs):
+    if trainable:
       with ops.device(self._worker_device):
-        local_var = getter(name, *args, **kwargs)
+        local_var = getter(name, trainable=True,
+                           collections=[ops.GraphKeys.LOCAL_VARIABLES], 
+                           *args, **kwargs)
         
       global_center_variable = variable_scope.variable(
         name='%s/%s' %
@@ -87,17 +88,17 @@ class ElasticAverageCustomGetter(object):
               name),
         initial_value=local_var.initialized_value(),
         trainable=False,
-        collections=[
-          ops.GraphKeys.GLOBAL_VARIABLES,
-          GLOBAL_CENTER_VARIABLE])
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES])
 
       with ops.device(self._worker_device):
         local_center_variable = variable_scope.variable(
           name='%s/%s' % (LOCAL_VARIABLE_NAME, name),
           initial_value=local_var.initialized_value(),
           trainable=False,
-          collections=[ops.GraphKeys.LOCAL_VARIABLES,
-                       LOCAL_CENTER_VARIABLE])
+          collections=[ops.GraphKeys.LOCAL_VARIABLES])
+        
+      self._local_map[local_var] = local_center_variable
+      self._global_map[local_var] = global_center_variable
       return local_var
     else:
       return getter(name, *args, **kwargs)
@@ -121,6 +122,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       self,
       opt,
       num_worker,
+      ea_custom_getter,
       communication_period=10,
       moving_rate=None,
       rho=None,
@@ -145,6 +147,8 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     self._opt = opt
     self._num_worker = num_worker
     self._period = communication_period
+    self._local_map = ea_custom_getter._local_map
+    self._global_map = ea_custom_getter._global_map
 
     if moving_rate is None:
       self._moving_rate = BETA / communication_period / num_worker
@@ -197,9 +201,12 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
     """
+    if not var_list:
+      var_list = variables.trainable_variables()
+      
     elastic_difference = [math_ops.subtract(v, lv) for v, lv in zip(
       variables.trainable_variables(),
-      ops.get_collection_ref(LOCAL_CENTER_VARIABLE))]
+      [self._local_map[var] for var in var_list])]
 
     distance_loss = self._rho * math_ops.add_n(
                       [gen_nn_ops.l2_loss(ed) for ed in elastic_difference])
@@ -238,9 +245,9 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
 
     # update global variables.
     def _Update_global_variables():
-      local_vars = variables.trainable_variables()
-      global_center_vars = ops.get_collection_ref(GLOBAL_CENTER_VARIABLE)
-      local_center_vars = ops.get_collection_ref(LOCAL_CENTER_VARIABLE)
+      local_vars = [v for g, v in grads_and_vars if g is not None]
+      global_center_vars = [self._global_map[var] for var in local_vars]
+      local_center_vars = [self._local_map[var] for var in local_vars]
       local_center_vars_update = []
       for lvar, var in zip(local_center_vars, global_center_vars):
         local_center_vars_update.append(lvar.assign(var))
@@ -297,8 +304,8 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
 
     init_ops = []
     local_vars = variables.trainable_variables()
-    global_center_vars = ops.get_collection_ref(GLOBAL_CENTER_VARIABLE)
-    local_center_vars = ops.get_collection_ref(LOCAL_CENTER_VARIABLE)
+    global_center_vars = [self._global_map[var] for var in local_vars]
+    local_center_vars = [self._local_map[var] for var in local_vars]
     if not (local_vars and global_center_vars and local_center_vars):
       raise ValueError(
         'The lists of local_variables, global_center_variables, '
