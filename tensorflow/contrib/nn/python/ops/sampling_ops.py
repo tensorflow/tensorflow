@@ -318,7 +318,7 @@ def sampled_sparse_softmax_loss(weights,
     A `batch_size` 1-D tensor of per-example sampled softmax losses.
 
   """
-  logits, labels = nn_impl._compute_sampled_logits(
+  logits, _ = nn_impl._compute_sampled_logits(
       weights=weights,
       biases=biases,
       labels=labels,
@@ -330,8 +330,11 @@ def sampled_sparse_softmax_loss(weights,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
-      labels_as_indices=True,
       name=name)
+
+  # There is only one true label. _compute_sampled_logits puts the true logit
+  # at index 0.
+  labels = tf.zeros([array_ops.shape(logits)[0], 1], dtype=dtypes.int64)
 
   sampled_losses = nn_ops.sparse_softmax_cross_entropy_with_logits(
       labels=array_ops.squeeze(labels), logits=logits)
