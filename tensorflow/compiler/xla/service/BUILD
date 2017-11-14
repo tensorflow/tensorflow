@@ -1360,11 +1360,24 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_cost_analysis",
+        ":hlo_profile_printer",
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_execution_profile_test",
+    srcs = ["hlo_execution_profile_test.cc"],
+    deps = [
+        ":cpu_plugin",
+        ":hlo_cost_analysis",
+        ":hlo_execution_profile",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -2156,6 +2169,16 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "hlo_profile_printer",
+    srcs = ["hlo_profile_printer.cc"],
+    hdrs = ["hlo_profile_printer.h"],
+    deps = [
+        ":human_readable_profile_builder",
+        "//tensorflow/compiler/xla:types",
     ],
 )
 

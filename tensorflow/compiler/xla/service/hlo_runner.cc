@@ -130,14 +130,13 @@ StatusOr<se::DeviceMemoryBase> HloRunner::Execute(
   run_options.set_intra_op_thread_pool(
       backend().eigen_intra_op_thread_pool_device());
 
-  HloExecutionProfile hlo_execution_profile;
   ServiceExecutableRunOptions service_run_options(
       run_options, backend().StreamBorrower(),
       backend().inter_op_thread_pool());
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase result,
       executable->ExecuteOnStream(&service_run_options, arguments,
-                                  &hlo_execution_profile));
+                                  /*hlo_execution_profile=*/nullptr));
   TF_RET_CHECK(stream.BlockHostUntilDone());
 
   allocations_.push_back(result);
