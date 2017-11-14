@@ -22,6 +22,9 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.platform import test
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 
 
 def GetNewNode(name, op, input_nodes):
@@ -56,6 +59,18 @@ class GraphUtilTest(test.TestCase):
     self.assertEqual(fused_graph_def.node[2].name, 'D')
     self.assertEqual(fused_graph_def.node[3].name, 'E')
 
+
+class GetPlaceholdersTest(test.TestCase):
+
+  def test_get_placeholders(self):
+    with ops.Graph().as_default() as g:
+      ids = []
+      for i in range(5):
+        x = array_ops.placeholder(dtypes.float32)
+        ids.append(x._id)
+      result = graph_util.get_placeholders(g)
+      result_ids = { i._id for i in result }
+      self.assertEqual(result_ids, set(ids))
 
 if __name__ == '__main__':
   test.main()
