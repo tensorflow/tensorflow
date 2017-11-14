@@ -632,6 +632,7 @@ cc_library(
 
 cc_library(
     name = "llvm_compiler",
+    srcs = ["llvm_compiler.cc"],
     hdrs = ["llvm_compiler.h"],
     deps = [
         ":compiler",

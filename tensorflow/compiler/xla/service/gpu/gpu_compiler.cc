@@ -520,13 +520,6 @@ std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
   return cache_value->cubin_data;
 }
 
-StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
-  return Unimplemented(
-      "Compilation of multiple HLO modules is not yet supported on GPU.");
-}
-
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
                                 const AotCompilationOptions& options) {
