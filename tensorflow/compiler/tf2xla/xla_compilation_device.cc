@@ -98,11 +98,15 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   b->SetOpMetadata(metadata);
 
   DeviceNameUtils::ParsedName parsed;
+  /* FIXME: For some reason, this fails during tfcompile:
+   * 2017-11-14 17:24:17.169663: F external/org_tensorflow/tensorflow/compiler/aot/tfcompile_main.cc:140] Non-OK-status: status status: Internal: Unable to parse device name: XLA_CPU_JIT
+   *
   OP_REQUIRES(
       context,
       DeviceNameUtils::ParseFullName(op_kernel->requested_device(), &parsed),
       errors::Internal("Unable to parse device name: ",
                        op_kernel->requested_device()));
+  */
   xla::OpDeviceAssignment assignment;
   // If no device ID assignment is found, XLA is free to use whatever device it
   // wants. In practice this usually has the effect of placing things on
