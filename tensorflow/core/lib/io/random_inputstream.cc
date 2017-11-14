@@ -65,11 +65,30 @@ Status RandomAccessInputStream::SkipNBytes(int64 bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can't skip a negative number of bytes");
   }
- string unused;
+  std::unique_ptr<char[]> scratch(new char[kMaxSkipSize]);
+  // Try to read 1 bytes first, if we could complete the read then EOF is
+  // not reached yet and we could return.
+  if (bytes_to_skip > 0) {
+    StringPiece data;
+    Status s = file_->Read(pos_ + bytes_to_skip - 1, 1, &data, scratch.get());
+    if ((s.ok() || errors::IsOutOfRange(s)) && data.size() == 1) {
+      pos_ += bytes_to_skip;
+      return Status::OK();
+    }
+  }
   // Read kDefaultSkipSize at a time till bytes_to_skip.
   while (bytes_to_skip > 0) {
     int64 bytes_to_read = std::min<int64>(kMaxSkipSize, bytes_to_skip);
-    TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &unused));
+    StringPiece data;
+    Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
+    if (s.ok() || errors::IsOutOfRange(s)) {
+      pos_ += data.size();
+    } else {
+      return s;
+    }
+    if (data.size() < bytes_to_read) {
+      return errors::OutOfRange("reached end of file");
+    }
     bytes_to_skip -= bytes_to_read;
   }
   return Status::OK();
