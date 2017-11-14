@@ -203,12 +203,12 @@ class KerasCallbacksTest(test.TestCase):
           callbacks=cbks,
           epochs=4,
           verbose=1)
-      assert os.path.exists(filepath.format(epoch=1))
-      assert os.path.exists(filepath.format(epoch=3))
-      os.remove(filepath.format(epoch=1))
-      os.remove(filepath.format(epoch=3))
-      assert not os.path.exists(filepath.format(epoch=0))
-      assert not os.path.exists(filepath.format(epoch=2))
+      assert os.path.exists(filepath.format(epoch=2))
+      assert os.path.exists(filepath.format(epoch=4))
+      os.remove(filepath.format(epoch=2))
+      os.remove(filepath.format(epoch=4))
+      assert not os.path.exists(filepath.format(epoch=1))
+      assert not os.path.exists(filepath.format(epoch=3))
 
       # Invalid use: this will raise a warning but not an Exception.
       keras.callbacks.ModelCheckpoint(

@@ -97,10 +97,6 @@ class Wrapper(Layer):
       return losses + super(Wrapper, self).get_losses_for(None)
     return super(Wrapper, self).get_losses_for(inputs)
 
-  @property
-  def constraints(self):
-    return self.layer.constraints
-
   def get_weights(self):
     return self.layer.get_weights()
 

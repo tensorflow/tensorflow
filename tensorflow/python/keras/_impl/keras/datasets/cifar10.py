@@ -34,7 +34,7 @@ def load_data():
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
   """
   dirname = 'cifar-10-batches-py'
-  origin = 'http://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
+  origin = 'https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
   path = get_file(dirname, origin=origin, untar=True)
 
   num_train_samples = 50000
