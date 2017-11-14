@@ -20,6 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 import six
 
 from google.protobuf import message
@@ -206,8 +208,8 @@ class Profiler(object):
     try:
       tfprof_node.ParseFromString(
           print_mdl.Profile('code'.encode('utf-8'), opts.SerializeToString()))
-    except message.DecodeError as _:
-      pass
+    except message.DecodeError as e:
+      sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
     return tfprof_node
 
   def profile_operations(self, options):
@@ -223,8 +225,8 @@ class Profiler(object):
     try:
       tfprof_node.ParseFromString(
           print_mdl.Profile('op'.encode('utf-8'), opts.SerializeToString()))
-    except message.DecodeError as _:
-      pass
+    except message.DecodeError as e:
+      sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
     return tfprof_node
 
   def profile_name_scope(self, options):
@@ -240,8 +242,8 @@ class Profiler(object):
     try:
       tfprof_node.ParseFromString(
           print_mdl.Profile('scope'.encode('utf-8'), opts.SerializeToString()))
-    except message.DecodeError as _:
-      pass
+    except message.DecodeError as e:
+      sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
     return tfprof_node
 
   def profile_graph(self, options):
@@ -257,8 +259,8 @@ class Profiler(object):
     try:
       tfprof_node.ParseFromString(
           print_mdl.Profile('graph'.encode('utf-8'), opts.SerializeToString()))
-    except message.DecodeError as _:
-      pass
+    except message.DecodeError as e:
+      sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
     return tfprof_node
 
   def advise(self, options):
@@ -331,9 +333,8 @@ def profile(graph,
         opts.SerializeToString())
     try:
       tfprof_node.ParseFromString(ret)
-    except message.DecodeError as _:
-      pass
-      # sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
+    except message.DecodeError as e:
+      sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
 
   elif cmd == 'graph' or cmd == 'scope':
     tfprof_node = tfprof_output_pb2.GraphNodeProto()
@@ -345,9 +346,8 @@ def profile(graph,
         opts.SerializeToString())
     try:
       tfprof_node.ParseFromString(ret)
-    except message.DecodeError as _:
-      pass
-      # sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
+    except message.DecodeError as e:
+      sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
   else:
     raise errors.InvalidArgumentError(
         None, None, 'unknown cmd: %s\n' % cmd)
