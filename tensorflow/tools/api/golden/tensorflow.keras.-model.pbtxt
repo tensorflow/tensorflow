@@ -152,7 +152,7 @@ tf_class {
   }
   member_method {
     name: "evaluate"
-    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'1\', \'None\', \'None\'], "
   }
   member_method {
     name: "evaluate_generator"
