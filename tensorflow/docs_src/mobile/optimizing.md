@@ -115,7 +115,7 @@ If you look at the resulting file size, you should see that it’s about a quart
 of the original at 23MB.
 
 Another transform is `round_weights`, which doesn't make the file smaller, but it
-makes the file compressable to about the same size as when `quantize_weights` is
+makes the file compressible to about the same size as when `quantize_weights` is
 used. This is particularly useful for mobile development, taking advantage of
 the fact that app bundles are compressed before they’re downloaded by consumers.
 

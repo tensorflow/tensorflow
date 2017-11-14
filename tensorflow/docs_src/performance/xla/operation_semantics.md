@@ -674,7 +674,7 @@ The output type is a tuple of three ComputationDataHandles:
 | `batch_var`  | `ComputationDataHandle` | 1 dimensional array (\\(\sigma^2\\)) |
 
 The `batch_mean` and `batch_var` are moments calculated across the batch and
-spatial dimensions using the formulars above.
+spatial dimensions using the formulas above.
 
 ## BatchNormInference
 
