@@ -16,6 +16,7 @@
 #include "tensorflow/contrib/ffmpeg/ffmpeg_lib.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -25,6 +26,7 @@
 #include <vector>
 
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -38,28 +40,45 @@ namespace {
 const char kFfmpegExecutable[] = "ffmpeg";
 const int32 kDefaultProbeSize = 5000000;  // 5MB
 
-std::vector<string> FfmpegCommandLine(const string& input_filename,
-                                      const string& output_filename,
-                                      const string& input_format_id,
-                                      int32 samples_per_second,
-                                      int32 channel_count) {
-  return {
-    "-nostats",  // No additional progress display.
-    "-nostdin",  // No interactive commands accepted.
-    "-f", input_format_id,  // eg: "mp3"
-    "-probesize", StrCat(kDefaultProbeSize),
-    "-i", input_filename,
-    "-loglevel", "info",  // Enable verbose logging to support debugging.
-    "-map_metadata", "-1",  // Copy global metadata from input to output.
-    "-vn",  // No video recording.
-    "-ac:a:0", StrCat(channel_count),
-    "-ar:a:0", StrCat(samples_per_second),
-    // Output set (in several ways) to signed 16-bit little-endian ints.
-    "-codec:a:0", "pcm_s16le", "-sample_fmt", "s16", "-f", "s16le",
-    "-sn",  // No subtitle recording.
-    "-y",  // Overwrite output file.
-    StrCat(output_filename)
-  };
+std::vector<string> FfmpegAudioCommandLine(const string& input_filename,
+                                           const string& output_filename,
+                                           const string& input_format_id,
+                                           int32 samples_per_second,
+                                           int32 channel_count) {
+  return {"-nostats",             // No additional progress display.
+          "-nostdin",             // No interactive commands accepted.
+          "-f", input_format_id,  // eg: "mp3"
+          "-probesize", StrCat(kDefaultProbeSize), "-i", input_filename,
+          "-loglevel", "info",  // Enable verbose logging to support debugging.
+          "-map_metadata", "-1",  // Copy global metadata from input to output.
+          "-vn",                  // No video recording.
+          "-ac:a:0", StrCat(channel_count), "-ar:a:0",
+          StrCat(samples_per_second),
+          // Output set (in several ways) to signed 16-bit little-endian ints.
+          "-codec:a:0", "pcm_s16le", "-sample_fmt", "s16", "-f", "s16le",
+          "-sn",  // No subtitle recording.
+          "-y",   // Overwrite output file.
+          StrCat(output_filename)};
+}
+
+std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
+                                           const string& output_filename) {
+  return {"-nostats",  // No additional progress display.
+          "-nostdin",  // No interactive commands accepted.
+          "-i",
+          input_filename,
+          "-f",
+          "image2pipe",
+          "-probesize",
+          StrCat(kDefaultProbeSize),
+          "-loglevel",
+          "info",  // Enable verbose logging to support debugging.
+          "-vcodec",
+          "rawvideo",
+          "-pix_fmt",
+          "rgb24",
+          "-y",  // Overwrite output file.
+          StrCat(output_filename)};
 }
 
 // Is a named binary installed and executable by the current process?
@@ -106,7 +125,7 @@ bool IsBinaryInstalled(const string& binary_name) {
   ::execvp(kFfmpegExecutable, args_chars.data());
   // exec only returns on error.
   const int error = errno;
-  LOG(ERROR) << "FFmpeg could not be executed: " << error;
+  LOG(ERROR) << "FFmpeg could not be executed: " << strerror(error);
   ::_exit(error);
 }
 
@@ -198,52 +217,100 @@ string BuildWavFile(int32 samples_per_second, int32 channel_count,
   return data;
 }
 
-// Returns a unique number every time it is called.
-int64 UniqueId() {
-  static mutex mu(LINKER_INITIALIZED);
-  static int64 id = 0;
-  mutex_lock l(mu);
-  return ++id;
+Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
+                    uint32* frames) {
+  string data;
+  ReadFileToString(Env::Default(), filename, &data);
+  bool in_output = false;
+  bool in_mapping = false;
+  uint32 frames_value = 0;
+  uint32 height_value = 0;
+  uint32 width_value = 0;
+  for (const string& line : str_util::Split(data, '\n')) {
+    // Output starts with the first line of `Output #..`.
+    // Further processing output region starts next line so we could continue
+    // the loop.
+    if (!in_output && line.find("Output #") == 0) {
+      in_output = true;
+      in_mapping = false;
+      continue;
+    }
+    // Stream mapping starts with the first line of `Stream mapping`, it also
+    // signals the end of Output section.
+    // Further processing of stream mapping region starts next line so we could
+    // continue the loop.
+    if (!in_mapping && line.find("Stream mapping:") == 0) {
+      in_output = false;
+      in_mapping = true;
+      continue;
+    }
+    if (in_output) {
+      // We only look for the first stream in output `Stream #0`.
+      // Once processed we will not further process output section.
+      if (line.find("    Stream #") == 0) {
+        size_t p = line.find(", rgb24, ", 24);
+        if (p != std::string::npos) {
+          string rgb24 = line.substr(p + 9, line.find(" ", p + 9));
+          rgb24 = rgb24.substr(0, rgb24.find(","));
+          string rgb24_width = rgb24.substr(0, rgb24.find("x"));
+          string rgb24_height = rgb24.substr(rgb24_width.length() + 1);
+          if (strings::safe_strtou32(rgb24_width, &width_value) &&
+              strings::safe_strtou32(rgb24_height, &height_value)) {
+            in_output = false;
+          }
+        }
+      }
+      continue;
+    }
+    if (in_mapping) {
+      // We only look for the first stream mapping to have the number of the
+      // frames.
+      // Once processed we will not further process stream mapping section.
+      if (line.find("frame=  ") == 0) {
+        string number = line.substr(8, line.find(" ", 8));
+        number = number.substr(0, number.find(" "));
+        if (strings::safe_strtou32(number, &frames_value)) {
+          in_mapping = false;
+        }
+      }
+      continue;
+    }
+  }
+  if (frames_value == 0 || height_value == 0 || width_value == 0) {
+    return errors::Unknown("Not enough video info returned by FFmpeg [",
+                           frames_value, ", ", height_value, ", ", width_value,
+                           ", 3]");
+  }
+  *width = width_value;
+  *height = height_value;
+  *frames = frames_value;
+  return Status::OK();
 }
 
 }  // namespace
 
-string GetTempFilename(const string& extension) {
-  for (const char* dir : std::vector<const char*>(
-           {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {
-    if (!dir || !dir[0]) {
-      continue;
-    }
-    struct stat statbuf;
-    if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
-      // UniqueId is added here because mkstemps is not as thread safe as it
-      // looks. https://github.com/tensorflow/tensorflow/issues/5804 shows
-      // the problem.
-      string tmp_filepath = io::JoinPath(
-          dir,
-          StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.", extension));
-      int fd = mkstemps(&tmp_filepath[0], extension.length() + 1);
-      if (fd < 0) {
-        LOG(FATAL) << "Failed to create temp file.";
-      } else {
-        close(fd);
-        return tmp_filepath;
-      }
-    }
-  }
-  LOG(FATAL) << "No temp directory found.";
+FileDeleter::~FileDeleter() {
+  Env& env = *Env::Default();
+  env.DeleteFile(filename_).IgnoreError();
 }
 
-Status ReadAudioFile(const string& filename,
-                     const string& audio_format_id,
-                     int32 samples_per_second,
-                     int32 channel_count,
+Status WriteFile(const string& filename, StringPiece contents) {
+  Env& env = *Env::Default();
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(env.NewWritableFile(filename, &file));
+  TF_RETURN_IF_ERROR(file->Append(contents));
+  TF_RETURN_IF_ERROR(file->Close());
+  return Status::OK();
+}
+
+Status ReadAudioFile(const string& filename, const string& audio_format_id,
+                     int32 samples_per_second, int32 channel_count,
                      std::vector<float>* output_samples) {
   // Create an argument list.
-  string output_filename = GetTempFilename("raw");
+  string output_filename = io::GetTempFilename("raw");
   const std::vector<string> args =
-      FfmpegCommandLine(filename, output_filename, audio_format_id,
-                        samples_per_second, channel_count);
+      FfmpegAudioCommandLine(filename, output_filename, audio_format_id,
+                             samples_per_second, channel_count);
 
   // Unfortunately, it's impossible to differentiate an exec failure due to the
   // binary being missing and an error from the binary's execution. Therefore,
@@ -256,7 +323,8 @@ Status ReadAudioFile(const string& filename,
   // Execute ffmpeg and report errors.
   pid_t child_pid = ::fork();
   if (child_pid < 0) {
-    return Status(error::Code::UNKNOWN, StrCat("fork failed: ", errno));
+    return Status(error::Code::UNKNOWN,
+                  StrCat("fork failed: ", strerror(errno)));
   }
   if (child_pid == 0) {
     ExecuteFfmpeg(args);
@@ -285,5 +353,63 @@ Status CreateAudioFile(const string& audio_format_id, int32 bits_per_second,
   return Status::OK();
 }
 
+Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
+                     uint32* width, uint32* height, uint32* frames) {
+  if (!IsBinaryInstalled(kFfmpegExecutable)) {
+    return Status(error::Code::NOT_FOUND, StrCat("FFmpeg could not be found."));
+  }
+
+  string output_filename = io::GetTempFilename("raw");
+  string stderr_filename = io::GetTempFilename("err");
+
+  // Create an argument list.
+  const std::vector<string> args =
+      FfmpegVideoCommandLine(filename, output_filename);
+
+  // Execute ffmpeg and report errors.
+  pid_t child_pid = ::fork();
+  if (child_pid < 0) {
+    return Status(error::Code::UNKNOWN,
+                  StrCat("fork failed: ", strerror(errno)));
+  }
+  if (child_pid == 0) {
+    const int fd =
+        open(stderr_filename.c_str(), O_RDWR | O_CREAT | O_APPEND, 0600);
+    if (fd < 0) {
+      const int error = errno;
+      LOG(ERROR) << "FFmpeg stderr file coule not be created: "
+                 << strerror(error);
+      ::_exit(error);
+    }
+    close(STDERR_FILENO);
+    dup2(fd, STDERR_FILENO);
+    ExecuteFfmpeg(args);
+  } else {
+    int status_code;
+    if (::waitpid(child_pid, &status_code, 0) < 0) {
+      return Status(error::Code::UNKNOWN,
+                    StrCat("waitpid failed: ", strerror(errno)));
+    }
+    if (status_code) {
+      return Status(error::Code::UNKNOWN,
+                    StrCat("FFmpeg execution failed: ", status_code));
+    }
+
+    TF_QCHECK_OK(ReadInfoFile(stderr_filename, width, height, frames))
+        << "Could not read FFmpeg stderr file: " << stderr_filename;
+
+    string raw_data;
+    TF_QCHECK_OK(ReadFileToString(Env::Default(), output_filename, &raw_data))
+        << "Could not read FFmpeg output file: " << output_filename;
+    output_data->resize(raw_data.size());
+    std::copy_n(raw_data.data(), raw_data.size(), output_data->begin());
+
+    TF_QCHECK_OK(Env::Default()->DeleteFile(output_filename))
+        << output_filename;
+    TF_QCHECK_OK(Env::Default()->DeleteFile(stderr_filename))
+        << stderr_filename;
+    return Status::OK();
+  }
+}
 }  // namespace ffmpeg
 }  // namespace tensorflow
