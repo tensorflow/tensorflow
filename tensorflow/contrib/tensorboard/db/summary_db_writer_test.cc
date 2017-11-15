@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
 
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/db/sqlite.h"
@@ -210,6 +212,82 @@ TEST_F(SummaryDbWriterTest, WriteEvent_Scalar) {
                   "SELECT tensor FROM Tensors WHERE tag_id = ", tag2_id,
                   " AND step = 7")),
               kTolerance);
+}
+
+TEST_F(SummaryDbWriterTest, WriteGraph) {
+  TF_ASSERT_OK(CreateSummaryDbWriter(db_, "", "R", "", &env_, &writer_));
+  env_.AdvanceByMillis(23);
+  GraphDef graph;
+  NodeDef* node = graph.add_node();
+  node->set_name("x");
+  node->set_op("Placeholder");
+  node = graph.add_node();
+  node->set_name("y");
+  node->set_op("Placeholder");
+  node = graph.add_node();
+  node->set_name("z");
+  node->set_op("Love");
+  node = graph.add_node();
+  node->set_name("+");
+  node->set_op("Add");
+  node->add_input("x");
+  node->add_input("y");
+  node->add_input("^z");
+  node->set_device("tpu/lol");
+  std::unique_ptr<Event> e{new Event};
+  graph.SerializeToString(e->mutable_graph_def());
+  TF_ASSERT_OK(writer_->WriteEvent(std::move(e)));
+  TF_ASSERT_OK(writer_->Flush());
+  ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Runs"));
+  ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Graphs"));
+  ASSERT_EQ(4LL, QueryInt("SELECT COUNT(*) FROM Nodes"));
+  ASSERT_EQ(3LL, QueryInt("SELECT COUNT(*) FROM NodeInputs"));
+
+  int64 graph_id = QueryInt("SELECT graph_id FROM Graphs");
+  EXPECT_GT(graph_id, 0LL);
+  EXPECT_EQ(graph_id, QueryInt("SELECT graph_id FROM Runs"));
+  EXPECT_EQ(0.023, QueryDouble("SELECT inserted_time FROM Graphs"));
+  EXPECT_FALSE(QueryString("SELECT graph_def FROM Graphs").empty());
+
+  EXPECT_EQ("x", QueryString("SELECT node_name FROM Nodes WHERE node_id = 0"));
+  EXPECT_EQ("y", QueryString("SELECT node_name FROM Nodes WHERE node_id = 1"));
+  EXPECT_EQ("z", QueryString("SELECT node_name FROM Nodes WHERE node_id = 2"));
+  EXPECT_EQ("+", QueryString("SELECT node_name FROM Nodes WHERE node_id = 3"));
+
+  EXPECT_EQ("Placeholder",
+            QueryString("SELECT op FROM Nodes WHERE node_id = 0"));
+  EXPECT_EQ("Placeholder",
+            QueryString("SELECT op FROM Nodes WHERE node_id = 1"));
+  EXPECT_EQ("Love", QueryString("SELECT op FROM Nodes WHERE node_id = 2"));
+  EXPECT_EQ("Add", QueryString("SELECT op FROM Nodes WHERE node_id = 3"));
+
+  EXPECT_EQ("", QueryString("SELECT device FROM Nodes WHERE node_id = 0"));
+  EXPECT_EQ("", QueryString("SELECT device FROM Nodes WHERE node_id = 1"));
+  EXPECT_EQ("", QueryString("SELECT device FROM Nodes WHERE node_id = 2"));
+  EXPECT_EQ("tpu/lol",
+            QueryString("SELECT device FROM Nodes WHERE node_id = 3"));
+
+  EXPECT_EQ(graph_id,
+            QueryInt("SELECT graph_id FROM NodeInputs WHERE idx = 0"));
+  EXPECT_EQ(graph_id,
+            QueryInt("SELECT graph_id FROM NodeInputs WHERE idx = 1"));
+  EXPECT_EQ(graph_id,
+            QueryInt("SELECT graph_id FROM NodeInputs WHERE idx = 2"));
+
+  EXPECT_EQ(3LL, QueryInt("SELECT node_id FROM NodeInputs WHERE idx = 0"));
+  EXPECT_EQ(3LL, QueryInt("SELECT node_id FROM NodeInputs WHERE idx = 1"));
+  EXPECT_EQ(3LL, QueryInt("SELECT node_id FROM NodeInputs WHERE idx = 2"));
+
+  EXPECT_EQ(0LL,
+            QueryInt("SELECT input_node_id FROM NodeInputs WHERE idx = 0"));
+  EXPECT_EQ(1LL,
+            QueryInt("SELECT input_node_id FROM NodeInputs WHERE idx = 1"));
+  EXPECT_EQ(2LL,
+            QueryInt("SELECT input_node_id FROM NodeInputs WHERE idx = 2"));
+
+  EXPECT_EQ(0LL, QueryInt("SELECT is_control FROM NodeInputs WHERE idx = 0"));
+  EXPECT_EQ(0LL, QueryInt("SELECT is_control FROM NodeInputs WHERE idx = 1"));
+  EXPECT_EQ(1LL, QueryInt("SELECT is_control FROM NodeInputs WHERE idx = 2"));
 }
 
 }  // namespace

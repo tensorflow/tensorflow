@@ -135,8 +135,7 @@ class SqliteSchema {
   ///     the database. This field will be mutated if the run is
   ///     restarted.
   ///   description: Optional markdown information.
-  ///   graph: Snappy tf.GraphDef proto with node field cleared. That
-  ///     field can be recreated using GraphNodes and NodeDefs.
+  ///   graph_id: ID of associated Graphs row.
   Status CreateRunsTable() {
     return Run(R"sql(
       CREATE TABLE IF NOT EXISTS Runs (
@@ -147,7 +146,7 @@ class SqliteSchema {
         inserted_time REAL,
         started_time REAL,
         description TEXT,
-        graph BLOB
+        graph_id INTEGER
       )
     )sql");
   }
@@ -205,46 +204,78 @@ class SqliteSchema {
     )sql");
   }
 
-  /// \brief Creates NodeDefs table.
-  ///
-  /// This table stores NodeDef protos which define the GraphDef for a
-  /// Run. This functions like a hash table so rows can be shared by
-  /// multiple Runs in an Experiment.
+  /// \brief Creates Graphs table.
   ///
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
-  ///   experiment_id: Optional int64 for grouping rows.
-  ///   node_def_id: Permanent >0 unique ID.
-  ///   fingerprint: Optional farmhash::Fingerprint64() of uncompressed
-  ///     node_def bytes, coerced to int64.
-  ///   node_def: BLOB containing a Snappy tf.NodeDef proto.
-  Status CreateNodeDefsTable() {
+  ///   graph_id: Permanent >0 unique ID.
+  ///   inserted_time: Float UNIX timestamp with µs precision. This is
+  ///     always the wall time of when the row was inserted into the
+  ///     DB. It may be used as a hint for an archival job.
+  ///   node_def: Contains Snappy tf.GraphDef proto. All fields will be
+  ///     cleared except those not expressed in SQL.
+  Status CreateGraphsTable() {
     return Run(R"sql(
-      CREATE TABLE IF NOT EXISTS NodeDefs (
+      CREATE TABLE IF NOT EXISTS Graphs (
         rowid INTEGER PRIMARY KEY,
-        experiment_id INTEGER,
-        node_def_id INTEGER NOT NULL,
-        fingerprint INTEGER,
-        node_def TEXT
+        graph_id INTEGER NOT NULL,
+        inserted_time REAL,
+        graph_def BLOB
       )
     )sql");
   }
 
-  /// \brief Creates RunNodeDefs table.
-  ///
-  /// Table mapping Runs to NodeDefs. This is used to recreate the node
-  /// field of the GraphDef proto.
+  /// \brief Creates Nodes table.
   ///
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
-  ///   run_id: Mandatory ID of associated Run.
-  ///   node_def_id: Mandatory ID of associated NodeDef.
-  Status CreateRunNodeDefsTable() {
+  ///   graph_id: Permanent >0 unique ID.
+  ///   node_id: ID for this node. This is more like a 0-index within
+  ///     the Graph. Please note indexes are allowed to be removed.
+  ///   node_name: Unique name for this Node within Graph. This is
+  ///     copied from the proto so it can be indexed. This is allowed
+  ///     to be NULL to save space on the index, in which case the
+  ///     node_def.name proto field must not be cleared.
+  ///   op: Copied from tf.NodeDef proto.
+  ///   device: Copied from tf.NodeDef proto.
+  ///   node_def: Contains Snappy tf.NodeDef proto. All fields will be
+  ///     cleared except those not expressed in SQL.
+  Status CreateNodesTable() {
     return Run(R"sql(
-      CREATE TABLE IF NOT EXISTS RunNodeDefs (
+      CREATE TABLE IF NOT EXISTS Nodes (
         rowid INTEGER PRIMARY KEY,
-        run_id INTEGER NOT NULL,
-        node_def_id INTEGER NOT NULL
+        graph_id INTEGER NOT NULL,
+        node_id INTEGER NOT NULL,
+        node_name TEXT,
+        op TEXT,
+        device TEXT,
+        node_def BLOB
+      )
+    )sql");
+  }
+
+  /// \brief Creates NodeInputs table.
+  ///
+  /// Fields:
+  ///   rowid: Ephemeral b-tree ID dictating locality.
+  ///   graph_id: Permanent >0 unique ID.
+  ///   node_id: Index of Node in question. This can be considered the
+  ///     'to' vertex.
+  ///   idx: Used for ordering inputs on a given Node.
+  ///   input_node_id: Nodes.node_id of the corresponding input node.
+  ///     This can be considered the 'from' vertex.
+  ///   is_control: If non-zero, indicates this input is a controlled
+  ///     dependency, which means this isn't an edge through which
+  ///     tensors flow. NULL means 0.
+  Status CreateNodeInputsTable() {
+    return Run(R"sql(
+      CREATE TABLE IF NOT EXISTS NodeInputs (
+        rowid INTEGER PRIMARY KEY,
+        graph_id INTEGER NOT NULL,
+        node_id INTEGER NOT NULL,
+        idx INTEGER NOT NULL,
+        input_node_id INTEGER NOT NULL,
+        is_control INTEGER
       )
     )sql");
   }
@@ -297,11 +328,27 @@ class SqliteSchema {
     )sql");
   }
 
-  /// \brief Uniquely indexes node_def_id on NodeDefs table.
-  Status CreateNodeDefIdIndex() {
+  /// \brief Uniquely indexes graph_id on Graphs table.
+  Status CreateGraphIdIndex() {
     return Run(R"sql(
-      CREATE UNIQUE INDEX IF NOT EXISTS NodeDefIdIndex
-      ON NodeDefs (node_def_id)
+      CREATE UNIQUE INDEX IF NOT EXISTS GraphIdIndex
+      ON Graphs (graph_id)
+    )sql");
+  }
+
+  /// \brief Uniquely indexes (graph_id, node_id) on Nodes table.
+  Status CreateNodeIdIndex() {
+    return Run(R"sql(
+      CREATE UNIQUE INDEX IF NOT EXISTS NodeIdIndex
+      ON Nodes (graph_id, node_id)
+    )sql");
+  }
+
+  /// \brief Uniquely indexes (graph_id, node_id, idx) on NodeInputs table.
+  Status CreateNodeInputsIndex() {
+    return Run(R"sql(
+      CREATE UNIQUE INDEX IF NOT EXISTS NodeInputsIndex
+      ON NodeInputs (graph_id, node_id, idx)
     )sql");
   }
 
@@ -350,20 +397,12 @@ class SqliteSchema {
     )sql");
   }
 
-  /// \brief Indexes (experiment_id, fingerprint) on NodeDefs table.
-  Status CreateNodeDefFingerprintIndex() {
+  /// \brief Uniquely indexes (graph_id, node_name) on Nodes table.
+  Status CreateNodeNameIndex() {
     return Run(R"sql(
-      CREATE INDEX IF NOT EXISTS NodeDefFingerprintIndex
-      ON NodeDefs (experiment_id, fingerprint)
-      WHERE fingerprint IS NOT NULL
-    )sql");
-  }
-
-  /// \brief Uniquely indexes (run_id, node_def_id) on RunNodeDefs table.
-  Status CreateRunNodeDefIndex() {
-    return Run(R"sql(
-      CREATE UNIQUE INDEX IF NOT EXISTS RunNodeDefIndex
-      ON RunNodeDefs (run_id, node_def_id)
+      CREATE UNIQUE INDEX IF NOT EXISTS NodeNameIndex
+      ON Nodes (graph_id, node_name)
+      WHERE node_name IS NOT NULL
     )sql");
   }
 
@@ -387,22 +426,24 @@ Status SetupTensorboardSqliteDb(std::shared_ptr<Sqlite> db) {
   TF_RETURN_IF_ERROR(s.CreateRunsTable());
   TF_RETURN_IF_ERROR(s.CreateExperimentsTable());
   TF_RETURN_IF_ERROR(s.CreateUsersTable());
-  TF_RETURN_IF_ERROR(s.CreateNodeDefsTable());
-  TF_RETURN_IF_ERROR(s.CreateRunNodeDefsTable());
+  TF_RETURN_IF_ERROR(s.CreateGraphsTable());
+  TF_RETURN_IF_ERROR(s.CreateNodeInputsTable());
+  TF_RETURN_IF_ERROR(s.CreateNodesTable());
   TF_RETURN_IF_ERROR(s.CreateTensorIndex());
   TF_RETURN_IF_ERROR(s.CreateTensorChunkIndex());
   TF_RETURN_IF_ERROR(s.CreateTagIdIndex());
   TF_RETURN_IF_ERROR(s.CreateRunIdIndex());
   TF_RETURN_IF_ERROR(s.CreateExperimentIdIndex());
   TF_RETURN_IF_ERROR(s.CreateUserIdIndex());
-  TF_RETURN_IF_ERROR(s.CreateNodeDefIdIndex());
+  TF_RETURN_IF_ERROR(s.CreateGraphIdIndex());
+  TF_RETURN_IF_ERROR(s.CreateNodeIdIndex());
+  TF_RETURN_IF_ERROR(s.CreateNodeInputsIndex());
   TF_RETURN_IF_ERROR(s.CreateTagNameIndex());
   TF_RETURN_IF_ERROR(s.CreateRunNameIndex());
   TF_RETURN_IF_ERROR(s.CreateExperimentNameIndex());
   TF_RETURN_IF_ERROR(s.CreateUserNameIndex());
   TF_RETURN_IF_ERROR(s.CreateUserEmailIndex());
-  TF_RETURN_IF_ERROR(s.CreateNodeDefFingerprintIndex());
-  TF_RETURN_IF_ERROR(s.CreateRunNodeDefIndex());
+  TF_RETURN_IF_ERROR(s.CreateNodeNameIndex());
   return Status::OK();
 }
 
