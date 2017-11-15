@@ -65,15 +65,7 @@ def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
       message = e.message
     six.raise_from(core._status_to_exception(e.code, message), None)
 
-  # TODO(alive, cais): Use the execution callback mechanism.
-  if core.active_trace() is not None:
-    for t in tensors:
-      core.active_trace().record_tensor(op_name,
-                                        ops.tensor_id(t),
-                                        t.device,
-                                        t.shape.num_elements())
   # pylint: enable=protected-access
-
   # TODO(cais): Optimize this, perhaps by replacing this execute function with
   # a different one when there are execution callback(s).
   for callback in ctx.post_execution_callbacks:

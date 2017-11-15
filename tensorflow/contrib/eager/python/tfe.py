@@ -30,9 +30,6 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@value_and_gradients_function
 @@GradientTape
 
-@@enable_tracing
-@@flush_trace
-
 @@run
 @@enable_eager_execution
 
@@ -91,7 +88,6 @@ from tensorflow.python.eager.context import in_eager_mode
 from tensorflow.python.eager.context import in_graph_mode
 from tensorflow.python.eager.context import list_devices
 from tensorflow.python.eager.context import num_gpus
-from tensorflow.python.eager.core import enable_tracing
 from tensorflow.python.eager.custom_gradient import custom_gradient
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
