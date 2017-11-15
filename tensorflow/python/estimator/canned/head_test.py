@@ -2325,6 +2325,24 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
       self.assertAllClose(expected_loss_mean, loss_mean)
       self.assertAllClose(expected_loss_mean, loss_mean_value_op.eval())
 
+  def test_eval_metric_ops_with_head_name_for_regression(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        name='some_regression_head')
+    logits = np.array(((1,), (9,)), dtype=np.float32)
+    labels = np.array(((1,), (1,)), dtype=np.int64)
+    features = {'x': np.array(((42,),), dtype=np.int32)}
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels)
+
+    expected_metric_keys = [
+        '{}/some_regression_head'.format(metric_keys.MetricKeys.LOSS_MEAN),
+    ]
+    self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
+
   def test_train_create_loss(self):
     head = head_lib._regression_head_with_mean_squared_error_loss()
     logits = np.array(((45,), (41,),), dtype=np.float32)
