@@ -460,6 +460,7 @@ REGISTER_OP("TextLineReader")
     .Attr("skip_header_lines: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("compression_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
@@ -471,6 +472,8 @@ container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
 shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
+compression_type: The type of compression for the file. Currently ZLIB and GZIP
+        are supported. Defaults to none.
 )doc");
 
 REGISTER_OP("TextLineReaderV2")
@@ -478,6 +481,7 @@ REGISTER_OP("TextLineReaderV2")
     .Attr("skip_header_lines: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("compression_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
@@ -489,6 +493,8 @@ container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
 shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
+compression_type: The type of compression for the file. Currently ZLIB and GZIP
+        are supported. Defaults to none.
 )doc");
 
 // TODO(cwhipkey): mark this deprecated in favor of V2.
