@@ -36,16 +36,13 @@ class DecodeLibsvmOp : public OpKernel {
     const auto& input_flat = input_tensor->flat<string>();
 
     Tensor* label_tensor;
-    Tensor* feature_tensor;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({input_flat.size()}),
                                         &label_tensor));
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(
-                            1, TensorShape({input_flat.size(), num_features_}),
-                            &feature_tensor));
-
     auto label = label_tensor->flat<int64>();
-    auto feature = feature_tensor->matrix<T>();
+
+    std::vector<T> out_values;
+    std::vector<std::pair<int64, int64>> out_indices;
     for (int i = 0; i < input_flat.size(); ++i) {
       std::vector<string> entries =
           str_util::Split(input_flat(i), " ", str_util::SkipEmpty());
@@ -70,9 +67,37 @@ class DecodeLibsvmOp : public OpKernel {
         OP_REQUIRES(
             ctx, Convert(pair[1], &feature_value),
             errors::InvalidArgument("Feature format incorrect: ", entries[j]));
-        feature(i, feature_index) = feature_value;
+        out_values.emplace_back(feature_value);
+        out_indices.emplace_back(std::pair<int64, int64>(i, feature_index));
       }
     }
+
+    Tensor* indices_tensor;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(1, TensorShape({out_indices.size(), 2}),
+                                        &indices_tensor));
+    auto indices = indices_tensor->matrix<int64>();
+    for (int i = 0; i < out_indices.size(); i++) {
+      indices(i, 0) = out_indices[i].first;
+      indices(i, 1) = out_indices[i].second;
+    }
+
+    Tensor* values_tensor;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(2, TensorShape({out_values.size()}),
+                                        &values_tensor));
+    auto values = values_tensor->vec<T>();
+    std::copy_n(out_values.begin(), out_values.size(), &values(0));
+
+    Tensor* shape_tensor;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(
+                            3, TensorShape({input_tensor->shape().dims() + 1}),
+                            &shape_tensor));
+    auto shape = shape_tensor->flat<int64>();
+    for (int i = 0; i < input_tensor->shape().dims(); i++) {
+      shape(i) = input_tensor->shape().dim_size(i);
+    }
+    shape(input_tensor->shape().dims()) = num_features_;
   }
 
  private:

@@ -25,18 +25,18 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("DecodeLibsvm")
     .Input("input: string")
     .Output("label: int64")
-    .Output("feature: dtype")
+    .Output("feature_indices: int64")
+    .Output("feature_values: dtype")
+    .Output("feature_shape: int64")
     .Attr("dtype: {float, double, int32, int64} = DT_FLOAT")
     .Attr("num_features: int >= 1")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(0));
 
-      int32 num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(
-          c->Concatenate(c->input(0), c->Vector(num_features), &out));
-      c->set_output(1, out);
+      c->set_output(1, c->Matrix(InferenceContext::kUnknownDim,
+                                 InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(3, c->Vector(InferenceContext::kUnknownDim));
 
       return Status::OK();
     })
@@ -49,7 +49,9 @@ is the same as input and the shape of the feature tensor is
 
 input: Each string is a record/row in the LibSVM.
 label: A tensor of the same shape as input.
-feature: A tensor of the shape `[input_shape, num_features]`.
+feature_indices: A 2-D int64 tensor of dense_shape [N, ndims].
+feature_values: A 1-D tensor of any type and dense_shape [N].
+feature_shape: A 1-D int64 tensor of dense_shape [ndims].
 num_features: The number of features.
 )doc");
 
