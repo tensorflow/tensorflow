@@ -83,6 +83,7 @@ cc_library(
         ":cpu_options",
         ":cpu_parallelization_preparation",
         ":disassembler",
+        ":dot_op_emitter",
         ":ir_emission_utils",
         ":ir_emitter",
         ":layout_assignment",
@@ -282,7 +283,6 @@ cc_library(
     deps = [
         ":cpu_options",
         ":cpu_runtime",
-        ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:types",
@@ -619,6 +619,7 @@ cc_library(
     srcs = ["layout_assignment.cc"],
     hdrs = ["layout_assignment.h"],
     deps = [
+        ":dot_op_emitter",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:computation_layout",
@@ -706,6 +707,7 @@ cc_library(
     srcs = ["parallel_task_assignment.cc"],
     hdrs = ["parallel_task_assignment.h"],
     deps = [
+        ":dot_op_emitter",
         ":ir_emission_utils",
         ":shape_partition",
         "//tensorflow/compiler/xla/service:hlo",
