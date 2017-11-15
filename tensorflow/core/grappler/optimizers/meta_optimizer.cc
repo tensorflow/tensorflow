@@ -76,7 +76,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new ArithmeticOptimizer(cfg_.arithmetic_optimization())));
     }
-    if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
+    if (cfg_.dependency_optimization() == RewriterConfig::ON) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new DependencyOptimizer(cfg_.dependency_optimization())));
     }
@@ -187,6 +187,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
   return !cfg.disable_model_pruning() ||
          cfg.layout_optimizer() == RewriterConfig::ON ||
          cfg.constant_folding() != RewriterConfig::OFF ||
+         cfg.dependency_optimization() == RewriterConfig::ON ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          cfg.auto_parallel().enable() || cfg.memory_optimization() > 1 ||
          !cfg.optimizers().empty();
