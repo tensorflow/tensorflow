@@ -1419,11 +1419,7 @@ Status DirectSession::CreateGraphs(
     Device* d;
     s = device_mgr_->LookupDevice(partition_name, &d);
     if (!s.ok()) break;
-    // TODO(pbar) The library is currently shared and immutable. There
-    // may be possible use cases where a device may want to modify
-    // function definitions - in which case the library would need to be
-    // replicated per device.
-    s = d->MaybeRewriteGraph(client_graph->flib_def->ToProto(), graph);
+    s = d->MaybeRewriteGraph(graph);
     if (!s.ok()) {
       break;
     }
