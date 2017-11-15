@@ -184,11 +184,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://bitbucket.org/eigen/eigen/get/429aa5254200.tar.gz",
-          "http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/429aa5254200.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/2784ec4bdf50.tar.gz",
+          "http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/2784ec4bdf50.gz",
       ],
-      sha256 = "61d8b6fc4279dd1dda986fb1677d15e3d641c07a3ea5abe255790b1f0c0c14e9",
-      strip_prefix = "eigen-eigen-429aa5254200",
+      sha256 = "b872525509a08ae1b99864eb8da0dc6d681c1319cb483b1e1d73dffe9130f67c",
+      strip_prefix = "eigen-eigen-2784ec4bdf50",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -423,7 +423,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
   )
 
-  native.http_archive(
+  patched_http_archive(
       name = "nsync",
       urls = [
           "https://mirror.bazel.build/github.com/google/nsync/archive/839fcc53ff9be58218ed55397deb3f8376a1444e.tar.gz",
@@ -431,6 +431,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "124d105edb0313ef2d7f5bb86ec94d9f8de95479e55641c4254ffa8f795e9b37",
       strip_prefix = "nsync-839fcc53ff9be58218ed55397deb3f8376a1444e",
+      patch_file = str(Label("//tools/arm_compiler/gcc_arm_rpi:nsync_rpi3.patch")),
   )
 
   native.http_archive(

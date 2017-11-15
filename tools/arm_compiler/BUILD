@@ -7,6 +7,8 @@
 #    "default_target_cpu" / "default_toolchain" fields in the CROSSTOOL file)
 # 2. Concatenating the "target_cpu" and "compiler" fields of the toolchain in
 #    use and using that as a key in the map in the "toolchains" attribute
+package(default_visibility = ["//visibility:public"])
+
 cc_toolchain_suite(
   name = "toolchain",
   toolchains = {
