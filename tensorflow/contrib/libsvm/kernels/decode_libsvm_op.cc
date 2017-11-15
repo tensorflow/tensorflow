@@ -73,13 +73,26 @@ class DecodeLibsvmOp : public OpKernel {
     }
 
     Tensor* indices_tensor;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(1, TensorShape({out_indices.size(), 2}),
-                                        &indices_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(
+                            1, TensorShape({out_indices.size(),
+                                            input_tensor->shape().dims() + 1}),
+                            &indices_tensor));
     auto indices = indices_tensor->matrix<int64>();
+    // Translate flat index to shaped index like np.unravel_index
+    // Calculate factors for each dimension
+    std::vector<int64> factors(input_tensor->shape().dims());
+    factors[input_tensor->shape().dims() - 1] = 1;
+    for (int j = input_tensor->shape().dims() - 2; j >= 0; j--) {
+      factors[j] = factors[j + 1] * input_tensor->shape().dim_size(j + 1);
+    }
     for (int i = 0; i < out_indices.size(); i++) {
       indices(i, 0) = out_indices[i].first;
-      indices(i, 1) = out_indices[i].second;
+      int64 value = out_indices[i].first;
+      for (int j = 0; j < input_tensor->shape().dims(); j++) {
+        indices(i, j) = value / factors[j];
+        value = value % factors[j];
+      }
+      indices(i, input_tensor->shape().dims()) = out_indices[i].second;
     }
 
     Tensor* values_tensor;

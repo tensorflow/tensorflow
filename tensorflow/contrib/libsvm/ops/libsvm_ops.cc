@@ -47,7 +47,7 @@ a label and a feature tensor. The shape of the label tensor
 is the same as input and the shape of the feature tensor is
 `[input_shape, num_features]`.
 
-input: Each string is a record/row in the LibSVM.
+input: Each string is a record in the LibSVM.
 label: A tensor of the same shape as input.
 feature_indices: A 2-D int64 tensor of dense_shape [N, ndims].
 feature_values: A 1-D tensor of any type and dense_shape [N].
