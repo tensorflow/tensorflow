@@ -1107,10 +1107,8 @@ class LayerNormBasicGRUCellTest(test.TestCase):
       with variable_scope.variable_scope("root", initializer=init_ops.Identity()):
         x = array_ops.zeros([1, 3])
         h0 = array_ops.zeros([1, 3])
-        state0 = rnn_cell.LSTMStateTuple(h0, h0)
         h1 = array_ops.zeros([1, 3])
-        state1 = rnn_cell.LSTMStateTuple(h1, h1)
-        state = (state0, state1)
+        state = (h0, h1)
         single_cell = lambda: contrib_rnn_cell.LayerNormBasicGRUCell(3)
         cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)], state_is_tuple=True)
 
@@ -1139,9 +1137,8 @@ class LayerNormBasicGRUCellTest(test.TestCase):
         x = array_ops.zeros(
           [1, 3])
         h = array_ops.zeros([1, 2])
-        state = rnn_cell.LSTMStateTuple(h, h)
         cell = contrib_rnn_cell.LayerNormBasicGRUCell(2)
-        g, out_m = cell(x, state)
+        g, out_m = cell(x, h)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m], {
           x.name: np.array([[1., 2., 3.]]),
@@ -1158,9 +1155,8 @@ class LayerNormBasicGRUCellTest(test.TestCase):
         x = array_ops.zeros(
           [1, 3])
         h = array_ops.zeros([1, 3])
-        state = rnn_cell.LSTMStateTuple(h, h)
         cell = contrib_rnn_cell.LayerNormBasicGRUCell(3, layer_norm=False)
-        g, out_m = cell(x, state)
+        g, out_m = cell(x, h)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m], {
           x.name: np.array([[1., 2., 3.]]),
