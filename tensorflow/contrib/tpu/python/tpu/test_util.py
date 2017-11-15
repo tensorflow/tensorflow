@@ -32,6 +32,7 @@ from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import variables
@@ -89,7 +90,12 @@ def copy_dir(src, tgt):
       gfile.Copy(src_f, tgt_f, overwrite=True)
 
 
-def compare_model(model_fn, input_fn, params, master="local", temp_dir=None,
+def compare_model(model_fn,
+                  input_fn,
+                  params,
+                  master="local",
+                  temp_dir=None,
+                  num_shards=2,
                   tolerance=1e-4):
   """Compare the results of running `model_fn` on the TPU and CPU."""
   if not temp_dir:
@@ -102,7 +108,17 @@ def compare_model(model_fn, input_fn, params, master="local", temp_dir=None,
   logging.info("Checkpoints and weights will be written to %s", temp_dir)
 
   num_steps = 1
-  num_shards = 8
+
+  def _model_adapter(features, labels, mode, params):
+    """Run users model function with random seeds fixed to known values."""
+    random_seed.set_random_seed(0)
+    np.random.seed(0)
+    return model_fn(features, labels, mode, params)
+
+  def _input_adapter(params):
+    random_seed.set_random_seed(0)
+    np.random.seed(0)
+    return input_fn(params)
 
   def _make_run_config(model_dir):
     return tpu_config.RunConfig(
@@ -119,7 +135,7 @@ def compare_model(model_fn, input_fn, params, master="local", temp_dir=None,
 
   def _make_estimator(use_tpu, model_dir):
     return tpu_estimator.TPUEstimator(
-        model_fn=model_fn,
+        model_fn=_model_adapter,
         use_tpu=use_tpu,
         config=_make_run_config(model_dir),
         train_batch_size=num_shards,
@@ -131,8 +147,9 @@ def compare_model(model_fn, input_fn, params, master="local", temp_dir=None,
     weights = {}
     graph = ops.Graph()
     with graph.as_default():
+      features, labels = _input_adapter(dict(params, batch_size=num_shards))
       model_fn(
-          *input_fn(params),
+          features, labels,
           params=dict(params, use_tpu=False),
           mode=model_fn_lib.ModeKeys.TRAIN)
       saver = tf_saver.Saver()
@@ -148,10 +165,15 @@ def compare_model(model_fn, input_fn, params, master="local", temp_dir=None,
     return weights
 
   def _run_step(use_tpu, model_dir):
+    """Create an estimator and run a single step on the given device."""
+    tf_session.Session.reset(target=master)
+
+    logging.info("Running step.  TPU=%d.  model_dir=%s", use_tpu, model_dir)
     est = _make_estimator(use_tpu=use_tpu, model_dir=model_dir)
-    est.train(input_fn=input_fn, steps=num_steps)
+    est.train(input_fn=_input_adapter, steps=num_steps)
     weights = _extract_weights(est.latest_checkpoint())
-    with gfile.Open(temp_dir + "tpu-%d.weights" % use_tpu, "wb") as f:
+    with gfile.Open(os.path.join(temp_dir, "tpu-%d.weights" % use_tpu),
+                    "wb") as f:
       f.write(pickle.dumps(weights))
     return weights
 
@@ -159,9 +181,9 @@ def compare_model(model_fn, input_fn, params, master="local", temp_dir=None,
   _run_step(use_tpu=False, model_dir=initial_model_dir)
 
   copy_dir(initial_model_dir, cpu_model_dir)
-  cpu_weights = _run_step(use_tpu=False, model_dir=cpu_model_dir)
-
   copy_dir(initial_model_dir, tpu_model_dir)
+
+  cpu_weights = _run_step(use_tpu=False, model_dir=cpu_model_dir)
   tpu_weights = _run_step(use_tpu=True, model_dir=tpu_model_dir)
 
   bad_weights = False
