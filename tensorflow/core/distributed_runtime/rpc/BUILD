@@ -179,6 +179,7 @@ tf_cuda_library(
         ":grpc_tensor_coding",
         ":grpc_util",
         ":grpc_worker_service_impl",
+        ":rpc_rendezvous_mgr",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
@@ -274,6 +275,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_interface",
+        "//tensorflow/core:worker_proto_cc",
     ],
 )
 

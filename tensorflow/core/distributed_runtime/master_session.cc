@@ -1371,6 +1371,8 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     const auto count = run_state->count;
     pss.collect_timeline =
         req.options().trace_level() == RunOptions::FULL_TRACE;
+    pss.collect_rpcs =
+            req.options().trace_level() == RunOptions::FULL_TRACE;
     pss.report_tensor_allocations_upon_oom =
         req.options().report_tensor_allocations_upon_oom();
 
@@ -1533,6 +1535,8 @@ Status MasterSession::DoRunWithLocalExecution(
   TRACEPRINTF("stepid %llu", step_id);
 
   pss.collect_timeline = req.options().trace_level() == RunOptions::FULL_TRACE;
+  pss.collect_rpcs =
+          req.options().trace_level() == RunOptions::FULL_TRACE;
   pss.report_tensor_allocations_upon_oom =
       req.options().report_tensor_allocations_upon_oom();
   // Build the cost model every 'build_cost_model_every' steps after skipping an

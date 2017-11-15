@@ -94,16 +94,15 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
  protected:
   virtual BaseRemoteRendezvous* Create(int64 step_id,
                                        const WorkerEnv* worker_env) = 0;
-
- private:
   // Maps step_id to rendezvous.
   typedef gtl::FlatMap<int64, BaseRemoteRendezvous*> Table;
 
-  // Not owned.
-  const WorkerEnv* const worker_env_;
-
   mutex mu_;
   Table table_ GUARDED_BY(mu_);
+
+ private:
+  // Not owned.
+  const WorkerEnv* const worker_env_;
 
   BaseRemoteRendezvous* FindOrCreate(int64 step_id);
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -379,6 +380,16 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
           done(status);
         }
       });
+}
+
+void GrpcWorker::LoggingAsync(const LoggingRequest* request,
+                  LoggingResponse* response, StatusCallback done) {
+  auto rpc_rendezvous_mgr = (RpcRendezvousMgr*) this->env()->rendezvous_mgr;
+  rpc_rendezvous_mgr->SetLogging(request->rpc_logging());
+  for (const auto& step_id: request->fetch_step_id()){
+    rpc_rendezvous_mgr->RetrieveLogs(step_id, response);
+  }
+  done(Status::OK());
 }
 
 WorkerEnv* GrpcWorker::env() { return env_; }
