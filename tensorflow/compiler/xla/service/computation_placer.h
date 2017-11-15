@@ -89,11 +89,8 @@ class ComputationPlacer {
       const perftools::gputools::Platform* platform);
 
  private:
-  // Routine that returns the mutex that guards the platform-to-computation
-  // placer map. Done as a routine to ensure correct initialization ordering,
-  // since RegisterComputationPlacer can be called during program initialization
-  // time.
-  static tensorflow::mutex* platform_computation_placer_mutex();
+  // The mutex that guards the platform-to-computation placer map.
+  static tensorflow::mutex platform_computation_placer_mutex_;
 
   // State kept for each kind of ComputationPlacer. Registration functions set
   // up creation_function, and then we use that to lazily create "placer" the
