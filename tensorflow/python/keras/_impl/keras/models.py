@@ -716,25 +716,46 @@ class Sequential(Model):
               metrics=None,
               sample_weight_mode=None,
               weighted_metrics=None,
+              target_tensors=None,
               **kwargs):
-    """Configures the learning process.
+    """Configures the model for training.
 
     Arguments:
-        optimizer: str (name of optimizer) or optimizer object.
+        optimizer: String (name of optimizer) or optimizer object.
             See [optimizers](/optimizers).
-        loss: str (name of objective function) or objective function.
+        loss: String (name of objective function) or objective function.
             See [losses](/losses).
-        metrics: list of metrics to be evaluated by the model
+            If the model has multiple outputs, you can use a different loss
+            on each output by passing a dictionary or a list of losses.
+            The loss value that will be minimized by the model
+            will then be the sum of all individual losses.
+        metrics: List of metrics to be evaluated by the model
             during training and testing.
             Typically you will use `metrics=['accuracy']`.
-            See [metrics](/metrics).
-        sample_weight_mode: if you need to do timestep-wise
-            sample weighting (2D weights), set this to "temporal".
-            "None" defaults to sample-wise weights (1D).
-        weighted_metrics: list of metrics to be evaluated and weighted
-             by `sample_weight` or `class_weight` during training and testing.
-        **kwargs: These are passed into `tf.Session.run`.
-
+            To specify different metrics for different outputs of a
+            multi-output model, you could also pass a dictionary,
+            such as `metrics={'output_a': 'accuracy'}`.
+        sample_weight_mode: If you need to do timestep-wise
+            sample weighting (2D weights), set this to `"temporal"`.
+            `None` defaults to sample-wise weights (1D).
+            If the model has multiple outputs, you can use a different
+            `sample_weight_mode` on each output by passing a
+            dictionary or a list of modes.
+        weighted_metrics: List of metrics to be evaluated and weighted
+            by sample_weight or class_weight during training and testing.
+        target_tensors: By default, Keras will create placeholders for the
+            model's target, which will be fed with the target data during
+            training. If instead you would like to use your own
+            target tensors (in turn, Keras will not expect external
+            Numpy data for these targets at training time), you
+            can specify them via the `target_tensors` argument. It can be
+            a single tensor (for a single-output model), a list of tensors,
+            or a dict mapping output names to target tensors.
+        **kwargs: When using the Theano/CNTK backends, these arguments
+            are passed into K.function. When using the TensorFlow backend,
+            these arguments are passed into `tf.Session.run`.
+    Raises:
+        ValueError: In case of invalid arguments for
     Example:
         ```python
             model = Sequential()
@@ -754,18 +775,19 @@ class Sequential(Model):
         metrics=metrics,
         sample_weight_mode=sample_weight_mode,
         weighted_metrics=weighted_metrics,
+        target_tensors=target_tensors,
         **kwargs)
     self.optimizer = self.model.optimizer
     self.loss = self.model.loss
-    self.total_loss = self.model.total_loss
-    self.loss_weights = self.model.loss_weights
     self.metrics = self.model.metrics
+    self.loss_weights = self.model.loss_weights
+    self.sample_weight_mode = self.model.sample_weight_mode
     self.weighted_metrics = self.model.weighted_metrics
+    self.targets = self.model.targets
     self.metrics_tensors = self.model.metrics_tensors
     self.metrics_names = self.model.metrics_names
-    self.sample_weight_mode = self.model.sample_weight_mode
     self.sample_weights = self.model.sample_weights
-    self.targets = self.model.targets
+    self.total_loss = self.model.total_loss
 
   def fit(self,
           x,
@@ -787,7 +809,11 @@ class Sequential(Model):
             (if the model has multiple inputs).
         y: labels, as a Numpy array.
         batch_size: integer. Number of samples per gradient update.
-        epochs: integer, the number of epochs to train the model.
+        epochs: integer. Number of epochs to train the model.
+            Note that in conjunction with initial_epoch, the parameter
+            epochs is to be understood as "final epoch". The model is
+            not trained for a number of steps given by epochs, but
+            until the epoch epochs is reached.
         verbose: 0 for no logging to stdout,
             1 for progress bar logging, 2 for one log line per epoch.
         callbacks: list of `keras.callbacks.Callback` instances.
@@ -814,8 +840,8 @@ class Sequential(Model):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             sample_weight_mode="temporal" in compile().
-        initial_epoch: epoch at which to start training
-            (useful for resuming a previous training run)
+        initial_epoch: Epoch at which to start training
+            (useful for resuming a previous training run).
 
     Returns:
         A `History` object. Its `History.history` attribute is
@@ -1003,6 +1029,7 @@ class Sequential(Model):
                     max_queue_size=10,
                     workers=1,
                     use_multiprocessing=False,
+                    shuffle=True,
                     initial_epoch=0,
                     **kwargs):
     """Fits the model on data generated batch-by-batch by a Python generator.
@@ -1026,6 +1053,10 @@ class Sequential(Model):
             be equal to the number of unique samples of your dataset
             divided by the batch size.
         epochs: Integer, total number of iterations on the data.
+            Note that in conjunction with initial_epoch, the parameter
+            epochs is to be understood as "final epoch". The model is
+            not trained for n steps given by epochs, but until the
+            epoch epochs is reached.
         verbose: Verbosity mode, 0, 1, or 2.
         callbacks: List of callbacks to be called during training.
         validation_data: This can be either
@@ -1049,6 +1080,9 @@ class Sequential(Model):
             non picklable arguments to the generator
             as they can't be passed
             easily to children processes.
+       shuffle: Whether to shuffle the order of the batches at
+              the beginning of each epoch. Only used with instances
+              of `Sequence` (keras.utils.Sequence).
         initial_epoch: Epoch at which to start training
             (useful for resuming a previous training run)
         **kwargs: support for legacy arguments.
@@ -1105,6 +1139,7 @@ class Sequential(Model):
         max_queue_size=max_queue_size,
         workers=workers,
         use_multiprocessing=use_multiprocessing,
+        shuffle=shuffle,
         initial_epoch=initial_epoch)
 
   def evaluate_generator(self,
