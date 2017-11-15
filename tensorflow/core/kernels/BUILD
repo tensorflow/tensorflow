@@ -6247,6 +6247,7 @@ tf_kernel_library(
         "//tensorflow/contrib/tensorboard/db:summary_db_writer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core/lib/db:sqlite",
     ],
