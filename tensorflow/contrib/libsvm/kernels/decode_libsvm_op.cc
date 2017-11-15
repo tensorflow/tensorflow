@@ -28,6 +28,9 @@ class DecodeLibsvmOp : public OpKernel {
  public:
   explicit DecodeLibsvmOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_features", &num_features_));
+    OP_REQUIRES(ctx, (num_features_ >= 1),
+                errors::InvalidArgument("Invalid number of features \"",
+                                        num_features_, "\""));
   }
 
   void Compute(OpKernelContext* ctx) override {
