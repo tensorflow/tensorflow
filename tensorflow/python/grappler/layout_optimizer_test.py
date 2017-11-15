@@ -187,7 +187,8 @@ class LayoutOptimizerTest(test.TestCase):
       self.skipTest('GPU required')
 
     random_seed.set_random_seed(0)
-    x = random_ops.truncated_normal([1, 200, 200, 3], seed=0)
+    x = variables.Variable(
+        random_ops.truncated_normal([1, 200, 200, 3], seed=0))
     y = conv_layers.conv2d(x, 32, [3, 3])
     z = conv_layers.conv2d(y, 32, [3, 3])
     optimizer = gradient_descent.GradientDescentOptimizer(1e-4)
