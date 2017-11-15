@@ -75,7 +75,6 @@ cc_library(
         ":runtime",
         ":toco_port",
         "//tensorflow/core:lib",
-        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
@@ -88,9 +87,6 @@ cc_library(
         "toco_graphviz_dump_options.h",
     ],
     visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 cc_library(
