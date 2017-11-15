@@ -20553,6 +20553,27 @@ func Sub(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Writes a `GraphDef` protocol buffer to a `SummaryWriter`.
+//
+// Arguments:
+//	writer: Handle of `SummaryWriter`.
+//	global_step: The step to write the summary for.
+//	tensor: A scalar string of the serialized tf.GraphDef proto.
+//
+// Returns the created operation.
+func WriteGraphSummary(scope *Scope, writer tf.Output, global_step tf.Output, tensor tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteGraphSummary",
+		Input: []tf.Input{
+			writer, global_step, tensor,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // MaxPool3DGradGradAttr is an optional argument to MaxPool3DGradGrad.
 type MaxPool3DGradGradAttr func(optionalAttr)
 
