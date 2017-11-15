@@ -4,7 +4,7 @@
 * `tf.keras` is now part of the core TensorFlow API.
 * [`tf.data`](http://tensorflow.org/programmers_guide/datasets) is now part of
   the core TensorFlow API.
-  * The API is now subject to backwards compatibility guarantees.
+  * The API is now subject to backward compatibility guarantees.
   * For a guide to migrating from the `tf.contrib.data` API, see the
     [README](https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/contrib/data/README.md).
   * Major new features include `Dataset.from_generator()` (for building an input

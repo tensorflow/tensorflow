@@ -1,4 +1,4 @@
-TensorFlow API backwards compatibility test
+TensorFlow API backward compatibility test
 This test ensures all changes to the public API of TensorFlow are intended.
 
 If this test fails, it means a change has been made to the public API. Backwards
