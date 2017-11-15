@@ -26,7 +26,7 @@ tf_custom_op_library(
 
 tf_kernel_library(
     name = "libsvm_kernels",
-    srcs = ["kernels/decode_libsvm_ops.cc"],
+    srcs = ["kernels/decode_libsvm_op.cc"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
