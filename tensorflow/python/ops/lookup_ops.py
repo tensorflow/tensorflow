@@ -561,9 +561,9 @@ class TextFileStringTableInitializer(TextFileInitializer):
         The path must be accessible from wherever the graph is initialized
         (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_column_index: The column index from the text file to get the keys
-        from. The default is 0 that represents the whole line content.
+        from. The default is to use the line number, starting from zero.
       value_column_index: The column index from the text file to get the
-        values from. The default is to use the line number, starting from zero.
+        values from. The default is to use the whole line content.
       vocab_size: The number of elements in the file, if known.
       delimiter: The delimiter to separate fields in a line.
       name: Optional name for the op.
@@ -613,9 +613,9 @@ class TextFileIdTableInitializer(TextFileInitializer):
         The path must be accessible from wherever the graph is initialized
         (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_column_index: The column index from the text file to get the `key`
+        values from. The default is to use the whole line content.
+      value_column_index: The column index from the text file to get the `value`
         values from. The default is to use the line number, starting from zero.
-      value_column_index: The column index from the text file ro get the `value`
-        values from. The default is 0 that represents the whole line content.
       vocab_size: The number of elements in the file, if known.
       delimiter: The delimiter to separate fields in a line.
       name: Optional name for the op.
@@ -926,9 +926,9 @@ def index_table_from_file(vocabulary_file=None,
     key_dtype: The `key` data type.
     name: A name for this op (optional).
     key_column_index: The column index from the text file to get the `key`
+      values from. The default is to use the whole line content.
+    value_column_index: The column index from the text file to get the `value`
       values from. The default is to use the line number, starting from zero.
-    value_column_index: The column index from the text file ro get the `value`
-      values from. The default is 0 that represents the whole line content.
     delimiter: The delimiter to separate fields in a line.
 
   Returns:
@@ -1095,7 +1095,10 @@ def index_table_from_tensor(vocabulary_list,
 def index_to_string_table_from_file(vocabulary_file,
                                     vocab_size=None,
                                     default_value="UNK",
-                                    name=None):
+                                    name=None,
+                                    key_column_index=TextFileIndex.LINE_NUMBER,
+                                    value_column_index=TextFileIndex.WHOLE_LINE,
+                                    delimiter="\t"):
   """Returns a lookup table that maps a `Tensor` of indices into strings.
 
   This operation constructs a lookup table to map int64 indices into string
@@ -1108,6 +1111,16 @@ def index_to_string_table_from_file(vocabulary_file,
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
+
+  To specify multi-column vocabulary files, use key_column_index and
+  value_column_index and delimiter.
+
+  - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
+    expects data type int64.
+  - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
+    type string.
+  - A value >=0 means use the index (starting at zero) of the split line based
+    on `delimiter`.
 
   Sample Usages:
 
@@ -1135,6 +1148,11 @@ def index_to_string_table_from_file(vocabulary_file,
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary indices.
     name: A name for this op (optional).
+    key_column_index: The column index from the text file to get the `key`
+      values from. The default is to use the line number, starting from zero.
+    value_column_index: The column index from the text file to get the `value`
+      values from. The default is to use the whole line content.
+    delimiter: The delimiter to separate fields in a line.
 
   Returns:
     The lookup table to map a string values associated to a given index `int64`
@@ -1155,15 +1173,19 @@ def index_to_string_table_from_file(vocabulary_file,
       # Keep a shared_name
       # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
       shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
-                                                TextFileIndex.LINE_NUMBER,
-                                                TextFileIndex.WHOLE_LINE)
+                                                key_column_index,
+                                                value_column_index)
     else:
       # Keep a shared_name <table_type>_<filename>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
-                                             TextFileIndex.LINE_NUMBER,
-                                             TextFileIndex.WHOLE_LINE)
+      shared_name = "hash_table_%s_%s_%s" % (vocabulary_file, key_column_index,
+                                             value_column_index)
     init = TextFileStringTableInitializer(
-        vocabulary_file, vocab_size=vocab_size, name="table_init")
+        vocabulary_file,
+        vocab_size=vocab_size,
+        name="table_init",
+        key_column_index=key_column_index,
+        value_column_index=value_column_index,
+        delimiter=delimiter)
 
     # TODO(yleon): Use a more effienct structure.
     return HashTable(init, default_value, shared_name=shared_name, name=scope)
