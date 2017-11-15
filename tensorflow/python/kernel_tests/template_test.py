@@ -513,8 +513,8 @@ class TemplateTest(test.TestCase):
         tb = template.make_template("s", function_with_create, trainable=False)
 
     # Initially there are not variables created.
-    self.assertEqual([], ta.global_variables)
-    self.assertEqual([], tb.global_variables)
+    self.assertEqual([], list(ta.global_variables))
+    self.assertEqual([], list(tb.global_variables))
     # After calling there are variables created.
     ta()
     tb()
@@ -531,8 +531,8 @@ class TemplateTest(test.TestCase):
       tb = template.make_template("bar", variable_scoped_function, True)
 
     # Initially there are not variables created.
-    self.assertEqual([], ta.trainable_variables)
-    self.assertEqual([], tb.trainable_variables)
+    self.assertEqual([], list(ta.trainable_variables))
+    self.assertEqual([], list(tb.trainable_variables))
     # After calling there are variables created.
     ta()
     tb()
@@ -550,8 +550,8 @@ class TemplateTest(test.TestCase):
                                   variable_scoped_function_with_local_variable)
 
     # Initially there are not variables created.
-    self.assertEqual([], ta.local_variables)
-    self.assertEqual([], tb.local_variables)
+    self.assertEqual([], list(ta.local_variables))
+    self.assertEqual([], list(tb.local_variables))
     # After calling there are variables created.
     ta()
     tb()
