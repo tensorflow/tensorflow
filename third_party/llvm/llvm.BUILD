@@ -7,18 +7,18 @@ licenses(["notice"])
 exports_files(["LICENSE.TXT"])
 
 load(
-    "@%ws%//third_party/llvm:llvm.bzl",
+    "@org_tensorflow//third_party/llvm:llvm.bzl",
     "gentbl",
     "expand_cmake_vars",
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
 load(
-    "@%ws%//third_party:common.bzl",
+    "@org_tensorflow//third_party:common.bzl",
     "template_rule",
 )
 
-package(default_visibility = ["@%ws%//tensorflow/compiler/xla:internal"])
+package(default_visibility = ["//visibility:public"])
 
 llvm_host_triple = "x86_64-unknown-linux_gnu"
 
@@ -145,11 +145,11 @@ darwin_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 all_cmake_vars = select({
-    "@%ws%//tensorflow:darwin": cmake_var_string(
+    "@org_tensorflow//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
     ),
-    "@%ws%//tensorflow:linux_ppc64le": cmake_var_string(
+    "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
         cmake_vars +
         llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
         linux_cmake_vars,
