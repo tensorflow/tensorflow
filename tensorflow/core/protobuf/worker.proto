@@ -66,6 +66,22 @@ message CreateWorkerSessionResponse {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+// DeleteSession method request/response messages
+//
+// Deletes all worker-side state associated with the given session handle.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message DeleteWorkerSessionRequest {
+  // Sessions are identified by a given handle.
+  string session_handle = 1;
+}
+
+message DeleteWorkerSessionResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // RegisterGraph method request/response messages
 //
 // For each session, after the master placed every node on a device,
