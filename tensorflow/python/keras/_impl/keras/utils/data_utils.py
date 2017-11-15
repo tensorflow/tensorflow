@@ -378,17 +378,27 @@ class Sequence(object):
     pass
 
 
-def get_index(ds, i):
-  """Quick fix for Python2, otherwise, it cannot be pickled.
+# Global variables to be shared across processes
+_SHARED_SEQUENCES = {}
+# We use a Value to provide unique id to different processes.
+_SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
+
+
+def get_index(uid, i):
+  """Get the value from the Sequence `uid` at index `i`.
+
+  To allow multiple Sequences to be used at the same time, we use `uid` to
+  get a specific one. A single Sequence would cause the validation to
+  overwrite the training Sequence.
 
   Arguments:
-      ds: a Holder or Sequence object.
+      uid: int, Sequence identifier
       i: index
 
   Returns:
       The value at index `i`.
   """
-  return ds[i]
+  return _SHARED_SEQUENCES[uid][i]
 
 
 class SequenceEnqueuer(object):
@@ -459,17 +469,17 @@ class OrderedEnqueuer(SequenceEnqueuer):
 
   Arguments:
       sequence: A `keras.utils.data_utils.Sequence` object.
-      use_multiprocessing: use multiprocessing if True, otherwise threading
-      scheduling: Sequential querying of datas if 'sequential', random
-        otherwise.
-      shuffle: Whether to shuffle the data at the beginning of each epoch.
+      use_multiprocessing: Use multiprocessing if True, otherwise threading
+      shuffle: Whether to shuffle the data at the beginning of each epoch
   """
 
-  def __init__(self,
-               sequence,
-               use_multiprocessing=False,
-               shuffle=False):
+  def __init__(self, sequence, use_multiprocessing=False, shuffle=False):
     self.sequence = sequence
+
+    # Doing Multiprocessing.Value += x is not process-safe.
+    with _SEQUENCE_COUNTER.get_lock():
+      self.uid = _SEQUENCE_COUNTER.value
+      _SEQUENCE_COUNTER.value += 1
     self.use_multiprocessing = use_multiprocessing
     self.shuffle = shuffle
     self.workers = 0
@@ -493,15 +503,24 @@ class OrderedEnqueuer(SequenceEnqueuer):
       self.executor = multiprocessing.Pool(workers)
     else:
       self.executor = ThreadPool(workers)
+    self.workers = workers
     self.queue = queue.Queue(max_queue_size)
     self.stop_signal = threading.Event()
     self.run_thread = threading.Thread(target=self._run)
     self.run_thread.daemon = True
     self.run_thread.start()
 
+  def _wait_queue(self):
+    """Wait for the queue to be empty."""
+    while True:
+      time.sleep(0.1)
+      if self.queue.unfinished_tasks == 0 or self.stop_signal.is_set():
+        return
+
   def _run(self):
-    """Submits requests to the executor and queues the `Future` objects."""
+    """Function to submit request to the executor & queue `Future` objects."""
     sequence = list(range(len(self.sequence)))
+    self._send_sequence()  # Share the initial sequence
     while True:
       if self.shuffle:
         random.shuffle(sequence)
@@ -509,9 +528,18 @@ class OrderedEnqueuer(SequenceEnqueuer):
         if self.stop_signal.is_set():
           return
         self.queue.put(
-            self.executor.apply_async(get_index, (self.sequence, i)),
-            block=True)
+            self.executor.apply_async(get_index, (self.uid, i)), block=True)
+
+      # Done with the current epoch, waiting for the final batches
+      self._wait_queue()
+
+      if self.stop_signal.is_set():
+        # We're done
+        return
+
+      # Call the internal on epoch end.
       self.sequence.on_epoch_end()
+      self._send_sequence()  # Update the pool
 
   def get(self):
     """Creates a generator to extract data from the queue.
@@ -520,16 +548,28 @@ class OrderedEnqueuer(SequenceEnqueuer):
 
     Yields:
         Tuples (inputs, targets)
-            or (inputs, targets, sample_weights)
+        or (inputs, targets, sample_weights)
     """
     try:
       while self.is_running():
         inputs = self.queue.get(block=True).get()
+        self.queue.task_done()
         if inputs is not None:
           yield inputs
     except Exception as e:
       self.stop()
       raise StopIteration(e)
+
+  def _send_sequence(self):
+    """Send current Sequence to all workers."""
+    _SHARED_SEQUENCES[
+        self.uid] = self.sequence  # For new processes that may spawn
+
+    self._close_pool()
+    if self.use_multiprocessing:
+      self.executor = multiprocessing.Pool(self.workers)
+    else:
+      self.executor = ThreadPool(self.workers)
 
   def stop(self, timeout=None):
     """Stops running threads and wait for them to exit, if necessary.
@@ -544,9 +584,13 @@ class OrderedEnqueuer(SequenceEnqueuer):
       self.queue.queue.clear()
       self.queue.unfinished_tasks = 0
       self.queue.not_full.notify()
+    self._close_pool()
+    self.run_thread.join(timeout)
+    _SHARED_SEQUENCES[self.uid] = None
+
+  def _close_pool(self):
     self.executor.close()
     self.executor.join()
-    self.run_thread.join(timeout)
 
 
 class GeneratorEnqueuer(SequenceEnqueuer):

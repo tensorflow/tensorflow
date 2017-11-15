@@ -108,7 +108,7 @@ def _standardize_input_data(data,
     arrays = data
   elif data.__class__.__name__ == 'DataFrame':
     # test if data is a DataFrame, without pandas installed
-    data = data.values
+    arrays = data.values
   else:
     if not hasattr(data, 'shape'):
       raise TypeError('Error when checking model ' + exception_prefix +
@@ -271,12 +271,13 @@ def _check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
           is incompatible with an output.
   """
   key_losses = {
-      'mean_squared_error', 'binary_crossentropy', 'categorical_crossentropy'
+      losses.mean_squared_error, losses.binary_crossentropy,
+      losses.categorical_crossentropy
   }
   for y, loss, shape in zip(targets, loss_fns, output_shapes):
     if loss is None:
       continue
-    if loss.__name__ == 'categorical_crossentropy':
+    if loss is losses.categorical_crossentropy:
       if y.shape[-1] == 1:
         raise ValueError('You are passing a target array of shape ' + str(
             y.shape) + ' while using as loss `categorical_crossentropy`. '
@@ -286,14 +287,14 @@ def _check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
                          'If your targets are integer classes, '
                          'you can convert them to the expected format via:\n'
                          '```\n'
-                         'from keras.utils.np_utils import to_categorical\n'
+                         'from keras.utils import to_categorical\n'
                          'y_binary = to_categorical(y_int)\n'
                          '```\n'
                          '\n'
                          'Alternatively, you can use the loss function '
                          '`sparse_categorical_crossentropy` instead, '
                          'which does expect integer targets.')
-    if loss.__name__ in key_losses:
+    if loss in key_losses:
       for target_dim, out_dim in zip(y.shape[1:], shape[1:]):
         if out_dim is not None and target_dim != out_dim:
           raise ValueError('A target array with shape ' + str(y.shape) +
@@ -584,7 +585,7 @@ class Model(Network):
     """Configures the model for training.
 
     Arguments:
-        optimizer: String (name of optimizer) or optimizer object.
+        optimizer: String (name of optimizer) or optimizer instance.
             See [optimizers](/optimizers).
         loss: String (name of objective function) or objective function.
             See [losses](/losses).
@@ -623,9 +624,7 @@ class Model(Network):
             can specify them via the `target_tensors` argument. It can be
             a single tensor (for a single-output model), a list of tensors,
             or a dict mapping output names to target tensors.
-        **kwargs: When using the Theano/CNTK backends, these arguments
-            are passed into K.function. When using the TensorFlow backend,
-            these arguments are passed into `tf.Session.run`.
+        **kwargs: These arguments are passed to `tf.Session.run`.
 
     Raises:
         ValueError: In case of invalid arguments for
@@ -1413,10 +1412,8 @@ class Model(Network):
     output_shapes = []
     for output_shape, loss_fn in zip(self._feed_output_shapes,
                                      self._feed_loss_fns):
-      if loss_fn.__name__ == 'sparse_categorical_crossentropy':
+      if loss_fn is losses.sparse_categorical_crossentropy:
         output_shapes.append(output_shape[:-1] + (1,))
-      elif getattr(losses, loss_fn.__name__, None) is None:
-        output_shapes.append(None)
       else:
         output_shapes.append(output_shape)
     x = _standardize_input_data(
@@ -1484,60 +1481,76 @@ class Model(Network):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
     Arguments:
-        x: Numpy array of training data,
-            or list of Numpy arrays if the model has multiple inputs.
-            If all inputs in the model are named,
-            you can also pass a dictionary
-            mapping input names to Numpy arrays.
-            Can be `None` (default) if feeding from framework-native tensors.
-        y: Numpy array of target data,
-            or list of Numpy arrays if the model has multiple outputs.
-            If all outputs in the model are named,
-            you can also pass a dictionary
-            mapping output names to Numpy arrays.
+        x: Numpy array of training data (if the model has a single input),
+            or list of Numpy arrays (if the model has multiple inputs).
+            If input layers in the model are named, you can also pass a
+            dictionary mapping input names to Numpy arrays.
+            `x` can be `None` (default) if feeding from
+            TensorFlow data tensors.
+        y: Numpy array of target (label) data
+            (if the model has a single output),
+            or list of Numpy arrays (if the model has multiple outputs).
+            If output layers in the model are named, you can also pass a
+            dictionary mapping output names to Numpy arrays.
+            `y` can be `None` (default) if feeding from
+            TensorFlow data tensors.
             Can be `None` (default) if feeding from framework-native tensors.
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, it will default to 32.
-        epochs: Integer, the number of times to iterate
-            over the training data arrays.
+        epochs: Integer. Number of epochs to train the model.
+            An epoch is an iteration over the entire `x` and `y`
+            data provided.
+            Note that in conjunction with `initial_epoch`,
+            `epochs` is to be understood as "final epoch".
+            The model is not trained for a number of iterations
+            given by `epochs`, but merely until the epoch
+            of index `epochs` is reached.
         verbose: 0, 1, or 2. Verbosity mode.
-            0 = silent, 1 = verbose, 2 = one log line per epoch.
-        callbacks: List of callbacks to be called during training.
+            0 = silent, 1 = progress bar, 2 = one line per epoch.
+        callbacks: List of `keras.callbacks.Callback` instances.
+            List of callbacks to apply during training.
             See [callbacks](/callbacks).
-        validation_split: Float between 0 and 1:
-            fraction of the training data to be used as validation data.
+        validation_split: Float between 0 and 1.
+            Fraction of the training data to be used as validation data.
             The model will set apart this fraction of the training data,
             will not train on it, and will evaluate
             the loss and any model metrics
             on this data at the end of each epoch.
-        validation_data: Data on which to evaluate
-            the loss and any model metrics
-            at the end of each epoch. The model will not
-            be trained on this data.
-            This could be a tuple (x_val, y_val)
-            or a tuple (x_val, y_val, val_sample_weights).
-        shuffle: Boolean, whether to shuffle the training data
-            before each epoch. Has no effect when `steps_per_epoch`
-            is not `None`.
-        class_weight: Optional dictionary mapping
-            class indices (integers) to
-            a weight (float) to apply to the model's loss for the samples
-            from this class during training.
-            This can be useful to tell the model to "pay more attention" to
-            samples from an under-represented class.
-        sample_weight: Optional array of the same length as x, containing
-            weights to apply to the model's loss for each sample.
-            In the case of temporal data, you can pass a 2D array
-            with shape (samples, sequence_length),
+            The validation data is selected from the last samples
+            in the `x` and `y` data provided, before shuffling.
+        validation_data: tuple `(x_val, y_val)` or tuple
+            `(x_val, y_val, val_sample_weights)` on which to evaluate
+            the loss and any model metrics at the end of each epoch.
+            The model will not be trained on this data.
+            This will override `validation_split`.
+        shuffle: Boolean (whether to shuffle the training data
+            before each epoch) or str (for 'batch').
+            'batch' is a special option for dealing with the
+            limitations of HDF5 data; it shuffles in batch-sized chunks.
+            Has no effect when `steps_per_epoch` is not `None`.
+        class_weight: Optional dictionary mapping class indices (integers)
+            to a weight (float) value, used for weighting the loss function
+            (during training only).
+            This can be useful to tell the model to
+            "pay more attention" to samples from
+            an under-represented class.
+        sample_weight: Optional Numpy array of weights for
+            the training samples, used for weighting the loss function
+            (during training only). You can either pass a flat (1D)
+            Numpy array with the same length as the input samples
+            (1:1 mapping between weights and samples),
+            or in the case of temporal data,
+            you can pass a 2D array with shape
+            `(samples, sequence_length)`,
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
-            sample_weight_mode="temporal" in compile().
+            `sample_weight_mode="temporal"` in `compile()`.
         initial_epoch: Epoch at which to start training
-            (useful for resuming a previous training run)
+            (useful for resuming a previous training run).
         steps_per_epoch: Total number of steps (batches of samples)
             before declaring one epoch finished and starting the
-            next epoch. When training with Input Tensors such as
+            next epoch. When training with input tensors such as
             TensorFlow data tensors, the default `None` is equal to
             the number of unique samples in your dataset divided by
             the batch size, or 1 if that cannot be determined.
@@ -1546,8 +1559,10 @@ class Model(Network):
             to validate before stopping.
 
     Returns:
-        A `History` instance. Its `history` attribute contains
-        all information collected during training.
+        A `History` object. Its `History.history` attribute is
+        a record of training loss values and metrics values
+        at successive epochs, as well as validation loss values
+        and validation metrics values (if applicable).
 
     Raises:
         ValueError: In case of mismatch between the provided input data
@@ -1667,25 +1682,40 @@ class Model(Network):
     Computation is done in batches.
 
     Arguments:
-        x: Numpy array of test data,
-            or list of Numpy arrays if the model has multiple inputs.
-            If all inputs in the model are named,
-            you can also pass a dictionary
-            mapping input names to Numpy arrays.
-            Can be `None` (default) if feeding from framework-native tensors.
-        y: Numpy array of target data,
-            or list of Numpy arrays if the model has multiple outputs.
-            If all outputs in the model are named,
-            you can also pass a dictionary
-            mapping output names to Numpy arrays.
-            Can be `None` (default) if feeding from framework-native tensors.
-        batch_size: Integer. If unspecified, it will default to 32.
-        verbose: Verbosity mode, 0 or 1.
-        sample_weight: Array of weights to weight the contribution
-            of different samples to the loss and metrics.
-        steps: Total number of steps (batches of samples)
+        x: Numpy array of test data (if the model has a single input),
+            or list of Numpy arrays (if the model has multiple inputs).
+            If input layers in the model are named, you can also pass a
+            dictionary mapping input names to Numpy arrays.
+            `x` can be `None` (default) if feeding from
+            framework-native tensors (e.g. TensorFlow data tensors).
+        y: Numpy array of target (label) data
+            (if the model has a single output),
+            or list of Numpy arrays (if the model has multiple outputs).
+            If output layers in the model are named, you can also pass a
+            dictionary mapping output names to Numpy arrays.
+            `y` can be `None` (default) if feeding from
+            framework-native tensors (e.g. TensorFlow data tensors).
+        batch_size: Integer or `None`.
+            Number of samples per evaluation step.
+            If unspecified, `batch_size` will default to 32.
+        verbose: 0 or 1. Verbosity mode.
+            0 = silent, 1 = progress bar.
+        sample_weight: Optional Numpy array of weights for
+            the test samples, used for weighting the loss function.
+            You can either pass a flat (1D)
+            Numpy array with the same length as the input samples
+            (1:1 mapping between weights and samples),
+            or in the case of temporal data,
+            you can pass a 2D array with shape
+            `(samples, sequence_length)`,
+            to apply a different weight to every timestep of every sample.
+            In this case you should make sure to specify
+            `sample_weight_mode="temporal"` in `compile()`.
+        steps: Integer or `None`.
+            Total number of steps (batches of samples)
             before declaring the evaluation round finished.
-            Ignored with the default value of `None`.
+            The default `None` is equal to the number of unique samples in
+            your dataset divided by the batch size.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -1694,7 +1724,7 @@ class Model(Network):
         the display labels for the scalar outputs.
 
     Raises:
-      ValueError: In case of invalid argument values.
+      ValueError: In case of invalid arguments.
     """
     # Backwards compatibility.
     if batch_size is None and steps is None:
@@ -1926,7 +1956,7 @@ class Model(Network):
             to yield from `generator` before declaring one epoch
             finished and starting the next epoch. It should typically
             be equal to the number of unique samples of your dataset
-            divided by the batch size.
+            divided by the batch size. Not used if using `Sequence`.
         epochs: Integer, total number of iterations on the data.
         verbose: Verbosity mode, 0, 1, or 2.
         callbacks: List of callbacks to be called during training.
@@ -1941,7 +1971,7 @@ class Model(Network):
             for the class.
         max_queue_size: Maximum size for the generator queue
         workers: Maximum number of processes to spin up
-            when using process based threading
+            when using process-based threading.
         use_multiprocessing: If True, use process based threading.
             Note that because
             this implementation relies on multiprocessing,
@@ -1949,9 +1979,9 @@ class Model(Network):
             non picklable arguments to the generator
             as they can't be passed
             easily to children processes.
-        shuffle: Whether to shuffle the order of the batches at the
-            beginning of each epoch. Only used with instances
-            of `Sequence` (keras.utils.Sequence).
+        shuffle: Whether to shuffle the data at the beginning of each
+            epoch. Only used with instances of `Sequence`
+            (`keras.utils.Sequence`).
         initial_epoch: Epoch at which to start training
             (useful for resuming a previous training run)
         **kwargs: support for legacy arguments.
@@ -2061,6 +2091,8 @@ class Model(Network):
                           ' and multiple workers may duplicate your data.'
                           ' Please consider using the`keras.utils.Sequence'
                           ' class.'))
+    if is_sequence:
+      steps_per_epoch = len(generator)
     enqueuer = None
 
     try:
@@ -2182,9 +2214,10 @@ class Model(Network):
             when using multiprocessing.
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
+            Not used if using `Sequence`.
         max_queue_size: maximum size for the generator queue
         workers: maximum number of processes to spin up
-            when using process based threading
+            when using process-based threading.
         use_multiprocessing: if True, use process based threading.
             Note that because
             this implementation relies on multiprocessing,
@@ -2230,6 +2263,8 @@ class Model(Network):
                           ' and multiple workers may duplicate your data.'
                           ' Please consider using the`keras.utils.Sequence'
                           ' class.'))
+    if is_sequence:
+      steps = len(generator)
     enqueuer = None
 
     try:
@@ -2309,8 +2344,9 @@ class Model(Network):
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
         max_queue_size: Maximum size for the generator queue.
+          Not used if using `Sequence`.
         workers: Maximum number of processes to spin up
-            when using process based threading
+            when using process-based threading.
         use_multiprocessing: If `True`, use process based threading.
             Note that because
             this implementation relies on multiprocessing,
@@ -2351,6 +2387,8 @@ class Model(Network):
                           ' and multiple workers may duplicate your data.'
                           ' Please consider using the`keras.utils.Sequence'
                           ' class.'))
+    if is_sequence:
+      steps = len(generator)
     enqueuer = None
 
     try:

@@ -273,12 +273,12 @@ class KerasCallbacksTest(test.TestCase):
       stopper = keras.callbacks.EarlyStopping(monitor='acc', patience=patience)
       weights = model.get_weights()
 
-      hist = model.fit(data, labels, callbacks=[stopper], verbose=0)
+      hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
       assert len(hist.epoch) >= patience
 
       # This should allow training to go for at least `patience` epochs
       model.set_weights(weights)
-      hist = model.fit(data, labels, callbacks=[stopper], verbose=0)
+      hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
     assert len(hist.epoch) >= patience
 
   def test_RemoteMonitor(self):

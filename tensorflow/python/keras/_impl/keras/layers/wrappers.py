@@ -336,7 +336,8 @@ class Bidirectional(Wrapper):
       output = [y, y_rev]
 
     # Properly set learning phase
-    if 0 < self.layer.dropout + self.layer.recurrent_dropout:
+    if (getattr(y, '_uses_learning_phase', False) or
+        getattr(y_rev, '_uses_learning_phase', False)):
       if self.merge_mode is None:
         for out in output:
           out._uses_learning_phase = True

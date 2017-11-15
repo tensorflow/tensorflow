@@ -22,6 +22,7 @@ import six
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
 
 
 def mean_squared_error(y_true, y_pred):
@@ -105,7 +106,7 @@ cosine = cosine_proximity
 
 
 def serialize(loss):
-  return loss.__name__
+  return serialize_keras_object(loss)
 
 
 def deserialize(name, custom_objects=None):
@@ -121,6 +122,8 @@ def get(identifier):
     return None
   if isinstance(identifier, six.string_types):
     identifier = str(identifier)
+    return deserialize(identifier)
+  if isinstance(identifier, dict):
     return deserialize(identifier)
   elif callable(identifier):
     return identifier
