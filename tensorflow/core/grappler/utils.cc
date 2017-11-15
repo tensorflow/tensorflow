@@ -221,8 +221,11 @@ string AsControlDependency(const NodeDef& node) {
   return strings::StrCat("^", node.name());
 }
 
-string AsControlDependency(const string& node) {
-  return strings::StrCat("^", node);
+string AsControlDependency(const string& node_name) {
+  CHECK(!node_name.empty());
+  return (!node_name.empty() && node_name[0] == '^')
+             ? node_name
+             : strings::StrCat("^", node_name);
 }
 
 int NumOutputs(const NodeDef& node) {

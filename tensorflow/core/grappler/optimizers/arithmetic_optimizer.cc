@@ -512,8 +512,10 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   return true;
 }
 
-bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
-  if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
+// static
+bool ArithmeticOptimizer::CanDedup(
+    const NodeDef& node, const std::unordered_set<string>& nodes_to_preserve) {
+  if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
     return false;
   }
   if (IsEnter(node) || IsExit(node) || IsPlaceholder(node)) {
@@ -551,7 +553,7 @@ void ArithmeticOptimizer::DedupComputations(GraphDef* optimized_graph) const {
         continue;
       }
       NodeDef* node = optimized_graph->mutable_node(i);
-      if (!CanDedup(*node)) {
+      if (!CanDedup(*node, nodes_to_preserve_)) {
         continue;
       }
       NodeDef* rep = nodes.FindOrAddRepresentative(node);

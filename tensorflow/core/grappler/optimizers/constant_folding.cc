@@ -122,7 +122,6 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     auto outputs = node_map->GetOutputs(node->name());
     for (const NodeDef* node : outputs) {
       if (IsIdentity(*node)) {
-        CHECK_EQ(1, node->input_size());
         if (IsSameInput(node->input(0), input_name)) {
           return AsControlDependency(*node);
         }
