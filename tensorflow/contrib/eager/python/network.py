@@ -108,7 +108,8 @@ class Network(base.Layer):
             for name in self._variable_scope_counts_on_init.keys() if name)
       self._name, self._base_name = self._make_unique_name(
           name_uid_map=name_uid_map, avoid_names=avoid_names,
-          namespace=self._default_parent_variable_scope.name)
+          namespace=self._default_parent_variable_scope.name,
+          zero_based=True)
     if self._first_parent is None or (self._first_parent  # False = no parent
                                       and self._first_parent() is None):
       # Save a pointer to the parent Network so that we can later check that the
@@ -258,7 +259,8 @@ class Network(base.Layer):
             # name, and we should respect it (subject to error checking).
             layer._name, layer._base_name = layer._make_unique_name(
                 name_uid_map=self._sub_layer_name_uids,
-                avoid_names=self._owned_layers
+                avoid_names=self._owned_layers,
+                zero_based=True
                 # No namespace required, since we've specified our own UID map.
             )
           layer._first_parent = weakref.ref(self)
