@@ -265,6 +265,42 @@ bool BufferAssignment::SharesSliceAtIndex(
          GetUniqueSlice(hlo_b, shape_index_b).ConsumeValueOrDie();
 }
 
+bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
+                                          const HloInstruction* hlo_b) const {
+  using SliceSet =
+      FlatSet<BufferAllocation::Slice, BufferAllocation::Slice::Hasher>;
+  // Gets the slices all of instr's subshapes.  If any subshape doesn't have an
+  // assigned slice, returns the empty set.
+  auto collect_slices = [&](const HloInstruction* instr) -> SliceSet {
+    SliceSet slices;
+    Status status = ShapeUtil::ForEachSubshapeWithStatus(
+        instr->shape(),
+        [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+          auto shape_slices = GetAllSlices(instr, index);
+          if (shape_slices.empty()) {
+            return InvalidArgument("No slices assigned to part of instr.");
+          }
+          slices.insert(shape_slices.begin(), shape_slices.end());
+          return Status::OK();
+        });
+    if (!status.ok()) {
+      return {};
+    }
+    return slices;
+  };
+
+  SliceSet slices_a = collect_slices(hlo_a);
+  SliceSet slices_b = collect_slices(hlo_b);
+  // hlo_a and hlo_b have disjoint slices if collect_slices succeeded (i.e.
+  // didn't return the empty set) for both HLOs, and the two resulting sets of
+  // slices are disjoint.
+  return !slices_a.empty() && !slices_b.empty() &&
+         std::none_of(slices_a.begin(), slices_a.end(),
+                      [&](const BufferAllocation::Slice& slice) {
+                        return slices_b.count(slice) > 0;
+                      });
+}
+
 StatusOr<BufferAllocation::Slice>
 BufferAssignment::GetUniqueTopLevelOutputSlice() const {
   return GetUniqueTopLevelSlice(
