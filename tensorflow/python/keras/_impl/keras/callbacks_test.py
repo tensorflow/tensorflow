@@ -571,7 +571,6 @@ class KerasCallbacksTest(test.TestCase):
           loss='categorical_crossentropy',
           optimizer='sgd',
           metrics=['accuracy'])
-
       tsb = keras.callbacks.TensorBoard(
           log_dir=temp_dir, histogram_freq=1, write_images=True,
           write_grads=True, batch_size=5)
