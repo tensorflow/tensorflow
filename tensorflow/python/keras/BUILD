@@ -591,6 +591,18 @@ py_test(
 )
 
 py_test(
+    name = "np_utils_test",
+    size = "small",
+    srcs = ["_impl/keras/utils/np_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "training_utils_test",
     size = "medium",
     srcs = ["_impl/keras/utils/training_utils_test.py"],

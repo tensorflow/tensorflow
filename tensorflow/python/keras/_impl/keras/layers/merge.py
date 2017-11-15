@@ -318,7 +318,7 @@ class Concatenate(_Merge):
   """Layer that concatenates a list of inputs.
 
   It takes as input a list of tensors,
-  all of the same shape expect for the concatenation axis,
+  all of the same shape except for the concatenation axis,
   and returns a single tensor, the concatenation of all inputs.
 
   Arguments:

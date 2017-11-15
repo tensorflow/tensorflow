@@ -271,7 +271,8 @@ class Progbar(object):
     self.total_width = 0
     self.seen_so_far = 0
     self.verbose = verbose
-    self._dynamic_display = (sys.stdout.isatty() or
+    self._dynamic_display = ((hasattr(sys.stdout, 'isatty') and
+                              sys.stdout.isatty()) or
                              'ipykernel' in sys.modules)
 
   def update(self, current, values=None, force=False):

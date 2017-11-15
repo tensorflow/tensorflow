@@ -173,7 +173,7 @@ tf_class {
   }
   member_method {
     name: "fit"
-    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'epochs\', \'verbose\', \'callbacks\', \'validation_split\', \'validation_data\', \'shuffle\', \'class_weight\', \'sample_weight\', \'initial_epoch\'], varargs=None, keywords=None, defaults=[\'32\', \'10\', \'1\', \'None\', \'0.0\', \'None\', \'True\', \'None\', \'None\', \'0\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'epochs\', \'verbose\', \'callbacks\', \'validation_split\', \'validation_data\', \'shuffle\', \'class_weight\', \'sample_weight\', \'initial_epoch\', \'steps_per_epoch\', \'validation_steps\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'1\', \'1\', \'None\', \'0.0\', \'None\', \'True\', \'None\', \'None\', \'0\', \'None\', \'None\'], "
   }
   member_method {
     name: "fit_generator"
@@ -241,7 +241,7 @@ tf_class {
   }
   member_method {
     name: "predict_classes"
-    argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\'], varargs=None, keywords=None, defaults=[\'32\', \'1\'], "
+    argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\'], varargs=None, keywords=None, defaults=[\'32\', \'0\'], "
   }
   member_method {
     name: "predict_generator"
@@ -253,7 +253,7 @@ tf_class {
   }
   member_method {
     name: "predict_proba"
-    argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\'], varargs=None, keywords=None, defaults=[\'32\', \'1\'], "
+    argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\'], varargs=None, keywords=None, defaults=[\'32\', \'0\'], "
   }
   member_method {
     name: "reset_states"
