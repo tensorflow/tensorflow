@@ -267,7 +267,7 @@ try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) 
 The `Interpreter.java` class drives model inference with TensorFlow Lite. In
 most of the cases, this is the only class an app developer will need.
 
-#### Initializing an `Interpreter` Mith a Model Mile
+#### Initializing an `Interpreter` With a Model File
 
 The `Interpreter` can be initialized with a model file using the constructor:
 
