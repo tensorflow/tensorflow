@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.libsvm.python.ops import libsvm_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
@@ -31,13 +32,13 @@ class DecodeLibsvmOpTest(test.TestCase):
       content = ["1 1:3.4 2:0.5 4:0.231",
                  "1 2:2.5 3:0.1 5:0.503",
                  "2 3:2.5 2:0.1 1:0.105"]
-      label, feature = libsvm_ops.decode_libsvm(content, num_features=6)
+      label, indices, values, shape = libsvm_ops.decode_libsvm(content,
+                                                               num_features=6)
+      feature = sparse_ops.sparse_to_dense(indices, shape, values,
+                                           validate_indices=False)
 
-      # shape inference
       self.assertAllEqual(label.get_shape().as_list(), [3])
-      self.assertAllEqual(feature.get_shape().as_list(), [3, 6])
 
-      # sess.run()
       label, feature = sess.run([label, feature])
       self.assertAllEqual(label, [1, 1, 2])
       self.assertAllClose(feature, [[0, 3.4, 0.5, 0, 0.231, 0],
