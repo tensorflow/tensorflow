@@ -402,10 +402,11 @@ class Layer(object):
     return input_shape
 
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
-                        namespace=''):
+                        namespace='', zero_based=False):
     base_name = _to_snake_case(self.__class__.__name__)
     name = _unique_layer_name(base_name, name_uid_map=name_uid_map,
-                              avoid_names=avoid_names, namespace=namespace)
+                              avoid_names=avoid_names, namespace=namespace,
+                              zero_based=zero_based)
     return (name, base_name)
 
   def _set_scope(self, scope=None):
@@ -2371,7 +2372,8 @@ def _get_default_graph_uid_map():
   return name_uid_map
 
 
-def _unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace=''):
+def _unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace='',
+                       zero_based=False):
   """Makes a layer name (or arbitrary string) unique within a TensorFlow graph.
 
   Arguments:
@@ -2383,6 +2385,8 @@ def _unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace=''):
     namespace: Gets a name which is unique within the (graph, namespace). Layers
       which are not Networks use a blank namespace and so get graph-global
       names.
+    zero_based: If True, name sequences start with no suffix (e.g. "dense",
+      "dense_1"). If False, naming is one-based ("dense_1", "dense_2").
 
   Returns:
     Unique string name.
@@ -2401,6 +2405,14 @@ def _unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace=''):
   proposed_name = None
   while proposed_name is None or proposed_name in avoid_names:
     name_key = (namespace, name)
-    name_uid_map[name_key] += 1
-    proposed_name = name + '_' + str(name_uid_map[name_key])
+    if zero_based:
+      number = name_uid_map[name_key]
+      if number:
+        proposed_name = name + '_' + str(number)
+      else:
+        proposed_name = name
+      name_uid_map[name_key] += 1
+    else:
+      name_uid_map[name_key] += 1
+      proposed_name = name + '_' + str(name_uid_map[name_key])
   return proposed_name
