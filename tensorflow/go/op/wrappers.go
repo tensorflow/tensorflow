@@ -14797,6 +14797,21 @@ func TensorArrayV3ClearAfterRead(value bool) TensorArrayV3Attr {
 	}
 }
 
+// TensorArrayV3IdenticalElementShapes sets the optional identical_element_shapes attribute to value.
+//
+// value: If true (default is false), then all
+// elements in the TensorArray will be expected to have have identical shapes.
+// This allows certain behaviors, like dynamically checking for
+// consistent shapes on write, and being able to fill in properly
+// shaped zero tensors on stack -- even if the element_shape attribute
+// is not fully defined.
+// If not specified, defaults to false
+func TensorArrayV3IdenticalElementShapes(value bool) TensorArrayV3Attr {
+	return func(m optionalAttr) {
+		m["identical_element_shapes"] = value
+	}
+}
+
 // TensorArrayV3TensorArrayName sets the optional tensor_array_name attribute to value.
 //
 // value: Overrides the name used for the temporary tensor_array
