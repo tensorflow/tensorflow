@@ -47,6 +47,7 @@ class GrpcRemoteWorker : public WorkerInterface {
         cq_(completion_queue),
         getstatus_(Method(GrpcWorkerMethod::kGetStatus)),
         createworkersession_(Method(GrpcWorkerMethod::kCreateWorkerSession)),
+        deleteworkersession_(Method(GrpcWorkerMethod::kDeleteWorkerSession)),
         registergraph_(Method(GrpcWorkerMethod::kRegisterGraph)),
         deregistergraph_(Method(GrpcWorkerMethod::kDeregisterGraph)),
         rungraph_(Method(GrpcWorkerMethod::kRunGraph)),
@@ -69,6 +70,12 @@ class GrpcRemoteWorker : public WorkerInterface {
                                 CreateWorkerSessionResponse* response,
                                 StatusCallback done) override {
     IssueRequest(request, response, createworkersession_, std::move(done));
+  }
+
+  void DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
+                                DeleteWorkerSessionResponse* response,
+                                StatusCallback done) override {
+    IssueRequest(request, response, deleteworkersession_, std::move(done));
   }
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,
@@ -199,6 +206,7 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   const ::grpc::string getstatus_;
   const ::grpc::string createworkersession_;
+  const ::grpc::string deleteworkersession_;
   const ::grpc::string registergraph_;
   const ::grpc::string deregistergraph_;
   const ::grpc::string rungraph_;
