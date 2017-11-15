@@ -26,6 +26,7 @@ import tempfile
 import numpy as np
 import six
 
+from google.protobuf import message
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
@@ -536,7 +537,7 @@ class Estimator(object):
       temp_export_dir = get_temp_export_dir(export_dir)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
-      with tf_session.Session() as session:
+      with tf_session.Session(config=self._session_config) as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
             sharded=True)
@@ -998,20 +999,27 @@ def _write_dict_to_summary(output_dir,
       continue
     if key == 'global_step':
       continue
-    value = summary_proto.value.add()
-    value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
-      value.simple_value = float(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=float(dictionary[key]))
     elif (isinstance(dictionary[key], np.int64) or
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
-      value.simple_value = int(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
+    elif isinstance(dictionary[key], six.string_types):
+      try:
+        summ = summary_pb2.Summary.FromString(dictionary[key])
+        for i, _ in enumerate(summ.value):
+          summ.value[i].tag = key
+        summary_proto.value.extend(summ.value)
+      except message.DecodeError:
+        logging.warn('Skipping summary for %s, cannot parse string to Summary.',
+                     key)
+        continue
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
-          'np.int32 or int.',
-          key)
+          'np.int32 or int or a serialized string of Summary.', key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 

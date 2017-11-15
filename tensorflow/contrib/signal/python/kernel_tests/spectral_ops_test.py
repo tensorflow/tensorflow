@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.signal.python.ops import spectral_ops
+from tensorflow.contrib.signal.python.ops import window_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -114,31 +115,6 @@ class SpectralOpsTest(test.TestCase):
       self.assertAllClose(
           expected_inverse_stft, actual_inverse_stft, 1e-4, 1e-4)
 
-  def _compare_round_trip(self, signal, frame_length, frame_step, fft_length):
-    with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.test_session(use_gpu=True)) as sess:
-      stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length,
-                               pad_end=False)
-      inverse_stft = spectral_ops.inverse_stft(stft, frame_length, frame_step,
-                                               fft_length)
-      signal, inverse_stft = sess.run([signal, inverse_stft])
-
-      # Since the shapes can differ due to padding, pad both signals to the max
-      # of their lengths.
-      max_length = max(signal.shape[0], inverse_stft.shape[0])
-      signal = np.pad(signal, (0, max_length - signal.shape[0]), "constant")
-      inverse_stft = np.pad(inverse_stft,
-                            (0, max_length - inverse_stft.shape[0]), "constant")
-
-      # Ignore the frame_length samples at either edge.
-      start = frame_length
-      end = signal.shape[0] - frame_length
-      ratio = signal[start:end] / inverse_stft[start:end]
-
-      # Check that the inverse and original signal are equal up to a constant
-      # factor.
-      self.assertLess(np.var(ratio), 2e-5)
-
   def test_shapes(self):
     with spectral_ops_test_util.fft_kernel_label_map(), (
         self.test_session(use_gpu=True)):
@@ -191,23 +167,105 @@ class SpectralOpsTest(test.TestCase):
       self._compare(signal, frame_length, frame_step, fft_length)
 
   def test_stft_round_trip(self):
-    # Tuples of (signal_length, frame_length, frame_step, fft_length).
+    # Tuples of (signal_length, frame_length, frame_step, fft_length,
+    # threshold, corrected_threshold).
     test_configs = [
         # 87.5% overlap.
-        (4096, 256, 32, 256),
+        (4096, 256, 32, 256, 1e-5, 1e-6),
         # 75% overlap.
-        (4096, 256, 64, 256),
+        (4096, 256, 64, 256, 1e-5, 1e-6),
         # Odd frame hop.
-        (4096, 128, 25, 128),
+        (4096, 128, 25, 128, 1e-3, 1e-6),
         # Odd frame length.
-        (4096, 127, 32, 128),
+        (4096, 127, 32, 128, 1e-3, 1e-6),
+        # 50% overlap.
+        (4096, 128, 64, 128, 0.40, 1e-6),
     ]
 
-    for signal_length, frame_length, frame_step, fft_length in test_configs:
-      # Generate a 440Hz signal at 8kHz sample rate.
-      signal = math_ops.sin(2 * np.pi * 440 / 8000 *
-                            math_ops.to_float(math_ops.range(signal_length)))
-      self._compare_round_trip(signal, frame_length, frame_step, fft_length)
+    for (signal_length, frame_length, frame_step, fft_length, threshold,
+         corrected_threshold) in test_configs:
+      # Generate a random white Gaussian signal.
+      signal = random_ops.random_normal([signal_length])
+
+      with spectral_ops_test_util.fft_kernel_label_map(), (
+          self.test_session(use_gpu=True)) as sess:
+        stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length,
+                                 pad_end=False)
+        inverse_stft = spectral_ops.inverse_stft(stft, frame_length, frame_step,
+                                                 fft_length)
+        inverse_stft_corrected = spectral_ops.inverse_stft(
+            stft, frame_length, frame_step, fft_length,
+            window_fn=spectral_ops.inverse_stft_window_fn(frame_step))
+        signal, inverse_stft, inverse_stft_corrected = sess.run(
+            [signal, inverse_stft, inverse_stft_corrected])
+
+        # Truncate signal to the size of inverse stft.
+        signal = signal[:inverse_stft.shape[0]]
+
+        # Ignore the frame_length samples at either edge.
+        signal = signal[frame_length:-frame_length]
+        inverse_stft = inverse_stft[frame_length:-frame_length]
+        inverse_stft_corrected = inverse_stft_corrected[
+            frame_length:-frame_length]
+
+        # Check that the inverse and original signal are close up to a scale
+        # factor.
+        inverse_stft_scaled = inverse_stft / np.mean(np.abs(inverse_stft))
+        signal_scaled = signal / np.mean(np.abs(signal))
+        self.assertLess(np.std(inverse_stft_scaled - signal_scaled), threshold)
+
+        # Check that the inverse with correction and original signal are close.
+        self.assertLess(np.std(inverse_stft_corrected - signal),
+                        corrected_threshold)
+
+  def test_inverse_stft_window_fn(self):
+    """Test that inverse_stft_window_fn has unit gain at each window phase."""
+    # Tuples of (frame_length, frame_step).
+    test_configs = [
+        (256, 32),
+        (256, 64),
+        (128, 25),
+        (127, 32),
+        (128, 64),
+    ]
+
+    for (frame_length, frame_step) in test_configs:
+      hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
+      inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
+      inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
+
+      with self.test_session(use_gpu=True) as sess:
+        hann_window, inverse_window = sess.run([hann_window, inverse_window])
+
+      # Expect unit gain at each phase of the window.
+      product_window = hann_window * inverse_window
+      for i in range(frame_step):
+        self.assertAllClose(1.0, np.sum(product_window[i::frame_step]))
+
+  def test_inverse_stft_window_fn_special_case(self):
+    """Test inverse_stft_window_fn in special overlap = 3/4 case."""
+    # Cases in which frame_length is an integer multiple of 4 * frame_step are
+    # special because they allow exact reproduction of the waveform with a
+    # squared Hann window (Hann window in both forward and reverse transforms).
+    # In the case where frame_length = 4 * frame_step, that combination
+    # produces a constant gain of 1.5, and so the corrected window will be the
+    # Hann window / 1.5.
+
+    # Tuples of (frame_length, frame_step).
+    test_configs = [
+        (256, 64),
+        (128, 32),
+    ]
+
+    for (frame_length, frame_step) in test_configs:
+      hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
+      inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
+      inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
+
+      with self.test_session(use_gpu=True) as sess:
+        hann_window, inverse_window = sess.run([hann_window, inverse_window])
+
+      self.assertAllClose(hann_window, inverse_window * 1.5)
 
   @staticmethod
   def _compute_stft_gradient(signal, frame_length=32, frame_step=16,

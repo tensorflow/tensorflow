@@ -80,13 +80,10 @@ class Iterator(object):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
       gen_dataset_ops.make_iterator(ds_variant, self._resource)
+      # Delete the resource when this object is deleted
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          handle=self._resource, handle_device="/device:CPU:0")
     self._device = context.context().device_name
-
-  def __del__(self):
-    if self._resource is not None:
-      with ops.device("/device:CPU:0"):
-        resource_variable_ops.destroy_resource_op(self._resource)
-    self._resource = None
 
   def __iter__(self):
     return self

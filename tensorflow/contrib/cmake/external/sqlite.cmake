@@ -15,7 +15,7 @@
 include (ExternalProject)
 
 set(sqlite_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/sqlite)
-set(sqlite_URL http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip)
+set(sqlite_URL https://mirror.bazel.build/www.sqlite.org/2017/sqlite-amalgamation-3200000.zip)
 set(sqlite_HASH SHA256=208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4)
 set(sqlite_BUILD ${CMAKE_CURRENT_BINARY_DIR}/sqlite/src/sqlite)
 set(sqlite_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/sqlite/install)
@@ -53,9 +53,13 @@ else()
         INSTALL_DIR ${sqlite_INSTALL}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
         CMAKE_CACHE_ARGS
+			if(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
+				-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+			else()
+				-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=OFF
+			endif()
             -DCMAKE_BUILD_TYPE:STRING=Release
             -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-            -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
             -DCMAKE_INSTALL_PREFIX:STRING=${sqlite_INSTALL}
     )
 

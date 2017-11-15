@@ -92,7 +92,7 @@ TEST(ConvertGraphDefToXla, Sum) {
       client->ExecuteAndTransfer(computation, {x_global.get(), y_global.get()});
   TF_EXPECT_OK(result_or.status());
   std::unique_ptr<xla::Literal> result = std::move(result_or.ValueOrDie());
-  EXPECT_EQ("(s32[]) (\n42,\n)", result->ToString());
+  EXPECT_EQ("(s32[]) (\n42\n)", result->ToString());
 }
 
 }  // namespace

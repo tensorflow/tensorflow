@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import os
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1341,11 +1342,14 @@ class PoolingTest(test.TestCase):
       return
 
     # Test the GPU implementation that uses cudnn for now.
-    # It does not propagate the diff in cases of NaNs
+    saved_nanprop = os.environ.get("TF_ENABLE_MAXPOOL_NANPROP")
+    # Do not propagate the diff in cases of NaNs
+    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "0"
     expected_input_backprop_cudnn = [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0
     ]
+
     for v2 in [True, False]:
       self._testMaxPoolGradDirect(
           input_data,
@@ -1360,6 +1364,30 @@ class PoolingTest(test.TestCase):
           padding="VALID",
           use_gpu=True,
           v2=v2)
+
+    # Propagate the diff in cases of NaNs
+    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
+    expected_input_backprop_cudnn = expected_input_backprop_tf_cpu
+
+    for v2 in [True, False]:
+      self._testMaxPoolGradDirect(
+          input_data,
+          output_backprop,
+          expected_input_backprop_cudnn,
+          input_sizes=[1, 4, 4, 1],
+          output_sizes=[1, 3, 3, 1],
+          window_rows=2,
+          window_cols=2,
+          row_stride=1,
+          col_stride=1,
+          padding="VALID",
+          use_gpu=True,
+          v2=v2)
+
+    if saved_nanprop:
+      os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = saved_nanprop
+    else:
+      del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
   def _testMaxPoolGradDirectWithNans2_2(self):
     input_data = [float("nan")] * 16
@@ -1391,11 +1419,14 @@ class PoolingTest(test.TestCase):
       return
 
     # Test the GPU implementation that uses cudnn for now.
-    # It does not propagate the diff in cases of NaNs
+    saved_nanprop = os.environ.get("TF_ENABLE_MAXPOOL_NANPROP")
+    # Do not propagate the diff in cases of NaNs
+    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "0"
     expected_input_backprop_cudnn = [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0
     ]
+
     for v2 in [True, False]:
       self._testMaxPoolGradDirect(
           input_data,
@@ -1410,6 +1441,31 @@ class PoolingTest(test.TestCase):
           padding="VALID",
           use_gpu=True,
           v2=v2)
+
+
+    # Propagate the diff in cases of NaNs
+    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
+    expected_input_backprop_cudnn = expected_input_backprop_tf_cpu
+
+    for v2 in [True, False]:
+      self._testMaxPoolGradDirect(
+          input_data,
+          output_backprop,
+          expected_input_backprop_cudnn,
+          input_sizes=[1, 4, 4, 1],
+          output_sizes=[1, 3, 3, 1],
+          window_rows=2,
+          window_cols=2,
+          row_stride=1,
+          col_stride=1,
+          padding="VALID",
+          use_gpu=True,
+          v2=v2)
+
+    if saved_nanprop:
+      os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = saved_nanprop
+    else:
+      del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
   def testMaxPoolGradDirect(self):
     self._testMaxPoolGradDirect1_1()

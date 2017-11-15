@@ -79,6 +79,8 @@ See the @{$python/contrib.framework} guide.
 @@load_embedding_initializer
 @@load_linear_multiclass_bias_initializer
 @@load_variable_slot_initializer
+
+@@sort
 """
 
 from __future__ import absolute_import

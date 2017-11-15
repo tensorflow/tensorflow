@@ -27,6 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
+
 def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
                       staircase=False, name=None):
   """Applies exponential decay to the learning rate.
@@ -164,13 +165,13 @@ def piecewise_constant(x, boundaries, values, name=None):
         raise ValueError(
             "Values must have elements all with the same dtype (%s vs %s)." % (
                 values[0].dtype.base_dtype, v.dtype.base_dtype))
-    pred_fn_pairs = {}
-    pred_fn_pairs[x <= boundaries[0]] = lambda: values[0]
-    pred_fn_pairs[x > boundaries[-1]] = lambda: values[-1]
+    pred_fn_pairs = []
+    pred_fn_pairs.append((x <= boundaries[0], lambda: values[0]))
+    pred_fn_pairs.append((x > boundaries[-1], lambda: values[-1]))
     for low, high, v in zip(boundaries[:-1], boundaries[1:], values[1:-1]):
       # Need to bind v here; can do this with lambda v=v: ...
       pred = (x > low) & (x <= high)
-      pred_fn_pairs[pred] = lambda v=v: v
+      pred_fn_pairs.append((pred, lambda v=v: v))
 
     # The default isn't needed here because our conditions are mutually
     # exclusive and exhaustive, but tf.case requires it.

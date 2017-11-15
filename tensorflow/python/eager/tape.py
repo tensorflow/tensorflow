@@ -23,7 +23,6 @@ import contextlib
 import threading
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.util import compat
 
 
 def tid(tensor):
@@ -60,7 +59,6 @@ class Tape(object):
 
   def __init__(self):
     self._tape = pywrap_tensorflow.TFE_Py_NewTape()
-    self._watched_variables = set()
 
   def should_record(self, tensors):
     """Returns true if any tensor should be recorded.
@@ -72,24 +70,26 @@ class Tape(object):
       True if any of the tensors is in the tape.
     """
     return pywrap_tensorflow.TFE_Py_TapeShouldRecord(
-        self._tape, [x._id  for x in tensors])  # pylint: disable=protected-access
+        self._tape, tensors)
 
   def watch(self, tensor):
     """Adds a tensor to the tape."""
     pywrap_tensorflow.TFE_Py_TapeWatch(self._tape, tid(tensor))
 
   def watch_variable(self, v):
-    self._watched_variables.add(v)
-    self.watch(v.handle)
+    pywrap_tensorflow.TFE_Py_TapeWatchVariable(self._tape, v)
+
+  def watched_variables(self):
+    return pywrap_tensorflow.TFE_Py_TapeWatchedVariables(self._tape)
 
   def record_operation(self, op_type, output_tensors, input_tensors,
                        backward_function):
     """Records an operation in the tape."""
     pywrap_tensorflow.TFE_Py_TapeRecordOperation(
         self._tape,
-        compat.as_bytes(op_type),
+        op_type,
         output_tensors,
-        [x._id for x in input_tensors],  # pylint: disable=protected-access
+        input_tensors,
         backward_function)
 
   def _delete_tensor_id(self, i):
@@ -98,16 +98,6 @@ class Tape(object):
   def delete_trace(self, tensor_id):
     """Deletes any trace we have for this tensor."""
     self._delete_tensor_id(tensor_id)
-
-  def export(self):
-    """Exports the internal state of this tape.
-
-    Returns:
-      tensor_tape: a map from tensor_id(tensor) to <identifier for op>
-       responsible for generating that tensor.
-      op_tape: a map from <identifier for op> to TapeEntry for that op.
-    """
-    return pywrap_tensorflow.TFE_Py_TapeExport(self._tape)
 
 
 class _TapeStack(threading.local):
@@ -186,11 +176,6 @@ def delete_trace(tensor_id):
   """Deletes traces for this Tensor from all tapes in the stack."""
   for t in _tape_stack.stack:
     t.delete_trace(tensor_id)
-
-
-def top_tape_watched_variables():
-  t = _tape_stack.stack[-1]
-  return t._watched_variables  # pylint: disable=protected-access
 
 
 def could_possibly_record():

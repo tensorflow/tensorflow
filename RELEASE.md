@@ -19,6 +19,14 @@
   (with GPU and gradient support).
 * Add a self-check on `import tensorflow` for Windows DLL issues.
 * Add NCHW support to `tf.depth_to_space` on GPU.
+* TensorFlow Debugger (tfdbg):
+  * Add `eval` command to allow evaluation of arbitrary Python/numpy expressions
+    in tfdbg command-line interface. See
+    [Debugging TensorFlow Programs](https://www.tensorflow.org/programmers_guide/debugger)
+    for more details.
+  * Usability improvement: The frequently used tensor filter `has_inf_or_nan` is
+    now added to `Session` wrappers and hooks by default. So there is no need
+    for clients to call `.add_tensor_filter(tf_debug.has_inf_or_nan)` anymore.
 * SinhArcsinh (scalar) distribution added to `contrib.distributions`.
 * Make `GANEstimator` opensource.
 * `Estimator.export_savedmodel()` now includes all valid serving signatures
@@ -60,10 +68,14 @@
 * Fix `tf.contrib.distributions.Affine` incorrectly computing log-det-jacobian.
 * Fix `tf.random_gamma` incorrectly handling non-batch, scalar draws.
 * Resolved a race condition in TensorForest TreePredictionsV4Op.
-* Google Cloud Storage file system and Hadoop file system support are now
-  default build options.
+* Google Cloud Storage file system, Amazon S3 file system, and Hadoop file
+  system support are now default build options.
 * Custom op libraries must link against libtensorflow_framework.so
   (installed at `tf.sysconfig.get_lib()`).
+* Change `RunConfig` default behavior to not set a random seed, making random
+  behavior independently random on distributed workers. We expect this to
+  generally improve training performance. Models that do rely on determinism
+  should set a random seed explicitly.
 
 ## Breaking Changes to the API
 * The signature of the `tf.contrib.data.rejection_resample()` function has been
@@ -73,6 +85,11 @@
   `Dataset.make_initializable_iterator()` instead.
 * Remove seldom used and unnecessary `tf.contrib.data.Iterator.dispose_op()`.
 * Reorder some TFGAN loss functions in a non-backwards compatible way.
+
+## Known Issues
+* In Python 3, `Dataset.from_generator()` does not support Unicode strings.
+  You must convert any strings to bytes objects before yielding them from
+  the generator.
 
 ## Thanks to our Contributors
 

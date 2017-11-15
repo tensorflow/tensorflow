@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -97,8 +98,6 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
       return BINOP_ADD;
     case HloOpcode::kSubtract:
       return BINOP_SUB;
-    case HloOpcode::kIndex:
-      return BINOP_INDEX;
     case HloOpcode::kDivide:
       return BINOP_DIV;
     case HloOpcode::kEq:
@@ -772,8 +771,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(lhs, "lhs of binary operation"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(rhs, "rhs of binary operation"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
+      lhs, tensorflow::strings::StrCat("lhs of binary operation ",
+                                       BinaryOperation_Name(operation))));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
+      rhs, tensorflow::strings::StrCat("rhs of binary operation ",
+                                       BinaryOperation_Name(operation))));
   switch (operation) {
     case BINOP_DOT:
       return InferDotOpShape(lhs, rhs);
@@ -830,17 +833,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                                                         broadcast_dimensions));
       return ShapeUtil::ChangeElementType(shape, PRED);
     }
-    case BINOP_INDEX:
-      if (ShapeUtil::Rank(lhs) > 0 && ShapeUtil::Rank(rhs) == 0) {
-        tensorflow::gtl::ArraySlice<int64> dimensions =
-            AsInt64Slice(lhs.dimensions());
-        dimensions.pop_front();
-        return ShapeUtil::MakeShape(lhs.element_type(), dimensions);
-      }
-      return Unimplemented("cannot infer shape for operation: %s <%s> %s",
-                           ShapeUtil::HumanString(lhs).c_str(),
-                           BinaryOperation_Name(operation).c_str(),
-                           ShapeUtil::HumanString(rhs).c_str());
     default:
       return Unimplemented(
           "not yet implemented; infer binary op shape: %s; lhs: %s; rhs: %s",
@@ -1956,7 +1948,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
-        "Reshape dimensions not a permutation of the operand dimensions.");
+        "Reshape dimensions [%s] are not a permutation of the operand "
+        "dimensions (operand shape is %s).",
+        tensorflow::str_util::Join(dimensions, ",").c_str(),
+        ShapeUtil::HumanString(operand).c_str());
   }
 
   return inferred_shape;

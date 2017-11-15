@@ -21,6 +21,8 @@ from __future__ import print_function
 import collections
 import math
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -45,8 +47,19 @@ def GetTestConfigs():
 
 class Conv3DTest(test.TestCase):
 
+  def _DtypesToTest(self, use_gpu):
+    if use_gpu:
+      if not test_util.CudaSupportsHalfMatMulAndConv():
+        return [dtypes.float32]
+      else:
+        # It is important that float32 comes before float16 here,
+        # as we will be using its gradients as reference for fp16 gradients.
+        return [dtypes.float32, dtypes.float16]
+    else:
+      return [dtypes.float64, dtypes.float32, dtypes.float16]
+
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
-                            padding, data_format, use_gpu):
+                            padding, data_format, dtype, use_gpu):
     total_size_1 = 1
     total_size_2 = 1
     for s in tensor_in_sizes:
@@ -54,13 +67,14 @@ class Conv3DTest(test.TestCase):
     for s in filter_in_sizes:
       total_size_2 *= s
 
-    # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
-    x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
-    x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
+    # Initializes the input tensor with array containing numbers from 0 to 1.
+    # We keep the input tensor values fairly small to avoid overflowing a float16 
+    # tensor during the conv3d 
+    x1 = [f * 1.0 / total_size_1 for f in range(1, total_size_1 + 1)]
+    x2 = [f * 1.0 / total_size_2 for f in range(1, total_size_2 + 1)]
     with self.test_session(use_gpu=use_gpu):
-      t1 = constant_op.constant(x1, shape=tensor_in_sizes)
-      t2 = constant_op.constant(x2, shape=filter_in_sizes)
+      t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
+      t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
 
       if isinstance(stride, collections.Iterable):
         strides = [1] + list(stride) + [1]
@@ -81,27 +95,35 @@ class Conv3DTest(test.TestCase):
                     expected):
     results = []
     for data_format, use_gpu in GetTestConfigs():
-      result = self._SetupValuesForDevice(
-          tensor_in_sizes,
-          filter_in_sizes,
-          stride,
-          padding,
-          data_format,
-          use_gpu=use_gpu)
-      results.append(result)
-      tolerance = 1e-2 if use_gpu else 1e-5
+      for dtype in self._DtypesToTest(use_gpu):
+        result = self._SetupValuesForDevice(
+            tensor_in_sizes,
+            filter_in_sizes,
+            stride,
+            padding,
+            data_format,
+            dtype,
+            use_gpu=use_gpu)
+        results.append(result)
+
       with self.test_session() as sess:
         values = sess.run(results)
         for value in values:
           print("expected = ", expected)
           print("actual = ", value)
-          self.assertAllClose(expected, value.flatten(), atol=tolerance,
-                              rtol=1e-6)
+          tol = 1e-6
+          if value.dtype == np.float16:
+            tol = 1e-3
+
+          self.assertAllClose(expected, value.flatten(), atol=tol,
+                              rtol=tol)
 
   def testConv3D1x1x1Filter(self):
     expected_output = [
-        30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
-        204.0, 174.0, 216.0, 258.0, 210.0, 261.0, 312.0
+        0.18518519,  0.22222222,  0.25925926,  0.40740741,  0.5       ,
+        0.59259259,  0.62962963,  0.77777778,  0.92592593,  0.85185185,
+        1.05555556,  1.25925926,  1.07407407,  1.33333333,  1.59259259,
+        1.2962963 ,  1.61111111,  1.92592593
     ]
 
     # These are equivalent to the Conv2D1x1 case.
@@ -127,8 +149,10 @@ class Conv3DTest(test.TestCase):
   # Expected values computed using scipy's correlate function.
   def testConv3D2x2x2Filter(self):
     expected_output = [
-        19554., 19962., 20370., 22110., 22590., 23070., 34890., 35730., 36570.,
-        37446., 38358., 39270., 50226., 51498., 52770., 52782., 54126., 55470.
+        3.77199074,   3.85069444,   3.92939815,   4.2650463 ,   4.35763889,
+        4.45023148,   6.73032407,   6.89236111,   7.05439815,   7.22337963,
+        7.39930556,   7.57523148,   9.68865741,   9.93402778,  10.17939815,
+        10.18171296,  10.44097222,  10.70023148
     ]
     # expected_shape = [1, 3, 1, 2, 5]
     self._VerifyValues(
@@ -140,69 +164,19 @@ class Conv3DTest(test.TestCase):
 
   def testConv3DStrides(self):
     expected_output = [
-        102.,
-        151.,
-        172.,
-        193.,
-        214.,
-        235.,
-        142.,
-        438.,
-        592.,
-        613.,
-        634.,
-        655.,
-        676.,
-        394.,
-        774.,
-        1033.,
-        1054.,
-        1075.,
-        1096.,
-        1117.,
-        646.,
-        1894.,
-        2503.,
-        2524.,
-        2545.,
-        2566.,
-        2587.,
-        1486.,
-        2230.,
-        2944.,
-        2965.,
-        2986.,
-        3007.,
-        3028.,
-        1738.,
-        2566.,
-        3385.,
-        3406.,
-        3427.,
-        3448.,
-        3469.,
-        1990.,
-        3686.,
-        4855.,
-        4876.,
-        4897.,
-        4918.,
-        4939.,
-        2830.,
-        4022.,
-        5296.,
-        5317.,
-        5338.,
-        5359.,
-        5380.,
-        3082.,
-        4358.,
-        5737.,
-        5758.,
-        5779.,
-        5800.,
-        5821.,
-        3334.,
+        0.06071429,  0.08988095,  0.10238095,  0.11488095,  0.12738095,
+        0.13988095,  0.08452381,  0.26071429,  0.35238095,  0.36488095,
+        0.37738095,  0.38988095,  0.40238095,  0.23452381,  0.46071429,
+        0.61488095,  0.62738095,  0.63988095,  0.65238095,  0.66488095,
+        0.38452381,  1.12738095,  1.48988095,  1.50238095,  1.51488095,
+        1.52738095,  1.53988095,  0.88452381,  1.32738095,  1.75238095,
+        1.76488095,  1.77738095,  1.78988095,  1.80238095,  1.03452381,
+        1.52738095,  2.01488095,  2.02738095,  2.03988095,  2.05238095,
+        2.06488095,  1.18452381,  2.19404762,  2.88988095,  2.90238095,
+        2.91488095,  2.92738095,  2.93988095,  1.68452381,  2.39404762,
+        3.15238095,  3.16488095,  3.17738095,  3.18988095,  3.20238095,
+        1.83452381,  2.59404762,  3.41488095,  3.42738095,  3.43988095,
+        3.45238095,  3.46488095,  1.98452381
     ]
     self._VerifyValues(
         tensor_in_sizes=[1, 5, 8, 7, 1],
@@ -212,7 +186,10 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D2x2x2FilterStride2(self):
-    expected_output = [19554., 19962., 20370., 50226., 51498., 52770.]
+    expected_output = [
+        3.77199074,  3.85069444,  3.92939815,  9.68865741,  9.93402778,
+        10.17939815
+    ]
     self._VerifyValues(
         tensor_in_sizes=[1, 4, 2, 3, 3],
         filter_in_sizes=[2, 2, 2, 3, 3],
@@ -222,11 +199,14 @@ class Conv3DTest(test.TestCase):
 
   def testConv3DStride3(self):
     expected_output = [
-        36564., 38022., 39480., 37824., 39354., 40884., 39084., 40686., 42288.,
-        46644., 48678., 50712., 47904., 50010., 52116., 49164., 51342., 53520.,
-        107124., 112614., 118104., 108384., 113946., 119508., 109644., 115278.,
-        120912., 117204., 123270., 129336., 118464., 124602., 130740., 119724.,
-        125934., 132144.
+        1.51140873,  1.57167659,  1.63194444,  1.56349206,  1.62673611,
+        1.68998016,  1.6155754 ,  1.68179563,  1.74801587,  1.9280754 ,
+        2.01215278,  2.09623016,  1.98015873,  2.0672123 ,  2.15426587,
+        2.03224206,  2.12227183,  2.21230159,  4.4280754 ,  4.65500992,
+        4.88194444,  4.48015873,  4.71006944,  4.93998016,  4.53224206,
+        4.76512897,  4.99801587,  4.84474206,  5.09548611,  5.34623016,
+        4.8968254 ,  5.15054563,  5.40426587,  4.94890873,  5.20560516,
+        5.46230159
     ]
     self._VerifyValues(
         tensor_in_sizes=[1, 6, 7, 8, 2],
@@ -237,8 +217,9 @@ class Conv3DTest(test.TestCase):
 
   def testConv3D2x2x2FilterStride2Same(self):
     expected_output = [
-        19554., 19962., 20370., 10452., 10710., 10968., 50226., 51498., 52770.,
-        23844., 24534., 25224.
+        3.77199074,   3.85069444,   3.92939815,   2.0162037 ,   2.06597222,
+        2.11574074,   9.68865741,   9.93402778,  10.17939815,   4.59953704,
+        4.73263889,   4.86574074
     ]
     self._VerifyValues(
         tensor_in_sizes=[1, 4, 2, 3, 3],
@@ -248,7 +229,10 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testKernelSmallerThanStride(self):
-    expected_output = [1., 3., 7., 9., 19., 21., 25., 27.]
+    expected_output = [
+        0.03703704,  0.11111111,  0.25925926,  0.33333333,  0.7037037 ,
+        0.77777778,  0.92592593,  1.
+    ]
     self._VerifyValues(
         tensor_in_sizes=[1, 3, 3, 3, 1],
         filter_in_sizes=[1, 1, 1, 1, 1],
@@ -263,9 +247,12 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
     expected_output = [
-        1484., 1592., 770., 2240., 2348., 1106., 1149., 1191., 539., 6776.,
-        6884., 3122., 7532., 7640., 3458., 3207., 3249., 1421., 3005., 3035.,
-        1225., 3215., 3245., 1309., 1013., 1022., 343.
+        0.54081633,  0.58017493,  0.28061224,  0.81632653,  0.85568513,
+        0.40306122,  0.41873178,  0.4340379 ,  0.19642857,  2.46938776,
+        2.50874636,  1.1377551 ,  2.74489796,  2.78425656,  1.26020408,
+        1.16873178,  1.1840379 ,  0.51785714,  1.09511662,  1.10604956,
+        0.44642857,  1.17164723,  1.18258017,  0.47704082,  0.3691691 ,
+        0.37244898,  0.125
     ]
     self._VerifyValues(
         tensor_in_sizes=[1, 7, 7, 7, 1],
@@ -274,7 +261,10 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         expected=expected_output)
 
-    expected_output = [1484., 1592., 2240., 2348., 6776., 6884., 7532., 7640.]
+    expected_output = [
+        0.540816,  0.580175,  0.816327,  0.855685,  2.469388,  2.508746,
+        2.744898,  2.784257
+    ]
     self._VerifyValues(
         tensor_in_sizes=[1, 7, 7, 7, 1],
         filter_in_sizes=[2, 2, 2, 1, 1],
@@ -288,7 +278,7 @@ class Conv3DTest(test.TestCase):
         filter_in_sizes=[2, 1, 2, 1, 2],
         stride=1,
         padding="VALID",
-        expected=[50, 60])
+        expected=[1.5625,  1.875])
 
   def _ConstructAndTestGradientForConfig(
       self, batch, input_shape, filter_shape, in_depth, out_depth, stride,
@@ -328,50 +318,63 @@ class Conv3DTest(test.TestCase):
     input_data = [x * 1.0 / input_size for x in range(0, input_size)]
     filter_data = [x * 1.0 / filter_size for x in range(0, filter_size)]
 
-    if test.is_gpu_available() and use_gpu:
-      data_type = dtypes.float32
+
+    for data_type in self._DtypesToTest(use_gpu=use_gpu):
       # TODO(mjanusz): Modify gradient_checker to also provide max relative
       # error and synchronize the tolerance levels between the tests for forward
       # and backward computations.
-      if test.is_gpu_available():
+      if data_type == dtypes.float64:
+        tolerance = 1e-8
+      elif data_type == dtypes.float32:
         tolerance = 5e-3
-      else:
-        # As of Aug 2016, higher tolerance is needed for some CPU architectures.
-        # Runs on a single machine can also generate slightly different errors
-        # because of multithreading.
-        tolerance = 8e-3
-    else:
-      data_type = dtypes.float64
-      tolerance = 1e-8
-    with self.test_session(use_gpu=use_gpu):
-      orig_input_tensor = constant_op.constant(
+      elif data_type == dtypes.float16:
+        tolerance = 1e-3
+
+
+      with self.test_session(use_gpu=use_gpu):
+        orig_input_tensor = constant_op.constant(
           input_data, shape=input_shape, dtype=data_type, name="input")
-      filter_tensor = constant_op.constant(
+        filter_tensor = constant_op.constant(
           filter_data, shape=filter_shape, dtype=data_type, name="filter")
 
-      if data_format == "NCDHW":
-        input_tensor = test_util.NHWCToNCHW(orig_input_tensor)
-        strides = test_util.NHWCToNCHW(strides)
-      else:
-        input_tensor = orig_input_tensor
+        if data_format == "NCDHW":
+          input_tensor = test_util.NHWCToNCHW(orig_input_tensor)
+          new_strides = test_util.NHWCToNCHW(strides)
+        else:
+          input_tensor = orig_input_tensor
+          new_strides = strides
 
-      conv = nn_ops.conv3d(
-          input_tensor, filter_tensor, strides, padding,
+        conv = nn_ops.conv3d(
+          input_tensor, filter_tensor, new_strides, padding,
           data_format=data_format, name="conv")
 
-      if data_format == "NCDHW":
-        conv = test_util.NCHWToNHWC(conv)
+        if data_format == "NCDHW":
+          conv = test_util.NCHWToNHWC(conv)
 
-      if test_input:
-        err = gradient_checker.compute_gradient_error(orig_input_tensor,
-                                                      input_shape,
-                                                      conv, output_shape)
-      else:
-        err = gradient_checker.compute_gradient_error(filter_tensor,
-                                                      filter_shape, conv,
-                                                      output_shape)
-    print("conv3d gradient error = ", err)
-    self.assertLess(err, tolerance)
+        
+        if test_input:
+          jacob_t, jacob_n = gradient_checker.compute_gradient(orig_input_tensor,
+                                                               input_shape,
+                                                               conv,
+                                                               output_shape)
+        else:
+          jacob_t, jacob_n = gradient_checker.compute_gradient(filter_tensor,
+                                                               filter_shape,
+                                                               conv,
+                                                               output_shape)
+        
+        
+        if data_type != dtypes.float16:
+          reference_jacob_t = jacob_t
+          err = np.fabs(jacob_t - jacob_n).max()
+        else:
+          # Compare fp16 theoretical gradients to fp32 theoretical gradients,
+          # since fp16 numerical gradients are too imprecise.
+          err = np.fabs(jacob_t - reference_jacob_t).max()
+
+      print("conv3d gradient error = ", err)
+      self.assertLess(err, tolerance)
+
 
   def ConstructAndTestGradient(self, **kwargs):
     for data_format, use_gpu in GetTestConfigs():

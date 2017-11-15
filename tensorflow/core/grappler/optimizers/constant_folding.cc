@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -95,13 +96,20 @@ class DeviceSimple : public DeviceBase {
 };
 
 }  // namespace
-ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
-    : cpu_device_(cpu_device) {
+ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
+                                 DeviceBase* cpu_device)
+    : opt_level_(opt_level), cpu_device_(cpu_device) {
   resource_mgr_.reset(new ResourceMgr());
 }
 
-string ConstantFolding::AddControlDependency(const string& input_name) {
-  const NodeDef* node = node_map_->GetNode(input_name);
+ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
+    : ConstantFolding(RewriterConfig::ON, cpu_device) {}
+
+// static
+string ConstantFolding::AddControlDependency(const string& input_name,
+                                             GraphDef* graph,
+                                             NodeMap* node_map) {
+  const NodeDef* node = node_map->GetNode(input_name);
   if (!IsSwitch(*node)) {
     return AsControlDependency(*node);
   } else {
@@ -111,7 +119,7 @@ string ConstantFolding::AddControlDependency(const string& input_name) {
     // dependency is only triggered when the corresponding output is triggered.
     // We start by looking for an identity node connected to the output of the
     // switch node, and use it to anchor the control dependency.
-    auto outputs = node_map_->GetOutputs(node->name());
+    auto outputs = node_map->GetOutputs(node->name());
     for (const NodeDef* node : outputs) {
       if (IsIdentity(*node)) {
         CHECK_EQ(1, node->input_size());
@@ -122,23 +130,65 @@ string ConstantFolding::AddControlDependency(const string& input_name) {
     }
     // We haven't found an existing node where we can anchor the control
     // dependency: add a new identity node.
-    int position = 0;
-    string ctrl_dep_name = ParseNodeName(input_name, &position);
-    strings::StrAppend(&ctrl_dep_name, "_", position);
+    int port = 0;
+    string ctrl_dep_name = ParseNodeName(input_name, &port);
+    strings::StrAppend(&ctrl_dep_name, "_", port);
     ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
     const DataType output_type = node->attr().at("T").type();
 
-    NodeDef* added_node = graph_.add_node();
+    NodeDef* added_node = graph->add_node();
     added_node->set_name(ctrl_dep_name);
     added_node->set_op("Identity");
     added_node->set_device(node->device());
 
     (*added_node->mutable_attr())["T"].set_type(output_type);
     *added_node->add_input() = input_name;
-    node_map_->AddNode(added_node->name(), added_node);
-    node_map_->AddOutput(node->name(), added_node->name());
+    node_map->AddNode(added_node->name(), added_node);
+    node_map->AddOutput(node->name(), added_node->name());
     return AsControlDependency(*added_node);
   }
+}
+
+Status ConvertShapeToConstant(const string& op, const DataType& type,
+                              const PartialTensorShape& shp, Tensor* value) {
+  if (op == "Shape" || op == "ShapeN") {
+    *value = Tensor(type, TensorShape({shp.dims()}));
+    for (int i = 0; i < shp.dims(); ++i) {
+      if (type == DT_INT32) {
+        if (shp.dim_size(i) >= INT_MAX) {
+          return Status(error::INVALID_ARGUMENT, "Invalid dimension size");
+        }
+        value->flat<int32>()(i) = shp.dim_size(i);
+      } else {
+        value->flat<int64>()(i) = shp.dim_size(i);
+      }
+    }
+  } else if (op == "Size") {
+    int64 size = 1;
+    for (int i = 0; i < shp.dims(); ++i) {
+      size *= shp.dim_size(i);
+    }
+    *value = Tensor(type, TensorShape({}));
+    if (type == DT_INT32) {
+      if (size >= INT_MAX) {
+        return Status(error::INVALID_ARGUMENT, "Invalid dimension size");
+      }
+      value->flat<int32>()(0) = size;
+    } else {
+      value->flat<int64>()(0) = size;
+    }
+  } else {
+    *value = Tensor(type, TensorShape({}));
+    if (type == DT_INT32) {
+      if (shp.dims() >= INT_MAX) {
+        return Status(error::INVALID_ARGUMENT, "Invalid dimension size");
+      }
+      value->flat<int32>()(0) = shp.dims();
+    } else {
+      value->flat<int64>()(0) = shp.dims();
+    }
+  }
+  return Status::OK();
 }
 
 Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
@@ -150,86 +200,232 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
   for (int i = 0; i < node_count; ++i) {
     NodeDef& node = *graph_.mutable_node(i);
     const string op = node.op();
-    if (op != "Shape" && op != "Size" && op != "Rank") {
+    if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN") {
       continue;
     }
+
     std::vector<OpInfo::TensorProperties> output =
         properties.GetOutputProperties(node.name());
-    CHECK_EQ(1, output.size());
-    const DataType type = output[0].dtype();
-    CHECK(type == DT_INT32 || type == DT_INT64);
-
     std::vector<OpInfo::TensorProperties> input =
         properties.GetInputProperties(node.name());
-    CHECK_EQ(1, input.size());
+    if (op == "Shape" || op == "Size" || op == "Rank") {
+      CHECK_EQ(1, output.size());
+      CHECK_EQ(1, input.size());
+    }
+    CHECK_EQ(input.size(), output.size());
 
-    const TensorShapeProto shape = input[0].shape();
-    // Materialize the shapes using constants whenever possible.
-    PartialTensorShape shp(shape);
-    if (shp.IsFullyDefined() || (!shp.unknown_rank() && op == "Rank")) {
-      bool valid = true;
-      Tensor value(type);
-      if (op == "Shape") {
-        value = Tensor(type, TensorShape({shp.dims()}));
-        for (int i = 0; i < shp.dims(); ++i) {
-          if (type == DT_INT32) {
-            if (shp.dim_size(i) >= INT_MAX) {
-              valid = false;
-              break;
+    for (int j = 0; j < output.size(); ++j) {
+      const DataType type = output[j].dtype();
+      CHECK(type == DT_INT32 || type == DT_INT64);
+      const TensorShapeProto shape = input[j].shape();
+      // Materialize the shapes using constants whenever possible.
+      PartialTensorShape shp(shape);
+      if (shp.IsFullyDefined() || (!shp.unknown_rank() && op == "Rank")) {
+        Tensor value(type);
+        auto status = ConvertShapeToConstant(op, type, shp, &value);
+        if (!status.ok()) {
+          continue;
+        }
+        // We rewrite the existing node for the first const output and
+        // create new nodes for the remaining const outputs (Note that ShapeN
+        // could have multiple outputs).
+        if (op == "Shape" || op == "Size" || op == "Rank") {
+          // Replace the node with the corresponding constant.
+          node.set_op("Const");
+          node.clear_attr();
+          (*node.mutable_attr())["dtype"].set_type(type);
+          value.AsProtoTensorContent(
+              (*node.mutable_attr())["value"].mutable_tensor());
+
+          // Turn the data input into a control dependency: this is needed to
+          // ensure that the constant value will only be run in the
+          // cases where the shape/rank/size would have been run in
+          // the original graph. Additional inputs are extra control
+          string ctrl_dep =
+              AddControlDependency(node.input(0), &graph_, node_map_.get());
+          node.set_input(0, ctrl_dep);
+          node_map_->AddOutput(NodeName(ctrl_dep), node.name());
+        } else {
+          auto outputs = node_map_->GetOutputs(node.name());
+          for (const auto& output : outputs) {
+            for (int k = 0; k < output->input_size(); ++k) {
+              int port;
+              string node_name = ParseNodeName(output->input(k), &port);
+              if (node_name == node.name() && port == j) {
+                // Create a const node as ShapeN's output if not already.
+                string const_name =
+                    AddPrefixToNodeName(strings::StrCat(node.name(), "-", j),
+                                        kConstantFoldingConst);
+                if (node_map_->GetNode(const_name) == nullptr) {
+                  NodeDef* added_node = graph_.add_node();
+                  added_node->set_name(const_name);
+                  added_node->set_op("Const");
+                  added_node->set_device(node.device());
+                  node_map_->AddNode(added_node->name(), added_node);
+                  (*added_node->mutable_attr())["dtype"].set_type(type);
+                  value.AsProtoTensorContent(
+                      (*added_node->mutable_attr())["value"].mutable_tensor());
+                  // We add a control dependency to the original ShapeN node,
+                  // so that the node will only be run if all inputs of the
+                  // original ShapeN node are run.
+                  string ctrl_dep = AddControlDependency(node.name(), &graph_,
+                                                         node_map_.get());
+                  *added_node->add_input() = ctrl_dep;
+                  node_map_->AddOutput(NodeName(ctrl_dep), added_node->name());
+                }
+                node_map_->UpdateInput(output->name(),
+                                       NodeName(output->input(k)), const_name);
+                *output->mutable_input(k) = const_name;
+              }
             }
-            value.flat<int32>()(i) = shp.dim_size(i);
-          } else {
-            value.flat<int64>()(i) = shp.dim_size(i);
           }
         }
-      } else if (op == "Size") {
-        int64 size = 1;
-        for (int i = 0; i < shp.dims(); ++i) {
-          size *= shp.dim_size(i);
-        }
-        value = Tensor(type, TensorShape({}));
-        if (type == DT_INT32) {
-          if (size >= INT_MAX) {
-            valid = false;
-          } else {
-            value.flat<int32>()(0) = size;
-          }
-        } else {
-          value.flat<int64>()(0) = size;
-        }
-      } else {
-        value = Tensor(type, TensorShape({}));
-        if (type == DT_INT32) {
-          if (shp.dims() >= INT_MAX) {
-            valid = false;
-          } else {
-            value.flat<int32>()(0) = shp.dims();
-          }
-        } else {
-          value.flat<int64>()(0) = shp.dims();
-        }
-      }
-
-      if (valid) {
-        // Replace the node with the corresponding constant.
-        node.set_op("Const");
-        node.clear_attr();
-        (*node.mutable_attr())["dtype"].set_type(type);
-        value.AsProtoTensorContent(
-            (*node.mutable_attr())["value"].mutable_tensor());
-
-        // Turn the data input into a control dependency: this is needed to
-        // ensure that the constant value will only be generated in the cases
-        // where the shape/rank/size would have been generated in the original
-        // graph. Additional inputs are extra control dependencies that we
-        // preserve.
-        CHECK_LE(1, node.input_size());
-        string ctrl_dep = AddControlDependency(node.input(0));
-        node.set_input(0, ctrl_dep);
-        node_map_->AddOutput(NodeName(ctrl_dep), node.name());
       }
     }
   }
+  return Status::OK();
+}
+
+bool ShapesEqual(const TensorShapeProto& shape1,
+                 const TensorShapeProto& shape2) {
+  if (shape1.unknown_rank() || shape2.unknown_rank()) {
+    return false;
+  }
+  if (shape1.dim_size() != shape2.dim_size()) {
+    return false;
+  }
+  for (int i = 0; i < shape1.dim_size(); ++i) {
+    if (shape1.dim(i).size() != shape2.dim(i).size()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+namespace {
+bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
+                  BCast::Vec* shape, int64* min_id) {
+  if (shape_node.op() == "Shape") {
+    const std::vector<OpInfo::TensorProperties>& prop1 =
+        properties.GetInputProperties(shape_node.name());
+    if (prop1.size() != 1) {
+      return false;
+    }
+    const TensorShapeProto& shp = prop1[0].shape();
+    if (shp.unknown_rank()) {
+      return false;
+    }
+    for (const auto& dim : shp.dim()) {
+      shape->push_back(dim.size());
+      *min_id = std::min<int64>(*min_id, dim.size());
+    }
+  } else {
+    const TensorProto& raw_val = shape_node.attr().at("value").tensor();
+    if (raw_val.dtype() != DT_INT64 && raw_val.dtype() != DT_INT32) {
+      return false;
+    }
+    Tensor value(raw_val.dtype(), raw_val.tensor_shape());
+    if (!value.FromProto(raw_val)) {
+      return false;
+    }
+    for (int j = 0; j < value.NumElements(); ++j) {
+      if (raw_val.dtype() == DT_INT64) {
+        shape->push_back(value.vec<int64>()(j));
+      } else {
+        shape->push_back(value.vec<int>()(j));
+      }
+    }
+  }
+  return true;
+}
+}  // namespace
+
+Status ConstantFolding::MaterializeConstants(
+    const GrapplerItem& item, const GraphProperties& properties) {
+  const int node_count = graph_.node_size();
+  for (int i = 0; i < node_count; ++i) {
+    NodeDef& node = *graph_.mutable_node(i);
+    const string& op = node.op();
+    if (op != "BroadcastGradientArgs") {
+      continue;
+    }
+    const NodeDef* shape_node1 = node_map_->GetNode(node.input(0));
+    const NodeDef* shape_node2 = node_map_->GetNode(node.input(1));
+    if (shape_node1 == nullptr ||
+        (shape_node1->op() != "Shape" && shape_node1->op() != "Const") ||
+        shape_node2 == nullptr ||
+        (shape_node2->op() != "Shape" && shape_node2->op() != "Const")) {
+      continue;
+    }
+    int64 min_id = 0;
+    BCast::Vec shape1;
+    if (!ExtractShape(*shape_node1, properties, &shape1, &min_id)) {
+      continue;
+    }
+    BCast::Vec shape2;
+    if (!ExtractShape(*shape_node2, properties, &shape2, &min_id)) {
+      continue;
+    }
+    // A value of -1 means we don't known anything about the dimension. Replace
+    // the -1 values with unique dimension ids since we don't want two '-1'
+    // dimensions to be considered equal.
+    for (auto& id : shape1) {
+      if (id == -1) {
+        id = --min_id;
+      }
+    }
+    for (auto& id : shape2) {
+      if (id == -1) {
+        id = --min_id;
+      }
+    }
+    BCast bcast(shape1, shape2);
+    if (!bcast.IsValid()) {
+      continue;
+    }
+    BCast::Vec reduce_dims[2];
+    reduce_dims[0] = bcast.grad_x_reduce_idx();
+    reduce_dims[1] = bcast.grad_y_reduce_idx();
+
+    const DataType type = node.attr().at("T").type();
+    NodeDef* out[2];
+    for (int j = 0; j < 2; ++j) {
+      if (!reduce_dims[j].empty()) {
+        // This is the case when a tensor dimension 1 is matched against an
+        // unknown dimension. The unknown dimension could also be equal to 1, in
+        // which case there would be no reduction.
+        out[j] = nullptr;
+      } else {
+        Tensor value(type, TensorShape({0}));
+        string const_name = AddPrefixToNodeName(
+            strings::StrCat(node.name(), "-", j), kConstantFoldingConst);
+        out[j] = node_map_->GetNode(const_name);
+        if (!out[j]) {
+          out[j] = graph_.add_node();
+          *out[j] = CreateNodeDef(const_name, TensorValue(&value));
+          out[j]->set_device(node.device());
+          node_map_->AddNode(const_name, out[j]);
+          string ctrl_dep =
+              AddControlDependency(node.name(), &graph_, node_map_.get());
+          *out[j]->add_input() = ctrl_dep;
+          node_map_->AddOutput(NodeName(ctrl_dep), const_name);
+        }
+      }
+    }
+
+    auto outputs = node_map_->GetOutputs(node.name());
+    for (const auto& output : outputs) {
+      for (int k = 0; k < output->input_size(); ++k) {
+        int port;
+        string node_name = ParseNodeName(output->input(k), &port);
+        if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
+          *output->mutable_input(k) = out[port]->name();
+          node_map_->UpdateInput(output->name(), node_name, out[port]->name());
+        }
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -327,6 +523,7 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   return true;
 }
 
+// static
 NodeDef ConstantFolding::CreateNodeDef(const string& name,
                                        const TensorValue& tensor) {
   NodeDef node;
@@ -427,9 +624,9 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   });
 
   for (const auto& input : node.input()) {
-    int position = 0;
-    ParseNodeName(input, &position);
-    if (position < 0) {
+    int port = 0;
+    ParseNodeName(input, &port);
+    if (port < 0) {
       // Control dependency
       break;
     }
@@ -539,13 +736,13 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
       auto outputs = node_map_->GetOutputs(node->name());
       for (auto& output : outputs) {
         for (int i = 0; i < output->input_size(); i++) {
-          int position;
-          string node_name = ParseNodeName(output->input(i), &position);
+          int port;
+          string node_name = ParseNodeName(output->input(i), &port);
           if (node_name == node->name()) {
-            if (position == 0) {
+            if (port == 0) {
               *output->mutable_input(i) = const_out->name();
               node_map_->AddOutput(const_out->name(), output->name());
-            } else if (position == 1) {
+            } else if (port == 1) {
               *output->mutable_input(i) = const_index->name();
               node_map_->AddOutput(const_index->name(), output->name());
             } else {
@@ -630,10 +827,10 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
     auto outputs = node_map_->GetOutputs(node->name());
     for (const auto& output : outputs) {
       for (int i = 0; i < output->input_size(); i++) {
-        int position;
-        string node_name = ParseNodeName(output->input(i), &position);
+        int port;
+        string node_name = ParseNodeName(output->input(i), &port);
         if (node_name == node->name()) {
-          if (position < 0) {
+          if (port < 0) {
             // Propagate control dependencies if possible. If not, we'll just
             // preserve the existing control dependencies.
             if (constant_output != nullptr) {
@@ -641,17 +838,17 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
                                      constant_output->name());
               *output->mutable_input(i) = AsControlDependency(*constant_output);
             }
-          } else if (position < const_nodes.size() &&
-                     !const_nodes[position].name().empty()) {
+          } else if (port < const_nodes.size() &&
+                     !const_nodes[port].name().empty()) {
             // Replace alive outputs with the corresponding constant.
             node_map_->UpdateInput(output->name(), NodeName(output->input(i)),
-                                   const_nodes[position].name());
-            *output->mutable_input(i) = const_nodes[position].name();
+                                   const_nodes[port].name());
+            *output->mutable_input(i) = const_nodes[port].name();
           } else {
             // Leave this edge alone.
-            VLOG(1) << "Preserving edge from " << node->name() << ":"
-                    << position << "[" << node->op() << "] to "
-                    << output->name() << ":" << i << "[" << output->op() << "]";
+            VLOG(1) << "Preserving edge from " << node->name() << ":" << port
+                    << "[" << node->op() << "] to " << output->name() << ":"
+                    << i << "[" << output->op() << "]";
           }
         }
       }
@@ -865,30 +1062,30 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   // new names, and as a result users would not be able to fetch the node any
   // more with the original node name.
   for (const auto& fetch : item.fetch) {
-    auto fetch_node = node_map_->GetNode(fetch);
-    if (NumOutputs(*fetch_node) == 1) {
+    const NodeDef* fetch_node = node_map_->GetNode(fetch);
+    if (fetch_node && NumOutputs(*fetch_node) == 1) {
       nodes_whitelist_.insert(fetch_node->name());
     }
   }
 
   GraphProperties properties(item);
+  Status s = properties.InferStatically();
   bool has_feed = !item.feed.empty();
-  if (!has_feed) {
+
+  if (!has_feed && s.ok()) {
     // Only use static shape information when there is no feed in the
     // graph. That's because it's possible to feed a placeholder with a tensor
     // of any shape, which could make the static information inconsistent with
     // the shapes actually fed.
-    Status s = properties.InferStatically();
-    if (!s.ok()) {
-      VLOG(1) << "Failed to infer graph shapes: " << s;
-    } else {
-      TF_RETURN_IF_ERROR(MaterializeShapes(item, properties));
-    }
+    TF_RETURN_IF_ERROR(MaterializeShapes(item, properties));
+  }
+  if (opt_level_ == RewriterConfig::AGGRESSIVE && s.ok()) {
+    TF_RETURN_IF_ERROR(MaterializeConstants(item, properties));
   }
 
   TF_RETURN_IF_ERROR(FoldGraph(output));
 
-  if (!has_feed) {
+  if (!has_feed && s.ok()) {
     TF_RETURN_IF_ERROR(SimplifyGraph(output, properties));
   }
   return Status::OK();
@@ -907,12 +1104,14 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   GrapplerItem item_to_optimize = item;
   *output = item.graph;
+  int64 node_count;
   do {
     graph_.Swap(output);
     item_to_optimize.graph = graph_;
     *output = GraphDef();
+    node_count = graph_.node_size();
     TF_RETURN_IF_ERROR(RunOptimizationPass(cluster, item_to_optimize, output));
-  } while (output->node_size() < graph_.node_size());
+  } while (output->node_size() != node_count);
 
   *output->mutable_library() = item.graph.library();
   *output->mutable_versions() = item.graph.versions();

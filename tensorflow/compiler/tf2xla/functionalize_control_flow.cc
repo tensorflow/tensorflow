@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -129,7 +130,9 @@ Status CopySubgraph(const Graph& graph, const Frame* frame,
         stack.push_back(src);
       }
       Node* src_copy = (*node_map)[e->src()->id()];
-      int src_output = squash_src_outputs[e->src()->id()] ? 0 : e->src_output();
+      int src_output = squash_src_outputs[e->src()->id()] && !e->IsControlEdge()
+                           ? 0
+                           : e->src_output();
       Node* dst_copy = (*node_map)[e->dst()->id()];
       output->AddEdge(src_copy, src_output, dst_copy, e->dst_input());
     }
@@ -405,7 +408,15 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
                                        arg.merge->name());
       }
 
-      // Find the Exit successor of the Switch.
+      // Update the device on the Identity outputs of the switch to match their
+      // target. These Identity outputs do not
+
+      // Loop over the switch node's output to:
+      // - Find the Exit successor.
+      // - Set the sharding on all Identity outputs of the switch. These
+      //   identity nodes are values used by the loop body or condition.
+      //   The Identity node may have the wrong device so copy the device from
+      //   one of its outputs instead.
       for (const Edge* edge : arg.switch_node->out_edges()) {
         if (edge->src_output() == 0 && IsExit(edge->dst())) {
           if (arg.exit != nullptr) {
@@ -413,6 +424,9 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
                                            arg.switch_node->name());
           }
           arg.exit = edge->dst();
+        } else if (StringPiece(edge->dst()->type_string()) == "Identity") {
+          TF_RETURN_IF_ERROR(
+              SetNodeShardingFromNeighbors(edge->dst(), /*out_edges=*/true));
         }
       }
     }

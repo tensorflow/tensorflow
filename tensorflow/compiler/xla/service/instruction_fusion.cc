@@ -99,7 +99,6 @@ namespace xla {
     case HloOpcode::kDot:
     case HloOpcode::kExp:
     case HloOpcode::kFusion:
-    case HloOpcode::kIndex:
     case HloOpcode::kLog:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
@@ -114,7 +113,9 @@ namespace xla {
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
     case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
       return true;
   }
 

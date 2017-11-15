@@ -234,6 +234,7 @@ int Run(int argc, char** argv) {
         return 1;
       }
       tf_stat->AddRunMeta(i, std::move(run_meta));
+      fprintf(stdout, "run graph coverage: %.2f\n", tf_stat->run_coverage());
     }
   }
 

@@ -32,7 +32,9 @@ NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
     auto node = graph_->mutable_node(i);
     auto rslt = nodes_.insert(std::make_pair(node->name(), node));
     // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(rslt.second);
+    if (!rslt.second) {
+      LOG(WARNING) << "Duplicated node in the graph: " << node->name();
+    }
     for (const auto& input : node->input()) {
       outputs_[NodeName(input)].insert(nodes_[node->name()]);
     }
@@ -59,7 +61,7 @@ const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
 void NodeMap::AddNode(const string& name, NodeDef* node) {
   auto ret = nodes_.insert(std::make_pair(name, node));
   CHECK(ret.second) << "Pair (" << name << "," << node
-                    << ") is not inserted because a same key already exists.";
+                    << ") is not inserted because the same key already exists.";
 }
 
 void NodeMap::AddOutput(const string& node_name, const string& output_name) {

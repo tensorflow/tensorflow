@@ -33,7 +33,11 @@ FLAGS = None
 
 def main(argv):
   _ = argv
-  mlp.train_mnist(FLAGS.data_dir, num_epochs=200)
+  if FLAGS.num_towers > 1:
+    mlp.train_mnist_multitower(
+        FLAGS.data_dir, num_epochs=200, num_towers=FLAGS.num_towers)
+  else:
+    mlp.train_mnist(FLAGS.data_dir, num_epochs=200)
 
 
 if __name__ == "__main__":
@@ -43,5 +47,10 @@ if __name__ == "__main__":
       type=str,
       default="/tmp/mnist",
       help="Directory to store dataset in.")
+  parser.add_argument(
+      "--num_towers",
+      type=int,
+      default=1,
+      help="Number of CPUs to split minibatch across.")
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

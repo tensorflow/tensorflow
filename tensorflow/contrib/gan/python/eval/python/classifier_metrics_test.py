@@ -277,7 +277,7 @@ class ClassifierMetricsTest(test.TestCase):
 
     expected_fid = _expected_fid(test_pool_real_a, test_pool_gen_a)
 
-    self.assertAllClose(expected_fid, actual_fid, 0.01)
+    self.assertAllClose(expected_fid, actual_fid, 0.0001)
 
   def test_trace_sqrt_product_value(self):
     """Test that `trace_sqrt_product` gives the correct value."""

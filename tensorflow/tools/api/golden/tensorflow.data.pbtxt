@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SparseType"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TFRecordDataset"
     mtype: "<class \'abc.ABCMeta\'>"
   }

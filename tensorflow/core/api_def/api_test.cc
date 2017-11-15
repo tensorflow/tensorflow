@@ -46,92 +46,218 @@ constexpr char kDefaultApiDefDir[] =
     "tensorflow/core/api_def/base_api";
 constexpr char kOverridesFilePath[] =
     "tensorflow/cc/ops/op_gen_overrides.pbtxt";
-constexpr char kApiDefFileFormat[] = "api_def_%c.pbtxt";
-constexpr char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+constexpr char kApiDefFileFormat[] = "api_def_%s.pbtxt";
+constexpr char kApiDefFilePattern[] = "api_def_*.pbtxt";
 
-// Get map from first character to ApiDefs for ops
-// that start with that character.
-std::unordered_map<char, ApiDefs> GenerateApiDef(
-    const OpList& ops, const OpGenOverrides& overrides) {
+void FillBaseApiDef(ApiDef* api_def, const OpDef& op) {
+  api_def->set_graph_op_name(op.name());
+  // Add arg docs
+  for (auto& input_arg : op.input_arg()) {
+    if (!input_arg.description().empty()) {
+      auto* api_def_in_arg = api_def->add_in_arg();
+      api_def_in_arg->set_name(input_arg.name());
+      api_def_in_arg->set_description(input_arg.description());
+    }
+  }
+  for (auto& output_arg : op.output_arg()) {
+    if (!output_arg.description().empty()) {
+      auto* api_def_out_arg = api_def->add_out_arg();
+      api_def_out_arg->set_name(output_arg.name());
+      api_def_out_arg->set_description(output_arg.description());
+    }
+  }
+  // Add attr docs
+  for (auto& attr : op.attr()) {
+    if (!attr.description().empty()) {
+      auto* api_def_attr = api_def->add_attr();
+      api_def_attr->set_name(attr.name());
+      api_def_attr->set_description(attr.description());
+    }
+  }
+  // Add docs
+  api_def->set_summary(op.summary());
+  api_def->set_description(op.description());
+}
+
+// Checks if arg1 should be before arg2 according to ordering in args.
+bool CheckArgBefore(const ApiDef::Arg* arg1, const ApiDef::Arg* arg2,
+                    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args) {
+  for (auto& arg : args) {
+    if (arg.name() == arg2->name()) {
+      return false;
+    } else if (arg.name() == arg1->name()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Checks if attr1 should be before attr2 according to ordering in op_def.
+bool CheckAttrBefore(const ApiDef::Attr* attr1, const ApiDef::Attr* attr2,
+                     const OpDef& op_def) {
+  for (auto& attr : op_def.attr()) {
+    if (attr.name() == attr2->name()) {
+      return false;
+    } else if (attr.name() == attr1->name()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Applies renames to args.
+void ApplyArgOverrides(
+    protobuf::RepeatedPtrField<ApiDef::Arg>* args,
+    const protobuf::RepeatedPtrField<OpGenOverride::Rename>& renames,
+    const protobuf::RepeatedPtrField<OpDef::ArgDef>& op_args,
+    const string& op_name) {
+  for (auto& rename : renames) {
+    // First check if rename is valid.
+    bool valid = false;
+    for (const auto& op_arg : op_args) {
+      if (op_arg.name() == rename.from()) {
+        valid = true;
+      }
+    }
+    QCHECK(valid) << rename.from() << " is not a valid argument for "
+                  << op_name;
+    bool found_arg = false;
+    // If Arg is already in ApiDef, just update it.
+    for (int i = 0; i < args->size(); ++i) {
+      auto* arg = args->Mutable(i);
+      if (arg->name() == rename.from()) {
+        arg->set_rename_to(rename.to());
+        found_arg = true;
+        break;
+      }
+    }
+    if (!found_arg) {  // not in ApiDef, add a new arg.
+      auto* new_arg = args->Add();
+      new_arg->set_name(rename.from());
+      new_arg->set_rename_to(rename.to());
+    }
+  }
+  // We don't really need a specific order here right now.
+  // However, it is clearer if order follows OpDef.
+  std::sort(args->pointer_begin(), args->pointer_end(),
+            [&](ApiDef::Arg* arg1, ApiDef::Arg* arg2) {
+              return CheckArgBefore(arg1, arg2, op_args);
+            });
+}
+
+// Returns existing attribute with the given name if such
+// attribute exists. Otherwise, adds a new attribute and returns it.
+ApiDef::Attr* FindOrAddAttr(ApiDef* api_def, const string attr_name) {
+  // If Attr is already in ApiDef, just update it.
+  for (int i = 0; i < api_def->attr_size(); ++i) {
+    auto* attr = api_def->mutable_attr(i);
+    if (attr->name() == attr_name) {
+      return attr;
+    }
+  }
+  // Add a new Attr.
+  auto* new_attr = api_def->add_attr();
+  new_attr->set_name(attr_name);
+  return new_attr;
+}
+
+// Applies renames and default values to attributes.
+void ApplyAttrOverrides(ApiDef* api_def, const OpGenOverride& op_override,
+                        const OpDef& op_def) {
+  for (auto& attr_rename : op_override.attr_rename()) {
+    auto* attr = FindOrAddAttr(api_def, attr_rename.from());
+    attr->set_rename_to(attr_rename.to());
+  }
+
+  for (auto& attr_default : op_override.attr_default()) {
+    auto* attr = FindOrAddAttr(api_def, attr_default.name());
+    *(attr->mutable_default_value()) = attr_default.value();
+  }
+  // We don't really need a specific order here right now.
+  // However, it is clearer if order follows OpDef.
+  std::sort(api_def->mutable_attr()->pointer_begin(),
+            api_def->mutable_attr()->pointer_end(),
+            [&](ApiDef::Attr* attr1, ApiDef::Attr* attr2) {
+              return CheckAttrBefore(attr1, attr2, op_def);
+            });
+}
+
+void ApplyOverridesToApiDef(ApiDef* api_def, const OpDef& op,
+                            const OpGenOverride& op_override) {
+  // Fill ApiDef with data based on op and op_override.
+  // Set visibility
+  if (op_override.skip()) {
+    api_def->set_visibility(ApiDef_Visibility_SKIP);
+  } else if (op_override.hide()) {
+    api_def->set_visibility(ApiDef_Visibility_HIDDEN);
+  }
+  // Add endpoints
+  if (!op_override.rename_to().empty()) {
+    api_def->add_endpoint()->set_name(op_override.rename_to());
+  } else if (!op_override.alias().empty()) {
+    api_def->add_endpoint()->set_name(op.name());
+  }
+
+  for (auto& alias : op_override.alias()) {
+    auto* endpoint = api_def->add_endpoint();
+    endpoint->set_name(alias);
+  }
+
+  ApplyArgOverrides(api_def->mutable_in_arg(), op_override.input_rename(),
+                    op.input_arg(), api_def->graph_op_name());
+  ApplyArgOverrides(api_def->mutable_out_arg(), op_override.output_rename(),
+                    op.output_arg(), api_def->graph_op_name());
+  ApplyAttrOverrides(api_def, op_override, op);
+}
+
+// Get map from ApiDef file path to corresponding ApiDefs proto.
+std::unordered_map<string, ApiDefs> GenerateApiDef(
+    const string& api_def_dir, const OpList& ops,
+    const OpGenOverrides& overrides) {
   std::unordered_map<string, OpGenOverride> name_to_override;
   for (const auto& op_override : overrides.op()) {
     name_to_override[op_override.name()] = op_override;
   }
 
-  std::unordered_map<char, ApiDefs> api_defs_map;
+  std::unordered_map<string, ApiDefs> api_defs_map;
 
   for (const auto& op : ops.op()) {
     CHECK(!op.name().empty())
         << "Encountered empty op name: %s" << op.DebugString();
-    const char file_id = toupper(op.name()[0]);
-    CHECK(isalpha(file_id)) << "Unexpected op name: " << op.name();
-    ApiDef* api_def = api_defs_map[file_id].add_op();
-    api_def->set_graph_op_name(op.name());
+    string file_path = io::JoinPath(api_def_dir, kApiDefFileFormat);
+    file_path = strings::Printf(file_path.c_str(), op.name().c_str());
+    ApiDef* api_def = api_defs_map[file_path].add_op();
+    FillBaseApiDef(api_def, op);
 
     if (name_to_override.find(op.name()) != name_to_override.end()) {
-      const auto& op_override = name_to_override[op.name()];
-      // Set visibility
-      if (op_override.skip()) {
-        api_def->set_visibility(ApiDef_Visibility_SKIP);
-      } else if (op_override.hide()) {
-        api_def->set_visibility(ApiDef_Visibility_HIDDEN);
-      }
-      // Add endpoints
-      if (!op_override.rename_to().empty()) {
-        auto* endpoint = api_def->add_endpoint();
-        endpoint->set_name(op_override.rename_to());
-      } else {
-        auto* endpoint = api_def->add_endpoint();
-        endpoint->set_name(op.name());
-      }
-      for (auto& alias : op_override.alias()) {
-        auto* endpoint = api_def->add_endpoint();
-        endpoint->set_name(alias);
-      }
-      // Add attributes
-      for (auto& attr : op.attr()) {
-        auto* api_def_attr = api_def->add_attr();
-        api_def_attr->set_name(attr.name());
-        for (auto& attr_override : op_override.attr_default()) {
-          if (attr.name() == attr_override.name()) {
-            *(api_def_attr->mutable_default_value()) = attr_override.value();
-          }
-        }
-        for (auto& attr_rename : op_override.attr_rename()) {
-          if (attr.name() == attr_rename.from()) {
-            api_def_attr->set_rename_to(attr_rename.to());
-          }
-        }
-      }
-    } else {
-      auto* endpoint = api_def->add_endpoint();
-      endpoint->set_name(op.name());
+      ApplyOverridesToApiDef(api_def, op, name_to_override[op.name()]);
     }
-    // Add docs
-    api_def->set_summary(op.summary());
-    api_def->set_description(op.description());
   }
   return api_defs_map;
 }
 
-// Reads golden api defs file with the given suffix.
-string GetGoldenApiDefsStr(Env* env, const string& api_files_dir, char suffix) {
-  string file_path = strings::Printf(
-      io::JoinPath(api_files_dir, kApiDefFileFormat).c_str(), suffix);
-  if (env->FileExists(file_path).ok()) {
+// Reads golden ApiDef files and returns a map from file name to ApiDef file
+// contents.
+std::unordered_map<string, string> GetGoldenApiDefs(
+    Env* env, const string& api_files_dir) {
+  std::vector<string> matching_paths;
+  TF_CHECK_OK(env->GetMatchingPaths(
+      io::JoinPath(api_files_dir, kApiDefFilePattern), &matching_paths));
+
+  std::unordered_map<string, string> file_path_to_api_def;
+  for (auto& file_path : matching_paths) {
     string file_contents;
-    TF_EXPECT_OK(ReadFileToString(env, file_path, &file_contents));
-    return file_contents;
+    TF_CHECK_OK(ReadFileToString(env, file_path, &file_contents));
+    file_path_to_api_def[file_path] = file_contents;
   }
-  return "";
+  return file_path_to_api_def;
 }
 
 void RunApiTest(bool update_api_def, const string& api_files_dir) {
   // Read C++ overrides file
-  string overrides_file_contents;
+  OpGenOverrides overrides;
   Env* env = Env::Default();
-  TF_EXPECT_OK(
-      ReadFileToString(env, kOverridesFilePath, &overrides_file_contents));
+  TF_EXPECT_OK(ReadTextProto(env, kOverridesFilePath, &overrides));
 
   // Read all ops
   OpList ops;
@@ -139,34 +265,42 @@ void RunApiTest(bool update_api_def, const string& api_files_dir) {
   const std::vector<string> multi_line_fields = {"description"};
 
   // Get expected ApiDefs
-  OpGenOverrides overrides;
-  auto new_api_defs_map = GenerateApiDef(ops, overrides);
+  const auto new_api_defs_map = GenerateApiDef(api_files_dir, ops, overrides);
 
   bool updated_at_least_one_file = false;
+  const auto golden_api_defs_map = GetGoldenApiDefs(env, api_files_dir);
 
-  for (char c : kAlphabet) {
-    string golden_api_defs_str = GetGoldenApiDefsStr(env, api_files_dir, c);
-    string new_api_defs_str = new_api_defs_map[c].DebugString();
+  for (auto new_api_entry : new_api_defs_map) {
+    const auto& file_path = new_api_entry.first;
+    const auto& golden_api_defs_str = golden_api_defs_map.at(file_path);
+    string new_api_defs_str = new_api_entry.second.DebugString();
     new_api_defs_str = PBTxtToMultiline(new_api_defs_str, multi_line_fields);
     if (golden_api_defs_str == new_api_defs_str) {
       continue;
     }
     if (update_api_def) {
-      string output_file_path =
-          io::JoinPath(api_files_dir, strings::Printf(kApiDefFileFormat, c));
-      if (new_api_defs_str.empty()) {
-        std::cout << "Deleting " << output_file_path << "..." << std::endl;
-        TF_EXPECT_OK(env->DeleteFile(output_file_path));
-      } else {
-        std::cout << "Updating " << output_file_path << "..." << std::endl;
-        TF_EXPECT_OK(
-            WriteStringToFile(env, output_file_path, new_api_defs_str));
-      }
+      std::cout << "Updating " << file_path << "..." << std::endl;
+      TF_EXPECT_OK(WriteStringToFile(env, file_path, new_api_defs_str));
       updated_at_least_one_file = true;
     } else {
       EXPECT_EQ(golden_api_defs_str, new_api_defs_str)
           << "To update golden API files, run "
           << "tensorflow/core/api_def/update_api_def.sh.";
+    }
+  }
+
+  for (const auto& golden_api_entry : golden_api_defs_map) {
+    const auto& file_path = golden_api_entry.first;
+    if (new_api_defs_map.find(file_path) == new_api_defs_map.end()) {
+      if (update_api_def) {
+        std::cout << "Deleting " << file_path << "..." << std::endl;
+        TF_EXPECT_OK(env->DeleteFile(file_path));
+        updated_at_least_one_file = true;
+      } else {
+        EXPECT_EQ("", golden_api_entry.second)
+            << "To update golden API files, run "
+            << "tensorflow/core/api_def/update_api_def.sh.";
+      }
     }
   }
 

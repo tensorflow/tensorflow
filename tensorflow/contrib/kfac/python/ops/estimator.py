@@ -177,7 +177,7 @@ class FisherEstimator(object):
       elif (not math.isinf(reg_uses)) and reg_uses != total_uses:
         error_messages.append(
             "Variable {} registered with wrong number of uses ({} "
-            "vs {} actual).".format(var, reg_uses, total_uses))
+            "registrations vs {} uses).".format(var, reg_uses, total_uses))
 
     num_get_vars = len(reg_use_map)
 

@@ -319,8 +319,11 @@ def replicate(computation,
       # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
       # be rewritten away, leading to a runtime error.
       # TODO(phawkins): extend the rewrite to elide these nodes instead.
-      with ops.device(core(0)):
-        output_tensors = [array_ops.identity(x) for x in output_tensors]
+      new_output_tensors = []
+      for t in output_tensors:
+        with ops.device(t.device if t.device else core(0)):
+          new_output_tensors.append(array_ops.identity(t))
+      output_tensors = new_output_tensors
     finally:
       context.Exit()
 

@@ -45,7 +45,7 @@ AlphaNum::AlphaNum(Hex hex) {
     value >>= 4;
     mask >>= 4;
   } while (mask != 0);
-  piece_.set(writer, end - writer);
+  piece_ = StringPiece(writer, end - writer);
 }
 
 // ----------------------------------------------------------------------

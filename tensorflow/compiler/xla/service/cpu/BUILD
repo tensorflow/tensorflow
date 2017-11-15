@@ -122,6 +122,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",  # fixdeps: keep
         "//tensorflow/core:lib",  # fixdeps: keep
         "//tensorflow/core:stream_executor_no_cuda",
@@ -279,6 +280,7 @@ cc_library(
     srcs = ["dot_op_emitter.cc"],
     hdrs = ["dot_op_emitter.h"],
     deps = [
+        ":cpu_options",
         ":cpu_runtime",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -289,8 +291,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:vector_support_library",
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
@@ -716,6 +720,7 @@ cc_library(
     hdrs = ["cpu_options.h"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core:lib",
     ],
 )
 
