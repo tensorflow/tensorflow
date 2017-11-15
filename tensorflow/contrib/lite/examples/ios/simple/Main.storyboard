@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="13529" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="AeL-mv-yHn">
+    <device id="retina4_7" orientation="portrait">
+        <adaptation id="fullscreen"/>
+    </device>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="13527"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--Run Model View Controller-->
+        <scene sceneID="m38-Hj-Kfj">
+            <objects>
+                <viewController id="AeL-mv-yHn" customClass="RunModelViewController" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="M1k-4b-BAX">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <textView clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" editable="NO" textAlignment="natural" translatesAutoresizingMaskIntoConstraints="NO" id="DbE-IM-81q">
+                                <rect key="frame" x="0.0" y="567" width="375" height="100"/>
+                                <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="100" id="veM-XI-aAR"/>
+                                </constraints>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <textInputTraits key="textInputTraits" autocapitalizationType="sentences"/>
+                            </textView>
+                            <navigationBar contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="buh-UR-Kjn">
+                                <rect key="frame" x="0.0" y="20" width="375" height="44"/>
+                                <items>
+                                    <navigationItem id="bHt-ZF-oT9">
+                                        <barButtonItem key="rightBarButtonItem" title="Open" id="CRV-bu-AQ7">
+                                            <connections>
+                                                <action selector="openPhoto:" destination="AeL-mv-yHn" id="hdv-52-E2o"/>
+                                            </connections>
+                                        </barButtonItem>
+                                    </navigationItem>
+                                </items>
+                            </navigationBar>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="0dJ-2I-dTs">
+                                <rect key="frame" x="0.0" y="512" width="375" height="50"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="50" id="SvM-Ar-h0U"/>
+                                </constraints>
+                                <state key="normal" title="Run Model"/>
+                                <connections>
+                                    <action selector="runModel:" destination="AeL-mv-yHn" eventType="touchUpInside" id="Ysh-D6-q23"/>
+                                </connections>
+                            </button>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" translatesAutoresizingMaskIntoConstraints="NO" id="MWx-Hi-jhc">
+                                <rect key="frame" x="0.0" y="64" width="375" height="443"/>
+                            </imageView>
+                        </subviews>
+                        <color key="backgroundColor" white="0.0" alpha="1" colorSpace="calibratedWhite"/>
+                        <constraints>
+                            <constraint firstItem="TS8-up-6hr" firstAttribute="trailing" secondItem="MWx-Hi-jhc" secondAttribute="trailing" id="9On-ux-7kE"/>
+                            <constraint firstItem="0dJ-2I-dTs" firstAttribute="leading" secondItem="TS8-up-6hr" secondAttribute="leading" id="CVv-9Y-wbN"/>
+                            <constraint firstItem="DbE-IM-81q" firstAttribute="top" secondItem="0dJ-2I-dTs" secondAttribute="bottom" constant="5" id="KyK-Wj-Ftg"/>
+                            <constraint firstItem="DbE-IM-81q" firstAttribute="leading" secondItem="TS8-up-6hr" secondAttribute="leading" id="MGz-G1-2ge"/>
+                            <constraint firstItem="0dJ-2I-dTs" firstAttribute="top" secondItem="MWx-Hi-jhc" secondAttribute="bottom" constant="5" id="Skl-96-7Iv"/>
+                            <constraint firstItem="TS8-up-6hr" firstAttribute="trailing" secondItem="0dJ-2I-dTs" secondAttribute="trailing" id="Up4-6l-FoQ"/>
+                            <constraint firstItem="MWx-Hi-jhc" firstAttribute="leading" secondItem="TS8-up-6hr" secondAttribute="leading" id="V0B-Pe-30u"/>
+                            <constraint firstItem="buh-UR-Kjn" firstAttribute="leading" secondItem="TS8-up-6hr" secondAttribute="leading" id="YNI-CR-jcR"/>
+                            <constraint firstItem="MWx-Hi-jhc" firstAttribute="top" secondItem="buh-UR-Kjn" secondAttribute="bottom" id="cdi-vA-f6H"/>
+                            <constraint firstItem="TS8-up-6hr" firstAttribute="bottom" secondItem="DbE-IM-81q" secondAttribute="bottom" id="i4U-fR-X0p"/>
+                            <constraint firstItem="TS8-up-6hr" firstAttribute="trailing" secondItem="DbE-IM-81q" secondAttribute="trailing" id="isK-hQ-1Um"/>
+                            <constraint firstItem="buh-UR-Kjn" firstAttribute="top" secondItem="TS8-up-6hr" secondAttribute="top" id="vTX-Fp-5vn"/>
+                            <constraint firstItem="buh-UR-Kjn" firstAttribute="trailing" secondItem="TS8-up-6hr" secondAttribute="trailing" id="zf8-L6-Tp2"/>
+                        </constraints>
+                        <viewLayoutGuide key="safeArea" id="TS8-up-6hr"/>
+                    </view>
+                    <connections>
+                        <outlet property="imageView" destination="MWx-Hi-jhc" id="aQf-GJ-ZWK"/>
+                        <outlet property="textView" destination="DbE-IM-81q" id="kQO-CK-rLC"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="t5t-2D-KrN" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="-408" y="-85"/>
+        </scene>
+    </scenes>
+</document>
