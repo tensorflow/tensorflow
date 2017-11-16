@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
@@ -348,6 +349,9 @@ class OpsTest(test_util.TensorFlowTestCase):
   def testFormatString(self):
     x = constant_op.constant(3.1415)
     self.assertEqual('3.14', '{:.2f}'.format(x))
+
+  def testNoOpIsNone(self):
+    self.assertTrue(control_flow_ops.no_op() is None)
 
 
 if __name__ == '__main__':
