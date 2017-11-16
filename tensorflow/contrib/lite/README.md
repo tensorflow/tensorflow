@@ -43,7 +43,7 @@ The simplest way to compile the demo app, and try out changes to the project cod
 ### Install Bazel
 If bazel is not installed on your system, install it now by following [these directions](https://bazel.build/versions/master/docs/install.html)
 
-NOTE: Bazel does not currently support building for Android on Windows. Full support for gradle/cmake builds is coming soon, but in the meantime Windows users should download the [prebuilt binary](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/demo/TfLiteCameraDemo.apk) instead.
+NOTE: Bazel does not currently support building for Android on Windows. Full support for gradle/cmake builds is coming soon, but in the meantime Windows users should download the [prebuilt binary](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk) instead.
 
 ### Install Android NDK and SDK
 Bazel is the primary build system for TensorFlow. Bazel and the Android NDK and SDK must be installed on your system.
