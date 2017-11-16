@@ -78,17 +78,17 @@ class ZipDatasetOp : public DatasetOpKernel {
     string DebugString() override { return "ZipDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<NodeBuilder::NodeOut> input_graph_nodes;
       input_graph_nodes.reserve(inputs_.size());
       for (const auto& input : inputs_) {
         Node* input_node;
-        TF_RETURN_IF_ERROR(b->AddParentDataset(input, &input_node));
+        TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input, &input_node));
         input_graph_nodes.emplace_back(input_node);
       }
-      TF_RETURN_IF_ERROR(
-          b->AddDatasetWithInputAsList(this, input_graph_nodes, output));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {}, {std::make_pair(0, input_graph_nodes)}, {}, output));
       return Status::OK();
     }
 
