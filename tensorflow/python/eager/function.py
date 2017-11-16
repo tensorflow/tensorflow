@@ -211,7 +211,7 @@ def _map_sequence_obj_to_idx(sequence):
   return {id(x): i for i, x in enumerate(sequence)}
 
 
-class _GraphModeFunction(object):
+class GraphModeFunction(object):
   """Callable object representing a graph-mode function.
 
   Args:
@@ -232,10 +232,19 @@ class _GraphModeFunction(object):
       func_outputs structure.
     output_shapes: List of shapes of all tensors which are output by the
       internal function.
+    variables: (optional) List of variables to watch during function execution.
   """
 
-  def __init__(self, input_placeholders, extra_inputs, fdef, graph, operations,
-               func_outputs, func_outputs_to_fdef_outputs, output_shapes):
+  def __init__(self,
+               input_placeholders,
+               extra_inputs,
+               fdef,
+               graph,
+               operations,
+               func_outputs,
+               func_outputs_to_fdef_outputs,
+               output_shapes,
+               variables=None):
     assert len(input_placeholders) == len(fdef.signature.input_arg), "%s %s" % (
         len(input_placeholders), len(fdef.signature.input_arg))
     self._input_placeholders = input_placeholders
@@ -251,6 +260,11 @@ class _GraphModeFunction(object):
         func_outputs, (ops.Tensor, type(None))) else list(func_outputs)
     self._returns_to_fedf_outputs = func_outputs_to_fdef_outputs
     self._output_shapes = output_shapes
+    self._variables = variables if variables is not None else []
+
+  @property
+  def variables(self):
+    return self._variables
 
   def _compute_backprop(self):
     """Computes the backprop function object for this function."""
@@ -282,7 +296,7 @@ class _GraphModeFunction(object):
                      ] + list(sorted(c.known_ops, key=lambda x: x.name)),
         all_inputs, backward_outputs)
     _register_with_name(_backward_name(self._func_name), backward_function_def)
-    self._backward_function = _GraphModeFunction(
+    self._backward_function = GraphModeFunction(
         all_inputs, [], backward_function_def, self._graph, c.known_ops,
         in_gradients, _map_sequence_obj_to_idx(backward_outputs), shapes)
 
@@ -332,10 +346,15 @@ class _GraphModeFunction(object):
 
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
+    for v in self._variables:
+      if v._trainable:  # pylint: disable=protected-access
+        tape.watch_variable(v)
+
     tensor_inputs = [
         x for x in nest.flatten(args)
         if isinstance(x, ops.Tensor)
     ]
+
     if tape.should_record(tensor_inputs) or tape.should_record(
         self._extra_inputs):
       if not self._has_backprop:
@@ -427,7 +446,11 @@ def _defun_internal(name, func, args, kwds):
       func_inputs = _get_defun_inputs(args)
 
       with capture_tensors(captures):
-        func_outputs = func(*func_inputs, **kwds)
+        tape.push_new_tape()
+        try:
+          func_outputs = func(*func_inputs, **kwds)
+        finally:
+          variables = tape.pop_tape().watched_variables()
       ids = list(sorted(captures.keys()))
       if ids:
         extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
@@ -452,10 +475,16 @@ def _defun_internal(name, func, args, kwds):
     _register_with_name(f.name, f.definition)
   _register_with_name(_inference_name(name), inference_function_def)
 
-  return _GraphModeFunction(
-      all_inputs, extra_inputs, inference_function_def, tmp_graph,
-      tmp_graph.get_operations(), func_outputs,
-      _map_sequence_obj_to_idx(func_def_outputs), output_shapes)
+  return GraphModeFunction(
+      all_inputs,
+      extra_inputs,
+      inference_function_def,
+      tmp_graph,
+      tmp_graph.get_operations(),
+      func_outputs,
+      _map_sequence_obj_to_idx(func_def_outputs),
+      output_shapes,
+      variables=variables)
 
 
 # Defun uses this instead of Tensor as a cache key. Using dtype because
