@@ -410,7 +410,7 @@ def create_train_op(total_loss,
       loss value.
   """
   if global_step is _USE_GLOBAL_STEP:
-    global_step = training_util.get_global_step()
+    global_step = training_util.get_or_create_global_step()
 
   # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
   global_update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
