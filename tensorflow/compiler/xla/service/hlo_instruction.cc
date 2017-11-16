@@ -43,6 +43,7 @@ limitations under the License.
 
 namespace xla {
 
+using tensorflow::str_util::CEscape;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
@@ -1965,6 +1966,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
                                 }),
                            "}"));
   }
+  if (opcode() == HloOpcode::kInfeed && !infeed_config_.empty()) {
+    extra.push_back(StrCat("infeed_config=\"", CEscape(infeed_config_), "\""));
+  }
+  if (opcode() == HloOpcode::kOutfeed && !outfeed_config_.empty()) {
+    extra.push_back(
+        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
+  }
   return extra;
 }
 
@@ -2920,7 +2928,6 @@ string PaddingConfigToString(const PaddingConfig& padding) {
 
 string OpMetadataToString(const OpMetadata& metadata) {
   std::vector<string> result;
-  using tensorflow::str_util::CEscape;
   if (!metadata.op_type().empty()) {
     result.push_back(StrCat("op_type=\"", CEscape(metadata.op_type()), "\""));
   }
