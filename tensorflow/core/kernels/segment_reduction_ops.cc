@@ -376,6 +376,9 @@ struct UnsortedSegmentSumFunctor<CPUDevice, T, Index>
     auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
     for (int64 i = 0; i < N; ++i) {
       Index j = internal::SubtleMustCopy(segment_ids(i));
+      if (j < 0) {
+        continue;
+      }
       OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
                   errors::InvalidArgument(
                       "segment_ids", SliceDebugString(segment_ids_shape, i),

@@ -22,6 +22,7 @@ REGISTER_OP("GenerateVocabRemapping")
     .Input("old_vocab_file: string")
     .Attr("new_vocab_offset: int >= 0")
     .Attr("num_new_vocab: int >= 0")
+    .Attr("old_vocab_size: int >= -1 = -1")
     .Output("remapping: int64")
     .Output("num_present: int32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -43,7 +44,11 @@ Given a path to new and old vocabulary files, returns a remapping Tensor of
 length `num_new_vocab`, where `remapping[i]` contains the row number in the old
 vocabulary that corresponds to row `i` in the new vocabulary (starting at line
 `new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`
-in the new vocabulary is not in the old vocabulary.  `num_vocab_offset` enables
+in the new vocabulary is not in the old vocabulary.  The old vocabulary is
+constrained to the first `old_vocab_size` entries if `old_vocab_size` is not the
+default value of -1.
+
+`num_vocab_offset` enables
 use in the partitioned variable case, and should generally be set through
 examining partitioning info.  The format of the files should be a text file,
 with each line containing a single entity within the vocabulary.
@@ -69,6 +74,8 @@ new_vocab_file: Path to the new vocab file.
 old_vocab_file: Path to the old vocab file.
 new_vocab_offset: How many entries into the new vocab file to start reading.
 num_new_vocab: Number of entries in the new vocab file to remap.
+old_vocab_size: Number of entries in the old vocab file to consider.  If -1,
+  use the entire old vocabulary.
 remapping: A Tensor of length num_new_vocab where the element at index i
   is equal to the old ID that maps to the new ID i.  This element is -1 for any
   new ID that is not found in the old vocabulary.

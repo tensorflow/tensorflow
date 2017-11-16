@@ -513,7 +513,15 @@ Status BaseVisitor::HandleSend(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleSendDone(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 Status BaseVisitor::HandleRecv(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleRecvDone(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 

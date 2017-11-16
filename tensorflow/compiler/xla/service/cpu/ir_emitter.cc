@@ -1983,6 +1983,11 @@ Status IrEmitter::HandleSend(HloInstruction* send) {
   return Unimplemented("Send is not implemented on CPU. See b/33942983.");
 }
 
+Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
+  // TODO(b/33942983): Support Send/Recv on CPU.
+  return Unimplemented("Send-done is not implemented on CPU. See b/33942983.");
+}
+
 Status IrEmitter::HandleSlice(HloInstruction* slice) {
   VLOG(2) << "HandleSlice: " << slice->ToString();
   auto operand = slice->operand(0);
@@ -2146,6 +2151,11 @@ Status IrEmitter::HandleDynamicUpdateSlice(
 Status IrEmitter::HandleRecv(HloInstruction* recv) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Recv is not implemented on CPU. See b/33942983.");
+}
+
+Status IrEmitter::HandleRecvDone(HloInstruction* recv_done) {
+  // TODO(b/33942983): Support Send/Recv on CPU.
+  return Unimplemented("Recv-done is not implemented on CPU. See b/33942983.");
 }
 
 Status IrEmitter::HandlePad(HloInstruction* pad) {

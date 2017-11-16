@@ -39,6 +39,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -57,6 +58,15 @@ class IteratorTest(test.TestCase):
       gradients_impl.gradients(value, side)
     with self.assertRaisesRegexp(LookupError, "No gradient defined"):
       gradients_impl.gradients(value, [component, side])
+
+  def testCapturingStateInOneShotRaisesException(self):
+    var = variables.Variable(37.0, name="myvar")
+    dataset = (dataset_ops.Dataset.from_tensor_slices([0.0, 1.0, 2.0])
+               .map(lambda x: x + var))
+    with self.assertRaisesRegexp(
+        ValueError, r"`Dataset.make_one_shot_iterator\(\)` does not support "
+        "datasets that capture stateful objects.+myvar"):
+      dataset.make_one_shot_iterator()
 
   def testOneShotIterator(self):
     components = (np.arange(7),
@@ -385,6 +395,34 @@ class IteratorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element,
                  feed_dict={handle_placeholder: iterator_4_handle})
+
+  def testIteratorStringHandleReuseTensorObject(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    one_shot_iterator = dataset.make_one_shot_iterator()
+    initializable_iterator = dataset.make_initializable_iterator()
+    structure_iterator = iterator_ops.Iterator.from_structure(
+        dataset.output_types)
+
+    created_ops = len(ops.get_default_graph().get_operations())
+
+    self.assertIs(one_shot_iterator.string_handle(),
+                  one_shot_iterator.string_handle())
+    self.assertIs(initializable_iterator.string_handle(),
+                  initializable_iterator.string_handle())
+    self.assertIs(structure_iterator.string_handle(),
+                  structure_iterator.string_handle())
+
+    # Assert that getting the (default) string handle creates no ops.
+    self.assertEqual(created_ops, len(ops.get_default_graph().get_operations()))
+
+    # Specifying an explicit name will create a new op.
+    handle_with_name = one_shot_iterator.string_handle(name="foo")
+    self.assertEqual("foo", handle_with_name.op.name)
+    self.assertIsNot(one_shot_iterator.string_handle(), handle_with_name)
+
+    handle_with_same_name = one_shot_iterator.string_handle(name="foo")
+    self.assertEqual("foo_1", handle_with_same_name.op.name)
+    self.assertIsNot(handle_with_name, handle_with_same_name)
 
   def testIteratorStringHandleError(self):
     dataset_int_scalar = (dataset_ops.Dataset.from_tensor_slices([1, 2,

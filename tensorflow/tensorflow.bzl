@@ -168,26 +168,30 @@ WIN_COPTS = [
 
 # LINT.IfChange
 def tf_copts():
-  return (if_not_windows([
-      "-DEIGEN_AVOID_STL_ARRAY",
-      "-Iexternal/gemmlowp",
-      "-Wno-sign-compare",
-      "-ftemplate-depth=900",
-      "-fno-exceptions",
-  ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
-      ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
-          clean_dep("//tensorflow:android"): [
-              "-std=c++11",
-              "-DTF_LEAN_BINARY",
-              "-O2",
-              "-Wno-narrowing",
-              "-fomit-frame-pointer",
-          ],
-          clean_dep("//tensorflow:darwin"): [],
-          clean_dep("//tensorflow:windows"): WIN_COPTS,
-          clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,
-          clean_dep("//tensorflow:ios"): ["-std=c++11"],
-          "//conditions:default": ["-pthread"]
+  return (
+      if_not_windows([
+          "-DEIGEN_AVOID_STL_ARRAY",
+          "-Iexternal/gemmlowp",
+          "-Wno-sign-compare",
+          "-fno-exceptions",
+          "-ftemplate-depth=900"])
+      + if_cuda(["-DGOOGLE_CUDA=1"])
+      + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML", "-fopenmp",])
+      + if_android_arm(["-mfpu=neon"])
+      + if_linux_x86_64(["-msse3"])
+      + select({
+            clean_dep("//tensorflow:android"): [
+                "-std=c++11",
+                "-DTF_LEAN_BINARY",
+                "-O2",
+                "-Wno-narrowing",
+                "-fomit-frame-pointer",
+            ],
+            clean_dep("//tensorflow:darwin"): [],
+            clean_dep("//tensorflow:windows"): WIN_COPTS,
+            clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,
+            clean_dep("//tensorflow:ios"): ["-std=c++11"],
+            "//conditions:default": ["-pthread"]
       }))
 
 
@@ -672,6 +676,11 @@ def tf_cuda_only_cc_test(name,
       }),
       tags=tags + tf_cuda_tests_tags())
 
+register_extension_info(
+    extension_name="tf_cuda_only_cc_test",
+    label_regex_for_dep="{extension_name}_gpu")
+
+
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
                 deps,
@@ -746,6 +755,11 @@ def tf_java_test(name,
       *args,
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_java_test",
+    label_regex_for_dep="{extension_name}")
+
+
 def _cuda_copts():
   """Gets the appropriate set of copts for (maybe) CUDA compilation.
 
@@ -789,6 +803,10 @@ def tf_gpu_kernel_library(srcs,
       ]),
       alwayslink=1,
       **kwargs)
+
+register_extension_info(
+    extension_name="tf_gpu_kernel_library",
+    label_regex_for_dep="{extension_name}")
 
 
 def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
@@ -936,6 +954,10 @@ def tf_mkl_kernel_library(name,
           copts=copts,
           nocopts=nocopts
       ))
+
+register_extension_info(
+    extension_name="tf_mkl_kernel_library",
+    label_regex_for_dep="{extension_name}")
 
 
 # Bazel rules for building swig files.
@@ -1505,3 +1527,7 @@ def cc_library_with_android_deps(deps,
                                  **kwargs):
   deps = if_not_android(deps) + if_android(android_deps) + common_deps
   native.cc_library(deps=deps, **kwargs)
+
+register_extension_info(
+    extension_name="cc_library_with_android_deps",
+    label_regex_for_dep="{extension_name}")

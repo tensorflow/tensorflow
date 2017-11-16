@@ -146,6 +146,7 @@ class MasterSession : public core::RefCounted {
     bool collect_timeline = false;
     bool collect_rpcs = false;
     bool collect_partition_graphs = false;
+    bool report_tensor_allocations_upon_oom = false;
     Microseconds start_micros = Microseconds(0);
     Microseconds end_micros = Microseconds(0);
     std::vector<StepStats> step_stats;  // per partition

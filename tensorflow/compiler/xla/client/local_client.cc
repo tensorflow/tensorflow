@@ -27,16 +27,6 @@ namespace se = ::perftools::gputools;
 
 namespace xla {
 
-ExecutableBuildOptions& ExecutableBuildOptions::set_platform(
-    perftools::gputools::Platform* platform) {
-  platform_ = platform;
-  return *this;
-}
-
-perftools::gputools::Platform* ExecutableBuildOptions::platform() const {
-  return platform_;
-}
-
 ExecutableBuildOptions& ExecutableBuildOptions::set_device_ordinal(
     int device_ordinal) {
   device_ordinal_ = device_ordinal;
@@ -54,16 +44,6 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_result_layout(
 
 const Shape* ExecutableBuildOptions::result_layout() const {
   return result_layout_set_ ? &result_layout_ : nullptr;
-}
-
-ExecutableBuildOptions& ExecutableBuildOptions::set_has_hybrid_result(
-    bool has_hybrid_result) {
-  has_hybrid_result_ = has_hybrid_result;
-  return *this;
-}
-
-bool ExecutableBuildOptions::has_hybrid_result() const {
-  return has_hybrid_result_;
 }
 
 namespace {

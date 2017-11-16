@@ -154,6 +154,16 @@ Status VirtualScheduler::Init() {
     name_to_node[node->name()] = node;
   }
 
+  // TODO(dyoon): Instead of identifying _Send node here manually, add _Send
+  // to _Recv as control dependency when creating GrapplerItem.
+  std::unordered_map<string, const NodeDef*> name_to_send;
+  for (const auto& node : graph.node()) {
+    if (node.op() == "_Send") {
+      const auto& attr = node.attr();
+      name_to_send[attr.at("tensor_name").s()] = &node;
+    }
+  }
+
   // To reuse _Recv ops.
   std::unordered_map<RecvNodeDescriptor, const NodeDef*, RecvNodeDescritorHash,
                      RecvNodeDescriptorEqual>
@@ -164,7 +174,17 @@ Status VirtualScheduler::Init() {
   for (const auto* curr_node : nodes) {
     auto& curr_node_state = GetNodeStateOrCreateIt(curr_node);
     const string curr_node_device = DeviceName(curr_node);
-    for (const string& input_node_name : curr_node->input()) {
+    std::vector<string> inputs;
+    if (IsRecv(*curr_node)) {
+      const auto& attr = curr_node->attr();
+      const NodeDef* send = name_to_send[attr.at("tensor_name").s()];
+      inputs = {send->name()};
+    } else {
+      for (const string& input : curr_node->input()) {
+        inputs.push_back(input);
+      }
+    }
+    for (const string& input_node_name : inputs) {
       // Note that input_node_name may be in <prefix><node_name>:<port_num>
       // format, where <prefix> (e.g., "^" for control dependency) and
       // ":<port_num>" may be omitted. NodeName() extracts only the node_name.
@@ -219,7 +239,7 @@ Status VirtualScheduler::Init() {
     // Default case: node without inputs are ready at time 0.
     const bool has_no_inputs = curr_node->input().empty();
 
-    if (given_as_feed || has_no_inputs) {
+    if (!IsRecv(*curr_node) && (given_as_feed || has_no_inputs)) {
       curr_node_state.time_ready = Costs::Duration();
       ready_nodes_->AddNode(curr_node);
       VLOG(3) << "Added ready node: " << curr_node->name();
@@ -254,7 +274,10 @@ void VirtualScheduler::MaybeUpdateInputOutput(const NodeDef* node) {
   // This method is called when NodeState is created and adds input and output
   // properties for a few exceptional cases that GraphProperties cannot provide
   // input/output properties.
-  if (IsSend(*node) || IsRecv(*node)) {
+  if ((IsSend(*node) || IsRecv(*node)) && node->attr().count(kAttrInputSrc)) {
+    // _Send and _Recv ops created from VirtualScheduler have kAttrInputSrc
+    // attr; normal _Send and _Recv ops (from the input graph) do not have that
+    // attr.
     auto& node_state = node_map_[node];
     auto& inputs = node_state.input_properties;
     auto& outputs = node_state.output_properties;

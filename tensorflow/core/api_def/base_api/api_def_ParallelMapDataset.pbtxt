@@ -1,0 +1,15 @@
+op {
+  graph_op_name: "ParallelMapDataset"
+  in_arg {
+    name: "num_parallel_calls"
+    description: <<END
+The number of concurrent invocations of `f` that process
+elements from `input_dataset` in parallel.
+END
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  description: <<END
+Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes up
+to `num_parallel_calls` copies of `f` in parallel.
+END
+}

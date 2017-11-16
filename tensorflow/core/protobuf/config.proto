@@ -331,6 +331,13 @@ message RunOptions {
   // EXPERIMENTAL.  Options used to initialize DebuggerState, if enabled.
   DebugOptions debug_options = 6;
 
+  // When enabled, causes tensor alllocation information to be included in
+  // the error message when the Run() call fails because the allocator ran
+  // out of memory (OOM).
+  //
+  // Enabling this option can slow down the Run() call.
+  bool report_tensor_allocations_upon_oom = 7;
+
   reserved 4;
 }
 

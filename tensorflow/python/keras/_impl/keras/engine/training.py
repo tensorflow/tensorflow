@@ -28,7 +28,7 @@ from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras import losses
 from tensorflow.python.keras._impl.keras import metrics as metrics_module
 from tensorflow.python.keras._impl.keras import optimizers
-from tensorflow.python.keras._impl.keras.engine.topology import Container
+from tensorflow.python.keras._impl.keras.engine.topology import Network
 from tensorflow.python.keras._impl.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import OrderedEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import Sequence
@@ -559,8 +559,8 @@ def _standardize_weights(y,
       return np.ones((y.shape[0], y.shape[1]), dtype=K.floatx())
 
 
-class Model(Container):
-  """The `Model` class adds training & evaluation routines to a `Container`.
+class Model(Network):
+  """The `Model` class adds training & evaluation routines to a `Network`.
   """
 
   def compile(self,

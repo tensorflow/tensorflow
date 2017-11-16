@@ -402,7 +402,6 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           // Iteration ends when there are no more files to process.
           if (current_file_index_ == dataset()->filenames_.size()) {
             *end_of_sequence = true;
-            is_exhausted_ = true;
             return Status::OK();
           }
 

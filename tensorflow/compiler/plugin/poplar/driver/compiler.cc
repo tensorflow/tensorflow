@@ -57,6 +57,7 @@ limitations under the License.
 #include <poplar/exceptions.hpp>
 #include <popstd/exceptions.hpp>
 #include <xgraph_core/exceptions.hpp>
+#include <poplar/IPUModel.hpp>
 
 #include <popconv/codelets.hpp>
 #include <poplin/codelets.hpp>
@@ -118,6 +119,9 @@ public:
     const Shape& mod_shape = layout->parameter_shape(inst->parameter_number());
     std::vector<Shape> module_shapes = FlattenedXlaShape(mod_shape);
 
+    poplar::DataTransferOptions opt;
+    opt.convertHalf = true;
+
     for (unsigned i=0; i<shapes.size(); i++) {
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out,
@@ -128,13 +132,16 @@ public:
       out = ConvertFromDeviceLayout(module_shapes[i], out);
 
       graph_->createHostWrite(
-              sep::GetInputCopyHandle(inst->parameter_number(), i), out);
+              sep::GetInputCopyHandle(inst->parameter_number(), i), out, opt);
     }
     return Status::OK();
   }
 
   Status FinishVisit(HloInstruction* inst) {
     HloComputation* comp = inst->parent();
+
+    poplar::DataTransferOptions opt;
+    opt.convertHalf = true;
 
     auto outputs = FindInstructionOutputs(tensor_map, inst);
 
@@ -156,7 +163,7 @@ public:
       }
 
       poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
-      graph_->createHostRead(sep::GetOutputCopyHandle(o), out);
+      graph_->createHostRead(sep::GetOutputCopyHandle(o), out, opt);
     }
 
     if (inst->opcode() == HloOpcode::kParameter) {
@@ -254,16 +261,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
 
-  poplar::DeviceInfo dev_info;
-  dev_info.IPUExchangeType =
-      poplar::DeviceInfo::ExchangeType::AGGRESSIVE_MULTICAST;
-
-  poplar::DeviceOptions dev_opts;
-  dev_opts.convertFloat16 = true;
+  poplar::IPUModel model;
+  model.IPUExchangeType = poplar::IPUModel::ExchangeType::AGGRESSIVE_MULTICAST;
 
   poplar::Device dev(use_ipu_model ?
-                     poplar::createIPUModelDevice(dev_info, dev_opts) :
-                     poplar::createCPUDevice(dev_opts));
+                     model.createDevice() :
+                     poplar::Device::createCPUDevice());
 
   poplar::Graph* graph = new poplar::Graph(dev);
   graph->addCodelets(GetPathToGraphProgFile());
@@ -302,7 +305,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   auto comp_layout = hlo_module->mutable_entry_computation_layout()
           ->mutable_result_layout();
   if (!comp_layout->LayoutIsSet()) {
-    comp_layout->CopyLayoutFromShape(entry->root_instruction()->shape());
+    auto shape = entry->root_instruction()->shape();
+    TF_CHECK_OK(comp_layout->CopyLayoutFromShape(shape));
   }
 
   VLOG(1) << "Compiling main computation " << entry->name();
@@ -331,7 +335,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     try {
       VLOG(1) << "Compile engine " << hlo_module->name();
 
-      engine.reset(new poplar::Engine(*graph, progs));
+      engine.reset(new poplar::Engine(dev, *graph, progs));
     }
     catch (std::logic_error e) {
       return port::Status(port::error::UNKNOWN,

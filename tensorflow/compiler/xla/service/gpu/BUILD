@@ -470,6 +470,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:core",
         "@llvm//:support",

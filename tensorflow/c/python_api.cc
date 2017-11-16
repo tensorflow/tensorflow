@@ -46,6 +46,33 @@ void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
                 TF_Status* status) {
   mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(&new_src.oper->node);
+
+  if (ic->num_outputs() <= new_src.index) {
+    status->status = tensorflow::errors::OutOfRange(
+        "Cannot update edge. Output index [", new_src.index,
+        "] is greater than the number of total outputs [", ic->num_outputs(),
+        "].");
+    return;
+  }
+  tensorflow::shape_inference::ShapeHandle shape = ic->output(new_src.index);
+
+  tensorflow::shape_inference::InferenceContext* ic_dst =
+      graph->refiner.GetContext(&dst.oper->node);
+  if (ic_dst->num_inputs() <= dst.index) {
+    status->status = tensorflow::errors::OutOfRange(
+        "Cannot update edge. Input index [", dst.index,
+        "] is greater than the number of total inputs [", ic_dst->num_inputs(),
+        "].");
+    return;
+  }
+  if (!ic_dst->MergeInput(dst.index, shape)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Cannot update edge, incompatible shapes: ", ic_dst->DebugString(shape),
+        " and ", ic_dst->DebugString(ic_dst->input(dst.index)), ".");
+    return;
+  }
   status->status = graph->graph.UpdateEdge(&new_src.oper->node, new_src.index,
                                            &dst.oper->node, dst.index);
 }

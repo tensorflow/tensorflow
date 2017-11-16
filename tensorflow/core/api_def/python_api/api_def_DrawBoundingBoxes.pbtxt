@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DrawBoundingBoxes"
+  endpoint {
+    name: "image.draw_bounding_boxes"
+  }
+}

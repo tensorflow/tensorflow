@@ -42,9 +42,9 @@ limitations under the License.
 
 #if defined(__APPLE__)
 static void sincos(double, double*, double*)
-    __attribute__((weakref("__sincos")));
+            __attribute__((weakref ("__sincos")));
 static void sincosf(float, float*, float*)
-    __attribute__((weakref("__sincosf")));
+            __attribute__((weakref ("__sincosf")));
 #endif
 
 namespace xla {

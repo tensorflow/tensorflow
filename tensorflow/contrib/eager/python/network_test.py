@@ -67,7 +67,7 @@ class NetworkTest(test.TestCase):
         original_output,
         self.evaluate(net(input_value)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testTrainableAttribute(self):
     net = network.Network()
     self.assertTrue(net.trainable)
@@ -75,7 +75,7 @@ class NetworkTest(test.TestCase):
       net.trainable = False
     self.assertTrue(net.trainable)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNetworkCall(self):
     net = MyNetwork(name="abcd")
     net(constant_op.constant([[2.0]]))  # Force variables to be created.
@@ -85,6 +85,7 @@ class NetworkTest(test.TestCase):
     result = net(constant_op.constant([[2.0]]))
     self.assertEqual(34.0, self.evaluate(result))
 
+  # TODO(allenl): This test creates garbage in some Python versions
   @test_util.run_in_graph_and_eager_modes()
   def testNetworkSaveRestoreAlreadyBuilt(self):
     net = MyNetwork(name="abcd")
@@ -96,6 +97,7 @@ class NetworkTest(test.TestCase):
     self._save_modify_load_network_built(net, global_step=None)
     self._save_modify_load_network_built(net, global_step=10)
 
+  # TODO(allenl): This test creates garbage in some Python versions
   @test_util.run_in_graph_and_eager_modes()
   def testSaveRestoreDefaultGlobalStep(self):
     net = MyNetwork(name="abcd")
@@ -106,6 +108,7 @@ class NetworkTest(test.TestCase):
     save_path = net.save(self.get_temp_dir())
     self.assertIn("abcd-4242", save_path)
 
+  # TODO(allenl): This test creates garbage in some Python versions
   @test_util.run_in_graph_and_eager_modes()
   def testNetworkSaveAndRestoreIntoUnbuilt(self):
     save_dir = self.get_temp_dir()
@@ -377,25 +380,25 @@ class NetworkTest(test.TestCase):
     gc.set_debug(previous_gc_debug_flags)
     gc.enable()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testAnonymousNoNameInitially(self):
     net = MyNetwork()
     with self.assertRaisesRegexp(ValueError, "does not yet have a final name"):
       net.name  # pylint: disable=pointless-statement
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testExplicitHasNameInitially(self):
     net = MyNetwork(name="abcd")
     self.assertEqual("abcd", net.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testUsingResourceVariables(self):
     net = MyNetwork()
     net(constant_op.constant([[0.]]))
     self.assertIsInstance(net.trainable_weights[0],
                           resource_variable_ops.ResourceVariable)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDuplicateNameError(self):
     one = constant_op.constant([[1.]])
     net = MyNetwork(name="foo")
@@ -405,21 +408,105 @@ class NetworkTest(test.TestCase):
       net1 = MyNetwork(name="foo")
       net1(one)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testWrappingInVariableScope(self):
+    one = constant_op.constant([[1.]])
+    # Naming happens in the order of first build rather than the order of
+    # construction, but for clarity they're the same here and construction is
+    # annotated.
+    outside_net_before = MyNetwork()  # name=my_network_1
+    outside_net_before(one)
+    captured_scope = variable_scope.get_variable_scope()
     with variable_scope.variable_scope("outside_scope"):
-      net = MyNetwork()
-      one = constant_op.constant([[1.]])
-      with self.assertRaisesRegexp(
-          ValueError,
-          ("Creating Networks inside named variable_scopes is currently not "
-           "supported")):
-        net(one)
-      # Alternatively, we could re-name the Network to match the variable_scope:
-      # self.assertEqual("outside_scope/my_network_1", net.name)
-      # self.assertStartsWith(
-      #     expected_start="outside_scope/my_network_1/dense/",
-      #     actual=net.trainable_weights[0].name)
+      net1 = MyNetwork()  # name=outside_scope/my_network_1
+      net1(one)
+      name_conflict1 = MyNetwork(name="name_conflict")  # fine, unique so far
+      name_conflict2 = MyNetwork(name="name_conflict")  # error on build
+      with variable_scope.variable_scope("inside_scope"):
+        # No issue here since the name is unique within its scope.
+        name_conflict3 = MyNetwork(name="name_conflict")
+      net2 = MyNetwork()  # name=outside_scope/my_network_3 to avoid the
+                          # variable_scope my_network_2 below.
+      vs_name_conflict = MyNetwork(name="vs_name_conflict")  # conflict below
+    with variable_scope.variable_scope("intervening_scope"):
+      with variable_scope.variable_scope(captured_scope):
+        with variable_scope.variable_scope("outside_scope"):
+          name_conflict4 = MyNetwork(name="name_conflict")  # error on build
+          with variable_scope.variable_scope("my_network_2"):
+            pass
+          with variable_scope.variable_scope("vs_name_conflict"):
+            pass
+          net3 = MyNetwork()  # name=outside_scope/my_network_4
+    name_conflict1(one)
+    with self.assertRaisesRegexp(
+        ValueError, "named 'name_conflict' already exists"):
+      name_conflict2(one)
+    name_conflict3(one)
+    net2(one)
+    with self.assertRaisesRegexp(
+        ValueError, "or a variable_scope was created with this name"):
+      vs_name_conflict(one)
+    with self.assertRaisesRegexp(
+        ValueError, "named 'name_conflict' already exists"):
+      name_conflict4(one)
+    self.assertEqual("outside_scope/name_conflict",
+                     name_conflict1.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/name_conflict/dense_1/",
+        actual=name_conflict1.variables[0].name)
+    self.assertEqual("outside_scope/inside_scope/name_conflict",
+                     name_conflict3.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/inside_scope/name_conflict/dense_1/",
+        actual=name_conflict3.variables[0].name)
+    self.assertEqual("outside_scope/my_network_1", net1.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/my_network_1/dense_1/",
+        actual=net1.trainable_weights[0].name)
+    self.assertEqual("outside_scope/my_network_3", net2.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/my_network_3/dense_1/",
+        actual=net2.trainable_weights[0].name)
+    net3(one)
+    self.assertEqual("outside_scope/my_network_4", net3.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/my_network_4/dense_1/",
+        actual=net3.trainable_weights[0].name)
+    outside_net_after = MyNetwork()
+    outside_net_after(one)
+    self.assertEqual("my_network_1", outside_net_before.name)
+    self.assertStartsWith(
+        expected_start="my_network_1/dense_1/",
+        actual=outside_net_before.trainable_weights[0].name)
+    self.assertEqual("my_network_2", outside_net_after.name)
+    self.assertStartsWith(
+        expected_start="my_network_2/dense_1/",
+        actual=outside_net_after.trainable_weights[0].name)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testVariableScopeStripping(self):
+    with variable_scope.variable_scope("scope1"):
+      with variable_scope.variable_scope("scope2"):
+        net = MyNetwork()
+    net(constant_op.constant([[2.0]]))
+    self.evaluate(net.variables[0].assign([[42.]]))
+    self.assertEqual(net.name, "scope1/scope2/my_network_1")
+    self.assertStartsWith(
+        expected_start="scope1/scope2/my_network_1/dense_1/",
+        actual=net.trainable_weights[0].name)
+    save_path = net.save(self.get_temp_dir())
+    self.assertIn("scope1_scope2_my_network_1", save_path)
+    restore_net = MyNetwork()
+    # Delayed restoration
+    restore_net.restore(save_path)
+    restore_net(constant_op.constant([[1.0]]))
+    self.assertAllEqual([[42.]],
+                        self.evaluate(restore_net.variables[0]))
+    self.evaluate(restore_net.variables[0].assign([[-1.]]))
+    # Immediate restoration
+    restore_net.restore(save_path)
+    self.assertAllEqual([[42.]],
+                        self.evaluate(restore_net.variables[0]))
 
   @test_util.run_in_graph_and_eager_modes()
   def testLayerNamesRespected(self):
@@ -440,7 +527,7 @@ class NetworkTest(test.TestCase):
                           actual=net.trainable_weights[0].name)
     self.assertEqual("explicit_name", net.first.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testWrappingInAnonymousVariableScope(self):
     # Named outside variable_scopes are not supported at the moment. However,
     # blank-named top level variable scopes do not change variable names, and so
@@ -455,20 +542,20 @@ class NetworkTest(test.TestCase):
       net(one)
     self.assertTrue(was_called[0])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testReasonableSlashError(self):
     with self.assertRaisesRegexp(
         ValueError, "not allowed in Network names"):
       MyNetwork(name="slash/slash")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNoVariableScopeNames(self):
     with self.assertRaisesRegexp(
         ValueError, "VariableScopes are not valid Network names"):
       with variable_scope.variable_scope("some_scope") as vs:
         MyNetwork(name=vs)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testVariableScopeNameCollision(self):
     with variable_scope.variable_scope("abcd"):
       pass
@@ -478,7 +565,7 @@ class NetworkTest(test.TestCase):
       one = constant_op.constant([[1.]])
       net(one)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNetworkVariablesDoNotInterfere(self):
     core.Dense(1, use_bias=True)  # Should not interfere with naming.
     net1 = MyNetwork()
@@ -1007,6 +1094,7 @@ class NetworkTest(test.TestCase):
 
 class SequentialTest(test.TestCase):
 
+  @test_util.assert_no_garbage_created
   def testTwoLayers(self):
     # Create a sequential network with one layer.
     net = network.Sequential([core.Dense(1, use_bias=False)])
@@ -1028,6 +1116,7 @@ class SequentialTest(test.TestCase):
     l2.trainable_variables[0].assign([[11.0]])
     self.assertEqual(231.0, net(constant_op.constant([[7.0]])).numpy())
 
+  @test_util.assert_no_garbage_created
   def testFunctions(self):
     # Create a sequential network with one function.
     net = network.Sequential([nn_ops.relu])
@@ -1038,6 +1127,7 @@ class SequentialTest(test.TestCase):
     net.add(math_ops.negative)
     self.assertEqual(-2.0, net(two).numpy())
 
+  @test_util.assert_no_garbage_created
   def testTrainingLayer(self):
     net = network.Sequential([core.Dropout(0.99999)])
     two = constant_op.constant(2.0)
@@ -1051,6 +1141,7 @@ class SequentialTest(test.TestCase):
     # Should only fail spuriously 1 in 10^100 runs.
     self.fail("Didn't see dropout happen after 20 tries.")
 
+  @test_util.assert_no_garbage_created
   def testTrainingFunction(self):
     # Output depends on value of "training".
     def add_training(input_value, training=None):

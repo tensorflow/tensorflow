@@ -137,6 +137,9 @@ function main() {
         fi
       fi
     fi
+    # Install toco as a binary in aux-bin.
+    mkdir "${TMPDIR}/tensorflow/aux-bin"
+    cp bazel-bin/tensorflow/contrib/lite/toco/toco ${TMPDIR}/tensorflow/aux-bin/
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers

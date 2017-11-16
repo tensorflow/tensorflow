@@ -111,7 +111,11 @@ public:
 
   Status HandleSend(HloInstruction* inst) override;
 
+  Status HandleSendDone(HloInstruction* inst) override;
+
   Status HandleRecv(HloInstruction* inst) override;
+
+  Status HandleRecvDone(HloInstruction* inst) override;
 
   Status HandleBatchNormInference(HloInstruction* inst) override;
 

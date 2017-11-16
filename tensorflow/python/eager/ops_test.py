@@ -345,6 +345,10 @@ class OpsTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError):
       float(x)
 
+  def testFormatString(self):
+    x = constant_op.constant(3.1415)
+    self.assertEqual('3.14', '{:.2f}'.format(x))
+
 
 if __name__ == '__main__':
   test.main()
