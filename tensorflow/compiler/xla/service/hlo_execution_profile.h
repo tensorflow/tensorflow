@@ -29,18 +29,18 @@ namespace xla {
 
 class HloInstruction;
 
-// Maps all HloInstructions and HloComputions in an HloModule to integers.
-// These integers form the contiguous range [0, GetTotalCount()).
-class HloToProfileIndex {
+// Maps all HloInstructions and HloComputations in an HloModule to integers.
+// These integers form the contiguous range [0, total_count()).
+class HloProfileIndexMap {
  public:
-  // Scans `module` to populate this instance of HloToProfileIndex.
-  explicit HloToProfileIndex(const HloModule& module);
+  // Scans `module` to populate this instance of HloProfileIndexMap.
+  explicit HloProfileIndexMap(const HloModule& module);
 
-  HloToProfileIndex(const HloToProfileIndex&) = default;
-  HloToProfileIndex(HloToProfileIndex&&) = default;
+  HloProfileIndexMap(const HloProfileIndexMap&) = default;
+  HloProfileIndexMap(HloProfileIndexMap&&) = default;
 
-  HloToProfileIndex& operator=(const HloToProfileIndex&) = default;
-  HloToProfileIndex& operator=(HloToProfileIndex&&) = default;
+  HloProfileIndexMap& operator=(const HloProfileIndexMap&) = default;
+  HloProfileIndexMap& operator=(HloProfileIndexMap&&) = default;
 
   size_t GetProfileIndexFor(const HloInstruction& instruction) const {
     return FindOrDie(instruction_to_profile_idx(), &instruction);
@@ -97,14 +97,14 @@ class HloExecutionProfile {
 
   // Return the number of cycles this computation took to execute.
   uint64 total_cycles_executed(const HloComputation& computation) const {
-    return profile_counters_[hlo_to_profile_index_.GetProfileIndexFor(
+    return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(
         computation)];
   }
 
   // Record how many cycles a computation took to execute.
   void set_total_cycles_executed(const HloComputation& computation,
                                  uint64 total_cycles_executed) {
-    profile_counters_[hlo_to_profile_index_.GetProfileIndexFor(computation)] =
+    profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(computation)] =
         total_cycles_executed;
   }
 
@@ -117,9 +117,9 @@ class HloExecutionProfile {
   string ToString(const DeviceDescription& device_description) const;
 
  private:
-  // hlo_to_profile_index_ maps an Hlo entity (computation or instruction) to an
-  // index in profile_counters_.
-  HloToProfileIndex hlo_to_profile_index_;
+  // hlo_profile_index_map_ maps an Hlo entity (computation or instruction) to
+  // an index in profile_counters_.
+  HloProfileIndexMap hlo_profile_index_map_;
 
   // Used to print profile_counters_ in a human readable form.
   HloProfilePrinter hlo_profile_printer_;
