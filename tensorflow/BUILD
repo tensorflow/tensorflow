@@ -375,6 +375,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_fold/llgtm/...",
     ],

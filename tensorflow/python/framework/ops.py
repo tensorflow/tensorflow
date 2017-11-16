@@ -605,11 +605,6 @@ class Tensor(_TensorLike):
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
 
-  @staticmethod
-  def _delete_trace(tid):
-    """Helper function to be called by __del__ of the subclass."""
-    tape.delete_trace(tid)
-
   @property
   def dtype(self):
     # Note: using the intern table directly here as this is
@@ -720,11 +715,6 @@ class _EagerTensorBase(Tensor):
       new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
-    if core.active_trace() is not None:
-      core.active_trace().record_tensor("COPY",
-                                        tensor_id(new_tensor),
-                                        new_tensor.device,
-                                        new_tensor.shape.num_elements())
 
     # Record the copy on tape and define backprop copy as well.
     if not context.in_graph_mode():
@@ -1540,13 +1530,6 @@ class Operation(object):
         raise TypeError("input needs to be a Tensor: %s" % a)
       # Mark that we consume the inputs.
       a._add_consumer(self)  # pylint: disable=protected-access
-    if output_types is None:
-      output_types = []
-    self._output_types_val = output_types
-    self._outputs = [
-        Tensor(self, i, output_type)
-        for i, output_type in enumerate(output_types)
-    ]
     if input_types is None:
       input_types = [i.dtype.base_dtype for i in self._inputs]
     else:
@@ -1576,25 +1559,6 @@ class Operation(object):
     self._original_op = original_op
     self._op_def = op_def
     self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
-    # Define self._c_op before calling self._control_flow_context.AddOp(), since
-    # that will call methods on this op that check if self._c_op is set.
-    self._c_op = None
-    # Add this op to the current control flow context:
-    self._control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
-    if self._control_flow_context is not None:
-      # TODO(skyewm): consider refactoring this to call self._create_c_op()
-      # first. This would require updating the TF_Operation's ID (see the
-      # comment and self._id_value update below). The disadvantage of calling
-      # AddOp() first is that we need to maintain Operation state that is
-      # accessed by AddOp() in Python, e.g. the input Tensors.
-      self._control_flow_context.AddOp(self)
-    # NOTE(keveman): Control flow context's AddOp could be creating new ops and
-    # setting op.inputs[index] = new_op. Thus the new ops' id could be larger
-    # than this op's id even though this op depend on them. Therefore, delaying
-    # assigning id to this op until all ops this could be dependent on are
-    # created.
-    self._id_value = self._graph._next_id()  # pylint: disable=protected-access
-    self._recompute_node_def()
 
     if self._graph._c_graph:  # pylint: disable=protected-access
       if self._op_def:
@@ -1608,6 +1572,29 @@ class Operation(object):
 
       self._c_op = _create_c_op(self._graph, self._node_def, grouped_inputs,
                                 self._control_inputs)
+    else:
+      self._c_op = None
+
+    # Initialize self._outputs
+    if output_types is None:
+      output_types = []
+    self._output_types_val = output_types
+    self._outputs = [
+        Tensor(self, i, output_type)
+        for i, output_type in enumerate(output_types)
+    ]
+
+    # Add this op to the current control flow context:
+    self._control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
+    if self._control_flow_context is not None:
+      self._control_flow_context.AddOp(self)
+    # NOTE(keveman): Control flow context's AddOp could be creating new ops and
+    # setting op.inputs[index] = new_op. Thus the new ops' id could be larger
+    # than this op's id even though this op depend on them. Therefore, delaying
+    # assigning id to this op until all ops this could be dependent on are
+    # created.
+    self._id_value = self._graph._next_id()  # pylint: disable=protected-access
+    self._recompute_node_def()
 
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
     """Regroups a flat list of input tensors into scalar and sequence inputs.

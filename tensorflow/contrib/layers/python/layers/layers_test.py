@@ -1345,10 +1345,19 @@ class DropoutTest(test.TestCase):
       num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
       output = _layers.dropout(images)
       num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
-      sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
       self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
+
+  def testDropoutSeed(self):
+    """Test that providing the same seed produces the same result."""
+    height, width = 10, 10
+    with self.test_session() as sess:
+      images = random_ops.random_uniform(
+          (5, height, width, 3), seed=1, name='images')
+      output1 = _layers.dropout(images, seed=1)
+      output2 = _layers.dropout(images, seed=1)
+      self.assertAllEqual(*sess.run([output1, output2]))
 
   def testCreateDropoutNoTraining(self):
     height, width = 3, 3
@@ -1358,7 +1367,6 @@ class DropoutTest(test.TestCase):
       num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
       output = _layers.dropout(images, is_training=False)
       num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
-      sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertEqual(num_elem, num_elem_initial)
       outputs, inputs = sess.run([output, images])

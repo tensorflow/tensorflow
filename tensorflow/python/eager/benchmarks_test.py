@@ -170,6 +170,18 @@ class MicroBenchmarks(test.Benchmark):
     m = self._m_2
     self._run(lambda: gen_array_ops.identity(m), 30000)
 
+  def benchmark_tfe_py_execute_identity(self):
+    m = self._m_2
+    ctx_handle = context.context()._handle
+    attrs = ("T", self._m_2.dtype.as_datatype_enum)
+    inputs = [m]
+
+    def f():
+      pywrap_tensorflow.TFE_Py_Execute(
+          ctx_handle, None, "Identity", inputs, attrs, 1)
+
+    self._run(f, 30000)
+
   def benchmark_tf_gradient_function_identity(self):
     m = self._m_2
     self._run(

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/summary_interface.h"
@@ -267,5 +268,29 @@ class WriteAudioSummaryOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("WriteAudioSummary").Device(DEVICE_CPU),
                         WriteAudioSummaryOp);
+
+class WriteGraphSummaryOp : public OpKernel {
+ public:
+  explicit WriteGraphSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    SummaryWriterInterface* s;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
+    core::ScopedUnref unref(s);
+    const Tensor* t;
+    OP_REQUIRES_OK(ctx, ctx->input("global_step", &t));
+    const int64 global_step = t->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
+    std::unique_ptr<GraphDef> graph{new GraphDef};
+    if (!ParseProtoUnlimited(graph.get(), t->scalar<string>()())) {
+      ctx->CtxFailureWithWarning(
+          errors::DataLoss("Bad tf.GraphDef binary proto tensor string"));
+      return;
+    }
+    OP_REQUIRES_OK(ctx, s->WriteGraph(global_step, std::move(graph)));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("WriteGraphSummary").Device(DEVICE_CPU),
+                        WriteGraphSummaryOp);
 
 }  // namespace tensorflow

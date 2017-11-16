@@ -23,27 +23,6 @@ namespace cpu {
 
 bool PotentiallyImplementedAsEigenConvolution(
     const HloInstruction& convolution);
-
-bool PotentiallyImplementedAsEigenDot(const HloInstruction& dot);
-
-enum class DotInLlvmIrProfitable { kYes, kNo, kWithColumnMajorRhs };
-
-// Returns a value to indicate if (and under what conditions) will lowering
-// |dot| as a untiled LLVM IR dot operation be profitable over calling into
-// Eigen or emitting a tiled LLVM IR implementation.  Possible return values
-// are:
-//
-//  * DotInLlvmIrProfitable::kYes - always profitable.
-//  * DotInLlvmIrProfitable::kNo - never profitable.
-//  * DotInLlvmIrProfitable::kWithColumnMajorRhs - only if we can manage to make
-//    the Rhs layout column major.
-DotInLlvmIrProfitable ProfitableToImplementDotInUntiledLlvmIr(
-    const HloInstruction& dot);
-
-// Returns true to indicate that we can generate a tiled LLVM IR implementation
-// for |dot|.
-bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot);
-
 }  // namespace cpu
 }  // namespace xla
 

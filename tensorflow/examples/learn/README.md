@@ -23,7 +23,7 @@ processing (`pip install -U pandas`).
 
 ## Specialized Models
 * [Building a Random Forest Model](https://www.tensorflow.org/code/tensorflow/examples/learn/random_forest_mnist.py)
-* [Building a Wide & Deep Model](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py)
+* [Building a Wide & Deep Model](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py)
 * [Building a Residual Network Model](https://www.tensorflow.org/code/tensorflow/examples/learn/resnet.py)
 
 ## Text classification

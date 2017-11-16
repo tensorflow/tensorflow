@@ -43,6 +43,7 @@ limitations under the License.
 
 namespace xla {
 
+using tensorflow::str_util::CEscape;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
@@ -1209,6 +1210,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                   new_operands[2], new_operands[3],
                                   new_operands[4], epsilon(), feature_index());
       break;
+    case HloOpcode::kConditional:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
@@ -1602,6 +1604,7 @@ bool HloInstruction::IdenticalSlowPath(
       return dimensions() == other.dimensions();
 
     // These opcodes are not yet supported.
+    case HloOpcode::kConditional:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
@@ -1964,6 +1967,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
                                   StrAppend(out, pre->name());
                                 }),
                            "}"));
+  }
+  if (opcode() == HloOpcode::kInfeed && !infeed_config_.empty()) {
+    extra.push_back(StrCat("infeed_config=\"", CEscape(infeed_config_), "\""));
+  }
+  if (opcode() == HloOpcode::kOutfeed && !outfeed_config_.empty()) {
+    extra.push_back(
+        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }
   return extra;
 }
@@ -2347,6 +2357,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
 
     // These opcodes are not handled here.
+    case HloOpcode::kConditional:
     case HloOpcode::kTrace:
       break;
   }
@@ -2920,7 +2931,6 @@ string PaddingConfigToString(const PaddingConfig& padding) {
 
 string OpMetadataToString(const OpMetadata& metadata) {
   std::vector<string> result;
-  using tensorflow::str_util::CEscape;
   if (!metadata.op_type().empty()) {
     result.push_back(StrCat("op_type=\"", CEscape(metadata.op_type()), "\""));
   }
