@@ -3655,7 +3655,10 @@ py_test(
     size = "small",
     srcs = ["training/basic_session_run_hooks_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "notsan",  # intermittent races on a few percent of runs
+    ],
     deps = [
         ":client",
         ":client_testlib",
