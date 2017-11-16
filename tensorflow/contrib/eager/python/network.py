@@ -37,6 +37,20 @@ from tensorflow.python.training import training_util
 # functions in base.py which should be reused.
 
 
+def _network_name_scope_naming(current_variable_scope):
+  """Name scope naming to match operation names to variable names.
+
+  Used in Networks and also applied to non-Network Layers which are added to
+  Networks before being built.
+
+  Args:
+    current_variable_scope: A VariableScope object.
+  Returns:
+    A name scope name.
+  """
+  return current_variable_scope.name + "/"
+
+
 class Network(base.Layer):
   """Represents the composition of a set of Layers.
 
@@ -71,6 +85,11 @@ class Network(base.Layer):
     # closed before build is called.
     self._variable_scope_counts_on_init = (
         variable_scope._get_default_variable_store().variable_scopes_count)
+
+  def _name_scope_name(self, current_variable_scope):
+    """Overrides Layer op naming to match variable naming."""
+    return _network_name_scope_naming(
+        current_variable_scope=current_variable_scope)
 
   def _init_set_name(self, name):
     # Anonymous Networks (name=None) defer setting a final name until they are
@@ -205,6 +224,9 @@ class Network(base.Layer):
             None, use_resource=True,
             default_name=sublayer.name) as sub_scope:
           sublayer._scope = sub_scope
+          # Also switch op naming for this Layer to match Network conventions,
+          # i.e. op naming matching variable naming.
+          sublayer._name_scope_name = _network_name_scope_naming
 
   @base.Layer.name.getter
   def name(self):

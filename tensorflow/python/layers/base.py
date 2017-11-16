@@ -379,6 +379,10 @@ class Layer(object):
     """
     return inputs
 
+  def _name_scope_name(self, current_variable_scope):
+    """Determines op naming for the Layer."""
+    return current_variable_scope.original_name_scope
+
   def _compute_output_shape(self, input_shape):
     """Computes the output shape of the layer given the input shape.
 
@@ -474,7 +478,7 @@ class Layer(object):
     self._set_scope(None)
     with vs.variable_scope(
         self._scope, reuse=(self.built or self._reuse)) as scope:
-      with ops.name_scope(scope.original_name_scope):
+      with ops.name_scope(self._name_scope_name(scope)):
         variable = vs.get_variable(name,
                                    shape=shape,
                                    initializer=initializer,
@@ -577,7 +581,7 @@ class Layer(object):
       scope_context_manager = vs.variable_scope(
           self._scope, reuse=self._reuse)
     with scope_context_manager as scope:
-      with ops.name_scope(scope.original_name_scope):
+      with ops.name_scope(self._name_scope_name(scope)):
         if not self.built:
           if not in_graph_mode:
             # Activity regularization is currently unsupported in Eager mode.
