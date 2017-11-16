@@ -32,8 +32,8 @@ from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.contrib.lite.toco.python.tensorflow_wrap_toco import TocoConvert as _toco_convert_protos
 from tensorflow.python.framework import dtypes as _dtypes
-# from tensorflow.python.platform import
-# resource_loader as _resource_loader
+from tensorflow.python.platform import resource_loader as _resource_loader
+from tensorflow.python.util.all_util import remove_undocumented
 
 # Enum types from the protobuf promoted to the API
 FLOAT = _toco_flags_pb2.FLOAT
@@ -46,16 +46,22 @@ TFLITE = _toco_flags_pb2.TFLITE
 GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
 
 # Currently the default mode of operation is to shell to another python process
-# to protect against crashes.
+# to protect against crashes. However, it breaks some dependent targets because
+# it forces us to depend on an external py_binary. The experimental API doesn't
+# have that drawback.
 EXPERIMENTAL_USE_TOCO_API_DIRECTLY = True
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has
 # the toco_from_protos tool.
-# toco_from_proto_bin = _resource_loader.get_path_to_datafile(
-#     "../toco/python/toco_from_protos")
-# if not os.path.exists(toco_from_proto_bin):
-#   toco_from_proto_bin = "toco_from_protos"
+if EXPERIMENTAL_USE_TOCO_API_DIRECTLY:
+  _toco_from_proto_bin = ""
+else:
+  _toco_from_proto_bin = _resource_loader.get_path_to_datafile(
+      "../toco/python/toco_from_protos")
+
+if _toco_from_proto_bin and not os.path.exists(_toco_from_proto_bin):
+  _toco_from_proto_bin = "toco_from_protos"
 
 
 def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
@@ -78,39 +84,39 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   """
   # TODO(aselle): When toco does not use fatal errors for failure, we can
   # switch this on.
-  if EXPERIMENTAL_USE_TOCO_API_DIRECTLY:
+  if not _toco_from_proto_bin:
     return _toco_convert_protos(model_flags_str, toco_flags_str, input_data_str)
 
-  # with tempfile.NamedTemporaryFile() as fp_toco, \
-  #          tempfile.NamedTemporaryFile() as fp_model, \
-  #          tempfile.NamedTemporaryFile() as fp_input, \
-  #          tempfile.NamedTemporaryFile() as fp_output:
-  #   fp_model.write(model_flags_str)
-  #   fp_toco.write(toco_flags_str)
-  #   fp_input.write(input_data_str)
-  #   fp_model.flush()
-  #   fp_toco.flush()
-  #   fp_input.flush()
+  with tempfile.NamedTemporaryFile() as fp_toco, \
+           tempfile.NamedTemporaryFile() as fp_model, \
+           tempfile.NamedTemporaryFile() as fp_input, \
+           tempfile.NamedTemporaryFile() as fp_output:
+    fp_model.write(model_flags_str)
+    fp_toco.write(toco_flags_str)
+    fp_input.write(input_data_str)
+    fp_model.flush()
+    fp_toco.flush()
+    fp_input.flush()
 
-  #   cmd = [
-  #       toco_from_proto_bin, fp_model.name, fp_toco.name, fp_input.name,
-  #       fp_output.name
-  #   ]
-  #   cmdline = " ".join(cmd)
-  #   proc = subprocess.Popen(
-  #       cmdline,
-  #       shell=True,
-  #       stdout=subprocess.PIPE,
-  #       stderr=subprocess.STDOUT,
-  #       close_fds=True)
-  #   stdout, stderr = proc.communicate()
-  #   exitcode = proc.returncode
-  #   if exitcode == 0:
-  #     stuff = fp_output.read()
-  #     return stuff
-  #   else:
-  #     raise RuntimeError("TOCO failed see console for info.\n%s\n%s\n" %
-  #                        (stdout, stderr))
+    cmd = [
+        _toco_from_proto_bin, fp_model.name, fp_toco.name, fp_input.name,
+        fp_output.name
+    ]
+    cmdline = " ".join(cmd)
+    proc = subprocess.Popen(
+        cmdline,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        close_fds=True)
+    stdout, stderr = proc.communicate()
+    exitcode = proc.returncode
+    if exitcode == 0:
+      stuff = fp_output.read()
+      return stuff
+    else:
+      raise RuntimeError("TOCO failed see console for info.\n%s\n%s\n" %
+                         (stdout, stderr))
 
 
 def _tensor_name(x):
@@ -192,8 +198,15 @@ def toco_convert(input_data,
   return data
 
 
-# remove_undocumented(__name__)
-
-del os
-del subprocess
-del tempfile
+_allowed_symbols = [
+    "FLOAT",
+    "INT32",
+    "INT64",
+    "STRING",
+    "QUANTIZED_UINT8",
+    "TENSORFLOW_GRAPHDEF",
+    "TFLITE",
+    "GRAPHVIZ_DOT",
+    "EXPERIMENTAL_USE_TOCO_API_DIRECTLY",
+]
+remove_undocumented(__name__, _allowed_symbols)
