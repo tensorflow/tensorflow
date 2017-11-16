@@ -3101,6 +3101,9 @@ py_test(
     size = "small",
     srcs = ["training/server_lib_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":array_ops",
         ":client",

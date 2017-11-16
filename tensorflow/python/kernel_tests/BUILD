@@ -790,6 +790,12 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:sparse_ops",
     ],
+    tags = [
+        "manual",
+        "no_oss",
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_py_test(
