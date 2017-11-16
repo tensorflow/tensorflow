@@ -1,6 +1,14 @@
 path: "tensorflow.estimator"
 tf_module {
   member {
+    name: "BaselineClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BaselineRegressor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DNNClassifier"
     mtype: "<type \'type\'>"
   }

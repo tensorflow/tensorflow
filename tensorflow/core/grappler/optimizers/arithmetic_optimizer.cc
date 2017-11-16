@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -30,9 +31,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -77,14 +80,25 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
   return Status::OK();
 }
 
-static bool IsInvolution(const NodeDef& node) {
-  const std::unordered_set<string> involution_ops = {"Conj", "Reciprocal",
-                                                     "Neg", "LogicalNot"};
+bool IsInvolution(const NodeDef& node) {
+  const std::unordered_set<string> involution_ops = {
+      "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"};
   return involution_ops.count(node.op()) > 0;
 }
 
-bool AreInversePermutations(gtl::ArraySlice<int32> a,
-                            gtl::ArraySlice<int32> b) {
+// Returns true if the op in node only rearranges the order of elements in an
+// input tensor, or more specifically, if it commutes with all element-wise
+// operations on the values.
+bool IsValuePreserving(const NodeDef& node) {
+  const std::unordered_set<string> value_preserving_ops = {
+      "Transpose",  "Reshape",      "Identity",        "InvertPermutation",
+      "Reverse",    "StopGradient", "PreventGradient", "CheckNumerics",
+      "ExpandDims", "Squeeze"};
+  return value_preserving_ops.count(node.op()) > 0;
+}
+
+template <typename T>
+bool AreInversePermutations(const std::vector<T>& a, const std::vector<T>& b) {
   if (a.size() != b.size()) {
     return false;
   }
@@ -96,48 +110,112 @@ bool AreInversePermutations(gtl::ArraySlice<int32> a,
   return true;
 }
 
-// Extract int32 values from a Const op to `int32_values`. Returns true if
-// succeeds.
-bool Int32ValuesFromNode(const NodeDef& node, std::vector<int>* int32_values) {
+// Extract values from a Const op to `values`. Returns true if succeeds.
+template <typename T>
+bool ValuesFromConstNode(const NodeDef& node, std::vector<T>* values) {
   if (node.op() != "Const") {
     return false;
   }
 
-  if (node.attr().at("dtype").type() != DT_INT32) {
+  if (node.attr().at("dtype").type() != DataTypeToEnum<T>::value) {
     return false;
   }
 
   // TensorProto represents the content of the tensor in either <type>_val or
   // tensor_content.
   const TensorProto& tensor = node.attr().at("value").tensor();
-  if (tensor.int_val_size() > 0 && tensor.has_tensor_shape()) {
+  typename checkpoint::SaveTypeTraits<T>::RepeatedField* tensor_values =
+      checkpoint::MutableTensorProtoData<T>(const_cast<TensorProto*>(&tensor));
+
+  if (!tensor_values->empty() && tensor.has_tensor_shape()) {
     // When tensor_shape is set, theoretically the representation of the data
-    // could be compressed. So, before copying int_val to the returned vector,
+    // could be compressed. So, before copying values to the returned vector,
     // make sure no compression happens.
     const TensorShapeProto& shape = tensor.tensor_shape();
-    if (shape.dim_size() == 1 && shape.dim(0).size() == tensor.int_val_size()) {
-      int32_values->insert(int32_values->end(), tensor.int_val().begin(),
-                           tensor.int_val().end());
+    if (shape.dim_size() == 1 && shape.dim(0).size() == tensor_values->size()) {
+      values->insert(values->end(), tensor_values->begin(),
+                     tensor_values->end());
+      return true;
     }
-    return true;
   }
 
   const auto tensor_content_size = tensor.tensor_content().size();
   if (tensor_content_size > 0) {
-    CHECK_EQ(0, tensor_content_size % sizeof(int32))
+    CHECK_EQ(0, tensor_content_size % sizeof(T))
         << "tensor_content_size (" << tensor_content_size
-        << ") is not a multiple of " << sizeof(int32);
-    int32_values->resize(tensor_content_size / sizeof(int32));
+        << ") is not a multiple of " << sizeof(T);
+    values->resize(tensor_content_size / sizeof(T));
     port::CopyToArray(tensor.tensor_content(),
-                      reinterpret_cast<char*>(int32_values->data()));
+                      reinterpret_cast<char*>(values->data()));
     return true;
   }
 
   return false;
 }
 
+template <typename T>
+bool IsInnerMatrixTranspose(const std::vector<T>& perm) {
+  const T n = perm.size();
+  if (n < 2) {
+    return false;
+  }
+  for (T i = 0; i < n - 2; ++i) {
+    if (perm[i] != i) {
+      return false;
+    }
+  }
+  return perm[n - 1] == n - 2 && perm[n - 2] == n - 1;
+}
+
+bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
+                                const NodeMap* node_map) {
+  if (transpose_node.op() != "Transpose" &&
+      transpose_node.op() != "ConjugateTranspose") {
+    return false;
+  }
+  const NodeDef* perm_node = node_map->GetNode(transpose_node.input(1));
+  std::vector<int> perm32;
+  if (ValuesFromConstNode(*perm_node, &perm32)) {
+    return IsInnerMatrixTranspose(perm32);
+  }
+  std::vector<int64> perm64;
+  if (ValuesFromConstNode(*perm_node, &perm64)) {
+    return IsInnerMatrixTranspose(perm64);
+  }
+  return false;
+}
+
 bool SimplyReordersData(const NodeDef& node) {
   return node.op() == "Transpose";
+}
+
+// Follow a chain (through input(0)) of ops starting at `source->input(0)` as
+// long as they
+//  1. preserve the values of their first input,
+//  2. have a single output,
+//  3. are not in nodes_to_preserve.
+// Returns the last node in the chain satisfying these properties or source
+// itself if a chain of length zero was found.
+//
+// source <- vp <- vp <- vp <- non_vp
+//                       ^^
+//                   return value
+NodeDef* GetTailOfValuePreservingChain(
+    const NodeDef* source, const NodeMap* node_map,
+    const std::unordered_set<string>& nodes_to_preserve) {
+  const NodeDef* source_parent = source;
+  source = node_map->GetNode(source->input(0));
+  while (IsValuePreserving(*source) &&
+         node_map->GetOutputs(source->name()).size() == 1 &&
+         // Do not skip over preserved nodes, because folding will change
+         // the results of these skipped data-reordering nodes.
+         // TODO(jingyue): A more elegant way is to copy this chain of
+         // data-reordering nodes and modify only the copy.
+         !nodes_to_preserve.count(source->name())) {
+    source_parent = source;
+    source = node_map->GetNode(source->input(0));
+  }
+  return const_cast<NodeDef*>(source_parent);
 }
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
@@ -179,6 +257,12 @@ bool IsAggregate(const NodeDef& node) {
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
   (*node->mutable_attr())[attr_name].set_type(dtype);
+}
+
+void FlipBooleanAttr(const string& attr_name, NodeDef* node) {
+  const bool old_value =
+      !node->attr().count(attr_name) ? false : node->attr().at(attr_name).b();
+  (*node->mutable_attr())[attr_name].set_b(!old_value);
 }
 
 string SourceDataTypeAttrName(const NodeDef& node) {
@@ -483,11 +567,26 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     std::vector<const NodeDef*>* new_nodes, FrameMap* frame_map) const {
   // Remove involutions applied twice.
   if (IsInvolution(*node)) {
-    // An involution is a function f(x) that is its own inverse,
-    // i.e. f(f(x)) = x.
-    const NodeDef* input = node_map->GetNode(node->input(0));
-    if (input->op() == node->op()) {
-      return input->input(0);
+    // An involution is an element-wise function f(x) that is its own inverse,
+    // i.e. f(f(x)) = x. If we can find a chain of ops
+    //   f->op1->op2->...opn->f
+    // where op1 through opn preserve the values of their inputs, we can remove
+    // the two instances of the involution from the graph, since they cancel
+    // each other.
+    NodeDef* tail =
+        GetTailOfValuePreservingChain(node, node_map, nodes_to_preserve_);
+    NodeDef* involution = node_map->GetNode(tail->input(0));
+    if (involution->op() == node->op()) {
+      // Skip both *node and *involution since they cancel each other.
+      if (tail == node) {
+        // The two nodes to eliminate are adjacent.
+        return involution->input(0);
+      } else {
+        tail->set_input(0, involution->input(0));
+        node_map->UpdateInput(tail->name(), involution->name(),
+                              involution->input(0));
+        return node->input(0);
+      }
     }
   }
 
@@ -497,11 +596,20 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     if (input->op() == node->op()) {
       const NodeDef* node_perm = node_map->GetNode(node->input(1));
       const NodeDef* input_perm = node_map->GetNode(input->input(1));
+      // Try 32-bit indices.
       std::vector<int> node_perm_values;
       std::vector<int> input_perm_values;
-      if (Int32ValuesFromNode(*node_perm, &node_perm_values) &&
-          Int32ValuesFromNode(*input_perm, &input_perm_values) &&
+      if (ValuesFromConstNode(*node_perm, &node_perm_values) &&
+          ValuesFromConstNode(*input_perm, &input_perm_values) &&
           AreInversePermutations(node_perm_values, input_perm_values)) {
+        return input->input(0);
+      }
+      // Try 64-bit indices.
+      std::vector<int64> node_perm_values64;
+      std::vector<int64> input_perm_values64;
+      if (ValuesFromConstNode(*node_perm, &node_perm_values64) &&
+          ValuesFromConstNode(*input_perm, &input_perm_values64) &&
+          AreInversePermutations(node_perm_values64, input_perm_values64)) {
         return input->input(0);
       }
     }
@@ -599,7 +707,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           node_map->AddOutput(new_transpose->name(), new_cast->name());
 
           new_nodes->push_back(new_transpose);
-          new_nodes->push_back(new_cast);
           //  Add frame dependencies that the original node might have had.
           AddFrameControlDeps(node, {new_transpose, new_cast},
                               new_transpose->input(0), {new_transpose},
@@ -673,16 +780,9 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // constant, this should also help performance a bit and memory usage a lot,
     // since the weights tend to be smaller than the activations.
     if (weights->op() == "Const") {
-      const NodeDef* source = node_map->GetNode(node->input(0));
-      while (SimplyReordersData(*source) &&
-             node_map->GetOutputs(source->name()).size() == 1 &&
-             // Do not skip over preserved nodes, because folding will change
-             // the results of these skipped data-reordering nodes.
-             // TODO(jingyue): A more elegant way is to copy this chain of
-             // data-reordering nodes and modify only the copy.
-             !nodes_to_preserve_.count(source->name())) {
-        source = node_map->GetNode(source->input(0));
-      }
+      const NodeDef* source = node_map->GetNode(
+          GetTailOfValuePreservingChain(node, node_map, nodes_to_preserve_)
+              ->input(0));
       if (source->op() == "Mul" &&
           node_map->GetOutputs(source->name()).size() == 1) {
         const NodeDef* mul = source;
@@ -698,7 +798,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
               scale_tensor.tensor_shape().dim_size() == 0) {
             // Create new node `scaled_weights`.
             NodeDef* scaled_weights = graph_def->add_node();
-            scaled_weights->set_name(weights->name() + "_scaled");
+            scaled_weights->set_name(weights->name() + "_scaled_" +
+                                     conv->name());
             scaled_weights->set_op("Mul");
             scaled_weights->set_device(weights->device());
             (*scaled_weights->mutable_attr())["T"] =
@@ -736,8 +837,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     }
   }
 
-  if (node->input_size() > 0 && IsAggregate(*node) &&
-      !node_map->GetOutputs(node->name()).empty()) {
+  if (node->input_size() > 0 && IsAggregate(*node)) {
     // Discard aggregate nodes with a single input.
     if (node->input_size() == 1) {
       return node->input(0);
@@ -758,7 +858,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
         break;
       }
     }
-    if (all_equal) {
+    if (all_equal && node_map->GetNode(node->name() + "_const") == nullptr) {
       // 1. Create constant node with value N.
       const int N = node->input_size();
       const auto type = GetDataTypeFromAttr(*node, "T");
@@ -784,7 +884,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       new_mul_node->set_device(node->device());
       SetDataTypeToAttr(type, "T", new_mul_node);
       node_map->AddNode(new_mul_node->name(), new_mul_node);
-      new_nodes->push_back(new_mul_node);
       new_mul_node->add_input(new_const_node->name());
       node_map->AddOutput(new_const_node->name(), new_mul_node->name());
       new_mul_node->add_input(node->input(0));
@@ -801,7 +900,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   // where all the inputs are Mul nodes. This pattern occurs frequently in
   // regularization terms for the gradients during training.
   if (node->input_size() > 1 && IsAggregate(*node) &&
-      !node_map->GetOutputs(node->name()).empty()) {
+      node_map->GetNode(node->name() + "_hoist") == nullptr) {
     // Determine the set of common factors if the input nodes are all Mul nodes.
     std::set<string> common_factors;
     int i = 0;
@@ -849,7 +948,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           new_mul_node->set_name(new_mul_node->name() + "_hoist");
           new_mul_node->set_input(0, common_factor);
           new_mul_node->set_input(1, new_add_node->name());
-          new_nodes->push_back(new_mul_node);
           node_map->AddNode(new_mul_node->name(), new_mul_node);
         }
       }
@@ -865,12 +963,62 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     }
   }
 
-  // Fuse ops by absorbing Conj into Transpose or ConjugateTranspose.
-  if (node->op() == "Conj" || node->op() == "Transpose" ||
-      node->op() == "ConjugateTranspose") {
+  // Fold Transpose into matrix multiplication.
+  if ((node->op() == "MatMul" || node->op() == "SparseMatMul" ||
+       node->op() == "BatchMatMul") &&
+      node_map->GetNode(node->name() + "_fused") == nullptr) {
+    const NodeDef* a = node_map->GetNode(node->input(0));
+    const NodeDef* b = node_map->GetNode(node->input(1));
+    bool is_complex = false;
+    if (node->op() != "SparseMatMul") {
+      const DataType type = GetDataTypeFromAttr(*node, "T");
+      is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
+    }
+    const std::set<string> foldable_transpose_ops =
+        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
+                    : (node->op() == "BatchMatMul"
+                           ? std::set<string>{"ConjugateTranspose"}
+                           : std::set<string>{"Transpose"});
+    const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
+                               IsInnerMatrixTransposeNode(*a, node_map);
+    const bool b_is_foldable = foldable_transpose_ops.count(b->op()) > 0 &&
+                               IsInnerMatrixTransposeNode(*b, node_map);
+    if (a_is_foldable || b_is_foldable) {
+      NodeDef* new_op = graph_def->add_node();
+      *new_op = *node;
+      new_op->set_name(node->name() + "_fused");
+      node_map->AddNode(new_op->name(), new_op);
+      if (a_is_foldable) {
+        const string attr_a =
+            node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
+        FlipBooleanAttr(attr_a, new_op);
+        new_op->set_input(0, a->input(0));
+        node_map->UpdateInput(new_op->name(), a->name(), a->input(0));
+        AddFrameControlDeps(node, {new_op}, a->input(0), {new_op}, graph_def,
+                            node_map, frame_map);
+      }
+      if (b_is_foldable) {
+        const string attr_b =
+            node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
+        FlipBooleanAttr(attr_b, new_op);
+        new_op->set_input(1, b->input(0));
+        node_map->UpdateInput(new_op->name(), b->name(), b->input(0));
+        if (!a_is_foldable) {
+          AddFrameControlDeps(node, {new_op}, b->input(0), {new_op}, graph_def,
+                              node_map, frame_map);
+        }
+      }
+    }
+  }
+
+  // Fold Conj into Transpose or ConjugateTranspose.
+  if ((node->op() == "Conj" || node->op() == "Transpose" ||
+       node->op() == "ConjugateTranspose") &&
+      node_map->GetNode(node->name() + "_fused") == nullptr) {
     const NodeDef* input = node_map->GetNode(node->input(0));
     const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
     const NodeDef* conj_op = node->op() == "Conj" ? node : input;
+
     if ((transpose_op->op() == "Transpose" ||
          transpose_op->op() == "ConjugateTranspose") &&
         conj_op->op() == "Conj") {
@@ -899,10 +1047,14 @@ namespace {
 template <class T>
 class SetVector {
  public:
-  void PushBack(const T& value) {
-    CHECK(!Exists(value)) << "Value " << value << " is already in the set.";
-    set_.insert(value);
+  // Returns false if value already existed in the set, true otherwise.
+  bool PushBack(const T& value) {
+    if (!set_.insert(value).second) {
+      VLOG(2) << "Value " << value << " is already in the set.";
+      return false;
+    }
     vector_.push_back(value);
+    return true;
   }
 
   T PopBack() {
@@ -943,6 +1095,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(
     }
 
     if (NodeName(simplified_tensor) != node->name()) {
+      // Always consider simplified_tensor for further optimizations.
+      const NodeDef* simplified_node = node_map.GetNode(simplified_tensor);
+      if (simplified_node != nullptr) {
+        nodes_to_simplify.PushBack(simplified_node);
+      }
       // When `node` is simplifed to another node rather than in-place, the
       // consumers of `node` are already redirected to `simplified_tensor`.
       // Re-push the consumers into `nodes_to_simplify` for further

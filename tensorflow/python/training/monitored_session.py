@@ -536,6 +536,7 @@ class _MonitoredSession(object):
         will return True.
 
         Example usage:
+
         ```python
            with tf.Graph().as_default():
              c = tf.placeholder(dtypes.float32)
@@ -552,6 +553,7 @@ class _MonitoredSession(object):
                while not session.should_stop():
                  a = session.run_step_fn(step_fn)
         ```
+
         Hooks interact with the `run_with_hooks()` call inside the `step_fn`
         as they do with a `MonitoredSession.run` call.
 

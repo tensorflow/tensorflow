@@ -326,6 +326,9 @@ class HloComputation {
   // Returns the owning fusion instruction, or nullptr if this is not a fusion
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
+  void SetFusionInstruction(HloInstruction* fusion_instruction) {
+    fusion_instruction_ = fusion_instruction;
+  }
 
  private:
   explicit HloComputation(

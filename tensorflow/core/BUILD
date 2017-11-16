@@ -320,6 +320,7 @@ cc_library(
         "lib/io/table_options.h",
         "lib/math/math_util.h",
         "lib/monitoring/counter.h",
+        "lib/monitoring/gauge.h",
         "lib/monitoring/sampler.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
@@ -1393,6 +1394,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/monitoring/collection_registry.h",
     "lib/monitoring/metric_def.h",
     "lib/monitoring/mobile_counter.h",
+    "lib/monitoring/mobile_gauge.h",
     "lib/monitoring/mobile_sampler.h",
     "lib/png/png_io.h",
     "lib/random/random.h",
@@ -1414,16 +1416,19 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/tracing.h",
 ]
 
+# Replicated for lib_internal and lib_internal_impl.
+LIB_INTERNAL_DEFINES = (tf_additional_lib_defines() + [
+                            "TF_USE_SNAPPY",
+                        ] + tf_additional_verbs_lib_defines() +
+                        tf_additional_mpi_lib_defines() +
+                        tf_additional_gdr_lib_defines())
+
 cc_library(
     name = "lib_internal",
     srcs = LIB_INTERNAL_PRIVATE_HEADERS,
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
-    defines = tf_additional_lib_defines() + [
-                  "TF_USE_SNAPPY",
-              ] + tf_additional_verbs_lib_defines() +
-              tf_additional_mpi_lib_defines() +
-              tf_additional_gdr_lib_defines(),
+    defines = LIB_INTERNAL_DEFINES,
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
@@ -1477,6 +1482,7 @@ cc_library(
     ),
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
+    defines = LIB_INTERNAL_DEFINES,
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
@@ -2365,6 +2371,7 @@ tf_cc_tests(
         "lib/math/math_util_test.cc",
         "lib/monitoring/collection_registry_test.cc",
         "lib/monitoring/counter_test.cc",
+        "lib/monitoring/gauge_test.cc",
         "lib/monitoring/metric_def_test.cc",
         "lib/monitoring/sampler_test.cc",
         "lib/random/distribution_sampler_test.cc",

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -539,16 +539,9 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
 
   if (parsed.dtype() == DT_VARIANT) {
-    if (parsed.shape().dims() != 0) {
-      // TODO(b/67311047): Expand support to non-singleton variants?
-      return errors::Unimplemented(
-          "GPUDevice::MakeTensorFromProto: Only singleton Variants are "
-          "supported. Tensor has shape: ",
-          parsed.shape().DebugString());
-    }
-    const Variant& from = parsed.scalar<Variant>()();
-    Tensor copy(cpu_allocator(), DT_VARIANT, TensorShape({}));
-    Variant* copy_variant = &(copy.scalar<Variant>()());
+    const Variant* from = parsed.flat<Variant>().data();
+    Tensor copy(cpu_allocator(), DT_VARIANT, parsed.shape());
+    Variant* copy_variant = copy.flat<Variant>().data();
 
     std::list<Notification> notifications;
     Status copy_status;
@@ -566,11 +559,21 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                     n.Notify();
                                   });
     };
-    TF_RETURN_IF_ERROR(
-        VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE, from,
-                          copy_variant, std::move(copier)));
+    Status s;
+    for (int64 ix = 0; ix < parsed.NumElements(); ++ix) {
+      s = VariantDeviceCopy(
+          VariantDeviceCopyDirection::HOST_TO_DEVICE, from[ix],
+          &copy_variant[ix],
+          parsed.NumElements() == 1 ? std::move(copier) : copier);
+      if (!s.ok()) {
+        break;
+      }
+    }
     for (auto& n : notifications) {
       n.WaitForNotification();
+    }
+    if (!s.ok()) {
+      return s;
     }
     *tensor = std::move(copy);
     return copy_status;
@@ -651,6 +654,36 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
       options.config.gpu_options().visible_device_list(), &valid_gpu_ids));
   if (static_cast<size_t>(n) > valid_gpu_ids.size()) {
     n = valid_gpu_ids.size();
+  }
+  if (!valid_gpu_ids.empty()) {
+    // Save the original device.
+    int original_device = 0;
+    cudaError_t err = cudaGetDevice(&original_device);
+    if (err != cudaSuccess) {
+      return errors::Internal("cudaGetDevice() failed. Status: ",
+                              cudaGetErrorString(err));
+    }
+    // Force to implicitly initialize CUDA runtime on each valid GPU before
+    // CreateGPUDevice().
+    for (int gpu_id : valid_gpu_ids) {
+      err = cudaSetDevice(gpu_id);
+      if (err != cudaSuccess) {
+        return errors::Internal("cudaSetDevice() on GPU:", gpu_id,
+                                " failed. Status: ", cudaGetErrorString(err));
+      }
+      err = cudaFree(nullptr);
+      if (err != cudaSuccess) {
+        return errors::Internal(
+            "CUDA runtime implicit initialization on GPU:", gpu_id,
+            " failed. Status: ", cudaGetErrorString(err));
+      }
+    }
+    // Reset to the original device.
+    err = cudaSetDevice(original_device);
+    if (err != cudaSuccess) {
+      return errors::Internal("cudaSetDevice() on GPU:", original_device,
+                              " failed. Status: ", cudaGetErrorString(err));
+    }
   }
   for (int i = 0; i < n; i++) {
     BaseGPUDevice* gpu_device;

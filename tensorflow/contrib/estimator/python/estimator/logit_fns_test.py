@@ -46,7 +46,7 @@ class LogitFnTest(test.TestCase):
   def test_simple_call_multi_logit_fn(self):
 
     def dummy_logit_fn(features):
-      return {'head1': features['f1'], 'head2': features['f2']}
+      return {u'head1': features['f1'], 'head2': features['f2']}
 
     features = {
         'f1': constant_op.constant([[2., 3.]]),

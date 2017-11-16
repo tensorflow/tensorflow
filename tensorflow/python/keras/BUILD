@@ -15,6 +15,7 @@ py_library(
         "_impl/keras/activations.py",
         "_impl/keras/applications/__init__.py",
         "_impl/keras/applications/imagenet_utils.py",
+        "_impl/keras/applications/inception_resnet_v2.py",
         "_impl/keras/applications/inception_v3.py",
         "_impl/keras/applications/mobilenet.py",
         "_impl/keras/applications/resnet50.py",
@@ -68,11 +69,13 @@ py_library(
         "_impl/keras/utils/io_utils.py",
         "_impl/keras/utils/layer_utils.py",
         "_impl/keras/utils/np_utils.py",
+        "_impl/keras/utils/training_utils.py",
         "_impl/keras/utils/vis_utils.py",
         "_impl/keras/wrappers/__init__.py",
         "_impl/keras/wrappers/scikit_learn.py",
         "activations/__init__.py",
         "applications/__init__.py",
+        "applications/inception_resnet_v2/__init__.py",
         "applications/inception_v3/__init__.py",
         "applications/mobilenet/__init__.py",
         "applications/resnet50/__init__.py",
@@ -242,6 +245,18 @@ py_test(
     name = "metrics_test",
     size = "small",
     srcs = ["_impl/keras/metrics_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "inception_resnet_v2_test",
+    size = "medium",
+    srcs = ["_impl/keras/applications/inception_resnet_v2_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -485,6 +500,18 @@ py_test(
 )
 
 py_test(
+    name = "recurrent_test",
+    size = "small",
+    srcs = ["_impl/keras/layers/recurrent_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "serialization_test",
     size = "small",
     srcs = ["_impl/keras/layers/serialization_test.py"],
@@ -554,6 +581,19 @@ py_test(
     srcs = ["_impl/keras/utils/io_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_utils_test",
+    size = "medium",
+    srcs = ["_impl/keras/utils/training_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["multi_gpu"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

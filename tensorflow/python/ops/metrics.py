@@ -39,7 +39,9 @@
 @@root_mean_squared_error
 @@sensitivity_at_specificity
 @@sparse_average_precision_at_k
+@@average_precision_at_k
 @@sparse_precision_at_k
+@@precision_at_k
 @@precision_at_top_k
 @@specificity_at_sensitivity
 @@true_negatives

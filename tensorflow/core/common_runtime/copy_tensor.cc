@@ -52,15 +52,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
                       Device* dst, Tensor* output,
                       DeviceContext* recv_dev_context, StatusCallback done) {
   if (input->dtype() == DT_VARIANT) {
-    if (input->shape().dims() != 0) {
-      // TODO(b/67311047): Expand support to non-singleton variants?
-      Status err = errors::Unimplemented(
-          "CopyTensor::ViaDMA: Only singleton Variants are "
-          "supported. Tensor has shape: ",
-          input->shape().DebugString());
-      done(err);
-    }
-    Tensor copy(cpu_allocator, DT_VARIANT, TensorShape({}));
+    Tensor copy(cpu_allocator, DT_VARIANT, input->shape());
     auto* status_cb = new ReffedStatusCallback(std::move(done));
     core::ScopedUnref status_cb_unref(status_cb);
 
@@ -93,14 +85,19 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
         },
         std::move(wrapped_done), std::placeholders::_1, std::placeholders::_2);
 
-    const Variant& v = input->scalar<Variant>()();
-    Variant* v_out = &(copy.scalar<Variant>()());
-    Status s_copy_init =
-        VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE, v, v_out,
-                          std::move(copier));
-    if (!s_copy_init.ok()) {
-      status_cb->UpdateStatus(s_copy_init);
-    } else {
+    const Variant* v = input->flat<Variant>().data();
+    Variant* v_out = copy.flat<Variant>().data();
+    Status s_copy_init;
+    for (int64 i = 0; i < input->NumElements(); ++i) {
+      s_copy_init = VariantDeviceCopy(
+          VariantDeviceCopyDirection::HOST_TO_DEVICE, v[i], &v_out[i],
+          (input->NumElements() == 1) ? std::move(copier) : copier);
+      if (!s_copy_init.ok()) {
+        status_cb->UpdateStatus(s_copy_init);
+        break;
+      }
+    }
+    if (s_copy_init.ok()) {
       *output = std::move(copy);
     }
   } else {
@@ -114,15 +111,7 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
                       Device* src, Tensor* output,
                       DeviceContext* send_dev_context, StatusCallback done) {
   if (input->dtype() == DT_VARIANT) {
-    if (input->shape().dims() != 0) {
-      // TODO(b/67311047): Expand support to non-singleton variants?
-      done(errors::Unimplemented(
-          "CopyTensor::ViaDMA: Only singleton Variants are "
-          "supported. Tensor has shape: ",
-          input->shape().DebugString()));
-      return;
-    }
-    Tensor copy(cpu_allocator, DT_VARIANT, TensorShape({}));
+    Tensor copy(cpu_allocator, DT_VARIANT, input->shape());
     auto* status_cb = new ReffedStatusCallback(std::move(done));
     core::ScopedUnref status_cb_unref(status_cb);
 
@@ -155,14 +144,19 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
         },
         std::move(wrapped_done), std::placeholders::_1, std::placeholders::_2);
 
-    const Variant& v = input->scalar<Variant>()();
-    Variant* v_out = &(copy.scalar<Variant>()());
-    Status s_copy_init =
-        VariantDeviceCopy(VariantDeviceCopyDirection::DEVICE_TO_HOST, v, v_out,
-                          std::move(copier));
-    if (!s_copy_init.ok()) {
-      status_cb->UpdateStatus(s_copy_init);
-    } else {
+    const Variant* v = input->flat<Variant>().data();
+    Variant* v_out = copy.flat<Variant>().data();
+    Status s_copy_init;
+    for (int64 i = 0; i < input->NumElements(); ++i) {
+      s_copy_init = VariantDeviceCopy(
+          VariantDeviceCopyDirection::DEVICE_TO_HOST, v[i], &v_out[i],
+          (input->NumElements() == 1) ? std::move(copier) : copier);
+      if (!s_copy_init.ok()) {
+        status_cb->UpdateStatus(s_copy_init);
+        break;
+      }
+    }
+    if (s_copy_init.ok()) {
       *output = std::move(copy);
     }
   } else {
@@ -180,15 +174,7 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
                         const Tensor* input, Tensor* output,
                         StatusCallback done) {
   if (input->dtype() == DT_VARIANT) {
-    if (input->shape().dims() != 0) {
-      // TODO(b/67311047): Expand support to non-singleton variants?
-      done(errors::Unimplemented(
-          "CopyTensor::ViaDMA: Only singleton Variants are "
-          "supported. Tensor has shape: ",
-          input->shape().DebugString()));
-      return;
-    }
-    Tensor copy(cpu_allocator, DT_VARIANT, TensorShape({}));
+    Tensor copy(cpu_allocator, DT_VARIANT, input->shape());
     auto* status_cb = new ReffedStatusCallback(std::move(done));
     core::ScopedUnref status_cb_unref(status_cb);
 
@@ -223,14 +209,19 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
         },
         std::move(wrapped_done), std::placeholders::_1, std::placeholders::_2);
 
-    const Variant& v = input->scalar<Variant>()();
-    Variant* v_out = &(copy.scalar<Variant>()());
-    Status s_copy_init =
-        VariantDeviceCopy(VariantDeviceCopyDirection::DEVICE_TO_DEVICE, v,
-                          v_out, std::move(copier));
-    if (!s_copy_init.ok()) {
-      status_cb->UpdateStatus(s_copy_init);
-    } else {
+    const Variant* v = input->flat<Variant>().data();
+    Variant* v_out = copy.flat<Variant>().data();
+    Status s_copy_init;
+    for (int64 i = 0; i < input->NumElements(); ++i) {
+      s_copy_init = VariantDeviceCopy(
+          VariantDeviceCopyDirection::DEVICE_TO_DEVICE, v[i], &v_out[i],
+          (input->NumElements() == 1) ? std::move(copier) : copier);
+      if (!s_copy_init.ok()) {
+        status_cb->UpdateStatus(s_copy_init);
+        break;
+      }
+    }
+    if (s_copy_init.ok()) {
       *output = std::move(copy);
     }
   } else {

@@ -12,21 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmarks for low-level eager execution primitives.
+r"""Benchmarks for low-level eager execution primitives.
 
-Packaged as a test to ensure that this code is exercised by continuous
-integration tests. To get numbers:
+To run CPU benchmarks:
+  bazel run -c opt benchmarks_test -- --benchmarks=.
 
-  bazel build -c opt :benchmarks_test &&
-  ./bazel-bin/tensorflow/python/eager/benchmarks_test --iters=0
+To run GPU benchmarks:
+  bazel run --config=cuda -c opt --copt="-mavx" benchmarks_test -- \
+    --benchmarks=.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-import contextlib
-import sys
 import time
 
 import numpy as np
@@ -39,161 +37,321 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
-FLAGS = None
+
+CPU = "/device:CPU:0"
+GPU = "/device:GPU:0"
 
 
-@contextlib.contextmanager
-def timer(label, iters=30000):
-  start = time.time()
-  yield xrange(iters)
-  end = time.time()
-  t = (end - start) * 1e6 / iters
-  print("%-40s took %.2fus (%d iterations)" % (label, t, iters))
+class MicroBenchmarks(test.Benchmark):
 
+  def __init__(self):
+    # used for multiply benchmarks
+    self._m_2 = random_ops.random_uniform([2])
 
-def benchmark_create_tensor(n):
-  """Benchmark overheads of creating a Tensor object."""
+    # used for matmul benchmarks
+    self._m_2_by_2 = random_ops.random_uniform((2, 2))
+    self._m_100_by_784 = random_ops.random_uniform((100, 784))
+    self._num_iters_2_by_2 = 30000
+    self._num_iters_100_by_784 = 1000
 
-  def label(s):
-    return "{:20s}".format(s)
+  def _run(self, func, num_iters):
+    # call func to maybe warm up the GPU
+    func()
+    start = time.time()
+    for _ in xrange(num_iters):
+      func()
+    end = time.time()
+    mean_us = (end - start) * 1e6 / num_iters
+    self.report_benchmark(iters=num_iters, wall_time=mean_us,
+                          extras={"examples_per_sec": num_iters/(end-start)})
 
-  with timer(label("np.array([[3.0]])"), iters=n) as iters:
-    for _ in iters:
-      np.array([[3.0]])
+  def benchmark_create_np_array(self):
+    func = lambda: np.array([3.0])
+    self._run(func, 30000)
 
-  ctx = context.context()
-  handle = ctx._handle
-  device = ctx.device_name
-  # May be warmup GPU.
-  ops.EagerTensor([[3.0]], context=handle, device=device)
+  def _benchmark_create_tensor(self, value, dtype, device):
+    """Benchmark overheads of creating a Tensor object."""
+    ctx = context.context()
+    handle = ctx._handle
+    if device == GPU:
+      # Warmup the GPU
+      ops.EagerTensor(value, context=handle, device=device)
 
-  # float32
-  dtype = dtypes.float32.as_datatype_enum
-  three = [[3.0]]
-  with timer(label("EagerTensor([[3.0]])"), iters=n) as iters:
-    for _ in iters:
-      ops.EagerTensor(three, context=handle, device=device, dtype=dtype)
+    def func():
+      ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+    self._run(func, 30000)
 
-  np_3 = np.array([[3.0]], dtype=np.float32)
-  with timer(label("EagerTensor(np.array([[3.0]]))"), iters=n) as iters:
-    for _ in iters:
-      ops.EagerTensor(np_3, context=handle, device=device, dtype=dtype)
+  def benchmark_create_float_tensor_from_list_CPU(self):
+    self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, CPU)
 
-  # int32.
-  # This is interesting since int32 will be kept on host memory for the GPU
-  # case.
-  dtype = dtypes.int32.as_datatype_enum
-  three = [[3]]
-  with timer(label("EagerTensor([[3]])"), iters=n) as iters:
-    for _ in iters:
-      ops.EagerTensor(three, context=handle, device=device, dtype=dtype)
+  def benchmark_create_float_tensor_from_np_array_CPU(self):
+    self._benchmark_create_tensor(
+        np.array([[3.0]], dtype=np.float32), dtypes.float32.as_datatype_enum,
+        CPU)
 
-  np_3 = np.array([[3]], dtype=np.int32)
-  with timer(label("EagerTensor(np.array([[3]]))"), iters=n) as iters:
-    for _ in iters:
-      ops.EagerTensor(np_3, context=handle, device=device, dtype=dtype)
+  def benchmark_create_int32_tensor_from_list_CPU(self):
+    self._benchmark_create_tensor([[3]], dtypes.int32.as_datatype_enum, CPU)
 
+  def benchmark_create_int32_tensor_from_np_array_CPU(self):
+    self._benchmark_create_tensor(
+        np.array([[3]], dtype=np.int32), dtypes.int32.as_datatype_enum, CPU)
 
-def benchmark_matmul(shape, n, use_gpu=False):
-  """Benchmark for matrix multiplication using tf.matmul."""
-  transpose_b = (shape[0] != shape[1])
-  m = random_ops.random_uniform(shape)
-  if use_gpu:
-    m = m.gpu()
-    # Warm up the GPU - the very first kernel invocation
-    # seems to require a bunch of setup.
-    math_ops.matmul(m, m, transpose_b=transpose_b)
+  def benchmark_create_float_tensor_from_list_GPU(self):
+    if not context.num_gpus():
+      return
+    self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, GPU)
 
-  def label(s):
-    return "MatMul {}: {:30s}".format(shape, s)
+  def benchmark_create_float_tensor_from_np_array_GPU(self):
+    if not context.num_gpus():
+      return
+    self._benchmark_create_tensor(
+        np.array([[3.0]], dtype=np.float32), dtypes.float32.as_datatype_enum,
+        GPU)
 
-  if not use_gpu:
+  def benchmark_create_int32_tensor_from_list_GPU(self):
+    # int32's are kept on host memory even when executing on GPU.
+    if not context.num_gpus():
+      return
+    self._benchmark_create_tensor([[3]], dtypes.int32.as_datatype_enum, GPU)
+
+  def benchmark_create_int32_tensor_from_np_array_GPU(self):
+    # int32's are kept on host memory even when executing on GPU.
+    if not context.num_gpus():
+      return
+    self._benchmark_create_tensor(
+        np.array([[3]], dtype=np.int32), dtypes.int32.as_datatype_enum, GPU)
+
+  def _benchmark_np_multiply(self, m, num_iters):
+    a = m.cpu().numpy()
+    func = lambda: a * a
+    self._run(func, num_iters)
+
+  def _benchmark_tf_multiply(self, m, num_iters):
+    func = lambda: m * m
+    self._run(func, num_iters)
+
+  def _benchmark_tf_multiply_op(self, m, num_iters):
+    func = lambda: math_ops.multiply(m, m)
+    self._run(func, num_iters)
+
+  def benchmark_np_multiply(self):
+    self._benchmark_np_multiply(self._m_2, 30000)
+
+  def benchmark_tf_multiply_CPU(self):
+    with context.device(CPU):
+      m = self._m_2.cpu()
+      self._benchmark_tf_multiply(m, 30000)
+
+  def benchmark_tf_multiply_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2.gpu()
+      self._benchmark_tf_multiply(m, 30000)
+
+  def benchmark_tf_multiply_op_CPU(self):
+    with context.device(CPU):
+      m = self._m_2.cpu()
+      self._benchmark_tf_multiply_op(m, 30000)
+
+  def benchmark_tf_multiply_op_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2.gpu()
+      self._benchmark_tf_multiply_op(m, 30000)
+
+  def benchmark_tf_identity(self):
+    m = self._m_2
+    self._run(lambda: gen_array_ops.identity(m), 30000)
+
+  def benchmark_tf_gradient_function_identity(self):
+    m = self._m_2
+    self._run(
+        lambda: backprop.gradients_function(gen_array_ops.identity, [0])(m),
+        30000)
+
+  def benchmark_tf_gradient_forward_identity(self):
+    with backprop.GradientTape() as tape:
+      m = self._m_2
+      tape.watch(m)
+      self._run(lambda: gen_array_ops.identity(m), 30000)
+
+  def benchmark_tf_gradient_tape_push_pop(self):
+
+    def f():
+      with backprop.GradientTape():
+        pass
+    self._run(f, 30000)
+
+  def benchmark_tf_gradient_function_no_op(self):
+    m = self._m_2
+    self._run(
+        lambda: backprop.gradients_function(lambda x: x, [0])(m),
+        30000)
+
+  def _benchmark_np_matmul(self, m, transpose_b, num_iters):
     a = m.cpu().numpy()
     b = a.T if transpose_b else a
-    with timer(label("np.dot"), iters=n) as iters:
-      for _ in iters:
-        np.dot(a, b)
+    func = lambda: np.dot(a, b)
+    self._run(func, num_iters)
 
-  with timer(label("tf.matmul"), iters=n) as iters:
-    for _ in iters:
-      math_ops.matmul(m, m, transpose_b=transpose_b)
+  def _benchmark_tf_matmul(self, m, transpose_b, num_iters):
+    func = lambda: math_ops.matmul(m, m, transpose_b=transpose_b)
+    self._run(func, num_iters)
 
-  with timer(label("gen_math_ops.mat_mul"), iters=n) as iters:
-    for _ in iters:
+  def _benchmark_gen_math_ops_matmul(self, m, transpose_b, num_iters):
+    def func():
       gen_math_ops._mat_mul(m, m, transpose_b=transpose_b)
+    self._run(func, num_iters)
 
-  inputs = [m, m]
-  # pylint: disable=protected-access
-  ctx_handle = context.context()._handle
-  # pylint: enable=protected-access
-  attrs = ("transpose_a", False, "transpose_b", transpose_b, "T",
-           m.dtype.as_datatype_enum)
-  with timer(label("TFE_Py_Execute"), iters=n) as iters:
-    for _ in iters:
-      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, None, "MatMul",
-                                       inputs, attrs, 1)
+  def _benchmark_tfe_py_execute_matmul(self, m, transpose_b, num_iters):
+    inputs = [m, m]
+    # pylint: disable=protected-access
+    ctx_handle = context.context()._handle
+    # pylint: enable=protected-access
+    attrs = ("transpose_a", False, "transpose_b", transpose_b, "T",
+             m.dtype.as_datatype_enum)
+    def func():
+      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, None, "MatMul", inputs,
+                                       attrs, 1)
 
-  f = function.defun(math_ops.matmul)
-  with timer(label("defun(tf.matmul)"), iters=n) as iters:
-    for _ in iters:
-      f(m, m, transpose_b=transpose_b)
+    self._run(func, num_iters)
 
+  def _benchmark_defun_matmul(self, m, transpose_b, num_iters):
+    f = function.defun(math_ops.matmul)
+    func = lambda: f(m, m, transpose_b)
+    self._run(func, num_iters)
 
-def benchmark_multiply(shape, n, use_gpu=False):
-  m = random_ops.random_uniform(shape)
-  if use_gpu:
-    m = m.gpu()
-    # Warm up the GPU - the very first kernel invocation
-    # seems to require a bunch of setup.
-    _ = m * m
+  # Benchmarks for A^2, A of dimension 2 by 2.
+  def benchmark_np_matmul_2_by_2(self):
+    self._benchmark_np_matmul(
+        self._m_2_by_2, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-  def label(s):
-    return "Multiply {}: {:30s}".format(shape, s)
+  def benchmark_tf_matmul_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_tf_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-  if not use_gpu:
-    a = m.cpu().numpy()
-    with timer(label("np.multiply"), iters=n) as iters:
-      for _ in iters:
-        _ = a * a
+  def benchmark_gen_math_ops_matmul_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_gen_math_ops_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-  with timer(label("tf.multiply"), iters=n) as iters:
-    for _ in iters:
-      _ = m * m
+  def benchmark_tfe_py_execute_matmul_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_tfe_py_execute_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
+  def benchmark_defun_matmul_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-class BenchmarksTest(test_util.TensorFlowTestCase):
+  def benchmark_tf_matmul_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_tf_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-  def testBenchmarks(self):
-    # This isn't actually a test, but benchmarks packaged as a test
-    # so that continuous integration runs catch any breakages.
-    print(context.context())
-    benchmark_create_tensor(FLAGS.iters or 30000)
-    benchmark_matmul([2, 2], FLAGS.iters or 30000)
-    benchmark_matmul([100, 28 * 28], FLAGS.iters or 1000)
-    benchmark_multiply([2], FLAGS.iters or 30000)
+  def benchmark_gen_math_ops_matmul_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_gen_math_ops_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-    if context.context().num_gpus() > 0:
-      print("---- RUNNING ON GPU NOW ----")
-      with context.device("/device:GPU:0"):
-        benchmark_create_tensor(FLAGS.iters or 30000)
-      benchmark_matmul([2, 2], FLAGS.iters or 30000, use_gpu=True)
-      benchmark_matmul([100, 28 * 28], FLAGS.iters or 1000, use_gpu=True)
-      benchmark_multiply([2], FLAGS.iters or 30000, use_gpu=True)
+  def benchmark_tfe_py_execute_matmul_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_tfe_py_execute_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_defun_matmul_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_defun_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
+  # Benchmarks for AA.T, A of dimension 100 by 784.
+  def benchmark_np_matmul_100_by_784(self):
+    self._benchmark_np_matmul(
+        self._m_100_by_784,
+        transpose_b=True,
+        num_iters=self._num_iters_100_by_784)
+
+  def benchmark_tf_matmul_100_by_784_CPU(self):
+    with context.device(CPU):
+      m = self._m_100_by_784.cpu()
+      self._benchmark_tf_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_gen_math_ops_matmul_100_by_784_CPU(self):
+    with context.device(CPU):
+      m = self._m_100_by_784.cpu()
+      self._benchmark_gen_math_ops_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_tfe_py_execute_matmul_100_by_784_CPU(self):
+    with context.device(CPU):
+      m = self._m_100_by_784.cpu()
+      self._benchmark_tfe_py_execute_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_defun_matmul_100_by_784_CPU(self):
+    with context.device(CPU):
+      m = self._m_100_by_784.cpu()
+      self._benchmark_defun_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_tf_matmul_100_by_784_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_100_by_784.gpu()
+      self._benchmark_tf_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_gen_math_ops_matmul_100_by_784_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_100_by_784.gpu()
+      self._benchmark_gen_math_ops_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_tfe_py_execute_matmul_100_by_784_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_100_by_784.gpu()
+      self._benchmark_tfe_py_execute_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_defun_matmul_100_by_784_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_100_by_784.gpu()
+      self._benchmark_defun_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  # Default iterations to 1 to keep continuos integration test times low.
-  parser.add_argument(
-      "--iters",
-      type=int,
-      default=1,
-      help="Number of iterators for each test. None or 0 for auto-selection")
-  FLAGS, unparsed = parser.parse_known_args()
-  sys.argv = [sys.argv[0]] + unparsed
   test.main()

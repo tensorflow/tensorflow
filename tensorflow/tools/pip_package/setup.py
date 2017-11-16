@@ -29,9 +29,10 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.4.0-rc1'
+_VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
+    'absl-py',
     'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
@@ -68,6 +69,8 @@ if sys.version_info < (3, 4):
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'freeze_graph = tensorflow.python.tools.freeze_graph:main',
+    'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
+    'toco = tensorflow.contrib.lite.toco.python.toco_wrapper:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
@@ -186,7 +189,6 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*', 'third_party/eigen3')) +
            list(find_files('*', 'external/eigen_archive')) +
            list(find_files('*.h', 'external/nsync/public')))
-
 
 setup(
     name=project_name,

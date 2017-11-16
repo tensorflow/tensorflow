@@ -37,30 +37,14 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
 
-    // TODO(mrry): It seems unnatural to capture the params from *this
-    // kernel's* OpKernelContext, although the captured values should
-    // be the same for any kernel in the same session. Consider adding
-    // an IteratorContext* argument to Dataset::MakeIterator(), and
-    // threading the context information through that
-    // way. Alternatively, provide a session-scoped context that will
-    // provide this information to all users in the same session (and
-    // that will have the appropriate lifetime).
-    IteratorContext::Params params;
-    params.env = ctx->env();
-    params.resource_manager = ctx->resource_manager();
-    params.runner = *(ctx->runner());
-
-    *output = new Dataset(input, buffer_size, std::move(params));
+    *output = new Dataset(input, buffer_size);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(const DatasetBase* input, int64 buffer_size,
-            IteratorContext::Params ctx_params)
-        : input_(input),
-          buffer_size_(buffer_size),
-          ctx_params_(std::move(ctx_params)) {
+    Dataset(const DatasetBase* input, int64 buffer_size)
+        : input_(input), buffer_size_(buffer_size) {
       input_->Ref();
     }
 
@@ -218,7 +202,6 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
     const DatasetBase* const input_;
     const int64 buffer_size_;
-    const IteratorContext::Params ctx_params_;
   };
 };
 
