@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""TensorFlow Summary API v2.
 
-"""Contrib summary package.
-
-The operations in this package are safe to use with eager execution turned or on
-off.
-
+The operations in this package are safe to use with eager execution turned on or
+off. It has a more flexible API that allows summaries to be written directly
+from ops to places other than event log files, rather than propagating protos
+from @{tf.summary.merge_all} to @{tf.summary.FileWriter}.
 """
 
 from __future__ import absolute_import
