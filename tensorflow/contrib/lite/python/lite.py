@@ -30,17 +30,18 @@ import tempfile
 
 from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
+from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2
 from tensorflow.contrib.lite.toco.python.tensorflow_wrap_toco import TocoConvert as _toco_convert_protos
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util.all_util import remove_undocumented
 
 # Enum types from the protobuf promoted to the API
-FLOAT = _toco_flags_pb2.FLOAT
-INT32 = _toco_flags_pb2.INT32
-INT64 = _toco_flags_pb2.INT64
-STRING = _toco_flags_pb2.STRING
-QUANTIZED_UINT8 = _toco_flags_pb2.QUANTIZED_UINT8
+FLOAT = _types_pb2.FLOAT
+INT32 = _types_pb2.INT32
+INT64 = _types_pb2.INT64
+STRING = _types_pb2.STRING
+QUANTIZED_UINT8 = _types_pb2.QUANTIZED_UINT8
 TENSORFLOW_GRAPHDEF = _toco_flags_pb2.TENSORFLOW_GRAPHDEF
 TFLITE = _toco_flags_pb2.TFLITE
 GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
