@@ -20,6 +20,7 @@ import gc
 
 from tensorflow.contrib.eager.python import network
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
@@ -86,6 +87,23 @@ class NetworkTest(test.TestCase):
     # TODO(josh11b): Support passing Python values to networks.
     result = net(constant_op.constant([[2.0]]))
     self.assertEqual(34.0, self.evaluate(result))
+
+  # TODO(akshayka): This test should be changed once an API for compiling
+  # `call` into a defun is implemented.
+  def testReplacingNetworkCallWithDefun(self):
+    net = MyNetwork(name="abcd")
+    x = constant_op.constant([[2.0]])
+    net(x)  # Force variables to be created.
+    self.evaluate(net.trainable_variables[0].assign([[17.0]]))
+
+    net.call = function.defun(net.call)
+    result = net(x)  # Build and execute the TensorFlow function
+    self.assertEqual(34.0, self.evaluate(result))
+
+    # Force the creation of another TensorFlow function by changing input shape
+    y = constant_op.constant([[1.0], [2.0]])
+    result = net(y)
+    self.assertAllEqual([[17.0], [34.0]], self.evaluate(result))
 
   # TODO(allenl): This test creates garbage in some Python versions
   @test_util.run_in_graph_and_eager_modes()
