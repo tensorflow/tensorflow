@@ -381,7 +381,7 @@ class Sequence(object):
 # Global variables to be shared across processes
 _SHARED_SEQUENCES = {}
 # We use a Value to provide unique id to different processes.
-_SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
+_SEQUENCE_COUNTER = None
 
 
 def get_index(uid, i):
@@ -477,6 +477,10 @@ class OrderedEnqueuer(SequenceEnqueuer):
     self.sequence = sequence
 
     # Doing Multiprocessing.Value += x is not process-safe.
+    global _SEQUENCE_COUNTER
+    if _SEQUENCE_COUNTER is None:
+      _SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
+
     with _SEQUENCE_COUNTER.get_lock():
       self.uid = _SEQUENCE_COUNTER.value
       _SEQUENCE_COUNTER.value += 1
