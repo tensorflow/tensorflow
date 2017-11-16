@@ -15492,7 +15492,7 @@ op {
       }
     }
   }
-  summary: "Finds values of the `n`-th order statistic for the last dmension."
+  summary: "Finds values of the `n`-th order statistic for the last dimension."
   description: "If the input is a vector (rank-1), finds the entries which is the nth-smallest\nvalue in the vector and outputs their values as scalar tensor.\n\nFor matrices (resp. higher rank input), computes the entries which is the\nnth-smallest value in each row (resp. vector along the last dimension). Thus,\n\n    values.shape = input.shape[:-1]"
 }
 op {
