@@ -52,7 +52,9 @@ using ::tensorflow::strings::StrCat;
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     HloModule* module, const HloInstructionProto& proto,
     const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
-    tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map) {
+    const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
+    const std::function<void(std::unique_ptr<HloComputation>)>&
+        add_fused_computation) {
   TF_RET_CHECK(!proto.opcode().empty());
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
   TF_RET_CHECK(proto.has_shape());
@@ -78,19 +80,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     TF_RET_CHECK(!proto.fusion_kind().empty());
     TF_ASSIGN_OR_RETURN(instruction->fusion_kind_,
                         StringToFusionKind(proto.fusion_kind()));
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloComputation> fused_computation,
-        HloComputation::CreateFromProto(
-            module, proto.fused_instructions_computation(), computation_map,
-            /*fusion_instruction=*/instruction.get()));
-    instruction->called_computations_.push_back(
-        module->AddEmbeddedComputation(std::move(fused_computation)));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> fused_computation,
+                        HloComputation::CreateFromProto(
+                            module, proto.fused_instructions_computation(),
+                            computation_map, add_fused_computation,
+                            /*fusion_instruction=*/instruction.get()));
+    instruction->called_computations_.push_back(fused_computation.get());
+    add_fused_computation(std::move(fused_computation));
   } else {
     for (const string& computation_name : proto.called_computation_names()) {
-      TF_RET_CHECK(ContainsKey(*computation_map, computation_name))
+      TF_RET_CHECK(ContainsKey(computation_map, computation_name))
           << "No computation named " << computation_name;
       instruction->called_computations_.push_back(
-          computation_map->at(computation_name));
+          computation_map.at(computation_name));
     }
   }
 
@@ -2076,8 +2078,10 @@ string HloInstruction::ToCategory() const {
       bool saw_rank_1 = false;
       bool saw_higher_rank = false;
       for (const auto* operand : operands()) {
-        saw_rank_1 |= ShapeUtil::Rank(operand->shape()) == 1;
-        saw_higher_rank |= ShapeUtil::Rank(operand->shape()) > 1;
+        if (!ShapeUtil::IsTuple(operand->shape())) {
+          saw_rank_1 |= ShapeUtil::Rank(operand->shape()) == 1;
+          saw_higher_rank |= ShapeUtil::Rank(operand->shape()) > 1;
+        }
       }
       if (saw_rank_1 && saw_higher_rank) {
         return "rank-1-broadcast binary fusion";
