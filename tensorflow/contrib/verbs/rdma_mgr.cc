@@ -143,7 +143,7 @@ bool RdmaMgr::ConnectivityCheck() {
     for (i = 0; i < ne; ++i) {
       ibv_wc_status s = rdma_adapter_->wc_[i].status;
       // recv complete
-      if ((int)rdma_adapter_->wc_[i].wr_id == RdmaChannel::PingRecvWrid) {
+      if ((int)rdma_adapter_->wc_[i].wr_id == RdmaChannel::kPingRecvWrid) {
         CHECK(s == IBV_WC_SUCCESS) << ": " << ibv_wc_status_str(
                                                   rdma_adapter_->wc_[i].status)
                                    << "(" << rdma_adapter_->wc_[i].status

@@ -63,7 +63,7 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
                                         &unused) ||
       !DeviceNameUtils::SplitDeviceName(parsed.dst_device, &dst_name,
                                         &unused)) {
-    s = errors::Internal("Could not parse src name.");
+    s = errors::Internal("Could not parse src or dst name.");
   }
   if (!s.ok()) {
     LOG(ERROR) << "s is not ok, error code " << s.error_message();
