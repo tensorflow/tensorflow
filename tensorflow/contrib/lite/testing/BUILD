@@ -198,6 +198,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@com_googlesource_code_re2//:re2",
     ],
+    tags = ["no_oss"],
 )
 
 filegroup(
