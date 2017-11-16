@@ -546,8 +546,8 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ] ||
-  ["${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
+  [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
   # Modify Dockerfile for Python3.5 | Python3.6 build
   TMP_DIR=$(mktemp -d)
   echo "Docker build will occur in temporary directory: ${TMP_DIR}"
