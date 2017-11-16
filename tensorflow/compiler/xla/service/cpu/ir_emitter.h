@@ -108,12 +108,12 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // external_constant_pool: if non-null, points to an ExternalConstantPool
   //                         instance into which the Ir emitter can spill
   //                         constants.
-  IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
-            llvm::Module* llvm_module,
-            const std::unordered_map<const HloInstruction*, size_t>*
-                hlo_to_profile_idx,
-            llvm::TargetMachine* target_machine,
-            ExternalConstantPool* external_constant_pool);
+  IrEmitter(
+      const HloModule& hlo_module, const BufferAssignment& assignment,
+      llvm::Module* llvm_module,
+      std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
+      llvm::TargetMachine* target_machine,
+      ExternalConstantPool* external_constant_pool);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -473,7 +473,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::IRBuilder<> ir_builder_;
 
   // Maps HLOs to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx_;
+  std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;
 
   // Maps HLOs to Values emitted for them.
   std::unordered_map<const HloInstruction*, llvm::Value*> emitted_value_;
