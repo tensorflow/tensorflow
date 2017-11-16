@@ -798,6 +798,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands[0], config ? *config : ""));
       break;
     }
+    case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRng:

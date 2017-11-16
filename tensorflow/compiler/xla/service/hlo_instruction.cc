@@ -1210,6 +1210,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                   new_operands[2], new_operands[3],
                                   new_operands[4], epsilon(), feature_index());
       break;
+    case HloOpcode::kConditional:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
@@ -1603,6 +1604,7 @@ bool HloInstruction::IdenticalSlowPath(
       return dimensions() == other.dimensions();
 
     // These opcodes are not yet supported.
+    case HloOpcode::kConditional:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
@@ -2355,6 +2357,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
 
     // These opcodes are not handled here.
+    case HloOpcode::kConditional:
     case HloOpcode::kTrace:
       break;
   }

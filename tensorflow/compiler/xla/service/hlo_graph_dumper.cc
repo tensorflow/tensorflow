@@ -970,6 +970,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kOutfeed:
     case HloOpcode::kCrossReplicaSum:
       return kBrown;
+    case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
     case HloOpcode::kCall:
