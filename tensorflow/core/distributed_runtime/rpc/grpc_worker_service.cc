@@ -384,10 +384,15 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
 
 void GrpcWorker::LoggingAsync(const LoggingRequest* request,
                   LoggingResponse* response, StatusCallback done) {
-  auto rpc_rendezvous_mgr = (RpcRendezvousMgr*) this->env()->rendezvous_mgr;
-  rpc_rendezvous_mgr->SetLogging(request->rpc_logging());
-  for (const auto& step_id: request->fetch_step_id()){
-    rpc_rendezvous_mgr->RetrieveLogs(step_id, response);
+  auto env = this->env();
+  if (env){
+    auto rpc_rendezvous_mgr = (RpcRendezvousMgr*) env->rendezvous_mgr;
+    if (rpc_rendezvous_mgr){
+      rpc_rendezvous_mgr->SetLogging(request->rpc_logging());
+      for (const auto& step_id: request->fetch_step_id()){
+        rpc_rendezvous_mgr->RetrieveLogs(step_id, response);
+      }
+    }
   }
   done(Status::OK());
 }

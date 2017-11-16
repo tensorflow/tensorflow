@@ -274,7 +274,9 @@ void RpcRendezvousMgr::SetLogging(bool active){
   this->is_logging_active_ = active;
   for (const auto& session: table_){
     auto rpc_remote_rendezvous = (RpcRemoteRendezvous*) session.second;
-    rpc_remote_rendezvous->SetLogging(active);
+    if (rpc_remote_rendezvous){
+      rpc_remote_rendezvous->SetLogging(active);
+    }
   }
 }
 
@@ -283,7 +285,9 @@ bool RpcRendezvousMgr::RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* 
   mutex_lock l(mu_);
   for (const auto& session: table_){
     auto rpc_remote_rendezvous = (RpcRemoteRendezvous*) session.second;
-    ret |= rpc_remote_rendezvous->RetrieveLogs(step_id, response);
+    if (rpc_remote_rendezvous) {
+      ret |= rpc_remote_rendezvous->RetrieveLogs(step_id, response);
+    }
   }
   return ret;
 }
@@ -300,11 +304,25 @@ BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64 step_id,
 
 
 void RpcRemoteRendezvous::SetLogging(bool active){
-  this->session()->worker_cache->SetLogging(active);
+  auto session = this->session();
+  if (session){
+    auto* worker_cache = session->worker_cache.get();
+    if (worker_cache) {
+      worker_cache->SetLogging(active);
+    }
+  }
 }
 
 bool RpcRemoteRendezvous::RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* response){
-  auto* worker_cache = this->session()->worker_cache.get();
+  auto session = this->session();
+  if (!session){
+    return false;
+  }
+  auto* worker_cache = session->worker_cache.get();
+  if (!worker_cache){
+    return false;
+  }
+
   auto step_stats = StepStats();
   if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
     auto* labeled_step_stats = response->add_step();
@@ -318,7 +336,9 @@ bool RpcRemoteRendezvous::RetrieveLogs(tensorflow::int64 step_id, LoggingRespons
 Status RpcRemoteRendezvous::Initialize(WorkerSession* session){
   const auto& response = BaseRemoteRendezvous::Initialize(session);
   auto rpc_rendezvous_mgr = (RpcRendezvousMgr*) this->env_->rendezvous_mgr;
-  this->SetLogging(rpc_rendezvous_mgr->IsLoggingActive());
+  if (rpc_rendezvous_mgr) {
+    this->SetLogging(rpc_rendezvous_mgr->IsLoggingActive());
+  }
   return response;
 }
 
