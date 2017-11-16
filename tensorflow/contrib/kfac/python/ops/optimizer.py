@@ -44,7 +44,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       momentum=0.,
       momentum_type="regular",
       norm_constraint=None,
-      name="KFAC",):
+      name="KFAC",
+      estimation_mode="gradients"):
     """Initializes the KFAC optimizer with the given settings.
 
     Args:
@@ -72,6 +73,10 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           specified value. May only be used with momentum type 'regular'.
           (Default: None)
       name: The name for this optimizer. (Default: 'KFAC')
+      estimation_mode: The type of estimator to use for the Fishers.  Can be
+          'gradients', 'empirical', 'curvature_propagation', or 'exact'.
+          (Default: 'gradients'). See the doc-string for FisherEstimator for
+          more a more detailed description of these options.
 
     Raises:
       ValueError: If the momentum type is unsupported.
@@ -86,7 +91,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     variables = tf_variables.trainable_variables()
 
     self._fisher_est = est.FisherEstimator(variables, cov_ema_decay, damping,
-                                           layer_collection)
+                                           layer_collection,
+                                           estimation_mode=estimation_mode)
 
     momentum_type = momentum_type.lower()
     legal_momentum_types = ["regular", "adam", "qmodel"]
