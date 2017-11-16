@@ -76,14 +76,14 @@ namespace cpu {
 IrEmitter::IrEmitter(
     const HloModule& hlo_module, const BufferAssignment& assignment,
     llvm::Module* llvm_module,
-    const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx,
+    std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     llvm::TargetMachine* target_machine,
     ExternalConstantPool* external_constant_pool)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
       ir_builder_(llvm_module->getContext()),
-      hlo_to_profile_idx_(hlo_to_profile_idx),
+      hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       parallel_cpu_backend_(
@@ -214,9 +214,7 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
   if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
   }
-  if (hlo_to_profile_idx_) {
-    (++arg_iter)->setName("prof_counters");
-  }
+  (++arg_iter)->setName("prof_counters");
 
   // We know a-priori that the function arguments are guaranteed to point to
   // disjoint objects.
@@ -2642,19 +2640,16 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
 llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction* hlo) {
   string counter_name;
   size_t prof_counter_idx;
-  if (!hlo_to_profile_idx_) {
-    return nullptr;
-  }
   if (hlo) {
-    auto it = hlo_to_profile_idx_->find(hlo);
-    if (it == hlo_to_profile_idx_->end()) {
+    auto it = hlo_to_profile_idx_.find(hlo);
+    if (it == hlo_to_profile_idx_.end()) {
       return nullptr;
     }
 
     prof_counter_idx = it->second;
     counter_name = IrName("prof_counter", hlo->name());
   } else {
-    prof_counter_idx = hlo_to_profile_idx_->size();
+    prof_counter_idx = hlo_to_profile_idx_.size();
     counter_name = "prof_counter.computation";
   }
   return ir_builder_.CreateGEP(GetProfileCountersArgument(),
@@ -2733,7 +2728,7 @@ void IrEmitter::ProfilingState::RecordCompleteComputation(
 
 Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
-  if (hlo_to_profile_idx_ && hlo_to_profile_idx_->count(hlo)) {
+  if (hlo_to_profile_idx_.count(hlo)) {
     profiling_state_.RecordCycleStart(&ir_builder_, hlo);
   }
   return Status::OK();
@@ -2785,9 +2780,7 @@ std::vector<llvm::Type*> IrEmitter::GetComputeFunctionParams() {
   if (num_dynamic_loop_bounds_ > 0) {
     compute_function_params.push_back(i64_ptr_type);
   }
-  if (hlo_to_profile_idx_) {
-    compute_function_params.push_back(i64_ptr_type);
-  }
+  compute_function_params.push_back(i64_ptr_type);
   return compute_function_params;
 }
 
@@ -2797,7 +2790,7 @@ llvm::Argument* IrEmitter::GetResultArgument() {
 
 llvm::Argument* IrEmitter::GetProfileCountersArgument() {
   const int64 arg_index = num_dynamic_loop_bounds_ > 0 ? 5 : 4;
-  return hlo_to_profile_idx_ ? GetArg(compute_function_, arg_index) : nullptr;
+  return GetArg(compute_function_, arg_index);
 }
 
 llvm::Value* IrEmitter::GetTempBuffersArgument() {
