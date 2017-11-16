@@ -64,6 +64,14 @@ class HttpRequest {
   /// Sets a request header.
   virtual Status AddHeader(const string& name, const string& value) = 0;
 
+  /// Sets a DNS resolve mapping (to skip DNS resolution).
+  ///
+  /// Note: because GCS is available over HTTPS, we cannot replace the hostname
+  /// in the URI with an IP address, as that will cause the certificate check
+  /// to fail.
+  virtual Status AddResolveOverride(const string& hostname, int64 port,
+                                    const string& ip_addr) = 0;
+
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
   virtual Status AddAuthBearerHeader(const string& auth_token) = 0;
 

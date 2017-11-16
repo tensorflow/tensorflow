@@ -248,5 +248,6 @@ def generate_backend_test_macros(backends=[]):
         deps = [
             "//tensorflow/compiler/xla:types",
             "//tensorflow/core:lib",
+            "//tensorflow/core:regexp_internal",
             "//tensorflow/core:test",
         ])

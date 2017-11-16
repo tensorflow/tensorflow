@@ -69,7 +69,10 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_headers_lib",
     ],
 )
 

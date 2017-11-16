@@ -60,61 +60,6 @@ def _safe_div(numerator, denominator, name):
       name=name)
 
 
-# TODO(ptucker): Move this somewhere common, to share with ops/losses/losses.py.
-def _assert_weights_rank(weights, values):
-  """`weights` rank must be either `0`, or the same as 'values'."""
-  return check_ops.assert_rank_in(weights, (0, array_ops.rank(values)))
-
-
-def _count_condition(values,
-                     weights=None,
-                     metrics_collections=None,
-                     updates_collections=None):
-  """Sums the weights of cases where the given values are True.
-
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-
-  Args:
-    values: A `bool` `Tensor` of arbitrary size.
-    weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `values`, and must be broadcastable to `values` (i.e., all dimensions
-      must be either `1`, or the same as the corresponding `values`
-      dimension).
-    metrics_collections: An optional list of collections that the metric
-      value variable should be added to.
-    updates_collections: An optional list of collections that the metric update
-      ops should be added to.
-
-  Returns:
-    value_tensor: A `Tensor` representing the current value of the metric.
-    update_op: An operation that accumulates the error from a batch of data.
-
-  Raises:
-    ValueError: If `weights` is not `None` and its shape doesn't match `values`,
-      or if either `metrics_collections` or `updates_collections` are not a list
-      or tuple.
-  """
-  check_ops.assert_type(values, dtypes.bool)
-  count_ = metrics_impl.metric_variable([], dtypes.float32, name='count')
-
-  values = math_ops.to_float(values)
-  if weights is not None:
-    weights = math_ops.to_float(weights)
-    with ops.control_dependencies((_assert_weights_rank(weights, values),)):
-      values = math_ops.multiply(values, weights)
-
-  value_tensor = array_ops.identity(count_)
-  update_op = state_ops.assign_add(count_, math_ops.reduce_sum(values))
-
-  if metrics_collections:
-    ops.add_to_collections(metrics_collections, value_tensor)
-
-  if updates_collections:
-    ops.add_to_collections(updates_collections, update_op)
-
-  return value_tensor, update_op
-
-
 def streaming_true_positives(predictions,
                              labels,
                              weights=None,
@@ -194,17 +139,13 @@ def streaming_true_negatives(predictions,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  with variable_scope.variable_scope(name, 'true_negatives',
-                                     (predictions, labels, weights)):
-
-    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
-        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
-        labels=math_ops.cast(labels, dtype=dtypes.bool),
-        weights=weights)
-    is_true_negative = math_ops.logical_and(
-        math_ops.equal(labels, False), math_ops.equal(predictions, False))
-    return _count_condition(is_true_negative, weights, metrics_collections,
-                            updates_collections)
+  return metrics.true_negatives(
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      updates_collections=updates_collections,
+      name=name)
 
 
 def streaming_false_positives(predictions,
@@ -292,34 +233,6 @@ def streaming_false_negatives(predictions,
       metrics_collections=metrics_collections,
       updates_collections=updates_collections,
       name=name)
-
-
-# TODO(ptucker): Move this somewhere common, to share with ops/losses/losses.py.
-def _broadcast_weights(weights, values):
-  """Broadcast `weights` to the same shape as `values`.
-
-  This returns a version of `weights` following the same broadcast rules as
-  `mul(weights, values)`. When computing a weighted average, use this function
-  to broadcast `weights` before summing them; e.g.,
-  `reduce_sum(w * v) / reduce_sum(_broadcast_weights(w, v))`.
-
-  Args:
-    weights: `Tensor` whose rank is either 0, or the same rank as `values`, and
-      must be broadcastable to `values` (i.e., all dimensions must be either
-      `1`, or the same as the corresponding `values` dimension).
-    values: `Tensor` of any shape.
-
-  Returns:
-    `weights` broadcast to `values` shape.
-  """
-  with ops.name_scope(None, 'broadcast_weights', (values, weights)) as scope:
-    weights_shape = weights.get_shape()
-    values_shape = values.get_shape()
-    if (weights_shape.is_fully_defined() and values_shape.is_fully_defined() and
-        weights_shape.is_compatible_with(values_shape)):
-      return weights
-    with ops.control_dependencies((_assert_weights_rank(weights, values),)):
-      return math_ops.multiply(weights, array_ops.ones_like(values), name=scope)
 
 
 def streaming_mean(values,
@@ -423,8 +336,10 @@ def streaming_mean_tensor(values,
       updates_collections=updates_collections,
       name=name)
 
-@deprecated(None, "Please switch to tf.metrics.accuracy. Note that the order "
-    "of the inputs of labels and predictions have been switched.")
+
+@deprecated(
+    None, 'Please switch to tf.metrics.accuracy. Note that the order of the '
+    'labels and predictions arguments has been switched.')
 def streaming_accuracy(predictions,
                        labels,
                        weights=None,
@@ -592,53 +507,6 @@ def streaming_recall(predictions,
       name=name)
 
 
-def _true_negatives(labels,
-                    predictions,
-                    weights=None,
-                    metrics_collections=None,
-                    updates_collections=None,
-                    name=None):
-  """Sum the weights of true negatives.
-
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-
-  Args:
-    labels: The ground truth values, a `Tensor` whose dimensions must match
-      `predictions`. Will be cast to `bool`.
-    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
-      be cast to `bool`.
-    weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `labels` dimension).
-    metrics_collections: An optional list of collections that the metric
-      value variable should be added to.
-    updates_collections: An optional list of collections that the metric update
-      ops should be added to.
-    name: An optional variable_scope name.
-
-  Returns:
-    value_tensor: A `Tensor` representing the current value of the metric.
-    update_op: An operation that accumulates the error from a batch of data.
-
-  Raises:
-    ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `weights` is not `None` and its shape doesn't match `predictions`, or if
-      either `metrics_collections` or `updates_collections` are not a list or
-      tuple.
-  """
-  with variable_scope.variable_scope(name, 'true_negatives',
-                                     (predictions, labels, weights)):
-
-    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
-        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
-        labels=math_ops.cast(labels, dtype=dtypes.bool),
-        weights=weights)
-    is_true_negative = math_ops.logical_and(
-        math_ops.equal(labels, False), math_ops.equal(predictions, False))
-    return _count_condition(is_true_negative, weights, metrics_collections,
-                            updates_collections)
-
-
 def streaming_false_positive_rate(predictions,
                                   labels,
                                   weights=None,
@@ -696,16 +564,16 @@ def streaming_false_positive_rate(predictions,
         weights=weights)
 
     false_p, false_positives_update_op = metrics.false_positives(
-        labels,
-        predictions,
-        weights,
+        labels=labels,
+        predictions=predictions,
+        weights=weights,
         metrics_collections=None,
         updates_collections=None,
         name=None)
-    true_n, true_negatives_update_op = _true_negatives(
-        labels,
-        predictions,
-        weights,
+    true_n, true_negatives_update_op = metrics.true_negatives(
+        labels=labels,
+        predictions=predictions,
+        weights=weights,
         metrics_collections=None,
         updates_collections=None,
         name=None)
@@ -1102,8 +970,10 @@ def streaming_curve_points(labels=None,
 
     return points, update_op
 
-@deprecated(None, "Please switch to tf.metrics.auc. Note that the order of "
-    "the inputs of labels and predictions have been switched.")
+
+@deprecated(
+    None, 'Please switch to tf.metrics.auc. Note that the order of the '
+    'labels and predictions arguments has been switched.')
 def streaming_auc(predictions,
                   labels,
                   weights=None,
@@ -1636,9 +1506,10 @@ def streaming_sensitivity_at_specificity(predictions,
       updates_collections=updates_collections,
       name=name)
 
+
 @deprecated(
-    None, "Please switch to tf.metrics.precision_at_thresholds. Note that the "
-    "order of of the inputs of labels and predictions have been switched.")
+    None, 'Please switch to tf.metrics.precision_at_thresholds. Note that the '
+    'order of the labels and predictions arguments has been switched.')
 def streaming_precision_at_thresholds(predictions,
                                       labels,
                                       thresholds,
@@ -1697,9 +1568,10 @@ def streaming_precision_at_thresholds(predictions,
       updates_collections=updates_collections,
       name=name)
 
+
 @deprecated(
-    None, "Please switch to tf.metrics.recall_at_thresholds. Note that the "
-    "order of of the inputs of labels and predictions have been switched.")
+    None, 'Please switch to tf.metrics.recall_at_thresholds. Note that the '
+    'order of the labels and predictions arguments has been switched.')
 def streaming_recall_at_thresholds(predictions,
                                    labels,
                                    thresholds,
@@ -1909,8 +1781,8 @@ def _at_k_name(name, k=None, class_id=None):
   return name
 
 
-@deprecated("2016-11-08", "Please use `streaming_sparse_recall_at_k`, "
-            "and reshape labels from [batch_size] to [batch_size, 1].")
+@deprecated('2016-11-08', 'Please use `streaming_sparse_recall_at_k`, '
+            'and reshape labels from [batch_size] to [batch_size, 1].')
 def streaming_recall_at_k(predictions,
                           labels,
                           k,
@@ -2543,7 +2415,8 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       updates_collections=updates_collections,
       name=name)
 
-@deprecated(None, "Please switch to tf.metrics.mean.")
+
+@deprecated(None, 'Please switch to tf.metrics.mean.')
 def streaming_mean_absolute_error(predictions,
                                   labels,
                                   weights=None,

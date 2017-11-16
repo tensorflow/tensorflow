@@ -756,6 +756,8 @@ class RNN(Layer):
 
   @property
   def trainable_weights(self):
+    if not self.trainable:
+      return []
     if isinstance(self.cell, Layer):
       return self.cell.trainable_weights
     return []
@@ -763,6 +765,8 @@ class RNN(Layer):
   @property
   def non_trainable_weights(self):
     if isinstance(self.cell, Layer):
+      if not self.trainable:
+        return self.cell.weights
       return self.cell.non_trainable_weights
     return []
 
@@ -1048,7 +1052,6 @@ class SimpleRNN(RNN):
         unroll=unroll,
         activity_regularizer=regularizers.get(activity_regularizer),
         **kwargs)
-    # self.activity_regularizer = regularizers.get(activity_regularizer)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     self.cell._generate_dropout_mask(inputs, training=training)
@@ -1114,36 +1117,25 @@ class SimpleRNN(RNN):
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
         'recurrent_initializer':
             initializers.serialize(self.recurrent_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
         'recurrent_regularizer':
             regularizers.serialize(self.recurrent_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
         'recurrent_constraint':
             constraints.serialize(self.recurrent_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint),
-        'dropout':
-            self.dropout,
-        'recurrent_dropout':
-            self.recurrent_dropout
+        'bias_constraint': constraints.serialize(self.bias_constraint),
+        'dropout': self.dropout,
+        'recurrent_dropout': self.recurrent_dropout
     }
     base_config = super(SimpleRNN, self).get_config()
     del base_config['cell']
@@ -1597,40 +1589,28 @@ class GRU(RNN):
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
         'recurrent_activation':
             activations.serialize(self.recurrent_activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
         'recurrent_initializer':
             initializers.serialize(self.recurrent_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
         'recurrent_regularizer':
             regularizers.serialize(self.recurrent_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
         'recurrent_constraint':
             constraints.serialize(self.recurrent_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint),
-        'dropout':
-            self.dropout,
-        'recurrent_dropout':
-            self.recurrent_dropout,
-        'implementation':
-            self.implementation
+        'bias_constraint': constraints.serialize(self.bias_constraint),
+        'dropout': self.dropout,
+        'recurrent_dropout': self.recurrent_dropout,
+        'implementation': self.implementation
     }
     base_config = super(GRU, self).get_config()
     del base_config['cell']
@@ -2125,42 +2105,29 @@ class LSTM(RNN):
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
         'recurrent_activation':
             activations.serialize(self.recurrent_activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
         'recurrent_initializer':
             initializers.serialize(self.recurrent_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'unit_forget_bias':
-            self.unit_forget_bias,
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'unit_forget_bias': self.unit_forget_bias,
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
         'recurrent_regularizer':
             regularizers.serialize(self.recurrent_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
         'recurrent_constraint':
             constraints.serialize(self.recurrent_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint),
-        'dropout':
-            self.dropout,
-        'recurrent_dropout':
-            self.recurrent_dropout,
-        'implementation':
-            self.implementation
+        'bias_constraint': constraints.serialize(self.bias_constraint),
+        'dropout': self.dropout,
+        'recurrent_dropout': self.recurrent_dropout,
+        'implementation': self.implementation
     }
     base_config = super(LSTM, self).get_config()
     del base_config['cell']

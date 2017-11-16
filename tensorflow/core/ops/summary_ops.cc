@@ -256,4 +256,17 @@ sample_rate: The sample rate of the signal in hertz.
 max_outputs: Max number of batch elements to generate audio for.
 )doc");
 
+REGISTER_OP("WriteGraphSummary")
+    .Input("writer: resource")
+    .Input("global_step: int64")
+    .Input("tensor: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Writes a `GraphDef` protocol buffer to a `SummaryWriter`.
+
+writer: Handle of `SummaryWriter`.
+global_step: The step to write the summary for.
+tensor: A scalar string of the serialized tf.GraphDef proto.
+)doc");
+
 }  // namespace tensorflow
