@@ -531,6 +531,8 @@ string GenEagerPythonOp::Code() {
       strings::StrAppend(&result_, "  _result = _", op_def_.name(),
                          "Output._make(_result)\n");
     }
+  } else {
+    strings::StrAppend(&result_, "    _result = None\n");
   }
   strings::StrAppend(&result_, "  return _result\n\n");
   return prelude_ + result_;
