@@ -53,6 +53,12 @@ class ConstantFolding : public GraphOptimizer {
  private:
   Status MaterializeShapes(const GrapplerItem& item,
                            const GraphProperties& properties);
+
+  Status MaterializeBroadcastGradientArgs(const NodeDef& node,
+                                          const GraphProperties& properties);
+  Status MaterializeReductionIndices(NodeDef* node,
+                                     const GraphProperties& properties);
+
   Status MaterializeConstants(const GrapplerItem& item,
                               const GraphProperties& properties);
   bool IsFoldable(const NodeDef& node) const;
