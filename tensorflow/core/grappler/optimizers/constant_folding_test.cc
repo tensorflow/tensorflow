@@ -930,6 +930,7 @@ TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("reshape");
 
   ConstantFolding fold(RewriterConfig::AGGRESSIVE, nullptr /* cpu_device */);
   GraphDef output;
@@ -952,9 +953,11 @@ TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
     } else if (node.name() == "sum") {
       ++found;
       EXPECT_EQ("ConstantFolding/sum-reduction_indices", node.input(1));
+    } else if (node.name() == "indices") {
+      ++found;
     }
   }
-  EXPECT_EQ(2, found);
+  EXPECT_EQ(3, found);
 }
 
 }  // namespace
