@@ -318,6 +318,24 @@ class TextLineReaderTest(test.TestCase):
             f.write(b"\r\n" if crlf else b"\n")
     return filenames
 
+  def _CreateZlibFiles(self, crlf=False):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
+      filenames.append(fn)
+      with open(fn+".tmp", "wb") as f:
+        for j in range(self._num_lines):
+          f.write(self._LineText(i, j))
+          # Always include a newline after the record unless it is
+          # at the end of the file, in which case we include it sometimes.
+          if j + 1 != self._num_lines or i == 0:
+            f.write(b"\r\n" if crlf else b"\n")
+      with open(fn+".tmp", "rb") as f:
+        cdata = zlib.compress(f.read())
+        with open(fn, "wb") as zf:
+          zf.write(cdata)
+    return filenames
+
   def _testOneEpoch(self, files, compression_type=None):
     with self.test_session() as sess:
       reader = io_ops.TextLineReader(name="test_reader",
@@ -341,11 +359,15 @@ class TextLineReaderTest(test.TestCase):
     self._testOneEpoch(self._CreateFiles(crlf=False))
     self._testOneEpoch(self._CreateGzipFiles(crlf=False),
                        compression_type="GZIP")
+    self._testOneEpoch(self._CreateZlibFiles(crlf=False),
+                       compression_type="ZLIB")
 
   def testOneEpochCRLF(self):
     self._testOneEpoch(self._CreateFiles(crlf=True))
     self._testOneEpoch(self._CreateGzipFiles(crlf=True),
                        compression_type="GZIP")
+    self._testOneEpoch(self._CreateZlibFiles(crlf=True),
+                       compression_type="ZLIB")
 
   def _testSkipHeaderLines(self, files, compression_type=None):
     with self.test_session() as sess:
@@ -366,9 +388,10 @@ class TextLineReaderTest(test.TestCase):
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
 
-  def _testSkipHeaderLines(self):
+  def testSkipHeaderLines(self):
     self._testSkipHeaderLines(self._CreateFiles())
     self._testSkipHeaderLines(self._CreateGzipFiles(), compression_type="GZIP")
+    self._testSkipHeaderLines(self._CreateZlibFiles(), compression_type="ZLIB")
 
 
 class FixedLengthRecordReaderTest(test.TestCase):
