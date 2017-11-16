@@ -42,12 +42,6 @@ from tensorflow.python.ops.special_math_ops import *
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
 from tensorflow.python.ops.confusion_matrix import confusion_matrix
 from tensorflow.python.ops.control_flow_ops import Assert
-from tensorflow.python.ops.control_flow_ops import group
-from tensorflow.python.ops.control_flow_ops import no_op
-from tensorflow.python.ops.control_flow_ops import tuple
-from tensorflow.python.ops.control_flow_ops import cond
-from tensorflow.python.ops.control_flow_ops import case
-from tensorflow.python.ops.control_flow_ops import while_loop
 from tensorflow.python.ops.data_flow_ops import *
 from tensorflow.python.ops.functional_ops import *
 from tensorflow.python.ops.gradients import *
@@ -67,17 +61,7 @@ from tensorflow.python.ops.random_ops import *
 from tensorflow.python.ops.script_ops import py_func
 from tensorflow.python.ops.session_ops import *
 from tensorflow.python.ops.sparse_ops import *
-from tensorflow.python.ops.state_ops import assign
-from tensorflow.python.ops.state_ops import assign_add
-from tensorflow.python.ops.state_ops import assign_sub
-from tensorflow.python.ops.state_ops import count_up_to
-from tensorflow.python.ops.state_ops import scatter_add
-from tensorflow.python.ops.state_ops import scatter_div
-from tensorflow.python.ops.state_ops import scatter_mul
-from tensorflow.python.ops.state_ops import scatter_sub
-from tensorflow.python.ops.state_ops import scatter_update
-from tensorflow.python.ops.state_ops import scatter_nd_add
-from tensorflow.python.ops.state_ops import scatter_nd_sub
+from tensorflow.python.ops.state_ops import *
 # TODO(simister): Re-enable once binary size increase due to scatter_nd
 # ops is under control.
 # from tensorflow.python.ops.state_ops import scatter_nd_mul
