@@ -79,7 +79,7 @@ class TargetTest(test_util.TensorFlowTestCase):
         summary_ops.scalar('scalar', 2.0)
 
       write()
-      events = summary_test_util.events_from_file(logdir)
+      events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].simple_value, 2.0)
 
@@ -92,7 +92,7 @@ class TargetTest(test_util.TensorFlowTestCase):
 
       summary_ops.scalar('scalar', 2.0)
 
-      events = summary_test_util.events_from_file(logdir)
+      events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
@@ -105,7 +105,7 @@ class TargetTest(test_util.TensorFlowTestCase):
 
       summary_ops.scalar('scalar', 2.0, global_step=global_step)
 
-      events = summary_test_util.events_from_file(logdir)
+      events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
