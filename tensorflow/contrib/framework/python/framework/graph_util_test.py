@@ -69,8 +69,8 @@ class GetPlaceholdersTest(test.TestCase):
         x = array_ops.placeholder(dtypes.float32)
         ids.append(x._id)
       result = graph_util.get_placeholders(g)
-      result_ids = { i._id for i in result }
-      self.assertEqual(result_ids, set(ids))
+      result_ids = [ i._id for i in result ]
+      self.assertEqual(sorted(result_ids), sorted(ids))
 
 if __name__ == '__main__':
   test.main()
