@@ -103,7 +103,7 @@ The keys of the `features` will be used to construct columns in the next
 section. Because we want to call the `train` and `evaluate` methods with
 different data, we define a method that returns an input function based on the
 given data. Note that the returned input function will be called while
-constructing the TensorFlow graph, not while running the graph. What it is
+running the TensorFlow graph, not while constructing the graph. What it is
 returning is a representation of the input data as the fundamental unit of
 TensorFlow computations, a `Tensor` (or `SparseTensor`).
 
