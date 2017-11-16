@@ -297,6 +297,8 @@ class MultiHeadTest(test.TestCase):
 
     keys = metric_keys.MetricKeys
     expected_metrics = {
+        keys.LOSS + '/head1': expected_loss_head1,
+        keys.LOSS + '/head2': expected_loss_head2,
         # Average loss over examples.
         keys.LOSS_MEAN + '/head1': expected_loss_head1 / 2,
         keys.LOSS_MEAN + '/head2': expected_loss_head2 / 2,
