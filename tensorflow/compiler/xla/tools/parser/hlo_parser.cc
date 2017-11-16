@@ -776,11 +776,31 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, *fusion_kind, operands, *fusion_computation));
       break;
     }
+    case HloOpcode::kInfeed: {
+      optional<string> config;
+      attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateInfeed(shape, config ? *config : ""));
+      break;
+    }
+    case HloOpcode::kOutfeed: {
+      optional<string> config;
+      attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
+          shape, operands[0], config ? *config : ""));
+      break;
+    }
     case HloOpcode::kCustomCall:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRng:
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
@@ -805,7 +825,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     instruction->set_metadata(*metadata);
   }
   return AddInstruction(name, instruction);
-}
+}  // NOLINT(readability/fn_size)
 
 // ::= '{' (single_sharding | tuple_sharding) '}'
 //
