@@ -569,7 +569,7 @@ int RdmaChannel::PingPostRecv() {
   memset(&wr, 0, sizeof(wr));
   wr.sg_list = &ping_sge_list_;
   wr.num_sge = 1;
-  wr.wr_id = PingRecvWrid;
+  wr.wr_id = kPingRecvWrid;
 
   return ibv_post_recv(qp_, &wr, &bad_wr);
 }
@@ -592,13 +592,13 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
 
   struct ibv_sge list;
 
-  mr_ = ibv_reg_mr(adapter_->pd_, ping_buff_, PingBuffSize,
+  mr_ = ibv_reg_mr(adapter_->pd_, ping_buff_, kPingBuffSize,
                    IBV_ACCESS_LOCAL_WRITE);
   CHECK(mr_) << "Failed to register memory region";
 
   memset(&list, 0, sizeof(list));
   list.addr = (uintptr_t)ping_buff_;
-  list.length = PingBuffSize;
+  list.length = kPingBuffSize;
   list.lkey = mr_->lkey;
 
   ping_sge_list_ = list;
