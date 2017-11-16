@@ -304,9 +304,24 @@ class TextLineReaderTest(test.TestCase):
             f.write(b"\r\n" if crlf else b"\n")
     return filenames
 
-  def _testOneEpoch(self, files):
+  def _CreateGzipFiles(self, crlf=False):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
+      filenames.append(fn)
+      with gzip.GzipFile(fn, "wb") as f:
+        for j in range(self._num_lines):
+          f.write(self._LineText(i, j))
+          # Always include a newline after the record unless it is
+          # at the end of the file, in which case we include it sometimes.
+          if j + 1 != self._num_lines or i == 0:
+            f.write(b"\r\n" if crlf else b"\n")
+    return filenames
+
+  def _testOneEpoch(self, files, compression_type=None):
     with self.test_session() as sess:
-      reader = io_ops.TextLineReader(name="test_reader")
+      reader = io_ops.TextLineReader(name="test_reader",
+                                     compression_type=compression_type)
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
 
@@ -324,14 +339,18 @@ class TextLineReaderTest(test.TestCase):
 
   def testOneEpochLF(self):
     self._testOneEpoch(self._CreateFiles(crlf=False))
+    self._testOneEpoch(self._CreateGzipFiles(crlf=False),
+                       compression_type="GZIP")
 
   def testOneEpochCRLF(self):
     self._testOneEpoch(self._CreateFiles(crlf=True))
+    self._testOneEpoch(self._CreateGzipFiles(crlf=True),
+                       compression_type="GZIP")
 
-  def testSkipHeaderLines(self):
-    files = self._CreateFiles()
+  def _testSkipHeaderLines(self, files, compression_type=None):
     with self.test_session() as sess:
-      reader = io_ops.TextLineReader(skip_header_lines=1, name="test_reader")
+      reader = io_ops.TextLineReader(skip_header_lines=1, name="test_reader",
+                                     compression_type=compression_type)
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
 
@@ -346,6 +365,10 @@ class TextLineReaderTest(test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
+
+  def _testSkipHeaderLines(self):
+    self._testSkipHeaderLines(self._CreateFiles())
+    self._testSkipHeaderLines(self._CreateGzipFiles(), compression_type="GZIP")
 
 
 class FixedLengthRecordReaderTest(test.TestCase):
