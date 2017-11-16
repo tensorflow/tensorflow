@@ -185,7 +185,7 @@ Status PoplarTransferManager::ResetDevices(
   return Unimplemented("Device reset not supported");
 }
 
-int64 PoplarTransferManager::GetByteSizeRequirement(const Shape& shape) {
+int64 PoplarTransferManager::GetByteSizeRequirement(const Shape& shape) const {
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 

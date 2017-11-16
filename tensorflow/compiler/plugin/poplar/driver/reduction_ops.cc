@@ -317,7 +317,6 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
 
     auto cs = graph.addComputeSet(inst->name());
     const unsigned long N = out_flat.dim(0);
-    const auto &device_info = graph.getDevice().getDeviceInfo();
 
     unsigned dim_count(to_reduce.rank());
 
@@ -346,8 +345,8 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
                                vertex_name,
                                {{"a", w},
                                 {"out", out_flat.slice(i,i+1)}});
-      graph.setTileMapping(v, (i / device_info.numWorkerContexts)
-                              % device_info.getNumTiles());
+      graph.setTileMapping(v, (i / graph.getTarget().getNumWorkerContexts())
+                              % graph.getTarget().getNumTiles());
 
       // Advance the window
       for (int d=dim_count-1; d>=0; d--) {

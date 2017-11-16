@@ -82,7 +82,7 @@ public:
   Status ResetDevices(
           tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
 
-  int64 GetByteSizeRequirement(const Shape& shape) override;
+  int64 GetByteSizeRequirement(const Shape& shape) const override;
 
 private:
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarTransferManager);
