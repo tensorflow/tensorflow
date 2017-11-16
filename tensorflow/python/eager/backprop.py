@@ -305,6 +305,7 @@ def implicit_val_and_grad(f):
   is not known ahead of time.
 
   Example:
+
   ```python
   dense_layer = tf.layers.Dense(1)
   def loss(x, y):
@@ -378,6 +379,7 @@ def implicit_grad(f):
   is not known ahead of time.
 
   Example:
+
   ```python
   dense_layer = tf.layers.Dense(1)
   def loss(x, y):
