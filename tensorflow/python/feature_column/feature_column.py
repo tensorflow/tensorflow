@@ -233,9 +233,8 @@ def input_layer(features,
     ordered_columns = []
     for column in sorted(feature_columns, key=lambda x: x.name):
       ordered_columns.append(column)
-      # TODO(b/67952670): Implement a column._var_scope_name property and use
-      # that instead of column.name.
-      with variable_scope.variable_scope(None, default_name=column.name):
+      with variable_scope.variable_scope(
+          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
         tensor = column._get_dense_tensor(  # pylint: disable=protected-access
             builder,
             weight_collections=weight_collections,
@@ -342,9 +341,8 @@ def linear_model(features,
     ordered_columns = []
     builder = _LazyBuilder(features)
     for column in sorted(feature_columns, key=lambda x: x.name):
-      # TODO(b/67952670): Implement a column._var_scope_name property and use
-      # that instead of column.name.
-      with variable_scope.variable_scope(None, default_name=column.name):
+      with variable_scope.variable_scope(
+          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
         ordered_columns.append(column)
         if isinstance(column, _CategoricalColumn):
           weighted_sum = _create_categorical_column_weighted_sum(
@@ -659,7 +657,8 @@ def _shared_embedding_columns(
       `1/sqrt(dimension)`.
     shared_embedding_collection_name: Optional name of the collection where
       shared embedding weights are added. If not given, a reasonable name will
-      be chosen based on the names of `categorical_columns`.
+      be chosen based on the names of `categorical_columns`. This is also used
+      in `variable_scope` when creating shared embedding weights.
     ckpt_to_load_from: String representing checkpoint name/pattern from which to
       restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
     tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_to_load_from` from
@@ -1463,8 +1462,13 @@ class _FeatureColumn(object):
 
   @abc.abstractproperty
   def name(self):
-    """Returns string. used for variable_scope and naming."""
+    """Returns string. Used for naming."""
     pass
+
+  @property
+  def _var_scope_name(self):
+    """Returns string. Used for variable_scope. Defaults to self.name."""
+    return self.name
 
   @abc.abstractmethod
   def _transform_feature(self, inputs):
@@ -2019,6 +2023,10 @@ class _EmbeddingColumn(
     return self._name
 
   @property
+  def _var_scope_name(self):
+    return self.shared_embedding_collection_name or self.name
+
+  @property
   def _parse_example_spec(self):
     return self.categorical_column._parse_example_spec  # pylint: disable=protected-access
 
@@ -2063,7 +2071,7 @@ class _EmbeddingColumn(
                   embedding_weights.shape, embedding_shape))
       else:
         embedding_weights = variable_scope.get_variable(
-            name=self.shared_embedding_collection_name + '_weights',
+            name='embedding_weights',
             shape=embedding_shape,
             dtype=dtypes.float32,
             initializer=self.initializer,
