@@ -24,11 +24,11 @@ import six
 # pylint: disable=unused-import
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.python.framework import ops
 from tensorflow.python.framework.graph_util_impl import _assert_nodes_are_present
 from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
 from tensorflow.python.framework.graph_util_impl import _node_name
-from tensorflow.python.framework import ops
 
 
 __all__ = ["fuse_op", "get_placeholders"]
@@ -139,19 +139,16 @@ def get_placeholders(graph):
     A list contains all placeholders of given graph.
 
   Raises:
-    TypeError: If 'graph' is not a tensorflow graph.
+    TypeError: If `graph` is not a tensorflow graph.
   """
 
-  if graph and not isinstance(graph, ops.Graph):
+  if not isinstance(graph, ops.Graph):
     raise TypeError("Input graph needs to be a Graph: %s" % graph)
 
-  # For each placeholder() call, there is a coresponding
+  # For each placeholder() call, there is a corresponding
   # operation of type 'Placeholder' registered to the graph.
   # The return value (a Tensor) of placeholder() is the
   # first output of this operation in fact.
   operations = graph.get_operations()
-  result = []
-  for i in operations:
-    if i.type == 'Placeholder':
-      result.append(i.outputs[0])
+  result = [i.outputs[0] for i in operations if i.type == 'Placeholder']
   return result

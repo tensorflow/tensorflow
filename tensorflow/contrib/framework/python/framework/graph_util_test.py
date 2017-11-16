@@ -21,10 +21,10 @@ from tensorflow.contrib.framework.python.framework import graph_util
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import types_pb2
-from tensorflow.python.platform import test
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
 def GetNewNode(name, op, input_nodes):
@@ -64,13 +64,11 @@ class GetPlaceholdersTest(test.TestCase):
 
   def test_get_placeholders(self):
     with ops.Graph().as_default() as g:
-      ids = []
-      for i in range(5):
-        x = array_ops.placeholder(dtypes.float32)
-        ids.append(x._id)
-      result = graph_util.get_placeholders(g)
-      result_ids = [ i._id for i in result ]
-      self.assertEqual(sorted(result_ids), sorted(ids))
+      placeholders = [array_ops.placeholder(dtypes.float32) for _ in range(5)]
+      results = graph_util.get_placeholders(g)
+      self.assertEqual(sorted(placeholders, key=lambda x: x._id),  # pylint: disable=protected-access
+                       sorted(results, key=lambda x: x._id))  # pylint: disable=protected-access
+
 
 if __name__ == '__main__':
   test.main()
