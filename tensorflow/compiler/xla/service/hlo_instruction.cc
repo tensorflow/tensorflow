@@ -1403,7 +1403,7 @@ int64 HloInstruction::operand_index(const HloInstruction* target) const {
       return i;
     }
   }
-  LOG(FATAL) << "target was not an operand";
+  LOG(FATAL) << "target was not an operand: " << target->ToString();
 }
 
 Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
