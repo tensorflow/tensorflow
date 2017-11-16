@@ -241,6 +241,7 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
     ],
 )
