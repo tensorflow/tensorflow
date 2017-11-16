@@ -1003,7 +1003,7 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
   }
   string extended_opcode =
       StrCat(HloOpcodeString(instr->opcode()),
-             instr->opcode() == HloOpcode::kFusion
+             instr->opcode() != HloOpcode::kFusion
                  ? ""
                  : StrCat(":", xla::ToString(instr->fusion_kind())));
   // If the name does not contain the opcode, render both.
