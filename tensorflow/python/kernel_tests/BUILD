@@ -2360,7 +2360,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "slice_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["slice_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
