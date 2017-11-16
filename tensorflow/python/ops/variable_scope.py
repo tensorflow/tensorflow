@@ -1225,11 +1225,12 @@ class EagerVariableStore(object):
     return with_variable_store(self._store)
 
   def variables(self):
-    return self._store._vars.values()  # pylint: disable=protected-access
+    return sorted(self._store._vars.values(), key=lambda x: x.name)  # pylint: disable=protected-access
 
   def trainable_variables(self):
     # pylint: disable=protected-access
-    return [x for x in self._store._vars.values() if x._trainable]
+    return sorted([x for x in self._store._vars.values() if x._trainable],
+                  key=lambda x: x.name)
     # pylint: enable=protected-access
 
 
