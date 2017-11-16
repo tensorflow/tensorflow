@@ -566,7 +566,6 @@ cc_library(
     hdrs = ["shaped_buffer.h"],
     deps = [
         ":device_memory_allocator",
-        ":transfer_manager",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -643,6 +642,7 @@ cc_library(
     srcs = ["transfer_manager.cc"],
     hdrs = ["transfer_manager.h"],
     deps = [
+        ":shaped_buffer",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1290,24 +1290,6 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
-)
-
-tf_cc_test(
-    name = "transfer_manager_test",
-    srcs = ["transfer_manager_test.cc"],
-    deps = [
-        ":generic_transfer_manager",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service/cpu:cpu_transfer_manager",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-    ],
 )
 
 cc_library(

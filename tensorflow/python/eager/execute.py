@@ -30,7 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 
-def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
+def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Execute a TensorFlow operation.
 
   Args:
@@ -64,14 +64,20 @@ def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
     else:
       message = e.message
     six.raise_from(core._status_to_exception(e.code, message), None)
-
   # pylint: enable=protected-access
-  # TODO(cais): Optimize this, perhaps by replacing this execute function with
-  # a different one when there are execution callback(s).
+  return tensors
+
+
+def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
+  """Monkey-patch to execute to enable execution callbacks."""
+  tensors = quick_execute(op_name, num_outputs, inputs, attrs, ctx, name)
   for callback in ctx.post_execution_callbacks:
     callback(op_name, name, attrs, inputs, tensors)
 
   return tensors
+
+
+execute = quick_execute
 
 
 def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,

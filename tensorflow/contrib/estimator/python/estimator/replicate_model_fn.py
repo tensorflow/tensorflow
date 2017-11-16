@@ -37,12 +37,10 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gradients as gradients_lib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import training_util
 
@@ -293,10 +291,7 @@ def _minimize_towers(tower_specs, optimizer):
   grad_lists = {}
   for tower_spec in tower_specs:
     with ops_lib.device(tower_spec.loss.device):
-      variables = variables_lib.trainable_variables()
-      gradients = gradients_lib.gradients(tower_spec.loss, variables)
-
-      for var, grad in zip(variables, gradients):
+      for grad, var in optimizer.compute_gradients(tower_spec.loss):
         if grad is not None:
           grad_lists.setdefault(var, []).append(grad)
 

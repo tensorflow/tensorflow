@@ -72,6 +72,39 @@ TransferManager::GetPlatformTransferManagers() {
   return it->second.manager.get();
 }
 
+Status TransferManager::WriteTupleIndexTables(
+    perftools::gputools::StreamExecutor* executor,
+    const ShapedBuffer& device_buffer) {
+  VLOG(2) << "Writing tuple index tables to ShapedBuffer rooted at "
+          << device_buffer.buffer(/*index=*/{}).opaque()
+          << "; shape: " << ShapeUtil::HumanString(device_buffer.shape());
+
+  TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
+
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      device_buffer.shape(),
+      [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
+        if (ShapeUtil::IsTuple(device_subshape)) {
+          se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
+          TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
+                       device_memory.size());
+
+          std::vector<se::DeviceMemoryBase> elements;
+          ShapeIndex element_index = index;
+          for (int64 i = 0; i < ShapeUtil::TupleElementCount(device_subshape);
+               ++i) {
+            element_index.push_back(i);
+            elements.push_back(device_buffer.buffer(element_index));
+            element_index.pop_back();
+          }
+          return WriteTuplePointersToDevice(executor, elements, device_subshape,
+                                            &device_memory);
+        }
+
+        return Status::OK();
+      });
+}
+
 Status TransferManager::TransferBufferFromDevice(
     se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
     int64 size, void* destination) {
