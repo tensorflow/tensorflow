@@ -77,6 +77,7 @@ IrEmitter::IrEmitter(
     const HloModule& hlo_module, const BufferAssignment& assignment,
     llvm::Module* llvm_module,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
+    tensorflow::gtl::optional<size_t> entry_computation_profile_idx,
     llvm::TargetMachine* target_machine,
     ExternalConstantPool* external_constant_pool)
     : assignment_(assignment),
@@ -84,6 +85,7 @@ IrEmitter::IrEmitter(
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
       ir_builder_(llvm_module->getContext()),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
+      entry_computation_profile_idx_(std::move(entry_computation_profile_idx)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       parallel_cpu_backend_(
@@ -2613,48 +2615,55 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   llvm::Value* root_value = GetEmittedValueFor(root);
   VLOG(2) << "  value: " << llvm_ir::DumpToString(*root_value);
 
-  // For the parallel cpu backend, we record the total for each embedded
-  // computation callee with its caller kCall HLO.
-  HloInstruction* hlo_to_lookup = nullptr;
-  if (parallel_cpu_backend_ && is_top_level_computation_) {
-    auto* computation = root->parent();
-    auto* entry_computation = computation->parent()->entry_computation();
-    if (computation != entry_computation) {
-      for (HloInstruction* instruction : entry_computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCall &&
-            instruction->to_apply()->root_instruction() == root) {
-          hlo_to_lookup = instruction;
-          break;
+  llvm::Value* prof_counter = [&]() {
+    // For the parallel cpu backend, we record the total for each embedded
+    // computation callee with its caller kCall HLO.
+    if (parallel_cpu_backend_ && is_top_level_computation_) {
+      auto* computation = root->parent();
+      auto* entry_computation = computation->parent()->entry_computation();
+      if (computation != entry_computation) {
+        for (HloInstruction* instruction : entry_computation->instructions()) {
+          if (instruction->opcode() == HloOpcode::kCall &&
+              instruction->to_apply()->root_instruction() == root) {
+            return GetProfileCounterFor(*instruction);
+          }
         }
       }
     }
-  }
-  if (auto* prof_counter = GetProfileCounterFor(hlo_to_lookup)) {
+
+    // Otherwise we record the total computation cycles in a dedicated slot for
+    // the entry computation.
+    return GetProfileCounterForEntryComputation();
+  }();
+
+  if (prof_counter) {
     profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
   }
-
   ir_builder_.CreateRetVoid();
   return Status::OK();
 }
 
-llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction* hlo) {
-  string counter_name;
-  size_t prof_counter_idx;
-  if (hlo) {
-    auto it = hlo_to_profile_idx_.find(hlo);
-    if (it == hlo_to_profile_idx_.end()) {
-      return nullptr;
-    }
-
-    prof_counter_idx = it->second;
-    counter_name = IrName("prof_counter", hlo->name());
-  } else {
-    prof_counter_idx = hlo_to_profile_idx_.size();
-    counter_name = "prof_counter.computation";
+llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction& hlo) {
+  auto it = hlo_to_profile_idx_.find(&hlo);
+  if (it == hlo_to_profile_idx_.end()) {
+    return nullptr;
   }
+
+  size_t prof_counter_idx = it->second;
+  string counter_name = IrName("prof_counter", hlo.name());
   return ir_builder_.CreateGEP(GetProfileCountersArgument(),
                                ir_builder_.getInt64(prof_counter_idx),
                                AsStringRef(counter_name));
+}
+
+llvm::Value* IrEmitter::GetProfileCounterForEntryComputation() {
+  if (entry_computation_profile_idx_) {
+    return ir_builder_.CreateGEP(
+        GetProfileCountersArgument(),
+        ir_builder_.getInt64(*entry_computation_profile_idx_),
+        "prof_counter.computation");
+  }
+  return nullptr;
 }
 
 void IrEmitter::ProfilingState::UpdateProfileCounter(
@@ -2735,7 +2744,7 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
 }
 
 Status IrEmitter::Postprocess(HloInstruction* hlo) {
-  if (auto* prof_counter = GetProfileCounterFor(hlo)) {
+  if (auto* prof_counter = GetProfileCounterFor(*hlo)) {
     profiling_state_.RecordCycleDelta(&ir_builder_, hlo, prof_counter);
   }
   return Status::OK();
