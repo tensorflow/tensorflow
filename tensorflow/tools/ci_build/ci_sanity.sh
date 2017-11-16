@@ -98,7 +98,8 @@ do_pylint() {
 "^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden "\
 "^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable"
+"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
+"^tensorflow/python/keras/_impl/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
@@ -400,9 +401,14 @@ cmd_status(){
 }
 
 # Run bazel build --nobuild to test the validity of the BUILD files
+# TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
+# necessary since the @androidsdk WORKSPACE dependency is commented
+# out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} ${BUILD_TARGET}"
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/java/demo/app/src/main/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/schema/..."
+  BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
 

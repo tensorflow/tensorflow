@@ -63,7 +63,7 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     raise ValueError("variable object with name '%s' already created. Use "
                      "get_variable() if reuse is desired." %
                      shared_name)
-  with context.graph_mode(), ops.Graph().as_default():
+  with context.graph_mode(), ops.Graph().as_default() as graph:
     h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                 shared_name=shared_name,
                                                 name=name,
@@ -74,6 +74,25 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     # shape inference doesn't run in eager mode we copy this data here for when
     # the handle is captured by an eager mode function.
     handle._handle_data = h._handle_data  # pylint: disable=protected-access
+  # Clean up our reference cycles to avoid making the garbage collector run.
+  # pylint: disable=protected-access
+  # OrderedDict, constructed on Graph creation, makes a simple reference loop
+  # and hides it in an __attribute in some Python versions. We don't need to
+  # throw an error if we can't find it, but if we do find it we can break the
+  # loop to avoid creating work for the garbage collector.
+  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
+  # pylint: enable=protected-access
+  if problematic_cycle:
+    try:
+      del problematic_cycle[0][:]
+    except TypeError:
+      # This is probably not one of the problematic Python versions. Continue
+      # with the rest of our cleanup.
+      pass
+  # Now clean up our own reference cycles by clearing all of the attributes for
+  # the Graph and op we created.
+  h.__dict__ = {}
+  graph.__dict__ = {}
   return handle
 
 
@@ -454,6 +473,7 @@ class ResourceVariable(variables.Variable):
           ops.add_to_collections(collections, self)
         elif ops.GraphKeys.GLOBAL_STEP in collections:
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, self)
+
     if not self._in_graph_mode:
       # After the handle has been created, set up a way to clean it up when
       # executing eagerly. We'll hold the only reference to the deleter, so that

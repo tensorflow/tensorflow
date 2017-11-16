@@ -64,8 +64,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(new ModelPruner()));
     }
     if (cfg_.constant_folding() != RewriterConfig::OFF) {
-      optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new ConstantFolding(cpu_device_)));
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+          new ConstantFolding(cfg_.constant_folding(), cpu_device_)));
     }
     if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
@@ -110,25 +110,63 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool already_optimized = false;
   for (const auto& optimizer : optimizers) {
     if (!already_optimized) {
-      TF_RETURN_IF_ERROR(optimizer->Optimize(cluster, item, optimized_graph));
-      already_optimized = true;
+      auto status = optimizer->Optimize(cluster, item, optimized_graph);
+      string result;
+      if (!status.ok()) {
+        VLOG(1) << "Not able to apply optimizer " << optimizer->name()
+                << ". Return status: " << status.ToString();
+        result = status.ToString();
+      } else {
+        already_optimized = true;
+        result = strings::StrCat(
+            "OK. "
+            "Graph size before: ",
+            item.graph.node_size(),
+            ". Graph size after: ", optimized_graph->node_size());
+      }
+      result_.push_back(std::make_pair(optimizer->name(), result));
     } else {
       GrapplerItem optimized_item(item, std::move(*optimized_graph));
-      TF_RETURN_IF_ERROR(
-          optimizer->Optimize(cluster, optimized_item, optimized_graph));
+      auto status =
+          optimizer->Optimize(cluster, optimized_item, optimized_graph);
+      string result;
+      if (!status.ok()) {
+        VLOG(1) << "Not able to apply optimizer " << optimizer->name()
+                << ". Return status: " << status.ToString();
+        optimized_graph->Swap(&optimized_item.graph);
+        result = status.ToString();
+      } else {
+        result = strings::StrCat(
+            "OK. "
+            "Graph size before: ",
+            optimized_item.graph.node_size(),
+            ". Graph size after: ", optimized_graph->node_size());
+      }
+      result_.push_back(std::make_pair(optimizer->name(), result));
     }
   }
-  TopologicalSort(optimized_graph);
 
-  // Make sure that the optimizers preserved the graph version and library.
-  DCHECK_GE(optimized_graph->library().function_size(),
-            item.graph.library().function_size());
-  DCHECK_GE(optimized_graph->library().gradient_size(),
-            item.graph.library().gradient_size());
-  DCHECK_EQ(optimized_graph->versions().producer(),
-            item.graph.versions().producer());
+  if (already_optimized) {
+    TopologicalSort(optimized_graph);
+    // Make sure that the optimizers preserved the graph version and library.
+    DCHECK_GE(optimized_graph->library().function_size(),
+              item.graph.library().function_size());
+    DCHECK_GE(optimized_graph->library().gradient_size(),
+              item.graph.library().gradient_size());
+    DCHECK_EQ(optimized_graph->versions().producer(),
+              item.graph.versions().producer());
+  } else {
+    *optimized_graph = item.graph;
+  }
 
   return Status::OK();
+}
+
+void MetaOptimizer::PrintResult() {
+  for (const auto& result : result_) {
+    LOG(INFO) << "Return status of optimizer " << result.first << ": "
+              << result.second;
+  }
 }
 
 void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,

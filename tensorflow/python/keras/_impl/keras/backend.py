@@ -90,6 +90,11 @@ _EPSILON = 10e-8
 # Default image data format, one of "channels_last", "channels_first".
 _IMAGE_DATA_FORMAT = 'channels_last'
 
+# This list holds the available devices.
+# It is populated when `_get_available_gpus()` is called for the first time.
+# We assume our devices don't change henceforth.
+_LOCAL_DEVICES = None
+
 
 def backend():
   """Publicly accessible method for determining the current backend.
@@ -442,8 +447,10 @@ def _get_available_gpus():
   Returns:
       A list of available GPU devices.
   """
-  devices = get_session().list_devices()
-  return [x.name for x in devices if x.device_type == 'GPU']
+  global _LOCAL_DEVICES
+  if _LOCAL_DEVICES is None:
+    _LOCAL_DEVICES = get_session().list_devices()
+  return [x.name for x in _LOCAL_DEVICES if x.device_type == 'GPU']
 
 
 def _has_nchw_support():

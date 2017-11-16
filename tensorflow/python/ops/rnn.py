@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -132,6 +133,13 @@ def _infer_state_dtype(explicit_dtype, state):
     return inferred_dtypes[0]
   else:
     return state.dtype
+
+
+def _maybe_tensor_shape_from_tensor(shape):
+  if isinstance(shape, ops.Tensor):
+    return tensor_shape.as_shape(tensor_util.constant_value(shape))
+  else:
+    return shape
 
 
 # pylint: disable=unused-argument
@@ -715,18 +723,28 @@ def _dynamic_rnn_loop(cell,
   with ops.name_scope("dynamic_rnn") as scope:
     base_name = scope
 
-  def _create_ta(name, dtype):
+  def _create_ta(name, element_shape, dtype):
     return tensor_array_ops.TensorArray(dtype=dtype,
                                         size=time_steps,
+                                        element_shape=element_shape,
                                         tensor_array_name=base_name + name)
 
   in_graph_mode = context.in_graph_mode()
   if in_graph_mode:
-    output_ta = tuple(_create_ta("output_%d" % i,
-                                 _infer_state_dtype(dtype, state))
-                      for i in range(len(flat_output_size)))
-    input_ta = tuple(_create_ta("input_%d" % i, flat_input[i].dtype)
-                     for i in range(len(flat_input)))
+    output_ta = tuple(
+        _create_ta(
+            "output_%d" % i,
+            element_shape=(tensor_shape.TensorShape([const_batch_size])
+                           .concatenate(
+                               _maybe_tensor_shape_from_tensor(out_size))),
+            dtype=_infer_state_dtype(dtype, state))
+        for i, out_size in enumerate(flat_output_size))
+    input_ta = tuple(
+        _create_ta(
+            "input_%d" % i,
+            element_shape=flat_input_i.shape[1:],
+            dtype=flat_input_i.dtype)
+        for i, flat_input_i in enumerate(flat_input))
     input_ta = tuple(ta.unstack(input_)
                      for ta, input_ in zip(input_ta, flat_input))
   else:
@@ -1007,6 +1025,7 @@ def raw_rnn(cell, loop_fn,
       static_batch_size.merge_with(input_shape_i[0])
 
     batch_size = static_batch_size.value
+    const_batch_size = batch_size
     if batch_size is None:
       batch_size = array_ops.shape(flat_input[0])[0]
 
@@ -1029,8 +1048,15 @@ def raw_rnn(cell, loop_fn,
 
     flat_emit_ta = [
         tensor_array_ops.TensorArray(
-            dtype=dtype_i, dynamic_size=True, size=0, name="rnn_output_%d" % i)
-        for i, dtype_i in enumerate(flat_emit_dtypes)]
+            dtype=dtype_i,
+            dynamic_size=True,
+            element_shape=(tensor_shape.TensorShape([const_batch_size])
+                           .concatenate(
+                               _maybe_tensor_shape_from_tensor(size_i))),
+            size=0,
+            name="rnn_output_%d" % i)
+        for i, (dtype_i, size_i)
+        in enumerate(zip(flat_emit_dtypes, flat_emit_size))]
     emit_ta = nest.pack_sequence_as(structure=emit_structure,
                                     flat_sequence=flat_emit_ta)
     flat_zero_emit = [

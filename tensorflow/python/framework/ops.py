@@ -617,15 +617,16 @@ class _EagerTensorBase(Tensor):
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def numpy(self):
-    """Returns a numpy array with the same contents as the Tensor.
+    """Returns a numpy array or a scalar with the same contents as the Tensor.
 
     TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
     buffer but instead always explicitly copy? Note that currently it may or may
     not copy based on whether the numpy data is properly aligned or not.
 
     Returns:
-      A numpy array that may share memory with the Tensor object. Any changes
-      to one may be reflected in the other.
+      A numpy array or a scalar. Numpy array may share memory with the
+      Tensor object. Any changes to one may be reflected in the other. A scalar
+      value is returned when self has rank 0.
 
     Raises:
       ValueError: if the type of this Tensor is not representable in numpy.
@@ -644,6 +645,9 @@ class _EagerTensorBase(Tensor):
 
   def __array__(self):
     return np.array(self.numpy())
+
+  def __format__(self, format_spec):
+    return self.numpy().__format__(format_spec)
 
   def _numpy(self):
     raise NotImplementedError()
@@ -862,6 +866,10 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
   constructors apply this function to each of their Tensor-valued
   inputs, which allows those ops to accept numpy arrays, Python lists,
   and scalars in addition to `Tensor` objects.
+
+  Note: This function diverges from default Numpy behavior for `float` and
+    `string` types when `None` is present in a Python list or scalar. Rather
+    than silently converting `None` values, an error will be thrown.
 
   Args:
     value: An object whose type has a registered `Tensor` conversion function.
@@ -1398,6 +1406,52 @@ _VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/]*$")
 _VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/]*$")
 
 
+def _create_c_op(graph, node_def, inputs, control_inputs):
+  """Creates a TF_Operation.
+
+  Args:
+    graph: a `Graph`.
+    node_def: `node_def_pb2.NodeDef` for the operation to create.
+    inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
+      `Tensor`s (corresponding to sequence inputs, e.g. "int64 * N",
+      "list(int64)"). The length of the list should be equal to the number of
+      inputs specified by this operation's op def.
+    control_inputs: A list of `Operation`s to set as control dependencies.
+
+  Returns:
+    A wrapped TF_Operation*.
+  """
+  # pylint: disable=protected-access
+  op_desc = c_api.TF_NewOperation(graph._c_graph,
+                                  compat.as_str(node_def.op),
+                                  compat.as_str(node_def.name))
+  # Add inputs
+  for op_input in inputs:
+    if isinstance(op_input, (list, tuple)):
+      c_api.TF_AddInputList(op_desc, [t._as_tf_output() for t in op_input])
+    else:
+      c_api.TF_AddInput(op_desc, op_input._as_tf_output())
+
+  # Add control inputs
+  for control_input in control_inputs:
+    c_api.TF_AddControlInput(op_desc, control_input._c_op)
+  # pylint: enable=protected-access
+
+  # Add attrs
+  for name, attr_value in node_def.attr.items():
+    serialized = attr_value.SerializeToString()
+    # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
+    # It might be worth creating a convenient way to re-use the same status.
+    with errors.raise_exception_on_not_ok_status() as status:
+      c_api.TF_SetAttrValueProto(op_desc,
+                                 compat.as_str(name), serialized, status)
+
+  with errors.raise_exception_on_not_ok_status() as status:
+    c_op = c_api.TF_FinishOperation(op_desc, status)
+
+  return c_op
+
+
 class Operation(object):
   """Represents a graph node that performs computation on tensors.
 
@@ -1552,53 +1606,8 @@ class Operation(object):
         # If no OpDef is specified, assume all inputs are scalar.
         grouped_inputs = self._inputs
 
-      self._c_op = self._create_c_op(self._graph, self._node_def,
-                                     grouped_inputs, self._control_inputs)
-
-  def _create_c_op(self, graph, node_def, inputs, control_inputs):
-    """Creates a TF_Operation.
-
-    Args:
-      graph: a `Graph`.
-      node_def: `node_def_pb2.NodeDef` for the operation to create.
-      inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
-        `Tensor`s (corresponding to sequence inputs, e.g. "int64 * N",
-        "list(int64)"). The length of the list should be equal to the number of
-        inputs specified by this operation's op def.
-      control_inputs: A list of `Operation`s to set as control dependencies.
-
-    Returns:
-      A wrapped TF_Operation*.
-    """
-    # pylint: disable=protected-access
-    op_desc = c_api.TF_NewOperation(graph._c_graph,
-                                    compat.as_str(node_def.op),
-                                    compat.as_str(node_def.name))
-    # Add inputs
-    for op_input in inputs:
-      if isinstance(op_input, (list, tuple)):
-        c_api.TF_AddInputList(op_desc, [t._as_tf_output() for t in op_input])
-      else:
-        c_api.TF_AddInput(op_desc, op_input._as_tf_output())
-
-    # Add control inputs
-    for control_input in control_inputs:
-      c_api.TF_AddControlInput(op_desc, control_input._c_op)
-    # pylint: enable=protected-access
-
-    # Add attrs
-    for name, attr_value in node_def.attr.items():
-      serialized = attr_value.SerializeToString()
-      # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
-      # It might be worth creating a convenient way to re-use the same status.
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.TF_SetAttrValueProto(op_desc,
-                                   compat.as_str(name), serialized, status)
-
-    with errors.raise_exception_on_not_ok_status() as status:
-      c_op = c_api.TF_FinishOperation(op_desc, status)
-
-    return c_op
+      self._c_op = _create_c_op(self._graph, self._node_def, grouped_inputs,
+                                self._control_inputs)
 
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
     """Regroups a flat list of input tensors into scalar and sequence inputs.
@@ -1638,15 +1647,17 @@ class Operation(object):
   def colocation_groups(self):
     """Returns the list of colocation groups of the op."""
     default_colocation_group = [
-        compat.as_bytes("loc:@%s" % self._node_def.name)
+        compat.as_bytes("loc:@%s" % self.name)
     ]
-    if "_class" not in self._node_def.attr:
+    try:
+      class_attr = self.get_attr("_class")
+    except ValueError:
       # This op has no explicit colocation group, so it is itself its
       # own root of a colocation group.
       return default_colocation_group
 
     attr_groups = [
-        class_name for class_name in self.get_attr("_class")
+        class_name for class_name in class_attr
         if class_name.startswith(b"loc:@")
     ]
 
@@ -1798,7 +1809,7 @@ class Operation(object):
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
 
-  def _update_input(self, index, tensor, dtype=None):
+  def _update_input(self, index, tensor):
     """Update the input to this operation at the given index.
 
     NOTE: This is for TF internal use only. Please don't use it.
@@ -1806,8 +1817,6 @@ class Operation(object):
     Args:
       index: the index of the input to update.
       tensor: the Tensor to be used as the input at the given index.
-      dtype: tf.DType: type of the input; defaults to
-        the tensor's dtype.
 
     Raises:
       TypeError: if tensor is not a Tensor,
@@ -1825,17 +1834,9 @@ class Operation(object):
             self._tf_input(index),
             status)
     else:
-      if dtype is None:
-        dtype = tensor.dtype
-      else:
-        dtype = dtypes.as_dtype(dtype)
-        if not dtype.is_compatible_with(tensor.dtype):
-          raise TypeError(
-              "Cannot convert a tensor of type %s to an input of type %s" %
-              (tensor.dtype.name, dtype.name))
       self._inputs[index].consumers().remove(self)
       self._inputs[index] = tensor
-      self._input_types_val[index] = dtype
+      self._input_types_val[index] = tensor.dtype
       tensor._add_consumer(self)  # pylint: disable=protected-access
       self._recompute_node_def()
 
@@ -1891,7 +1892,7 @@ class Operation(object):
           ["^%s" % op.name for op in self._control_inputs])
 
   def __str__(self):
-    return str(self._node_def)
+    return str(self.node_def)
 
   def __repr__(self):
     return "<tf.Operation '%s' type=%s>" % (self.name, self.type)
@@ -2008,7 +2009,7 @@ class Operation(object):
   @property
   def node_def(self):
     # pylint: disable=line-too-long
-    """Returns a serialized `NodeDef` representation of this operation.
+    """Returns the `NodeDef` representation of this operation.
 
     Returns:
       A
@@ -2016,7 +2017,16 @@ class Operation(object):
       protocol buffer.
     """
     # pylint: enable=line-too-long
-    return self._node_def
+    if self._c_op:
+      with c_api_util.tf_buffer() as buf:
+        with errors.raise_exception_on_not_ok_status() as status:
+          c_api.TF_OperationToNodeDef(self._c_op, buf, status)
+        data = c_api.TF_GetBuffer(buf)
+      node_def = node_def_pb2.NodeDef()
+      node_def.ParseFromString(compat.as_bytes(data))
+      return node_def
+    else:
+      return self._node_def
 
   @property
   def op_def(self):
@@ -2030,13 +2040,13 @@ class Operation(object):
     """
     # pylint: enable=line-too-long
     if self._c_op:
-      with errors.raise_exception_on_not_ok_status() as status:
-        with c_api_util.tf_buffer() as buf:
+      with c_api_util.tf_buffer() as buf:
+        with errors.raise_exception_on_not_ok_status() as status:
           # pylint: disable=protected-access
           c_api.TF_GraphGetOpDef(self._graph._c_graph,
                                  compat.as_bytes(self.type), buf, status)
           # pylint: enable=protected-access
-          data = c_api.TF_GetBuffer(buf)
+        data = c_api.TF_GetBuffer(buf)
       op_def = op_def_pb2.OpDef()
       op_def.ParseFromString(compat.as_bytes(data))
       return op_def
@@ -2061,16 +2071,19 @@ class Operation(object):
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""
-    if not _USE_C_API:
-      assert "_set_attr not supported with _USE_C_API == False"
-      return
-    buf = c_api.TF_NewBufferFromString(
-        compat.as_bytes(attr_value.SerializeToString()))
-    try:
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf, status)  # pylint: disable=protected-access
-    finally:
-      c_api.TF_DeleteBuffer(buf)
+    if _USE_C_API:
+      buf = c_api.TF_NewBufferFromString(
+          compat.as_bytes(attr_value.SerializeToString()))
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          # pylint: disable=protected-access
+          c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf,
+                        status)
+          # pylint: enable=protected-access
+      finally:
+        c_api.TF_DeleteBuffer(buf)
+    else:
+      self._node_def.attr[attr_name].CopyFrom(attr_value)
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
@@ -2084,25 +2097,24 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    if _USE_C_API:
-      try:
-        # TODO(b/65162920): remove this try/except block when all attrs are
-        # implemented to use the _set_attr method instead of node_def.attr.
-        with errors.raise_exception_on_not_ok_status() as status:
-          metadata = c_api.TF_OperationGetAttrMetadata(self._c_op, name, status)
-        with errors.raise_exception_on_not_ok_status() as status:
-          if metadata.type == c_api.TF_ATTR_INT and metadata.is_list == 0:
-            return c_api.TF_OperationGetAttrInt(self._c_op, name, status)
-      except errors.InvalidArgumentError:
-        # Colocation ops are failing to find attrs begininning with "_*". They
-        # should fall through to the not-CAPI logic until the attribute is set
-        # via the C-API always.
-        pass
-
     fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
-    if name not in self._node_def.attr:
-      raise ValueError("No attr named '" + name + "' in " + str(self._node_def))
-    x = self._node_def.attr[name]
+    if self._c_op:
+      try:
+        with c_api_util.tf_buffer() as buf:
+          with errors.raise_exception_on_not_ok_status() as status:
+            c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf, status)
+          data = c_api.TF_GetBuffer(buf)
+      except errors.InvalidArgumentError as e:
+        # Convert to ValueError for backwards compatibility.
+        raise ValueError(str(e))
+      x = attr_value_pb2.AttrValue()
+      x.ParseFromString(data)
+    else:
+      if name not in self._node_def.attr:
+        raise ValueError(
+            "No attr named '" + name + "' in " + str(self._node_def))
+      x = self._node_def.attr[name]
+
     # Treat an empty oneof value as an empty list.
     if not x.WhichOneof("value"):
       return []
@@ -2745,10 +2757,10 @@ class Graph(object):
     """
     # pylint: enable=line-too-long
     if self._c_graph:
-      with errors.raise_exception_on_not_ok_status() as status:
-        with c_api_util.tf_buffer() as buf:
+      with c_api_util.tf_buffer() as buf:
+        with errors.raise_exception_on_not_ok_status() as status:
           c_api.TF_GraphVersions(self._c_graph, buf, status)
-          data = c_api.TF_GetBuffer(buf)
+        data = c_api.TF_GetBuffer(buf)
       version_def = versions_pb2.VersionDef()
       version_def.ParseFromString(compat.as_bytes(data))
       return version_def
@@ -2952,7 +2964,11 @@ class Graph(object):
         if previous._hash_str == function._hash_str:
           return
         else:
-          raise ValueError("Another function is already defined with that name")
+          raise ValueError("Cannot add function (%s, hash %s) to graph (%s). "
+                           "Another function (%s, hash %s) is already defined "
+                           "with that name (%s)" % (
+                               function, function._hash_str, self,
+                               previous, previous._hash_str, name))
     # pylint: enable=protected-access
 
     self._functions[name] = function
@@ -3098,9 +3114,10 @@ class Graph(object):
             ret._set_device(colocation_op.device)  # pylint: disable=protected-access
 
       all_colocation_groups = sorted(set(all_colocation_groups))
-      ret.node_def.attr["_class"].CopyFrom(
-          attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
-              s=all_colocation_groups)))
+      # pylint: disable=protected-access
+      ret._set_attr("_class", attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
+      # pylint: enable=protected-access
 
     # Sets "container" attribute if
     # (1) self._container is not None

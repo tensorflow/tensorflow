@@ -99,7 +99,6 @@ class RangeDatasetOp : public DatasetOpKernel {
         if ((dataset()->step_ > 0 && next_ >= dataset()->stop_) ||
             (dataset()->step_ < 0 && next_ <= dataset()->stop_)) {
           *end_of_sequence = true;
-          is_exhausted_ = true;
           return Status::OK();
         }
         Tensor value_tensor(cpu_allocator(), DT_INT64, {});

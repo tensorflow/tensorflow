@@ -29,7 +29,6 @@ from __future__ import print_function
 
 import argparse
 from collections import defaultdict
-from operator import attrgetter
 import os
 import re
 import subprocess
@@ -68,7 +67,6 @@ _API_GOLDEN_FOLDER = 'tensorflow/tools/api/golden'
 _TEST_README_FILE = 'tensorflow/tools/api/tests/README.txt'
 _UPDATE_WARNING_FILE = 'tensorflow/tools/api/tests/API_UPDATE_WARNING.txt'
 
-_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 _CONVERT_FROM_MULTILINE_SCRIPT = 'tensorflow/tools/api/tests/convert_from_multiline'
 _BASE_API_DIR = 'tensorflow/core/api_def/base_api'
 _PYTHON_API_DIR = 'tensorflow/core/api_def/python_api'
@@ -135,6 +133,16 @@ def _GetHiddenOps():
     line_split = line.split('#')
     hidden_ops.add(line_split[0].strip())
   return hidden_ops
+
+
+def _GetGoldenApiDefs():
+  old_api_def_files = file_io.get_matching_files(_GetApiDefFilePath('*'))
+  return {file_path: file_io.read_file_to_string(file_path)
+          for file_path in old_api_def_files}
+
+
+def _GetApiDefFilePath(graph_op_name):
+  return os.path.join(_PYTHON_API_DIR, 'api_def_%s.pbtxt' % graph_op_name)
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -302,6 +310,14 @@ class ApiDefTest(test.TestCase):
       endpoints in base_api_def. Otherwise, returns None.
     """
     endpoint_names_set = set(endpoint_names)
+
+    # If the only endpoint is equal to graph_op_name then
+    # it is equivalent to having no endpoints.
+    if (not base_api_def.endpoint and len(endpoint_names) == 1
+        and endpoint_names[0] ==
+        self._GenerateLowerCaseOpName(base_api_def.graph_op_name)):
+      return None
+
     base_endpoint_names_set = {
         self._GenerateLowerCaseOpName(endpoint.name)
         for endpoint in base_api_def.endpoint}
@@ -349,8 +365,8 @@ class ApiDefTest(test.TestCase):
 
     Args:
       name_to_base_api_def: Map from op name to base api_def_pb2.ApiDef.
-      api_def_map: Map from first op name character (in caps) to
-        api_def_pb2.ApiDefs for Python API overrides.
+      api_def_map: Map from file path to api_def_pb2.ApiDefs for Python API
+        overrides.
     """
     hidden_ops = _GetHiddenOps()
     for hidden_op in hidden_ops:
@@ -363,7 +379,9 @@ class ApiDefTest(test.TestCase):
         api_def = api_def_pb2.ApiDef()
         api_def.graph_op_name = base_api_def.graph_op_name
         api_def.visibility = api_def_pb2.ApiDef.HIDDEN
-        api_def_map[api_def.graph_op_name[0].upper()].op.extend([api_def])
+
+        file_path = _GetApiDefFilePath(base_api_def.graph_op_name)
+        api_def_map[file_path].op.extend([api_def])
 
   @unittest.skipUnless(
       sys.version_info.major == 2 and os.uname()[0] == 'Linux',
@@ -381,8 +399,8 @@ class ApiDefTest(test.TestCase):
     traverse.traverse(tf, public_api_visitor)
     proto_dict = visitor.GetProtos()
 
-    # Map from first character of op name to Python ApiDefs.
-    api_def_map = defaultdict(api_def_pb2.ApiDefs)
+    # Map from file path to Python ApiDefs.
+    new_api_defs_map = defaultdict(api_def_pb2.ApiDefs)
     # We need to override all endpoints even if 1 endpoint differs from base
     # ApiDef. So, we first create a map from an op to all its endpoints.
     op_to_endpoint_name = defaultdict(list)
@@ -410,42 +428,44 @@ class ApiDefTest(test.TestCase):
       graph_op_name = snake_to_camel_graph_op_names[op.__name__]
       api_def = self._CreatePythonApiDef(
           name_to_base_api_def[graph_op_name], endpoint_names)
+
       if api_def:
-        api_defs = api_def_map[graph_op_name[0].upper()]
+        file_path = _GetApiDefFilePath(graph_op_name)
+        api_defs = new_api_defs_map[file_path]
         api_defs.op.extend([api_def])
 
-    self._AddHiddenOpOverrides(name_to_base_api_def, api_def_map)
+    self._AddHiddenOpOverrides(name_to_base_api_def, new_api_defs_map)
 
-    for key in _ALPHABET:
-      # Get new ApiDef for the given key.
-      new_api_defs_str = ''
-      if key in api_def_map:
-        new_api_defs = api_def_map[key]
-        new_api_defs.op.sort(key=attrgetter('graph_op_name'))
-        new_api_defs_str = str(new_api_defs)
+    old_api_defs_map = _GetGoldenApiDefs()
+    for file_path, new_api_defs in new_api_defs_map.items():
+      # Get new ApiDef string.
+      new_api_defs_str = str(new_api_defs)
 
-      # Get current ApiDef for the given key.
-      api_defs_file_path = os.path.join(
-          _PYTHON_API_DIR, 'api_def_%s.pbtxt' % key)
-      old_api_defs_str = ''
-      if file_io.file_exists(api_defs_file_path):
-        old_api_defs_str = file_io.read_file_to_string(api_defs_file_path)
+      # Get current ApiDef for the given file.
+      old_api_defs_str = (
+          old_api_defs_map[file_path] if file_path in old_api_defs_map else '')
 
       if old_api_defs_str == new_api_defs_str:
         continue
 
       if FLAGS.update_goldens:
-        if not new_api_defs_str:
-          logging.info('Deleting %s...' % api_defs_file_path)
-          file_io.delete_file(api_defs_file_path)
-        else:
-          logging.info('Updating %s...' % api_defs_file_path)
-          file_io.write_string_to_file(api_defs_file_path, new_api_defs_str)
+        logging.info('Updating %s...' % file_path)
+        file_io.write_string_to_file(file_path, new_api_defs_str)
       else:
         self.assertMultiLineEqual(
             old_api_defs_str, new_api_defs_str,
             'To update golden API files, run api_compatibility_test locally '
             'with --update_goldens=True flag.')
+
+    for file_path in set(old_api_defs_map) - set(new_api_defs_map):
+      if FLAGS.update_goldens:
+        logging.info('Deleting %s...' % file_path)
+        file_io.delete_file(file_path)
+      else:
+        self.fail(
+            '%s file is no longer needed and should be removed.'
+            'To update golden API files, run api_compatibility_test locally '
+            'with --update_goldens=True flag.' % file_path)
 
 
 if __name__ == '__main__':

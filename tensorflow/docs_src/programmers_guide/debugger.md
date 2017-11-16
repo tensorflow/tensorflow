@@ -9,11 +9,19 @@ lets you view the internal structure and states of running TensorFlow graphs
 during training and inference, which is difficult to debug with general-purpose
 debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
 
-> NOTE: The system requirements of tfdbg on supported external platforms include
-> the following. On Mac OS X, the `ncurses` library is required. It can be
-> installed with `brew install homebrew/dupes/ncurses`. On Windows, `pyreadline`
-> is required. If you use Anaconda3, you can install it with a command
+> NOTE: TensorFlow debugger uses a
+> [curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based
+> text user interface. On Mac OS X, the `ncurses` library is required and can
+> be installed with `brew install homebrew/dupes/ncurses`. On Windows, curses
+> isn't as well supported, so a
+> [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based interface can
+> be used with tfdbg by installing `pyreadline` with pip.
+> If you use Anaconda3, you can install it with a command
 > such as `"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`.
+> Unofficial Windows curses packages can be downloaded
+> [here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
+> installed using `pip install <your_version>.whl`, however curses on Windows
+> may not work as reliably as curses on Linux or Mac.
 
 This tutorial demonstrates how to use the **tfdbg** command-line interface
 (CLI) to debug the appearance of [`nan`s](https://en.wikipedia.org/wiki/NaN)
@@ -512,8 +520,12 @@ model.fit(...)  # This will break into the TFDBG CLI.
 
 ## Debugging tf-slim with TFDBG
 
-TFDBG currently supports only training with
+TFDBG supports debugging of training and evaluation with
 [tf-slim](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/slim).
+As detailed below, training and evaluation require slightly different debugging
+workflows.
+
+### Debugging training in tf-slim
 To debug the training process, provide `LocalCLIDebugWrapperSession` to the
 `session_wrapper` argument of `slim.learning.train()`. For example:
 
@@ -522,11 +534,29 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 # ... Code that creates the graph and the train_op ...
-tf.contrib.slim.learning_train(
+tf.contrib.slim.learning.train(
     train_op,
     logdir,
     number_of_steps=10,
     session_wrapper=tf_debug.LocalCLIDebugWrapperSession)
+```
+
+### Debugging evaluation in tf-slim
+To debug the evaluation process, provide `LocalCLIDebugHook` to the
+`hooks` argument of `slim.evaluation.evaluate_once()`. For example:
+
+``` python
+import tensorflow as tf
+from tensorflow.python import debug as tf_debug
+
+# ... Code that creates the graph and the eval and final ops ...
+tf.contrib.slim.evaluation.evaluate_once(
+    '',
+    checkpoint_path,
+    logdir,
+    eval_op=my_eval_op,
+    final_op=my_value_op,
+    hooks=[tf_debug.LocalCLIDebugHook()])
 ```
 
 ## Offline Debugging of Remotely-Running Sessions

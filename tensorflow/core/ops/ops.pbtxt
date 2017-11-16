@@ -7137,6 +7137,33 @@ op {
   description: "The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where\n`N` is the minibatch size and the rows correspond to packed outputs of\n`SerializeSparse`.  The ranks of the original `SparseTensor` objects\nmust all match.  When the final `SparseTensor` is created, it has rank one\nhigher than the ranks of the incoming `SparseTensor` objects\n(they have been concatenated along a new row dimension).\n\nThe output `SparseTensor` object\'s shape values for all dimensions but the\nfirst are the max across the input `SparseTensor` objects\' shape values\nfor the corresponding dimensions.  Its first shape value is `N`, the minibatch\nsize.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the serialized input is a `[2 x 3]` matrix representing two\noriginal `SparseTensor` objects:\n\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n\nand\n\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n\nthen the final deserialized `SparseTensor` will be:\n\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]"
 }
 op {
+  name: "DeserializeSparse"
+  input_arg {
+    name: "serialized_sparse"
+    description: "1-D, The serialized `SparseTensor` object. Must have 3 columns."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "sparse_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The `dtype` of the serialized `SparseTensor` object."
+  }
+  summary: "Deserialize `SparseTensor` from a (serialized) string 3-vector (1-D `Tensor`)"
+  description: "object."
+}
+op {
   name: "DestroyResourceOp"
   input_arg {
     name: "resource"
@@ -10082,8 +10109,18 @@ op {
     description: "Number of entries in the new vocab file to remap."
     has_minimum: true
   }
+  attr {
+    name: "old_vocab_size"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Number of entries in the old vocab file to consider.  If -1,\nuse the entire old vocabulary."
+    has_minimum: true
+    minimum: -1
+  }
   summary: "Given a path to new and old vocabulary files, returns a remapping Tensor of"
-  description: "length `num_new_vocab`, where `remapping[i]` contains the row number in the old\nvocabulary that corresponds to row `i` in the new vocabulary (starting at line\n`new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`\nin the new vocabulary is not in the old vocabulary.  `num_vocab_offset` enables\nuse in the partitioned variable case, and should generally be set through\nexamining partitioning info.  The format of the files should be a text file,\nwith each line containing a single entity within the vocabulary.\n\nFor example, with `new_vocab_file` a text file containing each of the following\nelements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],\n`num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be\n`[0, -1, 2]`.\n\nThe op also returns a count of how many entries in the new vocabulary\nwere present in the old vocabulary, which is used to calculate the number of\nvalues to initialize in a weight matrix remapping\n\nThis functionality can be used to remap both row vocabularies (typically,\nfeatures) and column vocabularies (typically, classes) from TensorFlow\ncheckpoints.  Note that the partitioning logic relies on contiguous vocabularies\ncorresponding to div-partitioned variables.  Moreover, the underlying remapping\nuses an IndexTable (as opposed to an inexact CuckooTable), so client code should\nuse the corresponding index_table_from_file() as the FeatureColumn framework\ndoes (as opposed to tf.feature_to_id(), which uses a CuckooTable)."
+  description: "length `num_new_vocab`, where `remapping[i]` contains the row number in the old\nvocabulary that corresponds to row `i` in the new vocabulary (starting at line\n`new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`\nin the new vocabulary is not in the old vocabulary.  The old vocabulary is\nconstrained to the first `old_vocab_size` entries if `old_vocab_size` is not the\ndefault value of -1.\n\n`num_vocab_offset` enables\nuse in the partitioned variable case, and should generally be set through\nexamining partitioning info.  The format of the files should be a text file,\nwith each line containing a single entity within the vocabulary.\n\nFor example, with `new_vocab_file` a text file containing each of the following\nelements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],\n`num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be\n`[0, -1, 2]`.\n\nThe op also returns a count of how many entries in the new vocabulary\nwere present in the old vocabulary, which is used to calculate the number of\nvalues to initialize in a weight matrix remapping\n\nThis functionality can be used to remap both row vocabularies (typically,\nfeatures) and column vocabularies (typically, classes) from TensorFlow\ncheckpoints.  Note that the partitioning logic relies on contiguous vocabularies\ncorresponding to div-partitioned variables.  Moreover, the underlying remapping\nuses an IndexTable (as opposed to an inexact CuckooTable), so client code should\nuse the corresponding index_table_from_file() as the FeatureColumn framework\ndoes (as opposed to tf.feature_to_id(), which uses a CuckooTable)."
 }
 op {
   name: "GetSessionHandle"
@@ -13122,6 +13159,33 @@ op {
   }
   summary: "Returns the batched diagonal part of a batched tensor."
   description: "This operation returns a tensor with the `diagonal` part\nof the batched `input`. The `diagonal` part is computed as follows:\n\nAssume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a\ntensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:\n\n`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.\n\nThe input must be at least a matrix.\n\nFor example:\n\n```\n# \'input\' is [[[1, 0, 0, 0]\n               [0, 2, 0, 0]\n               [0, 0, 3, 0]\n               [0, 0, 0, 4]],\n              [[5, 0, 0, 0]\n               [0, 6, 0, 0]\n               [0, 0, 7, 0]\n               [0, 0, 0, 8]]]\n\nand input.shape = (2, 4, 4)\n\ntf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nwhich has shape (2, 4)\n```"
+}
+op {
+  name: "MatrixExponential"
+  input_arg {
+    name: "input"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M, M]`.\n\n@compatibility(scipy)\nEquivalent to scipy.linalg.expm\n@end_compatibility"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the matrix exponential of one or more square matrices:"
+  description: "exp(A) = \\sum_{n=0}^\\infty A^n/n!\n\nThe exponential is computed using a combination of the scaling and squaring\nmethod and the Pade approximation. Details can be founds in:\nNicholas J. Higham, \"The scaling and squaring method for the matrix exponential\nrevisited,\" SIAM J. Matrix Anal. Applic., 26:1179-1193, 2005.\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the exponential for all input submatrices `[..., :, :]`."
 }
 op {
   name: "MatrixInverse"
@@ -16945,7 +17009,6 @@ op {
     name: "U"
     type: "list(type)"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "message"

@@ -169,6 +169,7 @@ message ExecutorOpts {
   bool record_costs = 1;
   bool record_timeline = 3;
   bool record_partition_graphs = 4;
+  bool report_tensor_allocations_upon_oom = 5;
 };
 
 message RunGraphRequest {

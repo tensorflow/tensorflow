@@ -1,0 +1,68 @@
+op {
+  graph_op_name: "GenerateVocabRemapping"
+  in_arg {
+    name: "new_vocab_file"
+    description: <<END
+Path to the new vocab file.
+END
+  }
+  in_arg {
+    name: "old_vocab_file"
+    description: <<END
+Path to the old vocab file.
+END
+  }
+  out_arg {
+    name: "remapping"
+    description: <<END
+A Tensor of length num_new_vocab where the element at index i
+is equal to the old ID that maps to the new ID i.  This element is -1 for any
+new ID that is not found in the old vocabulary.
+END
+  }
+  out_arg {
+    name: "num_present"
+    description: <<END
+Number of new vocab entries found in old vocab.
+END
+  }
+  attr {
+    name: "new_vocab_offset"
+    description: <<END
+How many entries into the new vocab file to start reading.
+END
+  }
+  attr {
+    name: "num_new_vocab"
+    description: <<END
+Number of entries in the new vocab file to remap.
+END
+  }
+  summary: "Given a path to new and old vocabulary files, returns a remapping Tensor of"
+  description: <<END
+length `num_new_vocab`, where `remapping[i]` contains the row number in the old
+vocabulary that corresponds to row `i` in the new vocabulary (starting at line
+`new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`
+in the new vocabulary is not in the old vocabulary.  `num_vocab_offset` enables
+use in the partitioned variable case, and should generally be set through
+examining partitioning info.  The format of the files should be a text file,
+with each line containing a single entity within the vocabulary.
+
+For example, with `new_vocab_file` a text file containing each of the following
+elements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],
+`num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be
+`[0, -1, 2]`.
+
+The op also returns a count of how many entries in the new vocabulary
+were present in the old vocabulary, which is used to calculate the number of
+values to initialize in a weight matrix remapping
+
+This functionality can be used to remap both row vocabularies (typically,
+features) and column vocabularies (typically, classes) from TensorFlow
+checkpoints.  Note that the partitioning logic relies on contiguous vocabularies
+corresponding to div-partitioned variables.  Moreover, the underlying remapping
+uses an IndexTable (as opposed to an inexact CuckooTable), so client code should
+use the corresponding index_table_from_file() as the FeatureColumn framework
+does (as opposed to tf.feature_to_id(), which uses a CuckooTable).
+END
+}

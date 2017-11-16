@@ -920,6 +920,7 @@ class SeparableConv2D(Conv2D):
         trainable=trainable,
         name=name,
         **kwargs)
+    self.data_format = data_format
     self.depth_multiplier = depth_multiplier
     self.depthwise_initializer = depthwise_initializer
     self.pointwise_initializer = pointwise_initializer

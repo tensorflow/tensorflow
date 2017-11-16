@@ -318,6 +318,32 @@ class WarmStartingUtilTest(test.TestCase):
         self.assertAllEqual([[2.], [1.5], [1.], [0.5], [0.]],
                             fruit_weights.eval(sess))
 
+  def testWarmStartVarWithVocabConstrainedOldVocabSize(self):
+    prev_vocab_path = self._write_vocab(["apple", "banana", "guava", "orange"],
+                                        "old_vocab")
+    _, _ = self._create_prev_run_var(
+        "fruit_weights", initializer=[[0.5], [1.], [1.5], [2.]])
+
+    # New vocab with elements in reverse order and one new element.
+    new_vocab_path = self._write_vocab(
+        ["orange", "guava", "banana", "apple", "raspberry"], "new_vocab")
+    # New session and new graph.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        fruit_weights = variable_scope.get_variable(
+            "fruit_weights", initializer=[[0.], [0.], [0.], [0.], [0.]])
+        ws_util._warmstart_var_with_vocab(
+            fruit_weights,
+            new_vocab_path,
+            5,
+            self.get_temp_dir(),
+            prev_vocab_path,
+            previous_vocab_size=2)
+        sess.run(variables.global_variables_initializer())
+        # Old vocabulary limited to ['apple', 'banana'].
+        self.assertAllEqual([[0.], [0.], [1.], [0.5], [0.]],
+                            fruit_weights.eval(sess))
+
   def testWarmStartVarWithVocabPrevVarPartitioned(self):
     prev_vocab_path = self._write_vocab(["apple", "banana", "guava", "orange"],
                                         "old_vocab")
@@ -506,6 +532,51 @@ class WarmStartingUtilTest(test.TestCase):
         # Verify weights were correctly warmstarted.
         self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [prev_vocab_val]},
                                   sess)
+
+  def testWarmStartInputLayer_SparseColumnVocabularyConstrainedVocabSizes(self):
+    # Create old vocabulary, and use a size smaller than the total number of
+    # entries.
+    old_vocab_path = self._write_vocab(["apple", "guava", "banana"],
+                                       "old_vocab")
+    old_vocab_size = 2  # ['apple', 'guava']
+
+    # Create new vocab for sparse column "sc_vocab".
+    current_vocab_path = self._write_vocab(
+        ["apple", "banana", "guava", "orange"], "current_vocab")
+    # Create feature column.  Only use 2 of the actual entries, resulting in
+    # ['apple', 'banana'] for the new vocabulary.
+    sc_vocab = fc.categorical_column_with_vocabulary_file(
+        "sc_vocab", vocabulary_file=current_vocab_path, vocabulary_size=2)
+
+    # Save checkpoint from which to warm-start.
+    self._create_prev_run_var(
+        "linear_model/sc_vocab/weights", shape=[2, 1], initializer=ones())
+
+    partitioner = lambda shape, dtype: [1] * len(shape)
+    # New graph, new session WITHOUT warmstarting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
+        sess.run(variables.global_variables_initializer())
+        # Without warmstarting, the weights should be initialized using default
+        # initializer (which is init_ops.zeros_initializer).
+        self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [np.zeros([2, 1])]},
+                                  sess)
+
+    # New graph, new session with warmstarting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
+        warmstart_settings = ws_util._WarmStartSettings(
+            ckpt_to_initialize_from=self.get_temp_dir(),
+            col_to_prev_vocab={
+                sc_vocab: (old_vocab_path, old_vocab_size)
+            })
+        ws_util._warmstart_input_layer(cols_to_vars, warmstart_settings)
+        sess.run(variables.global_variables_initializer())
+        # Verify weights were correctly warmstarted.  'banana' isn't in the
+        # first two entries of the old vocabulary, so it's newly initialized.
+        self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [[[1], [0]]]}, sess)
 
   def testWarmStartInputLayer_BucketizedColumn(self):
     # Create feature column.

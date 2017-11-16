@@ -68,6 +68,7 @@ class ShardingBuilder {
                          const TileAssignment& tile_assignment) {
     OpSharding result;
     result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    *result.mutable_tile_shape() = tile_shape;
     for (int64 dim : tile_assignment.dimensions()) {
       result.add_tile_assignment_dimensions(dim);
     }
@@ -746,11 +747,12 @@ class ComputationBuilder {
   ComputationDataHandle Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters, or on stateful operators such
-  // as `RngNormal` or `Infeed`. Unlike `ComputeConstant`, `IsConstant` tests
-  // whether a computation is a compile-time constant without evaluating the
-  // computation.
-  StatusOr<bool> IsConstant(const ComputationDataHandle& operand);
+  // constant does not depend on parameters with higher index then
+  // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
+  // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
+  // compile-time constant without evaluating the computation.
+  StatusOr<bool> IsConstant(const ComputationDataHandle& operand,
+                            int64 num_parameters = 0);
 
   // Normalizes operand across spatial and batch dimensions for each feature.
   //
@@ -795,7 +797,7 @@ class ComputationBuilder {
                                       float epsilon, int64 feature_index);
 
   // Computes the value of a constant indicated by a
-  // ComputationDataHandle.
+  // ComputationDataHandle using a non-optimized interpreter on the host.
   //
   // The operand must be from the computation currently being built -
   // i.e., returned from this builder with no intervening call to
@@ -803,8 +805,11 @@ class ComputationBuilder {
   // that may stop working at any time.
   //
   // The operand must represent a constant value, which in this case
-  // means that it must not statically depend on a parameter to the
-  // computation that is being built.
+  // means that it must not statically depend on any parameter of the
+  // computation that is being built other then the ones specified on the
+  // paramtere list. The parameters in the list will be indexed by their
+  // parameter id property so the number of parameters specified should be at
+  // least as many as the largest used parameter index.
   //
   // `IsConstant` can be used to test whether a computation is a compile-time
   // constant without evaluation it. `ComputeConstant` only succeeds for
@@ -822,7 +827,8 @@ class ComputationBuilder {
   // will be stored using that layout.
   StatusOr<std::unique_ptr<Literal>> ComputeConstant(
       const ComputationDataHandle& operand,
-      const Layout* output_layout = nullptr);
+      const Layout* output_layout = nullptr,
+      tensorflow::gtl::ArraySlice<Literal> parameters = {});
 
   // Returns a new ComputationBuilder whose resultant Computation is used only
   // by this ComputationBuilder. The sub-ComputationBuilder has the same

@@ -108,13 +108,16 @@ class HloExecutionProfiler {
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    tensorflow::StringPiece ptx,
+    const string& ptx, const std::vector<uint8>& cubin,
+    std::pair<int, int> compute_capability,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
     HloCostAnalysis::ShapeSizeFunction shape_size_function)
     : Executable(std::move(hlo_module)),
       ptx_(ptx),
+      cubin_(cubin),
+      compute_capability_(compute_capability),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)),
       shape_size_function_(std::move(shape_size_function)) {}
@@ -124,6 +127,16 @@ Status GpuExecutable::ExecuteThunks(
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* main_stream = run_options->stream();
+
+  std::pair<int, int> stream_compute_compatibility;
+  main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
+      &stream_compute_compatibility.first,
+      &stream_compute_compatibility.second);
+  TF_RET_CHECK(stream_compute_compatibility == compute_capability_)
+      << "Compute capability mismatch; expected {" << compute_capability_.first
+      << ", " << compute_capability_.second << "}, but was {"
+      << stream_compute_compatibility.first << ", "
+      << stream_compute_compatibility.second << "}";
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {

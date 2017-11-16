@@ -37,5 +37,7 @@ from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras import utils
 from tensorflow.python.keras._impl.keras import wrappers
 from tensorflow.python.keras._impl.keras.layers import Input
+from tensorflow.python.keras._impl.keras.models import Model
+from tensorflow.python.keras._impl.keras.models import Sequential
 
 __version__ = '2.0.8-tf'
