@@ -860,7 +860,7 @@ Status ProdGrad(const Scope& scope, const Operation& op,
 
 
   // Normalize any negative indices in the reduction_axes to positive values.
-  auto reduction_indices_pos = Mod(scope, Add(scope, reduction_indices, rank), rank);
+  auto reduction_indices_pos = Mod(cpu_scope, Add(cpu_scope, reduction_indices, rank), rank);
 
   // [1]
   auto reduced = Cast(cpu_scope, reduction_indices_pos, DataType::DT_INT32);
