@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""TensorFlow Summary API v2.
 
-"""Contrib summary package.
-
-The operations in this package are safe to use with eager execution turned or on
-off.
-
+The operations in this package are safe to use with eager execution turned on or
+off. It has a more flexible API that allows summaries to be written directly
+from ops to places other than event log files, rather than propagating protos
+from @{tf.summary.merge_all} to @{tf.summary.FileWriter}.
 """
 
 from __future__ import absolute_import
@@ -32,11 +32,14 @@ from tensorflow.contrib.summary.summary_ops import create_summary_db_writer
 from tensorflow.contrib.summary.summary_ops import create_summary_file_writer
 from tensorflow.contrib.summary.summary_ops import eval_dir
 from tensorflow.contrib.summary.summary_ops import generic
+from tensorflow.contrib.summary.summary_ops import graph
 from tensorflow.contrib.summary.summary_ops import histogram
 from tensorflow.contrib.summary.summary_ops import image
 from tensorflow.contrib.summary.summary_ops import import_event
+from tensorflow.contrib.summary.summary_ops import initialize
 from tensorflow.contrib.summary.summary_ops import never_record_summaries
 from tensorflow.contrib.summary.summary_ops import record_summaries_every_n_global_steps
 from tensorflow.contrib.summary.summary_ops import scalar
 from tensorflow.contrib.summary.summary_ops import should_record_summaries
 from tensorflow.contrib.summary.summary_ops import summary_writer_initializer_op
+from tensorflow.contrib.summary.summary_ops import SummaryWriter

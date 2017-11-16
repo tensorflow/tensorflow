@@ -164,6 +164,37 @@ TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsWithChain) {
   EXPECT_EQ("c", output.node(2).input(0));
 }
 
+TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsWithControlChain) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  Output recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
+  Output id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  Output squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
+  Output recip2 = ops::Reciprocal(
+      s.WithOpName("recip2").WithControlDependencies(squeeze), c);
+  Output id2 = ops::Identity(s.WithOpName("id2"), recip2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // The optimizer should be a noop.
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    const NodeDef& original = item.graph.node(i);
+    const NodeDef& optimized = output.node(i);
+    EXPECT_EQ(original.name(), optimized.name());
+    EXPECT_EQ(original.op(), optimized.op());
+    EXPECT_EQ(original.input_size(), optimized.input_size());
+    for (int j = 0; j < original.input_size(); ++j) {
+      EXPECT_EQ(original.input(j), optimized.input(j));
+    }
+  }
+}
+
 TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
@@ -185,11 +216,49 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   EXPECT_EQ(5, output.node_size());
   const NodeDef& new_const = output.node(3);
   EXPECT_EQ("add_const", new_const.name());
+  EXPECT_EQ("^x", new_const.input(0));
+  EXPECT_EQ(std::string("\0\0\0@", 4),
+            new_const.attr().at("value").tensor().tensor_content());
   const NodeDef& new_mul = output.node(4);
   EXPECT_EQ("add_mul", new_mul.name());
   EXPECT_EQ("add_const", new_mul.input(0));
   EXPECT_EQ("x", new_mul.input(1));
   const NodeDef& new_id = output.node(2);
+  EXPECT_EQ("id", new_id.name());
+  EXPECT_EQ("add_mul", new_id.input(0));
+}
+
+TEST_F(ArithmeticOptimizerTest, TrivialSumsSimpleWithControlDep) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output y = ops::Const(s.WithOpName("y"), {1.0f, 2.0f}, {1, 2});
+  Output x = ops::Const(s.WithOpName("x"), {3.0f, 4.0f}, {1, 2});
+  Output add = ops::Add(s.WithOpName("add").WithControlDependencies(y), x, x);
+  Output id = ops::Identity(s.WithOpName("id"), add);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, output.node_size());
+  const NodeDef& new_const = output.node(4);
+  EXPECT_EQ("add_const", new_const.name());
+  EXPECT_EQ("^x", new_const.input(0));
+  EXPECT_EQ(std::string("\0\0\0@", 4),
+            new_const.attr().at("value").tensor().tensor_content());
+  const NodeDef& new_mul = output.node(5);
+  EXPECT_EQ("add_mul", new_mul.name());
+  EXPECT_EQ("add_const", new_mul.input(0));
+  EXPECT_EQ("x", new_mul.input(1));
+  EXPECT_EQ("^y", new_mul.input(2));
+  const NodeDef& new_id = output.node(3);
   EXPECT_EQ("id", new_id.name());
   EXPECT_EQ("add_mul", new_id.input(0));
 }
@@ -207,6 +276,13 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const std::vector<string> devices{
+      "/device:CPU:0", "/device:GPU:0", "/device:CPU:0", "/device:GPU:1",
+      "/device:CPU:0", "/device:CPU:0", "/device:CPU:0",
+  };
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device(devices[i]);
+  }
   ArithmeticOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -216,36 +292,48 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(11, output.node_size());
-  const NodeDef& new_id = output.node(4);
-  EXPECT_EQ("id", new_id.name());
-  EXPECT_EQ("Add_6_mul", new_id.input(0));
-
-  // Add4 and add5 get deduped, and we rewrite each of the 3 remaining add nodes
-  // of the form Add(x,x) into Mul(Const(2), x).
-  const NodeDef& new_add_4_const = output.node(5);
-  EXPECT_EQ("Add_4_const", new_add_4_const.name());
-  EXPECT_EQ("^Add", new_add_4_const.input(0));
-  const NodeDef& new_add_4_mul = output.node(6);
-  EXPECT_EQ("Add_4_mul", new_add_4_mul.name());
-  EXPECT_EQ("Add_4_const", new_add_4_mul.input(0));
-  EXPECT_EQ("Add_mul", new_add_4_mul.input(1));
-
-  const NodeDef& new_add_6_const = output.node(7);
-  EXPECT_EQ("Add_6_const", new_add_6_const.name());
-  EXPECT_EQ("^Add_4_mul", new_add_6_const.input(0));
-  const NodeDef& new_add_6_mul = output.node(8);
-  EXPECT_EQ("Add_6_mul", new_add_6_mul.name());
-  EXPECT_EQ("Add_6_const", new_add_6_mul.input(0));
-  EXPECT_EQ("Add_4_mul", new_add_6_mul.input(1));
-
-  const NodeDef& new_add_const = output.node(9);
-  EXPECT_EQ("Add_const", new_add_const.name());
-  EXPECT_EQ("^Placeholder", new_add_const.input(0));
-  const NodeDef& new_add_mul = output.node(10);
-  EXPECT_EQ("Add_mul", new_add_mul.name());
-  EXPECT_EQ("Add_const", new_add_mul.input(0));
-  EXPECT_EQ("Placeholder", new_add_mul.input(1));
+  EXPECT_EQ(17, output.node_size());
+  // The graph gets optimized to
+  // Mul(p,
+  //     Add(Add(Const(2), Const(2)),
+  //         Add(Const(2), Const(2))))
+  for (const auto& node : output.node()) {
+    if ("id" == node.name()) {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("Add_6_hoist_mul", node.input(0));
+    } else if ("Add_6_hoist_mul" == node.name()) {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("Placeholder", node.input(0));
+      EXPECT_EQ("Add_6_hoist_add", node.input(1));
+    } else if ("Add_6_hoist_add" == node.name()) {
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("Add_4_hoist_add", node.input(0));
+      EXPECT_EQ("Add_5_hoist_add", node.input(1));
+      EXPECT_EQ("^Placeholder", node.input(2));
+    } else if ("Add_4_hoist_add" == node.name()) {
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("Add_const", node.input(0));
+      EXPECT_EQ("Add_1_const", node.input(1));
+      EXPECT_EQ("^Placeholder", node.input(2));
+    } else if ("Add_5_hoist_add" == node.name()) {
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("Add_const", node.input(0));
+      EXPECT_EQ("Add_1_const", node.input(1));
+      EXPECT_EQ("^Placeholder", node.input(2));
+    } else if ("Add_const" == node.name()) {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^Placeholder", node.input(0));
+    } else if ("Add_1_const" == node.name()) {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^Placeholder", node.input(0));
+    }
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest, HoistFactor) {
@@ -272,16 +360,16 @@ TEST_F(ArithmeticOptimizerTest, HoistFactor) {
 
   EXPECT_EQ(9, output.node_size());
   const NodeDef& new_add = output.node(8);
-  EXPECT_EQ("add_hoist", new_add.name());
+  EXPECT_EQ("add_hoist_add", new_add.name());
   EXPECT_EQ("y1", new_add.input(0));
   EXPECT_EQ("y2", new_add.input(1));
   const NodeDef& new_mul = output.node(7);
-  EXPECT_EQ("mul1_hoist", new_mul.name());
+  EXPECT_EQ("add_hoist_mul", new_mul.name());
   EXPECT_EQ("x", new_mul.input(0));
-  EXPECT_EQ("add_hoist", new_mul.input(1));
+  EXPECT_EQ("add_hoist_add", new_mul.input(1));
   const NodeDef& new_id = output.node(6);
   EXPECT_EQ("id", new_id.name());
-  EXPECT_EQ("mul1_hoist", new_id.input(0));
+  EXPECT_EQ("add_hoist_mul", new_id.input(0));
 }
 
 TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
@@ -463,10 +551,6 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   item.graph = output;
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
-  for (const auto& node : output.node()) {
-    LOG(INFO) << node.DebugString();
-  }
-
   EXPECT_EQ(0, std::count_if(
                    output.node().begin(), output.node().end(),
                    [](const NodeDef& node) { return node.op() == "Reshape"; }));
@@ -491,10 +575,6 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
 
   item.graph = output;
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
-
-  for (const auto& node : output.node()) {
-    LOG(INFO) << node.DebugString();
-  }
 
   EXPECT_EQ(1, std::count_if(
                    output.node().begin(), output.node().end(),

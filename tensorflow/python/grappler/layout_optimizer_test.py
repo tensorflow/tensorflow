@@ -88,8 +88,12 @@ def loop():
 
 
 def get_config(layout_optimizer=True):
-  rewrite_options = rewriter_config_pb2.RewriterConfig(
-      optimize_tensor_layout=layout_optimizer)
+  if layout_optimizer:
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
+  else:
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF)
   graph_options = config_pb2.GraphOptions(
       rewrite_options=rewrite_options, build_cost_model=1)
   config = config_pb2.ConfigProto(graph_options=graph_options)
@@ -183,7 +187,8 @@ class LayoutOptimizerTest(test.TestCase):
       self.skipTest('GPU required')
 
     random_seed.set_random_seed(0)
-    x = random_ops.truncated_normal([1, 200, 200, 3], seed=0)
+    x = variables.Variable(
+        random_ops.truncated_normal([1, 200, 200, 3], seed=0))
     y = conv_layers.conv2d(x, 32, [3, 3])
     z = conv_layers.conv2d(y, 32, [3, 3])
     optimizer = gradient_descent.GradientDescentOptimizer(1e-4)
@@ -194,7 +199,7 @@ class LayoutOptimizerTest(test.TestCase):
     meta_graph = saver_lib.export_meta_graph(graph_def=graph.as_graph_def())
 
     rewrite_options = rewriter_config_pb2.RewriterConfig(
-        optimize_tensor_layout=True)
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
     optimized_graph = tf_optimizer.OptimizeGraph(rewrite_options, meta_graph)
 
     found = 0

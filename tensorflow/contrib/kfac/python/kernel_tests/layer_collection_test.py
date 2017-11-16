@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.kfac.python.ops import fisher_blocks
 from tensorflow.contrib.kfac.python.ops import fisher_factors
 from tensorflow.contrib.kfac.python.ops import layer_collection
 from tensorflow.python.framework import dtypes
@@ -25,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
@@ -105,8 +107,10 @@ class LayerCollectionTest(test.TestCase):
           array_ops.constant(4), [1, 1, 1, 1], 'SAME',
           array_ops.ones((1, 1, 1, 1)), array_ops.constant(3))
       lc.register_conv2d(
-          array_ops.constant(4), [1, 1, 1, 1], 'SAME',
-          array_ops.ones((1, 1, 1, 1)), array_ops.constant(3),
+          array_ops.constant(4), [1, 1, 1, 1],
+          'SAME',
+          array_ops.ones((1, 1, 1, 1)),
+          array_ops.constant(3),
           approx=layer_collection.APPROX_DIAGONAL_NAME)
       lc.register_generic(
           array_ops.constant(5), 16, approx=layer_collection.APPROX_FULL_NAME)
@@ -122,8 +126,8 @@ class LayerCollectionTest(test.TestCase):
       random_seed.set_random_seed(200)
       lc = layer_collection.LayerCollection()
       key = array_ops.constant(1)
-      lc.register_fully_connected(key,
-                                  array_ops.constant(2), array_ops.constant(3))
+      lc.register_fully_connected(key, array_ops.constant(2),
+                                  array_ops.constant(3))
       with self.assertRaises(ValueError):
         lc.register_generic(key, 16)
 
@@ -191,8 +195,8 @@ class LayerCollectionTest(test.TestCase):
 
     lc.register_block((x, y), MockFisherBlock('foo'))
     self.assertEqual(
-        set([MockFisherBlock('2'), MockFisherBlock('foo')]),
-        set(lc.get_blocks()))
+        set([MockFisherBlock('2'), MockFisherBlock('foo')]), set(
+            lc.get_blocks()))
 
   def testRegisterTupleVarSomeRegisteredInOtherTuples(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
@@ -463,6 +467,66 @@ class LayerCollectionTest(test.TestCase):
     }
     use_count_map = lc.get_use_count_map()
     self.assertDictEqual({'a': 4, 'b': 2, 'c': 4}, use_count_map)
+
+  def testIdentifyLinkedParametersSomeRegisteredInOtherTuples(self):
+    x = variable_scope.get_variable('x', shape=())
+    y = variable_scope.get_variable('y', shape=())
+    z = variable_scope.get_variable('z', shape=())
+    lc = layer_collection.LayerCollection()
+    lc.define_linked_parameters((x, y))
+
+    with self.assertRaises(ValueError):
+      lc.define_linked_parameters((x, z))
+
+  def testIdentifySubsetPreviouslyRegisteredTensor(self):
+    x = variable_scope.get_variable('x', shape=())
+    y = variable_scope.get_variable('y', shape=())
+    lc = layer_collection.LayerCollection()
+    lc.define_linked_parameters((x, y))
+
+    with self.assertRaises(ValueError):
+      lc.define_linked_parameters(x)
+
+  def testSpecifyApproximation(self):
+    w_0 = variable_scope.get_variable('w_0', [10, 10])
+    w_1 = variable_scope.get_variable('w_1', [10, 10])
+
+    b_0 = variable_scope.get_variable('b_0', [10])
+    b_1 = variable_scope.get_variable('b_1', [10])
+
+    x_0 = array_ops.placeholder(dtypes.float32, shape=(32, 10))
+    x_1 = array_ops.placeholder(dtypes.float32, shape=(32, 10))
+
+    pre_bias_0 = math_ops.matmul(x_0, w_0)
+    pre_bias_1 = math_ops.matmul(x_1, w_1)
+
+    # Build the fully connected layers in the graph.
+    pre_bias_0 + b_0  # pylint: disable=pointless-statement
+    pre_bias_1 + b_1  # pylint: disable=pointless-statement
+
+    lc = layer_collection.LayerCollection()
+    lc.define_linked_parameters(
+        w_0, approximation=layer_collection.APPROX_DIAGONAL_NAME)
+    lc.define_linked_parameters(
+        w_1, approximation=layer_collection.APPROX_DIAGONAL_NAME)
+    lc.define_linked_parameters(
+        b_0, approximation=layer_collection.APPROX_FULL_NAME)
+    lc.define_linked_parameters(
+        b_1, approximation=layer_collection.APPROX_FULL_NAME)
+
+    lc.register_fully_connected(w_0, x_0, pre_bias_0)
+    lc.register_fully_connected(
+        w_1, x_1, pre_bias_1, approx=layer_collection.APPROX_KRONECKER_NAME)
+    self.assertIsInstance(lc.fisher_blocks[w_0],
+                          fisher_blocks.FullyConnectedDiagonalFB)
+    self.assertIsInstance(lc.fisher_blocks[w_1],
+                          fisher_blocks.FullyConnectedKFACBasicFB)
+
+    lc.register_generic(b_0, batch_size=1)
+    lc.register_generic(
+        b_1, batch_size=1, approx=layer_collection.APPROX_DIAGONAL_NAME)
+    self.assertIsInstance(lc.fisher_blocks[b_0], fisher_blocks.FullFB)
+    self.assertIsInstance(lc.fisher_blocks[b_1], fisher_blocks.NaiveDiagonalFB)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,23 +65,24 @@ def load_data(path='imdb.npz',
   have simply been skipped.
   """
   path = get_file(
-      path, origin='https://s3.amazonaws.com/text-datasets/imdb.npz')
+      path,
+      origin='https://s3.amazonaws.com/text-datasets/imdb.npz',
+      file_hash='599dadb1135973df5b59232a0e9a887c')
   f = np.load(path)
-  x_train = f['x_train']
-  labels_train = f['y_train']
-  x_test = f['x_test']
-  labels_test = f['y_test']
+  x_train, labels_train = f['x_train'], f['y_train']
+  x_test, labels_test = f['x_test'], f['y_test']
   f.close()
 
   np.random.seed(seed)
-  np.random.shuffle(x_train)
-  np.random.seed(seed)
-  np.random.shuffle(labels_train)
+  indices = np.arrange(len(x_train))
+  np.random.shuffle(indices)
+  x_train = x_train[indices]
+  labels_train = labels_train[indices]
 
-  np.random.seed(seed * 2)
-  np.random.shuffle(x_test)
-  np.random.seed(seed * 2)
-  np.random.shuffle(labels_test)
+  indices = np.arrange(len(x_test))
+  np.random.shuffle(indices)
+  x_test = x_test[indices]
+  labels_test = labels_test[indices]
 
   xs = np.concatenate([x_train, x_test])
   labels = np.concatenate([labels_train, labels_test])

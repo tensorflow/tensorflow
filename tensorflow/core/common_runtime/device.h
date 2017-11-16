@@ -110,12 +110,9 @@ class Device : public DeviceBase {
   // prototyping of TensorFlow device implementations that need to modify
   // the GraphDef before execution.
   //
-  // 'library' provides access to the function library which is shared
-  // between all device partitions.
   // 'graph' supplies the partition of the graph assigned to this
   // device.
-  virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
-                                   std::unique_ptr<Graph>* /*graph*/) {
+  virtual Status MaybeRewriteGraph(std::unique_ptr<Graph>* /*graph*/) {
     return Status::OK();
   }
 

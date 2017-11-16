@@ -281,6 +281,37 @@ class IndexTableFromFile(test.TestCase):
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, 3), ids.eval())
 
+  def test_string_index_table_from_multicolumn_file(self):
+    vocabulary_file = self._createVocabFile(
+        "f2i_vocab1.txt", values=("brain\t300", "salad\t20", "surgery\t1"))
+    with self.test_session():
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file,
+          num_oov_buckets=1,
+          key_column_index=0,
+          value_column_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+
+      self.assertRaises(errors_impl.OpError, ids.eval)
+      lookup_ops.tables_initializer().run()
+      self.assertAllEqual((1, 2, 3), ids.eval())
+
+  def test_string_index_table_from_multicolumn_file_custom_delimiter(self):
+    vocabulary_file = self._createVocabFile(
+        "f2i_vocab1.txt", values=("brain 300", "salad 20", "surgery 1"))
+    with self.test_session():
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file,
+          num_oov_buckets=1,
+          key_column_index=0,
+          value_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
+          delimiter=" ")
+      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+
+      self.assertRaises(errors_impl.OpError, ids.eval)
+      lookup_ops.tables_initializer().run()
+      self.assertAllEqual((1, 2, 3), ids.eval())
+
   def test_string_index_table_from_file_tensor_filename(self):
     vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
     with self.test_session():
@@ -566,10 +597,10 @@ class IndexTableFromTensor(test.TestCase):
 
 class IndexToStringTableFromFileTest(test.TestCase):
 
-  def _createVocabFile(self, basename):
+  def _createVocabFile(self, basename, values=("brain", "salad", "surgery")):
     vocabulary_file = os.path.join(self.get_temp_dir(), basename)
     with open(vocabulary_file, "w") as f:
-      f.write("\n".join(["brain", "salad", "surgery"]) + "\n")
+      f.write("\n".join(values) + "\n")
     return vocabulary_file
 
   def test_index_to_string_table(self):
@@ -577,6 +608,35 @@ class IndexToStringTableFromFileTest(test.TestCase):
     with self.test_session():
       table = lookup_ops.index_to_string_table_from_file(
           vocabulary_file=vocabulary_file)
+      features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
+      self.assertRaises(errors_impl.OpError, features.eval)
+      lookup_ops.tables_initializer().run()
+      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                          features.eval())
+
+  def test_index_to_string_table_from_multicolumn_file(self):
+    vocabulary_file = self._createVocabFile(
+        "f2i_vocab1.txt", values=("brain\t300", "salad\t20", "surgery\t1"))
+    with self.test_session():
+      table = lookup_ops.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file,
+          key_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
+          value_column_index=0)
+      features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
+      self.assertRaises(errors_impl.OpError, features.eval)
+      lookup_ops.tables_initializer().run()
+      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                          features.eval())
+
+  def test_index_to_string_table_from_multicolumn_file_custom_delimiter(self):
+    vocabulary_file = self._createVocabFile(
+        "f2i_vocab1.txt", values=("brain 300", "salad 20", "surgery 1"))
+    with self.test_session():
+      table = lookup_ops.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file,
+          key_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
+          value_column_index=0,
+          delimiter=" ")
       features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
       self.assertRaises(errors_impl.OpError, features.eval)
       lookup_ops.tables_initializer().run()

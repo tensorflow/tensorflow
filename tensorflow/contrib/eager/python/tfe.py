@@ -30,9 +30,6 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@value_and_gradients_function
 @@GradientTape
 
-@@enable_tracing
-@@flush_trace
-
 @@run
 @@enable_eager_execution
 
@@ -46,12 +43,15 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@seterr
 
 @@Iterator
-@@Network
 @@Saver
 @@restore_variables_on_create
 @@Variable
 @@get_optimizer_variables
 @@EagerVariableStore
+
+@@Network
+@@save_network_checkpoint
+@@restore_network_checkpoint
 
 @@in_eager_mode
 @@in_graph_mode
@@ -74,6 +74,8 @@ from __future__ import print_function
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
+from tensorflow.contrib.eager.python.network import save_network_checkpoint
+from tensorflow.contrib.eager.python.network import restore_network_checkpoint
 from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
@@ -86,7 +88,6 @@ from tensorflow.python.eager.context import in_eager_mode
 from tensorflow.python.eager.context import in_graph_mode
 from tensorflow.python.eager.context import list_devices
 from tensorflow.python.eager.context import num_gpus
-from tensorflow.python.eager.core import enable_tracing
 from tensorflow.python.eager.custom_gradient import custom_gradient
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks

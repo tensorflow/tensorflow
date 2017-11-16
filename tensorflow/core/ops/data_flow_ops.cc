@@ -1346,6 +1346,7 @@ REGISTER_OP("TensorArrayV3")
     .Attr("element_shape: shape = { unknown_rank: true }")
     .Attr("dynamic_size: bool = false")
     .Attr("clear_after_read: bool = true")
+    .Attr("identical_element_shapes: bool = false")
     .Attr("tensor_array_name: string = ''")
     .Output("handle: resource")
     .Output("flow: float")
@@ -1374,6 +1375,12 @@ dynamic_size: A boolean that determines whether writes to the TensorArray
 clear_after_read: If true (default), Tensors in the TensorArray are cleared
   after being read.  This disables multiple read semantics but allows early
   release of memory.
+identical_element_shapes: If true (default is false), then all
+  elements in the TensorArray will be expected to have have identical shapes.
+  This allows certain behaviors, like dynamically checking for
+  consistent shapes on write, and being able to fill in properly
+  shaped zero tensors on stack -- even if the element_shape attribute
+  is not fully defined.
 tensor_array_name: Overrides the name used for the temporary tensor_array
   resource. Default value is the name of the 'TensorArray' op (which
   is guaranteed unique).

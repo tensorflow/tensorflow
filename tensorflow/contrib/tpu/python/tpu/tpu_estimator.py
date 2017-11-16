@@ -946,19 +946,10 @@ class _InputPipeline(object):
     # user code, so, log a warning.
     if ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
       err_msg = ('Input pipeline contains one or more QueueRunners. '
-                 'These are not supported via TPUEstimator. You must convert '
-                 'your input pipeline to use `tf.data` instead (see '
+                 'It could be slow and not scalable. Please consider '
+                 'converting your input pipeline to use `tf.data` instead (see '
                  'https://www.tensorflow.org/programmers_guide/datasets for '
                  'instructions.')
-      if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
-        raise RuntimeError(err_msg)
-      else:
-        logging.warn(err_msg)
-    elif ops.get_default_graph().get_collection(ops.GraphKeys.SUMMARIES):
-      # Queue Runner has summary Ops by default. So here we use elif to do
-      # necessary checks for Dataset input pipeline only.
-      err_msg = ('Input pipeline contains `tf.summary` operations. '
-                 'These are not currently supported.')
       if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
         raise RuntimeError(err_msg)
       else:
