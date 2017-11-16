@@ -84,15 +84,32 @@ inline int hex_digit_to_int(char c) {
   return x & 0xf;
 }
 
-bool CUnescapeInternal(StringPiece source, char* dest,
+bool CUnescapeInternal(StringPiece source, string* dest,
                        string::size_type* dest_len, string* error) {
-  char* d = dest;
   const char* p = source.data();
   const char* end = source.end();
   const char* last_byte = end - 1;
 
+  // We are going to write the result to dest with its iterator. If our string
+  // implementation uses copy-on-write, this will trigger a copy-on-write of
+  // dest's buffer; that is, dest will be assigned a new buffer.
+  //
+  // Note that the following way is NOT a legal way to modify a string's
+  // content:
+  //
+  //  char* d = const_cast<char*>(dest->data());
+  //
+  // This won't trigger copy-on-write of the string, and so is dangerous when
+  // the buffer is shared.
+  auto d = dest->begin();
+
   // Small optimization for case where source = dest and there's no escaping
-  while (p == d && p < end && *p != '\\') p++, d++;
+  if (source.data() == dest->data()) {
+    while (p < end && *p != '\\') {
+      p++;
+      d++;
+    }
+  }
 
   while (p < end) {
     if (*p != '\\') {
@@ -192,7 +209,7 @@ bool CUnescapeInternal(StringPiece source, char* dest,
       p++;  // read past letter we escaped
     }
   }
-  *dest_len = d - dest;
+  *dest_len = d - dest->begin();
   return true;
 }
 
@@ -215,8 +232,7 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
 bool CUnescape(StringPiece source, string* dest, string* error) {
   dest->resize(source.size());
   string::size_type dest_size;
-  if (!CUnescapeInternal(source, const_cast<char*>(dest->data()), &dest_size,
-                         error)) {
+  if (!CUnescapeInternal(source, dest, &dest_size, error)) {
     return false;
   }
   dest->erase(dest_size);

@@ -23,7 +23,6 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.crf.python.ops import crf
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -58,18 +57,19 @@ class CrfTest(test.TestCase):
   def testCrfUnaryScore(self):
     inputs = np.array(
         [[4, 5, -3], [3, -1, 3], [-1, 2, 1], [0, 0, 0]], dtype=np.float32)
-    tag_indices = np.array([1, 2, 1, 0], dtype=np.int32)
-    sequence_lengths = np.array(3, dtype=np.int32)
-    with self.test_session() as sess:
-      unary_score = crf.crf_unary_score(
-          tag_indices=array_ops.expand_dims(tag_indices, 0),
-          sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
-          inputs=array_ops.expand_dims(inputs, 0))
-      unary_score = array_ops.squeeze(unary_score, [0])
-      tf_unary_score = sess.run(unary_score)
-      expected_unary_score = sum(inputs[i][tag_indices[i]]
-                                 for i in range(sequence_lengths))
-      self.assertAllClose(tf_unary_score, expected_unary_score)
+    for dtype in (np.int32, np.int64):
+      tag_indices = np.array([1, 2, 1, 0], dtype=dtype)
+      sequence_lengths = np.array(3, dtype=np.int32)
+      with self.test_session() as sess:
+        unary_score = crf.crf_unary_score(
+            tag_indices=array_ops.expand_dims(tag_indices, 0),
+            sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+            inputs=array_ops.expand_dims(inputs, 0))
+        unary_score = array_ops.squeeze(unary_score, [0])
+        tf_unary_score = sess.run(unary_score)
+        expected_unary_score = sum(inputs[i][tag_indices[i]]
+                                   for i in range(sequence_lengths))
+        self.assertAllClose(tf_unary_score, expected_unary_score)
 
   def testCrfBinaryScore(self):
     tag_indices = np.array([1, 2, 1, 0], dtype=np.int32)

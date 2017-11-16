@@ -195,6 +195,47 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "dependency_optimizer",
+    srcs = ["dependency_optimizer.cc"],
+    hdrs = [
+        "dependency_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":arithmetic_optimizer",
+        ":constant_folding",
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:frame",
+    ],
+)
+
+tf_cc_test(
+    name = "dependency_optimizer_test",
+    size = "small",
+    srcs = ["dependency_optimizer_test.cc"],
+    deps = [
+        ":constant_folding",
+        ":dependency_optimizer",
+        ":model_pruner",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+cc_library(
     name = "model_pruner",
     srcs = ["model_pruner.cc"],
     hdrs = [
@@ -311,6 +352,7 @@ cc_library(
         ":arithmetic_optimizer",
         ":auto_parallel",
         ":constant_folding",
+        ":dependency_optimizer",
         ":graph_optimizer",
         ":layout_optimizer",
         ":memory_optimizer",

@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -30,6 +29,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
+
+
+_SUMMARY_OPS = ("ScalarSummary",)
+_PLACEHOLDER_OPS = ("Placeholder",)
 
 
 def initialize_system(embedding_config=None, job=None):
@@ -81,26 +85,6 @@ def core(num):
   return "device:TPU_REPLICATED_CORE:{}".format(num)
 
 
-# Experimental API to 'break out' of a tpu.rewrite() (or shard(), etc.) context.
-# In
-#
-# XXX
-# with tpu.rewrite(...):
-#   YYY
-#   with tpu.outside_all_rewrites():
-#     ZZZ
-#
-# the Ops in ZZZ are added outside the scope of the rewrite().
-# TODO(phawkins): currently outside_all_rewrites() pops out of all nested
-# control flow scopes, for example loops. It would make more sense if it only
-# popped out of a single scope.
-@contextlib.contextmanager
-def outside_all_rewrites():
-  """Experimental API to 'break out' of a tpu.rewrite() (or shard(), etc.)."""
-  with ops.control_dependencies(None):
-    yield
-
-
 class TPUReplicateContext(control_flow_ops.ControlFlowContext):
   """A ControlFlowContext for nodes inside a TPU computation.
 
@@ -124,6 +108,13 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
+    if op.type in _PLACEHOLDER_OPS:
+      raise ValueError("Placeholder %s is not supported." % op.name)
+
+    if op.type in _SUMMARY_OPS:
+      logging.warning(
+          "Summary operations are not currently supported (%s)" % op.name)
+
     if any(x.dtype._is_ref_dtype for x in op.inputs):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "

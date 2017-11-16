@@ -28,12 +28,9 @@ limitations under the License.
 namespace se = ::perftools::gputools;
 
 namespace xla {
-
-/* static */ tensorflow::mutex*
-TransferManager::platform_transfer_manager_mutex() {
-  static tensorflow::mutex* m = new tensorflow::mutex;
-  return m;
-}
+/* static */ tensorflow::mutex
+    TransferManager::platform_transfer_manager_mutex_(
+        tensorflow::LINKER_INITIALIZED);
 
 /* static */ std::map<perftools::gputools::Platform::Id,
                       TransferManager::State>*
@@ -47,7 +44,7 @@ TransferManager::GetPlatformTransferManagers() {
     se::Platform::Id platform_id,
     TransferManagerCreationFunction creation_function) {
   tensorflow::mutex_lock lock(
-      *TransferManager::platform_transfer_manager_mutex());
+      TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
   CHECK(managers->find(platform_id) == managers->end());
   (*managers)[platform_id].creation_function = creation_function;
@@ -56,7 +53,7 @@ TransferManager::GetPlatformTransferManagers() {
 /* static */ StatusOr<TransferManager*> TransferManager::GetForPlatform(
     const se::Platform* platform) {
   tensorflow::mutex_lock lock(
-      *TransferManager::platform_transfer_manager_mutex());
+      TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
 
   auto it = managers->find(platform->id());

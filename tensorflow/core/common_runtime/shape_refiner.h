@@ -159,6 +159,7 @@ class ShapeRefiner {
   // With this enabled, shape inference can take more time since it descends
   // into all function calls. It doesn't do inference once for each function
   // definition, but once for each function call.
+  // The function library must outlive the shape refiner.
   void set_function_library_for_shape_inference(
       const tensorflow::FunctionLibraryDefinition* lib) {
     function_library_ = lib;
@@ -210,10 +211,9 @@ class ShapeRefiner {
   // - outer_context will contain output shapes inferred from input shapes
   // - outer_context will contain nested inferences collection, iff
   //   keep_nested_shapes is true
-  Status InferShapesForFunction(
-      const tensorflow::FunctionLibraryDefinition& function_library,
-      const tensorflow::FunctionDef& function_def, bool keep_nested_shapes,
-      ExtendedInferenceContext* outer_context);
+  Status InferShapesForFunction(const tensorflow::FunctionDef* function_def,
+                                bool keep_nested_shapes,
+                                ExtendedInferenceContext* outer_context);
 
   // Tries to infer tensor output based on the input shapes of the node. In some
   // cases, the shapes of the inputs are sufficient for inferring the contents
@@ -260,12 +260,6 @@ class ShapeRefiner {
   Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
                     ExtendedInferenceContext* ec);
 
-  // Destructive operation, which steals ownership of inference contexts map.
-  std::unordered_map<const Node*, std::unique_ptr<ExtendedInferenceContext>>
-  StealInferenceContexts() {
-    return std::move(node_to_context_);
-  }
-
   int32 graph_def_version_;
   const OpRegistryInterface* const ops_registry_;
 
@@ -298,6 +292,11 @@ class ShapeRefiner {
   // Determines whether to keep the nested shape inference info for user-
   // defined functions. By default that info is discarded to save memory.
   bool keep_nested_shape_inferences_ = false;
+
+  // Cache the graph corresponding to each functin definition for which shapes
+  // are refined.
+  std::unordered_map<const FunctionDef*, std::unique_ptr<const Graph>>
+      functions_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };

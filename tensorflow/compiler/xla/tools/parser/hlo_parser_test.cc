@@ -561,6 +561,20 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 }
 
 )"
+},
+// infeed/outfeed
+{
+"InfeedOutfeed",
+R"(HloModule outfeed_module:
+
+ENTRY %InfeedToOutfeed () -> (u32[3], pred[]) {
+  %infeed = (u32[3]{0}, pred[]) infeed()
+  %outfeed = () outfeed((u32[3]{0}, pred[]) %infeed)
+  ROOT %infeed.1 = (u32[3]{0}, pred[]) infeed()
+  %outfeed.1 = () outfeed((u32[3]{0}, pred[]) %infeed.1)
+}
+
+)"
 }
   });
   // clang-format on
@@ -866,7 +880,7 @@ TEST_F(HloParserTest, CommaBetweenSubAttributes) {
   const string original = R"(HloModule test_comma_module:
 
 ENTRY %test_comma.v4 () -> f32[] {
-  ROOT %constant = f32[] constant(-4.2), metadata={source_line=5, op_type="const"}
+  ROOT %constant = f32[] constant(-4.2), metadata={source_line=5, op_type="::const"}
 }
 
 )";

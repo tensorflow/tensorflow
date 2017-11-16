@@ -970,6 +970,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kOutfeed:
     case HloOpcode::kCrossReplicaSum:
       return kBrown;
+    case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
     case HloOpcode::kCall:
@@ -1003,7 +1004,7 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
   }
   string extended_opcode =
       StrCat(HloOpcodeString(instr->opcode()),
-             instr->opcode() == HloOpcode::kFusion
+             instr->opcode() != HloOpcode::kFusion
                  ? ""
                  : StrCat(":", xla::ToString(instr->fusion_kind())));
   // If the name does not contain the opcode, render both.
