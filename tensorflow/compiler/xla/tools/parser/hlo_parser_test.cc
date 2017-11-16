@@ -304,6 +304,19 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )"
 },
+// convolution rank 2
+{
+"ConvolutionR2",
+R"(HloModule ConvolveR2_module:
+
+ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[1,1]) -> f32[1,2] {
+  %input = f32[1,2]{1,0} parameter(0)
+  %filter = f32[1,1]{1,0} parameter(1)
+  ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[1,1]{1,0} %filter), window={size=1}, dim_labels=bf_io->bf
+}
+
+)"
+},
 // reverse(constant)
 {
 "Reverse4D",
