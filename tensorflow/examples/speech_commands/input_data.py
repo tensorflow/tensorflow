@@ -240,7 +240,8 @@ class AudioProcessor(object):
     # Look through all the subfolders to find audio samples
     search_path = os.path.join(self.data_dir, '*', '*.wav')
     for wav_path in gfile.Glob(search_path):
-      word = re.search('.*/([^/]+)/.*.wav', wav_path).group(1).lower()
+      _, word = os.path.split(os.path.dirname(wav_path))
+      word = word.lower()
       # Treat the '_background_noise_' folder as a special case, since we expect
       # it to contain long audio samples we mix in to improve training.
       if word == BACKGROUND_NOISE_DIR_NAME:
