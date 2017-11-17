@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -1172,12 +1174,27 @@ class PoolingTest(test.TestCase):
                      [1, window_rows, window_cols, 1],
                      [1, row_stride, col_stride, 1], padding)
 
-  def _testMaxPoolGradDirect(self, input_data, output_backprop,
-                             expected_input_backprop, input_sizes, output_sizes,
-                             window_rows, window_cols, row_stride, col_stride,
-                             padding, use_gpu, v2):
+  def _testMaxPoolGradDirect(self,
+                             input_data,
+                             output_backprop,
+                             expected_input_backprop,
+                             input_sizes,
+                             output_sizes,
+                             window_rows,
+                             window_cols,
+                             row_stride,
+                             col_stride,
+                             padding,
+                             use_gpu,
+                             v2,
+                             graph_optimization=False):
     pool_func = gen_nn_ops._max_pool_v2 if v2 else nn_ops.max_pool
-    with self.test_session(use_gpu=use_gpu):
+
+    config = config_pb2.ConfigProto()
+    if graph_optimization:
+      config.graph_options.rewrite_options.layout_optimizer = (
+          rewriter_config_pb2.RewriterConfig.ON)
+    with self.test_session(use_gpu=use_gpu, config=config):
       input_tensor = constant_op.constant(input_data, shape=input_sizes)
       output_tensor = pool_func(input_tensor,
                                 [1, window_rows, window_cols, 1],
@@ -1314,7 +1331,7 @@ class PoolingTest(test.TestCase):
             use_gpu=use_gpu,
             v2=v2)
 
-  def _testMaxPoolGradDirectWithNans2_1(self):
+  def _testMaxPoolGradDirectWithNans2_1CPU(self):
     input_data = [float("nan")] * 16
     output_backprop = [11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 19.0, 20.0, 21.0]
     # Test the CPU implementation, which propagates diffs in case of NaN
@@ -1337,11 +1354,23 @@ class PoolingTest(test.TestCase):
           use_gpu=False,
           v2=v2)
 
+  def _testMaxPoolGradDirectWithNans2_1GPU(self):
     if not test.is_gpu_available():
       return
-
-    # Test the GPU implementation that uses cudnn for now.
-    # It does not propagate the diff in cases of NaNs
+    input_data = [float("nan")] * 16
+    output_backprop = [11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 19.0, 20.0, 21.0]
+    # (1) For the NHWC format (used by default below), TensorFlow currently uses
+    # custom MaxPoolingNoMask for the forward op, cuDNN for the gradient op.
+    # With NaNs as input, MaxPoolingNoMask outputs -Inf, which is then fed into
+    # the gradient op. The cuDNN gradient op currently doesn't propagate the
+    # diff if input is -Inf and as a result outputs zeros.
+    # (2) For the NCHW format, TensorFlow currently uses
+    # cuDNN for both the forward and the gradient op. With NaNs as input, cuDNN
+    # forward op outputs NaNs, which is then fed into cuDNN gradient op. cuDNN
+    # gradient op is able to propagate NaNs and as a result the output is the
+    # same as expected_input_backprop_tf_cpu.
+    # We turn off graph optimization (layout optimizer) as the behavior of the
+    # above two cases are different.
     expected_input_backprop_cudnn = [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0
@@ -1359,9 +1388,10 @@ class PoolingTest(test.TestCase):
           col_stride=1,
           padding="VALID",
           use_gpu=True,
-          v2=v2)
+          v2=v2,
+          graph_optimization=False)
 
-  def _testMaxPoolGradDirectWithNans2_2(self):
+  def _testMaxPoolGradDirectWithNans2_2CPU(self):
     input_data = [float("nan")] * 16
     output_backprop = [
         float("nan"), 12.0, 13.0, 15.0, float("nan"), 17.0, 19.0, 20.0,
@@ -1387,11 +1417,16 @@ class PoolingTest(test.TestCase):
           use_gpu=False,
           v2=v2)
 
+  def _testMaxPoolGradDirectWithNans2_2GPU(self):
     if not test.is_gpu_available():
       return
-
-    # Test the GPU implementation that uses cudnn for now.
-    # It does not propagate the diff in cases of NaNs
+    input_data = [float("nan")] * 16
+    output_backprop = [
+        float("nan"), 12.0, 13.0, 15.0,
+        float("nan"), 17.0, 19.0, 20.0,
+        float("nan")
+    ]
+    # See the correspoinding comment in _testMaxPoolGradDirectWithNans2_1GPU().
     expected_input_backprop_cudnn = [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0
@@ -1409,14 +1444,21 @@ class PoolingTest(test.TestCase):
           col_stride=1,
           padding="VALID",
           use_gpu=True,
-          v2=v2)
+          v2=v2,
+          graph_optimization=False)
 
   def testMaxPoolGradDirect(self):
     self._testMaxPoolGradDirect1_1()
     self._testMaxPoolGradDirect1_2()
     self._testMaxPoolGradDirect1_3()
-    self._testMaxPoolGradDirectWithNans2_1()
-    self._testMaxPoolGradDirectWithNans2_2()
+    self._testMaxPoolGradDirectWithNans2_1CPU()
+    self._testMaxPoolGradDirectWithNans2_2CPU()
+
+  def testMaxPoolGradDirectNans2_1GPU(self):
+    self._testMaxPoolGradDirectWithNans2_1GPU()
+
+  def testMaxPoolGradDirectNans2_2GPU(self):
+    self._testMaxPoolGradDirectWithNans2_2GPU()
 
   def _testMaxPoolGradGradValidPadding1_1(self, data_format, use_gpu):
     for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
