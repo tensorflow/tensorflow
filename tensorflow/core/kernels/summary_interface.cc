@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/summary.pb.h"
@@ -257,7 +258,9 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     Summary::Value* v = e->mutable_summary()->add_value();
     t.AsProtoTensorContent(v->mutable_tensor());
     v->set_tag(tag);
-    v->mutable_metadata()->ParseFromString(serialized_metadata);
+    if (!serialized_metadata.empty()) {
+      v->mutable_metadata()->ParseFromString(serialized_metadata);
+    }
     return WriteEvent(std::move(e));
   }
 
@@ -388,6 +391,15 @@ class SummaryWriterImpl : public SummaryWriterInterface {
           channels_by_frames.data(), sample_rate_truncated, num_channels,
           length_frames, sa->mutable_encoded_audio_string()));
     }
+    return WriteEvent(std::move(e));
+  }
+
+  Status WriteGraph(int64 global_step,
+                    std::unique_ptr<GraphDef> graph) override {
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(GetWallTime());
+    graph->SerializeToString(e->mutable_graph_def());
     return WriteEvent(std::move(e));
   }
 

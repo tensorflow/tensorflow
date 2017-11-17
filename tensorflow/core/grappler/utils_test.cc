@@ -181,6 +181,14 @@ TEST_F(UtilsTest, NumOutputs) {
   EXPECT_EQ(1, NumOutputs(CreateDequeueNode()));
 }
 
+TEST(AsControlDependency, BasicTest) {
+  NodeDef node;
+  node.set_name("foo");
+  EXPECT_EQ("^foo", AsControlDependency(node));
+  EXPECT_EQ("^foo", AsControlDependency(node.name()));
+  EXPECT_EQ("^foo", AsControlDependency("^foo"));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

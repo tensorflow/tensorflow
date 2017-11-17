@@ -460,7 +460,11 @@ def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
   indices = op.inputs[1]
   ref_shape = array_ops.shape(ref, out_type=indices.dtype)
-  ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
+  if indices.shape.ndims == 2 and indices.shape[-1].value == 1:
+    ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
+                                 ref_shape)
+  else:
+    ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
   return [ref_grad, None]
 
 
@@ -641,14 +645,22 @@ def _BatchToSpaceNDGrad(op, grad):
 def _SpaceToDepthGrad(op, grad):
   # Its gradient is the opposite op: DepthToSpace.
   block_size = op.get_attr("block_size")
-  return array_ops.depth_to_space(grad, block_size)
+  data_format = op.get_attr("data_format")
+  if data_format == "NCHW_VECT_C":
+    raise ValueError("Cannot compute SpaceToDepth gradient with NCHW_VECT_C. "
+                     "NCHW_VECT_C requires qint8 data type.")
+  return array_ops.depth_to_space(grad, block_size, data_format=data_format)
 
 
 @ops.RegisterGradient("DepthToSpace")
 def _DepthToSpaceGrad(op, grad):
   # Its gradient is the opposite op: SpaceToDepth.
   block_size = op.get_attr("block_size")
-  return array_ops.space_to_depth(grad, block_size)
+  data_format = op.get_attr("data_format")
+  if data_format == "NCHW_VECT_C":
+    raise ValueError("Cannot compute DepthToSpace gradient with NCHW_VECT_C. "
+                     "NCHW_VECT_C requires qint8 data type.")
+  return array_ops.space_to_depth(grad, block_size, data_format=data_format)
 
 
 ops.NotDifferentiable("OneHot")

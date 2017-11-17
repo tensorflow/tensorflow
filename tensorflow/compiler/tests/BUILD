@@ -130,6 +130,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "cholesky_op_test",
+    size = "small",
+    srcs = ["cholesky_op_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "clustering_test",
     size = "small",
     srcs = ["clustering_test.py"],
@@ -657,7 +672,7 @@ tf_library(
     cpp_class = "LSTMLayerInference",
     graph = "lstm_layer_inference.pbtxt",
     tags = ["manual"],
-    tfcompile_flags = "--xla_cpu_multi_thread_eigen=false",
+    tfcompile_flags = ["--xla_cpu_multi_thread_eigen=false"],
 )
 
 # -----------------------------------------------------------------------------

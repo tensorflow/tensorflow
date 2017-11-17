@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdio.h>
 #include <sstream>
 #include <unordered_map>
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
@@ -100,8 +101,9 @@ string TensorPBString(const TensorProto& pb) {
 
 class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
  public:
-  GenEagerPythonOp(const OpDef& op_def, const string& function_name)
-      : python_op_gen_internal::GenPythonOp(op_def, function_name) {
+  GenEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
+                   const string& function_name)
+      : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name) {
     op_name_ = function_name_;
     op_name_.Consume("_");
   }
@@ -139,8 +141,9 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   std::unordered_map<string, string> attr_expressions_;
 };
 
-string GetEagerPythonOp(const OpDef& op_def, const string& function_name) {
-  return GenEagerPythonOp(op_def, function_name).Code();
+string GetEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
+                        const string& function_name) {
+  return GenEagerPythonOp(op_def, api_def, function_name).Code();
 }
 
 string GenEagerPythonOp::FlattenInputs(
@@ -528,6 +531,8 @@ string GenEagerPythonOp::Code() {
       strings::StrAppend(&result_, "  _result = _", op_def_.name(),
                          "Output._make(_result)\n");
     }
+  } else {
+    strings::StrAppend(&result_, "    _result = None\n");
   }
   strings::StrAppend(&result_, "  return _result\n\n");
   return prelude_ + result_;
@@ -589,8 +594,6 @@ void GenEagerPythonOp::AddEagerInferredAttrs() {
           strings::StrAppend(&result_, "    ", VectorToTuple(p), " = ",
                              inputs_var, "\n");
         }
-        strings::StrAppend(&result_, "    ", var_name, " = ", var_name,
-                           ".as_datatype_enum\n");
       } else if (attr.type() == "list(type)") {
         // NOTE: We ignore default values for these attrs, since it is
         // unclear how you would use it, and the one use case is
@@ -617,9 +620,6 @@ void GenEagerPythonOp::AddEagerInferredAttrs() {
         }
         strings::StrAppend(&result_, "    ", var_name, ", ", inputs_var, " = ",
                            conversion, "(", inputs_var, ", _ctx)\n");
-        strings::StrAppend(&result_, "    ", var_name,
-                           " = [_t.as_datatype_enum for _t in ", var_name,
-                           "]\n");
       }
     }
   }
@@ -667,7 +667,7 @@ void GenEagerPythonOp::AddEagerExecute(const string& num_outputs_expr) {
                      WordWrap(return_prefix, return_args, kRightMargin), "\n");
 }
 
-string GetEagerPythonOps(const OpList& ops,
+string GetEagerPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                          const std::vector<string>& hidden_ops,
                          bool require_shapes,
                          const string& source_file_name = "") {
@@ -703,6 +703,7 @@ from tensorflow.python.framework import common_shapes as _common_shapes
 from tensorflow.python.framework import op_def_registry as _op_def_registry
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import op_def_library as _op_def_library
+from tensorflow.python.util.tf_export import tf_export
 
 )");
 
@@ -732,7 +733,9 @@ from tensorflow.python.framework import op_def_library as _op_def_library
       continue;
     }
 
-    strings::StrAppend(&result, GetEagerPythonOp(op_def, function_name));
+    const auto* api_def = api_defs.GetApiDef(op_def.name());
+    strings::StrAppend(&result,
+                       GetEagerPythonOp(op_def, *api_def, function_name));
 
     if (!require_shapes) {
       strings::StrAppend(&result, "_ops.RegisterShape(\"", op_def.name(),
@@ -765,19 +768,21 @@ from tensorflow.python.framework import op_def_library as _op_def_library
 
 }  // namespace
 
-void PrintEagerPythonOps(const OpList& ops,
+void PrintEagerPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                          const std::vector<string>& hidden_ops,
                          bool require_shapes, const string& source_file_name) {
-  printf("%s",
-         GetEagerPythonOps(ops, hidden_ops, require_shapes, source_file_name)
-             .c_str());
+  printf("%s", GetEagerPythonOps(ops, api_defs, hidden_ops, require_shapes,
+                                 source_file_name)
+                   .c_str());
 }
 
 string GetEagerPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   string op_list_str(op_list_buf, op_list_len);
   OpList ops;
   ops.ParseFromString(op_list_str);
-  return GetEagerPythonOps(ops, {}, false);
+
+  ApiDefMap api_def_map(ops);
+  return GetEagerPythonOps(ops, api_def_map, {}, false);
 }
 
 }  // namespace tensorflow

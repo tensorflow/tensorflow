@@ -458,16 +458,25 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
   return select({
+      "//tensorflow:with_gcp_support_windows_override": [],
+      "//tensorflow:with_gcp_support_android_override": [],
+      "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
           "//tensorflow/core/platform/cloud:gcs_file_system",
       ],
       "//conditions:default": [],
   }) + select({
+      "//tensorflow:with_hdfs_support_windows_override": [],
+      "//tensorflow:with_hdfs_support_android_override": [],
+      "//tensorflow:with_hdfs_support_ios_override": [],
       "//tensorflow:with_hdfs_support": [
           "//tensorflow/core/platform/hadoop:hadoop_file_system",
       ],
       "//conditions:default": [],
   }) + select({
+      "//tensorflow:with_s3_support_windows_override": [],
+      "//tensorflow:with_s3_support_android_override": [],
+      "//tensorflow:with_s3_support_ios_override": [],
       "//tensorflow:with_s3_support": [
           "//tensorflow/core/platform/s3:s3_file_system",
       ],
@@ -477,9 +486,9 @@ def tf_additional_core_deps():
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_op_deps():
   return select({
-      "//tensorflow:windows": [],
-      "//tensorflow:android": [],
-      "//tensorflow:ios": [],
+      "//tensorflow:with_gcp_support_windows_override": [],
+      "//tensorflow:with_gcp_support_android_override": [],
+      "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
       ],
@@ -489,9 +498,9 @@ def tf_additional_cloud_op_deps():
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_kernel_deps():
   return select({
-      "//tensorflow:windows": [],
-      "//tensorflow:android": [],
-      "//tensorflow:ios": [],
+      "//tensorflow:with_gcp_support_windows_override": [],
+      "//tensorflow:with_gcp_support_android_override": [],
+      "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
       ],

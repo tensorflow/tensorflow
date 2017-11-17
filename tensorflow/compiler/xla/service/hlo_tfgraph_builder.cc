@@ -58,8 +58,6 @@ TensorShapeProto GetTensorShape(const HloInstruction* instruction) {
 
 string GetDeviceName(int device) { return StrCat("/device/XLA:", device); }
 
-}  // namespace
-
 void CleanNodeName(string* name) {
   name->erase(std::remove(name->begin(), name->end(), '%'), name->end());
   const string chars_to_replace = "<>[]";
@@ -69,6 +67,11 @@ void CleanNodeName(string* name) {
   };
   std::replace_if(name->begin(), name->end(), pred, '_');
 }
+
+}  // namespace
+
+HloTfGraphBuilder::HloTfGraphBuilder(const DebugOptions& debug_options)
+    : debug_options_(debug_options) {}
 
 Status HloTfGraphBuilder::AddComputation(const HloComputation& computation) {
   VLOG(2) << "Adding computation " << computation.name();
@@ -90,24 +93,38 @@ const string& HloTfGraphBuilder::GetNodeNameForInstruction(
   if (ContainsKey(instruction_to_node_name_, instruction)) {
     return instruction_to_node_name_[instruction];
   }
+  auto append = [](string* str, const string& other) {
+    if (str->empty()) {
+      *str = other;
+    } else if (!other.empty()) {
+      StrAppend(str, "/", other);
+    }
+  };
   string node_name;
+  if (debug_options_.xla_hlo_tfgraph_device_scopes() &&
+      instruction->has_sharding() &&
+      instruction->sharding().HasUniqueDevice()) {
+    node_name = StrCat(
+        "dev", instruction->sharding().UniqueDevice().ConsumeValueOrDie());
+  }
   // If an instruction is fused, put it in the subgraph of the fusion;
   // otherwise, put it in the computation subgraph.
   const HloComputation* computation = instruction->parent();
   if (computation->IsFusionComputation()) {
-    node_name = GetNodeNameForInstruction(computation->FusionInstruction());
+    append(&node_name,
+           GetNodeNameForInstruction(computation->FusionInstruction()));
   } else {
-    node_name = computation->name();
+    append(&node_name, computation->name());
     if (!instruction->metadata().op_name().empty()) {
       // Always make computations contain TF ops but not the other way around.
-      StrAppend(&node_name, "/", instruction->metadata().op_name());
+      append(&node_name, instruction->metadata().op_name());
     }
   }
   string instruction_name = instruction->name();
   if (instruction->opcode() == HloOpcode::kParameter) {
     StrAppend(&instruction_name, ".", instruction->parameter_number());
   }
-  StrAppend(&node_name, "/", instruction_name);
+  append(&node_name, instruction_name);
   CleanNodeName(&node_name);
   auto ret =
       instruction_to_node_name_.insert(std::make_pair(instruction, node_name));

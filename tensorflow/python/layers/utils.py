@@ -24,6 +24,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util import nest
 
 
 def convert_data_format(data_format, ndim):
@@ -232,3 +233,19 @@ def constant_value(pred):
   else:
     raise TypeError('`pred` must be a Tensor, a Variable, or a Python bool.')
   return pred_value
+
+
+def object_list_uid(object_list):
+  """Creates a single string from object ids."""
+  object_list = nest.flatten(object_list)
+  return ', '.join([str(abs(id(x))) for x in object_list])
+
+
+def static_shape(x):
+  """Get the static shape of a Tensor, or None if it is unavailable."""
+  if x is None:
+    return None
+  try:
+    return tuple(x.get_shape().as_list())
+  except ValueError:
+    return None

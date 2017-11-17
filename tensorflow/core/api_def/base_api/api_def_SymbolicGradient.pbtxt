@@ -1,0 +1,51 @@
+op {
+  graph_op_name: "SymbolicGradient"
+  in_arg {
+    name: "input"
+    description: <<END
+a list of input tensors of size N + M;
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+a list of output tensors of size N;
+END
+  }
+  attr {
+    name: "Tin"
+    description: <<END
+the type list for the input list.
+END
+  }
+  attr {
+    name: "Tout"
+    description: <<END
+the type list for the input list.
+END
+  }
+  attr {
+    name: "f"
+    description: <<END
+The function we want to compute the gradient for.
+
+The function 'f' must be a numerical function which takes N inputs and
+produces M outputs. Its gradient function 'g', which is computed by
+this SymbolicGradient op is a function taking N + M inputs and
+produces N outputs.
+
+I.e. if we have
+   (y1, y2, ..., y_M) = f(x1, x2, ..., x_N),
+then, g is
+   (dL/dx1, dL/dx2, ..., dL/dx_N) = g(x1, x2, ..., x_N,
+                                     dL/dy1, dL/dy2, ..., dL/dy_M),
+
+where L is a scalar-value function of (x1, x2, ..., xN) (e.g., the
+loss function). dL/dx_i is the partial derivative of L with respect
+to x_i.
+
+(Needs some math expert to say the comment above better.)
+END
+  }
+  summary: "Computes the gradient function for function f via backpropagation."
+}

@@ -314,7 +314,8 @@ ifeq ($(TARGET),ANDROID)
 -Wno-narrowing \
 -fomit-frame-pointer \
 $(MARCH_OPTION) \
--fPIE
+-fPIE \
+-fPIC
 	INCLUDES = \
 -I$(NDK_ROOT)/sources/android/support/include \
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \

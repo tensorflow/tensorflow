@@ -57,7 +57,7 @@ void Cluster::DisableOptimizer(bool disable) {
     // Disable Grappler optimizations.
     auto rewriter_config =
         options_.config.mutable_graph_options()->mutable_rewrite_options();
-    rewriter_config->set_optimize_tensor_layout(false);
+    rewriter_config->set_layout_optimizer(RewriterConfig::OFF);
     rewriter_config->set_disable_model_pruning(true);
     rewriter_config->set_constant_folding(RewriterConfig::OFF);
     rewriter_config->set_memory_optimization(RewriterConfig::NO_MEM_OPT);

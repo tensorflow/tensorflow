@@ -51,11 +51,6 @@ class StringPiece {
   // Create a slice that refers to s[0,strlen(s)-1]
   StringPiece(const char* s) : data_(s), size_(strlen(s)) {}
 
-  void set(const void* data, size_t len) {
-    data_ = reinterpret_cast<const char*>(data);
-    size_ = len;
-  }
-
   // Return a pointer to the beginning of the referenced data
   const char* data() const { return data_; }
 
@@ -77,12 +72,6 @@ class StringPiece {
   char operator[](size_t n) const {
     assert(n < size());
     return data_[n];
-  }
-
-  // Change this slice to refer to an empty array
-  void clear() {
-    data_ = "";
-    size_ = 0;
   }
 
   // Drop the first "n" bytes from this slice.

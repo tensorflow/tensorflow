@@ -211,9 +211,11 @@ class DfsHloVisitorBase {
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandleSend(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSend(HloInstructionPtr send) = 0;
+  virtual Status HandleSendDone(HloInstructionPtr send_done) = 0;
 
-  virtual Status HandleRecv(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRecv(HloInstructionPtr recv) = 0;
+  virtual Status HandleRecvDone(HloInstructionPtr recv_done) = 0;
 
   virtual Status HandleBatchNormTraining(HloInstructionPtr hlo) = 0;
 

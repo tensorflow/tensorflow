@@ -20,15 +20,19 @@ from collections import namedtuple
 
 import os
 import threading
-from collections import namedtuple
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import error_ops
+from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -37,9 +41,13 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import compat
 
 
@@ -615,6 +623,566 @@ class MapDatasetTest(test.TestCase):
         self.assertEqual((i, 37.0), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def assertSparseValuesEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
+
+  def testSparse(self):
+    def _sparse(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1])
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_sparse)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[i], dense_shape=[1, 1])
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, expected.eval())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testSparseChain(self):
+    def _sparse(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1])
+    def _check(i):
+      self.assertTrue(isinstance(i, sparse_tensor.SparseTensor))
+      return sparse_ops.sparse_concat(0, [i, i])
+
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_sparse).map(_check)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0], [1, 0]], values=[i, i], dense_shape=[2, 1])
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, expected.eval())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testCaptureResourceInMapFn(self):
+
+    def _build_ds(iterator):
+
+      def _map_fn(x):
+        get_next = iterator.get_next()
+        return x * get_next
+
+      return dataset_ops.Dataset.range(10).map(_map_fn)
+
+    def _build_graph():
+      captured_iterator = dataset_ops.Dataset.range(
+          10).make_initializable_iterator()
+      ds = _build_ds(captured_iterator)
+      iterator = ds.make_initializable_iterator()
+      init_op = iterator.initializer
+      return captured_iterator.initializer, init_op
+
+    with ops.Graph().as_default() as g:
+      captured_init_op, init_op = _build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(captured_init_op)
+        with self.assertRaises(errors.UnimplementedError):
+          # CapturedFunction does not support capturing IteratorResource.
+          sess.run(init_op)
+
+
+class MapDatasetSerializationTest(test.TestCase):
+
+  def setUp(self):
+    self._tensor_slice_len = 7
+    self._num_epochs = 14
+    self._num_outputs = self._tensor_slice_len * self._num_epochs
+
+  def tearDown(self):
+    # Remove all checkpoint files.
+    prefix = self._ckpt_path()
+    pattern = prefix + "*"
+    files = gfile.Glob(pattern)
+    map(gfile.Remove, files)
+
+  def _build_ds(self, multiplier=37.0):
+    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
+                  np.arange(self._tensor_slice_len)[:, np.newaxis],
+                  np.array(multiplier) * np.arange(self._tensor_slice_len))
+
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+
+    return (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
+            .repeat(self._num_epochs))
+
+  def _build_graph(self, multiplier=37.0, build_saveable=True):
+    ds = self._build_ds(multiplier)
+    iterator = ds.make_initializable_iterator()
+
+    if build_saveable:
+      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    self._add_iterator_ops_to_collection(init_op, get_next)
+    saver = saver_lib.Saver(allow_empty=True)
+    return init_op, get_next, saver
+
+  def _build_empty_graph(self, output_types, output_shapes):
+    iterator = iterator_ops.Iterator.from_structure(output_types, output_shapes)
+    saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+    saver = saver_lib.Saver()
+    get_next = iterator.get_next()
+    return get_next, saver
+
+  def _add_iterator_ops_to_collection(self, init_op, get_next):
+    ops.add_to_collection("iterator_ops", init_op)
+    ops.add_to_collection("iterator_ops", get_next[0])
+    ops.add_to_collection("iterator_ops", get_next[1])
+    ops.add_to_collection("iterator_ops", get_next[2])
+
+  def _get_iterator_ops_from_collection(self):
+    init_op, get_next_1, get_next_2, get_next_3 = ops.get_collection(
+        "iterator_ops")
+    return init_op, (get_next_1, get_next_2, get_next_3)
+
+  def _ckpt_path(self):
+    return os.path.join(self.get_temp_dir(), "iterator")
+
+  def _latest_ckpt(self):
+    return saver_lib.latest_checkpoint(self.get_temp_dir())
+
+  def _save(self, sess, saver):
+    saver.save(sess, self._ckpt_path())
+
+  def _restore(self, saver, sess):
+    saver.restore(sess, self._latest_ckpt())
+
+  def _import_meta_graph(self):
+    meta_file_path = self._ckpt_path() + ".meta"
+    return saver_lib.import_meta_graph(meta_file_path)
+
+  def _testReadWithBreaks(self, break_points, init_before_restore=False):
+    expected = []
+    actual = []
+    # Generate the ground truth.
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, _ = self._build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(self._num_outputs):
+          expected.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+    # Run and checkpoint after first break_point.
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_points[0]):
+          actual.append(sess.run(get_next_op))
+        self._save(sess, saver)
+
+    # Load from checkpoint and continue running while stopping at each
+    # subsequent checkpoint.
+    for i in range(len(break_points)):
+      with ops.Graph().as_default() as g:
+        saver = self._import_meta_graph()
+        init_op, get_next_op = self._get_iterator_ops_from_collection()
+        with self.test_session(graph=g) as sess:
+          if init_before_restore:
+            sess.run(init_op)
+          self._restore(saver, sess)
+          start = break_points[i]
+          end = break_points[
+              i + 1] if i < len(break_points) - 1 else self._num_outputs
+          for _ in range(end - start):
+            actual.append(sess.run(get_next_op))
+          self._save(sess, saver)
+          if end == self._num_outputs:
+            with self.assertRaises(errors.OutOfRangeError):
+              sess.run(get_next_op)
+    self._match(expected, actual)
+
+  def _match(self, expected, actual):
+    self.assertEqual(len(expected), len(actual))
+    for expected_tuple, actual_tuple in zip(expected, actual):
+      self.assertEqual(expected_tuple[0], actual_tuple[0])
+      self.assertSequenceEqual(expected_tuple[1].tolist(),
+                               actual_tuple[1].tolist())
+      self.assertEqual(expected_tuple[2], actual_tuple[2])
+
+  def _does_not_match(self, expected, actual):
+    with self.assertRaises(AssertionError):
+      self._match(expected, actual)
+
+  def testSaveRestore(self):
+    self._testReadWithBreaks([4])
+    self._testReadWithBreaks([13])
+    self._testReadWithBreaks([18])
+    self._testReadWithBreaks([23])
+
+  def testSaveUnusedIterator(self):
+    self._testReadWithBreaks([0])
+
+  def testSaveFullyUsedIterator(self):
+    self._testReadWithBreaks([self._num_outputs])
+
+  def testMultipleBreaks(self):
+    self._testReadWithBreaks([0, 5, 9, 15, 25, 32])
+
+  def testIdempotence(self):
+    # Attempt to save iterator immediately after restoring.
+    self._testReadWithBreaks([1, 1, 5, 5, 5, 25, 32])
+
+  def testInitThenRestore(self):
+    self._testReadWithBreaks([0, 5, 9, 15, 25, 32], init_before_restore=True)
+
+  def testRestoreExhaustedIterator(self):
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(self._num_outputs):
+          sess.run(get_next_op)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+        self._save(sess, saver)
+
+      with ops.Graph().as_default() as g:
+        saver = self._import_meta_graph()
+        init_op, get_next_op = self._get_iterator_ops_from_collection()
+        with self.test_session(graph=g) as sess:
+          self._restore(saver, sess)
+          with self.assertRaises(errors.OutOfRangeError):
+            sess.run(get_next_op)
+
+  def testResetRestoredIterator(self):
+    expected = []
+    # Collect ground truth containing all outputs.
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph()
+      break_point = self._num_outputs // 2
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_point):
+          expected.append(sess.run(get_next_op))
+        self._save(sess, saver)
+        for _ in range(self._num_outputs - break_point):
+          expected.append(sess.run(get_next_op))
+
+    actual = []
+    # Restore from checkpoint and then run init_op.
+    with ops.Graph().as_default() as g:
+      saver = self._import_meta_graph()
+      init_op, get_next_op = self._get_iterator_ops_from_collection()
+      with self.test_session(graph=g) as sess:
+        self._restore(saver, sess)
+        sess.run(init_op)
+        for _ in range(self._num_outputs):
+          actual.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+    self._match(expected, actual)
+
+  def testRestoreInModifiedGraph(self):
+    expected = []
+    actual_without_restore = []
+    actual = []
+    break_point = 10
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph(multiplier=15.0)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_point):
+          expected.append(sess.run(get_next_op))
+        actual.extend(expected)
+        self._save(sess, saver)
+        for _ in range(self._num_outputs - break_point):
+          expected.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+    # Collect outputs by running modified graph.
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph(multiplier=30.0)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(self._num_outputs):
+          actual_without_restore.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+    # Restore the checkpoint in the modified graph.
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph(multiplier=30.0)
+      with self.test_session(graph=g) as sess:
+        self._restore(saver, sess)
+        for _ in range(self._num_outputs - break_point):
+          actual.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+    # Ensure the modified graph gets overridden when restoring checkpoint.
+    self._does_not_match(expected, actual_without_restore)
+    # Expect that the outputs are what we would expect if we ran the old
+    # graph.
+    self._match(expected, actual)
+
+  # TODO(srbs): Add this test to dataset_serialization_test_base.py.
+  def testRestoreInEmptyGraph(self):
+    expected = []
+    actual = []
+    break_point = 10
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph(multiplier=15.0)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_point):
+          sess.run(get_next_op)
+        self._save(sess, saver)
+        for _ in range(self._num_outputs - break_point):
+          expected.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+    with ops.Graph().as_default() as g:
+      ds = self._build_ds()
+      output_types = ds.output_types
+      output_shapes = ds.output_shapes
+
+    with ops.Graph().as_default() as g:
+      get_next_op, saver = self._build_empty_graph(output_types, output_shapes)
+      with self.test_session(graph=g) as sess:
+        self._restore(saver, sess)
+        for _ in range(self._num_outputs - break_point):
+          actual.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+    # Expect that the outputs are what we would expect if we ran the old
+    # graph.
+    self._match(expected, actual)
+
+  def testDoNotBuildSaveable(self):
+    break_point = 10
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph(multiplier=15.0)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_point):
+          sess.run(get_next_op)
+        self._save(sess, saver)
+
+    expected = []
+    # Collect ground truth by running modified graph.
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph(multiplier=30.0)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(self._num_outputs):
+          expected.append(sess.run(get_next_op))
+
+    actual = []
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph(
+          multiplier=30.0, build_saveable=False)
+      with self.test_session(graph=g) as sess:
+        # Since the SaveableObject was not added to Saver's list
+        # of saveables, iterator state is not restored by saver.restore().
+        self._restore(saver, sess)
+        with self.assertRaises(errors.FailedPreconditionError):
+          sess.run(get_next_op)
+        sess.run(init_op)
+        for _ in range(self._num_outputs):
+          actual.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+    self._match(expected, actual)
+
+  def testSaveStatefulFunction(self):
+
+    def _build_ds():
+
+      def _map_fn(x):
+        return random_ops.random_uniform(
+            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
+
+      return dataset_ops.Dataset.range(100).map(_map_fn)
+
+    def _build_graph():
+      ds = _build_ds()
+      iterator = ds.make_initializable_iterator()
+
+      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      saver = saver_lib.Saver(allow_empty=True)
+      return init_op, get_next, saver
+
+    break_point = 10
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = _build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_point):
+          sess.run(get_next_op)
+        with self.assertRaises(errors.InvalidArgumentError):
+          self._save(sess, saver)
+
+  def testCaptureVariableInMapFn(self):
+
+    def _build_ds():
+      counter_var = variable_scope.get_variable(
+          "counter", (), dtypes.int32, use_resource=True)
+      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda _: counter_var.assign_add(1)))
+
+    def _build_graph():
+      ds = _build_ds()
+      iterator = ds.make_initializable_iterator()
+
+      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      saver = saver_lib.Saver(allow_empty=True)
+      return init_op, get_next, saver
+
+    break_point = 10
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = _build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for _ in range(break_point):
+          sess.run(get_next_op)
+        with self.assertRaises(errors.InvalidArgumentError):
+          self._save(sess, saver)
+
+  def testCaptureDefunInMapFn(self):
+    num_outputs = 100
+
+    def _build_ds():
+
+      @function.Defun(dtypes.int64)
+      def defun_fn(x):
+        return constant_op.constant(1000) + math_ops.to_int32(x)
+
+      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+
+    def _build_graph():
+      ds = _build_ds()
+      iterator = ds.make_initializable_iterator()
+
+      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      saver = saver_lib.Saver(allow_empty=True)
+      return init_op, get_next, saver
+
+    break_point = 10
+    expected = []
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = _build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for _ in range(break_point):
+          sess.run(get_next_op)
+        self._save(sess, saver)
+        for _ in range(num_outputs - break_point):
+          expected.append(sess.run(get_next_op))
+
+    with ops.Graph().as_default() as g:
+      ds = _build_ds()
+      output_types = ds.output_types
+      output_shapes = ds.output_shapes
+
+    actual = []
+    with ops.Graph().as_default() as g:
+      get_next_op, saver = self._build_empty_graph(output_types, output_shapes)
+      with self.test_session(graph=g) as sess:
+        self._restore(saver, sess)
+        for _ in range(num_outputs - break_point):
+          actual.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+    self.assertSequenceEqual(expected, actual)
+
+  def testBuildDefunInMapFn(self):
+    num_outputs = 100
+
+    def _build_ds():
+
+      @function.Defun(dtypes.int64)
+      def defun_fn(x):
+
+        @function.Defun(dtypes.int32)
+        def defun_fn_deep(x):
+          return constant_op.constant(1000) + math_ops.to_int32(x)
+
+        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
+
+      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+
+    def _build_graph():
+      ds = _build_ds()
+      iterator = ds.make_initializable_iterator()
+
+      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      saver = saver_lib.Saver(allow_empty=True)
+      return init_op, get_next, saver
+
+    break_point = 10
+    expected = []
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = _build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for _ in range(break_point):
+          sess.run(get_next_op)
+        self._save(sess, saver)
+        for _ in range(num_outputs - break_point):
+          expected.append(sess.run(get_next_op))
+
+    with ops.Graph().as_default() as g:
+      ds = _build_ds()
+      output_types = ds.output_types
+      output_shapes = ds.output_shapes
+
+    actual = []
+    with ops.Graph().as_default() as g:
+      get_next_op, saver = self._build_empty_graph(output_types, output_shapes)
+      with self.test_session(graph=g) as sess:
+        self._restore(saver, sess)
+        for _ in range(num_outputs - break_point):
+          actual.append(sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+    self.assertSequenceEqual(expected, actual)
 
 
 if __name__ == "__main__":

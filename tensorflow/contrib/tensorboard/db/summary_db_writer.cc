@@ -15,15 +15,29 @@ limitations under the License.
 #include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
 
 #include "tensorflow/contrib/tensorboard/db/schema.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 namespace {
 
+double GetWallTime(Env* env) {
+  // TODO(@jart): Follow precise definitions for time laid out in schema.
+  // TODO(@jart): Use monotonic clock from gRPC codebase.
+  return static_cast<double>(env->NowMicros()) / 1.0e6;
+}
+
 int64 MakeRandomId() {
+  // TODO(@jart): Try generating ID in 2^24 space, falling back to 2^63
+  //              https://sqlite.org/src4/doc/trunk/www/varint.wiki
   int64 id = static_cast<int64>(random::New64() & ((1ULL << 63) - 1));
   if (id == 0) {
     ++id;
@@ -31,10 +45,201 @@ int64 MakeRandomId() {
   return id;
 }
 
+Status Serialize(const protobuf::MessageLite& proto, string* output) {
+  output->clear();
+  if (!proto.SerializeToString(output)) {
+    return errors::DataLoss("SerializeToString failed");
+  }
+  return Status::OK();
+}
+
+Status Compress(const string& data, string* output) {
+  output->clear();
+  if (!port::Snappy_Compress(data.data(), data.size(), output)) {
+    return errors::FailedPrecondition("TensorBase needs Snappy");
+  }
+  return Status::OK();
+}
+
+Status BindProto(SqliteStatement* stmt, int parameter,
+                 const protobuf::MessageLite& proto) {
+  string serialized;
+  TF_RETURN_IF_ERROR(Serialize(proto, &serialized));
+  string compressed;
+  TF_RETURN_IF_ERROR(Compress(serialized, &compressed));
+  stmt->BindBlobUnsafe(parameter, compressed);
+  return Status::OK();
+}
+
+Status BindTensor(SqliteStatement* stmt, int parameter, const Tensor& t) {
+  // TODO(@jart): Make portable between little and big endian systems.
+  // TODO(@jart): Use TensorChunks with minimal copying for big tensors.
+  // TODO(@jart): Add field to indicate encoding.
+  // TODO(@jart): Allow crunch tool to re-compress with zlib instead.
+  TensorProto p;
+  t.AsProtoTensorContent(&p);
+  return BindProto(stmt, parameter, p);
+}
+
+class Transactor {
+ public:
+  explicit Transactor(std::shared_ptr<Sqlite> db)
+      : db_(std::move(db)),
+        begin_(db_->Prepare("BEGIN TRANSACTION")),
+        commit_(db_->Prepare("COMMIT TRANSACTION")),
+        rollback_(db_->Prepare("ROLLBACK TRANSACTION")) {}
+
+  template <typename T, typename... Args>
+  Status Transact(T callback, Args&&... args) {
+    TF_RETURN_IF_ERROR(begin_.StepAndReset());
+    Status s = callback(std::forward<Args>(args)...);
+    if (s.ok()) {
+      TF_RETURN_IF_ERROR(commit_.StepAndReset());
+    } else {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(rollback_.StepAndReset(), s.ToString());
+    }
+    return s;
+  }
+
+ private:
+  std::shared_ptr<Sqlite> db_;
+  SqliteStatement begin_;
+  SqliteStatement commit_;
+  SqliteStatement rollback_;
+};
+
+class GraphSaver {
+ public:
+  static Status SaveToRun(Env* env, Sqlite* db, GraphDef* graph, int64 run_id) {
+    auto get = db->Prepare("SELECT graph_id FROM Runs WHERE run_id = ?");
+    get.BindInt(1, run_id);
+    bool is_done;
+    TF_RETURN_IF_ERROR(get.Step(&is_done));
+    int64 graph_id = is_done ? 0 : get.ColumnInt(0);
+    if (graph_id == 0) {
+      graph_id = MakeRandomId();
+      // TODO(@jart): Check for ID collision.
+      auto set = db->Prepare("UPDATE Runs SET graph_id = ? WHERE run_id = ?");
+      set.BindInt(1, graph_id);
+      set.BindInt(2, run_id);
+      TF_RETURN_IF_ERROR(set.StepAndReset());
+    }
+    return Save(env, db, graph, graph_id);
+  }
+
+  static Status Save(Env* env, Sqlite* db, GraphDef* graph, int64 graph_id) {
+    GraphSaver saver{env, db, graph, graph_id};
+    saver.MapNameToNodeId();
+    TF_RETURN_IF_ERROR(saver.SaveNodeInputs());
+    TF_RETURN_IF_ERROR(saver.SaveNodes());
+    TF_RETURN_IF_ERROR(saver.SaveGraph());
+    return Status::OK();
+  }
+
+ private:
+  GraphSaver(Env* env, Sqlite* db, GraphDef* graph, int64 graph_id)
+      : env_(env), db_(db), graph_(graph), graph_id_(graph_id) {}
+
+  void MapNameToNodeId() {
+    size_t toto = static_cast<size_t>(graph_->node_size());
+    name_copies_.reserve(toto);
+    name_to_node_id_.reserve(toto);
+    for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
+      // Copy name into memory region, since we call clear_name() later.
+      // Then wrap in StringPiece so we can compare slices without copy.
+      name_copies_.emplace_back(graph_->node(node_id).name());
+      name_to_node_id_.emplace(name_copies_.back(), node_id);
+    }
+  }
+
+  Status SaveNodeInputs() {
+    auto purge = db_->Prepare("DELETE FROM NodeInputs WHERE graph_id = ?");
+    purge.BindInt(1, graph_id_);
+    TF_RETURN_IF_ERROR(purge.StepAndReset());
+    auto insert = db_->Prepare(R"sql(
+      INSERT INTO NodeInputs (graph_id, node_id, idx, input_node_id, is_control)
+      VALUES (?, ?, ?, ?, ?)
+    )sql");
+    for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
+      const NodeDef& node = graph_->node(node_id);
+      for (int idx = 0; idx < node.input_size(); ++idx) {
+        StringPiece name = node.input(idx);
+        insert.BindInt(1, graph_id_);
+        insert.BindInt(2, node_id);
+        insert.BindInt(3, idx);
+        if (!name.empty() && name[0] == '^') {
+          name.remove_prefix(1);
+          insert.BindInt(5, 1);
+        }
+        auto e = name_to_node_id_.find(name);
+        if (e == name_to_node_id_.end()) {
+          return errors::DataLoss("Could not find node: ", name);
+        }
+        insert.BindInt(4, e->second);
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(insert.StepAndReset(), node.name(),
+                                        " -> ", name);
+      }
+    }
+    return Status::OK();
+  }
+
+  Status SaveNodes() {
+    auto purge = db_->Prepare("DELETE FROM Nodes WHERE graph_id = ?");
+    purge.BindInt(1, graph_id_);
+    TF_RETURN_IF_ERROR(purge.StepAndReset());
+    auto insert = db_->Prepare(R"sql(
+      INSERT INTO Nodes (graph_id, node_id, node_name, op, device, node_def)
+      VALUES (?, ?, ?, ?, ?, ?)
+    )sql");
+    for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
+      NodeDef* node = graph_->mutable_node(node_id);
+      insert.BindInt(1, graph_id_);
+      insert.BindInt(2, node_id);
+      insert.BindText(3, node->name());
+      node->clear_name();
+      if (!node->op().empty()) {
+        insert.BindText(4, node->op());
+        node->clear_op();
+      }
+      if (!node->device().empty()) {
+        insert.BindText(5, node->device());
+        node->clear_device();
+      }
+      node->clear_input();
+      TF_RETURN_IF_ERROR(BindProto(&insert, 6, *node));
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(insert.StepAndReset(), node->name());
+    }
+    return Status::OK();
+  }
+
+  Status SaveGraph() {
+    auto insert = db_->Prepare(R"sql(
+      INSERT OR REPLACE INTO Graphs (graph_id, inserted_time, graph_def)
+      VALUES (?, ?, ?)
+    )sql");
+    insert.BindInt(1, graph_id_);
+    insert.BindDouble(2, GetWallTime(env_));
+    graph_->clear_node();
+    TF_RETURN_IF_ERROR(BindProto(&insert, 3, *graph_));
+    return insert.StepAndReset();
+  }
+
+  Env* env_;
+  Sqlite* db_;
+  GraphDef* graph_;
+  int64 graph_id_;
+  std::vector<string> name_copies_;
+  std::unordered_map<StringPiece, int64, StringPiece::Hasher> name_to_node_id_;
+};
+
 class SummaryDbWriter : public SummaryWriterInterface {
  public:
   SummaryDbWriter(Env* env, std::shared_ptr<Sqlite> db)
-      : SummaryWriterInterface(), env_(env), db_(std::move(db)), run_id_(-1) {}
+      : SummaryWriterInterface(),
+        env_(env),
+        db_(std::move(db)),
+        txn_(db_),
+        run_id_{0LL} {}
   ~SummaryDbWriter() override {}
 
   Status Initialize(const string& experiment_name, const string& run_name,
@@ -74,7 +279,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     // TODO(@jart): Check for random ID collisions without needing txn retry.
     insert_tensor_.BindInt(1, tag_id);
     insert_tensor_.BindInt(2, global_step);
-    insert_tensor_.BindDouble(3, GetWallTime());
+    insert_tensor_.BindDouble(3, GetWallTime(env_));
     switch (t.dtype()) {
       case DT_INT64:
         insert_tensor_.BindInt(4, t.scalar<int64>()());
@@ -83,16 +288,41 @@ class SummaryDbWriter : public SummaryWriterInterface {
         insert_tensor_.BindDouble(4, t.scalar<double>()());
         break;
       default:
-        TF_RETURN_IF_ERROR(BindTensor(t));
+        TF_RETURN_IF_ERROR(BindTensor(&insert_tensor_, 4, t));
         break;
     }
-    TF_RETURN_IF_ERROR(insert_tensor_.StepAndReset());
-    return Status::OK();
+    return insert_tensor_.StepAndReset();
+  }
+
+  Status WriteGraph(int64 global_step, std::unique_ptr<GraphDef> g) override {
+    mutex_lock ml(mu_);
+    TF_RETURN_IF_ERROR(InitializeParents());
+    return txn_.Transact(GraphSaver::SaveToRun, env_, db_.get(), g.get(),
+                         run_id_);
   }
 
   Status WriteEvent(std::unique_ptr<Event> e) override {
-    // TODO(@jart): This will be used to load event logs.
-    return errors::Unimplemented("WriteEvent");
+    switch (e->what_case()) {
+      case Event::WhatCase::kSummary: {
+        mutex_lock ml(mu_);
+        TF_RETURN_IF_ERROR(InitializeParents());
+        const Summary& summary = e->summary();
+        for (int i = 0; i < summary.value_size(); ++i) {
+          TF_RETURN_IF_ERROR(WriteSummary(e.get(), summary.value(i)));
+        }
+        return Status::OK();
+      }
+      case Event::WhatCase::kGraphDef: {
+        std::unique_ptr<GraphDef> graph{new GraphDef};
+        if (!ParseProtoUnlimited(graph.get(), e->graph_def())) {
+          return errors::DataLoss("parse event.graph_def failed");
+        }
+        return WriteGraph(e->step(), std::move(graph));
+      }
+      default:
+        // TODO(@jart): Handle other stuff.
+        return Status::OK();
+    }
   }
 
   Status WriteScalar(int64 global_step, Tensor t, const string& tag) override {
@@ -128,33 +358,8 @@ class SummaryDbWriter : public SummaryWriterInterface {
   string DebugString() override { return "SummaryDbWriter"; }
 
  private:
-  double GetWallTime() {
-    // TODO(@jart): Follow precise definitions for time laid out in schema.
-    // TODO(@jart): Use monotonic clock from gRPC codebase.
-    return static_cast<double>(env_->NowMicros()) / 1.0e6;
-  }
-
-  Status BindTensor(const Tensor& t) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    // TODO(@jart): Make portable between little and big endian systems.
-    // TODO(@jart): Use TensorChunks with minimal copying for big tensors.
-    TensorProto p;
-    t.AsProtoTensorContent(&p);
-    string encoded;
-    if (!p.SerializeToString(&encoded)) {
-      return errors::DataLoss("SerializeToString failed");
-    }
-    // TODO(@jart): Put byte at beginning of blob to indicate encoding.
-    // TODO(@jart): Allow crunch tool to re-compress with zlib instead.
-    string compressed;
-    if (!port::Snappy_Compress(encoded.data(), encoded.size(), &compressed)) {
-      return errors::FailedPrecondition("TensorBase needs Snappy");
-    }
-    insert_tensor_.BindBlobUnsafe(4, compressed);
-    return Status::OK();
-  }
-
   Status InitializeParents() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (run_id_ >= 0) {
+    if (run_id_ > 0) {
       return Status::OK();
     }
     int64 user_id;
@@ -187,7 +392,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
       )sql");
       insert_user.BindInt(1, *user_id);
       insert_user.BindText(2, user_name);
-      insert_user.BindDouble(3, GetWallTime());
+      insert_user.BindDouble(3, GetWallTime(env_));
       TF_RETURN_IF_ERROR(insert_user.StepAndReset());
     }
     return Status::OK();
@@ -241,15 +446,34 @@ class SummaryDbWriter : public SummaryWriterInterface {
       }
       insert.BindInt(2, *id);
       insert.BindText(3, name);
-      insert.BindDouble(4, GetWallTime());
+      insert.BindDouble(4, GetWallTime(env_));
       TF_RETURN_IF_ERROR(insert.StepAndReset());
     }
     return Status::OK();
   }
 
+  Status WriteSummary(const Event* e, const Summary::Value& summary)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    int64 tag_id;
+    TF_RETURN_IF_ERROR(GetTagId(run_id_, summary.tag(), &tag_id));
+    insert_tensor_.BindInt(1, tag_id);
+    insert_tensor_.BindInt(2, e->step());
+    insert_tensor_.BindDouble(3, e->wall_time());
+    switch (summary.value_case()) {
+      case Summary::Value::ValueCase::kSimpleValue:
+        insert_tensor_.BindDouble(4, summary.simple_value());
+        break;
+      default:
+        // TODO(@jart): Handle the rest.
+        return Status::OK();
+    }
+    return insert_tensor_.StepAndReset();
+  }
+
   mutex mu_;
   Env* env_;
   std::shared_ptr<Sqlite> db_ GUARDED_BY(mu_);
+  Transactor txn_ GUARDED_BY(mu_);
   SqliteStatement insert_tensor_ GUARDED_BY(mu_);
   SqliteStatement update_metadata_ GUARDED_BY(mu_);
   string user_name_ GUARDED_BY(mu_);

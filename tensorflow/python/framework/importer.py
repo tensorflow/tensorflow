@@ -25,8 +25,11 @@ import copy
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
@@ -242,12 +245,6 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   input_map = _ProcessInputMapParam(input_map)
   return_elements = _ProcessReturnElementsParam(return_elements)
 
-  # Use a canonical representation for all tensor names.
-  input_map = {_CanonicalInputName(k): v for k, v in input_map.items()}
-  used_input_keys = set()
-
-  name_to_op = {}
-
   op_dict = op_def_registry.get_registered_ops()
 
   if producer_op_list is None:
@@ -255,10 +252,28 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   else:
     producer_op_dict = {op.name: op for op in producer_op_list.op}
 
-  g = ops.get_default_graph()
-  if g._c_graph:  # pylint: disable=protected-access
-    assert 'import_graph_def not yet implemented with C API'
+  graph = ops.get_default_graph()
+
+  if graph._c_graph:  # pylint: disable=protected-access
+    scoped_options = c_api_util.ScopedTFImportGraphDefOptions()
+
+    with errors.raise_exception_on_not_ok_status() as status:
+      with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
+        c_api.TF_GraphImportGraphDefWithResults(
+            graph._c_graph, serialized, scoped_options.options, status)  # pylint: disable=protected-access
+
+    if return_elements is not None:
+      raise ValueError('return_elements not yet implemented with C API')
+    return None
+
   else:
+    g = graph
+
+    # Use a canonical representation for all tensor names.
+    input_map = {_CanonicalInputName(k): v for k, v in input_map.items()}
+    used_input_keys = set()
+    name_to_op = {}
+
     # Add any functions defined in `graph_def` to `g`
     if graph_def.library and graph_def.library.function:
       # Copy op_dict so we don't clobber the original

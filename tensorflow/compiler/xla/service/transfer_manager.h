@@ -119,7 +119,7 @@ class TransferManager {
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.
-  virtual int64 GetByteSizeRequirement(const Shape& shape) = 0;
+  virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
 
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
@@ -158,11 +158,8 @@ class TransferManager {
       const perftools::gputools::Platform* platform);
 
  private:
-  // Routine that returns the mutex that guards the
-  // platform-to-transfer manager map.  Done as a routine to
-  // ensure correct initialization ordering, since RegisterTransferManager
-  // can be called during program initialization time.
-  static tensorflow::mutex* platform_transfer_manager_mutex();
+  // The mutex that guards the platform-to-transfer manager map.
+  static tensorflow::mutex platform_transfer_manager_mutex_;
 
   // State kept for each kind of TransferManager.  Registration functions
   // set up creation_function, and then we use that to lazily create

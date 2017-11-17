@@ -144,10 +144,11 @@ TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsSend) {
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
-  while_body->AddInstruction(HloInstruction::CreateSend(
+  auto* send = while_body->AddInstruction(HloInstruction::CreateSend(
       while_body->AddInstruction(
           HloInstruction::CreateConstant(Literal::CreateR0<bool>(true))),
       /*channel_id=*/0));
+  while_body->AddInstruction(HloInstruction::CreateSendDone(send));
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -156,9 +157,10 @@ TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsRecv) {
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
-  while_body->AddInstruction(
+  auto* recv = while_body->AddInstruction(
       HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}),
                                  /*channel_id=*/0));
+  while_body->AddInstruction(HloInstruction::CreateRecvDone(recv));
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
