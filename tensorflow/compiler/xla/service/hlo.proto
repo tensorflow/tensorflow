@@ -250,7 +250,3 @@ message HloProto {
   HloOrderingProto hlo_ordering = 2;
   BufferAssignmentProto buffer_assignment = 3;
 }
-
-message HloProtos {
-  repeated HloProto hlo_protos = 1;
-}
