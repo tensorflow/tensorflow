@@ -63,7 +63,7 @@ class TestRunner {
   // Run the model.
   virtual void Invoke() = 0;
 
-  // Verify that the contents of all ouputs conform to the existing
+  // Verify that the contents of all outputs conform to the existing
   // expectations. Return true if there are no expectations or they are all
   // satisfied.
   virtual bool CheckResults() = 0;
