@@ -1898,7 +1898,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (CanHaveDimensionsField()) {
     extra.push_back(StrCat("dimensions={", Join(dimensions(), ","), "}"));
   }
-  if (window_ != nullptr) {
+  if (window_ != nullptr && window_->dimensions_size() != 0) {
     extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
   }
   if (padding_config_ != nullptr) {
