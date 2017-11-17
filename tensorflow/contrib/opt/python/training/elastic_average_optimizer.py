@@ -101,7 +101,7 @@ class ElasticAverageCustomGetter(object):
       self._global_map[local_var] = global_center_variable
       return local_var
     else:
-      return getter(name, *args, **kwargs)
+      return getter(name, trainable, collections, *args, **kwargs)
 
 
 class ElasticAverageOptimizer(optimizer.Optimizer):
