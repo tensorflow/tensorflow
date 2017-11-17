@@ -133,15 +133,16 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     Args:
       opt: The actual optimizer that will be used to update local variables.
         Must be one of the Optimizer classes.
+      num_worker: The number of workers
+      ea_custom_getter: The ElasticAverageCustomGetter
       communication_period: An int point value to controls the frequency
         of the communication between every worker and the ps.
-      num_worker: The number of workers
       moving_rate: A floating point value to control the elastic difference.
       rho: the amount of exploration we allow ine the model. The default
         value is moving_rate/learning_rate
       use_locking: If True use locks for update operations.
       name: Optional name prefix for the operations created when applying
-        gradients. Defaults to "GradientDescent".
+        gradients. Defaults to "ElasticAverageOptimizer".
     """
     super(ElasticAverageOptimizer, self).__init__(use_locking, name)
     self._opt = opt
