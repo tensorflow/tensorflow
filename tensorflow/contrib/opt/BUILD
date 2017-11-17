@@ -15,13 +15,13 @@ py_library(
     srcs = [
         "__init__.py",
         "python/training/drop_stale_gradient_optimizer.py",
+        "python/training/elastic_average_optimizer.py",
         "python/training/external_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
         "python/training/moving_average_optimizer.py",
         "python/training/multitask_optimizer_wrapper.py",
         "python/training/nadam_optimizer.py",
         "python/training/variable_clipping_optimizer.py",
-        "python/training/elastic_average_optimizer.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
