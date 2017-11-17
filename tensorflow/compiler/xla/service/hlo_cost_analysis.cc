@@ -28,7 +28,7 @@ namespace xla {
 constexpr char HloCostAnalysis::kFlopsKey[];
 constexpr char HloCostAnalysis::kTranscendentalsKey[];
 constexpr char HloCostAnalysis::kBytesAccessedKey[];
-constexpr char HloCostAnalysis::kSecondsKey[];
+constexpr char HloCostAnalysis::kOptimalSecondsKey[];
 
 HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
     : HloCostAnalysis(shape_size, {}) {}
@@ -60,16 +60,16 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   if (current_should_compute_bottleneck_time_) {
     // Compute the time as the time of the bottleneck, i.e. the slowest property
     // given the per-second rate of each property.
-    float max_seconds = 0.0f;
+    float optimal_seconds = 0.0f;
     for (const auto& property : current_properties_) {
-      if (property.first != kSecondsKey) {
-        max_seconds = std::max(
-            max_seconds,
+      if (property.first != kOptimalSecondsKey) {
+        optimal_seconds = std::max(
+            optimal_seconds,
             property.second /
                 GetProperty(property.first, per_second_rates_, INFINITY));
       }
     }
-    current_properties_[kSecondsKey] = max_seconds;
+    current_properties_[kOptimalSecondsKey] = optimal_seconds;
   }
 
   TF_RET_CHECK(hlo_properties_.emplace(hlo, current_properties_).second);
@@ -496,8 +496,8 @@ float HloCostAnalysis::bytes_accessed() const {
   return GetProperty(kBytesAccessedKey, properties_sum_);
 }
 
-float HloCostAnalysis::seconds() const {
-  return GetProperty(kSecondsKey, properties_sum_);
+float HloCostAnalysis::optimal_seconds() const {
+  return GetProperty(kOptimalSecondsKey, properties_sum_);
 }
 
 int64 HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
@@ -512,8 +512,8 @@ int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_);
 }
 
-float HloCostAnalysis::seconds(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kSecondsKey, hlo_properties_);
+float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(

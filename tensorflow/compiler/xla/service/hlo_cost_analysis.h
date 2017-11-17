@@ -42,7 +42,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   static constexpr char kFlopsKey[] = "flops";
   static constexpr char kTranscendentalsKey[] = "transcendentals";
   static constexpr char kBytesAccessedKey[] = "bytes accessed";
-  static constexpr char kSecondsKey[] = "seconds";
+  static constexpr char kOptimalSecondsKey[] = "optimal_seconds";
 
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
@@ -118,14 +118,14 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   float flop_count() const;
   float transcendental_count() const;
   float bytes_accessed() const;
-  float seconds() const;
+  float optimal_seconds() const;
 
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
   int64 bytes_accessed(const HloInstruction& hlo) const;
-  float seconds(const HloInstruction& hlo) const;
+  float optimal_seconds(const HloInstruction& hlo) const;
 
   const Properties& properties() const { return properties_sum_; }
   const float property(const string& key) const {
