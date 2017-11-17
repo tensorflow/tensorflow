@@ -173,7 +173,7 @@ tf_py_test(
 
 tf_py_test(
     name = "elastic_average_optimizer_test",
-    srcs =["python/training/elastic_average_optimizer_test.py"],
+    srcs = ["python/training/elastic_average_optimizer_test.py"],
     additional_deps = [
         ":opt_py",
         "//tensorflow/python:client",
