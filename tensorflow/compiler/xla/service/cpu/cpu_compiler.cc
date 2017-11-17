@@ -426,8 +426,22 @@ Status InitializeModuleHooks(
 
 }  // namespace
 
-StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> module,
+    perftools::gputools::StreamExecutor* /*stream_exec*/) {
+  VLOG(2) << "Before optimization:";
+  XLA_VLOG_LINES(2, module->ToString());
+
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
+
+  VLOG(2) << "After optimization:";
+  XLA_VLOG_LINES(2, module->ToString());
+  return std::move(module);
+}
+
+StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
+    std::unique_ptr<HloModule> module,
+    perftools::gputools::StreamExecutor* stream_exec) {
   const string timer_message =
       "Compiling [" + module->name() + "] for CPU using JIT";
   ScopedLoggingTimer compiling_timer(timer_message, 1);
@@ -457,14 +471,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       pre_optimization_ir_hook, post_optimization_ir_hook);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
-
-  VLOG(2) << "Before optimization:";
-  XLA_VLOG_LINES(2, module->ToString());
-
-  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
-
-  VLOG(2) << "After optimization:";
-  XLA_VLOG_LINES(2, module->ToString());
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;

@@ -126,7 +126,7 @@ string GetLibdeviceDir(const string& config_cuda_data_dir) {
 
 // Runs optimization passes on the given HLO module.
 tensorflow::Status OptimizeHloModule(
-    HloModule* hlo_module, const se::DeviceDescription& device_desc,
+    HloModule* hlo_module,
     const HloCostAnalysis::ShapeSizeFunction& shape_size_function) {
   {
     HloPassPipeline pipeline("optimization");
@@ -297,19 +297,23 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
 GpuCompiler::GpuCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
-StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
-  TF_RET_CHECK(stream_exec != nullptr);
-
+StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/) {
   {
     Tracing::TraceMe annotation("HLO Transforms", module->name(),
                                 /*is_expensive=*/true);
-    TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(),
-                                         stream_exec->GetDeviceDescription(),
-                                         ShapeSizeBytesFunction()));
     TF_RETURN_IF_ERROR(
-        PrepareHloModuleForIrEmitting(module.get(), ShapeSizeBytesFunction()));
+        OptimizeHloModule(module.get(), ShapeSizeBytesFunction()));
   }
+  return std::move(module);
+}
+
+StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  TF_RET_CHECK(stream_exec != nullptr);
+
+  TF_RETURN_IF_ERROR(
+      PrepareHloModuleForIrEmitting(module.get(), ShapeSizeBytesFunction()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
