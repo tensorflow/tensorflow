@@ -490,11 +490,11 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
       }
       dense_split->set_feature_column(feature_column_group_id_);
       // Set the feature index for the best feature column.
-      const int64 best_feature_id =
+      const int64 best_dimension_id =
           bucket_ids_and_dimensions(best_element_idx, 1);
       const int32 best_bucket_id =
           bucket_ids_and_dimensions(best_element_idx, 0);
-      dense_split->set_feature_id(best_feature_id);
+      dense_split->set_dimension_id(best_dimension_id);
       dense_split->set_threshold(bucket_boundaries(best_bucket_id));
 
       auto* left_child = split_info.mutable_left_child();
