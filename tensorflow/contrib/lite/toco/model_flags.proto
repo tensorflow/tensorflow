@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 syntax = "proto2";
+import "tensorflow/contrib/lite/toco/types.proto";
 
 package toco;
 

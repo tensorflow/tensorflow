@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 syntax = "proto2";
+import "tensorflow/contrib/lite/toco/types.proto";
+
 package toco;
 
 // Supported I/O file formats. Some formats may be input-only or output-only.
@@ -28,27 +30,6 @@ enum FileFormat {
   // GraphViz
   // Export-only.
   GRAPHVIZ_DOT = 3;
-}
-
-// IODataType describes the numeric data types to be used by the output format.
-// See input_type and inference_type below.
-enum IODataType {
-  IO_DATA_TYPE_UNKNOWN = 0;
-
-  // Float32, not quantized
-  FLOAT = 1;
-
-  // Uint8, quantized
-  QUANTIZED_UINT8 = 2;
-
-  // Int32, not quantized
-  INT32 = 3;
-
-  // Int64, not quantized
-  INT64 = 4;
-
-  // String, not quantized
-  STRING = 5;
 }
 
 // TocoFlags encodes extra parameters that drive tooling operations, that

@@ -490,9 +490,11 @@ Status ConstantFolding::MaterializeReductionIndices(
   }
   *reduction_indices = CreateNodeDef(const_name, TensorValue(&value));
   reduction_indices->set_device(node->device());
-  *reduction_indices->add_input() =
+  string ctrl_dep =
       AddControlDependency(node->input(1), &graph_, node_map_.get());
+  *reduction_indices->add_input() = ctrl_dep;
   node_map_->AddNode(const_name, reduction_indices);
+  node_map_->AddOutput(NodeName(ctrl_dep), const_name);
 
   node->set_input(1, reduction_indices->name());
   node_map_->UpdateInput(node->name(), indices->name(),
