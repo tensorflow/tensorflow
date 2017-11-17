@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/dataset.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/stats_aggregator.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -168,6 +169,16 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
+  void set_stats_aggregator(std::shared_ptr<StatsAggregator> stats_aggregator) {
+    mutex_lock l(mu_);
+    stats_aggregator_ = std::move(stats_aggregator);
+  }
+
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    tf_shared_lock l(mu_);
+    return stats_aggregator_;
+  }
+
   string DebugString() override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
@@ -178,6 +189,8 @@ class IteratorResource : public ResourceBase {
 
  private:
   std::shared_ptr<IteratorBase> iterator_;
+  mutex mu_;
+  std::shared_ptr<StatsAggregator> stats_aggregator_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
@@ -684,6 +697,9 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
       IteratorContext::Params params;
       params.env = ctx->env();
+      params.stats_aggregator_getter = [iterator]() {
+        return iterator->stats_aggregator();
+      };
       params.runner = *(ctx->runner());
       IteratorContext iter_ctx(std::move(params));
 
@@ -835,6 +851,31 @@ class DeserializeIteratorOp : public OpKernel {
   }
 };
 
+class IteratorSetStatsAggregatorOp : public OpKernel {
+ public:
+  explicit IteratorSetStatsAggregatorOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    core::ScopedUnref unref_iterator(iterator_resource);
+
+    StatsAggregatorResource* stats_aggregator_resource;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1),
+                                       &stats_aggregator_resource));
+    core::ScopedUnref unref_stats_aggregator(stats_aggregator_resource);
+    // TODO(mrry): Consider allowing multiple StatsAggregator ops to
+    // subscribe to updates, and/or unsubscribing.
+    OP_REQUIRES(ctx, !iterator_resource->stats_aggregator(),
+                errors::FailedPrecondition(
+                    "Iterator already associated with a StatsAggregator"));
+    iterator_resource->set_stats_aggregator(
+        stats_aggregator_resource->stats_aggregator());
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
@@ -852,6 +893,8 @@ REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorSetStatsAggregator").Device(DEVICE_CPU),
+                        IteratorSetStatsAggregatorOp);
 
 }  // namespace
 

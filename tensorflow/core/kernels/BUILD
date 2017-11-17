@@ -5753,6 +5753,26 @@ tf_mkl_kernel_library(
 )
 
 cc_library(
+    name = "stats_aggregator",
+    hdrs = ["stats_aggregator.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "stats_aggregator_ops",
+    srcs = ["stats_aggregator_ops.cc"],
+    deps = [
+        ":stats_aggregator",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "dataset",
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
@@ -5760,6 +5780,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -6033,6 +6054,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "stats_dataset_ops",
+    srcs = ["stats_dataset_ops.cc"],
+    deps = [
+        ":dataset",
+        ":stats_aggregator",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "range_dataset_op",
     srcs = ["range_dataset_op.cc"],
     deps = [
@@ -6157,6 +6191,7 @@ tf_kernel_library(
     deps = [
         ":dataset",
         ":ops_util",
+        ":stats_aggregator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -6206,6 +6241,8 @@ tf_kernel_library(
         ":skip_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":sql_dataset_ops",
+        ":stats_aggregator_ops",
+        ":stats_dataset_ops",
         ":take_dataset_op",
         ":tensor_dataset_op",
         ":tensor_slice_dataset_op",

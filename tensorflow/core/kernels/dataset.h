@@ -41,8 +41,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class ResourceMgr;
-
 // Interface for reading values from a key-value store.
 // Used for restoring iterator state.
 class IteratorStateReader {
@@ -308,6 +306,8 @@ class GraphDefBuilderWrapper {
   GraphDefBuilder* b_;
 };
 
+class StatsAggregator;
+
 // A cut-down version of OpKernelContext for running computations in
 // iterators. Note that we cannot simply use OpKernelContext here
 // because we might run computation in an iterator whose lifetime is
@@ -331,6 +331,16 @@ class IteratorContext {
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
+
+    // A function that returns the current `StatsAggregator` instance to be
+    // used when recording statistics about the iterator.
+    //
+    // NOTE(mrry): This is somewhat awkward, because (i) the `StatsAggregator`
+    // is a property of the `IteratorResource` (which this class does not know
+    // about), and (ii) it can change after the `IteratorContext` has been
+    // created. Better suggestions are welcome!
+    std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
+        nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
@@ -339,6 +349,14 @@ class IteratorContext {
 
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
+  }
+
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    if (params_.stats_aggregator_getter) {
+      return params_.stats_aggregator_getter();
+    } else {
+      return nullptr;
+    }
   }
 
  private:
