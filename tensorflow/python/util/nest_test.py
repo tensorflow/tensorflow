@@ -439,7 +439,7 @@ class NestTest(test.TestCase):
                                                               input_tree)
     self.assertEqual(input_tree_flattened_as_shallow_tree, [0, 1, 2, 3, 4])
     shallow_tree = collections.OrderedDict([("a", 0),
-                                            ("b", {"d": 3, "e": 1})])
+                                            ("c", {"d": 3, "e": 1})])
     input_tree_flattened_as_shallow_tree = nest.flatten_up_to(shallow_tree,
                                                               input_tree)
     self.assertEqual(input_tree_flattened_as_shallow_tree,
