@@ -444,11 +444,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       &pre_optimization_ir_hook, &post_optimization_ir_hook));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  auto llvm_context = MakeUnique<llvm::LLVMContext>();
+  auto llvm_context = xla::MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
-      MakeUnique<llvm::Module>("__compute_module", *llvm_context);
+      xla::MakeUnique<llvm::Module>("__compute_module", *llvm_context);
 
-  auto jit = MakeUnique<SimpleOrcJIT>(
+  auto jit = xla::MakeUnique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
@@ -495,7 +495,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(module.get(),
-                            MakeUnique<DependencyHloOrdering>(module.get()),
+                            xla::MakeUnique<DependencyHloOrdering>(module.get()),
                             BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
@@ -523,7 +523,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         const void* data = instruction->literal().InternalData();
         int64 size = CpuExecutable::ShapeSizeBytes(instruction->shape());
         auto iter = aligned_constants.emplace(
-            instruction, MakeUnique<unsigned char[]>(size));
+            instruction, xla::MakeUnique<unsigned char[]>(size));
         CHECK_EQ(iter.second, true);
         unsigned char* aligned_data = iter.first->second.get();
         memcpy(aligned_data, data, size);
@@ -604,7 +604,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
             module.get(),
-            MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
+            xla::MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
@@ -776,7 +776,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
-            module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
+            module, xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
