@@ -58,14 +58,12 @@ __all__ = ['avg_pool2d',
            'avg_pool3d',
            'batch_norm',
            'bias_add',
-           'conv1d',
            'conv2d',
            'conv3d',
            'conv2d_in_plane',
            'conv2d_transpose',
            'conv3d_transpose',
            'convolution',
-           'convolution1d',
            'convolution2d',
            'convolution2d_in_plane',
            'convolution2d_transpose',
@@ -1072,7 +1070,6 @@ def convolution(inputs,
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
-convolution1d = convolution
 convolution2d = convolution
 convolution3d = convolution
 
@@ -2974,7 +2971,6 @@ relu6 = functools.partial(fully_connected, activation_fn=nn.relu6)
 linear = functools.partial(fully_connected, activation_fn=None)
 
 # Simple alias.
-conv1d = convolution1d
 conv2d = convolution2d
 conv3d = convolution3d
 conv2d_transpose = convolution2d_transpose
