@@ -44,19 +44,19 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 //
 // Arguments:
 //	writer: A handle to a summary writer.
-//	global_step: The step to write the summary for.
+//	step: The step to write the summary for.
 //	tag: Tag for the summary.
 //	value: Value for the summary.
 //
 // Returns the created operation.
-func WriteScalarSummary(scope *Scope, writer tf.Output, global_step tf.Output, tag tf.Output, value tf.Output) (o *tf.Operation) {
+func WriteScalarSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, value tf.Output) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "WriteScalarSummary",
 		Input: []tf.Input{
-			writer, global_step, tag, value,
+			writer, step, tag, value,
 		},
 	}
 	return scope.AddOperation(opspec)
@@ -89,21 +89,21 @@ func ImportEvent(scope *Scope, writer tf.Output, event tf.Output) (o *tf.Operati
 //
 // Arguments:
 //	writer: A handle to a summary writer.
-//	global_step: The step to write the summary for.
+//	step: The step to write the summary for.
 //	tensor: A tensor to serialize.
 //	tag: The summary's tag.
 //	summary_metadata: Serialized SummaryMetadata protocol buffer containing
 // plugin-related metadata for this summary.
 //
 // Returns the created operation.
-func WriteSummary(scope *Scope, writer tf.Output, global_step tf.Output, tensor tf.Output, tag tf.Output, summary_metadata tf.Output) (o *tf.Operation) {
+func WriteSummary(scope *Scope, writer tf.Output, step tf.Output, tensor tf.Output, tag tf.Output, summary_metadata tf.Output) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "WriteSummary",
 		Input: []tf.Input{
-			writer, global_step, tensor, tag, summary_metadata,
+			writer, step, tensor, tag, summary_metadata,
 		},
 	}
 	return scope.AddOperation(opspec)
@@ -2147,19 +2147,19 @@ func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset
 //
 // Arguments:
 //	writer: A handle to a summary writer.
-//	global_step: The step to write the summary for.
+//	step: The step to write the summary for.
 //	tag: Scalar.  Tag to use for the `Summary.Value`.
 //	values: Any shape. Values to use to build the histogram.
 //
 // Returns the created operation.
-func WriteHistogramSummary(scope *Scope, writer tf.Output, global_step tf.Output, tag tf.Output, values tf.Output) (o *tf.Operation) {
+func WriteHistogramSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, values tf.Output) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "WriteHistogramSummary",
 		Input: []tf.Input{
-			writer, global_step, tag, values,
+			writer, step, tag, values,
 		},
 	}
 	return scope.AddOperation(opspec)
@@ -11101,13 +11101,13 @@ func WriteAudioSummaryMaxOutputs(value int64) WriteAudioSummaryAttr {
 //
 // Arguments:
 //	writer: A handle to a summary writer.
-//	global_step: The step to write the summary for.
+//	step: The step to write the summary for.
 //	tag: Scalar. Used to build the `tag` attribute of the summary values.
 //	tensor: 2-D of shape `[batch_size, frames]`.
 //	sample_rate: The sample rate of the signal in hertz.
 //
 // Returns the created operation.
-func WriteAudioSummary(scope *Scope, writer tf.Output, global_step tf.Output, tag tf.Output, tensor tf.Output, sample_rate tf.Output, optional ...WriteAudioSummaryAttr) (o *tf.Operation) {
+func WriteAudioSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, tensor tf.Output, sample_rate tf.Output, optional ...WriteAudioSummaryAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -11118,7 +11118,7 @@ func WriteAudioSummary(scope *Scope, writer tf.Output, global_step tf.Output, ta
 	opspec := tf.OpSpec{
 		Type: "WriteAudioSummary",
 		Input: []tf.Input{
-			writer, global_step, tag, tensor, sample_rate,
+			writer, step, tag, tensor, sample_rate,
 		},
 		Attrs: attrs,
 	}
@@ -18248,14 +18248,14 @@ func WriteImageSummaryMaxImages(value int64) WriteImageSummaryAttr {
 //
 // Arguments:
 //	writer: A handle to a summary writer.
-//	global_step: The step to write the summary for.
+//	step: The step to write the summary for.
 //	tag: Scalar. Used to build the `tag` attribute of the summary values.
 //	tensor: 4-D of shape `[batch_size, height, width, channels]` where
 // `channels` is 1, 3, or 4.
 //	bad_color: Color to use for pixels with non-finite values.
 //
 // Returns the created operation.
-func WriteImageSummary(scope *Scope, writer tf.Output, global_step tf.Output, tag tf.Output, tensor tf.Output, bad_color tf.Output, optional ...WriteImageSummaryAttr) (o *tf.Operation) {
+func WriteImageSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, tensor tf.Output, bad_color tf.Output, optional ...WriteImageSummaryAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -18266,7 +18266,7 @@ func WriteImageSummary(scope *Scope, writer tf.Output, global_step tf.Output, ta
 	opspec := tf.OpSpec{
 		Type: "WriteImageSummary",
 		Input: []tf.Input{
-			writer, global_step, tag, tensor, bad_color,
+			writer, step, tag, tensor, bad_color,
 		},
 		Attrs: attrs,
 	}
@@ -20657,18 +20657,18 @@ func Sub(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // Arguments:
 //	writer: Handle of `SummaryWriter`.
-//	global_step: The step to write the summary for.
+//	step: The step to write the summary for.
 //	tensor: A scalar string of the serialized tf.GraphDef proto.
 //
 // Returns the created operation.
-func WriteGraphSummary(scope *Scope, writer tf.Output, global_step tf.Output, tensor tf.Output) (o *tf.Operation) {
+func WriteGraphSummary(scope *Scope, writer tf.Output, step tf.Output, tensor tf.Output) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "WriteGraphSummary",
 		Input: []tf.Input{
-			writer, global_step, tensor,
+			writer, step, tensor,
 		},
 	}
 	return scope.AddOperation(opspec)
