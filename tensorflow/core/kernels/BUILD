@@ -6241,7 +6241,7 @@ cc_library(
     srcs = ["summary_interface.cc"],
     hdrs = ["summary_interface.h"],
     deps = [
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:ptr_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
