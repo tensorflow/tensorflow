@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/gather_op.h"
 #include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
 
+#include "tensorflow/core/kernels/no_op.h"
+
 namespace se = ::perftools::gputools;
 
 namespace tensorflow {
@@ -31,8 +33,8 @@ namespace tensorflow {
 const char* const DEVICE_XLA_IPU = "XLA_IPU";
 const char* const DEVICE_IPU_XLA_JIT = "XLA_IPU_JIT";
 
-constexpr std::array<DataType, 5> kIpuAllTypes =
-        {{DT_INT32, DT_INT64, DT_FLOAT, DT_HALF, DT_BOOL}};
+constexpr std::array<DataType, 6> kIpuAllTypes =
+        {{DT_INT32, DT_INT64, DT_FLOAT, DT_HALF, DT_BOOL, DT_RESOURCE}};
 
 class XlaIpuDeviceFactory : public DeviceFactory {
  public:
@@ -72,8 +74,15 @@ REGISTER_XLA_BACKEND(DEVICE_IPU_XLA_JIT, kIpuAllTypes, OpFilter);
 
 // Additional ops not explicitly defined by standard JIT
 
-REGISTER_XLA_OP(Name("ArgMax")
-        .Device(DEVICE_IPU_XLA_JIT),
-        XlaArgMaxOp);
+REGISTER_XLA_OP(Name("ArgMax").Device(DEVICE_IPU_XLA_JIT), XlaArgMaxOp);
+
+/*
+REGISTER_XLA_OP(Name("Enter").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("Exit").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("LoopCond").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("Merge").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("NextIteration").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("Switch").Device(DEVICE_IPU_XLA_JIT), NoOp);
+*/
 
 }  // namespace tensorflow
