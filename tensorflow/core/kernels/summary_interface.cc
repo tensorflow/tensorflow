@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
 #include "tensorflow/core/util/events_writer.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -229,7 +229,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     }
     mutex_lock ml(mu_);
     events_writer_ =
-        xla::MakeUnique<EventsWriter>(io::JoinPath(logdir, "events"));
+        tensorflow::MakeUnique<EventsWriter>(io::JoinPath(logdir, "events"));
     if (!events_writer_->InitWithSuffix(filename_suffix)) {
       return errors::Unknown("Could not initialize events writer.");
     }
