@@ -91,9 +91,9 @@ void SendOp::Compute(OpKernelContext* ctx) {
   if (frame_iter == FrameAndIter(0, 0)) {
     // Use the cached rendezvous key.
     VLOG(2) << "Send " << parsed_key_.buf_;
-    OP_REQUIRES_OK(ctx,
-                   ctx->rendezvous()->Send(parsed_key_, args, ctx->input(0),
+    ctx->SetStatus(ctx->rendezvous()->Send(parsed_key_, args, ctx->input(0),
                                            ctx->is_input_dead()));
+    return;
   } else {
     Rendezvous::ParsedKey in_loop_parsed;
     GetRendezvousKey(key_prefix_, frame_iter, &in_loop_parsed.buf_);
@@ -101,9 +101,9 @@ void SendOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx,
                    Rendezvous::ParseKey(in_loop_parsed.buf_, &in_loop_parsed));
 
-    OP_REQUIRES_OK(ctx,
-                   ctx->rendezvous()->Send(in_loop_parsed, args, ctx->input(0),
+    ctx->SetStatus(ctx->rendezvous()->Send(in_loop_parsed, args, ctx->input(0),
                                            ctx->is_input_dead()));
+    return;
   }
 }
 

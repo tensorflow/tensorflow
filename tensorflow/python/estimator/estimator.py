@@ -461,7 +461,11 @@ class Estimator(object):
       assets_extra=None,
       as_text=False,
       checkpoint_path=None):
+    # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
+
+    For a detailed guide, see
+    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
 
     This method builds a new graph by first calling the
     serving_input_receiver_fn to obtain feature `Tensor`s, and then calling
@@ -506,6 +510,7 @@ class Estimator(object):
       ValueError: if no serving_input_receiver_fn is provided, no export_outputs
           are provided, or no checkpoint can be found.
     """
+    # pylint: enable=line-too-long
     if serving_input_receiver_fn is None:
       raise ValueError('serving_input_receiver_fn must be defined.')
 

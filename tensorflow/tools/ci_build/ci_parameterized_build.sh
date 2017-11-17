@@ -546,8 +546,9 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
-  # Modify Dockerfile for Python3.5 build
+if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
+  [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+  # Modify Dockerfile for Python3.5 | Python3.6 build
   TMP_DIR=$(mktemp -d)
   echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 
@@ -563,10 +564,10 @@ if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
 
   # Replace a line in the Dockerfile
   if sed -i \
-      's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
+      "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
       "${DOCKERFILE}"
   then
-    echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}"
+    echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
   else
     die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
   fi

@@ -315,6 +315,24 @@ class TestSequential(test.TestCase):
       with self.assertRaises(TypeError):
         model.build()
 
+  def test_nested_sequential_trainability(self):
+    input_dim = 20
+    num_units = 10
+    num_classes = 2
+
+    inner_model = keras.models.Sequential()
+    inner_model.add(keras.layers.Dense(num_units, input_shape=(input_dim,)))
+
+    model = keras.models.Sequential()
+    model.add(inner_model)
+    model.add(keras.layers.Dense(num_classes))
+
+    self.assertEqual(len(model.trainable_weights), 4)
+    inner_model.trainable = False
+    self.assertEqual(len(model.trainable_weights), 2)
+    inner_model.trainable = True
+    self.assertEqual(len(model.trainable_weights), 4)
+
 
 class TestModelCloning(test.TestCase):
 

@@ -573,7 +573,9 @@ class HessianVectorProductTest(test_util.TensorFlowTestCase):
       self.assertAllClose(hess_v_value, hess_v_actual)
 
 
-@test_util.with_c_api
+# TODO(skyewm): reenable C API once
+# ControlFlowContext._RemoveExternalControlEdges works with C API enabled
+# @test_util.with_c_api
 class HessianTest(test_util.TensorFlowTestCase):
 
   def testHessian1D(self):

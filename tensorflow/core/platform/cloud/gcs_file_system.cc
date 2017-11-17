@@ -89,6 +89,10 @@ constexpr char kMatchingPathsCacheMaxEntries[] =
 constexpr size_t kMatchingPathsCacheDefaultMaxEntries = 1024;
 // The file statistics returned by Stat() for directories.
 const FileStatistics DIRECTORY_STAT(0, 0, true);
+// Some environments exhibit unreliable DNS resolution. Set this environment
+// variable to a positive integer describing the frequency used to refresh the
+// userspace DNS cache.
+constexpr char kResolveCacheSecs[] = "GCS_RESOLVE_REFRESH_SECS";
 
 Status GetTmpFilename(string* filename) {
   if (!filename) {
@@ -434,8 +438,8 @@ class GcsWritableFile : public WritableFile {
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
     TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
-        kGcsUploadUriBase, "b/", bucket_, "/o?uploadType=resumable&name=",
-        request->EscapeString(object_))));
+        kGcsUploadUriBase, "b/", bucket_,
+        "/o?uploadType=resumable&name=", request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->AddHeader("X-Upload-Content-Length",
                                           std::to_string(file_size)));
@@ -624,6 +628,12 @@ GcsFileSystem::GcsFileSystem()
   }
   matching_paths_cache_.reset(new ExpiringLRUCache<std::vector<string>>(
       matching_paths_cache_max_age, matching_paths_cache_max_entries));
+
+  int64 resolve_frequency_secs;
+  if (GetEnvVar(kResolveCacheSecs, strings::safe_strto64,
+                &resolve_frequency_secs)) {
+    dns_cache_.reset(new GcsDnsCache(resolve_frequency_secs));
+  }
 }
 
 GcsFileSystem::GcsFileSystem(
@@ -678,6 +688,11 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
   TF_RETURN_IF_ERROR(request->SetResultBuffer(out));
+
+  if (dns_cache_) {
+    TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(request.get()));
+  }
+
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                   bucket, "/", object);
   return Status::OK();
@@ -821,6 +836,11 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
       "?fields=size%2Cupdated")));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
+
+  if (dns_cache_) {
+    TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(request.get()));
+  }
+
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       request->Send(), " when reading metadata of gs://", bucket, "/", object);
 
@@ -959,12 +979,12 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
       uri = strings::StrCat(uri, "&delimiter=%2F");
     }
     if (!object_prefix.empty()) {
-      uri = strings::StrCat(uri, "&prefix=",
-                            request->EscapeString(object_prefix));
+      uri = strings::StrCat(uri,
+                            "&prefix=", request->EscapeString(object_prefix));
     }
     if (!nextPageToken.empty()) {
-      uri = strings::StrCat(uri, "&pageToken=",
-                            request->EscapeString(nextPageToken));
+      uri = strings::StrCat(
+          uri, "&pageToken=", request->EscapeString(nextPageToken));
     }
     if (max_results - retrieved_results < kGetChildrenDefaultPageSize) {
       uri =
@@ -973,6 +993,11 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
     TF_RETURN_IF_ERROR(request->SetUri(uri));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
+
+    if (dns_cache_) {
+      TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(request.get()));
+    }
+
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
     Json::Value root;
     StringPiece response_piece =

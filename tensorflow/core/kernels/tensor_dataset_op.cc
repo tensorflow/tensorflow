@@ -78,7 +78,7 @@ class TensorDatasetOp : public DatasetOpKernel {
         components.emplace_back(node);
       }
       TF_RETURN_IF_ERROR(
-          b->AddDatasetWithInputAsList(this, components, output));
+          b->AddDataset(this, {}, {std::make_pair(0, components)}, {}, output));
       return Status::OK();
     }
 
