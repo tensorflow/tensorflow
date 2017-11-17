@@ -174,8 +174,8 @@ def _maybe_expand_labels(labels, predictions):
         lambda: labels)
 
 
-def _safe_div(numerator, denominator, name):
-  """Divides two values, returning 0 if the denominator is <= 0.
+def _safe_div(numerator, denominator, name=None):
+  """Divides two Tensors, returning 0 if the denominator is <= 0.
 
   Args:
     numerator: A real `Tensor`.
@@ -185,11 +185,10 @@ def _safe_div(numerator, denominator, name):
   Returns:
     0 if `denominator` <= 0, else `numerator` / `denominator`
   """
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.truediv(numerator, denominator),
-      0,
-      name=name)
+  condition = math_ops.greater(denominator, 0)
+  t = math_ops.truediv(numerator, denominator)
+  e = array_ops.zeros_like(denominator, dtype=t.dtype)
+  return array_ops.where(condition, t, e, name=name)
 
 
 def _safe_scalar_div(numerator, denominator, name):
@@ -1054,10 +1053,8 @@ def mean_relative_error(labels, predictions, normalizer, weights=None,
   predictions, normalizer = confusion_matrix.remove_squeezable_dimensions(
       predictions, normalizer)
   predictions.get_shape().assert_is_compatible_with(normalizer.get_shape())
-  relative_errors = array_ops.where(
-      math_ops.equal(normalizer, 0.0),
-      array_ops.zeros_like(labels),
-      math_ops.div(math_ops.abs(labels - predictions), normalizer))
+  relative_errors = _safe_div(math_ops.abs(labels - predictions),
+                              normalizer)
   return mean(relative_errors, weights, metrics_collections,
               updates_collections, name or 'mean_relative_error')
 
