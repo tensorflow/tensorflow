@@ -19,8 +19,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-#import <CoreImage/CoreImage.h>
-#import <ImageIO/ImageIO.h>
+#import <CoreGraphics/CoreGraphics.h>
 
 std::vector<uint8_t> LoadImageFromUIImage(UIImage *img) {
     CGImageRef image = img.CGImage;
@@ -29,8 +28,8 @@ std::vector<uint8_t> LoadImageFromUIImage(UIImage *img) {
     const int height = (int)CGImageGetHeight(image);
     const int channels = 4;
     CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
-    const int bytes_per_row = (width * channels);
-    const int bytes_in_image = (bytes_per_row * height);
+    const int bytes_per_row = width * channels;
+    const int bytes_in_image = bytes_per_row * height;
     std::vector<uint8_t> result(bytes_in_image);
     const int bits_per_component = 8;
     CGContextRef context = CGBitmapContextCreate(result.data(),

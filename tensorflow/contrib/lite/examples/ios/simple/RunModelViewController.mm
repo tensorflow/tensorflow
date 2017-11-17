@@ -2,6 +2,8 @@
 //  RunModelViewController.m
 //  tf_simple_example
 //
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
 //  Created by Gor Baghdasaryan on 11/15/17.
 //  Copyright © 2017 Google. All rights reserved.
 //
@@ -44,20 +46,13 @@ static void GetTopN(const float* prediction,
     self.imageView.image = [UIImage imageNamed:@"grace_hopper.jpg"];
 }
 
-- (void)didReceiveMemoryWarning {
-    [super didReceiveMemoryWarning];
-    // Dispose of any resources that can be recreated.
-}
-
 - (IBAction)runModel:(UIButton *)sender {
     self.textView.text = [self runInferenceOnImage:self.imageView.image];
 }
 
 - (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info; {
     [picker dismissViewControllerAnimated:YES completion:nil];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.imageView.image = [self fixrotation:info[UIImagePickerControllerOriginalImage]];;
-    });
+    self.imageView.image = [self fixrotation:info[UIImagePickerControllerOriginalImage]];
 }
 
 - (IBAction)openPhoto:(UIBarButtonItem *)sender {
@@ -66,8 +61,8 @@ static void GetTopN(const float* prediction,
         picker = [[UIImagePickerController alloc] init];
         picker.delegate = self;
         picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
+        [self presentViewController:picker animated:YES completion:nil];
     }
-    [self presentViewController:picker animated:YES completion:nil];
 }
 
 - (UIImage *)fixrotation:(UIImage *)image{
@@ -118,24 +113,24 @@ static void GetTopN(const float* prediction,
     
     // Now we draw the underlying CGImage into a new context, applying the transform
     // calculated above.
-    CGContextRef ctx = CGBitmapContextCreate(NULL, (size_t) image.size.width, (size_t) image.size.height,
+    CGContextRef ctx = CGBitmapContextCreate(NULL, (size_t)image.size.width, (size_t) image.size.height,
                                              CGImageGetBitsPerComponent(image.CGImage), 0,
                                              CGImageGetColorSpace(image.CGImage),
                                              CGImageGetBitmapInfo(image.CGImage));
     CGContextConcatCTM(ctx, transform);
+    CGRect rect;
     switch (image.imageOrientation) {
         case UIImageOrientationLeft:
         case UIImageOrientationLeftMirrored:
         case UIImageOrientationRight:
         case UIImageOrientationRightMirrored:
-            // Grr...
-            CGContextDrawImage(ctx, CGRectMake(0,0,image.size.height,image.size.width), image.CGImage);
+            rect = CGRectMake(0,0,image.size.height,image.size.width);
             break;
-            
         default:
-            CGContextDrawImage(ctx, CGRectMake(0,0,image.size.width,image.size.height), image.CGImage);
+            rect = CGRectMake(0,0,image.size.width,image.size.height);
             break;
     }
+    CGContextDrawImage(ctx, rect, image.CGImage);
     
     // And now we just create a new UIImage from the drawing context
     CGImageRef cgimg = CGBitmapContextCreateImage(ctx);
@@ -143,19 +138,18 @@ static void GetTopN(const float* prediction,
     CGContextRelease(ctx);
     CGImageRelease(cgimg);
     return img;
-    
 }
 
--(NSString*) filePathForResourceName:(NSString*) name withExtension:(NSString*) extension {
+- (NSString*)filePathForResourceName:(NSString*)name withExtension:(NSString*)extension {
     NSString* file_path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
-    if (file_path == NULL) {
+    if (!file_path) {
         LOG(FATAL) << "Couldn't find '" << [name UTF8String] << "."
         << [extension UTF8String] << "' in bundle.";
     }
     return file_path;
 }
 
--(NSString*) runInferenceOnImage:(UIImage *) image {
+- (NSString*)runInferenceOnImage:(UIImage *)image {
     std::string graph;
     const int num_threads = 1;
     std::string input_layer_type = "float";
@@ -163,7 +157,7 @@ static void GetTopN(const float* prediction,
     
     NSString* graph_path = [self filePathForResourceName:@"mobilenet_v1_1.0_224" withExtension: @"tflite"];
     
-    std::unique_ptr<tflite::FlatBufferModel> model(tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]));
+    std::unique_ptr<tflite::FlatBufferModel> model(tflite::FlatBufferModel::BuildFromFile([graph_path fileSystemRepresentation]));
     if (!model) {
         LOG(FATAL) << "Failed to mmap model " << graph;
     }
@@ -202,7 +196,7 @@ static void GetTopN(const float* prediction,
     NSString* labels_path = [self filePathForResourceName:@"labels" withExtension:@"txt"];
     std::vector<std::string> label_strings;
     std::ifstream t;
-    t.open([labels_path UTF8String]);
+    t.open([labels_path fileSystemRepresentation]);
     std::string line;
     while(t){
         std::getline(t, line);
@@ -212,9 +206,9 @@ static void GetTopN(const float* prediction,
     
     assert(image);
     
-    int image_width = image.size.width;
-    int image_height = image.size.height;
-    int image_channels = 4;
+    const int image_width = image.size.width;
+    const int image_height = image.size.height;
+    const int image_channels = 4;
     std::vector<uint8_t> image_data = LoadImageFromUIImage(image);
     
     const int wanted_width = 224;

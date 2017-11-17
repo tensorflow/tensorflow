@@ -12,7 +12,6 @@
 		594C14AE1FB8F9B500EE8BFE /* libtensorflow-lite.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 594C14AD1FB8F9B500EE8BFE /* libtensorflow-lite.a */; };
 		594C14B11FB9037100EE8BFE /* labels.txt in Resources */ = {isa = PBXBuildFile; fileRef = 594C14AF1FB9037100EE8BFE /* labels.txt */; };
 		594C14B21FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite in Resources */ = {isa = PBXBuildFile; fileRef = 594C14B01FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite */; };
-		59A3D0011CF4E68100C4259F /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFF21CF4E68100C4259F /* AppDelegate.m */; };
 		59A3D0031CF4E68100C4259F /* grace_hopper.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */; };
 		59A3D0081CF4E68100C4259F /* ios_image_load.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */; };
 		59A3D0091CF4E68100C4259F /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFC1CF4E68100C4259F /* main.m */; };
@@ -29,8 +28,6 @@
 		594C14AD1FB8F9B500EE8BFE /* libtensorflow-lite.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libtensorflow-lite.a"; path = "../../../gen/lib/libtensorflow-lite.a"; sourceTree = "<group>"; };
 		594C14AF1FB9037100EE8BFE /* labels.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = labels.txt; sourceTree = "<group>"; };
 		594C14B01FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = mobilenet_v1_1.0_224.tflite; sourceTree = "<group>"; };
-		59A3CFF11CF4E68100C4259F /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
-		59A3CFF21CF4E68100C4259F /* AppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
 		59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = grace_hopper.jpg; sourceTree = "<group>"; };
 		59A3CFFA1CF4E68100C4259F /* ios_image_load.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ios_image_load.h; sourceTree = "<group>"; };
 		59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ios_image_load.mm; sourceTree = "<group>"; };
@@ -72,8 +69,6 @@
 		591157921CF4011C00C31E3A = {
 			isa = PBXGroup;
 			children = (
-				59A3CFF11CF4E68100C4259F /* AppDelegate.h */,
-				59A3CFF21CF4E68100C4259F /* AppDelegate.m */,
 				59A3CFF31CF4E68100C4259F /* data */,
 				59A3CFFA1CF4E68100C4259F /* ios_image_load.h */,
 				59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */,
@@ -137,7 +132,7 @@
 				TargetAttributes = {
 					5911579A1CF4011C00C31E3A = {
 						CreatedOnToolsVersion = 7.2;
-                        DevelopmentTeam = EQHXZ8M8AV;
+						DevelopmentTeam = EQHXZ8M8AV;
 						ProvisioningStyle = Manual;
 					};
 				};
@@ -181,7 +176,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				59A3D0091CF4E68100C4259F /* main.m in Sources */,
-				59A3D0011CF4E68100C4259F /* AppDelegate.m in Sources */,
 				DE6FE52E1FBC27F0009685A1 /* RunModelViewController.mm in Sources */,
 				59A3D0081CF4E68100C4259F /* ios_image_load.mm in Sources */,
 			);
