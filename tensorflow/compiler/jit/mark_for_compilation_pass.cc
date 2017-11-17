@@ -454,13 +454,6 @@ Status MarkForCompilationPass::RunImpl(
     worklist.pop_front();
 
     Node* node_from = graph->FindNodeId(from);
-    if (node_from->IsControlFlow()) {
-      // Control flow nodes aren't compilation candidates and should never
-      // appear.
-      return errors::Internal(
-          "Found control flow node in clustering worklist: ",
-          node_from->type_string());
-    }
     string from_scope;
     string to_scope;
     for (int to : cycles.Successors(from)) {
