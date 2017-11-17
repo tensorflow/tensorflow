@@ -3371,7 +3371,7 @@ tf_cc_test(
 
 filegroup(
     name = "base_api_def",
-    data = glob(["api_def/base_api/*"]),
+    srcs = glob(["api_def/base_api/*"]),
 )
 
 filegroup(
@@ -3385,10 +3385,6 @@ tf_cc_test(
     data = [
         ":base_api_def",
         "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
-    ],
-    tags = [
-        "manual",
-        "notap",
     ],
     deps = [
         ":framework",
