@@ -511,15 +511,18 @@ class TFRecordDatasetOp : public DatasetOpKernel {
                 errors::InvalidArgument(
                     "`buffer_size` must be >= 0 (0 == no buffering)"));
 
-    *output = new Dataset(std::move(filenames), compression_type, buffer_size);
+    *output =
+        new Dataset(ctx, std::move(filenames), compression_type, buffer_size);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    explicit Dataset(std::vector<string> filenames,
+    explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
                      const string& compression_type, int64 buffer_size)
-        : filenames_(std::move(filenames)),
+        : GraphDatasetBase(ctx),
+          filenames_(std::move(filenames)),
+          compression_type_(compression_type),
           options_(io::RecordReaderOptions::CreateRecordReaderOptions(
               compression_type)) {
       if (buffer_size > 0) {
@@ -546,6 +549,20 @@ class TFRecordDatasetOp : public DatasetOpKernel {
 
     string DebugString() override { return "TFRecordDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* filenames = nullptr;
+      TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
+      Node* compression_type = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(compression_type_, &compression_type));
+      Node* buffer_size = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(options_.buffer_size, &buffer_size));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {filenames, compression_type, buffer_size}, output));
+      return Status::OK();
+    }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -571,8 +588,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
 
             // We have reached the end of the current file, so maybe
             // move on to next file.
-            reader_.reset();
-            file_.reset();
+            ResetStreamsLocked();
             ++current_file_index_;
           }
 
@@ -582,17 +598,64 @@ class TFRecordDatasetOp : public DatasetOpKernel {
             return Status::OK();
           }
 
-          // Actually move on to next file.
-          const string& next_filename =
-              dataset()->filenames_[current_file_index_];
-          TF_RETURN_IF_ERROR(
-              ctx->env()->NewRandomAccessFile(next_filename, &file_));
-          reader_.reset(
-              new io::SequentialRecordReader(file_.get(), dataset()->options_));
+          TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
         } while (true);
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
+                                               current_file_index_));
+
+        if (reader_) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("offset"), reader_->TellOffset()));
+        }
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        ResetStreamsLocked();
+        int64 current_file_index;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_file_index"),
+                                              &current_file_index));
+        current_file_index_ = size_t(current_file_index);
+        if (reader->Contains(full_name("offset"))) {
+          int64 offset;
+          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("offset"), &offset));
+          TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
+          TF_RETURN_IF_ERROR(reader_->SeekOffset(offset));
+        }
+        return Status::OK();
+      }
+
      private:
+      // Sets up reader streams to read from the file at `current_file_index_`.
+      Status SetupStreamsLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        if (current_file_index_ >= dataset()->filenames_.size()) {
+          return errors::InvalidArgument(
+              "current_file_index_:", current_file_index_,
+              " >= filenames_.size():", dataset()->filenames_.size());
+        }
+
+        // Actually move on to next file.
+        const string& next_filename =
+            dataset()->filenames_[current_file_index_];
+        TF_RETURN_IF_ERROR(env->NewRandomAccessFile(next_filename, &file_));
+        reader_.reset(
+            new io::SequentialRecordReader(file_.get(), dataset()->options_));
+        return Status::OK();
+      }
+
+      // Resets all reader streams.
+      void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        reader_.reset();
+        file_.reset();
+      }
+
       mutex mu_;
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
 
@@ -603,6 +666,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
     };
 
     const std::vector<string> filenames_;
+    const string compression_type_;
     io::RecordReaderOptions options_;
   };
 };

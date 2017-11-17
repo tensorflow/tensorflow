@@ -537,9 +537,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       parallel_computations.emplace(to_apply, instruction);
     }
 
-    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx, jit->target_machine(),
-                         jit->external_constant_pool());
+    size_t entry_computation_profile_idx = hlo_to_profile_idx.size();
+    IrEmitter ir_emitter(
+        *module, *assignment, llvm_module.get(), std::move(hlo_to_profile_idx),
+        /*entry_computation_profile_idx=*/entry_computation_profile_idx,
+        jit->target_machine(), jit->external_constant_pool());
 
     std::unique_ptr<HloInstructionMap<string>> function_names(
         new HloInstructionMap<string>());
@@ -617,9 +619,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // before the entry computation. The order of computations returned from
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
-    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx, jit->target_machine(),
-                         jit->external_constant_pool());
+    size_t entry_computation_profile_idx = hlo_to_profile_idx.size();
+    IrEmitter ir_emitter(
+        *module, *assignment, llvm_module.get(), std::move(hlo_to_profile_idx),
+        /*entry_computation_profile_idx=*/entry_computation_profile_idx,
+        jit->target_machine(), jit->external_constant_pool());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -786,9 +790,13 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
           proto, xla_dump_hlo_proto_to, module->name()));
     }
 
-    IrEmitter ir_emitter(*module, *assignment, &llvm_module,
-                         /*hlo_to_profile_idx=*/nullptr, target_machine.get(),
-                         /*external_constant_pool=*/nullptr);
+    IrEmitter ir_emitter(
+        *module, *assignment, &llvm_module,
+        /*hlo_to_profile_idx=*/
+        std::unordered_map<const HloInstruction*, size_t>{},
+        /*entry_computation_profile_idx=*/tensorflow::gtl::nullopt,
+        target_machine.get(),
+        /*external_constant_pool=*/nullptr);
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {

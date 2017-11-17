@@ -135,29 +135,10 @@ std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::LiteralToShapedBuffer(
       .ConsumeValueOrDie();
 }
 
-void LocalClientTestBase::CopyShapedBufferToLiteral(
-    const ShapedBuffer& shaped_buffer, ShapeIndex* index, Literal* literal) {
-  const Shape& shape = ShapeUtil::GetSubshape(shaped_buffer.shape(), *index);
-  if (ShapeUtil::IsTuple(shape)) {
-    *literal->mutable_shape() = shape;
-    for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      Literal* element_literal = literal->add_tuple_literals();
-      index->push_back(i);
-      CopyShapedBufferToLiteral(shaped_buffer, index, element_literal);
-      index->pop_back();
-    }
-  } else {
-    ASSERT_IS_OK(transfer_manager_->TransferLiteralFromDevice(
-        stream_executor_, shaped_buffer.buffer(*index), shape, shape, literal));
-  }
-}
-
 std::unique_ptr<Literal> LocalClientTestBase::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
-  auto literal = MakeUnique<Literal>();
-  ShapeIndex index;
-  CopyShapedBufferToLiteral(shaped_buffer, &index, literal.get());
-  return literal;
+  return local_client_->ShapedBufferToLiteral(shaped_buffer)
+      .ConsumeValueOrDie();
 }
 
 ExecutableBuildOptions LocalClientTestBase::DefaultExecutableBuildOptions()

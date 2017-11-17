@@ -1656,8 +1656,8 @@ bool HloParser::ParseConvolutionDimensionNumbers(
     return TokenError(
         "convolution lhs, rhs, and output must have the same rank");
   }
-  if (rank < 3) {
-    return TokenError("convolution rank must >=3");
+  if (rank < 2) {
+    return TokenError("convolution rank must >=2");
   }
 
   auto is_unique = [](string str) -> bool {

@@ -76,14 +76,16 @@ namespace cpu {
 IrEmitter::IrEmitter(
     const HloModule& hlo_module, const BufferAssignment& assignment,
     llvm::Module* llvm_module,
-    const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx,
+    std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
+    tensorflow::gtl::optional<size_t> entry_computation_profile_idx,
     llvm::TargetMachine* target_machine,
     ExternalConstantPool* external_constant_pool)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
       ir_builder_(llvm_module->getContext()),
-      hlo_to_profile_idx_(hlo_to_profile_idx),
+      hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
+      entry_computation_profile_idx_(std::move(entry_computation_profile_idx)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       parallel_cpu_backend_(
@@ -214,9 +216,7 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
   if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
   }
-  if (hlo_to_profile_idx_) {
-    (++arg_iter)->setName("prof_counters");
-  }
+  (++arg_iter)->setName("prof_counters");
 
   // We know a-priori that the function arguments are guaranteed to point to
   // disjoint objects.
@@ -2615,51 +2615,55 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   llvm::Value* root_value = GetEmittedValueFor(root);
   VLOG(2) << "  value: " << llvm_ir::DumpToString(*root_value);
 
-  // For the parallel cpu backend, we record the total for each embedded
-  // computation callee with its caller kCall HLO.
-  HloInstruction* hlo_to_lookup = nullptr;
-  if (parallel_cpu_backend_ && is_top_level_computation_) {
-    auto* computation = root->parent();
-    auto* entry_computation = computation->parent()->entry_computation();
-    if (computation != entry_computation) {
-      for (HloInstruction* instruction : entry_computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCall &&
-            instruction->to_apply()->root_instruction() == root) {
-          hlo_to_lookup = instruction;
-          break;
+  llvm::Value* prof_counter = [&]() {
+    // For the parallel cpu backend, we record the total for each embedded
+    // computation callee with its caller kCall HLO.
+    if (parallel_cpu_backend_ && is_top_level_computation_) {
+      auto* computation = root->parent();
+      auto* entry_computation = computation->parent()->entry_computation();
+      if (computation != entry_computation) {
+        for (HloInstruction* instruction : entry_computation->instructions()) {
+          if (instruction->opcode() == HloOpcode::kCall &&
+              instruction->to_apply()->root_instruction() == root) {
+            return GetProfileCounterFor(*instruction);
+          }
         }
       }
     }
-  }
-  if (auto* prof_counter = GetProfileCounterFor(hlo_to_lookup)) {
+
+    // Otherwise we record the total computation cycles in a dedicated slot for
+    // the entry computation.
+    return GetProfileCounterForEntryComputation();
+  }();
+
+  if (prof_counter) {
     profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
   }
-
   ir_builder_.CreateRetVoid();
   return Status::OK();
 }
 
-llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction* hlo) {
-  string counter_name;
-  size_t prof_counter_idx;
-  if (!hlo_to_profile_idx_) {
+llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction& hlo) {
+  auto it = hlo_to_profile_idx_.find(&hlo);
+  if (it == hlo_to_profile_idx_.end()) {
     return nullptr;
   }
-  if (hlo) {
-    auto it = hlo_to_profile_idx_->find(hlo);
-    if (it == hlo_to_profile_idx_->end()) {
-      return nullptr;
-    }
 
-    prof_counter_idx = it->second;
-    counter_name = IrName("prof_counter", hlo->name());
-  } else {
-    prof_counter_idx = hlo_to_profile_idx_->size();
-    counter_name = "prof_counter.computation";
-  }
+  size_t prof_counter_idx = it->second;
+  string counter_name = IrName("prof_counter", hlo.name());
   return ir_builder_.CreateGEP(GetProfileCountersArgument(),
                                ir_builder_.getInt64(prof_counter_idx),
                                AsStringRef(counter_name));
+}
+
+llvm::Value* IrEmitter::GetProfileCounterForEntryComputation() {
+  if (entry_computation_profile_idx_) {
+    return ir_builder_.CreateGEP(
+        GetProfileCountersArgument(),
+        ir_builder_.getInt64(*entry_computation_profile_idx_),
+        "prof_counter.computation");
+  }
+  return nullptr;
 }
 
 void IrEmitter::ProfilingState::UpdateProfileCounter(
@@ -2733,14 +2737,14 @@ void IrEmitter::ProfilingState::RecordCompleteComputation(
 
 Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
-  if (hlo_to_profile_idx_ && hlo_to_profile_idx_->count(hlo)) {
+  if (hlo_to_profile_idx_.count(hlo)) {
     profiling_state_.RecordCycleStart(&ir_builder_, hlo);
   }
   return Status::OK();
 }
 
 Status IrEmitter::Postprocess(HloInstruction* hlo) {
-  if (auto* prof_counter = GetProfileCounterFor(hlo)) {
+  if (auto* prof_counter = GetProfileCounterFor(*hlo)) {
     profiling_state_.RecordCycleDelta(&ir_builder_, hlo, prof_counter);
   }
   return Status::OK();
@@ -2785,9 +2789,7 @@ std::vector<llvm::Type*> IrEmitter::GetComputeFunctionParams() {
   if (num_dynamic_loop_bounds_ > 0) {
     compute_function_params.push_back(i64_ptr_type);
   }
-  if (hlo_to_profile_idx_) {
-    compute_function_params.push_back(i64_ptr_type);
-  }
+  compute_function_params.push_back(i64_ptr_type);
   return compute_function_params;
 }
 
@@ -2797,7 +2799,7 @@ llvm::Argument* IrEmitter::GetResultArgument() {
 
 llvm::Argument* IrEmitter::GetProfileCountersArgument() {
   const int64 arg_index = num_dynamic_loop_bounds_ > 0 ? 5 : 4;
-  return hlo_to_profile_idx_ ? GetArg(compute_function_, arg_index) : nullptr;
+  return GetArg(compute_function_, arg_index);
 }
 
 llvm::Value* IrEmitter::GetTempBuffersArgument() {

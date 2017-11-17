@@ -104,7 +104,8 @@ class GcsDnsCacheTest : public ::testing::Test {
   }
 };
 
-TEST_F(GcsDnsCacheTest, ResolveName) { ResolveNameTest(); }
+// This sends a DNS name resolution request, thus it is flaky.
+// TEST_F(GcsDnsCacheTest, ResolveName) { ResolveNameTest(); }
 
 TEST_F(GcsDnsCacheTest, AnnotateRequest) { AnnotateRequestTest(); }
 
