@@ -187,7 +187,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:ops",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/py/numpy",
+        "//third_party/py/numpy",
     ],
 )
 
