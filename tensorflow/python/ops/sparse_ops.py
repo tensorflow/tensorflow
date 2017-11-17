@@ -1442,7 +1442,7 @@ def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
       Must have 3 columns.
     dtype: The `dtype` of the serialized `SparseTensor` object.
     rank: (optional) Python int, the rank of the `SparseTensor` object.
-    name: A name prefix for the returned tensors (optional)
+    name: A name prefix for the returned tensors (optional).
 
   Returns:
     A `SparseTensor` representing the deserialized `SparseTensor` object.

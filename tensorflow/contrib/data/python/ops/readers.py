@@ -270,6 +270,10 @@ class _SqlDataset(dataset_ops.Dataset):
                                        nest.flatten(self.output_shapes))
 
   @property
+  def output_classes(self):
+    return nest.map_structure(lambda _: ops.Tensor, self._output_types)
+
+  @property
   def output_shapes(self):
     return nest.map_structure(lambda _: tensor_shape.TensorShape([]),
                               self._output_types)
