@@ -151,7 +151,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       WrapUnique(new HloInstruction(HloOpcode::kParameter, shape));
   instruction->parameter_number_ = parameter_number;
   instruction->parameter_name_ = name;
-  instruction->name_ = "%" + name;
+  instruction->name_ = name;
   return instruction;
 }
 
@@ -871,10 +871,8 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // parameter instruction.
       int64 param_no = fused_parameters.size();
       // Name the parameter after the instruction it represents in the outer
-      // (non-fusion) computation. Strip the leading "%" from the operand name
-      // to avoid a double %%.
-      string param_name =
-          StrCat(operand->name().substr(1), ".param_", param_no);
+      // (non-fusion) computation.
+      string param_name = StrCat(operand->name(), ".param_", param_no);
       fused_param = fused_instructions_computation()->AddParameter(
           CreateParameter(param_no, operand->shape(), param_name));
       AppendOperand(operand);
@@ -1015,7 +1013,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
-    VLOG(3) << "    " << new_operand->name();
+    VLOG(3) << "    %" << new_operand->name();
   }
 
   std::unique_ptr<HloInstruction> clone;
@@ -1827,7 +1825,7 @@ string HloInstruction::SignatureString() const {
 string HloInstruction::ToString(bool compact_operands, bool include_metadata,
                                 bool include_large_constants) const {
   string result =
-      StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
+      StrCat("%", name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
              HloOpcodeString(opcode()), "(",
              OperandsToString(compact_operands, include_large_constants), ")");
   for (const string& extra : ExtraAttributesToString()) {
@@ -1879,7 +1877,7 @@ string HloInstruction::OperandsToString(bool compact,
     operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
       *out += ShapeUtil::HumanStringWithLayout(operand->shape());
       if (!compact) {
-        StrAppend(out, " ", operand->name());
+        StrAppend(out, " %", operand->name());
       }
     });
     const int64 remaining = operands_.size() - slice.size();
@@ -1966,7 +1964,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
     extra.push_back(StrCat("control-predecessors={",
                            Join(control_predecessors_, ", ",
                                 [](string* out, HloInstruction* pre) {
-                                  StrAppend(out, pre->name());
+                                  StrAppend(out, "%", pre->name());
                                 }),
                            "}"));
   }
@@ -1981,10 +1979,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
 }
 
 string HloInstruction::ToShortString() const {
-  return StrCat(name(), " = ", HloOpcodeString(opcode()), "(",
+  return StrCat("%", name(), " = ", HloOpcodeString(opcode()), "(",
                 Join(operands_, ", ",
                      [](string* out, HloInstruction* operand) {
-                       StrAppend(out, operand->name());
+                       StrAppend(out, "%", operand->name());
                      }),
                 ")");
 }
@@ -2191,7 +2189,7 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
     : unique_id_(-1),
       opcode_(opcode),
       shape_(shape),
-      name_("%" + HloOpcodeString(opcode)) {
+      name_(HloOpcodeString(opcode)) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
 
@@ -2415,7 +2413,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
         visitor->GetVisitState(current_id);
     if (visit_state == Visitor::kVisited) {
       dfs_stack.pop_back();
-      VLOG(3) << "Not visiting HLO " << current_node->name()
+      VLOG(3) << "Not visiting HLO %" << current_node->name()
               << " as it was already visited.";
       continue;
     }
@@ -2424,7 +2422,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
       dfs_stack.pop_back();
 
       TF_RETURN_IF_ERROR(visitor->Preprocess(current_node));
-      VLOG(2) << "Visiting HLO " << current_node->name();
+      VLOG(2) << "Visiting HLO %" << current_node->name();
       TF_RETURN_IF_ERROR(current_node->Visit(visitor));
       visitor->SetVisitState(current_id, Visitor::kVisited);
       TF_RETURN_IF_ERROR(visitor->Postprocess(current_node));
@@ -2469,7 +2467,7 @@ template <typename HloInstructionPtr>
 Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                               bool call_finish_visit,
                               bool ignore_control_predecessors) {
-  VLOG(3) << "HloInstruction::Accept(" << name() << ")";
+  VLOG(3) << "HloInstruction::Accept(%" << name() << ")";
   TF_RETURN_IF_ERROR(
       PostOrderDFS(this, visitor, nullptr, ignore_control_predecessors));
   if (call_finish_visit) {
@@ -2485,7 +2483,7 @@ template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
 Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, const CompareFunction& operand_order,
     bool call_finish_visit) {
-  VLOG(2) << "HloInstruction::AcceptWithOperandOrder(" << name() << ")";
+  VLOG(2) << "HloInstruction::AcceptWithOperandOrder(%" << name() << ")";
   InternalCompareFunction func = [&operand_order](
                                      std::pair<int, const HloInstruction*> a,
                                      std::pair<int, const HloInstruction*> b) {
@@ -2548,7 +2546,7 @@ Status HloInstruction::Accept(
 
 Status HloInstruction::AcceptOrdered(
     DfsHloVisitor* visitor, const std::vector<const HloInstruction*>& order) {
-  VLOG(2) << "HloInstruction::AcceptOrdered(" << name() << ")";
+  VLOG(2) << "HloInstruction::AcceptOrdered(%" << name() << ")";
   TF_RET_CHECK(OrderIsTopologicalSort(order));
 
   // Compute the predecessors of this instruction.
@@ -2567,7 +2565,7 @@ Status HloInstruction::AcceptOrdered(
     // The visitor can mark instructions as visited to skip particular
     // instructions.
     if (visitor->DidVisit(*const_instruction)) {
-      VLOG(3) << "Not visiting HLO " << const_instruction->name()
+      VLOG(3) << "Not visiting HLO %" << const_instruction->name()
               << " as it was already visited.";
       continue;
     }
@@ -2576,7 +2574,7 @@ Status HloInstruction::AcceptOrdered(
         const_cast<HloInstruction*>(const_instruction);
 
     TF_RETURN_IF_ERROR(visitor->Preprocess(instruction));
-    VLOG(2) << "Visiting HLO " << instruction->name();
+    VLOG(2) << "Visiting HLO %" << instruction->name();
     TF_RETURN_IF_ERROR(instruction->Visit(visitor));
     visitor->SetVisited(*instruction);
     TF_RETURN_IF_ERROR(visitor->Postprocess(instruction));

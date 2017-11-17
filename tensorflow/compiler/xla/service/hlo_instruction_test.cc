@@ -1138,35 +1138,34 @@ TEST_F(HloInstructionTest, CloneSuffixNames) {
   // Test cloning the same instruction multiple times.
   auto foo =
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "foo");
-  EXPECT_EQ(foo->Clone()->name(), "%foo.clone");
-  EXPECT_EQ(foo->Clone()->Clone()->name(), "%foo.clone2");
-  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "%foo.clone3");
+  EXPECT_EQ(foo->Clone()->name(), "foo.clone");
+  EXPECT_EQ(foo->Clone()->Clone()->name(), "foo.clone2");
+  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "foo.clone3");
 
   // Test custom suffixes.
-  EXPECT_EQ(foo->Clone("bar")->name(), "%foo.bar");
-  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "%foo.bar2");
-  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(),
-            "%foo.bar2.clone");
+  EXPECT_EQ(foo->Clone("bar")->name(), "foo.bar");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "foo.bar2");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(), "foo.bar2.clone");
 
   // Test instruction name with a dot.
   auto foo_baz = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.baz");
-  EXPECT_EQ(foo_baz->Clone()->name(), "%foo.baz.clone");
+  EXPECT_EQ(foo_baz->Clone()->name(), "foo.baz.clone");
 
   // Test incrementing a large number after the suffix.
   auto foo_clone234 = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clone234");
-  EXPECT_EQ(foo_clone234->Clone()->name(), "%foo.clone235");
+  EXPECT_EQ(foo_clone234->Clone()->name(), "foo.clone235");
 
   // Test a non-numeric string after the cloning suffix.
   auto foo_clonexyz = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clonexyz");
-  EXPECT_EQ(foo_clonexyz->Clone()->name(), "%foo.clonexyz.clone");
+  EXPECT_EQ(foo_clonexyz->Clone()->name(), "foo.clonexyz.clone");
 
   // Test a name with multiple appearances of the suffix.
   auto foo_clone_clone3 = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clone.clone3");
-  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "%foo.clone.clone4");
+  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "foo.clone.clone4");
 }
 
 TEST_F(HloInstructionTest, Stringification) {

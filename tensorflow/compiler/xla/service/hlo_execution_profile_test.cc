@@ -90,10 +90,10 @@ TEST_F(HloExecutionProfileTest, Basic) {
   const std::vector<string>& line_3 = lines_and_words[3];
 
   EXPECT_EQ(line_2[kInstructionCyclesIndex], std::to_string(dot_cycles));
-  EXPECT_EQ(line_2[kInstructionNameIndex], dot_instruction->name());
+  EXPECT_EQ(line_2[kInstructionNameIndex], '%' + dot_instruction->name());
 
   EXPECT_EQ(line_3[kInstructionCyclesIndex], std::to_string(add_cycles));
-  EXPECT_EQ(line_3[kInstructionNameIndex], add_instruction->name());
+  EXPECT_EQ(line_3[kInstructionNameIndex], '%' + add_instruction->name());
 }
 }  // namespace
 }  // namespace xla
