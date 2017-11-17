@@ -18,6 +18,7 @@
 		DE6FE52C1FBC27BD009685A1 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DE6FE52B1FBC27BD009685A1 /* Main.storyboard */; };
 		DE6FE52E1FBC27F0009685A1 /* RunModelViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = DE6FE52D1FBC27F0009685A1 /* RunModelViewController.mm */; };
 		DE6FE5301FBC3035009685A1 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DE6FE52F1FBC3035009685A1 /* Launch Screen.storyboard */; };
+		DE912B871FBECEEA0079D7D2 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = DE912B851FBECEEA0079D7D2 /* AppDelegate.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +39,8 @@
 		DE6FE52B1FBC27BD009685A1 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		DE6FE52D1FBC27F0009685A1 /* RunModelViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RunModelViewController.mm; sourceTree = "<group>"; };
 		DE6FE52F1FBC3035009685A1 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
+		DE912B851FBECEEA0079D7D2 /* AppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		DE912B861FBECEEA0079D7D2 /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +72,8 @@
 		591157921CF4011C00C31E3A = {
 			isa = PBXGroup;
 			children = (
+				DE912B861FBECEEA0079D7D2 /* AppDelegate.h */,
+				DE912B851FBECEEA0079D7D2 /* AppDelegate.m */,
 				59A3CFF31CF4E68100C4259F /* data */,
 				59A3CFFA1CF4E68100C4259F /* ios_image_load.h */,
 				59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */,
@@ -175,6 +180,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DE912B871FBECEEA0079D7D2 /* AppDelegate.m in Sources */,
 				59A3D0091CF4E68100C4259F /* main.m in Sources */,
 				DE6FE52E1FBC27F0009685A1 /* RunModelViewController.mm in Sources */,
 				59A3D0081CF4E68100C4259F /* ios_image_load.mm in Sources */,
