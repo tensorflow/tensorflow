@@ -640,6 +640,19 @@ class LossMaskingTest(test.TestCase):
 
 class TestDynamicTrainability(test.TestCase):
 
+  def test_trainable_warning(self):
+    with self.test_session():
+      x = np.random.random((5, 3))
+      y = np.random.random((5, 2))
+
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_dim=3))
+      model.trainable = False
+      model.compile('rmsprop', 'mse')
+      model.trainable = True
+      model.train_on_batch(x, y)
+      self.assertRaises(Warning)
+
   def test_trainable_argument(self):
     with self.test_session():
       x = np.random.random((5, 3))

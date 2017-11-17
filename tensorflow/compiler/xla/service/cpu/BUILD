@@ -17,6 +17,7 @@ package_group(
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -83,6 +84,7 @@ cc_library(
         ":cpu_options",
         ":cpu_parallelization_preparation",
         ":disassembler",
+        ":dot_op_emitter",
         ":ir_emission_utils",
         ":ir_emitter",
         ":layout_assignment",
@@ -156,21 +158,23 @@ cc_library(
         ":custom_call_target_registry",
         ":disassembler",
         ":external_constant_pool",
+        ":orc_jit_memory_mapper",
         ":runtime_conv2d",
         ":runtime_fork_join",
         ":runtime_matmul",
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_matmul",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
-        "@llvm//:core",
         "@llvm//:execution_engine",
+        "@llvm//:core",
         "@llvm//:mc",  # fixdeps: keep
         "@llvm//:orc_jit",
         "@llvm//:support",
         "@llvm//:target",  # fixdeps: keep
-    ],
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ] + ORC_JIT_MEMORY_MAPPER_TARGETS,
 )
 
 cc_library(
@@ -282,7 +286,6 @@ cc_library(
     deps = [
         ":cpu_options",
         ":cpu_runtime",
-        ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:types",
@@ -619,6 +622,7 @@ cc_library(
     srcs = ["layout_assignment.cc"],
     hdrs = ["layout_assignment.h"],
     deps = [
+        ":dot_op_emitter",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:computation_layout",
@@ -706,6 +710,7 @@ cc_library(
     srcs = ["parallel_task_assignment.cc"],
     hdrs = ["parallel_task_assignment.h"],
     deps = [
+        ":dot_op_emitter",
         ":ir_emission_utils",
         ":shape_partition",
         "//tensorflow/compiler/xla/service:hlo",
@@ -733,6 +738,16 @@ cc_library(
         "custom_call_target_registry.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "orc_jit_memory_mapper",
+    srcs = ["orc_jit_memory_mapper.cc"],
+    hdrs = ["orc_jit_memory_mapper.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:execution_engine",
+    ],
 )
 
 # -----------------------------------------------------------------------------

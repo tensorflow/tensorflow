@@ -1225,11 +1225,12 @@ class EagerVariableStore(object):
     return with_variable_store(self._store)
 
   def variables(self):
-    return self._store._vars.values()  # pylint: disable=protected-access
+    return sorted(self._store._vars.values(), key=lambda x: x.name)  # pylint: disable=protected-access
 
   def trainable_variables(self):
     # pylint: disable=protected-access
-    return [x for x in self._store._vars.values() if x._trainable]
+    return sorted([x for x in self._store._vars.values() if x._trainable],
+                  key=lambda x: x.name)
     # pylint: enable=protected-access
 
 
@@ -1827,7 +1828,13 @@ class variable_scope(object):  # pylint: disable=invalid-name
     self._current_name_scope = None
 
   def __enter__(self):
-    if self._in_graph_mode:
+    # If the default graph is building a function, then we should not replace it
+    # with the cached graph.
+    if ops.get_default_graph().building_function:
+      self._building_function = True
+    else:
+      self._building_function = False
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager = self._graph.as_default()
       self._graph_context_manager.__enter__()
     if self._cached_pure_variable_scope is not None:
@@ -1906,7 +1913,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
         type_arg, value_arg, traceback_arg)
     if self._current_name_scope:
       self._current_name_scope.__exit__(type_arg, value_arg, traceback_arg)
-    if self._in_graph_mode:
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager.__exit__(type_arg, value_arg, traceback_arg)
 
 

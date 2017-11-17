@@ -124,4 +124,6 @@ message TfOpStats {
   optional LoopingResult looping = 4;
   // The result for the HloExtraInfoMap.
   optional HloExtraInfoMapResult hlo_extrainfo_map = 5;
+  // Overall matrix unit utilization in percentage.
+  optional double matrix_unit_utilization_percent = 6;
 }

@@ -183,8 +183,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Reduction sum
-  // TODO(ghodrat): Consider not reusing state for the temporary output, this
-  // way ReductionSum operates on row-vector instead of column vector.
   for (int b = 0; b < batch_size; b++) {
     float* output_ptr_batch = output->data.f + b * num_units;
     float* scratch_ptr_batch = scratch->data.f + b * num_filters;

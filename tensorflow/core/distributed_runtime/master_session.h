@@ -201,6 +201,10 @@ class MasterSession : public core::RefCounted {
   // workers.
   Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
 
+  // TODO(b/36574172): Always use Create/DeleteWorkerSession.
+  bool should_delete_worker_sessions_ = false;
+  Status DeleteWorkerSessions();
+
   Status StartStep(const BuildGraphOptions& opts, int64* count,
                    ReffedClientGraph** graph, bool is_partial);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
