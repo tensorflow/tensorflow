@@ -512,33 +512,17 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   return true;
 }
 
-// static
-bool ArithmeticOptimizer::CanDedup(
-    const NodeDef& node, const std::unordered_set<string>& nodes_to_preserve) {
-  if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
+bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
+  if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  if (IsEnter(node) || IsExit(node) || IsPlaceholder(node)) {
+  if (IsEnter(node) || IsExit(node)) {
     return false;
   }
   if (node.device().find("SPU") != string::npos) {
     return false;
   }
-  const OpDef* op_def = nullptr;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
-  if (!status.ok()) {
-    return false;
-  }
-  if (op_def->is_stateful()) {
-    return false;
-  }
-  // Don't consolidate ops such as AssignAdd
-  for (const auto& input : op_def->input_arg()) {
-    if (input.is_ref()) {
-      return false;
-    }
-  }
-  return true;
+  return IsFreeOfSideEffect(node);
 }
 
 void ArithmeticOptimizer::DedupComputations(GraphDef* optimized_graph) const {
@@ -553,7 +537,7 @@ void ArithmeticOptimizer::DedupComputations(GraphDef* optimized_graph) const {
         continue;
       }
       NodeDef* node = optimized_graph->mutable_node(i);
-      if (!CanDedup(*node, nodes_to_preserve_)) {
+      if (!CanDedup(*node)) {
         continue;
       }
       NodeDef* rep = nodes.FindOrAddRepresentative(node);

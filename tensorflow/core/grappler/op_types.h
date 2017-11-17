@@ -42,6 +42,9 @@ bool IsSwitch(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 
+bool IsFreeOfSideEffect(const NodeDef& node);
+bool ModifiesFrameInfo(const NodeDef& node);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

@@ -21,6 +21,8 @@ cc_library(
     hdrs = ["op_types.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )

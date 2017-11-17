@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -118,6 +120,32 @@ bool IsVariable(const NodeDef& node) {
   const auto op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
          op == "VarHandleOp" || op == "ReadVariableOp";
+}
+
+bool IsFreeOfSideEffect(const NodeDef& node) {
+  // Placeholders must be preserved to keep the graph feedable.
+  if (IsPlaceholder(node)) {
+    return false;
+  }
+  const OpDef* op_def = nullptr;
+  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  if (!status.ok()) {
+    return false;
+  }
+  if (op_def->is_stateful()) {
+    return false;
+  }
+  // Nodes such as Assign or AssignAdd modify one of their inputs.
+  for (const auto& input : op_def->input_arg()) {
+    if (input.is_ref()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ModifiesFrameInfo(const NodeDef& node) {
+  return IsEnter(node) || IsExit(node) || IsNextIteration(node);
 }
 
 }  // end namespace grappler

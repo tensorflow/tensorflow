@@ -93,11 +93,16 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
   if (!has_fetch_ || HasRegularOutputs(node, *node_map_)) {
     return false;
   }
-
+  if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
+    return false;
+  }
   if (IsMerge(node)) {
     return false;
   }
-  if (!ArithmeticOptimizer::CanDedup(node, nodes_to_preserve_)) {
+  if (ModifiesFrameInfo(node)) {
+    return false;
+  }
+  if (!IsFreeOfSideEffect(node)) {
     return false;
   }
 
