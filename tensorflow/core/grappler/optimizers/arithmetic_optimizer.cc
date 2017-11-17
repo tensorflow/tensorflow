@@ -1146,7 +1146,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(
       if (simplified_node != nullptr) {
         nodes_to_simplify.PushBack(simplified_node);
       }
-      // When `node` is simplifed to another node rather than in-place, the
+      // When `node` is simplified to another node rather than in-place, the
       // consumers of `node` are already redirected to `simplified_tensor`.
       // Re-push the consumers into `nodes_to_simplify` for further
       // optimizations.
