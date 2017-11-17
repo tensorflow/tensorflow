@@ -4703,6 +4703,9 @@ def enable_eager_execution(config=None, device_policy=None):
                      " policy: %s." % (config, context._context._config,
                                        device_policy,
                                        context._context._device_policy))
+  else:
+    raise ValueError(
+        "tfe.enable_eager_execution has to be called at program startup.")
 
 
 def eager_run(main=None, argv=None):
