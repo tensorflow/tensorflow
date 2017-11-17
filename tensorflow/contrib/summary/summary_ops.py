@@ -364,16 +364,34 @@ def generic(name, tensor, metadata=None, family=None, global_step=None):
 
 
 def scalar(name, tensor, family=None, global_step=None):
-  """Writes a scalar summary if possible."""
+  """Writes a scalar summary if possible.
+
+  Unlike @{tf.contrib.summary.generic} this op may change the dtype
+  depending on the writer, for both practical and efficiency concerns.
+
+  Args:
+    name: An arbitrary name for this summary.
+    tensor: A @{tf.Tensor} Must be one of the following types:
+      `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`,
+      `int8`, `uint16`, `half`, `uint32`, `uint64`.
+    family: Optional, the summary's family.
+    global_step: The `int64` monotonic step variable, which defaults
+      to @{tf.train.get_global_step}.
+
+  Returns:
+    The created @{tf.Operation} or a @{tf.no_op} if summary writing has
+    not been enabled for this context.
+  """
   if global_step is None:
     global_step = training_util.get_global_step()
+  else:
+    global_step = ops.convert_to_tensor(global_step, dtypes.int64)
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_scalar_summary(
         context.context().summary_writer_resource,
         global_step, tag, array_ops.identity(tensor),
         name=scope)
-
   return summary_writer_function(name, tensor, function, family=family)
 
 

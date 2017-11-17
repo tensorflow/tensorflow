@@ -81,6 +81,55 @@ Status BindTensor(SqliteStatement* stmt, int parameter, const Tensor& t) {
   return BindProto(stmt, parameter, p);
 }
 
+// Tries to fudge shape and dtype to something with smaller storage.
+Status CoerceScalar(const Tensor& t, Tensor* out) {
+  switch (t.dtype()) {
+    case DT_DOUBLE:
+      *out = t;
+      break;
+    case DT_INT64:
+      *out = t;
+      break;
+    case DT_FLOAT:
+      *out = {DT_DOUBLE, {}};
+      out->scalar<double>()() = t.scalar<float>()();
+      break;
+    case DT_HALF:
+      *out = {DT_DOUBLE, {}};
+      out->scalar<double>()() = static_cast<double>(t.scalar<Eigen::half>()());
+      break;
+    case DT_INT32:
+      *out = {DT_INT64, {}};
+      out->scalar<int64>()() = t.scalar<int32>()();
+      break;
+    case DT_INT16:
+      *out = {DT_INT64, {}};
+      out->scalar<int64>()() = t.scalar<int16>()();
+      break;
+    case DT_INT8:
+      *out = {DT_INT64, {}};
+      out->scalar<int64>()() = t.scalar<int8>()();
+      break;
+    case DT_UINT32:
+      *out = {DT_INT64, {}};
+      out->scalar<int64>()() = t.scalar<uint32>()();
+      break;
+    case DT_UINT16:
+      *out = {DT_INT64, {}};
+      out->scalar<int64>()() = t.scalar<uint16>()();
+      break;
+    case DT_UINT8:
+      *out = {DT_INT64, {}};
+      out->scalar<int64>()() = t.scalar<uint8>()();
+      break;
+    default:
+      return errors::Unimplemented("Scalar summary for dtype ",
+                                   DataTypeString(t.dtype()),
+                                   " is not supported.");
+  }
+  return Status::OK();
+}
+
 class Transactor {
  public:
   explicit Transactor(std::shared_ptr<Sqlite> db)
@@ -280,18 +329,21 @@ class SummaryDbWriter : public SummaryWriterInterface {
     insert_tensor_.BindInt(1, tag_id);
     insert_tensor_.BindInt(2, global_step);
     insert_tensor_.BindDouble(3, GetWallTime(env_));
-    switch (t.dtype()) {
-      case DT_INT64:
-        insert_tensor_.BindInt(4, t.scalar<int64>()());
-        break;
-      case DT_DOUBLE:
-        insert_tensor_.BindDouble(4, t.scalar<double>()());
-        break;
-      default:
-        TF_RETURN_IF_ERROR(BindTensor(&insert_tensor_, 4, t));
-        break;
+    if (t.shape().dims() == 0 && t.dtype() == DT_INT64) {
+      insert_tensor_.BindInt(4, t.scalar<int64>()());
+    } else if (t.shape().dims() == 0 && t.dtype() == DT_DOUBLE) {
+      insert_tensor_.BindDouble(4, t.scalar<double>()());
+    } else {
+      TF_RETURN_IF_ERROR(BindTensor(&insert_tensor_, 4, t));
     }
     return insert_tensor_.StepAndReset();
+  }
+
+  Status WriteScalar(int64 global_step, Tensor t, const string& tag) override {
+    Tensor t2;
+    TF_RETURN_IF_ERROR(CoerceScalar(t, &t2));
+    // TODO(jart): Generate scalars plugin metadata on this value.
+    return WriteTensor(global_step, std::move(t2), tag, "");
   }
 
   Status WriteGraph(int64 global_step, std::unique_ptr<GraphDef> g) override {
@@ -323,15 +375,6 @@ class SummaryDbWriter : public SummaryWriterInterface {
         // TODO(@jart): Handle other stuff.
         return Status::OK();
     }
-  }
-
-  Status WriteScalar(int64 global_step, Tensor t, const string& tag) override {
-    // TODO(@jart): Unlike WriteTensor, this method would be granted leniency
-    //              to change the dtype if it saves storage space. For example,
-    //              DT_UINT32 would be stored in the database as an INTEGER
-    //              rather than a serialized BLOB. But when reading it back,
-    //              the dtype would become DT_INT64.
-    return errors::Unimplemented("WriteScalar");
   }
 
   Status WriteHistogram(int64 global_step, Tensor t,
