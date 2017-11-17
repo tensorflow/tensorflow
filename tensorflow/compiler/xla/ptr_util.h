@@ -25,7 +25,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace xla {
 
