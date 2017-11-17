@@ -689,12 +689,30 @@ def _shared_embedding_columns(
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
     initializer = init_ops.truncated_normal_initializer(
-        mean=0.0, stddev=1 / math.sqrt(dimension))
-  # TODO(b/67952670): Validate categorical_columns.
+        mean=0.0, stddev=1. / math.sqrt(dimension))
+
+  # Sort the columns so the default collection name is deterministic even if the
+  # user passes columns from an unsorted collection, such as dict.values().
+  sorted_columns = sorted(categorical_columns, key=lambda x: x.name)
+
+  c0 = sorted_columns[0]
+  if not isinstance(c0, _CategoricalColumn):
+    raise ValueError(
+        'All categorical_columns must be subclasses of _CategoricalColumn. '
+        'Given: {}, of type: {}'.format(c0, type(c0)))
+  if isinstance(c0, _WeightedCategoricalColumn):
+    c0 = c0.categorical_column
+  for c in sorted_columns[1:]:
+    if isinstance(c, _WeightedCategoricalColumn):
+      c = c.categorical_column
+    if not isinstance(c, type(c0)):
+      raise ValueError(
+          'To use shared_embedding_column, all categorical_columns must have '
+          'the same type, or be weighted_categorical_column of the same type. '
+          'Given column: {} of type: {} does not match given column: {} of '
+          'type: {}'.format(c0, type(c0), c, type(c)))
+
   if not shared_embedding_collection_name:
-    # Sort the columns so the name is deterministic even if the user passes
-    # columns from an unsorted collection, such as dict.values().
-    sorted_columns = sorted(categorical_columns, key=lambda x: x.name)
     shared_embedding_collection_name = '_'.join(c.name for c in sorted_columns)
     shared_embedding_collection_name += '_shared_embedding'
 
