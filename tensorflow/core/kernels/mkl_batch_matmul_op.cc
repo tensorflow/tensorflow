@@ -28,6 +28,7 @@ limitations under the License.
 #if defined(INTEL_MKL)
 #include <vector>
 #include "mkl_cblas.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -39,6 +40,9 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#define MKL_Complex8 tensorflow::complex64
+#define MKL_Complex16 tensorflow::complex128
 
 namespace tensorflow {
 
@@ -55,94 +59,79 @@ class BatchMatMulMkl : public OpKernel {
   virtual ~BatchMatMulMkl() {}
 
   void Compute(OpKernelContext *ctx) override {
-    const Tensor &in0 = ctx->input(0);
-    const Tensor &in1 = ctx->input(1);
-    OP_REQUIRES(ctx, in0.dims() == in1.dims(),
-                errors::InvalidArgument("In[0] and In[1] has different ndims: ",
-                                        in0.shape().DebugString(), " vs. ",
-                                        in1.shape().DebugString()));
-    const int ndims = in0.dims();
+    const Tensor &lhs = ctx->input(0);
+    const Tensor &rhs = ctx->input(1);
+    OP_REQUIRES(ctx, lhs.dims() == rhs.dims(),
+                errors::InvalidArgument("lhs and rhs has different ndims: ",
+                                        lhs.shape().DebugString(), " vs. ",
+                                        rhs.shape().DebugString()));
+    const int ndims = lhs.dims();
     OP_REQUIRES(
         ctx, ndims >= 2,
-        errors::InvalidArgument("In[0] and In[1] ndims must be >= 2: ", ndims));
+        errors::InvalidArgument("lhs and rhs ndims must be >= 2: ", ndims));
     TensorShape out_shape;
     for (int i = 0; i < ndims - 2; ++i) {
-      OP_REQUIRES(ctx, in0.dim_size(i) == in1.dim_size(i),
-                  errors::InvalidArgument("In[0].dim(", i, ") and In[1].dim(",
-                                          i, ") must be the same: ",
-                                          in0.shape().DebugString(), " vs ",
-                                          in1.shape().DebugString()));
-      out_shape.AddDim(in0.dim_size(i));
+      OP_REQUIRES(ctx, lhs.dim_size(i) == rhs.dim_size(i),
+                  errors::InvalidArgument("lhs.dim(", i, ") and rhs.dim(", i,
+                                          ") must be the same: ",
+                                          lhs.shape().DebugString(), " vs ",
+                                          rhs.shape().DebugString()));
+      out_shape.AddDim(lhs.dim_size(i));
     }
-    auto n = (ndims == 2) ? 1 : out_shape.num_elements();
-    auto d0 = in0.dim_size(ndims - 2);
-    auto d1 = in0.dim_size(ndims - 1);
-    Tensor in0_reshaped;
-    CHECK(in0_reshaped.CopyFrom(in0, TensorShape({n, d0, d1})));
-    auto d2 = in1.dim_size(ndims - 2);
-    auto d3 = in1.dim_size(ndims - 1);
-    Tensor in1_reshaped;
-    CHECK(in1_reshaped.CopyFrom(in1, TensorShape({n, d2, d3})));
-    if (adj_x_) std::swap(d0, d1);
-    if (adj_y_) std::swap(d2, d3);
-    OP_REQUIRES(ctx, d1 == d2,
+    auto batch_size = (ndims == 2) ? 1 : out_shape.num_elements();
+    auto lhs_rows = lhs.dim_size(ndims - 2);
+    auto lhs_cols = lhs.dim_size(ndims - 1);
+    auto rhs_rows = rhs.dim_size(ndims - 2);
+    auto rhs_cols = rhs.dim_size(ndims - 1);
+    if (adj_x_) std::swap(lhs_rows, lhs_cols);
+    if (adj_y_) std::swap(rhs_rows, rhs_cols);
+    OP_REQUIRES(ctx, lhs_cols == rhs_rows,
                 errors::InvalidArgument(
-                    "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
-                    in0.shape().DebugString(), " ", in1.shape().DebugString(),
-                    " ", adj_x_, " ", adj_y_));
-    out_shape.AddDim(d0);
-    out_shape.AddDim(d3);
+                    "lhs mismatch rhs shape: ", lhs_cols, " vs. ", rhs_rows,
+                    ": ", lhs.shape().DebugString(), " ",
+                    rhs.shape().DebugString(), " ", adj_x_, " ", adj_y_));
+    out_shape.AddDim(lhs_rows);
+    out_shape.AddDim(rhs_cols);
     Tensor *out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
     if (out->NumElements() == 0) {
       return;
     }
-    if (in0.NumElements() == 0 || in1.NumElements() == 0) {
+    if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
       functor::SetZeroFunctor<Device, Scalar> f;
       f(ctx->eigen_device<Device>(), out->flat<Scalar>());
       return;
     }
 
-    const uint64 M = in0_reshaped.dim_size(adj_x_ ? 2 : 1);
-    const uint64 K = in0_reshaped.dim_size(adj_x_ ? 1 : 2);
-    const uint64 N = in1_reshaped.dim_size(adj_y_ ? 1 : 2);
-    auto in0_ptr = (in0.template flat<Scalar>().data());
-    auto in1_ptr = (in1.template flat<Scalar>().data());
-    auto out_ptr = (out->template flat<Scalar>().data());
-    std::vector<CBLAS_TRANSPOSE> transa_array;
-    std::vector<CBLAS_TRANSPOSE> transb_array;
-    std::vector<MKL_INT> m_array;
-    std::vector<MKL_INT> n_array;
-    std::vector<MKL_INT> k_array;
-    std::vector<Scalar> alpha_array;
-    std::vector<Scalar> beta_array;
+    auto rhs_reshaped = rhs.template flat_inner_dims<Scalar, 3>();
+    auto lhs_reshaped = lhs.template flat_inner_dims<Scalar, 3>();
+    auto out_reshaped = out->template flat_inner_dims<Scalar, 3>();
+    const uint64 M = lhs_reshaped.dimension(adj_x_ ? 2 : 1);
+    const uint64 K = lhs_reshaped.dimension(adj_x_ ? 1 : 2);
+    const uint64 N = rhs_reshaped.dimension(adj_y_ ? 1 : 2);
+    
+    std::vector<MKL_INT> m_array(batch_size, M);
+    std::vector<MKL_INT> n_array(batch_size, N);
+    std::vector<MKL_INT> k_array(batch_size, K);
+    std::vector<MKL_INT> lda_array(batch_size, adj_x_ ? M : K);
+    std::vector<MKL_INT> ldb_array(batch_size, adj_y_ ? K : N);
+    std::vector<MKL_INT> ldc_array(batch_size, N);
+    std::vector<MKL_INT> group_size(1, batch_size);
     std::vector<const Scalar *> a_array;
     std::vector<const Scalar *> b_array;
     std::vector<Scalar *> c_array;
-    std::vector<MKL_INT> lda_array;
-    std::vector<MKL_INT> ldb_array;
-    std::vector<MKL_INT> ldc_array;
-    std::vector<MKL_INT> group_size;
-    for (int64 i = 0; i < n; i++) {
-      transa_array.push_back(adj_x_ ? CblasTrans : CblasNoTrans);
-      transb_array.push_back(adj_y_ ? CblasTrans : CblasNoTrans);
-      m_array.push_back(M);
-      n_array.push_back(N);
-      k_array.push_back(K);
-      alpha_array.push_back(1.0);
-      beta_array.push_back(0.0);
-      a_array.push_back(in0_ptr + i * M * K);
-      b_array.push_back(in1_ptr + i * K * N);
-      c_array.push_back(out_ptr + i * M * N);
-      lda_array.push_back(adj_x_ ? M : K);
-      ldb_array.push_back(adj_y_ ? K : N);
-      ldc_array.push_back(N);
+    a_array.reserve(batch_size);
+    b_array.reserve(batch_size);
+    c_array.reserve(batch_size);
+    for (int64 i = 0; i < batch_size; i++) {
+      a_array.push_back(&lhs_reshaped(i, 0, 0));
+      b_array.push_back(&rhs_reshaped(i, 0, 0));
+      c_array.push_back(&out_reshaped(i, 0, 0));
     }
-    group_size.push_back(n);
-    MklCblasGemmBatch(CblasRowMajor, &transa_array[0], &transb_array[0],
-                      &m_array[0], &n_array[0], &k_array[0], &alpha_array[0],
-                      &a_array[0], &lda_array[0], &b_array[0], &ldb_array[0],
-                      &beta_array[0], &c_array[0], &ldc_array[0], 1,
+    
+    MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, &m_array[0], &n_array[0],
+                      &k_array[0], &a_array[0], &lda_array[0], &b_array[0],
+                      &ldb_array[0], &c_array[0], &ldc_array[0], 1,
                       &group_size[0]);
   }
 
@@ -150,36 +139,88 @@ class BatchMatMulMkl : public OpKernel {
   bool adj_x_;
   bool adj_y_;
 
-  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout,
-                         const CBLAS_TRANSPOSE *TransA_Array,
-                         const CBLAS_TRANSPOSE *TransB_Array,
-                         const MKL_INT *M_Array, const MKL_INT *N_Array,
-                         const MKL_INT *K_Array, const float *alpha_Array,
+  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
+                         const bool TransB, const MKL_INT *M_Array,
+                         const MKL_INT *N_Array, const MKL_INT *K_Array,
                          const float **A_Array, const MKL_INT *lda_Array,
                          const float **B_Array, const MKL_INT *ldb_Array,
-                         const float *beta_Array, float **C_Array,
-                         const MKL_INT *ldc_Array, const MKL_INT group_count,
-                         const MKL_INT *group_size) {
-    cblas_sgemm_batch(Layout, TransA_Array, TransB_Array, M_Array, N_Array,
-                      K_Array, alpha_Array, A_Array, lda_Array, B_Array,
-                      ldb_Array, beta_Array, C_Array, ldc_Array, group_count,
-                      group_size);
+                         float **C_Array, const MKL_INT *ldc_Array,
+                         const MKL_INT group_count, const MKL_INT *group_size) {
+    std::vector<CBLAS_TRANSPOSE> TransA_Array(
+        group_size[0], TransA ? CblasTrans : CblasNoTrans);
+    std::vector<CBLAS_TRANSPOSE> TransB_Array(
+        group_size[0], TransB ? CblasTrans : CblasNoTrans);
+    std::vector<float> alpha_Array(group_size[0], 1.0);
+    std::vector<float> beta_Array(group_size[0], 0.0);
+    cblas_sgemm_batch(Layout, &TransA_Array[0], &TransB_Array[0], M_Array,
+                      N_Array, K_Array, &alpha_Array[0], A_Array, lda_Array,
+                      B_Array, ldb_Array, &beta_Array[0], C_Array, ldc_Array,
+                      group_count, group_size);
   }
 
-  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout,
-                         const CBLAS_TRANSPOSE *TransA_Array,
-                         const CBLAS_TRANSPOSE *TransB_Array,
-                         const MKL_INT *M_Array, const MKL_INT *N_Array,
-                         const MKL_INT *K_Array, const double *alpha_Array,
+  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
+                         const bool TransB, const MKL_INT *M_Array,
+                         const MKL_INT *N_Array, const MKL_INT *K_Array,
                          const double **A_Array, const MKL_INT *lda_Array,
                          const double **B_Array, const MKL_INT *ldb_Array,
-                         const double *beta_Array, double **C_Array,
+                         double **C_Array, const MKL_INT *ldc_Array,
+                         const MKL_INT group_count, const MKL_INT *group_size) {
+    std::vector<CBLAS_TRANSPOSE> TransA_array(
+        group_size[0], TransA ? CblasTrans : CblasNoTrans);
+    std::vector<CBLAS_TRANSPOSE> TransB_array(
+        group_size[0], TransB ? CblasTrans : CblasNoTrans);
+    std::vector<double> alpha_Array(group_size[0], 1.0);
+    std::vector<double> beta_Array(group_size[0], 0.0);
+    cblas_dgemm_batch(Layout, &TransA_array[0], &TransB_array[0], M_Array,
+                      N_Array, K_Array, &alpha_Array[0], A_Array, lda_Array,
+                      B_Array, ldb_Array, &beta_Array[0], C_Array, ldc_Array,
+                      group_count, group_size);
+  }
+
+  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
+                         const bool TransB, const MKL_INT *M_Array,
+                         const MKL_INT *N_Array, const MKL_INT *K_Array,
+                         const MKL_Complex8 **A_Array, const MKL_INT *lda_Array,
+                         const MKL_Complex8 **B_Array, const MKL_INT *ldb_Array,
+                         MKL_Complex8 **C_Array, const MKL_INT *ldc_Array,
+                         const MKL_INT group_count, const MKL_INT *group_size) {
+    std::vector<CBLAS_TRANSPOSE> TransA_array(
+        group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
+    std::vector<CBLAS_TRANSPOSE> TransB_array(
+        group_size[0], TransB ? CblasConjTrans : CblasNoTrans);
+    std::vector<MKL_Complex8> alpha_Array(group_size[0], {1.0f, 0.0f});
+    std::vector<MKL_Complex8> beta_Array(group_size[0], {0.0f, 0.0f});
+    cblas_cgemm_batch(
+        Layout, &TransA_array[0], &TransB_array[0], M_Array, N_Array, K_Array,
+        static_cast<const void *>(&alpha_Array[0]),
+        reinterpret_cast<const void **>(A_Array), lda_Array,
+        reinterpret_cast<const void **>(B_Array), ldb_Array,
+        static_cast<const void *>(&beta_Array[0]),
+        reinterpret_cast<void **>(C_Array), ldc_Array, group_count, group_size);
+  }
+
+  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
+                         const bool TransB, const MKL_INT *M_Array,
+                         const MKL_INT *N_Array, const MKL_INT *K_Array,
+                         const MKL_Complex16 **A_Array,
+                         const MKL_INT *lda_Array,
+                         const MKL_Complex16 **B_Array,
+                         const MKL_INT *ldb_Array, MKL_Complex16 **C_Array,
                          const MKL_INT *ldc_Array, const MKL_INT group_count,
                          const MKL_INT *group_size) {
-    cblas_dgemm_batch(Layout, TransA_Array, TransB_Array, M_Array, N_Array,
-                      K_Array, alpha_Array, A_Array, lda_Array, B_Array,
-                      ldb_Array, beta_Array, C_Array, ldc_Array, group_count,
-                      group_size);
+    std::vector<CBLAS_TRANSPOSE> TransA_array(
+        group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
+    std::vector<CBLAS_TRANSPOSE> TransB_array(
+        group_size[0], TransB ? CblasConjTrans : CblasNoTrans);
+    std::vector<MKL_Complex16> alpha_Array(group_size[0], {1.0f, 0.0f});
+    std::vector<MKL_Complex16> beta_Array(group_size[0], {0.0f, 0.0f});
+    cblas_zgemm_batch(
+        Layout, &TransA_array[0], &TransB_array[0], M_Array, N_Array, K_Array,
+        static_cast<const void *>(&alpha_Array[0]),
+        reinterpret_cast<const void **>(A_Array), lda_Array,
+        reinterpret_cast<const void **>(B_Array), ldb_Array,
+        static_cast<const void *>(&beta_Array[0]),
+        reinterpret_cast<void **>(C_Array), ldc_Array, group_count, group_size);
   }
 };
 
@@ -190,6 +231,8 @@ class BatchMatMulMkl : public OpKernel {
 
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_double(REGISTER_BATCH_MATMUL_MKL);
+TF_CALL_complex64(REGISTER_BATCH_MATMUL_MKL);
+TF_CALL_complex128(REGISTER_BATCH_MATMUL_MKL);
 
 }  // end namespace tensorflow
 #endif
