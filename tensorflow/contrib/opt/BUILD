@@ -171,16 +171,14 @@ tf_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "elastic_average_optimizer_test",
     srcs =["python/training/elastic_average_optimizer_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":opt_py",
-        "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:array_ops",
-        "//tensorflow/py/portpicker",
         "//tensorflow/python:variables",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
