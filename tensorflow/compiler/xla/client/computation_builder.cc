@@ -153,6 +153,7 @@ bool ComputationBuilder::MakeWindow(
     } else {
       dim->set_window_dilation(1);
     }
+    dim->set_window_reversal(false);
   }
   return true;
 }

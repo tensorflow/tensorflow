@@ -357,6 +357,10 @@ message WindowDimension {
   // means no dilation. base_dilation - 1 no-op entries ("holes") are implicitly
   // placed between each base area element. See documentation for convolution.
   int64 base_dilation = 6;
+
+  // Window reversal means that this dimension was logically reversed before the
+  // operation.
+  bool window_reversal = 7;
 }
 
 // Describes the windowing in an operation such as convolution.

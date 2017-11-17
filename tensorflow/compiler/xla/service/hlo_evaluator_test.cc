@@ -794,6 +794,83 @@ TEST_F(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   LiteralTestUtil::ExpectEqual(*expected, *result);
 }
 
+TEST_F(HloEvaluatorTest, Conv2DGeneralDimensionsReversed) {
+  HloComputation::Builder b(TestName());
+
+  // clang-format off
+  // Input dimensions: [feature=2, height=3, batch=1, width=4]
+  Array4D<float> input({
+    {{{1, 2, 3, 4}},
+     {{5, 6, 7, 8}},
+     {{9, 10, 11, 12}}},
+    {{{13, 14, 15, 16}},
+     {{17, 18, 19, 20}},
+     {{21, 22, 23, 24}}}
+  });
+  // Weight dimensions:
+  // [kernel_output_feature=1, width=3, kernel_input_feature=2, height=3]
+  Array4D<float> weight({{
+    {{1, 7, 13},
+     {4, 10, 16}},
+    {{2, 8, 14},
+     {5, 11, 17}},
+    {{3, 9, 15},
+     {6, 12, 18}}
+  }});
+  // clang-format on
+
+  auto lhs_literal = Literal::CreateR4FromArray4D<float>(input);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  auto rhs_literal = Literal::CreateR4FromArray4D<float>(weight);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+  rhs_instruction = b.AddInstruction(HloInstruction::CreateReverse(
+      rhs_instruction->shape(), rhs_instruction, {3, 1}));
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(3);
+  dim.set_stride(1);
+  dim.set_padding_low(0);
+  dim.set_padding_high(0);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  dim.set_window_reversal(true);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(2);
+  dnums.set_output_batch_dimension(2);
+  dnums.set_input_feature_dimension(0);
+  dnums.set_output_feature_dimension(0);
+  dnums.add_spatial_dimensions(1);
+  dnums.add_spatial_dimensions(3);
+
+  dnums.set_kernel_output_feature_dimension(0);
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.add_kernel_spatial_dimensions(3);
+  dnums.add_kernel_spatial_dimensions(1);
+
+  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, lhs_instruction, rhs_instruction, window, dnums));
+  auto computation = module().AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  // clang-format off
+  // Result dimensions: [feature=1, height=1, batch=1, width=2]
+  Array4D<float> expected_array({{{{2514, 2685}}}});
+  // clang-format on
+  auto expected = Literal::CreateR4FromArray4D<float>(expected_array);
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
 TEST_F(HloEvaluatorTest, Conv2DGeneralDimensions) {
   HloComputation::Builder b(TestName());
 

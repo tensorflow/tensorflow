@@ -814,7 +814,9 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             }
 
             rhs_index[dnums.kernel_spatial_dimensions(ki)] =
-                rhs_spatial_index[ki];
+                window_dim.window_reversal()
+                    ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
+                    : rhs_spatial_index[ki];
           }
 
           result_val += lhs_literal.Get<ReturnT>(lhs_index) *
