@@ -362,7 +362,7 @@ TEST_F(GraphPropertiesTest, WhileLoop) {
   /*
      with tf.Graph().as_default():
        i0 = tf.constant(0)
-       m0 = tf.ones([2, 2])
+       m0 = tf.placeholder([-1, 2])
        c = lambda i, m: i < 10
        b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
        r = tf.while_loop(
@@ -387,6 +387,14 @@ TEST_F(GraphPropertiesTest, WhileLoop) {
     EXPECT_EQ(DT_FLOAT, prop.dtype());
     EXPECT_EQ("float: [-1,2]", PropToString(prop));
   }
+
+  // The loop outputs batch dim should be different from the input batch dim
+  // since we concatenated along the batch dim.
+  auto shape_in = properties.GetOutputProperties("ones").at(0).shape();
+  auto shape_out = properties.GetOutputProperties("while/Exit_1").at(0).shape();
+  EXPECT_GE(-2, shape_in.dim(0).size());
+  EXPECT_GE(-2, shape_out.dim(0).size());
+  EXPECT_NE(shape_in.dim(0).size(), shape_out.dim(0).size());
 }
 
 TEST_F(GraphPropertiesTest, NestedLoop) {
@@ -750,6 +758,10 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   Output e = ops::Add(s.WithOpName("e"), c, d);
   Output f = ops::Add(s.WithOpName("f"), a, c);
 
+  Output zero = ops::Const(s.WithOpName("zero"), 0.0f, {});
+  Output g = ops::Shape(s.WithOpName("g"), c);
+  Output h = ops::Fill(s.WithOpName("h"), g, zero);
+
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
@@ -773,15 +785,20 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   EXPECT_EQ(shape_b.dim(0).size(), shape_d.dim(0).size());
 
   const auto shape_e = properties.GetOutputProperties("e").at(0).shape();
-  EXPECT_EQ(2, shape_e.dim_size());
+  ASSERT_EQ(2, shape_e.dim_size());
   EXPECT_EQ(shape_e.dim(0).size(), shape_c.dim(0).size());
   EXPECT_NE(shape_e.dim(1).size(), shape_c.dim(1).size());
   EXPECT_NE(shape_e.dim(0).size(), shape_d.dim(0).size());
 
   const auto shape_f = properties.GetOutputProperties("f").at(0).shape();
-  EXPECT_EQ(2, shape_f.dim_size());
+  ASSERT_EQ(2, shape_f.dim_size());
   EXPECT_EQ(shape_f.dim(0).size(), shape_a.dim(0).size());
   EXPECT_EQ(shape_f.dim(1).size(), shape_a.dim(1).size());
+
+  const auto shape_h = properties.GetOutputProperties("h").at(0).shape();
+  ASSERT_EQ(2, shape_f.dim_size());
+  EXPECT_EQ(shape_h.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_EQ(shape_h.dim(1).size(), shape_c.dim(1).size());
 }
 
 TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {
