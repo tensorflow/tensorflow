@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sqlite3
 
 from tensorflow.contrib.summary import summary_ops
 from tensorflow.core.util import event_pb2
