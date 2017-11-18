@@ -67,7 +67,7 @@ Status BindProto(SqliteStatement* stmt, int parameter,
   TF_RETURN_IF_ERROR(Serialize(proto, &serialized));
   string compressed;
   TF_RETURN_IF_ERROR(Compress(serialized, &compressed));
-  stmt->BindBlobUnsafe(parameter, compressed);
+  stmt->BindBlob(parameter, compressed);
   return Status::OK();
 }
 
