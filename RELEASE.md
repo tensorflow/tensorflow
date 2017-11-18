@@ -3,7 +3,7 @@
 ## Major Features And Improvements
 * `tf.keras` is now part of the core TensorFlow API.
 * [`tf.data`](http://tensorflow.org/programmers_guide/datasets) is now part of
-  the core TensorFlow API.
+the core TensorFlow API.
   * The API is now subject to backwards compatibility guarantees.
   * For a guide to migrating from the `tf.contrib.data` API, see the
     [README](https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/contrib/data/README.md).
@@ -242,7 +242,7 @@ Hadi Hashemi, sgt101, Shitian Ni, Shuolongbj, Siim PõDer, Simon Perkins, sj6077
 Spotlight0xff, Steffen Eberbach, Stephen Fox, superryanguo, Sven Mayer, Tapan Prakash,
 Tiago Morais Morgado, Till Hoffmann, Tj Rana, Vadim Markovtsev, vhasanov, Wei Wu,
 windead, Yan (Asta) Li, Yan Chen, Yann Henon, Yi Wang, Yong Tang, yorkie, Yuan (Terry)
-Tang, Yuxin Wu, zhengjiajin, zhongzyd, 黄璞
+Tang, Yuxin Wu, zhengjiajin, zhongzyd, 黄璞, Yasunaka Cho
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
@@ -494,7 +494,7 @@ answered questions, and were part of inspiring discussions.
 This release contains contributions from many people at Google, as well as:
 
 A. Besir Kurtulmus, Adal Chiriliuc, @akash, Alec-Desouza, Alex Rothberg, Alex
-Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton 
+Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton
 Loss, @Aravind, @Arie, Ashutosh Das, AuréLien Geron, Bairen Yi, @bakunyo, Ben
 Visser, Brady Zhou, Calpa Liu, Changming Sun, Chih Cheng Liang, Christopher
 Berner, Clark Zinzow, @Conchylicultor, Dan Ellis, Dan J, Dan Jarvis, Daniel
