@@ -88,6 +88,21 @@ bool IsNodeNCHWToNHWC(const string& node_name) {
   return false;
 }
 
+bool IsConcat(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Concat" || op == "ConcatV2";
+}
+
+bool IsConcatV1(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Concat";
+}
+
+bool IsMaxPoolGradV1(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGrad";
+}
+
 class GraphProcessor {
  public:
   GraphProcessor(GraphDef* graph, NodeMap* node_map)
@@ -668,7 +683,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
     auto node = node_map_->GetNode(node_->name());
     while (node->input_size() > 0) {
       int data_input_pos = 0;
-      if (node->op().compare("Concat") == 0) {
+      if (IsConcatV1(*node)) {
         data_input_pos = 1;
       }
       node = node_map_->GetNode(node->input(data_input_pos));
@@ -815,8 +830,7 @@ class ConcatProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {
     // For Concat,  the concat axis is the first input; for ConcatV2,
     // the last input.
-    axis_node_pos_ =
-        (node_->op().compare("Concat") == 0) ? 0 : (node_->input_size() - 1);
+    axis_node_pos_ = (IsConcatV1(*node_)) ? 0 : (node_->input_size() - 1);
   }
 
  protected:
@@ -827,9 +841,9 @@ class ConcatProcessor : public AgnosticNodeProcessor {
 
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos;
-    int start = (node_->op().compare("Concat") == 0) ? 1 : 0;
-    int end = (node_->op().compare("Concat") == 0) ? node_->input_size()
-                                                   : (node_->input_size() - 1);
+    int start = (IsConcatV1(*node_)) ? 1 : 0;
+    int end =
+        (IsConcatV1(*node_)) ? node_->input_size() : (node_->input_size() - 1);
     for (int i = start; i < end; i++) {
       input_pos.push_back(i);
     }
@@ -1050,17 +1064,17 @@ class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     auto maybe_concatoffset_node =
         node_map_->GetNode(NodeName(node_->input(1)));
-    if (maybe_concatoffset_node->op() == "ConcatOffset") {
+    if (IsConcatOffset(*maybe_concatoffset_node)) {
       auto maybe_axis_node =
           node_map_->GetNode(maybe_concatoffset_node->input(0));
       NodeDef* axis_node;
-      if (maybe_axis_node->op() == "Const") {
+      if (IsConstant(*maybe_axis_node)) {
         axis_node = maybe_axis_node;
         // A FloorMod node might be added between ConcatOffset and the concat
         // dimension const node to handle a negative dimension index -1, meaning
         // the last dimension, which is consistent with the python's notation
         // for negative index.
-      } else if (maybe_axis_node->op() == "FloorMod") {
+      } else if (IsFloorMod(*maybe_axis_node)) {
         axis_node = node_map_->GetNode(maybe_axis_node->input(0));
       } else {
         return Status(error::INVALID_ARGUMENT,
@@ -1263,21 +1277,21 @@ class DataLayoutOptimizer : GraphProcessor {
         bool is_in_frame = !frames[node].empty();
         OptimizeContext opt_cxt(graph_, node, node_map_, is_in_frame);
         std::unique_ptr<NodeProcessor> node_processor;
-        if (node->op().compare("AvgPoolGrad") == 0) {
+        if (IsAvgPoolGrad(*node)) {
           node_processor.reset(new AvgPoolGradProcessor(opt_cxt));
-        } else if (node->op().compare("BiasAddGrad") == 0) {
+        } else if (IsBiasAddGrad(*node)) {
           node_processor.reset(new BiasAddGradProcessor(opt_cxt));
-        } else if (node->op().compare("Conv2D") == 0) {
+        } else if (IsConv2D(*node)) {
           node_processor.reset(new Conv2DProcessor(opt_cxt, config_.no_gemm));
-        } else if (node->op().compare("Conv2DBackpropFilter") == 0) {
+        } else if (IsConv2DBackpropFilter(*node)) {
           node_processor.reset(
               new Conv2DBackpropFilterProcessor(opt_cxt, config_.no_gemm));
-        } else if (node->op().compare("Conv2DBackpropInput") == 0) {
+        } else if (IsConv2DBackpropInput(*node)) {
           node_processor.reset(
               new Conv2DBackpropInputProcessor(opt_cxt, config_.no_gemm));
-        } else if (node->op().compare("FusedBatchNormGrad") == 0) {
+        } else if (IsFusedBatchNormGradV1(*node)) {
           node_processor.reset(new FusedBatchNormGradProcessor(opt_cxt));
-        } else if (node->op().compare("MaxPoolGrad") == 0) {
+        } else if (IsMaxPoolGradV1(*node)) {
           node_processor.reset(new MaxPoolGradProcessor(opt_cxt));
         } else {
           node_processor.reset(new NodeProcessor(opt_cxt));
@@ -1303,34 +1317,30 @@ class DataLayoutOptimizer : GraphProcessor {
           bool is_in_frame = !frames[node].empty();
           OptimizeContext opt_cxt(graph_, node, node_map_, is_in_frame);
           std::unique_ptr<NodeProcessor> node_processor;
-          if (node->op().compare("AddN") == 0) {
+          if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
-          } else if (node->op().compare("Add") == 0 ||
-                     node->op().compare("Mul") == 0 ||
-                     node->op().compare("RealDiv") == 0 ||
-                     node->op().compare("SquaredDifference") == 0 ||
-                     node->op().compare("Sub") == 0) {
+          } else if (IsAdd(*node) || IsMul(*node) || IsRealDiv(*node) ||
+                     IsSquaredDifference(*node) || IsSub(*node)) {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
-          } else if (node->op().compare("Concat") == 0 ||
-                     node->op().compare("ConcatV2") == 0) {
+          } else if (IsConcat(*node)) {
             node_processor.reset(new ConcatProcessor(opt_cxt));
-          } else if (node->op().compare("Pad") == 0) {
+          } else if (IsPad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
-          } else if (node->op().compare("ReluGrad") == 0) {
+          } else if (IsReluGrad(*node)) {
             node_processor.reset(new ReluGradProcessor(opt_cxt));
-          } else if (node->op().compare("Slice") == 0) {
+          } else if (IsSlice(*node)) {
             auto input1 = node_map_->GetNode(NodeName(node->input(1)));
             auto input2 = node_map_->GetNode(NodeName(node->input(2)));
-            if (input1->op() == "ConcatOffset") {
+            if (IsConcatOffset(*input1)) {
               node_processor.reset(new SliceProcessorConcatOffset(opt_cxt));
-            } else if (input1->op() == "Const" && input2->op() == "Const") {
+            } else if (IsConstant(*input1) && IsConstant(*input2)) {
               node_processor.reset(new SliceProcessorConst(opt_cxt));
             } else {
               node_processor.reset(new SliceProcessor(opt_cxt));
             }
-          } else if (node->op().compare("Squeeze") == 0) {
+          } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
-          } else if (node->op().compare("Sum") == 0) {
+          } else if (IsSum(*node)) {
             node_processor.reset(new SumProcessor(opt_cxt));
           } else {
             node_processor.reset(new AgnosticNodeProcessor(opt_cxt));

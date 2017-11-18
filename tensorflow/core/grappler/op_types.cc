@@ -20,19 +20,49 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+bool IsAdd(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Add";
+}
+
 bool IsAddN(const NodeDef& node) {
   const auto op = node.op();
   return op == "AddN";
 }
 
-bool IsConcat(const NodeDef& node) {
+bool IsAvgPoolGrad(const NodeDef& node) {
   const auto op = node.op();
-  return op == "Concat" || op == "ConcatV2";
+  return op == "AvgPoolGrad";
+}
+
+bool IsBiasAddGrad(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "BiasAddGrad";
+}
+
+bool IsConcatOffset(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "ConcatOffset";
 }
 
 bool IsConstant(const NodeDef& node) {
   const auto op = node.op();
   return op == "Const";
+}
+
+bool IsConv2D(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Conv2D";
+}
+
+bool IsConv2DBackpropFilter(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Conv2DBackpropFilter";
+}
+
+bool IsConv2DBackpropInput(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Conv2DBackpropInput";
 }
 
 bool IsDequeueOp(const NodeDef& node) {
@@ -52,6 +82,16 @@ bool IsExit(const NodeDef& node) {
   return op == "Exit" || op == "RefExit";
 }
 
+bool IsFloorMod(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "FloorMod";
+}
+
+bool IsFusedBatchNormGradV1(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "FusedBatchNormGrad";
+}
+
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Identity" || op == "RefIdentity";
@@ -60,6 +100,11 @@ bool IsIdentity(const NodeDef& node) {
 bool IsMerge(const NodeDef& node) {
   const auto op = node.op();
   return op == "Merge" || op == "RefMerge";
+}
+
+bool IsMul(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Mul";
 }
 
 bool IsNoOp(const NodeDef& node) {
@@ -72,10 +117,25 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
+bool IsPad(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Pad";
+}
+
 bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
          op == "PlaceholderWithDefault";
+}
+
+bool IsRealDiv(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "RealDiv";
+}
+
+bool IsReluGrad(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "ReluGrad";
 }
 
 bool IsRecv(const NodeDef& node) {
@@ -101,9 +161,34 @@ bool IsSend(const NodeDef& node) {
   return op == "_Send";
 }
 
+bool IsSlice(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Slice";
+}
+
+bool IsSquaredDifference(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "SquaredDifference";
+}
+
+bool IsSqueeze(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Squeeze";
+}
+
 bool IsStopGradient(const NodeDef& node) {
   const auto& op = node.op();
   return op == "StopGradient" || op == "PreventGradient";
+}
+
+bool IsSub(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Sub";
+}
+
+bool IsSum(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Sum";
 }
 
 bool IsSwitch(const NodeDef& node) {
