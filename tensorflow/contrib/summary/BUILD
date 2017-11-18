@@ -23,6 +23,7 @@ py_test(
     name = "summary_ops_test",
     srcs = ["summary_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":summary_ops",
         ":summary_test_internal",
@@ -44,6 +45,7 @@ py_test(
     name = "summary_ops_graph_test",
     srcs = ["summary_ops_graph_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":summary_ops",
         ":summary_test_internal",
