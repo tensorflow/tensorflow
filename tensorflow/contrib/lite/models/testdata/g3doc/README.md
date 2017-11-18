@@ -67,9 +67,10 @@ The language model for automatic speech recognition is the neural network model
 for predicting the probability of a word given previous words in a sentence.
 It generates posterior probabilities of the next word based from a sequence of
 words. The words are encoded as indices in a fixed size dictionary.
-The model has two inputs both of size one (integer), an output size of one
-(float). It consits of three embedding layer, three LSTM layers, followed by a
-multiplication, a fully connected layers and an addition.
+The model has two inputs both of size one (integer): the current word index and
+next word index, an output size of one (float): the log probability. It consits
+of three embedding layer, three LSTM layers, followed by a multiplication, a
+fully connected layers and an addition.
 The corresponding parameters as shown in the figure.
 
 ![asr_lm_model](asr_lm.svg "ASR LM model")
