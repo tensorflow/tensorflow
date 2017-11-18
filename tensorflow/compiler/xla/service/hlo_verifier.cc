@@ -263,6 +263,15 @@ class ShapeVerifier : public DfsHloVisitor {
                       xla_while->while_body()->ComputeProgramShape().result());
   }
 
+  Status HandleConditional(HloInstruction* conditional) override {
+    TF_RETURN_IF_ERROR(CheckShape(
+        conditional,
+        conditional->true_computation()->ComputeProgramShape().result()));
+    return CheckShape(
+        conditional,
+        conditional->false_computation()->ComputeProgramShape().result());
+  }
+
   Status HandlePad(HloInstruction* pad) override {
     return CheckShape(pad,
                       ShapeInference::InferPadShape(pad->operand(0)->shape(),

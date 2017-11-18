@@ -438,6 +438,23 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConditional(
+    const Shape& shape, HloInstruction* pred,
+    HloInstruction* true_computation_arg, HloComputation* true_computation,
+    HloInstruction* false_computation_arg, HloComputation* false_computation) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kConditional, shape));
+  instruction->AppendOperand(pred);
+  instruction->AppendOperand(true_computation_arg);
+  instruction->AppendOperand(false_computation_arg);
+  // In called_computations_, the index of true_computation must be 0 and that
+  // of false computation must be 1, as defined by kTrueComputationIndex and
+  // kFalseComputationIndex.
+  instruction->called_computations_.push_back(true_computation);
+  instruction->called_computations_.push_back(false_computation);
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSlice(
     const Shape& shape, HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
@@ -1814,6 +1831,32 @@ void HloInstruction::set_scatter(HloComputation* computation) {
   called_computations_[kScatterComputationIndex] = computation;
 }
 
+HloComputation* HloInstruction::true_computation() const {
+  CHECK_EQ(HloOpcode::kConditional, opcode_);
+  return called_computations_[kTrueComputationIndex];
+}
+
+HloComputation* HloInstruction::false_computation() const {
+  CHECK_EQ(HloOpcode::kConditional, opcode_);
+  return called_computations_[kFalseComputationIndex];
+}
+
+void HloInstruction::set_true_computation(HloComputation* true_computation) {
+  // Don't allow changing the computation for fused instructions so we don't
+  // have to recompute called_instructions for the entire fusion instruction.
+  CHECK(!IsFused());
+  CHECK_EQ(HloOpcode::kConditional, opcode_);
+  called_computations_[kTrueComputationIndex] = true_computation;
+}
+
+void HloInstruction::set_false_computation(HloComputation* false_computation) {
+  // Don't allow changing the computation for fused instructions so we don't
+  // have to recompute called_instructions for the entire fusion instruction.
+  CHECK(!IsFused());
+  CHECK_EQ(HloOpcode::kConditional, opcode_);
+  called_computations_[kFalseComputationIndex] = false_computation;
+}
+
 string HloInstruction::SignatureString() const {
   string operands =
       Join(operands_, ", ", [](string* out, HloInstruction* operand) {
@@ -2335,6 +2378,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleFusion(this);
     case HloOpcode::kCall:
       return visitor->HandleCall(this);
+    case HloOpcode::kConditional:
+      return visitor->HandleConditional(this);
     case HloOpcode::kCustomCall:
       return visitor->HandleCustomCall(this);
     case HloOpcode::kRecv:
@@ -2347,7 +2392,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
 
     // These opcodes are not handled here.
-    case HloOpcode::kConditional:
     case HloOpcode::kTrace:
       break;
   }

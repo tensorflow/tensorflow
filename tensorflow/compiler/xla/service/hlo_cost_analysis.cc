@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace xla {
 
@@ -474,6 +475,25 @@ Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   }
   for (const auto& property : condition_properties) {
     current_properties_[property.first] += property.second;
+  }
+  current_should_compute_bottleneck_time_ = false;
+
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
+  // Compute the cost of the true and false computations and take the maximum
+  // from those for each property.
+  TF_ASSIGN_OR_RETURN(const Properties true_computation_properties,
+                      ProcessSubcomputation(conditional->true_computation()));
+  TF_ASSIGN_OR_RETURN(const Properties false_computation_properties,
+                      ProcessSubcomputation(conditional->false_computation()));
+  current_properties_ = true_computation_properties;
+  for (const auto& property : false_computation_properties) {
+    if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_, property)) {
+      current_properties_[property.first] =
+          std::max(current_properties_[property.first], property.second);
+    }
   }
   current_should_compute_bottleneck_time_ = false;
 

@@ -310,6 +310,11 @@ class HloInstruction {
                                                      HloComputation* body,
                                                      HloInstruction* init);
 
+  static std::unique_ptr<HloInstruction> CreateConditional(
+      const Shape& shape, HloInstruction* pred,
+      HloInstruction* true_computation_arg, HloComputation* true_computation,
+      HloInstruction* false_computation_arg, HloComputation* false_computation);
+
   // Creates a fusion instruction. A fusion instruction contains one or more
   // fused instructions forming an expression with a single root
   // "fused_root". Additional instructions can be added to the fusion
@@ -612,6 +617,15 @@ class HloInstruction {
   HloComputation* scatter() const;
   void set_select(HloComputation* select);
   void set_scatter(HloComputation* scatter);
+
+  // Gets/sets the true and false HloComputation for Conditional. The setters
+  // should only be called by HloModule or HloComputation methods.
+  //
+  // Precondition: The instruction is a Conditional instruction.
+  HloComputation* true_computation() const;
+  HloComputation* false_computation() const;
+  void set_true_computation(HloComputation* true_computation);
+  void set_false_computation(HloComputation* false_computation);
 
   // Returns a string for the signature of this instruction if considered as a
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
@@ -1197,6 +1211,10 @@ class HloInstruction {
     // kSelectAndScatter computations.
     kSelectComputationIndex = 0,
     kScatterComputationIndex = 1,
+
+    // kConditional computations.
+    kTrueComputationIndex = 0,
+    kFalseComputationIndex = 1,
   };
 
   // Outfeed configuration information, only present for kOutfeed.
