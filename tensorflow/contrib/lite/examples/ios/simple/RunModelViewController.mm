@@ -2,11 +2,20 @@
 //  RunModelViewController.m
 //  tf_simple_example
 //
-//  http://www.apache.org/licenses/LICENSE-2.0
-//
 //  Created by Gor Baghdasaryan on 11/15/17.
 //  Copyright © 2017 Google. All rights reserved.
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #import "RunModelViewController.h"
 
@@ -56,9 +65,8 @@ static void GetTopN(const float* prediction,
 }
 
 - (IBAction)openPhoto:(UIBarButtonItem *)sender {
-    UIImagePickerController *picker;
     if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypePhotoLibrary]) {
-        picker = [[UIImagePickerController alloc] init];
+        UIImagePickerController *picker = [[UIImagePickerController alloc] init];
         picker.delegate = self;
         picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
         [self presentViewController:picker animated:YES completion:nil];
@@ -113,7 +121,7 @@ static void GetTopN(const float* prediction,
     
     // Now we draw the underlying CGImage into a new context, applying the transform
     // calculated above.
-    CGContextRef ctx = CGBitmapContextCreate(NULL, (size_t)image.size.width, (size_t) image.size.height,
+    CGContextRef ctx = CGBitmapContextCreate(NULL, image.size.width, image.size.height,
                                              CGImageGetBitsPerComponent(image.CGImage), 0,
                                              CGImageGetColorSpace(image.CGImage),
                                              CGImageGetBitmapInfo(image.CGImage));
@@ -158,9 +166,8 @@ static void GetTopN(const float* prediction,
     NSString* graph_path = [self filePathForResourceName:@"mobilenet_v1_1.0_224" withExtension: @"tflite"];
     
     std::unique_ptr<tflite::FlatBufferModel> model(tflite::FlatBufferModel::BuildFromFile([graph_path fileSystemRepresentation]));
-    if (!model) {
-        LOG(FATAL) << "Failed to mmap model " << graph;
-    }
+    NSAssert(model, @"Failed to mmap model %@", graph_path);
+
     LOG(INFO) << "Loaded model " << graph;
     model->error_reporter();
     LOG(INFO) << "resolved reporter";
@@ -204,7 +211,7 @@ static void GetTopN(const float* prediction,
     }
     t.close();
     
-    assert(image);
+    NSAssert(image, @"Image is nil");
     
     const int image_width = image.size.width;
     const int image_height = image.size.height;

@@ -14,8 +14,6 @@
 
 #import "AppDelegate.h"
 
-#import "RunModelViewController.h"
-
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {

@@ -1,0 +1,7 @@
+project.xcworkspace
+xcuserdata
+labels.txt
+mobilenet_v1_1.0_224.tflite
+simple/data/LICENSE
+camera/data/LICENSE
+benchmark/data/LICENSE

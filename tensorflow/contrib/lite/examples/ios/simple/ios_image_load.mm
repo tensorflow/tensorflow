@@ -13,12 +13,6 @@
 // limitations under the License.
 
 #include "ios_image_load.h"
-
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <stdio.h>
-
 #import <CoreGraphics/CoreGraphics.h>
 
 std::vector<uint8_t> LoadImageFromUIImage(UIImage *img) {
