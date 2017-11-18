@@ -233,6 +233,7 @@ class DatasetSerializationTestBase(test.TestCase):
           ds_fn, sparse_tensors=sparse_tensors)
       with self.test_session(graph=g) as sess:
         self._restore(saver, sess)
+        sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for _ in range(num_outputs):
           actual.append(sess.run(get_next_op))
@@ -494,6 +495,7 @@ class DatasetSerializationTestBase(test.TestCase):
               sess.run(init_op)
             self._restore(saver, sess)
           else:
+            sess.run(variables.global_variables_initializer())
             sess.run(init_op)
           start = break_points[i - 1] if i > 0 else 0
           end = break_points[i] if i < len(break_points) else num_outputs

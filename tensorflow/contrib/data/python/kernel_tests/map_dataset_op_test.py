@@ -777,5 +777,21 @@ class MapDatasetSerializationTest(
     self.run_core_tests(_build_ds, None, num_outputs)
 
 
+class IgnoreErrorsSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_ds(self, components):
+    return dataset_ops.Dataset.from_tensor_slices(components).map(
+        lambda x: array_ops.check_numerics(x, "message")).apply(
+            error_ops.ignore_errors())
+
+  def testIgnoreErrorsCore(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+    diff_components = np.array([1., 2., 3., np.nan]).astype(np.float32)
+    num_outputs = 4
+    self.run_core_tests(lambda: self._build_ds(components),
+                        lambda: self._build_ds(diff_components), num_outputs)
+
+
 if __name__ == "__main__":
   test.main()
