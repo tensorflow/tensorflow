@@ -89,7 +89,7 @@ StatusOr<se::DeviceMemoryBase> InterpreterExecutable::ExecuteOnStream(
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  HloComputation* computation = module().entry_computation();
+  const HloComputation* computation = module().entry_computation();
   if (computation->num_parameters() != arguments.size()) {
     return tensorflow::errors::Internal(
         "Mismatch between argument count and graph parameter count.");

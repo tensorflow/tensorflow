@@ -819,7 +819,7 @@ REGISTER_OP("DepthwiseConv2dNative")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
@@ -2290,7 +2290,7 @@ REGISTER_OP("NthElement")
       return Status::OK();
     })
     .Doc(R"doc(
-Finds values of the `n`-th order statistic for the last dmension.
+Finds values of the `n`-th order statistic for the last dimension.
 
 If the input is a vector (rank-1), finds the entries which is the nth-smallest
 value in the vector and outputs their values as scalar tensor.

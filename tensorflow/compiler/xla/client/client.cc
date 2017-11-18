@@ -142,8 +142,7 @@ StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
         "TransferToClient request");
   }
 
-  Literal literal(response.literal());
-  return MakeUnique<Literal>(literal);
+  return MakeUnique<Literal>(response.literal());
 }
 
 Status Client::ResetDevice() {

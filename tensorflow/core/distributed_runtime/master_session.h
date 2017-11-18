@@ -146,6 +146,7 @@ class MasterSession : public core::RefCounted {
     bool collect_timeline = false;
     bool collect_rpcs = false;
     bool collect_partition_graphs = false;
+    bool report_tensor_allocations_upon_oom = false;
     Microseconds start_micros = Microseconds(0);
     Microseconds end_micros = Microseconds(0);
     std::vector<StepStats> step_stats;  // per partition
@@ -199,6 +200,10 @@ class MasterSession : public core::RefCounted {
   // call this method in order to propagate the cluster membership to all
   // workers.
   Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
+
+  // TODO(b/36574172): Always use Create/DeleteWorkerSession.
+  bool should_delete_worker_sessions_ = false;
+  Status DeleteWorkerSessions();
 
   Status StartStep(const BuildGraphOptions& opts, int64* count,
                    ReffedClientGraph** graph, bool is_partial);

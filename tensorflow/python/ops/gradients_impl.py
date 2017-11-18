@@ -425,18 +425,22 @@ def gradients(ys,
   other things, this allows computation of partial derivatives as opposed to
   total derivatives. For example:
 
-    a = tf.constant(0.)
-    b = 2 * a
-    g = tf.gradients(a + b, [a, b], stop_gradients=[a, b])
+  ```python
+  a = tf.constant(0.)
+  b = 2 * a
+  g = tf.gradients(a + b, [a, b], stop_gradients=[a, b])
+  ```
 
   Here the partial derivatives `g` evaluate to `[1.0, 1.0]`, compared to the
   total derivatives `tf.gradients(a + b, [a, b])`, which take into account the
   influence of `a` on `b` and evaluate to `[3.0, 1.0]`.  Note that the above is
   equivalent to:
 
-    a = tf.stop_gradient(tf.constant(0.))
-    b = tf.stop_gradient(2 * a)
-    g = tf.gradients(a + b, [a, b])
+  ```python
+  a = tf.stop_gradient(tf.constant(0.))
+  b = tf.stop_gradient(2 * a)
+  g = tf.gradients(a + b, [a, b])
+  ```
 
   `stop_gradients` provides a way of stopping gradient after the graph has
   already been constructed, as compared to `tf.stop_gradient` which is used

@@ -38,17 +38,39 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
-
 # Names for various approximations that can be requested for Fisher blocks.
 APPROX_KRONECKER_NAME = "kron"
 APPROX_DIAGONAL_NAME = "diagonal"
 APPROX_FULL_NAME = "full"
+
+_GENERIC_APPROX_TO_BLOCK_TYPES = {
+    APPROX_FULL_NAME: fb.FullFB,
+    APPROX_DIAGONAL_NAME: fb.NaiveDiagonalFB,
+}
+
+_FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_NAME: fb.FullyConnectedKFACBasicFB,
+    APPROX_DIAGONAL_NAME: fb.FullyConnectedDiagonalFB,
+}
+
+_CONV2D_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_NAME: fb.ConvKFCBasicFB,
+    APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
+}
 
 # Possible value for 'reuse' keyword argument. Sets 'reuse' to
 # tf.get_variable_scope().reuse.
 VARIABLE_SCOPE = "VARIABLE_SCOPE"
 
 # TODO(jamesmartens): need to add find_canonical_output back into this somewhere
+
+
+def ensure_sequence(obj):
+  """If `obj` isn't a tuple or list, return a tuple containing `obj`."""
+  if isinstance(obj, (tuple, list)):
+    return obj
+  else:
+    return (obj,)
 
 
 class LayerParametersDict(OrderedDict):
@@ -110,9 +132,14 @@ class LayerCollection(object):
   def __init__(self, graph=None, name="LayerCollection"):
     self.fisher_blocks = LayerParametersDict()
     self.fisher_factors = OrderedDict()
+    self._linked_parameters = dict(
+    )  # dict mapping sets of variables to optionally specified approximations.
     self._graph = graph or ops.get_default_graph()
     self._loss_dict = {}  # {str: LossFunction}
     self._subgraph = None
+    self._default_generic_approximation = APPROX_FULL_NAME
+    self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
+    self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
@@ -121,6 +148,70 @@ class LayerCollection(object):
   def losses(self):
     """LossFunctions registered with this LayerCollection."""
     return list(self._loss_dict.values())
+
+  def is_variable_registered(self, variable):
+    """Checks whether the variable has already been registered.
+
+    Args:
+      variable: A single variable or tensor.
+    Returns:
+      True if the variable has been registered either by itself or as part of a
+      tuple.
+    """
+    return any([
+        variable in key if isinstance(key, (tuple, list)) else variable == key
+        for key in self.fisher_blocks.keys()
+    ])
+
+  @property
+  def linked_parameters(self):
+    """Groups of parameters with an optionally specified approximation.
+
+    Linked parameters can be added using `define_linked_parameters`.
+    If an approximation is specified, then this approximation will be used
+    when registering a layer with exactly these parameters, unless an
+    approximation is specified when calling the registration function.
+
+    Returns:
+      A `dict` mapping tuples of parameters to an optional string.
+    """
+    return self._linked_parameters
+
+  @property
+  def default_generic_approximation(self):
+    return self._default_generic_approximation
+
+  @default_generic_approximation.setter
+  def default_generic_approximation(self, value):
+    if value not in _GENERIC_APPROX_TO_BLOCK_TYPES:
+      raise ValueError(
+          "{} is not a valid approximation for generic variables.".format(
+              value))
+    self._default_generic_approximation = value
+
+  @property
+  def default_fully_connected_approximation(self):
+    return self._default_fully_connected_approximation
+
+  @default_fully_connected_approximation.setter
+  def default_fully_connected_approximation(self, value):
+    if value not in _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES:
+      raise ValueError(
+          "{} is not a valid approximation for fully connected layers.".format(
+              value))
+    self._default_fully_connected_approximation = value
+
+  @property
+  def default_conv2d_approximation(self):
+    return self._default_convolution_2d_approximation
+
+  @default_conv2d_approximation.setter
+  def default_conv2d_approximation(self, value):
+    if value not in _CONV2D_APPROX_TO_BLOCK_TYPES:
+      raise ValueError(
+          "{} is not a valid approximation for 2d convolutional layers.".format(
+              value))
+    self._default_convolution_2d_approximation = value
 
   def register_block(self, layer_key, fisher_block, reuse=VARIABLE_SCOPE):
     """Validates and registers the layer_key associated with the fisher_block.
@@ -187,7 +278,8 @@ class LayerCollection(object):
     # Find all keys that are either supersets or subsets of 'layer_key'.
     inclusions = {
         fisher_elt
-        for layer_elt in layer_key for fisher_elt in self.fisher_blocks
+        for layer_elt in layer_key
+        for fisher_elt in self.fisher_blocks
         if self._equal_or_subset(layer_elt, fisher_elt)
     }
 
@@ -294,6 +386,49 @@ class LayerCollection(object):
   def subgraph(self):
     return self._subgraph
 
+  def define_linked_parameters(self, params, approximation=None):
+    """Identify a set of parameters that should be grouped together.
+
+    During automatic graph scanning, any matches containing variables that have
+    been identified as part of a linked group will be filtered out unless
+    the match parameters are exactly equal to the ones specified in the linked
+    group.
+
+    Args:
+      params: A variable, or a tuple or list of variables. The variables
+        to be linked.
+      approximation: Optional string specifying the type of approximation to use
+        for these variables. If unspecified, this layer collection's default
+        approximation for the layer type will be used.
+
+    Raises:
+      ValueError: If the parameters were already registered in a layer or
+        identified as part of an incompatible group.
+    """
+    params = frozenset(ensure_sequence(params))
+
+    # Check if any of the variables in 'params' is already in
+    # 'self.fisher_blocks.keys()'.
+    for registered_params, fisher_block in self.fisher_blocks.items():
+      registered_params_set = set(ensure_sequence(registered_params))
+      for variable in params:
+        if (variable in registered_params_set and
+            params != registered_params_set):
+          raise ValueError(
+              "Can't link parameters {}, variable {} was already registered in "
+              "group {} with layer {}".format(params, variable,
+                                              registered_params, fisher_block))
+
+    # Check if any of the variables in 'params' is already in
+    # 'self.linked_parameters'.
+    for variable in params:
+      for other_linked_params in self.linked_parameters:
+        if variable in other_linked_params:
+          raise ValueError("Can't link parameters {}, variable {} was already "
+                           "linked in group {}.".format(params, variable,
+                                                        other_linked_params))
+    self._linked_parameters[params] = approximation
+
   def create_subgraph(self):
     if not self.losses:
       raise ValueError("Must have at least one registered loss.")
@@ -307,11 +442,19 @@ class LayerCollection(object):
     return math_ops.add_n(
         tuple(loss.evaluate_on_sample() for loss in self.losses))
 
+  def _get_linked_approx(self, params):
+    """If params were linked, return their specified approximation."""
+    params_set = frozenset(ensure_sequence(params))
+    if params_set in self.linked_parameters:
+      return self.linked_parameters[params_set]
+    else:
+      return None
+
   def register_fully_connected(self,
                                params,
                                inputs,
                                outputs,
-                               approx=APPROX_KRONECKER_NAME,
+                               approx=None,
                                reuse=VARIABLE_SCOPE):
     """Registers a fully connnected layer.
 
@@ -332,15 +475,15 @@ class LayerCollection(object):
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
-    approx_to_block_types = {
-        APPROX_KRONECKER_NAME: fb.FullyConnectedKFACBasicFB,
-        APPROX_DIAGONAL_NAME: fb.FullyConnectedDiagonalFB,
-    }
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_fully_connected_approximation
 
-    if approx not in approx_to_block_types:
+    if approx not in _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES:
       raise ValueError("Bad value {} for approx.".format(approx))
 
-    block_type = approx_to_block_types[approx]
+    block_type = _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES[approx]
     has_bias = isinstance(params, (tuple, list))
 
     block = self.register_block(params, block_type(self, has_bias), reuse=reuse)
@@ -352,7 +495,7 @@ class LayerCollection(object):
                       padding,
                       inputs,
                       outputs,
-                      approx=APPROX_KRONECKER_NAME,
+                      approx=None,
                       reuse=VARIABLE_SCOPE):
     """Registers a convolutional layer.
 
@@ -377,15 +520,16 @@ class LayerCollection(object):
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
-    approx_to_block_types = {
-        APPROX_KRONECKER_NAME: fb.ConvKFCBasicFB,
-        APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
-    }
 
-    if approx not in approx_to_block_types:
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_conv2d_approximation
+
+    if approx not in _CONV2D_APPROX_TO_BLOCK_TYPES:
       raise ValueError("Bad value {} for approx.".format(approx))
 
-    block_type = approx_to_block_types[approx]
+    block_type = _CONV2D_APPROX_TO_BLOCK_TYPES[approx]
     block = self.register_block(
         params, block_type(self, params, strides, padding), reuse=reuse)
     block.register_additional_minibatch(inputs, outputs)
@@ -393,7 +537,7 @@ class LayerCollection(object):
   def register_generic(self,
                        params,
                        batch_size,
-                       approx=APPROX_DIAGONAL_NAME,
+                       approx=None,
                        reuse=VARIABLE_SCOPE):
     """Registers a generic layer.
 
@@ -413,15 +557,16 @@ class LayerCollection(object):
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
-    approx_to_block_types = {
-        APPROX_FULL_NAME: fb.FullFB,
-        APPROX_DIAGONAL_NAME: fb.NaiveDiagonalFB,
-    }
 
-    if approx not in approx_to_block_types:
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_generic_approximation
+
+    if approx not in _GENERIC_APPROX_TO_BLOCK_TYPES:
       raise ValueError("Bad value {} for approx.".format(approx))
 
-    block_type = approx_to_block_types[approx]
+    block_type = _GENERIC_APPROX_TO_BLOCK_TYPES[approx]
     block = self.register_block(params, block_type(self, params), reuse=reuse)
     block.register_additional_minibatch(batch_size)
 
@@ -448,10 +593,10 @@ class LayerCollection(object):
         tf.get_variable_scope().reuse.
 
     Raises:
-      ValueError: If reuse=True and name != None.
-      ValueError: If reuse=True and seed != None.
-      KeyError: If reuse=True and no existing LossFunction with 'name' found.
-      KeyError: If reuse=False and existing LossFunction with 'name' found.
+      ValueError: If reuse == True and name == None.
+      ValueError: If reuse == True and seed != None.
+      KeyError: If reuse == True and no existing LossFunction with 'name' found.
+      KeyError: If reuse == False and existing LossFunction with 'name' found.
     """
     name = name or self._graph.unique_name(
         "register_categorical_predictive_distribution")
@@ -560,10 +705,10 @@ class LayerCollection(object):
     try:
       hash(args)
     except TypeError:
-      raise TypeError((
-          "Unable to use (cls, args) = ({}, {}) as a key in "
-          "LayerCollection.fisher_factors. The pair cannot be hashed."
-      ).format(cls, args))
+      raise TypeError(
+          ("Unable to use (cls, args) = ({}, {}) as a key in "
+           "LayerCollection.fisher_factors. The pair cannot be hashed.").format(
+               cls, args))
 
     with variable_scope.variable_scope(self._var_scope):
       return utils.setdefault(self.fisher_factors, (cls, args),

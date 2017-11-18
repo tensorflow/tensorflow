@@ -197,14 +197,14 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
   VLOG(1) << "enqueueing executable on stream...";
   // If the profiling flag isn't enabled, we pass nullptr as the profile to
   // indicate profiling is not requested.
-  HloExecutionProfile hlo_execution_profile;
-  HloExecutionProfile* profile_ptr =
+  std::unique_ptr<HloExecutionProfile> profile_ptr =
       module_config().debug_options().xla_hlo_profile() &&
               hlo_profiling_enabled()
-          ? &hlo_execution_profile
+          ? MakeUnique<HloExecutionProfile>(module(), *CreateCostAnalysis())
           : nullptr;
 
-  auto return_value = ExecuteOnStream(run_options, arguments, profile_ptr);
+  auto return_value =
+      ExecuteOnStream(run_options, arguments, profile_ptr.get());
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
@@ -232,24 +232,11 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
   }
 
   if (profile_ptr != nullptr) {
-    std::unordered_set<const xla::HloComputation*> profiled_computations =
-        profile_ptr->profiled_computations();
-    // To ensure we have print the profiles in a stable order, iterate over the
-    // computations in post order.
-    std::list<xla::HloComputation*> all_computations =
-        module().MakeComputationPostOrder();
-    for (xla::HloComputation* computation : all_computations) {
-      if (profiled_computations.count(computation) > 0) {
-        string profile_string = profile_ptr->ToString(
-            *computation, stream->parent()->GetDeviceDescription(),
-            CreateCostAnalysis().get());
-        if (!profile_string.empty()) {
-          XLA_LOG_LINES(tensorflow::INFO, profile_string);
-        }
-      }
-    }
+    XLA_LOG_LINES(
+        tensorflow::INFO,
+        profile_ptr->ToString(stream->parent()->GetDeviceDescription()));
     hlo_graph_dumper::MaybeDumpHloModule(module(), "Service::Execute",
-                                         profile_ptr);
+                                         profile_ptr.get());
   }
 
   return return_value;

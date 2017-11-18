@@ -275,6 +275,9 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
         r"Slice dimension must be non-negative. Got -2"):
       pywrap_tensorflow.TFE_Py_TensorShapeSlice([t1], -2)
 
+  def testUnicode(self):
+    self.assertEqual(constant_op.constant(u"asdf").numpy(), b"asdf")
+
   def testSliceDimOutOfRange(self):
     t1 = _create_tensor([[1, 2], [3, 4], [5, 6]], dtype=dtypes.int32)
     t2 = _create_tensor([1, 2], dtype=dtypes.int32)

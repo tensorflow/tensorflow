@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import gc
 import math
 import random
 import re
@@ -452,9 +453,43 @@ class IsolateTest(object):
         type_arg, value_arg, traceback_arg)
 
 
-def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
-                                 use_gpu=False, force_gpu=False,
-                                 reset_test=True):
+def assert_no_garbage_created(f):
+  """Test method decorator to assert that no garbage has been created.
+
+  Note that this decorator sets DEBUG_SAVEALL, which in some Python interpreters
+  cannot be un-set (i.e. will disable garbage collection for any other unit
+  tests in the same file/shard).
+
+  Args:
+    f: The function to decorate.
+  Returns:
+    The decorated function.
+  """
+
+  def decorator(self, **kwargs):
+    """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
+    gc.disable()
+    previous_debug_flags = gc.get_debug()
+    gc.set_debug(gc.DEBUG_SAVEALL)
+    gc.collect()
+    previous_garbage = len(gc.garbage)
+    f(self, **kwargs)
+    gc.collect()
+    # This will fail if any garbage has been created, typically because of a
+    # reference cycle.
+    self.assertEqual(previous_garbage, len(gc.garbage))
+    # TODO(allenl): Figure out why this debug flag reset doesn't work. It would
+    # be nice to be able to decorate arbitrary tests in a large test suite and
+    # not hold on to every object in other tests.
+    gc.set_debug(previous_debug_flags)
+    gc.enable()
+  return decorator
+
+
+def run_in_graph_and_eager_modes(
+    __unused__=None, graph=None, config=None,
+    use_gpu=False, force_gpu=False,
+    reset_test=True, assert_no_eager_garbage=False):
   """Runs the test in both graph and eager modes.
 
   Args:
@@ -465,7 +500,14 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
     use_gpu: If True, attempt to run as many ops as possible on GPU.
     force_gpu: If True, pin all ops to `/device:GPU:0`.
     reset_test: If True, tearDown and SetUp the test case again.
-
+    assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
+      collector and asserts that no extra garbage has been created when running
+      the test in eager mode. This will fail if there are reference cycles
+      (e.g. a = []; a.append(a)). Off by default because some tests may create
+      garbage for legitimate reasons (e.g. they define a class which inherits
+      from `object`), and because DEBUG_SAVEALL is sticky in some Python
+      interpreters (meaning that tests which rely on objects being collected
+      elsewhere in the unit test file will not work).
   Returns:
     Returns a decorator that will run the decorated test function
         using both a graph and using eager execution.
@@ -487,7 +529,7 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
         self.tearDown()
         self.setUp()
 
-      def run_eager_mode():
+      def run_eager_mode(self, **kwargs):
         if force_gpu:
           gpu_name = gpu_device_name()
           if not gpu_name:
@@ -501,9 +543,12 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
           with context.device("/device:CPU:0"):
             f(self, **kwargs)
 
+      if assert_no_eager_garbage:
+        run_eager_mode = assert_no_garbage_created(run_eager_mode)
+
       with context.eager_mode():
         with IsolateTest():
-          run_eager_mode()
+          run_eager_mode(self, **kwargs)
 
     return decorated
   return decorator
@@ -939,8 +984,9 @@ class TensorFlowTestCase(googletest.TestCase):
       err: A float value.
       msg: An optional string message to append to the failure message.
     """
+    # f1 == f2 is needed here as we might have: f1, f2 = inf, inf
     self.assertTrue(
-        math.fabs(f1 - f2) <= err,
+        f1 == f2 or math.fabs(f1 - f2) <= err,
         "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
                                if msg is not None else ""))
 

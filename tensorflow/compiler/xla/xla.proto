@@ -167,6 +167,14 @@ message DebugOptions {
   // computation will run 2! * 4! times.
   bool xla_test_all_input_layouts = 91;
 
+  // Assign colors based on sharding information when generating the Graphviz
+  // HLO graph.
+  bool xla_hlo_graph_sharding_color = 92;
+
+  // Prefix the name scopes of the TF graph exports with "devX" device
+  // assignments, if available.
+  bool xla_hlo_tfgraph_device_scopes = 93;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;

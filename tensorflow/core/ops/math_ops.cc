@@ -2331,11 +2331,25 @@ REGISTER_OP("Cross")
     .Input("b: T")
     .Output("product: T")
     .Attr("T: realnumbertype")
-    // TODO(cwhipkey): implement these shape inference constraints here:
-    // * Both inputs have the same shape.
-    // * Input rank >= 1.
-    // * input_shape[-1] == 3.
-    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle a_shape;
+      ShapeHandle b_shape;
+      // * Input rank >= 1.
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &a_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &b_shape));
+
+      // * Both inputs have the same shape.
+      TF_RETURN_IF_ERROR(c->Merge(a_shape, b_shape, &a_shape));
+
+      // * input_shape[-1] == 3.
+      if (c->RankKnown(a_shape)) {
+        int rank = c->Rank(a_shape);
+        auto dim = c->Dim(a_shape, rank - 1);
+        TF_RETURN_IF_ERROR(c->WithValue(dim, 3, &dim));
+      }
+      c->set_output(0, a_shape);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Compute the pairwise cross product.
 

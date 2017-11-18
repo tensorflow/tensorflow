@@ -39,6 +39,8 @@ py_test(
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/debug:debug_data",
+        "//tensorflow/python/debug:hooks",
         "//third_party/py/numpy",
     ],
 )

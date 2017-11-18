@@ -45,7 +45,6 @@ NodeDef* NodeMap::GetNode(const string& name) const {
   string node_name = NodeName(name);
   auto it = nodes_.find(node_name);
   if (it == nodes_.end()) {
-    LOG(WARNING) << "Node " << node_name << " is not in the graph.";
     return nullptr;
   }
   return it->second;
@@ -222,8 +221,11 @@ string AsControlDependency(const NodeDef& node) {
   return strings::StrCat("^", node.name());
 }
 
-string AsControlDependency(const string& node) {
-  return strings::StrCat("^", node);
+string AsControlDependency(const string& node_name) {
+  CHECK(!node_name.empty());
+  return (!node_name.empty() && node_name[0] == '^')
+             ? node_name
+             : strings::StrCat("^", node_name);
 }
 
 int NumOutputs(const NodeDef& node) {

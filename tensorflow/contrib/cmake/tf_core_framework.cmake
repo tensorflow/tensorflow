@@ -301,6 +301,8 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*.h"
     "${tensorflow_source_dir}/public/*.h"
 )
 
@@ -314,6 +316,7 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*test*.cc"
 )
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})

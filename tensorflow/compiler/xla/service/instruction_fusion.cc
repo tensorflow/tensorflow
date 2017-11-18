@@ -92,6 +92,7 @@ namespace xla {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kCall:
+    case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
@@ -113,7 +114,9 @@ namespace xla {
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
     case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
       return true;
   }
 

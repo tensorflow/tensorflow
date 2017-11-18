@@ -330,12 +330,22 @@ class UnaryOpsTest(XLATestCase):
 
   def testComplexOps(self):
     for dtype in self.complex_types:
-      # TODO(b/65408531): math_ops.acosh (needs pow)
-      # TODO(b/65408531): math_ops.asinh (needs pow)
 
       # TODO(b/65408531): Wider support for log (needs atan2).
       atan2_supported = self.device == "XLA_GPU"
       if atan2_supported:
+        self._assertOpOutputMatchesExpected(
+            math_ops.acosh,
+            np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype),
+            expected=np.arccosh(
+                np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype)))
+
+        self._assertOpOutputMatchesExpected(
+            math_ops.asinh,
+            np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype),
+            expected=np.arcsinh(
+                np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype)))
+
         self._assertOpOutputMatchesExpected(
             math_ops.atanh,
             np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype),
@@ -392,18 +402,25 @@ class UnaryOpsTest(XLATestCase):
             expected=np.log1p(
                 np.array([[1e-14, 1e-15j, 0.6 - 0.3j]], dtype=dtype)))
 
-      # TODO(b/34703906): math_ops.rsqrt (needs pow)
+        val = np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)
+        self._assertOpOutputMatchesExpected(
+            math_ops.rsqrt, val, expected=1 / np.sqrt(val))
 
-      # TODO(b/34703906): math_ops.sigmoid (needs tanh)
+        self._assertOpOutputMatchesExpected(
+            math_ops.sigmoid, val, expected=1 / (1 + np.exp(-val)))
 
-      # TODO(b/34703906): math_ops.sqrt (needs pow)
+        self._assertOpOutputMatchesExpected(
+            math_ops.sqrt, val, expected=np.sqrt(val))
+
+        self._assertOpOutputMatchesExpected(
+            math_ops.tanh,
+            np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype),
+            expected=np.tanh(np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)))
 
       self._assertOpOutputMatchesExpected(
           math_ops.tan,
           np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype),
           expected=np.tan(np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)))
-
-      # TODO(b/34703906): math_ops.tanh (as itself)
 
       ctypes = {np.complex64: np.float32}
       self._assertOpOutputMatchesExpected(

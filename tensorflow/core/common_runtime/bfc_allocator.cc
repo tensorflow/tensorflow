@@ -296,12 +296,13 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // it from the free bin structure prior to using.
         RemoveFreeChunkIterFromBin(&b->free_chunks, citer);
 
-        // If we can break the size of the chunk into two reasonably
-        // large pieces, do so.
-        //
-        // TODO(vrv): What should be the criteria when deciding when
-        // to split?
-        if (chunk->size >= rounded_bytes * 2) {
+        // If we can break the size of the chunk into two reasonably large
+        // pieces, do so.  In any case don't waste more than
+        // kMaxInternalFragmentation bytes on padding this alloc.
+        const int64 kMaxInternalFragmentation = 128 << 20;  // 128mb
+        if (chunk->size >= rounded_bytes * 2 ||
+            static_cast<int64>(chunk->size) - rounded_bytes >=
+                kMaxInternalFragmentation) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }

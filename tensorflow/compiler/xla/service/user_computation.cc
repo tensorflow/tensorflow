@@ -2538,6 +2538,7 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
   if (ShapeUtil::IsScalar(operand->shape())) {
     HloInstruction* broadcast = hlo_builder_.AddInstruction(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
+    broadcast->set_metadata(operand->metadata());
     if (operand->has_sharding()) {
       broadcast->set_sharding(operand->sharding());
     }
@@ -2558,6 +2559,7 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
           ShapeUtil::MakeShape(operand->shape().element_type(),
                                reshaped_dimensions),
           operand));
+  reshaped_operand->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
     reshaped_operand->set_sharding(operand->sharding());
   }
@@ -2565,6 +2567,7 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
   HloInstruction* broadcast =
       hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
           broadcast_shape, reshaped_operand, broadcast_dimensions));
+  broadcast->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
     broadcast->set_sharding(operand->sharding());
   }
@@ -2927,8 +2930,9 @@ void ComputationLowerer::Visit(
 
     case OpRequest::kRecvRequest: {
       const RecvRequest& recv_request = request.request().recv_request();
-      hlo_instruction = add_instruction(HloInstruction::CreateRecv(
+      HloInstruction* recv = add_instruction(HloInstruction::CreateRecv(
           request.output_shape(), recv_request.channel_handle().handle()));
+      hlo_instruction = add_instruction(HloInstruction::CreateRecvDone(recv));
       break;
     }
 
@@ -3120,8 +3124,9 @@ void ComputationLowerer::Visit(
     case OpRequest::kSendRequest: {
       const SendRequest& send_request = request.request().send_request();
       HloInstruction* operand = lookup_instruction(send_request.operand());
-      hlo_instruction = add_instruction(HloInstruction::CreateSend(
+      HloInstruction* send = add_instruction(HloInstruction::CreateSend(
           operand, send_request.channel_handle().handle()));
+      hlo_instruction = add_instruction(HloInstruction::CreateSendDone(send));
       break;
     }
 

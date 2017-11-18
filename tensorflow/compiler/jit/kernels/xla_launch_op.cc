@@ -257,7 +257,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == gpu::host::kHostPlatformId);
-  options.local_executable_has_hybrid_result = true;
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;

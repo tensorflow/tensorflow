@@ -208,8 +208,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     }
 
     // Give the device an opportunity to rewrite its subgraph.
-    TF_RETURN_IF_ERROR(
-        unit->device->MaybeRewriteGraph(gdef.library(), &subgraph));
+    TF_RETURN_IF_ERROR(unit->device->MaybeRewriteGraph(&subgraph));
 
     // Top-level nodes in the graph uses the op segment to cache
     // kernels. Therefore, as long as the executor is alive, we need

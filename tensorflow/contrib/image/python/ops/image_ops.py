@@ -224,7 +224,8 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
        `(x, y)` to a transformed *input* point
        `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
        where `k = c0 x + c1 y + 1`. The transforms are *inverted* compared to
-       the transform mapping input points to output points.
+       the transform mapping input points to output points. Note that gradients
+       are not backpropagated into transformation parameters.
     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
 
   Returns:

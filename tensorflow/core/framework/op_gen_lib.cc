@@ -84,7 +84,7 @@ static bool SplitAt(char split_ch, StringPiece* orig,
   auto pos = orig->find(split_ch);
   if (pos == StringPiece::npos) {
     *before_split = *orig;
-    orig->clear();
+    *orig = StringPiece();
     return false;
   } else {
     *before_split = orig->substr(0, pos);
@@ -236,7 +236,7 @@ string PBTxtFromMultiline(StringPiece multiline_pbtxt) {
         unescaped.push_back('\n');
       }
       strings::StrAppend(&unescaped, line);
-      line.clear();
+      line = StringPiece();
     }
 
     // Escape what we extracted and then output it in quotes.
