@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.grappler.costs import op_performance_data_pb2
+from tensorflow.core.protobuf import device_properties_pb2
 from tensorflow.python import pywrap_tensorflow as tf_cluster
 from tensorflow.python.framework import errors
 
@@ -50,6 +51,17 @@ class Cluster(object):
   def __del__(self):
     if self._tf_cluster is not None:
       tf_cluster.TF_DeleteCluster(self._tf_cluster)
+
+  def ListDevices(self):
+    """Returns the list of available hardware devices."""
+    devices = []
+    if self._tf_cluster is not None:
+      ret_from_swig = tf_cluster.TF_ListDevices(self._tf_cluster)
+      devices = []
+      for raw_dev in ret_from_swig:
+        devices.append(device_properties_pb2.NamedDevice.FromString(raw_dev))
+    print(str(devices))
+    return devices
 
   def MeasureCosts(self, item):
     """Returns the cost of running the specified item.

@@ -41,12 +41,14 @@ limitations under the License.
 }
 
 %{
+#include <vector>
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/costs/measuring_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/utils.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 static tensorflow::grappler::Cluster* TF_NewCluster(
     bool allow_soft_placement, bool disable_detailed_stats, TF_Status* out_status) {
@@ -83,6 +85,23 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(const tensorflow::grappler::G
         cost_graph, item.graph);
   }
   return tensorflow::Status::OK();
+}
+
+static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster) {
+  const std::unordered_map<string, tensorflow::DeviceProperties>& devices = cluster->GetDevices();
+  PyObject* result = PyList_New(devices.size());
+  int i = 0;
+  for (auto& dev : devices) {
+    tensorflow::NamedDevice d;
+    d.set_name(dev.first);
+    *d.mutable_properties() = dev.second;
+    string dev_str = d.SerializeAsString();
+    PyObject* dev_obj = PyBytes_FromStringAndSize(dev_str.data(),
+                                                  dev_str.size());
+    PyList_SetItem(result, i, dev_obj);
+    ++i;
+  }
+  return result;
 }
 
 static PyObject* TF_MeasureCosts(
@@ -198,9 +217,11 @@ static PyObject* TF_DeterminePeakMemoryUsage(
 static tensorflow::grappler::Cluster* TF_NewCluster(
     bool allow_soft_placement, bool disable_detailed_stats, TF_Status* out_status);
 static void TF_DeleteCluster(tensorflow::grappler::Cluster* cluster);
+static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster);
 static PyObject* TF_MeasureCosts(
     const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
     bool generate_timeline, TF_Status* out_status);
 static PyObject* TF_DeterminePeakMemoryUsage(
     const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
     TF_Status* out_status);
+
