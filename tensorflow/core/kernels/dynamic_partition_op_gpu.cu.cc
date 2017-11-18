@@ -38,6 +38,7 @@ limitations under the License.
 #include "external/cub_archive/cub/device/device_radix_sort.cuh"
 #include "external/cub_archive/cub/device/device_reduce.cuh"
 #include "external/cub_archive/cub/iterator/constant_input_iterator.cuh"
+#include "external/cub_archive/cub/thread/thread_operators.cuh"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -64,8 +65,7 @@ __global__ void RangeInitKernel(const T start, const T delta, const int32 size,
 __global__ void MoveValuesKernel(const int32* keys, const int32* values,
                                  const int32* size, int32 out_size,
                                  int32* out) {
-  int32 N = ldg(size);
-  if (N > out_size) N = out_size;
+  int32 N = min(ldg(size), out_size);
   CUDA_1D_KERNEL_LOOP(i, N) {
     int32 key = ldg(keys + i);
     int32 value = ldg(values + i);
@@ -109,12 +109,6 @@ void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
       params, indices, out, gather_dim_size, indices_size, slice_size,
       out_size);
 }
-
-struct CubReduceAdd {
-  __device__ int32 operator()(const int32& a, const int32& b) const {
-    return a + b;
-  }
-};
 
 struct IdentityOp {
   __device__ int32 __forceinline__ operator()(const int32& a) const {
@@ -398,7 +392,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                                             num_partitions_);
 
     cub::ConstantInputIterator<int32> values_in(1);
-    CubReduceAdd reduction_op;
+    cub::Sum reduction_op;
 
     // Allocate space on GPU for the number of runs. This is required by CUB.
     Tensor num_runs;
