@@ -4992,7 +4992,6 @@ tf_cc_test(
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//third_party/eigen3",
     ],
@@ -5035,7 +5034,6 @@ tf_cc_binary(
             "//tensorflow/cc:client_session",
             "//tensorflow/core:framework",
             "//tensorflow/core:tensor_testutil",
-            "//tensorflow/core:test_main",
         ],
     }),
 )
@@ -5095,7 +5093,6 @@ cc_binary(
             "//tensorflow/core:tensor_testutil",
             "//tensorflow/core:tensorflow",
             "//tensorflow/core:test",
-            "//tensorflow/core:test_main",
         ],
     }),
 )
@@ -5119,7 +5116,6 @@ tf_cc_test(
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
 )
@@ -5140,7 +5136,6 @@ tf_cc_test(
         "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
 )
@@ -5184,7 +5179,6 @@ cc_binary(
             "//tensorflow/core:image_ops_op_lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:test",
-            "//tensorflow/core:test_main",
             "//tensorflow/core:testlib",
         ],
     }),
@@ -5298,7 +5292,6 @@ cc_binary(
             ":quantized_ops",
             "//tensorflow/core:framework",
             "//tensorflow/core:tensor_testutil",
-            "//tensorflow/core:test_main",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:test",
         ],
@@ -5324,7 +5317,6 @@ tf_cc_test(
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
 )
@@ -5436,7 +5428,6 @@ cc_binary(
         "//conditions:default": [
             "//tensorflow/core:framework",
             "//tensorflow/core:tensor_testutil",
-            "//tensorflow/core:test_main",
         ],
     }),
 )
@@ -5457,7 +5448,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
 )
