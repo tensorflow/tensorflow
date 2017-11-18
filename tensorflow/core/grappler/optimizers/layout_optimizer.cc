@@ -31,6 +31,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+namespace {
 
 const char kConcatConst[] = "LayoutOptimizerConcatConst";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
@@ -158,13 +159,25 @@ class GraphProcessor {
  private:
 };
 
+struct OptimizeContext {
+  OptimizeContext(GraphDef* graph, NodeDef* node, NodeMap* node_map,
+                  bool is_in_frame)
+      : graph(graph),
+        node(node),
+        node_map(node_map),
+        is_in_frame(is_in_frame) {}
+  GraphDef* graph;
+  NodeDef* node;
+  NodeMap* node_map;
+  bool is_in_frame;
+};
+
 class NodeProcessor : public GraphProcessor {
  public:
-  NodeProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                bool is_in_frame)
-      : GraphProcessor(graph, node_map),
-        node_(node),
-        is_in_frame_(is_in_frame) {}
+  explicit NodeProcessor(const OptimizeContext& opt_cxt)
+      : GraphProcessor(opt_cxt.graph, opt_cxt.node_map),
+        node_(opt_cxt.node),
+        is_in_frame_(opt_cxt.is_in_frame) {}
   virtual ~NodeProcessor() {}
   virtual Status ConvertNode() {
     if (ShouldProcess()) {
@@ -473,9 +486,8 @@ class NodeProcessor : public GraphProcessor {
 
 class AvgPoolGradProcessor : public NodeProcessor {
  public:
-  AvgPoolGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                       bool is_in_frame)
-      : NodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit AvgPoolGradProcessor(const OptimizeContext& opt_cxt)
+      : NodeProcessor(opt_cxt) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -487,9 +499,8 @@ class AvgPoolGradProcessor : public NodeProcessor {
 
 class BiasAddGradProcessor : public NodeProcessor {
  public:
-  BiasAddGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                       bool is_in_frame)
-      : NodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit BiasAddGradProcessor(const OptimizeContext& opt_cxt)
+      : NodeProcessor(opt_cxt) {}
 
  protected:
   bool ShouldProcess() const override {
@@ -507,9 +518,8 @@ class BiasAddGradProcessor : public NodeProcessor {
 
 class Conv2DProcessor : public NodeProcessor {
  public:
-  Conv2DProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                  bool no_gemm, bool is_in_frame)
-      : NodeProcessor(graph, node, node_map, is_in_frame), no_gemm_(no_gemm) {}
+  Conv2DProcessor(const OptimizeContext& opt_cxt, bool no_gemm)
+      : NodeProcessor(opt_cxt), no_gemm_(no_gemm) {}
 
  protected:
   bool ShouldProcess() const override {
@@ -577,10 +587,8 @@ class Conv2DProcessor : public NodeProcessor {
 
 class Conv2DBackpropFilterProcessor : public Conv2DProcessor {
  public:
-  Conv2DBackpropFilterProcessor(GraphDef* graph, NodeDef* node,
-                                NodeMap* node_map, bool no_gemm,
-                                bool is_in_frame)
-      : Conv2DProcessor(graph, node, node_map, no_gemm, is_in_frame) {}
+  Conv2DBackpropFilterProcessor(const OptimizeContext& opt_cxt, bool no_gemm)
+      : Conv2DProcessor(opt_cxt, no_gemm) {}
 
  protected:
   bool IsGemmUsed() const override {
@@ -603,10 +611,8 @@ class Conv2DBackpropFilterProcessor : public Conv2DProcessor {
 
 class Conv2DBackpropInputProcessor : public Conv2DProcessor {
  public:
-  Conv2DBackpropInputProcessor(GraphDef* graph, NodeDef* node,
-                               NodeMap* node_map, bool no_gemm,
-                               bool is_in_frame)
-      : Conv2DProcessor(graph, node, node_map, no_gemm, is_in_frame) {}
+  Conv2DBackpropInputProcessor(const OptimizeContext& opt_cxt, bool no_gemm)
+      : Conv2DProcessor(opt_cxt, no_gemm) {}
 
  protected:
   bool IsGemmUsed() const override {
@@ -625,9 +631,8 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
 
 class FusedBatchNormGradProcessor : public NodeProcessor {
  public:
-  FusedBatchNormGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                              bool is_in_frame)
-      : NodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit FusedBatchNormGradProcessor(const OptimizeContext& opt_cxt)
+      : NodeProcessor(opt_cxt) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -638,9 +643,8 @@ class FusedBatchNormGradProcessor : public NodeProcessor {
 
 class MaxPoolGradProcessor : public NodeProcessor {
  public:
-  MaxPoolGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                       bool is_in_frame)
-      : NodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit MaxPoolGradProcessor(const OptimizeContext& opt_cxt)
+      : NodeProcessor(opt_cxt) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -651,9 +655,8 @@ class MaxPoolGradProcessor : public NodeProcessor {
 
 class AgnosticNodeProcessor : public NodeProcessor {
  public:
-  AgnosticNodeProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                        bool is_in_frame)
-      : NodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit AgnosticNodeProcessor(const OptimizeContext& opt_cxt)
+      : NodeProcessor(opt_cxt) {}
 
  protected:
   bool ShouldProcess() const override {
@@ -684,9 +687,8 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
 class AddNProcessor : public AgnosticNodeProcessor {
  public:
-  AddNProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit AddNProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -701,9 +703,8 @@ class AddNProcessor : public AgnosticNodeProcessor {
 
 class BinaryOpProcessor : public AgnosticNodeProcessor {
  public:
-  BinaryOpProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                    bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {
+  explicit BinaryOpProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {
     is_4d_with_vector_ = Is4DOperateWithVector();
   }
 
@@ -810,9 +811,8 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
 
 class ConcatProcessor : public AgnosticNodeProcessor {
  public:
-  ConcatProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                  bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {
+  explicit ConcatProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {
     // For Concat,  the concat axis is the first input; for ConcatV2,
     // the last input.
     axis_node_pos_ =
@@ -881,9 +881,8 @@ class ConcatProcessor : public AgnosticNodeProcessor {
 
 class PadProcessor : public AgnosticNodeProcessor {
  public:
-  PadProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-               bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit PadProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   bool ShouldProcess() const override {
@@ -913,9 +912,8 @@ class PadProcessor : public AgnosticNodeProcessor {
 
 class ReluGradProcessor : public AgnosticNodeProcessor {
  public:
-  ReluGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                    bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit ReluGradProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -926,9 +924,8 @@ class ReluGradProcessor : public AgnosticNodeProcessor {
 
 class SliceProcessor : public AgnosticNodeProcessor {
  public:
-  SliceProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                 bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit SliceProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   Status CustomizedProcessing() override {
@@ -1029,9 +1026,8 @@ class SliceProcessor : public AgnosticNodeProcessor {
 // before this optimization.
 class SliceProcessorConst : public AgnosticNodeProcessor {
  public:
-  SliceProcessorConst(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                      bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit SliceProcessorConst(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   Status CustomizedProcessing() override {
@@ -1047,9 +1043,8 @@ class SliceProcessorConst : public AgnosticNodeProcessor {
 // example use case is in the gradient computation of Concat for InceptionV3.
 class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
  public:
-  SliceProcessorConcatOffset(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                             bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit SliceProcessorConcatOffset(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   Status CustomizedProcessing() override {
@@ -1098,9 +1093,8 @@ class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
 
 class SqueezeProcessor : public AgnosticNodeProcessor {
  public:
-  SqueezeProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                   bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit SqueezeProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   bool ShouldProcess() const override {
@@ -1148,9 +1142,8 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
 
 class SumProcessor : public AgnosticNodeProcessor {
  public:
-  SumProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-               bool is_in_frame)
-      : AgnosticNodeProcessor(graph, node, node_map, is_in_frame) {}
+  explicit SumProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   bool ShouldProcess() const override {
@@ -1268,31 +1261,26 @@ class DataLayoutOptimizer : GraphProcessor {
           ops_format_supported.end()) {
         auto node = graph_->mutable_node(i);
         bool is_in_frame = !frames[node].empty();
+        OptimizeContext opt_cxt(graph_, node, node_map_, is_in_frame);
         std::unique_ptr<NodeProcessor> node_processor;
         if (node->op().compare("AvgPoolGrad") == 0) {
-          node_processor.reset(
-              new AvgPoolGradProcessor(graph_, node, node_map_, is_in_frame));
+          node_processor.reset(new AvgPoolGradProcessor(opt_cxt));
         } else if (node->op().compare("BiasAddGrad") == 0) {
-          node_processor.reset(
-              new BiasAddGradProcessor(graph_, node, node_map_, is_in_frame));
+          node_processor.reset(new BiasAddGradProcessor(opt_cxt));
         } else if (node->op().compare("Conv2D") == 0) {
-          node_processor.reset(new Conv2DProcessor(
-              graph_, node, node_map_, config_.no_gemm, is_in_frame));
+          node_processor.reset(new Conv2DProcessor(opt_cxt, config_.no_gemm));
         } else if (node->op().compare("Conv2DBackpropFilter") == 0) {
-          node_processor.reset(new Conv2DBackpropFilterProcessor(
-              graph_, node, node_map_, config_.no_gemm, is_in_frame));
+          node_processor.reset(
+              new Conv2DBackpropFilterProcessor(opt_cxt, config_.no_gemm));
         } else if (node->op().compare("Conv2DBackpropInput") == 0) {
-          node_processor.reset(new Conv2DBackpropInputProcessor(
-              graph_, node, node_map_, config_.no_gemm, is_in_frame));
+          node_processor.reset(
+              new Conv2DBackpropInputProcessor(opt_cxt, config_.no_gemm));
         } else if (node->op().compare("FusedBatchNormGrad") == 0) {
-          node_processor.reset(new FusedBatchNormGradProcessor(
-              graph_, node, node_map_, is_in_frame));
+          node_processor.reset(new FusedBatchNormGradProcessor(opt_cxt));
         } else if (node->op().compare("MaxPoolGrad") == 0) {
-          node_processor.reset(
-              new MaxPoolGradProcessor(graph_, node, node_map_, is_in_frame));
+          node_processor.reset(new MaxPoolGradProcessor(opt_cxt));
         } else {
-          node_processor.reset(
-              new NodeProcessor(graph_, node, node_map_, is_in_frame));
+          node_processor.reset(new NodeProcessor(opt_cxt));
         }
         TF_RETURN_IF_ERROR(node_processor->ConvertNode());
       }
@@ -1313,49 +1301,39 @@ class DataLayoutOptimizer : GraphProcessor {
             ops_format_agnostic.end()) {
           auto node = graph_->mutable_node(i);
           bool is_in_frame = !frames[node].empty();
+          OptimizeContext opt_cxt(graph_, node, node_map_, is_in_frame);
           std::unique_ptr<NodeProcessor> node_processor;
           if (node->op().compare("AddN") == 0) {
-            node_processor.reset(
-                new AddNProcessor(graph_, node, node_map_, is_in_frame));
+            node_processor.reset(new AddNProcessor(opt_cxt));
           } else if (node->op().compare("Add") == 0 ||
                      node->op().compare("Mul") == 0 ||
                      node->op().compare("RealDiv") == 0 ||
                      node->op().compare("SquaredDifference") == 0 ||
                      node->op().compare("Sub") == 0) {
-            node_processor.reset(
-                new BinaryOpProcessor(graph_, node, node_map_, is_in_frame));
+            node_processor.reset(new BinaryOpProcessor(opt_cxt));
           } else if (node->op().compare("Concat") == 0 ||
                      node->op().compare("ConcatV2") == 0) {
-            node_processor.reset(
-                new ConcatProcessor(graph_, node, node_map_, is_in_frame));
+            node_processor.reset(new ConcatProcessor(opt_cxt));
           } else if (node->op().compare("Pad") == 0) {
-            node_processor.reset(
-                new PadProcessor(graph_, node, node_map_, is_in_frame));
+            node_processor.reset(new PadProcessor(opt_cxt));
           } else if (node->op().compare("ReluGrad") == 0) {
-            node_processor.reset(
-                new ReluGradProcessor(graph_, node, node_map_, is_in_frame));
+            node_processor.reset(new ReluGradProcessor(opt_cxt));
           } else if (node->op().compare("Slice") == 0) {
             auto input1 = node_map_->GetNode(NodeName(node->input(1)));
             auto input2 = node_map_->GetNode(NodeName(node->input(2)));
             if (input1->op() == "ConcatOffset") {
-              node_processor.reset(new SliceProcessorConcatOffset(
-                  graph_, node, node_map_, is_in_frame));
+              node_processor.reset(new SliceProcessorConcatOffset(opt_cxt));
             } else if (input1->op() == "Const" && input2->op() == "Const") {
-              node_processor.reset(new SliceProcessorConst(
-                  graph_, node, node_map_, is_in_frame));
+              node_processor.reset(new SliceProcessorConst(opt_cxt));
             } else {
-              node_processor.reset(
-                  new SliceProcessor(graph_, node, node_map_, is_in_frame));
+              node_processor.reset(new SliceProcessor(opt_cxt));
             }
           } else if (node->op().compare("Squeeze") == 0) {
-            node_processor.reset(
-                new SqueezeProcessor(graph_, node, node_map_, is_in_frame));
+            node_processor.reset(new SqueezeProcessor(opt_cxt));
           } else if (node->op().compare("Sum") == 0) {
-            node_processor.reset(
-                new SumProcessor(graph_, node, node_map_, is_in_frame));
+            node_processor.reset(new SumProcessor(opt_cxt));
           } else {
-            node_processor.reset(new AgnosticNodeProcessor(
-                graph_, node, node_map_, is_in_frame));
+            node_processor.reset(new AgnosticNodeProcessor(opt_cxt));
           }
           TF_RETURN_IF_ERROR(node_processor->ConvertNode());
         }
@@ -1416,6 +1394,7 @@ int GetNumTranspose(const GraphDef& graph) {
   LOG(INFO) << "Number of Transpose nodes: " << number;
   return number;
 }
+}  // namespace
 
 Status LayoutOptimizer::Tune(const GrapplerItem& item,
                              const GraphProperties& graph_properties,
