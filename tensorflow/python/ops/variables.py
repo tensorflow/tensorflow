@@ -1447,6 +1447,8 @@ def local_variables_initializer():
   Returns:
     An Op that initializes all local variables in the graph.
   """
+  if context.in_eager_mode():
+    return control_flow_ops.no_op(name="local_variables_initializer")
   return variables_initializer(local_variables())
 
 
