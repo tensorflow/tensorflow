@@ -1765,7 +1765,7 @@ class PoolingTest(test.TestCase):
             padding="SAME")
 
   def testOpEdgeCases(self):
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=test.is_gpu_available()) as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]
       if test.is_gpu_available():
         pool_funcs.append(nn_ops.max_pool_with_argmax)
