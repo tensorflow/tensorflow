@@ -183,11 +183,13 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
   def _WeMustGoDeeper(self, msg):
     with self.assertRaisesOpError(msg):
-      node_def = ops._NodeDef("op_type", "name")
-      node_def_orig = ops._NodeDef("op_type_orig", "orig")
-      op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
-      op = ops.Operation(node_def, ops.get_default_graph(), original_op=op_orig)
-      raise errors.UnauthenticatedError(node_def, op, "true_err")
+      with ops.Graph().as_default():
+        node_def = ops._NodeDef("op_type", "name")
+        node_def_orig = ops._NodeDef("op_type_orig", "orig")
+        op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
+        op = ops.Operation(node_def, ops.get_default_graph(),
+                           original_op=op_orig)
+        raise errors.UnauthenticatedError(node_def, op, "true_err")
 
   def testAssertRaisesOpErrorDoesNotPassMessageDueToLeakedStack(self):
     with self.assertRaises(AssertionError):
