@@ -23,10 +23,8 @@ py_test(
     name = "summary_ops_test",
     srcs = ["summary_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
     deps = [
         ":summary_ops",
-        ":summary_test_internal",
         ":summary_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
@@ -45,10 +43,9 @@ py_test(
     name = "summary_ops_graph_test",
     srcs = ["summary_ops_graph_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
     deps = [
         ":summary_ops",
-        ":summary_test_internal",
+        ":summary_test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ops",
         "//tensorflow/python:platform",
@@ -109,18 +106,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-    ],
-)
-
-py_library(
-    name = "summary_test_internal",
-    testonly = 1,
-    srcs = ["summary_test_internal.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:private"],
-    deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
     ],
