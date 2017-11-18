@@ -1167,12 +1167,6 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
 // rank2345 ::= shape nested_array
 bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
                                      const Shape& shape) {
-  const int64 size = ShapeUtil::ElementsIn(shape);
-  if (size == 0) {
-    *literal = Literal::CreateFromShape(shape);
-    return true;
-  }
-
   const int64 rank = ShapeUtil::Rank(shape);
   if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
     return false;

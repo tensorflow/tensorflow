@@ -92,6 +92,28 @@ ENTRY %ConstantF32.v4 () -> f32[] {
 
 )"
 },
+// f32 constant, rank 1 empty array.
+{
+"ConstantF32R1Empty",
+R"(HloModule ConstantF32Empty_module:
+
+ENTRY %ConstantF32Empty.v4 () -> f32[0] {
+  ROOT %constant = f32[0]{0} constant({})
+}
+
+)"
+},
+// f32 constant, rank 4 empty array.
+{
+"ConstantF32R4Empty",
+R"(HloModule ConstantF32R4Empty_module:
+
+ENTRY %ConstantF32R4Empty.v4 () -> f32[2,0,4,3] {
+  ROOT %constant = f32[2,0,4,3]{3,2,1,0} constant(f32[2,0,4,3] { { /*i0=0*/ }, { /*i0=1*/ } })
+}
+
+)"
+},
 // constant 4D
 {
 "Constant4D",
