@@ -422,7 +422,7 @@ def gan_loss(
     ac_disc_loss = tfgan_losses.acgan_discriminator_loss(
         model, add_summaries=add_summaries)
     dis_loss += aux_cond_discriminator_weight * ac_disc_loss
-  # Gathers auxilliary losses.
+  # Gathers auxiliary losses.
   if model.generator_scope:
     gen_reg_loss = losses.get_regularization_loss(model.generator_scope.name)
   else:

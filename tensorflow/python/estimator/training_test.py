@@ -1016,7 +1016,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
                is_the_final_export):
       del export_path, checkpoint_path, eval_result
       estimator.times_export_was_called += 1
-      # final_export is happend at the end.
+      # final_export is happened at the end.
       self.assertEqual(0, estimator.times_final_export_was_called)
       if is_the_final_export:
         estimator.times_final_export_was_called += 1
@@ -1361,7 +1361,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
                is_the_final_export):
       del export_path, checkpoint_path, eval_result
       estimator.times_export_was_called += 1
-      # final_export is happend at the end.
+      # final_export is happened at the end.
       self.assertEqual(0, estimator.times_final_export_was_called)
       if is_the_final_export:
         estimator.times_final_export_was_called += 1
