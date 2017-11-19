@@ -326,6 +326,7 @@ py_test(
     size = "small",
     srcs = ["reader_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:readers",

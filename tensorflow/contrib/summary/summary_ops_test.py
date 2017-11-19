@@ -21,7 +21,6 @@ import tempfile
 import six
 
 from tensorflow.contrib.summary import summary_ops
-from tensorflow.contrib.summary import summary_test_internal
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
@@ -35,8 +34,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import training_util
 
-get_all = summary_test_internal.get_all
-get_one = summary_test_internal.get_one
+get_all = summary_test_util.get_all
+get_one = summary_test_util.get_one
 
 
 class TargetTest(test_util.TensorFlowTestCase):
@@ -110,7 +109,7 @@ class TargetTest(test_util.TensorFlowTestCase):
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
 
-class DbTest(summary_test_internal.SummaryDbTest):
+class DbTest(summary_test_util.SummaryDbTest):
 
   def testIntegerSummaries(self):
     step = training_util.create_global_step()
