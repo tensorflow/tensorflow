@@ -57,6 +57,17 @@ class LLVMCompiler : public Compiler {
 
   void RemovePostOptimizationHook() { user_post_optimization_hook_ = nullptr; }
 
+  // Bring in
+  // StatusOr<std::unique_ptr<Executable>> Compile(
+  //    std::unique_ptr<HloModule> module,
+  //    perftools::gputools::StreamExecutor* executor)
+  using Compiler::Compile;
+
+  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+      std::vector<std::unique_ptr<HloModule>> modules,
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+          stream_execs) override;
+
  protected:
   ModuleHook user_pre_optimization_hook_;
   ModuleHook user_post_optimization_hook_;

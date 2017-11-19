@@ -103,6 +103,7 @@ class HloParser {
     kSliceRanges,
     kPaddingConfig,
     kMetadata,
+    kFusionKind,
   };
 
   struct AttrConfig {
@@ -172,6 +173,7 @@ class HloParser {
   bool ParseString(string* result);
   bool ParseShape(Shape* result);
   bool ParseOpcode(HloOpcode* result);
+  bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseInt64(int64* result);
   bool ParseDouble(double* result);
   bool ParseBool(bool* result);
@@ -761,12 +763,45 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands[0], /*padding_value=*/operands[1], *padding));
       break;
     }
+    case HloOpcode::kFusion: {
+      optional<HloComputation*> fusion_computation;
+      attrs["calls"] = {/*required=*/true, AttrTy::kHloComputation,
+                        &fusion_computation};
+      optional<HloInstruction::FusionKind> fusion_kind;
+      attrs["kind"] = {/*required=*/true, AttrTy::kFusionKind, &fusion_kind};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateFusion(
+          shape, *fusion_kind, operands, *fusion_computation));
+      break;
+    }
+    case HloOpcode::kInfeed: {
+      optional<string> config;
+      attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateInfeed(shape, config ? *config : ""));
+      break;
+    }
+    case HloOpcode::kOutfeed: {
+      optional<string> config;
+      attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
+          shape, operands[0], config ? *config : ""));
+      break;
+    }
+    case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRng:
-    case HloOpcode::kFusion:
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
@@ -791,7 +826,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     instruction->set_metadata(*metadata);
   }
   return AddInstruction(name, instruction);
-}
+}  // NOLINT(readability/fn_size)
 
 // ::= '{' (single_sharding | tuple_sharding) '}'
 //
@@ -1450,6 +1485,15 @@ bool HloParser::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kFusionKind: {
+        HloInstruction::FusionKind result;
+        if (!ParseFusionKind(&result)) {
+          return false;
+        }
+        static_cast<optional<HloInstruction::FusionKind>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
       case AttrTy::kBracedInt64List: {
         std::vector<int64> result;
         if (!ParseInt64List(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
@@ -1612,8 +1656,8 @@ bool HloParser::ParseConvolutionDimensionNumbers(
     return TokenError(
         "convolution lhs, rhs, and output must have the same rank");
   }
-  if (rank < 3) {
-    return TokenError("convolution rank must >=3");
+  if (rank < 2) {
+    return TokenError("convolution rank must >=2");
   }
 
   auto is_unique = [](string str) -> bool {
@@ -1973,6 +2017,16 @@ bool HloParser::ParseOpcode(HloOpcode* result) {
     return TokenError("expects opcode");
   }
   *result = lexer_.GetOpcodeVal();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
+  VLOG(1) << "ParseFusionKind";
+  if (lexer_.GetKind() != TokKind::kFusionKind) {
+    return TokenError("expects fusion kind");
+  }
+  *result = lexer_.GetFusionKindVal();
   lexer_.Lex();
   return true;
 }

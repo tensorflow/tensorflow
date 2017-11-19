@@ -72,10 +72,10 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() override { return "SkipDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
       Node* count = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
       TF_RETURN_IF_ERROR(

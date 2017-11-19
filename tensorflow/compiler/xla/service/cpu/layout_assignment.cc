@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 

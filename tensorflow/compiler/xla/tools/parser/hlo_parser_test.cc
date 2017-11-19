@@ -304,6 +304,19 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )"
 },
+// convolution rank 2
+{
+"ConvolutionR2",
+R"(HloModule ConvolveR2_module:
+
+ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[1,1]) -> f32[1,2] {
+  %input = f32[1,2]{1,0} parameter(0)
+  %filter = f32[1,1]{1,0} parameter(1)
+  ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[1,1]{1,0} %filter), window={size=1}, dim_labels=bf_io->bf
+}
+
+)"
+},
 // reverse(constant)
 {
 "Reverse4D",
@@ -538,6 +551,40 @@ ENTRY %PadHasInterior.v3 (input: f32[1,25,7,7]) -> f32[1,25,17,11] {
   %input = f32[1,25,7,7]{3,2,1,0} parameter(0)
   %constant = f32[] constant(-5.123)
   ROOT %pad = f32[1,25,17,11]{3,2,1,0} pad(f32[1,25,7,7]{3,2,1,0} %input, f32[] %constant), padding=0_0_0x0_0_0x2_2_1x2_2_0
+}
+
+)"
+},
+// fusion
+{
+"Fusion",
+R"(HloModule fusion_module:
+
+%fused_computation (constant.param_0: f32[3,2,1,1], constant.1.param_1: f32[2]) -> f32[3,2,1,1] {
+  %constant.param_0 = f32[3,2,1,1]{3,2,1,0} parameter(0)
+  %constant.1.param_1 = f32[2]{0} parameter(1)
+  %broadcast = f32[3,2,1,1]{3,2,1,0} broadcast(f32[2]{0} %constant.1.param_1), dimensions={1}
+  ROOT %subtract = f32[3,2,1,1]{3,2,1,0} subtract(f32[3,2,1,1]{3,2,1,0} %constant.param_0, f32[3,2,1,1]{3,2,1,0} %broadcast)
+}
+
+ENTRY %fusion.v3 () -> f32[3,2,1,1] {
+  %constant = f32[3,2,1,1]{3,2,1,0} constant(f32[3,2,1,1] { { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
+  %constant.1 = f32[2]{0} constant({3.14, 4.25})
+  ROOT %fusion = f32[3,2,1,1]{3,2,1,0} fusion(f32[3,2,1,1]{3,2,1,0} %constant, f32[2]{0} %constant.1), kind=kLoop, calls=%fused_computation
+}
+
+)"
+},
+// infeed/outfeed
+{
+"InfeedOutfeed",
+R"(HloModule outfeed_module:
+
+ENTRY %InfeedToOutfeed () -> (u32[3], pred[]) {
+  %infeed = (u32[3]{0}, pred[]) infeed()
+  %outfeed = () outfeed((u32[3]{0}, pred[]) %infeed)
+  ROOT %infeed.1 = (u32[3]{0}, pred[]) infeed()
+  %outfeed.1 = () outfeed((u32[3]{0}, pred[]) %infeed.1)
 }
 
 )"
@@ -846,7 +893,7 @@ TEST_F(HloParserTest, CommaBetweenSubAttributes) {
   const string original = R"(HloModule test_comma_module:
 
 ENTRY %test_comma.v4 () -> f32[] {
-  ROOT %constant = f32[] constant(-4.2), metadata={source_line=5, op_type="const"}
+  ROOT %constant = f32[] constant(-4.2), metadata={source_line=5, op_type="::const"}
 }
 
 )";

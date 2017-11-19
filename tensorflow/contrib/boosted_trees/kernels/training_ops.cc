@@ -237,6 +237,7 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
       VLOG(1) << "Continuing to center bias, delta=" << total_delta;
     } else {
       VLOG(1) << "Done centering bias, delta=" << total_delta;
+      ensemble_resource->LastTreeMetadata()->set_is_finalized(true);
     }
     Tensor* continue_centering_t = nullptr;
     OP_REQUIRES_OK(
@@ -260,7 +261,6 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
       for (size_t idx = 0; idx < logits_dimension; ++idx) {
         leaf->mutable_vector()->add_value(0.0);
       }
-      ensemble_resource->LastTreeMetadata()->set_is_finalized(true);
       return leaf;
     } else if (num_trees == 1) {
       // Confirms that the only tree is a bias and returns its leaf.

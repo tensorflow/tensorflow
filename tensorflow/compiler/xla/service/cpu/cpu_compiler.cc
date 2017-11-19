@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_parallelization_preparation.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
+#include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/layout_assignment.h"
@@ -443,11 +444,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       &pre_optimization_ir_hook, &post_optimization_ir_hook));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  auto llvm_context = MakeUnique<llvm::LLVMContext>();
+  auto llvm_context = xla::MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
-      MakeUnique<llvm::Module>("__compute_module", *llvm_context);
+      xla::MakeUnique<llvm::Module>("__compute_module", *llvm_context);
 
-  auto jit = MakeUnique<SimpleOrcJIT>(
+  auto jit = xla::MakeUnique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
@@ -494,7 +495,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(module.get(),
-                            MakeUnique<DependencyHloOrdering>(module.get()),
+                            xla::MakeUnique<DependencyHloOrdering>(module.get()),
                             BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
@@ -522,7 +523,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         const void* data = instruction->literal().InternalData();
         int64 size = CpuExecutable::ShapeSizeBytes(instruction->shape());
         auto iter = aligned_constants.emplace(
-            instruction, MakeUnique<unsigned char[]>(size));
+            instruction, xla::MakeUnique<unsigned char[]>(size));
         CHECK_EQ(iter.second, true);
         unsigned char* aligned_data = iter.first->second.get();
         memcpy(aligned_data, data, size);
@@ -536,9 +537,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       parallel_computations.emplace(to_apply, instruction);
     }
 
-    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx, jit->target_machine(),
-                         jit->external_constant_pool());
+    size_t entry_computation_profile_idx = hlo_to_profile_idx.size();
+    IrEmitter ir_emitter(
+        *module, *assignment, llvm_module.get(), std::move(hlo_to_profile_idx),
+        /*entry_computation_profile_idx=*/entry_computation_profile_idx,
+        jit->target_machine(), jit->external_constant_pool());
 
     std::unique_ptr<HloInstructionMap<string>> function_names(
         new HloInstructionMap<string>());
@@ -601,7 +604,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
             module.get(),
-            MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
+            xla::MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
@@ -616,9 +619,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // before the entry computation. The order of computations returned from
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
-    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx, jit->target_machine(),
-                         jit->external_constant_pool());
+    size_t entry_computation_profile_idx = hlo_to_profile_idx.size();
+    IrEmitter ir_emitter(
+        *module, *assignment, llvm_module.get(), std::move(hlo_to_profile_idx),
+        /*entry_computation_profile_idx=*/entry_computation_profile_idx,
+        jit->target_machine(), jit->external_constant_pool());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -661,13 +666,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
   VLOG(1) << "Compilation finished";
   return std::move(cpu_executable);
-}
-
-StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
-  return Unimplemented(
-      "Compilation of multiple HLO modules is not yet supported on CPU.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
@@ -778,7 +776,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
-            module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
+            module, xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
@@ -792,9 +790,13 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
           proto, xla_dump_hlo_proto_to, module->name()));
     }
 
-    IrEmitter ir_emitter(*module, *assignment, &llvm_module,
-                         /*hlo_to_profile_idx=*/nullptr, target_machine.get(),
-                         /*external_constant_pool=*/nullptr);
+    IrEmitter ir_emitter(
+        *module, *assignment, &llvm_module,
+        /*hlo_to_profile_idx=*/
+        std::unordered_map<const HloInstruction*, size_t>{},
+        /*entry_computation_profile_idx=*/tensorflow::gtl::nullopt,
+        target_machine.get(),
+        /*external_constant_pool=*/nullptr);
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {

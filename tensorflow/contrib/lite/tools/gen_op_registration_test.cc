@@ -43,25 +43,25 @@ TEST_F(GenOpRegistrationTest, TestNonExistantFiles) {
 }
 
 TEST_F(GenOpRegistrationTest, TestModels) {
-  ReadOps("third_party/tensorflow/contrib/lite/testdata/test_model.bin");
+  ReadOps("tensorflow/contrib/lite/testdata/test_model.bin");
   EXPECT_THAT(builtin_ops_, ElementsAreArray({"CONV_2D"}));
   EXPECT_THAT(custom_ops_, ElementsAreArray({"testing_op"}));
 }
 
 TEST_F(GenOpRegistrationTest, TestEmptyModels) {
-  ReadOps("third_party/tensorflow/contrib/lite/testdata/empty_model.bin");
+  ReadOps("tensorflow/contrib/lite/testdata/empty_model.bin");
   EXPECT_EQ(builtin_ops_.size(), 0);
   EXPECT_EQ(custom_ops_.size(), 0);
 }
 
 TEST_F(GenOpRegistrationTest, TestZeroSubgraphs) {
-  ReadOps("third_party/tensorflow/contrib/lite/testdata/0_subgraphs.bin");
+  ReadOps("tensorflow/contrib/lite/testdata/0_subgraphs.bin");
   EXPECT_EQ(builtin_ops_.size(), 0);
   EXPECT_EQ(custom_ops_.size(), 0);
 }
 
 TEST_F(GenOpRegistrationTest, TestBrokenMmap) {
-  ReadOps("third_party/tensorflow/contrib/lite/testdata/test_model_broken.bin");
+  ReadOps("tensorflow/contrib/lite/testdata/test_model_broken.bin");
   EXPECT_EQ(builtin_ops_.size(), 0);
   EXPECT_EQ(custom_ops_.size(), 0);
 }

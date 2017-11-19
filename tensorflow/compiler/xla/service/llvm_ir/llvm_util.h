@@ -129,6 +129,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module);
 
+// Returns the type size in bits. If "type" is a struct, it must be packed.
+int GetSizeInBits(llvm::Type* type);
+
 // Returns the LLVM type which represents the given XLA shape. For example,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);

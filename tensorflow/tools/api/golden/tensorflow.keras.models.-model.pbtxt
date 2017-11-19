@@ -2,7 +2,7 @@ path: "tensorflow.keras.models.Model"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.training.Model\'>"
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Network\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.Network\'>"
+  is_instance: "<class \'tensorflow.python.layers.network.GraphNetwork\'>"
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<type \'object\'>"
@@ -152,7 +152,7 @@ tf_class {
   }
   member_method {
     name: "evaluate"
-    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'1\', \'None\', \'None\'], "
   }
   member_method {
     name: "evaluate_generator"

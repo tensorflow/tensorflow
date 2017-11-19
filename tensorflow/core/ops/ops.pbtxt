@@ -7137,6 +7137,33 @@ op {
   description: "The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where\n`N` is the minibatch size and the rows correspond to packed outputs of\n`SerializeSparse`.  The ranks of the original `SparseTensor` objects\nmust all match.  When the final `SparseTensor` is created, it has rank one\nhigher than the ranks of the incoming `SparseTensor` objects\n(they have been concatenated along a new row dimension).\n\nThe output `SparseTensor` object\'s shape values for all dimensions but the\nfirst are the max across the input `SparseTensor` objects\' shape values\nfor the corresponding dimensions.  Its first shape value is `N`, the minibatch\nsize.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the serialized input is a `[2 x 3]` matrix representing two\noriginal `SparseTensor` objects:\n\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n\nand\n\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n\nthen the final deserialized `SparseTensor` will be:\n\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]"
 }
 op {
+  name: "DeserializeSparse"
+  input_arg {
+    name: "serialized_sparse"
+    description: "1-D, The serialized `SparseTensor` object. Must have 3 columns."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "sparse_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The `dtype` of the serialized `SparseTensor` object."
+  }
+  summary: "Deserialize `SparseTensor` from a (serialized) string 3-vector (1-D `Tensor`)"
+  description: "object."
+}
+op {
   name: "DestroyResourceOp"
   input_arg {
     name: "resource"
@@ -15465,7 +15492,7 @@ op {
       }
     }
   }
-  summary: "Finds values of the `n`-th order statistic for the last dmension."
+  summary: "Finds values of the `n`-th order statistic for the last dimension."
   description: "If the input is a vector (rank-1), finds the entries which is the nth-smallest\nvalue in the vector and outputs their values as scalar tensor.\n\nFor matrices (resp. higher rank input), computes the entries which is the\nnth-smallest value in each row (resp. vector along the last dimension). Thus,\n\n    values.shape = input.shape[:-1]"
 }
 op {
@@ -31773,6 +31800,14 @@ op {
       b: true
     }
     description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
+  }
+  attr {
+    name: "identical_element_shapes"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true (default is false), then all\nelements in the TensorArray will be expected to have have identical shapes.\nThis allows certain behaviors, like dynamically checking for\nconsistent shapes on write, and being able to fill in properly\nshaped zero tensors on stack -- even if the element_shape attribute\nis not fully defined."
   }
   attr {
     name: "tensor_array_name"

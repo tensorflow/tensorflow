@@ -122,7 +122,6 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     auto outputs = node_map->GetOutputs(node->name());
     for (const NodeDef* node : outputs) {
       if (IsIdentity(*node)) {
-        CHECK_EQ(1, node->input_size());
         if (IsSameInput(node->input(0), input_name)) {
           return AsControlDependency(*node);
         }
@@ -340,92 +339,182 @@ bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
 }
 }  // namespace
 
+Status ConstantFolding::MaterializeBroadcastGradientArgs(
+    const NodeDef& node, const GraphProperties& properties) {
+  const NodeDef* shape_node1 = node_map_->GetNode(node.input(0));
+  const NodeDef* shape_node2 = node_map_->GetNode(node.input(1));
+  if (shape_node1 == nullptr ||
+      (shape_node1->op() != "Shape" && shape_node1->op() != "Const") ||
+      shape_node2 == nullptr ||
+      (shape_node2->op() != "Shape" && shape_node2->op() != "Const")) {
+    return Status::OK();
+  }
+  int64 min_id = 0;
+  BCast::Vec shape1;
+  if (!ExtractShape(*shape_node1, properties, &shape1, &min_id)) {
+    return Status::OK();
+  }
+  BCast::Vec shape2;
+  if (!ExtractShape(*shape_node2, properties, &shape2, &min_id)) {
+    return Status::OK();
+  }
+  // A value of -1 means we don't known anything about the dimension. Replace
+  // the -1 values with unique dimension ids since we don't want two '-1'
+  // dimensions to be considered equal.
+  for (auto& id : shape1) {
+    if (id == -1) {
+      id = --min_id;
+    }
+  }
+  for (auto& id : shape2) {
+    if (id == -1) {
+      id = --min_id;
+    }
+  }
+  BCast bcast(shape1, shape2);
+  if (!bcast.IsValid()) {
+    return Status::OK();
+  }
+  BCast::Vec reduce_dims[2];
+  reduce_dims[0] = bcast.grad_x_reduce_idx();
+  reduce_dims[1] = bcast.grad_y_reduce_idx();
+
+  const DataType type = node.attr().at("T").type();
+  NodeDef* out[2];
+  for (int j = 0; j < 2; ++j) {
+    if (!reduce_dims[j].empty()) {
+      // This is the case when a tensor dimension of 1 is matched against an
+      // unknown dimension. The unknown dimension could also be equal to 1, in
+      // which case there would be no reduction.
+      out[j] = nullptr;
+    } else {
+      string const_name = AddPrefixToNodeName(
+          strings::StrCat(node.name(), "-", j), kConstantFoldingConst);
+      out[j] = node_map_->GetNode(const_name);
+      if (out[j] == nullptr) {
+        out[j] = graph_.add_node();
+        Tensor value(type, TensorShape({0}));
+        *out[j] = CreateNodeDef(const_name, TensorValue(&value));
+        out[j]->set_device(node.device());
+        node_map_->AddNode(const_name, out[j]);
+        string ctrl_dep =
+            AddControlDependency(node.name(), &graph_, node_map_.get());
+        *out[j]->add_input() = ctrl_dep;
+        node_map_->AddOutput(NodeName(ctrl_dep), const_name);
+      }
+    }
+  }
+
+  auto outputs = node_map_->GetOutputs(node.name());
+  for (const auto& output : outputs) {
+    for (int k = 0; k < output->input_size(); ++k) {
+      int port;
+      string node_name = ParseNodeName(output->input(k), &port);
+      if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
+        *output->mutable_input(k) = out[port]->name();
+        node_map_->UpdateInput(output->name(), node_name, out[port]->name());
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+Status ConstantFolding::MaterializeReductionIndices(
+    NodeDef* node, const GraphProperties& properties) {
+  if (node->input_size() < 2) {
+    return Status::OK();
+  }
+  const NodeDef* indices = node_map_->GetNode(node->input(1));
+  if (!indices || IsConstant(*indices)) {
+    // The reduction indices are already constant, there's nothing to do.
+    return Status::OK();
+  }
+
+  const OpInfo::TensorProperties& input_prop =
+      properties.GetInputProperties(node->name())[0];
+  if (input_prop.shape().unknown_rank()) {
+    // We can't do anything if we don't know the rank of the input.
+    return Status::OK();
+  }
+  const int rank = input_prop.shape().dim_size();
+  if (rank == 0) {
+    // Unexpected graph, don't try to change it.
+    return Status::OK();
+  }
+  const OpInfo::TensorProperties& output_prop =
+      properties.GetOutputProperties(node->name())[0];
+  PartialTensorShape output_shape(output_prop.shape());
+  if (output_shape.num_elements() != 1) {
+    bool full_reduction = false;
+    for (const NodeDef* fanout : node_map_->GetOutputs(node->name())) {
+      if (!IsReshape(*fanout)) {
+        continue;
+      }
+      const OpInfo::TensorProperties& reshape_prop =
+          properties.GetOutputProperties(fanout->name())[0];
+      PartialTensorShape shape(reshape_prop.shape());
+      if (shape.num_elements() != 1) {
+        return Status::OK();
+      } else {
+        full_reduction = true;
+      }
+    }
+    if (!full_reduction) {
+      return Status::OK();
+    }
+  }
+
+  const OpInfo::TensorProperties& reduction_prop =
+      properties.GetInputProperties(node->name())[1];
+  DataType dtype = reduction_prop.dtype();
+  if (dtype != DT_INT32 && dtype != DT_INT64) {
+    return Status::OK();
+  }
+  // We know it's a full reduction. We can generate the set of indices to
+  // reduce.
+  string const_name =
+      AddPrefixToNodeName(strings::StrCat(node->name(), "-reduction_indices"),
+                          kConstantFoldingConst);
+  if (node_map_->GetNode(const_name)) {
+    return Status::OK();
+  }
+  NodeDef* reduction_indices = graph_.add_node();
+  Tensor value(dtype, TensorShape({rank}));
+  for (int i = 0; i < rank; ++i) {
+    if (dtype == DT_INT32) {
+      value.vec<int32>()(i) = i;
+    } else {
+      value.vec<int64>()(i) = i;
+    }
+  }
+  *reduction_indices = CreateNodeDef(const_name, TensorValue(&value));
+  reduction_indices->set_device(node->device());
+  string ctrl_dep =
+      AddControlDependency(node->input(1), &graph_, node_map_.get());
+  *reduction_indices->add_input() = ctrl_dep;
+  node_map_->AddNode(const_name, reduction_indices);
+  node_map_->AddOutput(NodeName(ctrl_dep), const_name);
+
+  node->set_input(1, reduction_indices->name());
+  node_map_->UpdateInput(node->name(), indices->name(),
+                         reduction_indices->name());
+
+  return Status::OK();
+}
+
 Status ConstantFolding::MaterializeConstants(
     const GrapplerItem& item, const GraphProperties& properties) {
   const int node_count = graph_.node_size();
   for (int i = 0; i < node_count; ++i) {
     NodeDef& node = *graph_.mutable_node(i);
     const string& op = node.op();
-    if (op != "BroadcastGradientArgs") {
-      continue;
-    }
-    const NodeDef* shape_node1 = node_map_->GetNode(node.input(0));
-    const NodeDef* shape_node2 = node_map_->GetNode(node.input(1));
-    if (shape_node1 == nullptr ||
-        (shape_node1->op() != "Shape" && shape_node1->op() != "Const") ||
-        shape_node2 == nullptr ||
-        (shape_node2->op() != "Shape" && shape_node2->op() != "Const")) {
-      continue;
-    }
-    int64 min_id = 0;
-    BCast::Vec shape1;
-    if (!ExtractShape(*shape_node1, properties, &shape1, &min_id)) {
-      continue;
-    }
-    BCast::Vec shape2;
-    if (!ExtractShape(*shape_node2, properties, &shape2, &min_id)) {
-      continue;
-    }
-    // A value of -1 means we don't known anything about the dimension. Replace
-    // the -1 values with unique dimension ids since we don't want two '-1'
-    // dimensions to be considered equal.
-    for (auto& id : shape1) {
-      if (id == -1) {
-        id = --min_id;
-      }
-    }
-    for (auto& id : shape2) {
-      if (id == -1) {
-        id = --min_id;
-      }
-    }
-    BCast bcast(shape1, shape2);
-    if (!bcast.IsValid()) {
-      continue;
-    }
-    BCast::Vec reduce_dims[2];
-    reduce_dims[0] = bcast.grad_x_reduce_idx();
-    reduce_dims[1] = bcast.grad_y_reduce_idx();
-
-    const DataType type = node.attr().at("T").type();
-    NodeDef* out[2];
-    for (int j = 0; j < 2; ++j) {
-      if (!reduce_dims[j].empty()) {
-        // This is the case when a tensor dimension 1 is matched against an
-        // unknown dimension. The unknown dimension could also be equal to 1, in
-        // which case there would be no reduction.
-        out[j] = nullptr;
-      } else {
-        Tensor value(type, TensorShape({0}));
-        string const_name = AddPrefixToNodeName(
-            strings::StrCat(node.name(), "-", j), kConstantFoldingConst);
-        out[j] = node_map_->GetNode(const_name);
-        if (!out[j]) {
-          out[j] = graph_.add_node();
-          *out[j] = CreateNodeDef(const_name, TensorValue(&value));
-          out[j]->set_device(node.device());
-          node_map_->AddNode(const_name, out[j]);
-          string ctrl_dep =
-              AddControlDependency(node.name(), &graph_, node_map_.get());
-          *out[j]->add_input() = ctrl_dep;
-          node_map_->AddOutput(NodeName(ctrl_dep), const_name);
-        }
-      }
-    }
-
-    auto outputs = node_map_->GetOutputs(node.name());
-    for (const auto& output : outputs) {
-      for (int k = 0; k < output->input_size(); ++k) {
-        int port;
-        string node_name = ParseNodeName(output->input(k), &port);
-        if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
-          *output->mutable_input(k) = out[port]->name();
-          node_map_->UpdateInput(output->name(), node_name, out[port]->name());
-        }
-      }
+    if (op == "BroadcastGradientArgs") {
+      TF_RETURN_IF_ERROR(MaterializeBroadcastGradientArgs(node, properties));
+    } else if (IsReduction(node)) {
+      TF_RETURN_IF_ERROR(MaterializeReductionIndices(&node, properties));
     }
   }
-
   return Status::OK();
 }
 

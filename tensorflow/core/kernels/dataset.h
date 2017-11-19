@@ -90,6 +90,7 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status.
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  // TODO(shivaniagrawal): Consider changing to gtl::ArraySlice?
   template <typename T>
   Status AddVector(const std::vector<T>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(),
@@ -136,6 +137,23 @@ class GraphDefBuilderWrapper {
                     const std::vector<NodeBuilder::NodeOut>& inputs,
                     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
                     Node** output) {
+    std::vector<std::pair<size_t, NodeBuilder::NodeOut>> enumerated_inputs(
+        inputs.size());
+    for (int i = 0; i < inputs.size(); i++) {
+      enumerated_inputs[i] = std::make_pair(i, inputs[i]);
+    }
+    return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
+  }
+
+  template <class DatasetType>
+  Status AddDataset(
+      const DatasetType* dataset,
+      const std::vector<std::pair<size_t, NodeBuilder::NodeOut>>& inputs,
+      const std::vector<
+          std::pair<size_t, gtl::ArraySlice<NodeBuilder::NodeOut>>>&
+          list_inputs,
+      const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+      Node** output) {
     const string& op_type_name = dataset->op_name();
     std::unique_ptr<const GraphDefBuilder::Options> opts(
         new GraphDefBuilder::Options(b_->opts()));
@@ -160,8 +178,22 @@ class GraphDefBuilderWrapper {
     }
     NodeBuilder node_builder(opts->GetNameForOp(op_type_name), op_type_name,
                              opts->op_registry());
-    for (auto node_out : inputs) {
-      node_builder.Input(node_out);
+    {
+      size_t total_size = inputs.size() + list_inputs.size();
+      auto inputs_iter = inputs.begin();
+      auto list_inputs_iter = list_inputs.begin();
+      for (int i = 0; i < total_size; i++) {
+        if (inputs_iter != inputs.end() && inputs_iter->first == i) {
+          node_builder.Input(inputs_iter->second);
+          inputs_iter++;
+        } else if (list_inputs_iter != list_inputs.end() &&
+                   list_inputs_iter->first == i) {
+          node_builder.Input(list_inputs_iter->second);
+          list_inputs_iter++;
+        } else {
+          return errors::InvalidArgument("No input found for index ", i);
+        }
+      }
     }
     *output = opts->FinalizeBuilder(&node_builder);
     if (*output == nullptr) {
@@ -171,35 +203,56 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-  // TODO(shivaniagrawal): Single method for AddDataset for
-  // NodeOut/ArrraySlice<NodeOut>
-  template <class DatasetType>
-  Status AddDatasetWithInputAsList(const DatasetType* dataset,
-                                   gtl::ArraySlice<NodeBuilder::NodeOut> input,
-                                   Node** output) {
-    const string& op_type_name = dataset->op_name();
-    std::unique_ptr<const GraphDefBuilder::Options> opts(
-        new GraphDefBuilder::Options(b_->opts()));
-    bool has_output_types_attr = HasAttr(op_type_name, "output_types");
-    bool has_output_shapes_attr = HasAttr(op_type_name, "output_shapes");
-    if (has_output_shapes_attr) {
-      opts.reset(new GraphDefBuilder::Options(
-          opts->WithAttr("output_shapes", dataset->output_shapes())));
+  // Adds a user-defined function with name `function_name` to the graph and
+  // recursively adds all functions it references. If a function with a matching
+  // name has already been added, returns with OK status. If a user-defined with
+  // name `function_name` is not found in the FunctionLibraryDefinition, returns
+  // an InvalidArgumentError. If the function with name `function_name` or any
+  // of its dependent functions are stateful, returns an InvalidArgument error.
+  Status AddFunction(OpKernelContext* ctx, const string& function_name) {
+    if (b_->HasFunction(function_name)) {
+      LOG(INFO) << "Function with name " << function_name << "already exists in"
+                << " the graph. It will not be added again.";
+      return Status::OK();
     }
-    if (has_output_types_attr) {
-      opts.reset(new GraphDefBuilder::Options(
-          opts->WithAttr("output_types", dataset->output_dtypes())));
+    TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(ctx, function_name));
+    const FunctionLibraryDefinition* flib_def =
+        ctx->function_library()->GetFunctionLibraryDefinition();
+    const FunctionDef* f_def = flib_def->Find(function_name);
+    if (f_def == nullptr) {
+      return errors::InvalidArgument("Unable to find FunctionDef for ",
+                                     function_name, " in the registry.");
     }
-    if (opts->HaveError()) {
-      return errors::Internal("AddDataset: Error building Options.");
+    FunctionDefLibrary def;
+    *def.add_function() = *f_def;
+    const string gradient_func = flib_def->FindGradient(function_name);
+    if (!gradient_func.empty()) {
+      GradientDef* g_def = def.add_gradient();
+      g_def->set_function_name(function_name);
+      g_def->set_gradient_func(gradient_func);
     }
-    NodeBuilder node_builder(opts->GetNameForOp(op_type_name), op_type_name,
-                             opts->op_registry());
-    node_builder.Input(input);
-    *output = opts->FinalizeBuilder(&node_builder);
-    if (*output == nullptr) {
-      return errors::Internal("AddDataset: Failed to build ", op_type_name,
-                              " op.");
+    TF_RETURN_IF_ERROR(b_->AddFunctionLibrary(def));
+
+    // Recursively add functions in inputs of function_name.
+    for (const NodeDef& node_def : f_def->node_def()) {
+      const OpRegistrationData* op_reg_data = nullptr;
+      TF_RETURN_IF_ERROR(flib_def->LookUp(node_def.op(), &op_reg_data));
+      if (op_reg_data->is_function_op) {
+        TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name()));
+      }
+    }
+
+    // Recursively add functions in attrs of function_name.
+    for (auto iter = f_def->attr().begin(); iter != f_def->attr().end();
+         iter++) {
+      const AttrValue& attr_value = iter->second;
+      if (attr_value.has_func()) {
+        TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
+      } else if (attr_value.has_list()) {
+        for (const NameAttrList& name_attr_list : attr_value.list().func()) {
+          TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name()));
+        }
+      }
     }
     return Status::OK();
   }
@@ -214,6 +267,28 @@ class GraphDefBuilderWrapper {
     *output = ops::SourceOp(
         "Const",
         b_->opts().WithAttr("dtype", val.dtype()).WithAttr("value", val));
+  }
+
+  Status EnsureFunctionIsStateless(OpKernelContext* ctx,
+                                   const string& function_name) const {
+    const FunctionLibraryDefinition* lib_def =
+        ctx->function_library()->GetFunctionLibraryDefinition();
+    const FunctionDef* function_def = lib_def->Find(function_name);
+    if (!function_def) {
+      return errors::InvalidArgument("Unable to find FunctionDef for ",
+                                     function_name, " in registry.");
+    }
+    for (const NodeDef& node_def : function_def->node_def()) {
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(lib_def->LookUpOpDef(node_def.op(), &op_def));
+      if (op_def->is_stateful()) {
+        return errors::InvalidArgument(
+            "Op[name: ", node_def.name(), ", type: ", node_def.op(), "] ",
+            "in function ", function_name, " is stateful. ",
+            "Saving stateful functions is not supported yet.");
+      }
+    }
+    return Status::OK();
   }
 
   bool HasAttr(const string& op_type_name, const string& attr_name) {
@@ -305,7 +380,7 @@ class IteratorBase {
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
   // Saves the state of this iterator.
-  virtual Status Save(IteratorStateWriter* writer) {
+  virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) {
     return SaveInternal(writer);
   }
 
@@ -376,7 +451,7 @@ class DatasetBase : public core::RefCounted {
   virtual string DebugString() = 0;
 
   // Serializes the dataset and writes it to the `writer`.
-  virtual Status Save(IteratorStateWriter* writer) const {
+  virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) const {
     return errors::Unimplemented("DatasetBase::Save");
   }
 
@@ -388,10 +463,17 @@ class DatasetBase : public core::RefCounted {
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
-    Status AddParentDataset(const DatasetBase* dataset, Node** output) {
-      return dataset->AsGraphDefInternal(this, output);
+    Status AddParentDataset(OpKernelContext* ctx, const DatasetBase* dataset,
+                            Node** output) {
+      return dataset->AsGraphDefInternal(ctx, this, output);
     }
   };
+
+  virtual Status AsGraphDefInternal(OpKernelContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** node) const {
+    return AsGraphDefInternal(b, node);
+  }
 
   virtual Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
                                     Node** node) const {
@@ -407,10 +489,11 @@ class GraphDatasetBase : public DatasetBase {
 
   const string op_name() const { return op_name_; }
 
-  Status Save(IteratorStateWriter* writer) const override {
+  Status Save(OpKernelContext* ctx,
+              IteratorStateWriter* writer) const override {
     string serialized_graph_def;
     string output_node;
-    TF_RETURN_IF_ERROR(Serialize(&serialized_graph_def, &output_node));
+    TF_RETURN_IF_ERROR(Serialize(ctx, &serialized_graph_def, &output_node));
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
     TF_RETURN_IF_ERROR(
@@ -426,11 +509,12 @@ class GraphDatasetBase : public DatasetBase {
   static const char kDatasetGraphOutputNodeKey[];
 
  private:
-  Status Serialize(string* serialized_graph_def, string* output_node) const {
+  Status Serialize(OpKernelContext* ctx, string* serialized_graph_def,
+                   string* output_node) const {
     GraphDefBuilder b;
     DatasetGraphDefBuilder db(&b);
     Node* node = nullptr;
-    TF_RETURN_IF_ERROR(AsGraphDefInternal(&db, &node));
+    TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
     *output_node = node->name();
     GraphDef graph_def;
     TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
@@ -479,9 +563,9 @@ class DatasetIterator : public IteratorBase {
     return GetNextInternal(ctx, out_tensors, end_of_sequence);
   }
 
-  Status Save(IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(dataset()->Save(writer));
-    return IteratorBase::Save(writer);
+  Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {
+    TF_RETURN_IF_ERROR(dataset()->Save(ctx, writer));
+    return IteratorBase::Save(ctx, writer);
   }
 
  protected:

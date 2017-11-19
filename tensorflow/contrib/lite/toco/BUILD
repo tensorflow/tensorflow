@@ -14,14 +14,30 @@ load(
 )
 
 tf_proto_library_cc(
+    name = "types_proto",
+    srcs = ["types.proto"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library_cc(
     name = "toco_flags_proto",
     srcs = ["toco_flags.proto"],
+    protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
 
 tf_proto_library_cc(
     name = "model_flags_proto",
     srcs = ["model_flags.proto"],
+    protodeps = [":types_proto"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library_py(
+    name = "types_proto",
+    srcs = [
+        "types.proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -30,6 +46,7 @@ tf_proto_library_py(
     srcs = [
         "toco_flags.proto",
     ],
+    protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -38,6 +55,7 @@ tf_proto_library_py(
     srcs = [
         "model_flags.proto",
     ],
+    protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -75,8 +93,6 @@ cc_library(
         ":runtime",
         ":toco_port",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/base:core_headers",
-        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
@@ -89,9 +105,6 @@ cc_library(
         "toco_graphviz_dump_options.h",
     ],
     visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 cc_library(
@@ -107,6 +120,7 @@ cc_library(
         ":model_cmdline_flags",
         ":toco_flags_proto_cc",
         ":toco_port",
+        ":types_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -127,6 +141,7 @@ cc_library(
         ":model_flags_proto_cc",
         ":toco_graphviz_dump_options",
         ":toco_port",
+        ":types_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -144,6 +159,7 @@ cc_library(
         "toco_types.h",
     ],
     deps = [
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ] + select({
@@ -219,6 +235,7 @@ cc_library(
         ":runtime",
         ":toco_port",
         ":tooling_util",
+        ":types_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
@@ -251,6 +268,7 @@ cc_library(
         ":graph_transformations",
         ":model",
         ":model_flags_proto_cc",
+        ":types_proto_cc",
         ":runtime",
         ":toco_graphviz_dump_options",
         ":toco_flags_proto_cc",
@@ -290,6 +308,7 @@ cc_library(
         ":toco_flags_proto_cc",
         ":toco_graphviz_dump_options",
         ":toco_port",
+        ":types_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@protobuf_archive//:protobuf_headers",
@@ -320,6 +339,7 @@ tf_cc_binary(
         ":toco_flags_proto_cc",
         ":toco_port",
         ":toco_tooling",
+        ":types_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],

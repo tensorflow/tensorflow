@@ -68,6 +68,7 @@ py_test(
     srcs = ["layer_collection_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/kfac/python/ops:fisher_blocks",
         "//tensorflow/contrib/kfac/python/ops:fisher_factors",
         "//tensorflow/contrib/kfac/python/ops:layer_collection",
         "//tensorflow/python:array_ops",
@@ -75,6 +76,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:variable_scope",
@@ -88,7 +90,6 @@ py_test(
     deps = [
         "//tensorflow/contrib/kfac/python/ops:kfac_optimizer",
         "//tensorflow/contrib/kfac/python/ops:layer_collection",
-        "//tensorflow/contrib/kfac/python/ops:loss_functions",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",

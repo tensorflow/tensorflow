@@ -12,20 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-import os
 import tempfile
 
 import six
-import sqlite3
 
 from tensorflow.contrib.summary import summary_ops
 from tensorflow.contrib.summary import summary_test_util
+from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
@@ -35,6 +33,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import training_util
+
+get_all = summary_test_util.get_all
+get_one = summary_test_util.get_one
 
 
 class TargetTest(test_util.TensorFlowTestCase):
@@ -77,7 +78,7 @@ class TargetTest(test_util.TensorFlowTestCase):
         summary_ops.scalar('scalar', 2.0)
 
       write()
-      events = summary_test_util.events_from_file(logdir)
+      events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].simple_value, 2.0)
 
@@ -90,7 +91,7 @@ class TargetTest(test_util.TensorFlowTestCase):
 
       summary_ops.scalar('scalar', 2.0)
 
-      events = summary_test_util.events_from_file(logdir)
+      events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
@@ -103,27 +104,12 @@ class TargetTest(test_util.TensorFlowTestCase):
 
       summary_ops.scalar('scalar', 2.0, global_step=global_step)
 
-      events = summary_test_util.events_from_file(logdir)
+      events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
 
-class DbTest(test_util.TensorFlowTestCase):
-
-  def setUp(self):
-    self.db_path = os.path.join(self.get_temp_dir(), 'DbTest.sqlite')
-    if os.path.exists(self.db_path):
-      os.unlink(self.db_path)
-    self.db = sqlite3.connect(self.db_path)
-    self.create_summary_db_writer = functools.partial(
-        summary_ops.create_summary_db_writer,
-        db_uri=self.db_path,
-        experiment_name='experiment',
-        run_name='run',
-        user_name='user')
-
-  def tearDown(self):
-    self.db.close()
+class DbTest(summary_test_util.SummaryDbTest):
 
   def testIntegerSummaries(self):
     step = training_util.create_global_step()
@@ -186,13 +172,15 @@ class DbTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       self.create_summary_db_writer(user_name='@')
 
-
-def get_one(db, q, *p):
-  return db.execute(q, p).fetchone()[0]
-
-
-def get_all(db, q, *p):
-  return unroll(db.execute(q, p).fetchall())
+  def testGraphSummary(self):
+    training_util.get_or_create_global_step()
+    name = 'hi'
+    graph = graph_pb2.GraphDef(node=(node_def_pb2.NodeDef(name=name),))
+    with summary_ops.always_record_summaries():
+      with self.create_summary_db_writer().as_default():
+        summary_ops.graph(graph)
+    six.assertCountEqual(self, [name],
+                         get_all(self.db, 'SELECT node_name FROM Nodes'))
 
 
 def get_tensor(db, tag_id, step):
@@ -203,10 +191,6 @@ def get_tensor(db, tag_id, step):
 
 def int64(x):
   return array_ops.constant(x, dtypes.int64)
-
-
-def unroll(list_of_tuples):
-  return sum(list_of_tuples, ())
 
 
 if __name__ == '__main__':

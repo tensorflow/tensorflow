@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
@@ -125,8 +126,10 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      object_layer_(
-          [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
+      object_layer_([] {
+        return std::make_shared<llvm::SectionMemoryManager>(
+            orc_jit_memory_mapper::GetInstance());
+      }),
       compile_layer_(
           object_layer_,
           CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,

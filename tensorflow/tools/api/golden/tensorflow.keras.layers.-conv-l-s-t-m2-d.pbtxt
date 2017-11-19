@@ -191,7 +191,7 @@ tf_class {
     argspec: "args=[\'self\', \'inputs\', \'training\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "reccurent_conv"
+    name: "recurrent_conv"
     argspec: "args=[\'self\', \'x\', \'w\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

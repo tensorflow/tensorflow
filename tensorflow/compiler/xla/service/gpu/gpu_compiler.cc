@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 
 #include <stdlib.h>
+#include <atomic>
 #include <functional>
 #include <utility>
 
@@ -258,7 +259,9 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
     return InternalError("couldn't get temp CUBIN file name");
   }
   auto cubin_cleaner = tensorflow::gtl::MakeCleanup([&cubin_path] {
-    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(cubin_path));
+    // CUBIN file may never be created, so the failure to delete it should not
+    // produce TF error.
+    tensorflow::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   });
   tensorflow::SubProcess ptxas_info_dumper;
   std::vector<string> ptxas_args = {ptxas_path, ptx_path, "-o", cubin_path,
@@ -500,10 +503,24 @@ std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
           VLOG(2) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {
-          LOG(WARNING)
-              << "Failed to compile ptx to cubin.  Will attempt to let "
-                 "GPU driver compile the ptx. "
-              << maybe_cubin.status();
+          bool log_warning = true;
+          if (maybe_cubin.status().code() ==
+              tensorflow::error::Code::NOT_FOUND) {
+            // Missing ptxas is expected in some environments where CUDA SDK
+            // binaries are not available. We don't want to spam logs with
+            // identical warnings in this case.
+
+            // TODO(zhengxq): we should implement a LOG_FIRST_N and LOG_EVERY_N
+            // for more general usage.
+            static std::atomic<bool> warning_done(false);
+            log_warning = !warning_done.exchange(true);
+          }
+          if (log_warning) {
+            LOG(WARNING)
+                << "Failed to compile ptx to cubin.  Will attempt to let "
+                   "GPU driver compile the ptx. "
+                << maybe_cubin.status();
+          }
         }
       }
       cache_value->compilation_done = true;
@@ -518,13 +535,6 @@ std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
   CHECK(cache_value != nullptr);
   CHECK(cache_value->compilation_done);
   return cache_value->cubin_data;
-}
-
-StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
-  return Unimplemented(
-      "Compilation of multiple HLO modules is not yet supported on GPU.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

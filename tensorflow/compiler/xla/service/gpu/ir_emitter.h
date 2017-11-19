@@ -105,10 +105,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   explicit IrEmitter(const HloModuleConfig& hlo_module_config,
                      IrEmitterContext* ir_emitter_context, bool is_nested);
 
-  // A convenient helper for calling HloToIrBindings::GetIrArray.
+  // Helper for calling HloToIrBindings::GetIrArray.
+  //
+  // Gets the IrArray which contains inst.  This array has metadata that makes
+  // it valid only within the IR that implements consumer.  If you are
+  // implementing an HLO and want to get its own output buffer, call
+  // GetIrArray(hlo, hlo).
   llvm_ir::IrArray GetIrArray(const HloInstruction& inst,
+                              const HloInstruction& consumer,
                               const ShapeIndex& shape_index = {}) {
-    return bindings_.GetIrArray(inst, shape_index);
+    return bindings_.GetIrArray(inst, consumer, shape_index);
   }
   // A convenient helper for calling HloToIrBindings::GetBasePointer.
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {

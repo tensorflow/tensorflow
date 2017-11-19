@@ -22,6 +22,7 @@ import six
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
 
 
 def mean_squared_error(y_true, y_pred):
@@ -91,7 +92,7 @@ def poisson(y_true, y_pred):
 def cosine_proximity(y_true, y_pred):
   y_true = K.l2_normalize(y_true, axis=-1)
   y_pred = K.l2_normalize(y_pred, axis=-1)
-  return -K.mean(y_true * y_pred, axis=-1)
+  return -K.sum(y_true * y_pred, axis=-1)
 
 
 # Aliases.
@@ -105,7 +106,7 @@ cosine = cosine_proximity
 
 
 def serialize(loss):
-  return loss.__name__
+  return serialize_keras_object(loss)
 
 
 def deserialize(name, custom_objects=None):
@@ -121,6 +122,8 @@ def get(identifier):
     return None
   if isinstance(identifier, six.string_types):
     identifier = str(identifier)
+    return deserialize(identifier)
+  if isinstance(identifier, dict):
     return deserialize(identifier)
   elif callable(identifier):
     return identifier

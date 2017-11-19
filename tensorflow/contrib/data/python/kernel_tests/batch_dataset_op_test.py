@@ -104,6 +104,15 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={count: 14, batch_size: 0})
 
+  def testBatchSparseError(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+
+    with self.assertRaises(TypeError):
+      _ = dataset_ops.Dataset.range(10).map(_map_fn).batch(10)
+
   def testPaddedBatchDataset(self):
     seq_lens = array_ops.placeholder(dtypes.int32, shape=[None])
     padded_shape = array_ops.placeholder(dtypes.int64, shape=[1])
@@ -237,6 +246,15 @@ class BatchDatasetTest(test.TestCase):
       self.assertEqual([None, None], dataset.output_shapes[0].as_list())
       self.assertEqual([None, None, None], dataset.output_shapes[1].as_list())
       self.assertEqual([None, 37], dataset.output_shapes[2].as_list())
+
+  def testPaddedBatchSparseError(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+
+    with self.assertRaises(TypeError):
+      _ = dataset_ops.Dataset.range(10).map(_map_fn).padded_batch(10)
 
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
@@ -480,6 +498,16 @@ class BatchDatasetTest(test.TestCase):
     self.assertIs(None, dataset.output_shapes[0].ndims)
     self.assertEqual([None], dataset.output_shapes[1][0].as_list())
     self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
+
+  def testBatchAndDropRemainderSparseError(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+
+    with self.assertRaises(TypeError):
+      _ = dataset_ops.Dataset.range(10).map(_map_fn).apply(
+          batching.batch_and_drop_remainder(10))
 
   def testBatchAndMapDataset(self):
     """Test a dataset that maps a TF function across its input elements."""

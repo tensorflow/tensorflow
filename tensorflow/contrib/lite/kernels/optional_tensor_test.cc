@@ -28,8 +28,6 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-using ::testing::ElementsAreArray;
-
 class LSTMOpModel : public SingleOpModel {
  public:
   LSTMOpModel(int n_batch, int n_input, int n_cell, int n_output, bool use_cifg,

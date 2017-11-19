@@ -95,7 +95,7 @@ class ResNet50GraphTest(tf.test.TestCase):
         sess.run([train_op, tf.contrib.summary.all_summary_ops()],
                  feed_dict={images: np_images, labels: np_labels})
 
-      events = summary_test_util.events_from_file(logdir)
+      events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'loss')
 

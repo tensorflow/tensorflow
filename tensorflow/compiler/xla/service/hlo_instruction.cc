@@ -43,6 +43,7 @@ limitations under the License.
 
 namespace xla {
 
+using tensorflow::str_util::CEscape;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
@@ -648,6 +649,20 @@ HloInstruction::CreateSelectAndScatter(
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
+    const Shape& shape, FusionKind fusion_kind,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloComputation* fusion_computation) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
+  for (auto operand : operands) {
+    instruction->AppendOperand(operand);
+  }
+  instruction->fusion_kind_ = fusion_kind;
+  instruction->called_computations_.push_back(fusion_computation);
+  fusion_computation->SetFusionInstruction(instruction.get());
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateFusionForBackwardConvolution(
     const Shape& shape, FusionKind fusion_kind, const Window& window,
@@ -1195,6 +1210,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                   new_operands[2], new_operands[3],
                                   new_operands[4], epsilon(), feature_index());
       break;
+    case HloOpcode::kConditional:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
@@ -1387,7 +1403,7 @@ int64 HloInstruction::operand_index(const HloInstruction* target) const {
       return i;
     }
   }
-  LOG(FATAL) << "target was not an operand";
+  LOG(FATAL) << "target was not an operand: " << target->ToString();
 }
 
 Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
@@ -1588,6 +1604,7 @@ bool HloInstruction::IdenticalSlowPath(
       return dimensions() == other.dimensions();
 
     // These opcodes are not yet supported.
+    case HloOpcode::kConditional:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
@@ -1805,20 +1822,11 @@ string HloInstruction::SignatureString() const {
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
-string HloInstruction::ExtendedOpcodeStr() const {
-  string opc_name = HloOpcodeString(opcode());
-  HloOpcode opc = opcode();
-  if (HloOpcode::kFusion == opc) {
-    opc_name += ":" + xla::ToString(fusion_kind());
-  }
-  return opc_name;
-}
-
 string HloInstruction::ToString(bool compact_operands, bool include_metadata,
                                 bool include_large_constants) const {
   string result =
       StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
-             ExtendedOpcodeStr(), "(",
+             HloOpcodeString(opcode()), "(",
              OperandsToString(compact_operands, include_large_constants), ")");
   for (const string& extra : ExtraAttributesToString()) {
     StrAppend(&result, ", ", extra);
@@ -1882,6 +1890,9 @@ string HloInstruction::OperandsToString(bool compact,
 
 std::vector<string> HloInstruction::ExtraAttributesToString() const {
   std::vector<string> extra;
+  if (opcode() == HloOpcode::kFusion) {
+    extra.push_back(StrCat("kind=", xla::ToString(fusion_kind())));
+  }
   if (CanHaveDimensionsField()) {
     extra.push_back(StrCat("dimensions={", Join(dimensions(), ","), "}"));
   }
@@ -1956,6 +1967,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
                                   StrAppend(out, pre->name());
                                 }),
                            "}"));
+  }
+  if (opcode() == HloOpcode::kInfeed && !infeed_config_.empty()) {
+    extra.push_back(StrCat("infeed_config=\"", CEscape(infeed_config_), "\""));
+  }
+  if (opcode() == HloOpcode::kOutfeed && !outfeed_config_.empty()) {
+    extra.push_back(
+        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }
   return extra;
 }
@@ -2339,6 +2357,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
 
     // These opcodes are not handled here.
+    case HloOpcode::kConditional:
     case HloOpcode::kTrace:
       break;
   }
@@ -2912,7 +2931,6 @@ string PaddingConfigToString(const PaddingConfig& padding) {
 
 string OpMetadataToString(const OpMetadata& metadata) {
   std::vector<string> result;
-  using tensorflow::str_util::CEscape;
   if (!metadata.op_type().empty()) {
     result.push_back(StrCat("op_type=\"", CEscape(metadata.op_type()), "\""));
   }

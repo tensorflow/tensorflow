@@ -548,7 +548,8 @@ Status DirectSession::Run(const RunOptions& run_options,
           ((measure_step_count + 1) % build_cost_model_every == 0);
     }
   }
-  if (do_trace || update_cost_model) {
+  if (do_trace || update_cost_model ||
+      run_options.report_tensor_allocations_upon_oom()) {
     run_state.collector.reset(
         new StepStatsCollector(run_metadata->mutable_step_stats()));
     args.stats_collector = run_state.collector.get();
@@ -1418,11 +1419,7 @@ Status DirectSession::CreateGraphs(
     Device* d;
     s = device_mgr_->LookupDevice(partition_name, &d);
     if (!s.ok()) break;
-    // TODO(pbar) The library is currently shared and immutable. There
-    // may be possible use cases where a device may want to modify
-    // function definitions - in which case the library would need to be
-    // replicated per device.
-    s = d->MaybeRewriteGraph(client_graph->flib_def->ToProto(), graph);
+    s = d->MaybeRewriteGraph(graph);
     if (!s.ok()) {
       break;
     }

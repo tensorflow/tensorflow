@@ -58,6 +58,7 @@ namespace xla {
   V(kClamp, "clamp")                                         \
   V(kComplex, "complex")                                     \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)       \
+  V(kConditional, "conditional")                             \
   V(kConstant, "constant")                                   \
   V(kConvert, "convert")                                     \
   V(kConvolution, "convolution")                             \

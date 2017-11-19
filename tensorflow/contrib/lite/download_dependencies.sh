@@ -27,6 +27,7 @@ NEON_2_SSE_URL="https://github.com/intel/ARM_NEON_2_x86_SSE/archive/master.zip"
 FARMHASH_URL="https://mirror.bazel.build/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz"
 FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/master.zip"
 MODELS_URL="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_ios_lite_float_2017_11_08.zip"
+QUANTIZED_MODELS_URL="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip"
 
 # TODO(petewarden): Some new code in Eigen triggers a clang bug with iOS arm64,
 #                   so work around it by patching the source.
@@ -59,7 +60,7 @@ download_and_extract() {
     unzip ${tempdir}/* -d ${tempdir2}
     # unzip has no strip components, so unzip to a temp dir, and move the files
     # we want from the tempdir to destination.
-    cp -R ${tempdir2}/*/* ${dir}/
+    echo cp `find ${tempdir2} -type f` ${dir}/
     rm -rf ${tempdir2} ${tempdir}
   fi
 
@@ -75,6 +76,7 @@ download_and_extract "${NEON_2_SSE_URL}" "${DOWNLOADS_DIR}/neon_2_sse"
 download_and_extract "${FARMHASH_URL}" "${DOWNLOADS_DIR}/farmhash"
 download_and_extract "${FLATBUFFERS_URL}" "${DOWNLOADS_DIR}/flatbuffers"
 download_and_extract "${MODELS_URL}" "${DOWNLOADS_DIR}/models"
+download_and_extract "${QUANTIZED_MODELS_URL}" "${DOWNLOADS_DIR}/quantized_models"
 
 replace_by_sed 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
   "${DOWNLOADS_DIR}/eigen/Eigen/src/Core/arch/NEON/Complex.h"
@@ -84,5 +86,6 @@ replace_by_sed 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DAT
   "${DOWNLOADS_DIR}/eigen/Eigen/src/Core/arch/NEON/Complex.h"
 
 cp ${DOWNLOADS_DIR}/models/models/* tensorflow/contrib/lite/examples/ios/simple/data/
+cp ${DOWNLOADS_DIR}/quantized_models/* tensorflow/contrib/lite/examples/ios/camera/data/
 
 echo "download_dependencies.sh completed successfully." >&2

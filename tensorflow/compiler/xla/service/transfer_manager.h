@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -47,6 +48,8 @@ class TransferManager {
   // executor. device_shape is the shape, including layout, of the data on the
   // device, while literal_shape will be the shape for the literal. device_shape
   // and literal_shape must be compatible, but need not have the same layout.
+  // TODO(b/66694934): Remove TransferLiteral* methods which accept bare
+  // DeviceMemoryBase.
   virtual Status TransferLiteralFromDevice(
       perftools::gputools::StreamExecutor* executor,
       const perftools::gputools::DeviceMemoryBase& region,
@@ -58,6 +61,20 @@ class TransferManager {
   virtual Status TransferLiteralToDevice(
       perftools::gputools::StreamExecutor* executor, const Literal& literal,
       perftools::gputools::DeviceMemoryBase* region) = 0;
+
+  // Transfers the data held in the given ShapedBuffer into the provided literal
+  // using the provided executor. literal_shape will be the shape for the
+  // literal. The shape of the ShapedBuffer and literal_shape must be
+  // compatible, but need not have the same layout.
+  virtual StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+      perftools::gputools::StreamExecutor* executor,
+      const ShapedBuffer& device_buffer) = 0;
+
+  // Transfers the given literal into the previously allocated device memory
+  // represented by the given ShapedBuffer using the given executor.
+  virtual Status TransferLiteralToDevice(
+      perftools::gputools::StreamExecutor* executor, const Literal& literal,
+      const ShapedBuffer& device_buffer) = 0;
 
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
@@ -97,15 +114,11 @@ class TransferManager {
       const perftools::gputools::DeviceMemoryBase& source,
       const Shape& shape) = 0;
 
-  // Writes the given device-memory pointers in 'elements' to the given region
-  // to construct a tuple in the platform-specific tuple representation. This
-  // can handle nested tuples as well. In the nested case, the element
-  // DeviceMemoryBase points to another array of pointers on the device.
-  virtual Status WriteTuplePointersToDevice(
-      perftools::gputools::StreamExecutor* executor,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          elements,
-      const Shape& shape, perftools::gputools::DeviceMemoryBase* region) = 0;
+  // Given an allocated ShapedBuffer, constructs the tuple index table(s) in
+  // each buffer of the given ShapedBuffer corresponding to tuple shapes. If the
+  // ShapedBuffer is array-shaped this method does nothing.
+  Status WriteTupleIndexTables(perftools::gputools::StreamExecutor* executor,
+                               const ShapedBuffer& device_buffer);
 
   // Returns all buffer pointers that the tuple `source` refers to. Unlike
   // ShallowCopyTupleFromDevice, this function gather buffer pointers in nested
@@ -120,23 +133,6 @@ class TransferManager {
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.
   virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
-
-  // Transfer a memory block of the given size from the device source into the
-  // 'destination' buffer.
-  //
-  // size is the size to transfer to destination in bytes.
-  virtual Status TransferBufferFromDevice(
-      perftools::gputools::StreamExecutor* executor,
-      const perftools::gputools::DeviceMemoryBase& source, int64 size,
-      void* destination);
-
-  // Transfer a memory block of the given size from 'source' buffer to the given
-  // destination of the device.
-  //
-  // size is the size to transfer from source in bytes.
-  virtual Status TransferBufferToDevice(
-      perftools::gputools::StreamExecutor* executor, int64 size,
-      const void* source, perftools::gputools::DeviceMemoryBase* destination);
 
   typedef std::unique_ptr<TransferManager> (*TransferManagerCreationFunction)();
 
@@ -157,12 +153,37 @@ class TransferManager {
   static StatusOr<TransferManager*> GetForPlatform(
       const perftools::gputools::Platform* platform);
 
+ protected:
+  // Transfer a memory block of the given size from the device source into the
+  // 'destination' buffer.
+  //
+  // size is the size to transfer to destination in bytes.
+  virtual Status TransferBufferFromDevice(
+      perftools::gputools::StreamExecutor* executor,
+      const perftools::gputools::DeviceMemoryBase& source, int64 size,
+      void* destination);
+
+  // Transfer a memory block of the given size from 'source' buffer to the given
+  // destination of the device.
+  //
+  // size is the size to transfer from source in bytes.
+  virtual Status TransferBufferToDevice(
+      perftools::gputools::StreamExecutor* executor, int64 size,
+      const void* source, perftools::gputools::DeviceMemoryBase* destination);
+
+  // Writes the given device-memory pointers in 'elements' to the given region
+  // to construct a tuple in the platform-specific tuple representation. This
+  // can handle nested tuples as well. In the nested case, the element
+  // DeviceMemoryBase points to another array of pointers on the device.
+  virtual Status WriteTuplePointersToDevice(
+      perftools::gputools::StreamExecutor* executor,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          elements,
+      const Shape& shape, perftools::gputools::DeviceMemoryBase* region) = 0;
+
  private:
-  // Routine that returns the mutex that guards the
-  // platform-to-transfer manager map.  Done as a routine to
-  // ensure correct initialization ordering, since RegisterTransferManager
-  // can be called during program initialization time.
-  static tensorflow::mutex* platform_transfer_manager_mutex();
+  // The mutex that guards the platform-to-transfer manager map.
+  static tensorflow::mutex platform_transfer_manager_mutex_;
 
   // State kept for each kind of TransferManager.  Registration functions
   // set up creation_function, and then we use that to lazily create

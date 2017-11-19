@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,9 +35,10 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import saver
+from tensorflow.python.training import saver as saver_lib
 
 
 def weight(shape):
@@ -83,9 +87,13 @@ def loop():
   return outputs
 
 
-def get_config():
-  rewrite_options = rewriter_config_pb2.RewriterConfig(
-      optimize_tensor_layout=True)
+def get_config(layout_optimizer=True):
+  if layout_optimizer:
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
+  else:
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF)
   graph_options = config_pb2.GraphOptions(
       rewrite_options=rewrite_options, build_cost_model=1)
   config = config_pb2.ConfigProto(graph_options=graph_options)
@@ -94,6 +102,41 @@ def get_config():
 
 class LayoutOptimizerTest(test.TestCase):
   """Tests the Grappler layout optimizer."""
+
+  def _train(self, checkpoint_path, layout_optimizer=False, restore=False):
+    ops.reset_default_graph()
+    graph = ops.get_default_graph()
+    with session.Session(
+        config=get_config(layout_optimizer), graph=graph) as sess:
+      batch = 2
+      height = 6
+      width = 7
+      input_channels = 3
+      shape = [batch, height, width, input_channels]
+      image = array_ops.placeholder(dtype='float32', shape=shape)
+      conv1 = conv_layers.conv2d(image, 32, [3, 3])
+      conv2 = conv_layers.conv2d(conv1, 32, [3, 3])
+      optimizer = gradient_descent.GradientDescentOptimizer(0.01)
+      loss = math_ops.reduce_mean(conv2)
+      train_op = optimizer.minimize(loss)
+      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
+
+      if restore:
+        saver.restore(sess, checkpoint_path)
+      else:
+        sess.run(variables.global_variables_initializer())
+
+      np.random.seed(0)
+      for _ in range(2):
+        image_val = np.random.rand(*shape).astype(np.float32)
+        sess.run([loss, train_op], feed_dict={image: image_val})
+
+      if restore:
+        all_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+        all_vars_values = [var.eval(session=sess) for var in all_vars]
+        return all_vars_values
+      else:
+        saver.save(sess, checkpoint_path)
 
   def testTwoConvLayers(self):
     if test.is_gpu_available(cuda_only=True):
@@ -144,7 +187,8 @@ class LayoutOptimizerTest(test.TestCase):
       self.skipTest('GPU required')
 
     random_seed.set_random_seed(0)
-    x = random_ops.truncated_normal([1, 200, 200, 3], seed=0)
+    x = variables.Variable(
+        random_ops.truncated_normal([1, 200, 200, 3], seed=0))
     y = conv_layers.conv2d(x, 32, [3, 3])
     z = conv_layers.conv2d(y, 32, [3, 3])
     optimizer = gradient_descent.GradientDescentOptimizer(1e-4)
@@ -152,10 +196,10 @@ class LayoutOptimizerTest(test.TestCase):
     train_op = optimizer.minimize(loss)
     graph = ops.get_default_graph()
     graph.add_to_collection('train_op', train_op)
-    meta_graph = saver.export_meta_graph(graph_def=graph.as_graph_def())
+    meta_graph = saver_lib.export_meta_graph(graph_def=graph.as_graph_def())
 
     rewrite_options = rewriter_config_pb2.RewriterConfig(
-        optimize_tensor_layout=True)
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
     optimized_graph = tf_optimizer.OptimizeGraph(rewrite_options, meta_graph)
 
     found = 0
@@ -164,6 +208,17 @@ class LayoutOptimizerTest(test.TestCase):
         found += 1
         self.assertEqual(node.attr['data_format'].s, 'NCHW')
     self.assertEqual(found, 5)
+
+  def testCheckpointCompatibility(self):
+    checkpoint_path = self.get_temp_dir()
+    self._train(checkpoint_path)
+    vars_expected = self._train(checkpoint_path, restore=True)
+    vars_layout_optimized = self._train(
+        checkpoint_path, restore=True, layout_optimizer=True)
+
+    for var_expected, var_layout_optimized in zip(vars_expected,
+                                                  vars_layout_optimized):
+      self.assertAllClose(var_expected, var_layout_optimized, atol=1e-6)
 
 
 if __name__ == '__main__':

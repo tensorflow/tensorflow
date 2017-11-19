@@ -172,6 +172,7 @@ tensorflow/core/kernels/cwise_op_logical_or.cc
 tensorflow/core/kernels/cwise_op_log.cc
 tensorflow/core/kernels/cwise_op_less.cc
 tensorflow/core/kernels/cwise_op_less_equal.cc
+tensorflow/core/kernels/cwise_op_isnan.cc
 tensorflow/core/kernels/cwise_op_isfinite.cc
 tensorflow/core/kernels/cwise_op_invert.cc
 tensorflow/core/kernels/cwise_op_greater_equal.cc

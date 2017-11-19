@@ -46,9 +46,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
-
 // Returns whether operand is a literal with the given value.
 bool IsLiteralWithValue(const HloInstruction* operand, int8 value) {
   return operand->opcode() == HloOpcode::kConstant &&
@@ -135,7 +132,10 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleConvert(HloInstruction* convert) override;
 
+  Status HandleComplex(HloInstruction* complex) override;
+
   Status HandleReal(HloInstruction* real) override;
+
   Status HandleImag(HloInstruction* imag) override;
 
   Status HandleConvolution(HloInstruction* convolution) override;
@@ -943,6 +943,18 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   PrimitiveType dest_type = convert->shape().element_type();
   if (src_type == dest_type) {
     return ReplaceInstruction(convert, convert->mutable_operand(0));
+  }
+  return Status::OK();
+}
+
+// Complex(Real(c), Imag(c)) -> c
+Status AlgebraicSimplifierVisitor::HandleComplex(HloInstruction* complex) {
+  auto real = complex->mutable_operand(0);
+  auto imag = complex->mutable_operand(1);
+  if (real->opcode() == HloOpcode::kReal &&
+      imag->opcode() == HloOpcode::kImag &&
+      real->operand(0) == imag->operand(0)) {
+    return ReplaceInstruction(complex, real->mutable_operand(0));
   }
   return Status::OK();
 }

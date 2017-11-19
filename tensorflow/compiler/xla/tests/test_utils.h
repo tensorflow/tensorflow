@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 
@@ -61,6 +62,16 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape);
 // layout of the arguments is appropriate for given HLO module.
 StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
     const HloModule& module);
+
+// Reductions using Adds, ReduceWindow, and SelectAndScatter, require their
+// init_value to be replaced with the constant 0.0f when testing, otherwise we
+// may generate a bad init_value when looking at the op in isolation.
+Status ReplaceInitsWithConstants(HloModule* const module);
+
+// Check that a given module satisfies various constraints before trying to
+// execute it.
+Status VerifyHloModule(const perftools::gputools::Platform& platform,
+                       HloModule* const module);
 
 }  // namespace xla
 

@@ -904,9 +904,12 @@ void BM_LocalClientOverhead(int num_iters) {
   builder.Add(x, x);
   auto computation = builder.Build().ConsumeValueOrDie();
 
-  auto buffer =
-      ScopedShapedBuffer::Allocate(shape, &allocator, /*device_ordinal=*/0)
-          .ConsumeValueOrDie();
+  auto shape_size_fn = [client](const Shape& shape) {
+    return client->backend().transfer_manager()->GetByteSizeRequirement(shape);
+  };
+  auto buffer = ScopedShapedBuffer::Allocate(
+                    shape, &allocator, /*device_ordinal=*/0, shape_size_fn)
+                    .ConsumeValueOrDie();
   auto literal = Literal::CreateR2<float>({{0, 0, 0}, {0, 0, 0}});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
       executors[device_ordinal], *literal, buffer->mutable_buffer({})));

@@ -61,7 +61,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        ":memory_trace",
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
     ],
@@ -86,12 +85,6 @@ py_library(
     srcs = ["tape.py"],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
-)
-
-py_library(
-    name = "memory_trace",
-    srcs = ["memory_trace.py"],
-    srcs_version = "PY2AND3",
 )
 
 cuda_py_test(
@@ -222,6 +215,7 @@ cc_library(
         ":python_eager_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )
