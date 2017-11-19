@@ -297,5 +297,4 @@ cuda_py_test(
         "//tensorflow/python:variables",
         ":replicate_model_fn",
     ],
-    tags = ["requires-gpu-sm35"],
 )
