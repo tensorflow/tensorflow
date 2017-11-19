@@ -33,7 +33,6 @@ _VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
     'absl-py',
-    'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
@@ -46,6 +45,11 @@ if '--project_name' in sys.argv:
   project_name = sys.argv[project_name_idx + 1]
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
+
+# enum34 is only required for Python 3.4 or older
+# see https://bitbucket.org/stoneleaf/enum34/issues/19
+if not (sys.version_info.major >= 3 and sys.version_info.minor >= 4):
+    REQUIRED_PACKAGES.append('enum34 >= 1.1.6')
 
 # python3 requires wheel 0.26
 if sys.version_info.major == 3:
