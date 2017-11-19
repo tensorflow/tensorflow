@@ -210,9 +210,9 @@ tensorflow::Status LocalExecutable::RecordArguments(
     SessionModule* session_module) {
   session_module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
-    Literal literal;
-    TF_RETURN_IF_ERROR(LiteralFromShapedBuffer(*argument, &literal));
-    *session_module->add_arguments() = literal.ToProto();
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+                        LiteralFromShapedBuffer(*argument));
+    *session_module->add_arguments() = literal->ToProto();
   }
   return Status::OK();
 }
@@ -220,21 +220,19 @@ tensorflow::Status LocalExecutable::RecordArguments(
 tensorflow::Status LocalExecutable::RecordResult(
     const ShapedBuffer* result, SessionModule* session_module) {
   session_module->clear_result();
-  Literal literal(session_module->result());
-  TF_RETURN_IF_ERROR(LiteralFromShapedBuffer(*result, &literal));
-  *session_module->mutable_result() = literal.ToProto();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+                      LiteralFromShapedBuffer(*result));
+  *session_module->mutable_result() = literal->ToProto();
   return Status::OK();
 }
 
-// TODO(dnovillo) Change signature to return StatusOr<Literal>.
-tensorflow::Status LocalExecutable::LiteralFromShapedBuffer(
-    const ShapedBuffer& shaped_buffer, Literal* literal) {
+StatusOr<std::unique_ptr<Literal>> LocalExecutable::LiteralFromShapedBuffer(
+    const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
       backend_->stream_executor(shaped_buffer.device_ordinal()));
-  return backend_->transfer_manager()->TransferLiteralFromDevice(
-      executor, shaped_buffer.buffer({}), shaped_buffer.shape(),
-      shaped_buffer.shape(), literal);
+  return backend_->transfer_manager()->TransferLiteralFromDevice(executor,
+                                                                 shaped_buffer);
 }
 
 se::Platform* LocalClient::platform() const {
@@ -288,20 +286,15 @@ LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
   }
   TF_ASSIGN_OR_RETURN(
       auto scoped_buffer,
-      ScopedShapedBuffer::Allocate(literal.shape(), allocator, device_ordinal));
+      ScopedShapedBuffer::Allocate(
+          literal.shape(), allocator, device_ordinal,
+          [this](const Shape& shape) {
+            return backend().transfer_manager()->GetByteSizeRequirement(shape);
+          }));
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      literal.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsArray(subshape)) {
-          // This is a leaf of the shape. Transfer the literal array data to the
-          // device buffer.
-          return backend().transfer_manager()->TransferLiteralToDevice(
-              executor, literal.GetSubliteral(index),
-              scoped_buffer->mutable_buffer(index));
-        }
-        return Status::OK();
-      }));
+  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+      executor, literal, *scoped_buffer));
   return std::move(scoped_buffer);
 }
 
@@ -309,26 +302,11 @@ LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
 // return as a Literal.
 StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
-  std::unique_ptr<Literal> literal =
-      Literal::CreateFromShape(shaped_buffer.shape());
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
       backend().stream_executor(shaped_buffer.device_ordinal()));
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      literal->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsArray(subshape)) {
-          // This is a leaf of the shape. Transfer the device buffer into the
-          // literal. The layout of the literal and the device buffer are
-          // necessarily the same so we pass 'subshape' for both device and
-          // literal shapes.
-          return backend().transfer_manager()->TransferLiteralFromDevice(
-              executor, shaped_buffer.buffer(index),
-              /*device_shape=*/subshape,
-              /*literal_shape*/ subshape, &literal->GetSubliteral(index));
-        }
-        return Status::OK();
-      }));
-  return std::move(literal);
+  return backend().transfer_manager()->TransferLiteralFromDevice(executor,
+                                                                 shaped_buffer);
 }
 
 }  // namespace xla

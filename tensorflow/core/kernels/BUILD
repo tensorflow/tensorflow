@@ -6241,11 +6241,11 @@ cc_library(
     srcs = ["summary_interface.cc"],
     hdrs = ["summary_interface.h"],
     deps = [
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ptr_util",
     ],
 )
 
@@ -6270,6 +6270,7 @@ tf_kernel_library(
         "//tensorflow/contrib/tensorboard/db:summary_db_writer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core/lib/db:sqlite",
     ],

@@ -42,6 +42,17 @@ cc_library(
 )
 
 cc_library(
+    name = "gcs_dns_cache",
+    srcs = ["gcs_dns_cache.cc"],
+    hdrs = ["gcs_dns_cache.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":http_request",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "gcs_file_system",
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
@@ -51,6 +62,7 @@ cc_library(
         ":curl_http_request",
         ":expiring_lru_cache",
         ":file_block_cache",
+        ":gcs_dns_cache",
         ":google_auth_provider",
         ":http_request",
         ":retrying_file_system",
@@ -226,6 +238,18 @@ tf_cc_test(
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gcs_dns_cache_test",
+    size = "small",
+    srcs = ["gcs_dns_cache_test.cc"],
+    deps = [
+        ":gcs_dns_cache",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

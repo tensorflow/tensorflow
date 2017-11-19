@@ -15492,7 +15492,7 @@ op {
       }
     }
   }
-  summary: "Finds values of the `n`-th order statistic for the last dmension."
+  summary: "Finds values of the `n`-th order statistic for the last dimension."
   description: "If the input is a vector (rank-1), finds the entries which is the nth-smallest\nvalue in the vector and outputs their values as scalar tensor.\n\nFor matrices (resp. higher rank input), computes the entries which is the\nnth-smallest value in each row (resp. vector along the last dimension). Thus,\n\n    values.shape = input.shape[:-1]"
 }
 op {
@@ -31800,6 +31800,14 @@ op {
       b: true
     }
     description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
+  }
+  attr {
+    name: "identical_element_shapes"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true (default is false), then all\nelements in the TensorArray will be expected to have have identical shapes.\nThis allows certain behaviors, like dynamically checking for\nconsistent shapes on write, and being able to fill in properly\nshaped zero tensors on stack -- even if the element_shape attribute\nis not fully defined."
   }
   attr {
     name: "tensor_array_name"

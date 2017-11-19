@@ -208,6 +208,7 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
         "//tensorflow/python:summary",
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:metric_keys",

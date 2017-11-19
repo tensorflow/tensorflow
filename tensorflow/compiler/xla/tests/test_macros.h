@@ -66,8 +66,10 @@ limitations under the License.
 
 namespace xla {
 
-// Reads a disabled manifest file (and retains it as a singleton) to resolve
-// whether test cases should be disabled on a particular platform.
+// Reads a disabled manifest file to resolve whether test cases should be
+// disabled on a particular platform. For a test that should be disabled,
+// returns DISABLED_ prepended to its name; otherwise returns the test name
+// unmodified.
 string PrependDisabledIfIndicated(const string& test_case_name,
                                   const string& test_name);
 

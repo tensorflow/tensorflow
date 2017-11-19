@@ -93,8 +93,10 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
         TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
         components.emplace_back(node);
       }
-      TF_RETURN_IF_ERROR(
-          b->AddDatasetWithInputAsList(this, components, output));
+      AttrValue dtypes;
+      b->BuildAttrValue(dtypes_, &dtypes);
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, components}},
+                                       {{"Toutput_types", dtypes}}, output));
       return Status::OK();
     }
 

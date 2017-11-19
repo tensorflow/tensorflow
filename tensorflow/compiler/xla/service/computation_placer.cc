@@ -94,7 +94,7 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
     se::Platform::Id platform_id,
     ComputationPlacerCreationFunction creation_function) {
   tensorflow::mutex_lock lock(
-      *ComputationPlacer::platform_computation_placer_mutex());
+      ComputationPlacer::platform_computation_placer_mutex_);
   auto* computation_placers = GetPlatformComputationPlacers();
   CHECK(computation_placers->find(platform_id) == computation_placers->end());
   (*computation_placers)[platform_id].creation_function = creation_function;
@@ -103,7 +103,7 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
 /* static */ StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
     const se::Platform* platform) {
   tensorflow::mutex_lock lock(
-      *ComputationPlacer::platform_computation_placer_mutex());
+      ComputationPlacer::platform_computation_placer_mutex_);
   auto* computation_placers = GetPlatformComputationPlacers();
 
   auto it = computation_placers->find(platform->id());
@@ -122,11 +122,9 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
   return it->second.placer.get();
 }
 
-/* static */ tensorflow::mutex*
-ComputationPlacer::platform_computation_placer_mutex() {
-  static tensorflow::mutex* m = new tensorflow::mutex;
-  return m;
-}
+/* static */ tensorflow::mutex
+    ComputationPlacer::platform_computation_placer_mutex_(
+        tensorflow::LINKER_INITIALIZED);
 
 /* static */ std::map<perftools::gputools::Platform::Id,
                       ComputationPlacer::State>*

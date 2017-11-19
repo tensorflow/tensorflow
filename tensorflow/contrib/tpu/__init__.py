@@ -24,7 +24,6 @@
 @@initialize_system
 @@shutdown_system
 @@core
-@@outside_all_rewrites
 @@replicate
 @@shard
 @@batch_parallel

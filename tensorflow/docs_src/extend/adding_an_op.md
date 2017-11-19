@@ -451,17 +451,17 @@ Now that you know how to build a basic (and somewhat restricted) op and
 implementation, we'll look at some of the more complicated things you will
 typically need to build into your op. This includes:
 
-*   [Conditional checks and validation](#conditional_checks_and_validation)
-*   [Op registration](#op_registration)
+*   [Conditional checks and validation](#conditional-checks-and-validation)
+*   [Op registration](#op-registration)
     *   [Attrs](#attrs)
-    *   [Attr types](#attr_types)
+    *   [Attr types](#attr-types)
     *   [Polymorphism](#polymorphism)
-    *   [Inputs and outputs](#inputs_and_outputs)
-    *   [Backwards compatibility](#backwards_compatibility)
-*   [GPU support](#gpu_support)
-    *   [Compiling the kernel for the GPU device](#compiling_the_kernel_for_the_gpu_device)
-*   [Implement the gradient in Python](#implement_the_gradient_in_python)
-*   [Shape functions in C++](#shape_functions_in_c)
+    *   [Inputs and outputs](#inputs-and-outputs)
+    *   [Backwards compatibility](#backwards-compatibility)
+*   [GPU support](#gpu-support)
+    *   [Compiling the kernel for the GPU device](#compiling-the-kernel-for-the-gpu-device)
+*   [Implement the gradient in Python](#implement-the-gradient-in-python)
+*   [Shape functions in C++](#shape-functions-in-c)
 
 ### Conditional checks and validation
 

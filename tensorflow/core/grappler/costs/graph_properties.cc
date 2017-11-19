@@ -91,8 +91,15 @@ struct Processor<DimensionHandle> {
       *result = -counter;
       counter++;
     } else {
-      CHECK_LE(0, InferenceContext::Value(d));
-      *result = InferenceContext::Value(d);
+      int64 val = InferenceContext::Value(d);
+      if (val >= 0) {
+        *result = val;
+      } else {
+        // A shape inference function generated an invalid dimension handle.
+        // Use a symbolic dimension to encode this.
+        *result = -counter;
+        counter++;
+      }
     }
   }
 
@@ -627,7 +634,7 @@ Status GraphProperties::InferStatically() {
 
   std::unordered_map<const shape_inference::Dimension*, int> dim_ids;
 
-  // Track shapes globally accross the graph.
+  // Track shapes globally across the graph.
   SymbolicShapeManager shape_manager;
   bool found_error = false;
   for (const Node* const node : graph.nodes()) {

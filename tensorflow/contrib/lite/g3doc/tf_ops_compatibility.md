@@ -54,7 +54,7 @@ counterparts:
 *   [tf.sigmoid](https://www.tensorflow.org/api_docs/python/tf/sigmoid)
 *   [tf.space_to_depth](https://www.tensorflow.org/api_docs/python/tf/space_to_depth)
 
-## Straighforward Conversions, Constant-Folding and Fusing
+## Straightforward Conversions, Constant-Folding and Fusing
 
 A number of TensorFlow operations can be processed by TensorFlow Lite even
 though they have no direct equivalent. This is the case for operations that can

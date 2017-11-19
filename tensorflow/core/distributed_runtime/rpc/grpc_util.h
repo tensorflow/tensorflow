@@ -84,29 +84,6 @@ class GrpcByteBufferSource : public ::grpc::protobuf::io::ZeroCopyInputStream {
   ::grpc::protobuf::int64 byte_count_;
 };
 
-// GrpcCounter is used to delay shutdown until all active RPCs are done.
-class GrpcCounter {
- public:
-  GrpcCounter() {}
-
-  GrpcCounter(const GrpcCounter&) = delete;
-  GrpcCounter& operator=(const GrpcCounter&) = delete;
-
-  // Increment the count of live RPCs.
-  void Increment();
-
-  // Decrement the count of live RPCs.
-  void Decrement();
-
-  // Wait until count of live RPCs is zero.
-  void WaitUntilUnused();
-
- private:
-  mutex mu_;
-  condition_variable empty_;
-  int counter_ = 0;
-};
-
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_

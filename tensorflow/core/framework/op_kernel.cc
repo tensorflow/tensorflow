@@ -192,6 +192,10 @@ OpKernelConstruction::OpKernelConstruction(
       graph_def_version_(graph_def_version),
       status_(status) {}
 
+bool OpKernelConstruction::HasAttr(StringPiece attr_name) const {
+  return HasNodeAttr(def(), attr_name);
+}
+
 void OpKernelConstruction::SetStatus(const Status& status) {
   status_->Update(status);
 }
