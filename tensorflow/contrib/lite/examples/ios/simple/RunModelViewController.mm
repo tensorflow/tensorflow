@@ -1,9 +1,4 @@
-//
-//  RunModelViewController.m
-//  tf_simple_example
-//
-//  Created by Gor Baghdasaryan on 11/15/17.
-//  Copyright © 2017 Google. All rights reserved.
+// Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -158,7 +153,6 @@ static void GetTopN(const float* prediction,
 }
 
 - (NSString*)runInferenceOnImage:(UIImage *)image {
-    std::string graph;
     const int num_threads = 1;
     std::string input_layer_type = "float";
     std::vector<int> sizes = {1, 224, 224, 3};
@@ -168,7 +162,7 @@ static void GetTopN(const float* prediction,
     std::unique_ptr<tflite::FlatBufferModel> model(tflite::FlatBufferModel::BuildFromFile([graph_path fileSystemRepresentation]));
     NSAssert(model, @"Failed to mmap model %@", graph_path);
 
-    LOG(INFO) << "Loaded model " << graph;
+    LOG(INFO) << "Loaded model " << graph_path.UTF8String;
     model->error_reporter();
     LOG(INFO) << "resolved reporter";
     
