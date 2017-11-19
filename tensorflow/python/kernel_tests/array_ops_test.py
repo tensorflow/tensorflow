@@ -1114,6 +1114,21 @@ class InvertPermutationTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(y.get_shape(), [5])
         self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
 
+class UnravelIndexTest(test_util.TensorFlowTestCase):
+
+  def testUnravelIndex(self):
+    with self.test_session():
+      out_1 = array_ops.unravel_index(1621, [6, 7, 8, 9])
+      self.assertAllEqual(out_1.eval(), [3, 1, 4, 1])
+      out_2 = array_ops.unravel_index([1621], [6, 7, 8, 9])
+      self.assertAllEqual(out_2.eval(), [[3],
+                                        [1],
+                                        [4],
+                                        [1]])
+      out_3 = array_ops.unravel_index([22, 41, 37], [7, 6])
+      self.assertAllEqual(out_3.eval(), [[3, 6, 6],
+                                        [4, 5, 1]])
+
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
 
