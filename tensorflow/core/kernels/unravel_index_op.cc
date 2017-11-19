@@ -26,51 +26,71 @@ namespace tensorflow {
 namespace {
 template <typename T>
 struct mod_op {
-  const T operator()(const T& a, const T& b) const {
-    return a % b;
-  }
+  const T operator()(const T& a, const T& b) const { return a % b; }
 };
-}
+}  // namespace
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 class UnravelIndexOp : public OpKernel {
  public:
-  explicit UnravelIndexOp(OpKernelConstruction* ctx) : OpKernel(ctx) { }
+  explicit UnravelIndexOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& indices_tensor = ctx->input(0);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices_tensor.shape()) || TensorShapeUtils::IsScalar(indices_tensor.shape()), errors::InvalidArgument("The indices can only be scalar or vector, got \"", indices_tensor.shape().DebugString(), "\""));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsVector(indices_tensor.shape()) ||
+                    TensorShapeUtils::IsScalar(indices_tensor.shape()),
+                errors::InvalidArgument(
+                    "The indices can only be scalar or vector, got \"",
+                    indices_tensor.shape().DebugString(), "\""));
 
     const Tensor& dims_tensor = ctx->input(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(dims_tensor.shape()), errors::InvalidArgument("The indices can only be 1-D, got \"", dims_tensor.shape().DebugString(), "\""));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(dims_tensor.shape()),
+        errors::InvalidArgument("The indices can only be 1-D, got \"",
+                                dims_tensor.shape().DebugString(), "\""));
 
     auto dims = dims_tensor.vec<int32>();
 
     Eigen::array<bool, 1> reverse({true});
 
     Tensor strides_tensor;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_INT32, TensorShape({dims_tensor.NumElements()}), &strides_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(
+                            DT_INT32, TensorShape({dims_tensor.NumElements()}),
+                            &strides_tensor));
 
     auto strides = strides_tensor.vec<int32>();
-    strides = dims.reverse(reverse).scan(0, Eigen::internal::ProdReducer<int32>(), false).reverse(reverse);
+    strides = dims.reverse(reverse)
+                  .scan(0, Eigen::internal::ProdReducer<int32>(), false)
+                  .reverse(reverse);
 
     Tensor strides_shifted_tensor;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_INT32, TensorShape({dims_tensor.NumElements()}), &strides_shifted_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(
+                            DT_INT32, TensorShape({dims_tensor.NumElements()}),
+                            &strides_shifted_tensor));
 
     auto strides_shifted = strides_shifted_tensor.vec<int32>();
-    strides_shifted = dims.reverse(reverse).scan(0, Eigen::internal::ProdReducer<int32>(), true).reverse(reverse);
+    strides_shifted = dims.reverse(reverse)
+                          .scan(0, Eigen::internal::ProdReducer<int32>(), true)
+                          .reverse(reverse);
 
     Tensor* output_tensor = nullptr;
     if (TensorShapeUtils::IsScalar(indices_tensor.shape())) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({dims_tensor.NumElements()}), &output_tensor));
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output(0, TensorShape({dims_tensor.NumElements()}),
+                                    &output_tensor));
 
       auto output = output_tensor->vec<int32>();
 
       output = output.constant(indices_tensor.scalar<int32>()());
       output = output.binaryExpr(strides, mod_op<int32>()) / strides_shifted;
     } else {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({dims_tensor.NumElements(), indices_tensor.NumElements()}), &output_tensor));
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output(0,
+                                    TensorShape({dims_tensor.NumElements(),
+                                                 indices_tensor.NumElements()}),
+                                    &output_tensor));
 
       auto output = output_tensor->matrix<int32>();
 
@@ -79,12 +99,17 @@ class UnravelIndexOp : public OpKernel {
       Eigen::array<int64, 2> indices_reshape{{1, indices_tensor.NumElements()}};
       Eigen::array<int64, 2> indices_bcast({dims_tensor.NumElements(), 1});
 
-      output = indices_tensor.vec<int32>().reshape(indices_reshape).broadcast(indices_bcast);
-      output = output.binaryExpr(strides.reshape(reshape).broadcast(bcast), mod_op<int32>()) / strides_shifted.reshape(reshape).broadcast(bcast);
+      output = indices_tensor.vec<int32>()
+                   .reshape(indices_reshape)
+                   .broadcast(indices_bcast);
+      output = output.binaryExpr(strides.reshape(reshape).broadcast(bcast),
+                                 mod_op<int32>()) /
+               strides_shifted.reshape(reshape).broadcast(bcast);
     }
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("UnravelIndex").Device(DEVICE_CPU), UnravelIndexOp);
+REGISTER_KERNEL_BUILDER(Name("UnravelIndex").Device(DEVICE_CPU),
+                        UnravelIndexOp);
 
 }  // namespace tensorflow
