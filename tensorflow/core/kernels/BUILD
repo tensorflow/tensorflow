@@ -2564,8 +2564,13 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "batch_matmul_op",
+    srcs = [] + if_mkl([
+        "mkl_batch_matmul_op.cc",
+    ]),
     prefix = "batch_matmul_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 tf_kernel_library(
