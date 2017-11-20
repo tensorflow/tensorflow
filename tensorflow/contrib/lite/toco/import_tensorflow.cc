@@ -1263,7 +1263,7 @@ void StripCaretFromArrayNames(Model* model) {
 
 void StripZeroOutputIndexFromInputs(NodeDef* node) {
   for (auto& input : *node->mutable_input()) {
-    input = StripSuffixString(input, ":0");
+    input = string(absl::StripSuffix(input, ":0"));
   }
 }
 
