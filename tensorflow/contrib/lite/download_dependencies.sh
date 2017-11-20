@@ -60,7 +60,7 @@ download_and_extract() {
     unzip ${tempdir}/* -d ${tempdir2}
     # unzip has no strip components, so unzip to a temp dir, and move the files
     # we want from the tempdir to destination.
-    echo cp `find ${tempdir2} -type f` ${dir}/
+    cp `find ${tempdir2} -type f` ${dir}/
     rm -rf ${tempdir2} ${tempdir}
   fi
 
@@ -85,7 +85,7 @@ replace_by_sed 's#static uint32x2_t p2ui_CONJ_XOR = vld1_u32( conj_XOR_DATA );#s
 replace_by_sed 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DATA );#static uint64x2_t p2ul_CONJ_XOR;// = vld1q_u64( p2ul_conj_XOR_DATA ); - Removed by script#' \
   "${DOWNLOADS_DIR}/eigen/Eigen/src/Core/arch/NEON/Complex.h"
 
-cp ${DOWNLOADS_DIR}/models/models/* tensorflow/contrib/lite/examples/ios/simple/data/
+cp ${DOWNLOADS_DIR}/models/* tensorflow/contrib/lite/examples/ios/simple/data/
 cp ${DOWNLOADS_DIR}/quantized_models/* tensorflow/contrib/lite/examples/ios/camera/data/
 
 echo "download_dependencies.sh completed successfully." >&2
