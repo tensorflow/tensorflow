@@ -176,6 +176,7 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
+
 REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .Device(DEVICE_SYCL)
                             .HostMemory("value")
