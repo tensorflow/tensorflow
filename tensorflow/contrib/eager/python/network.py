@@ -54,16 +54,81 @@ def _network_name_scope_naming(current_variable_scope):
 class Network(base.Layer):
   """Represents the composition of a set of Layers.
 
-  TODO(josh11b,ashankar):
-  - Should "trainable" be changeable on the Network object?
-  - Do we allow add_variable in Network?
-  - Detect layers used in __call__ that weren't registered with track_layer.
-  - Convert inputs to __call__ to tensors.
-  - Prevent variables from being created after the first __call__?
-    (Think about restoring from a checkpoint).
+  `Network` implements the `Layer` interface and adds convenience methods for
+  managing sub-`Layer`s, such as listing variables.
+
+  `Layer`s (including other `Network`s) should be added via `track_layer`. They
+  can then be used when overriding the `Network.call` method:
+
+  ```python
+  class TwoLayerNetwork(tfe.Network):
+
+    def __init__(self, name):
+      super(TwoLayerNetwork, self).__init__(name=name)
+      self.layer_one = self.track_layer(tf.layers.Dense(16, input_shape=(8,)))
+      self.layer_two = self.track_layer(tf.layers.Dense(1, input_shape=(16,)))
+
+    def call(self, inputs):
+      return self.layer_two(self.layer_one(inputs))
+  ```
+
+  After constructing an object and calling the `Network`, a list of variables
+  created by tracked `Layer`s is available via `Network.variables`:
+
+  ```python
+  net = TwoLayerNetwork(name="net")
+  output = net(tf.ones([1, 8]))
+  print([v.name for v in net.variables])
+  ```
+
+  This example prints variable names, one kernel and one bias per
+  `tf.layers.Dense` layer:
+
+  ```
+  ['net/dense/kernel:0',
+   'net/dense/bias:0',
+   'net/dense_1/kernel:0',
+   'net/dense_1/bias:0']
+  ```
+
+  These variables can be passed to a `Saver` (`tf.train.Saver`, or
+  `tf.contrib.eager.Saver` when executing eagerly) to save or restore the
+  `Network`, typically alongside a global step and `tf.train.Optimizer`
+  variables when checkpointing during training.
+
+  Note that the semantics of calling a `Network` with graph execution (i.e. not
+  executing eagerly) may change slightly in the future. Currently stateful ops
+  are pruned from the graph unless they or something that depends on them is
+  executed in a session, but this behavior is not consistent with eager
+  execution (where stateful ops are executed eagerly). `Layer`s from `tf.layers`
+  do not depend on this pruning and so will not be affected, but `Network`s
+  which rely on stateful ops being added to the graph but not executed (e.g. via
+  custom `Layer`s which manage stateful ops) may break with this change.
   """
+  # TODO(josh11b,ashankar,allenl):
+  # - Should 'trainable' be changeable on the Network object?
+  # - Do we allow add_variable in Network?
+  # - Detect layers used in __call__ that weren't registered with track_layer.
+  # - Convert inputs to __call__ to tensors.
 
   def __init__(self, name=None):
+    """Configure the `Network`.
+
+    Args:
+      name: The name to use for this `Network`. If specified, it must be unique
+        in the context where this `Network` is first
+         (1) added to another `Network` (in which case it must not share a name
+           with other `Layers` added to that `Network`), or
+         (2) built/called (in which case no other 'top-level' `Network`s may
+          share this name).
+        If unspecified or None, the `Network` will be named using its class
+        name, with a number appended if necessary for uniqueness (e.g. MyNetwork
+        -> 'my_network_1').
+
+    Raises:
+      ValueError: If `name` is not valid. Note that some naming errors will
+        instead be raised when the `Network` is called.
+    """
     if isinstance(name, variable_scope.VariableScope):
       raise ValueError("VariableScopes are not valid Network names.")
     if name is not None and "/" in name:
@@ -386,7 +451,7 @@ class Network(base.Layer):
         "at https://github.com/tensorflow/tensorflow/issues/new if this is "
         "important to you")
 
-  # TODO(josh11b): Support other Layer methods needed for graph mode, such as for
+  # TODO(allenl): Support other Layer methods needed for graph mode, such as for
   # losses and updates
 
 
