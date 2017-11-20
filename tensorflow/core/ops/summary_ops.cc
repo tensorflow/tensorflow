@@ -38,6 +38,7 @@ REGISTER_OP("CreateSummaryFileWriter")
     .Input("max_queue: int32")
     .Input("flush_millis: int32")
     .Input("filename_suffix: string")
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Creates a summary file writer accessible by the given resource handle.
 
