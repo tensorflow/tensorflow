@@ -910,7 +910,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           result_val += lhs_literal.Get<ReturnT>(lhs_index) *
                         rhs_literal.Get<ReturnT>(rhs_index);
         }
-      cnt:;
+      cnt : {}
       } while (IndexUtil::BumpIndices(window_shape, &rhs_spatial_index));
 
       return result_val;
@@ -1699,6 +1699,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
   }
 
   std::vector<HloInstruction*> operands;
+  operands.reserve(owned_operands.size());
   for (auto& operand : owned_operands) {
     operands.push_back(operand.get());
   }
