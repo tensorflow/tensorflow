@@ -53,7 +53,7 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       //   kernel and output.
       //
       // For simplicity, as a first step, we reshape the input and filter to
-      // NHWC and HWIO order, respectively. This may lose precision but not
+      // NHWC and HWIO order, respectively. This may lose precision but won't
       // break the soundness.
       HloInstruction* input = hlo->mutable_operand(0);
 
@@ -98,14 +98,18 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
           HloInstruction::CreateTranspose(new_kernel_shape, kernel,
                                           new_kernel_dim_order));
 
+      std::vector<int64> new_output_dim_order(num_dims);
       std::vector<int64> new_conv_dims(num_dims);
       auto output_batch_dim = dnums.output_batch_dimension();
       auto output_feature_dim = dnums.output_feature_dimension();
+      new_output_dim_order[0] = output_batch_dim;
       new_conv_dims[0] = hlo->shape().dimensions(output_batch_dim);
       for (int i = 0; i < num_spatial_dims; ++i) {
+        new_output_dim_order[i + 1] = dnums.spatial_dimensions(i);
         new_conv_dims[i + 1] =
             hlo->shape().dimensions(dnums.spatial_dimensions(i));
       }
+      new_output_dim_order[num_dims - 1] = output_feature_dim;
       new_conv_dims[num_dims - 1] = hlo->shape().dimensions(output_feature_dim);
       Shape new_conv_shape =
           ShapeUtil::MakeShape(hlo->shape().element_type(), new_conv_dims);
@@ -129,14 +133,11 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
           HloInstruction::CreateConvolve(new_conv_shape, new_input, new_kernel,
                                          hlo->window(), new_dnums));
 
-      // kConvolution inherits the dimension mapping of its input, so we need to
-      // reshape the output back to the shape of the original convolution. This
-      // is done by apply the inverse permutation of the collapsing order of the
-      // input reshape.
+      // Reshape the output back to the shape of the original convolution.
       TF_RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
           hlo, HloInstruction::CreateTranspose(
                    hlo->shape(), new_conv,
-                   InversePermutation(new_input_dim_order))));
+                   InversePermutation(new_output_dim_order))));
       changed = true;
     }
   }

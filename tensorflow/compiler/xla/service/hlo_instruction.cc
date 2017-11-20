@@ -650,7 +650,10 @@ HloInstruction::CreateSelectAndScatter(
   CHECK_EQ(shape.dimensions().size(), operand->shape().dimensions().size());
   CHECK(std::equal(operand->shape().dimensions().begin(),
                    operand->shape().dimensions().end(),
-                   Permute(dimensions, shape.dimensions()).begin()));
+                   Permute(dimensions, shape.dimensions()).begin()))
+      << "shape: " << ShapeUtil::HumanString(shape)
+      << ", operand->shape(): " << ShapeUtil::HumanString(shape)
+      << ", dimensions: {" << Join(dimensions, ", ") << "}";
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kTranspose, shape));
   instruction->AppendOperand(operand);
