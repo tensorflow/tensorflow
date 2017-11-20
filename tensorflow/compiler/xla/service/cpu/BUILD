@@ -273,7 +273,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:ops",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
-        "//third_party/llvm/llvm:codegen",
+        "@llvm//:code_gen",
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
