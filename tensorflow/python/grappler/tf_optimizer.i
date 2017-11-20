@@ -93,7 +93,7 @@ void DetectDevices(std::unordered_map<string, tensorflow::DeviceProperties>* dev
 PyObject* TF_OptimizeGraph(
       const tensorflow::RewriterConfig& rewriter_config,
       const tensorflow::MetaGraphDef& metagraph,
-      const string& graph_id, TF_Status* out_status) {
+      bool verbose, const string& graph_id, TF_Status* out_status) {
     tensorflow::grappler::ItemConfig item_config;
     item_config.inline_functions = false;
     item_config.apply_optimizations = false;
@@ -106,7 +106,9 @@ PyObject* TF_OptimizeGraph(
     tensorflow::GraphDef out_graph;
     tensorflow::grappler::MetaOptimizer optimizer(cpu_device, rewriter_config);
     tensorflow::Status status = optimizer.Optimize(&cluster, *grappler_item, &out_graph);
-    optimizer.PrintResult();
+    if (verbose) {
+      optimizer.PrintResult();
+    }
     tensorflow::Set_TF_Status_from_Status(out_status, status);
     string out_graph_str = out_graph.SerializeAsString();
     PyObject* ret = PyBytes_FromStringAndSize(out_graph_str.data(),
@@ -119,7 +121,7 @@ PyObject* TF_OptimizeGraph(
 // Wrap this function
 PyObject* TF_OptimizeGraph(
     const tensorflow::RewriterConfig& rewriter_config,
-    const tensorflow::MetaGraphDef& metagraph,
+    const tensorflow::MetaGraphDef& metagraph, bool verbose,
     const string& graph_id, TF_Status* out_status);
 
 
