@@ -94,3 +94,19 @@ def tf_buffer(data=None):
     yield buf
   finally:
     c_api.TF_DeleteBuffer(buf)
+
+
+def tf_output(c_op, index):
+  """Returns a wrapped TF_Output with specified operation and index.
+
+  Args:
+    c_op: wrapped TF_Operation
+    index: integer
+
+  Returns:
+    Wrapped TF_Output
+  """
+  ret = c_api.TF_Output()
+  ret.oper = c_op
+  ret.index = index
+  return ret
