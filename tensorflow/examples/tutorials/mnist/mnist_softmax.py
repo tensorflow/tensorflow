@@ -29,12 +29,10 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 import tensorflow as tf
 
-FLAGS = None
-
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+  mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 
   # Create the model
   x = tf.placeholder(tf.float32, [None, 784])
@@ -72,8 +70,4 @@ def main(_):
                                       y_: mnist.test.labels}))
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--data_dir', type=str, default='/tmp/tensorflow/mnist/input_data',
-                      help='Directory for storing input data')
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.app.run(main=main)
