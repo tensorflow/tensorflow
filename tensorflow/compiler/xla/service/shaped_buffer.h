@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SHAPED_BUFFER_H_
 
 #include <memory>
+#include <ostream>
+#include <string>
 
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -79,6 +81,8 @@ class ShapedBuffer {
   void AddBufferAtIndex(const perftools::gputools::DeviceMemoryBase& buffer,
                         const ShapeIndex& shape_index);
 
+  string ToString() const;
+
  protected:
   // The shape of the device buffer with layout.
   const Shape shape_;
@@ -99,6 +103,8 @@ class ShapedBuffer {
   ShapeTree<size_t> shape_index_to_buffer_entry_;
 };
 
+std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
+
 // ShapedBuffer derived class which allocates all internal buffers on
 // construction and deallocates the memory when the object is
 // destructed.
@@ -109,7 +115,8 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // buffers (if any) are allocated and initialized to the backend-specific
   // representation of an array of pointers to the tuple elements.
   static StatusOr<std::unique_ptr<ScopedShapedBuffer>> Allocate(
-      const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal);
+      const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
+      const std::function<int64(const Shape&)>& shape_size_fn);
 
   // Takes a ShapedBuffer and returns a ScopedShapedBuffer which manages the
   // deallocation of the device memory held in the shaped buffer. All device

@@ -54,7 +54,7 @@ attribute
 attribute_value
   : kInt
   | kName
-  | [0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,}                /*dim_labels_pattern*/
+  | [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}                /*dim_labels_pattern*/
   | [0-9]+(x[0-9]+)+                                    /*dxd_pattern*/
   | [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*  /*pad_pattern*/
   | '{' sub_attributes '}'

@@ -739,7 +739,7 @@ class GradientBoostedDecisionTreeModel(object):
     # Accumulate a step after updating stats.
     batch_size = math_ops.cast(array_ops.shape(labels)[0], dtypes.float32)
     with ops.control_dependencies(stats_update_ops):
-      add_step_op = steps_accumulator.add(ensemble_stamp, [0], [0],
+      add_step_op = steps_accumulator.add(ensemble_stamp, [0], [[0, 0]],
                                           [batch_size], [1.0])
 
     # Determine learning rate.
@@ -892,7 +892,9 @@ class GradientBoostedDecisionTreeModel(object):
 
       # Accumulate gradients and hessians.
       partition_ids = math_ops.range(self._logits_dimension)
-      feature_ids = array_ops.zeros_like(partition_ids, dtype=dtypes.int64)
+      feature_ids = array_ops.zeros(
+          [self._logits_dimension, 2], dtype=dtypes.int64)
+
       add_stats_op = bias_stats_accumulator.add(
           ensemble_stamp, partition_ids, feature_ids, grads_sum, hess_sum)
       return control_flow_ops.group(*[add_stats_op], name="update_bias_stats")

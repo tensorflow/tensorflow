@@ -113,9 +113,9 @@ class LocalExecutable {
   tensorflow::Status RecordResult(const ShapedBuffer* result,
                                   SessionModule* session_module);
 
-  // Copies the contents of a ShapedBuffer into a Literal proto.
-  tensorflow::Status LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer,
-                                             Literal* literal);
+  // Returns a literal containing the contents of the given ShapedBuffer.
+  StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(
+      const ShapedBuffer& shaped_buffer);
 
   // Compiled computation.
   std::unique_ptr<Executable> executable_;

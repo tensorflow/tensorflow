@@ -165,32 +165,6 @@ class _VariableCapturingScope(object):
       yield
 
 
-class _FunctionObject(function._GraphModeFunction):  # pylint: disable=protected-access
-  """Captured graph-mode function with read-only variables.
-
-  Calling this function object will read the current values of the variables and
-  pass them to the graph mode function, which will use them as constants.
-  """
-
-  def __init__(self, variables, placeholder_inputs, extra_inputs, fdef,
-               graph, operations, outputs, func_outputs_to_fdef_outputs,
-               output_shapes):
-    self._variables = variables
-    super(_FunctionObject, self).__init__(
-        placeholder_inputs,
-        extra_inputs,
-        fdef,
-        graph,
-        operations,
-        outputs,
-        func_outputs_to_fdef_outputs,
-        output_shapes)
-
-  @property
-  def variables(self):
-    return [x.variable for x in self._variables]
-
-
 class _InitializingFunctionObject(object):
   """Responsible for deciding which version of func-to-object to call.
 
@@ -355,7 +329,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
     function._register_with_name(f.name, f.definition)  # pylint: disable=protected-access
   function._register_with_name(function._inference_name(func.__name__),  # pylint: disable=protected-access
                                initializer_function_def)
-  initializer_function = function._GraphModeFunction(  # pylint: disable=protected-access
+  initializer_function = function.GraphModeFunction(
       placeholder_inputs,
       extra_inputs,
       initializer_function_def,
@@ -374,8 +348,8 @@ def _graph_callable_internal(func, shape_and_dtypes):
       capture_func_def_outputs)
   function._register_with_name(function._inference_name(func.__name__),  # pylint: disable=protected-access
                                captured_function_def)
-  captured_function = _FunctionObject(
-      sorted_variables,
+
+  captured_function = function.GraphModeFunction(
       placeholder_inputs,
       extra_inputs,
       captured_function_def,
@@ -383,7 +357,8 @@ def _graph_callable_internal(func, shape_and_dtypes):
       capturing_operations,
       captured_outputs,
       function._map_sequence_obj_to_idx(capture_func_def_outputs),  # pylint: disable=protected-access
-      output_shapes)
+      output_shapes,
+      variables=[x.variable for x in sorted_variables])
 
   return _InitializingFunctionObject(captured_function, initializer_function,
                                      shape_and_dtypes)

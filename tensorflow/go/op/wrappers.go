@@ -24262,7 +24262,7 @@ func NthElementReverse(value bool) NthElementAttr {
 	}
 }
 
-// Finds values of the `n`-th order statistic for the last dmension.
+// Finds values of the `n`-th order statistic for the last dimension.
 //
 // If the input is a vector (rank-1), finds the entries which is the nth-smallest
 // value in the vector and outputs their values as scalar tensor.

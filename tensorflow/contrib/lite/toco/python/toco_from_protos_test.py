@@ -22,6 +22,7 @@ import tempfile
 import tensorflow as tf
 from tensorflow.contrib.lite.toco import model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2
+from tensorflow.contrib.lite.toco import types_pb2
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import resource_loader
 
@@ -47,8 +48,8 @@ class TocoFromProtosTest(googletest.TestCase):
     toco_flags = toco_flags_pb2.TocoFlags()
     toco_flags.input_format = toco_flags_pb2.TENSORFLOW_GRAPHDEF
     toco_flags.output_format = toco_flags_pb2.TFLITE
-    toco_flags.input_types.append(toco_flags_pb2.FLOAT)
-    toco_flags.inference_type = toco_flags_pb2.FLOAT
+    toco_flags.input_types.append(types_pb2.FLOAT)
+    toco_flags.inference_type = types_pb2.FLOAT
     model_flags = model_flags_pb2.ModelFlags()
     input_array = model_flags.input_arrays.add()
     input_array.name = TensorName(in_tensor)

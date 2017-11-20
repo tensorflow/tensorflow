@@ -211,8 +211,8 @@ def get_input_fn_from_numpy(data_set, num_epochs=None, shuffle=True):
 ### A Neural Network Model for Boston House Values
 
 In the remainder of this tutorial, you'll write an input function for
-preprocessing a subset of Boston housing data pulled from the [UCI Housing Data
-Set](https://archive.ics.uci.edu/ml/datasets/Housing) and use it to feed data to
+preprocessing a subset of Boston housing data pulled from the UCI Housing Data
+Set and use it to feed data to
 a neural network regressor for predicting median house values.
 
 The [Boston CSV data sets](#setup) you'll use to train your neural network
