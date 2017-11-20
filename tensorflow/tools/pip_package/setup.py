@@ -33,7 +33,6 @@ _VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
     'absl-py',
-    'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
@@ -62,9 +61,10 @@ if 'tf_nightly' in project_name:
       REQUIRED_PACKAGES.remove(package)
       break
 
-# weakref.finalize was introduced in Python 3.4
+# weakref.finalize and enum were introduced in Python 3.4
 if sys.version_info < (3, 4):
   REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
+  REQUIRED_PACKAGES.append('enum34 >= 1.1.6')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
