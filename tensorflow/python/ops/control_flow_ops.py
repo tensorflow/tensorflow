@@ -1764,7 +1764,19 @@ class CondContext(ControlFlowContext):
 
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
+    pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     original_result = fn()
+    post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
+    if len(post_summaries) > len(pre_summaries):
+      new_summaries = post_summaries[len(pre_summaries):]
+      summary_ref = ops.get_collection_ref(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
+      summary_ref[:] = pre_summaries
+      with ops.control_dependencies(new_summaries):
+        if original_result is None:
+          return no_op(), None
+        else:
+          original_result = nest.map_structure(
+              array_ops.identity, original_result)
     if original_result is None:
       return None, None
 
@@ -2629,9 +2641,23 @@ class WhileContext(ControlFlowContext):
     packed_vars_for_body = nest.pack_sequence_as(
         structure=original_loop_vars,
         flat_sequence=vars_for_body_with_tensor_arrays)
+    pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     body_result = body(*packed_vars_for_body)
+    post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     if not nest.is_sequence(body_result):
       body_result = [body_result]
+    if len(post_summaries) > len(pre_summaries):
+      new_summaries = post_summaries[len(pre_summaries):]
+      summary_ref = ops.get_collection_ref(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
+      summary_ref[:] = pre_summaries
+      with ops.control_dependencies(new_summaries):
+        def map_fn(x):
+          # TODO(apassos) figure out how to trigger with tensor arrays as well
+          if isinstance(x, tensor_array_ops.TensorArray):
+            return x
+          return array_ops.identity(x)
+        body_result = nest.map_structure(map_fn, body_result)
+
     # Compare the structure types of input and output of body.
     # For backwards compatibility, the first layer is forced to a list
     # during this comparison, because inputs are typically lists and

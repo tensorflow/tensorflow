@@ -5047,6 +5047,9 @@ class GraphKeys(object):
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
 
+  # Used to store v2 summary names.
+  _SUMMARY_COLLECTION = "_SUMMARY_V2"
+
   # List of all collections that keep track of variables.
   _VARIABLE_COLLECTIONS = [
       GLOBAL_VARIABLES,

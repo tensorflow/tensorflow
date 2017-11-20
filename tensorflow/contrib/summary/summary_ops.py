@@ -45,7 +45,6 @@ from tensorflow.python.util import tf_contextlib
 # Tensor. If this tensor is True the summary ops will record summaries.
 _SHOULD_RECORD_SUMMARIES_NAME = "ShouldRecordSummaries"
 
-_SUMMARY_COLLECTION_NAME = "_SUMMARY_V2"
 _SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
 
 _EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
@@ -298,7 +297,7 @@ def all_summary_ops():
   if context.in_eager_mode():
     raise RuntimeError(
         "tf.contrib.summary.all_summary_ops is only supported in graph mode.")
-  return ops.get_collection(_SUMMARY_COLLECTION_NAME)
+  return ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
 
 
 def summary_writer_initializer_op():
@@ -340,7 +339,7 @@ def summary_writer_function(name, tensor, function, family=None):
   with ops.device("cpu:0"):
     op = utils.smart_cond(
         should_record_summaries(), record, _nothing, name="")
-    ops.add_to_collection(_SUMMARY_COLLECTION_NAME, op)
+    ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
   return op
 
 
