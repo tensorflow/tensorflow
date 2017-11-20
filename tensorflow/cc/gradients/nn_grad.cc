@@ -63,7 +63,7 @@ Status SoftmaxCrossEntropyWithLogitsGrad(const Scope& scope,
 
   auto tempGrad = Mul(scope, gradLoss, softmaxGrad);
 
-  // TODO Check if the grad is not zero
+  // TODO: Check if this sufficient, need a check for null ?
   if (gradGrad.op().output_type(0) != 0) {
 	  auto logits = op.input(0);
 	  auto softmax = ops::Softmax(scope, logits);
