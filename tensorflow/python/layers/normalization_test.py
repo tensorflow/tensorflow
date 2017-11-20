@@ -108,8 +108,15 @@ class BNTest(test.TestCase):
                          infer_use_gpu):
     batch, height, width, input_channels = 2, 4, 5, 3
     shape = [batch, height, width, input_channels]
-    checkpoint = os.path.join(self.get_temp_dir(), 'cp_%s_%s_%s_%s' %
-        (dtype, train1_use_gpu, train2_use_gpu, infer_use_gpu))
+
+    # To use in paths, "sanitize" the dtype string representation.
+    dtype_to_str = {
+        dtypes.float16: 'float16',
+        dtypes.float32: 'float32',
+    }
+    checkpoint = os.path.join(
+        self.get_temp_dir(), 'cp_%s_%s_%s_%s' % (
+            dtype_to_str[dtype], train1_use_gpu, train2_use_gpu, infer_use_gpu))
 
     self._train(
         checkpoint,
@@ -144,7 +151,7 @@ class BNTest(test.TestCase):
                                                  train1_use_gpu=True,
                                                  train2_use_gpu=True,
                                                  infer_use_gpu=True)
- 
+
     self.assertEqual(len(ref_vars), 5)
 
     for train1_use_gpu in [True, False]:
