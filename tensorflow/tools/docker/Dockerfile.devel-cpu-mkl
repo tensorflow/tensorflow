@@ -1,33 +1,16 @@
-FROM ubuntu
+FROM tensorflow/tensorflow:latest-devel
 
 LABEL maintainer="Clayne Robison<clayne.b.robison@intel.com>"
 
-# It is possible to override these for releases.
+# These arguments are parameterized. Use --build-args to override.
 ARG TF_BRANCH=r1.4
 ARG BAZEL_VERSION=0.7.0
 ARG WHL_DIR=/whl
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
-        git \
         golang \
-        libcurl3-dev \
-        libfreetype6-dev \
-        libzmq3-dev \
-        pkg-config \
-        python-dev \
-        python-pip \
-        rsync \
-        software-properties-common \
-        unzip \
-        zip \
-        zlib1g-dev \
-        openjdk-8-jdk \
-        openjdk-8-jre-headless \
-        wget \
-	locate \
-	vim \
+        vim \
+        emacs \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -35,39 +18,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip --no-cache-dir install --upgrade \
         pip setuptools
 
-RUN pip --no-cache-dir install \
-        ipykernel \
-        matplotlib \
-        numpy \
-        scipy \
-        sklearn \
-        pandas \
-        wheel \
-        && \
-    python -m ipykernel.kernelspec
+RUN pip --no-cache-dir install wheel 
 
-# Set up Bazel.
-
-# Running bazel inside a `docker build` command causes trouble, cf:
-#   https://github.com/bazelbuild/bazel/issues/134
-# The easiest solution is to set up a bazelrc file forcing --batch.
-RUN echo "startup --batch" >>/etc/bazel.bazelrc
-# Similarly, we need to workaround sandboxing issues:
-#   https://github.com/bazelbuild/bazel/issues/418
-RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
-    >>/etc/bazel.bazelrc
+# Use the specified Bazel version
 WORKDIR /
-RUN mkdir /bazel && \
-    cd /bazel && \
-    wget --quiet https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
-    wget --quiet https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE && \
+RUN cd /bazel && \
+    rm -rf * && \
+    curl -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36" -fSsL -O https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh && \
+    curl -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36" -fSsL -o /bazel/LICENSE.txt https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE && \
     chmod +x bazel-*.sh && \
-    ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
-    rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
+    ./bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh && \
+    rm -f /bazel/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh
 
 # Download and build TensorFlow.
 WORKDIR /
-RUN git clone https://github.com/tensorflow/tensorflow.git && \
+RUN rm -rf tensorflow && \
+    git clone https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
     git checkout ${TF_BRANCH}
 WORKDIR /tensorflow
@@ -89,21 +55,24 @@ ENV CI_BUILD_PYTHON=python \
     TF_ENABLE_XLA=0 \
     TF_NEED_VERBS=0 \
     TF_NEED_MPI=0
-RUN ./configure; exit 0 # ./configure whines unnecessarily
+RUN ./configure
 
 # Build and Install TensorFlow.
+# The 'mkl' option builds with Intel(R) Math Kernel Library (MKL), which detects
+# the platform it is currently running on and takes appropriately optimized 
+# paths. The -march=native option is for code that is not in MKL, and assumes
+# this container will be run on the same architecture on which it is built.
 RUN LD_LIBRARY_PATH=${LD_LIBRARY_PATH} \
     bazel build --config=mkl \
-                --copt="-mfma" \
-                --copt="-mavx2" \
-		--config="opt" \
-               --copt="-march=native" \
+                --config="opt" \
+                --copt="-march=native" \
                 --copt="-O3" \
                 //tensorflow/tools/pip_package:build_pip_package && \
     mkdir ${WHL_DIR} && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package ${WHL_DIR}
 
 # Clean up Bazel cache when done, but leave the whl.
+# This will upgrade the default Tensorflow version with the Intel MKL version
 RUN pip --no-cache-dir install --upgrade ${WHL_DIR}/tensorflow-*.whl && \
     rm -rf /root/.cache
 
@@ -124,4 +93,4 @@ RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/issue && cat /etc/motd' \
 \n "\
 	> /etc/motd
 
-CMD ["bash"]
+CMD ["/bin/bash"]
