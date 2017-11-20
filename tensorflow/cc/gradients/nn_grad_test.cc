@@ -99,7 +99,7 @@ TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
   inputs.push_back(x);
   outputs.push_back(y.backprop);
   outputs.push_back(y.loss);
-  RunTest(inputs, shapes, outputs, outputShapes);
+  RunTest(inputs, inputShapes, outputs, outputShapes);
 }
 
 
