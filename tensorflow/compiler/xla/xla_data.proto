@@ -440,7 +440,7 @@ message ConvolutionDimensionNumbers {
 message ConvolveRequest {
   ComputationDataHandle lhs = 2;
   ComputationDataHandle rhs = 3;  // This is the filter/kernel.
-  Window window = 4;              // Describes the filter/kenel.
+  Window window = 4;              // Describes the filter/kernel.
   ConvolutionDimensionNumbers dimension_numbers = 5;
 }
 
