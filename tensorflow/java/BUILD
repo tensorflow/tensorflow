@@ -14,7 +14,6 @@ load(
     "tf_copts",
     "tf_custom_op_library",
     "tf_java_test",
-    "tf_cc_tests",
 )
 
 java_library(
@@ -98,7 +97,9 @@ tf_java_op_gen_srcjar(
 # file before making it an executable. See tf_java_op_gen_srcjar().
 cc_library(
     name = "java_op_gen_tool",
-    srcs = glob(["src/gen/cc/op_gen_main.cc"]),
+    srcs = [
+        "src/gen/cc/op_gen_main.cc",
+    ],
     copts = tf_copts(),
     deps = [
         ":java_op_gen_lib",
@@ -107,31 +108,18 @@ cc_library(
 
 cc_library(
     name = "java_op_gen_lib",
-    srcs = glob(
-        [
-            "src/gen/cc/*.h",
-            "src/gen/cc/*.cc",
-        ],
-        exclude = [
-            "src/gen/cc/*_test.cc",
-            "src/gen/cc/op_gen_main.cc",
-        ],
-    ),
+    srcs = [
+        "src/gen/cc/op_generator.h",
+        "src/gen/cc/op_generator.cc",
+        "src/gen/cc/java_defs.h",
+    ],
     copts = tf_copts(),
-    data = [":java_op_gen_resources"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
-)
-
-filegroup(
-    name = "java_op_gen_resources",
-    srcs = glob([
-        "src/gen/resources/*",
-    ]),
 )
 
 java_library(
@@ -304,40 +292,12 @@ tf_java_test(
     ],
 )
 
-#java_test(
-#    name = "OperatorProcessorTest",
-#    size = "small",
-#    srcs = ["src/test/java/org/tensorflow/processor/OperatorProcessorTest.java"],
-#    javacopts = JAVACOPTS,
-#    resources = [":processor_test_resources"],
-#    test_class = "org.tensorflow.processor.OperatorProcessorTest",
-#    deps = [
-#        ":processor_library",
-#        "//third_party/java/junit",
-#        "@com_google_testing_compile",
-#        "@com_google_truth",
-#    ],
-#)
-
 filegroup(
     name = "processor_test_resources",
     srcs = glob([
         "src/test/resources/org/tensorflow/**/*.java",
         "src/main/java/org/tensorflow/op/annotation/Operator.java",
     ]),
-)
-
-tf_cc_tests(
-    name = "java_op_gen_cc_tests",
-    size = "small",
-    srcs = glob(["src/gen/cc/*_test.cc"]),
-    deps = [
-        ":java_op_gen_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
 )
 
 filegroup(
