@@ -313,7 +313,7 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 		if err := w.WriteByte(b); err != nil {
 			return err
 		}
-	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Write(w, nativeEndian, v.Interface()); err != nil {
 			return err
 		}
@@ -325,14 +325,6 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 			expected := int(shape[0])
 			if v.Len() != expected {
 				return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
-			}
-		}
-
-		// Optimization: if only one dimension is left we can use binary.Write() directly for this slice
-		if len(shape) == 1 && v.Len() > 0 {
-			switch v.Index(0).Kind() {
-			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-				return binary.Write(w, nativeEndian, v.Interface())
 			}
 		}
 
@@ -360,7 +352,7 @@ func decodeTensor(r *bytes.Reader, shape []int64, typ reflect.Type, ptr reflect.
 			return err
 		}
 		ptr.Elem().SetBool(b == 1)
-	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Read(r, nativeEndian, ptr.Interface()); err != nil {
 			return err
 		}

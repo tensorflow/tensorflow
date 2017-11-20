@@ -19,11 +19,12 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_dataset_ops
 
 
 class _ScanDataset(dataset_ops.Dataset):
@@ -43,6 +44,7 @@ class _ScanDataset(dataset_ops.Dataset):
     # Compute initial values for the state shapes and types based on
     # the initial state. These will be refined by running
     # `tf_scan_func` one or more times below.
+    # TODO(b/68937811): Allow the initial state to be a tf.SparseTensor.
     self._state_shapes = nest.pack_sequence_as(
         self._initial_state,
         [t.shape for t in nest.flatten(self._initial_state)])
@@ -65,8 +67,8 @@ class _ScanDataset(dataset_ops.Dataset):
       # Create a list in which `tf_scan_func` will store the s
       flat_new_state_shapes = []
 
-      @function.Defun(
-          *(flat_state_types + nest.flatten(input_dataset.output_types)))
+      @function.Defun(*(flat_state_types + nest.flatten(
+          sparse.unwrap_sparse_types(input_dataset.output_types))))
       def tf_scan_func(*args):
         """A wrapper for Defun that facilitates shape inference."""
         # Pass in shape information from the state and input_dataset.
@@ -144,7 +146,8 @@ class _ScanDataset(dataset_ops.Dataset):
         nest.flatten(self._initial_state),
         self._scan_func.captured_inputs,
         f=self._scan_func,
-        output_types=nest.flatten(self.output_types),
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)),
         output_shapes=nest.flatten(self.output_shapes))
 
   @property

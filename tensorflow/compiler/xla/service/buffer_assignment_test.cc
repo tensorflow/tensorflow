@@ -85,7 +85,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, MakeUnique<DependencyHloOrdering>(module),
+               module, xla::MakeUnique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
@@ -94,7 +94,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, MakeUnique<DependencyHloOrdering>(module),
+               module, xla::MakeUnique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; }, false,
                std::move(colorer))
@@ -1448,7 +1448,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
     auto sequence =
         CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
-               module, MakeUnique<SequentialHloOrdering>(module, sequence),
+               module, xla::MakeUnique<SequentialHloOrdering>(module, sequence),
                ByteSizeOf,
                [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
@@ -1469,7 +1469,7 @@ static void RunCopyInsertion(HloModule* module) {
 }
 
 TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -1526,7 +1526,7 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
 }
 
 TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -1575,7 +1575,7 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
 }
 
 TEST_F(BufferAssignmentTest, TwoCalls) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   Shape r0f32 = ShapeUtil::MakeShape(xla::F32, {});
   HloComputation* sub_computation;
   {
@@ -1640,7 +1640,7 @@ static bool IsPostOrderTraversal(
 }
 
 TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder(TestName());
 
   auto zero = builder.AddInstruction(
@@ -1708,9 +1708,10 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto assignment =
       BufferAssigner::Run(
           module.get(),
-          MakeUnique<SequentialHloOrdering>(module.get(), sequence), ByteSizeOf,
+          xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
+          ByteSizeOf,
           [](LogicalBuffer::Color) { return 1; })
-          .ConsumeValueOrDie();
+      .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }
@@ -1718,7 +1719,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 // Test buffer assignment for while nodes with multiple uses.
 // TODO(b/37245345): Fix buffer assignment for this case.
 TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder(TestName());
 
   auto input0 = builder.AddInstruction(
@@ -1765,7 +1766,7 @@ TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
 }
 
 TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = xla::MakeUnique<HloModule>(TestName());
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(

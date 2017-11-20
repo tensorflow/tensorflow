@@ -77,6 +77,8 @@ template <>
 PrimitiveType NativeToPrimitiveType<double>();
 template <>
 PrimitiveType NativeToPrimitiveType<half>();
+template <>
+PrimitiveType NativeToPrimitiveType<bfloat16>();
 
 // Complex
 template <>
@@ -165,6 +167,11 @@ struct PrimitiveTypeToNative<F64> {
 template <>
 struct PrimitiveTypeToNative<F16> {
   using type = half;
+};
+
+template <>
+struct PrimitiveTypeToNative<BF16> {
+  using type = bfloat16;
 };
 
 // Complex

@@ -468,8 +468,8 @@ class KroneckerProductFB(FisherBlock):
     pi = utils.compute_pi(self._input_factor.get_cov(),
                           self._output_factor.get_cov())
 
-    self._input_damping = math_ops.sqrt(damping) * pi
-    self._output_damping = math_ops.sqrt(damping) / pi
+    self._input_damping = (damping**0.5) * pi
+    self._output_damping = (damping**0.5) / pi
 
     self._input_factor.register_damped_inverse(self._input_damping)
     self._output_factor.register_damped_inverse(self._output_damping)

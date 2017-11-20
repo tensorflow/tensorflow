@@ -44,6 +44,7 @@ typedef Eigen::QUInt16 quint16;
 // see framework/bfloat16.h for description.
 struct bfloat16 {
   EIGEN_DEVICE_FUNC bfloat16() {}
+
   EIGEN_DEVICE_FUNC explicit bfloat16(const float v) {
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -53,8 +54,83 @@ struct bfloat16 {
 #endif
   }
 
+  template <class T>
+  explicit EIGEN_DEVICE_FUNC bfloat16(const T& val)
+      : bfloat16(static_cast<float>(val)) {}
+
+  EIGEN_DEVICE_FUNC EIGEN_EXPLICIT_CAST(float) const {
+    float result;
+
+    uint16_t* q = reinterpret_cast<uint16_t*>(&result);
+
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    q[0] = value;
+    q[1] = 0;
+#else
+    q[0] = 0;
+    q[1] = value;
+#endif
+    return result;
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator bool() const {
+    return static_cast<bool>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator Eigen::half() const {
+    return static_cast<Eigen::half>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator short() const {
+    return static_cast<short>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator int() const {
+    return static_cast<int>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator char() const {
+    return static_cast<char>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator signed char() const {
+    return static_cast<signed char>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator unsigned char() const {
+    return static_cast<unsigned char>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator unsigned int() const {
+    return static_cast<unsigned int>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator unsigned long() const {
+    return static_cast<unsigned long>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator unsigned long long() const {
+    return static_cast<unsigned long long>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator long long() const {
+    return static_cast<long long>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator double() const {
+    return static_cast<double>(float(*this));
+  }
+
   uint16_t value;
 };
+
+inline bool operator==(const bfloat16 a, const bfloat16 b) {
+  return a.value == b.value;
+}
+
+inline bool operator!=(const bfloat16 a, const bfloat16 b) {
+  return a.value != b.value;
+}
 
 }  // end namespace tensorflow
 
@@ -62,11 +138,8 @@ namespace Eigen {
 template <>
 struct NumTraits<tensorflow::bfloat16> : GenericNumTraits<uint16_t> {};
 
-EIGEN_STRONG_INLINE bool operator==(const tensorflow::bfloat16 a,
-                                    const tensorflow::bfloat16 b) {
-  return a.value == b.value;
-}
-
+using ::tensorflow::operator==;
+using ::tensorflow::operator!=;
 }  // namespace Eigen
 
 #ifdef COMPILER_MSVC

@@ -21,7 +21,6 @@ import os
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -34,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops

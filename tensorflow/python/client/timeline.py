@@ -275,7 +275,7 @@ class _TensorTracker(object):
       name:  The name of the Tensor as a string.
       object_id:  Chrome Trace object identifier assigned for this Tensor.
       timestamp:  The creation timestamp of this event as a long integer.
-      pid:  Process identifier of the assicaiated device, as an integer.
+      pid:  Process identifier of the associated device, as an integer.
       allocator:  Name of the allocator used to create the Tensor.
       num_bytes:  Number of bytes allocated (long integer).
 

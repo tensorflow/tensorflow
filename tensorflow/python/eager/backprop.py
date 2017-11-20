@@ -120,6 +120,7 @@ _tracing = False
 # gradient function registration site, to be less error-prone
 # TODO(apassos) add ops other than those in nn_grad and math_grad
 _ops_which_dont_need_outputs = set([
+    "Identity",
     "MatMul",
     "Conv2DBackpropInput",
     "Conv2DBackpropFilter",
@@ -195,6 +196,7 @@ _ops_which_dont_need_outputs = set([
 ])
 
 _ops_which_dont_need_inputs = set([
+    "Identity",
     "Softmax",
     "LogSoftmax",
     "BiasAdd",
@@ -303,6 +305,7 @@ def implicit_val_and_grad(f):
   is not known ahead of time.
 
   Example:
+
   ```python
   dense_layer = tf.layers.Dense(1)
   def loss(x, y):
@@ -348,9 +351,9 @@ def implicit_val_and_grad(f):
         raise ValueError("Cannot differentiate a function that returns None; "
                          "did you forget to return a value from {}?".format(
                              f.__name__))
-      variables = tape.top_tape_watched_variables()
     finally:
       popped_tape = tape.pop_tape()
+      variables = popped_tape.watched_variables()
     sources = [x.handle for x in variables]
 
     if not sources:
@@ -376,6 +379,7 @@ def implicit_grad(f):
   is not known ahead of time.
 
   Example:
+
   ```python
   dense_layer = tf.layers.Dense(1)
   def loss(x, y):
@@ -727,12 +731,32 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
+_last_shape_dtype = [None, None]
+_last_zero = [None]
+
+
+def _fast_fill(value, shape, dtype):
+  return array_ops.fill(shape, constant_op.constant(value, dtype=dtype))
+
+
+def _zeros(shape, dtype):
+  """Wraps array_ops.zeros to cache last zero for a given shape and dtype."""
+  if [shape, dtype] != _last_shape_dtype:
+    _last_shape_dtype[:] = [shape, dtype]
+    _last_zero[0] = _fast_fill(0, shape, dtype)
+  return _last_zero[0]
+
+
+def _ones(shape, dtype):
+  return _fast_fill(1, shape, dtype)
+
+
 _default_vspace = imperative_grad.VSpace(
     num_elements_fn=_num_elements,
     aggregate_fn=_aggregate_grads,
     tensor_id=ops.tensor_id,
-    zeros=array_ops.zeros,
-    ones_like=lambda x: ops.convert_to_tensor(array_ops.ones_like(x)))
+    zeros=_zeros,
+    ones=_ones)
 
 
 class GradientTape(object):
@@ -821,5 +845,5 @@ class GradientTape(object):
                for x in sources]
     grad = imperative_grad.imperative_grad(
         _default_vspace, self._tape, [target], sources)
-    self.tape = None
+    self._tape = None
     return grad

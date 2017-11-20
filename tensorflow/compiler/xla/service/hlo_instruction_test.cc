@@ -1195,9 +1195,10 @@ TEST_F(HloInstructionTest, Stringification) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
 
-  EXPECT_EQ(fusion->ToString(false, false),
-            "%fusion = f32[5,20]{1,0} fusion:kTransposeDot(f32[5,10]{1,0} %x, "
-            "f32[20,10]{1,0} %y), calls=%fused_computation");
+  EXPECT_EQ(
+      fusion->ToString(false, false),
+      "%fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
+      "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));

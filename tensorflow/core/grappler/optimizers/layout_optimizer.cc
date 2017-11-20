@@ -673,7 +673,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
         return true;
       }
       bool connected =
-          ops_format_agnostic.find(node->name()) != ops_format_agnostic.end();
+          ops_format_agnostic.find(node->op()) != ops_format_agnostic.end();
       if (!connected) {
         return false;
       }

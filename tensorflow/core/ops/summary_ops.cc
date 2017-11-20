@@ -49,6 +49,33 @@ flush_millis: How often, in milliseconds, to flush the pending events and
 filename_suffix: Every event file's name is suffixed with this suffix.
 )doc");
 
+REGISTER_OP("CreateSummaryDbWriter")
+    .Input("writer: resource")
+    .Input("db_uri: string")
+    .Input("experiment_name: string")
+    .Input("run_name: string")
+    .Input("user_name: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Creates summary database writer accessible by given resource handle.
+
+This can be used to write tensors from the execution graph directly
+to a database. Only SQLite is supported right now. This function
+will create the schema if it doesn't exist. Entries in the Users,
+Experiments, and Runs tables will be created automatically if they
+don't already exist.
+
+writer: Handle to SummaryWriter resource to overwrite.
+db_uri: For example "file:/tmp/foo.sqlite".
+experiment_name: Can't contain ASCII control characters or <>. Case
+  sensitive. If empty, then the Run will not be associated with any
+  Experiment.
+run_name: Can't contain ASCII control characters or <>. Case sensitive.
+  If empty, then each Tag will not be associated with any Run.
+user_name: Must be valid as both a DNS label and Linux username. If
+  empty, then the Experiment will not be associated with any User.
+)doc");
+
 REGISTER_OP("FlushSummaryWriter")
     .Input("writer: resource")
     .SetShapeFn(shape_inference::NoOutputs)
@@ -87,6 +114,20 @@ tensor: A tensor to serialize.
 tag: The summary's tag.
 summary_metadata: Serialized SummaryMetadata protocol buffer containing
  plugin-related metadata for this summary.
+)doc");
+
+REGISTER_OP("ImportEvent")
+    .Input("writer: resource")
+    .Input("event: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Outputs a `tf.Event` protocol buffer.
+
+When CreateSummaryDbWriter is being used, this op can be useful for
+importing data from event logs.
+
+writer: A handle to a summary writer.
+event: A string containing a binary-encoded tf.Event proto.
 )doc");
 
 REGISTER_OP("WriteScalarSummary")
@@ -213,6 +254,19 @@ tag: Scalar. Used to build the `tag` attribute of the summary values.
 tensor: 2-D of shape `[batch_size, frames]`.
 sample_rate: The sample rate of the signal in hertz.
 max_outputs: Max number of batch elements to generate audio for.
+)doc");
+
+REGISTER_OP("WriteGraphSummary")
+    .Input("writer: resource")
+    .Input("global_step: int64")
+    .Input("tensor: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Writes a `GraphDef` protocol buffer to a `SummaryWriter`.
+
+writer: Handle of `SummaryWriter`.
+global_step: The step to write the summary for.
+tensor: A scalar string of the serialized tf.GraphDef proto.
 )doc");
 
 }  // namespace tensorflow

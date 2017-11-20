@@ -71,6 +71,8 @@ class CapturedFunction {
 
   ResourceMgr* resource_manager() const { return device_->resource_manager(); }
 
+  const std::vector<Tensor>& captured_inputs() { return captured_inputs_; }
+
   static int64 generate_step_id() {
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates

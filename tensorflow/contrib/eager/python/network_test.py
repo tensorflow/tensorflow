@@ -19,9 +19,12 @@ from __future__ import print_function
 import gc
 
 from tensorflow.contrib.eager.python import network
+from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import math_ops
@@ -46,8 +49,8 @@ class NetworkTest(test.TestCase):
 
   def _save_modify_load_network_built(self, net, global_step=None):
     checkpoint_directory = self.get_temp_dir()
-    checkpoint_path = net.save(
-        save_path=checkpoint_directory, global_step=global_step)
+    checkpoint_path = network.save_network_checkpoint(
+        network=net, save_path=checkpoint_directory, global_step=global_step)
     input_value = constant_op.constant([[42.0]])
     original_output = self.evaluate(net(input_value))
     for var in net.variables:
@@ -56,13 +59,13 @@ class NetworkTest(test.TestCase):
         self.evaluate(net(input_value)),
         original_output)
     # Either the returned explicit checkpoint path or the directory should work.
-    net.restore(save_path=checkpoint_directory)
+    network.restore_network_checkpoint(net, save_path=checkpoint_directory)
     self.assertAllEqual(
         original_output,
         self.evaluate(net(input_value)))
     for var in net.variables:
       self.evaluate(var.assign(var + 2.))
-    net.restore(save_path=checkpoint_path)
+    network.restore_network_checkpoint(net, save_path=checkpoint_path)
     self.assertAllEqual(
         original_output,
         self.evaluate(net(input_value)))
@@ -85,13 +88,30 @@ class NetworkTest(test.TestCase):
     result = net(constant_op.constant([[2.0]]))
     self.assertEqual(34.0, self.evaluate(result))
 
+  # TODO(akshayka): This test should be changed once an API for compiling
+  # `call` into a defun is implemented.
+  def testReplacingNetworkCallWithDefun(self):
+    net = MyNetwork(name="abcd")
+    x = constant_op.constant([[2.0]])
+    net(x)  # Force variables to be created.
+    self.evaluate(net.trainable_variables[0].assign([[17.0]]))
+
+    net.call = function.defun(net.call)
+    result = net(x)  # Build and execute the TensorFlow function
+    self.assertEqual(34.0, self.evaluate(result))
+
+    # Force the creation of another TensorFlow function by changing input shape
+    y = constant_op.constant([[1.0], [2.0]])
+    result = net(y)
+    self.assertAllEqual([[17.0], [34.0]], self.evaluate(result))
+
   # TODO(allenl): This test creates garbage in some Python versions
   @test_util.run_in_graph_and_eager_modes()
   def testNetworkSaveRestoreAlreadyBuilt(self):
     net = MyNetwork(name="abcd")
     with self.assertRaisesRegexp(
         ValueError, "Attempt to save the Network before it was first called"):
-      net.save(self.get_temp_dir())
+      network.save_network_checkpoint(net, self.get_temp_dir())
     net(constant_op.constant([[2.0]]))
     self.evaluate(net.trainable_variables[0].assign([[17.0]]))
     self._save_modify_load_network_built(net, global_step=None)
@@ -105,7 +125,7 @@ class NetworkTest(test.TestCase):
     self.evaluate(net.variables[0].assign([[3.]]))
     default_global_step = training_util.get_or_create_global_step()
     self.evaluate(default_global_step.assign(4242))
-    save_path = net.save(self.get_temp_dir())
+    save_path = network.save_network_checkpoint(net, self.get_temp_dir())
     self.assertIn("abcd-4242", save_path)
 
   # TODO(allenl): This test creates garbage in some Python versions
@@ -116,15 +136,42 @@ class NetworkTest(test.TestCase):
     test_input = constant_op.constant([[2.0]])
     net1(test_input)
     self.evaluate(net1.trainable_variables[0].assign([[17.0]]))
-    save_path = net1.save(save_dir)
+    save_path = network.save_network_checkpoint(net1, save_dir)
     # With a pre-build restore we should have the same value.
     net2 = MyNetwork()
-    net2.restore(save_path)
+    network.restore_network_checkpoint(net2, save_path)
     self.assertAllEqual(self.evaluate(net1(test_input)),
                         self.evaluate(net2(test_input)))
     self.assertIsNot(net1.variables[0], net2.variables[0])
     self.assertAllEqual(self.evaluate(net1.variables[0]),
                         self.evaluate(net2.variables[0]))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNetworkMatchesLayerVariableNames(self):
+    zero = constant_op.constant([[0.]])
+    layer_one = core.Dense(1, use_bias=False)
+    layer_one(zero)
+    layer_two = core.Dense(1, use_bias=False)
+    layer_two(zero)
+
+    class TwoLayerNet(network.Network):
+
+      def __init__(self, name=None):
+        super(TwoLayerNet, self).__init__(name=name)
+        self.first = self.track_layer(core.Dense(
+            1, use_bias=False))
+        self.second = self.track_layer(core.Dense(
+            1, use_bias=False))
+
+      def call(self, x):
+        return self.second(self.first(x))
+
+    net = TwoLayerNet()
+    net(zero)
+    self.assertEqual("two_layer_net/" + layer_one.variables[0].name,
+                     net.first.variables[0].name)
+    self.assertEqual("two_layer_net/" + layer_two.variables[0].name,
+                     net.second.variables[0].name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testLoadIntoUnbuiltSharedLayer(self):
@@ -173,14 +220,15 @@ class NetworkTest(test.TestCase):
     # Re-map the variable names so that with default restore mapping we'll
     # attempt to restore into the unbuilt Layer.
     name_mapping = {
-        "checkpoint_creator/first_layer/kernel": "owner_1/first_layer/kernel",
+        "checkpoint_creator/first_layer/kernel": "owner/first_layer/kernel",
         "checkpoint_creator/second_layer/kernel": "second_layer/kernel",
     }
-    save_path = checkpoint_creator.save(
+    save_path = network.save_network_checkpoint(
+        checkpoint_creator,
         self.get_temp_dir(),
         map_func=lambda full_name: name_mapping[full_name])
     load_into = User(use_layer=first_owner.first)
-    load_into.restore(save_path)
+    network.restore_network_checkpoint(load_into, save_path)
     self.assertEqual(0, len(first_owner.variables))
     self.assertAllEqual(self.evaluate(checkpoint_creator(one)),
                         self.evaluate(load_into(one)))
@@ -196,12 +244,13 @@ class NetworkTest(test.TestCase):
     del first_owner
     gc.collect()
     def _restore_map_func(original_name):
-      if original_name.startswith("owner_1"):
-        return original_name.replace("owner_1", "owner_2")
+      if original_name.startswith("owner/"):
+        return original_name.replace("owner/", "owner_1/")
       else:
-        return "user_2/" + original_name
+        return "user_1/" + original_name
     with self.assertRaisesRegexp(ValueError, "garbage collected"):
-      load_into.restore(save_path, map_func=_restore_map_func)
+      network.restore_network_checkpoint(
+          load_into, save_path, map_func=_restore_map_func)
 
   @test_util.run_in_graph_and_eager_modes()
   def testRestoreIntoSubNetwork(self):
@@ -221,17 +270,18 @@ class NetworkTest(test.TestCase):
     whole_model_saver(one)
     self.evaluate(whole_model_saver.variables[0].assign([[15.]]))
     self.evaluate(whole_model_saver.variables[1].assign([[16.]]))
-    whole_model_checkpoint = whole_model_saver.save(self.get_temp_dir())
+    whole_model_checkpoint = network.save_network_checkpoint(
+        whole_model_saver, self.get_temp_dir())
 
     save_from = MyNetwork()
     save_from(one)
     self.evaluate(save_from.variables[0].assign([[5.]]))
-    checkpoint = save_from.save(self.get_temp_dir())
+    checkpoint = network.save_network_checkpoint(save_from, self.get_temp_dir())
     save_into_parent = Parent()
-    save_into_parent.restore(whole_model_checkpoint)
-    save_into_parent.first.restore(checkpoint)
-    save_into_parent.first.restore(checkpoint)  # deferred loading multiple
-                                                # times is fine
+    network.restore_network_checkpoint(save_into_parent, whole_model_checkpoint)
+    network.restore_network_checkpoint(save_into_parent.first, checkpoint)
+    # deferred loading multiple times is fine
+    network.restore_network_checkpoint(save_into_parent.first, checkpoint)
     save_into_parent(one)  # deferred loading
     self.assertAllEqual([[5.]], self.evaluate(save_into_parent.variables[0]))
     self.assertAllEqual([[16.]], self.evaluate(save_into_parent.variables[1]))
@@ -240,9 +290,9 @@ class NetworkTest(test.TestCase):
     # (deferred restoration should happen the same way non-deferred happens,
     # with later restorations overwriting older ones).
     save_into_parent = Parent()
-    save_into_parent.first.restore(checkpoint)  # deferred loading multiple
-                                                # times is fine
-    save_into_parent.restore(whole_model_checkpoint)
+    # deferred loading multiple times is fine
+    network.restore_network_checkpoint(save_into_parent.first, checkpoint)
+    network.restore_network_checkpoint(save_into_parent, whole_model_checkpoint)
     save_into_parent(one)  # deferred loading
     # We've overwritten the sub-Network restore.
     self.assertAllEqual([[15.]], self.evaluate(save_into_parent.variables[0]))
@@ -250,12 +300,12 @@ class NetworkTest(test.TestCase):
 
     self.evaluate(save_into_parent.variables[0].assign([[3.]]))
     self.evaluate(save_into_parent.variables[1].assign([[4.]]))
-    save_into_parent.second.restore(checkpoint)
+    network.restore_network_checkpoint(save_into_parent.second, checkpoint)
     self.assertAllEqual([[5.]], self.evaluate(save_into_parent.variables[1]))
     with self.assertRaisesRegexp(errors_impl.NotFoundError,
                                  "not found in checkpoint"):
       # The checkpoint is incompatible.
-      save_into_parent.restore(checkpoint)
+      network.restore_network_checkpoint(save_into_parent, checkpoint)
 
   @test_util.run_in_graph_and_eager_modes()
   def testCustomMapCollisionErrors(self):
@@ -277,31 +327,36 @@ class NetworkTest(test.TestCase):
     self.evaluate(make_checkpoint.variables[1].assign([[3.]]))
     with self.assertRaisesRegexp(
         ValueError,
-        "The map_func passed to Network.save for the Network 'parent_1' "
-        "resulted in two variables named 'foo'"):
-      make_checkpoint.save(self.get_temp_dir(), map_func=lambda n: "foo")
-    checkpoint = make_checkpoint.first.save(
-        self.get_temp_dir(), map_func=lambda n: "foo")
+        "The map_func passed to save_network_checkpoint for the Network "
+        "'parent' resulted in two variables named 'foo'"):
+      network.save_network_checkpoint(
+          make_checkpoint, self.get_temp_dir(), map_func=lambda n: "foo")
+    checkpoint = network.save_network_checkpoint(
+        network=make_checkpoint.first,
+        save_path=self.get_temp_dir(),
+        map_func=lambda n: "foo")
     loader = Parent()
-    loader.restore(checkpoint, map_func=lambda n: "foo")
+    network.restore_network_checkpoint(
+        loader, checkpoint, map_func=lambda n: "foo")
     with self.assertRaisesRegexp(
         ValueError,
-        ("The map_func passed to Network.restore for the Network"
-         " 'parent_2' resulted in two variables named 'foo'")):
+        ("The map_func passed to restore_network_checkpoint for the Network"
+         " 'parent_1' resulted in two variables named 'foo'")):
       loader(one)
     loader = Parent()
     loader(one)
     with self.assertRaisesRegexp(
         ValueError,
-        ("The map_func passed to Network.restore for the Network"
-         " 'parent_3' resulted in two variables named 'foo'")):
-      loader.restore(checkpoint, map_func=lambda n: "foo")
+        ("The map_func passed to restore_network_checkpoint for the Network"
+         " 'parent_2' resulted in two variables named 'foo'")):
+      network.restore_network_checkpoint(
+          loader, checkpoint, map_func=lambda n: "foo")
 
   @test_util.run_in_graph_and_eager_modes()
   def testDefaultMapCollisionErrors(self):
 
     one = constant_op.constant([[1.]])
-    first = core.Dense(1, name="dense_1", use_bias=False)
+    first = core.Dense(1, name="dense", use_bias=False)
     first(one)
 
     class Parent(network.Network):
@@ -322,8 +377,8 @@ class NetworkTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         ("The default checkpoint variable name mapping strategy for Network "
-         "'parent_1' resulted in a naming conflict.")):
-      make_checkpoint.save(self.get_temp_dir())
+         "'parent' resulted in a naming conflict.")):
+      network.save_network_checkpoint(make_checkpoint, self.get_temp_dir())
 
     class Compatible(network.Network):
 
@@ -337,14 +392,15 @@ class NetworkTest(test.TestCase):
     successful_checkpoint = Compatible()
     successful_checkpoint(one)
     self.evaluate(successful_checkpoint.variables[0].assign([[-1.]]))
-    checkpoint_path = successful_checkpoint.save(self.get_temp_dir())
+    checkpoint_path = network.save_network_checkpoint(
+        successful_checkpoint, self.get_temp_dir())
     load_checkpoint = Parent()
     load_checkpoint(one)
     with self.assertRaisesRegexp(
         ValueError,
         ("The default checkpoint variable name mapping strategy for Network "
-         "'parent_2' resulted in a naming conflict.")):
-      load_checkpoint.restore(checkpoint_path)
+         "'parent_1' resulted in a naming conflict.")):
+      network.restore_network_checkpoint(load_checkpoint, checkpoint_path)
 
   def testNoReferenceCyclesAfterCall(self):
 
@@ -398,6 +454,36 @@ class NetworkTest(test.TestCase):
     self.assertIsInstance(net.trainable_weights[0],
                           resource_variable_ops.ResourceVariable)
 
+  def testGraphOpNames(self):
+    """Network operation names should match variable naming."""
+
+    def _check_op_prefixes(expected_prefix, checked_ops):
+      for operation in ops.get_default_graph().get_operations():
+        if operation.name == "ignore":
+          continue
+        if operation.name in checked_ops:
+          continue
+        checked_ops.add(operation.name)
+        self.assertStartsWith(expected_start=expected_prefix,
+                              actual=operation.name)
+        self.assertNotIn("my_network", operation.name[len(expected_prefix):])
+        self.assertNotIn("dense", operation.name[len(expected_prefix):])
+
+    with context.graph_mode():
+      net = MyNetwork()
+      zero = constant_op.constant([[0.]], name="ignore")
+      net(zero)
+      checked_ops = set()
+      _check_op_prefixes(expected_prefix="my_network/dense/",
+                         checked_ops=checked_ops)
+      net.net2 = net.track_layer(MyNetwork())
+      net.net2(zero)
+      _check_op_prefixes(expected_prefix="my_network/my_network/dense/",
+                         checked_ops=checked_ops)
+      MyNetwork()(zero)
+      _check_op_prefixes(expected_prefix="my_network_1/dense/",
+                         checked_ops=checked_ops)
+
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDuplicateNameError(self):
     one = constant_op.constant([[1.]])
@@ -410,19 +496,103 @@ class NetworkTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testWrappingInVariableScope(self):
+    one = constant_op.constant([[1.]])
+    # Naming happens in the order of first build rather than the order of
+    # construction, but for clarity they're the same here and construction is
+    # annotated.
+    outside_net_before = MyNetwork()  # name=my_network
+    outside_net_before(one)
+    captured_scope = variable_scope.get_variable_scope()
     with variable_scope.variable_scope("outside_scope"):
-      net = MyNetwork()
-      one = constant_op.constant([[1.]])
-      with self.assertRaisesRegexp(
-          ValueError,
-          ("Creating Networks inside named variable_scopes is currently not "
-           "supported")):
-        net(one)
-      # Alternatively, we could re-name the Network to match the variable_scope:
-      # self.assertEqual("outside_scope/my_network_1", net.name)
-      # self.assertStartsWith(
-      #     expected_start="outside_scope/my_network_1/dense/",
-      #     actual=net.trainable_weights[0].name)
+      net1 = MyNetwork()  # name=outside_scope/my_network
+      net1(one)
+      name_conflict1 = MyNetwork(name="name_conflict")  # fine, unique so far
+      name_conflict2 = MyNetwork(name="name_conflict")  # error on build
+      with variable_scope.variable_scope("inside_scope"):
+        # No issue here since the name is unique within its scope.
+        name_conflict3 = MyNetwork(name="name_conflict")
+      net2 = MyNetwork()  # name=outside_scope/my_network_2 to avoid the
+                          # variable_scope my_network_1 below.
+      vs_name_conflict = MyNetwork(name="vs_name_conflict")  # conflict below
+    with variable_scope.variable_scope("intervening_scope"):
+      with variable_scope.variable_scope(captured_scope):
+        with variable_scope.variable_scope("outside_scope"):
+          name_conflict4 = MyNetwork(name="name_conflict")  # error on build
+          with variable_scope.variable_scope("my_network_1"):
+            pass
+          with variable_scope.variable_scope("vs_name_conflict"):
+            pass
+          net3 = MyNetwork()  # name=outside_scope/my_network_4
+    name_conflict1(one)
+    with self.assertRaisesRegexp(
+        ValueError, "named 'name_conflict' already exists"):
+      name_conflict2(one)
+    name_conflict3(one)
+    net2(one)
+    with self.assertRaisesRegexp(
+        ValueError, "or a variable_scope was created with this name"):
+      vs_name_conflict(one)
+    with self.assertRaisesRegexp(
+        ValueError, "named 'name_conflict' already exists"):
+      name_conflict4(one)
+    self.assertEqual("outside_scope/name_conflict",
+                     name_conflict1.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/name_conflict/dense/",
+        actual=name_conflict1.variables[0].name)
+    self.assertEqual("outside_scope/inside_scope/name_conflict",
+                     name_conflict3.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/inside_scope/name_conflict/dense/",
+        actual=name_conflict3.variables[0].name)
+    self.assertEqual("outside_scope/my_network", net1.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/my_network/dense/",
+        actual=net1.trainable_weights[0].name)
+    self.assertEqual("outside_scope/my_network_2", net2.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/my_network_2/dense/",
+        actual=net2.trainable_weights[0].name)
+    net3(one)
+    self.assertEqual("outside_scope/my_network_3", net3.name)
+    self.assertStartsWith(
+        expected_start="outside_scope/my_network_3/dense/",
+        actual=net3.trainable_weights[0].name)
+    outside_net_after = MyNetwork()
+    outside_net_after(one)
+    self.assertEqual("my_network", outside_net_before.name)
+    self.assertStartsWith(
+        expected_start="my_network/dense/",
+        actual=outside_net_before.trainable_weights[0].name)
+    self.assertEqual("my_network_1", outside_net_after.name)
+    self.assertStartsWith(
+        expected_start="my_network_1/dense/",
+        actual=outside_net_after.trainable_weights[0].name)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testVariableScopeStripping(self):
+    with variable_scope.variable_scope("scope1"):
+      with variable_scope.variable_scope("scope2"):
+        net = MyNetwork()
+    net(constant_op.constant([[2.0]]))
+    self.evaluate(net.variables[0].assign([[42.]]))
+    self.assertEqual(net.name, "scope1/scope2/my_network")
+    self.assertStartsWith(
+        expected_start="scope1/scope2/my_network/dense/",
+        actual=net.trainable_weights[0].name)
+    save_path = network.save_network_checkpoint(net, self.get_temp_dir())
+    self.assertIn("scope1_scope2_my_network", save_path)
+    restore_net = MyNetwork()
+    # Delayed restoration
+    network.restore_network_checkpoint(restore_net, save_path)
+    restore_net(constant_op.constant([[1.0]]))
+    self.assertAllEqual([[42.]],
+                        self.evaluate(restore_net.variables[0]))
+    self.evaluate(restore_net.variables[0].assign([[-1.]]))
+    # Immediate restoration
+    network.restore_network_checkpoint(restore_net, save_path)
+    self.assertAllEqual([[42.]],
+                        self.evaluate(restore_net.variables[0]))
 
   @test_util.run_in_graph_and_eager_modes()
   def testLayerNamesRespected(self):
@@ -439,7 +609,7 @@ class NetworkTest(test.TestCase):
     one = constant_op.constant([[1.]])
     net = ParentNetwork()
     net(one)
-    self.assertStartsWith(expected_start="parent_network_1/explicit_name/",
+    self.assertStartsWith(expected_start="parent_network/explicit_name/",
                           actual=net.trainable_weights[0].name)
     self.assertEqual("explicit_name", net.first.name)
 
@@ -494,15 +664,15 @@ class NetworkTest(test.TestCase):
     # locally so that previous Layer consutrciton does not interfere with
     # variable naming (e.g. add a Layer construction before the Network,
     # suddenly your previously saved checkpoint is incompatible).
-    self.assertEqual("dense_1", net1.l1.name)
-    self.assertEqual("dense_1", net2.l1.name)
+    self.assertEqual("dense", net1.l1.name)
+    self.assertEqual("dense", net2.l1.name)
     self.evaluate(net1.trainable_weights[0].assign([[1.]]))
     self.evaluate(net2.trainable_weights[0].assign([[2.]]))
     self.assertEqual(2., self.evaluate(net2.trainable_weights[0]))
     self.assertEqual(1., self.evaluate(net1.trainable_weights[0]))
-    self.assertStartsWith(expected_start="my_network_1/dense_1/",
+    self.assertStartsWith(expected_start="my_network/dense/",
                           actual=net1.trainable_weights[0].name)
-    self.assertStartsWith(expected_start="my_network_2/dense_1/",
+    self.assertStartsWith(expected_start="my_network_1/dense/",
                           actual=net2.trainable_weights[0].name)
 
   @test_util.run_in_graph_and_eager_modes()
@@ -523,31 +693,31 @@ class NetworkTest(test.TestCase):
     one = constant_op.constant([[1.]])
     net = ParentNetwork()
     net(one)
-    self.assertStartsWith(expected_start="parent_network_1/my_network_1/dense",
+    self.assertStartsWith(expected_start="parent_network/my_network/dense",
                           actual=net.trainable_weights[0].name)
-    self.assertStartsWith(expected_start="parent_network_1/my_network_1/dense",
+    self.assertStartsWith(expected_start="parent_network/my_network/dense",
                           actual=net.first.trainable_weights[0].name)
-    self.assertStartsWith(expected_start="parent_network_1/my_network_2/dense",
+    self.assertStartsWith(expected_start="parent_network/my_network_1/dense",
                           actual=net.trainable_weights[1].name)
-    self.assertStartsWith(expected_start="parent_network_1/my_network_2/dense",
+    self.assertStartsWith(expected_start="parent_network/my_network_1/dense",
                           actual=net.second.trainable_weights[0].name)
-    self.assertEqual("parent_network_1", net.name)
-    self.assertEqual("my_network_1", net.first.name)
-    self.assertEqual("my_network_2", net.second.name)
+    self.assertEqual("parent_network", net.name)
+    self.assertEqual("my_network", net.first.name)
+    self.assertEqual("my_network_1", net.second.name)
 
     net2 = ParentNetwork()
     net2(one)
-    self.assertStartsWith(expected_start="parent_network_2/my_network_1/dense",
+    self.assertStartsWith(expected_start="parent_network_1/my_network/dense",
                           actual=net2.trainable_weights[0].name)
-    self.assertStartsWith(expected_start="parent_network_2/my_network_1/dense",
+    self.assertStartsWith(expected_start="parent_network_1/my_network/dense",
                           actual=net2.first.trainable_weights[0].name)
-    self.assertStartsWith(expected_start="parent_network_2/my_network_2/dense",
+    self.assertStartsWith(expected_start="parent_network_1/my_network_1/dense",
                           actual=net2.trainable_weights[1].name)
-    self.assertStartsWith(expected_start="parent_network_2/my_network_2/dense",
+    self.assertStartsWith(expected_start="parent_network_1/my_network_1/dense",
                           actual=net2.second.trainable_weights[0].name)
-    self.assertEqual("parent_network_2", net2.name)
-    self.assertEqual("my_network_1", net2.first.name)
-    self.assertEqual("my_network_2", net2.second.name)
+    self.assertEqual("parent_network_1", net2.name)
+    self.assertEqual("my_network", net2.first.name)
+    self.assertEqual("my_network_1", net2.second.name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testNestableExplicit(self):
@@ -608,26 +778,26 @@ class NetworkTest(test.TestCase):
     one = constant_op.constant([[1.]])
     net = MixedLayerNetwork()
     net(one)
-    self.assertEqual("dense_1", net.first.name)
-    self.assertEqual("dense_2", net.second.name)
-    self.assertEqual("dense_3", net.third.name)
-    self.assertEqual("dense_4", net.fourth.name)
-    self.assertEqual("dense_5", net.fifth.name)
+    self.assertEqual("dense", net.first.name)
+    self.assertEqual("dense_1", net.second.name)
+    self.assertEqual("dense_2", net.third.name)
+    self.assertEqual("dense_3", net.fourth.name)
+    self.assertEqual("dense_4", net.fifth.name)
     # Note that this is _not_ the default naming behavior for Layers. Layers
     # which are added to Networks follow Network variable naming conventions
     # (i.e. variable names = network name unless variable sharing). Nested
     # Layers revert to Layer behavior.
-    self.assertStartsWith(expected_start="mixed_layer_network_1/dense_1/",
+    self.assertStartsWith(expected_start="mixed_layer_network/dense/",
                           actual=net.trainable_weights[0].name)
-    self.assertStartsWith(expected_start="mixed_layer_network_1/dense_2/",
+    self.assertStartsWith(expected_start="mixed_layer_network/dense_1/",
                           actual=net.trainable_weights[1].name)
-    self.assertStartsWith(expected_start="mixed_layer_network_1/dense_3/",
+    self.assertStartsWith(expected_start="mixed_layer_network/dense_2/",
                           actual=net.trainable_weights[2].name)
-    self.assertStartsWith(expected_start="mixed_layer_network_1/dense_4/",
+    self.assertStartsWith(expected_start="mixed_layer_network/dense_3/",
                           actual=net.trainable_weights[3].name)
-    self.assertStartsWith(expected_start="mixed_layer_network_1/dense_5/",
+    self.assertStartsWith(expected_start="mixed_layer_network/dense_4/",
                           actual=net.trainable_weights[4].name)
-    self.assertEqual("mixed_layer_network_1", net.name)
+    self.assertEqual("mixed_layer_network", net.name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testNestableExplicitCollisions(self):
@@ -680,24 +850,24 @@ class NetworkTest(test.TestCase):
     net = ParentNetwork()
     net(one)
     self.assertStartsWith(
-        expected_start="parent_network_1/first_unique_child_name/dense_1/",
+        expected_start="parent_network/first_unique_child_name/dense/",
         actual=net.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="parent_network_1/second_unique_child_name/dense_1/",
+        expected_start="parent_network/second_unique_child_name/dense/",
         actual=net.trainable_weights[1].name)
-    self.assertEqual("parent_network_1", net.name)
+    self.assertEqual("parent_network", net.name)
     self.assertEqual("first_unique_child_name", net.first.name)
     self.assertEqual("second_unique_child_name", net.second.name)
 
     net2 = ParentNetwork()
     net2(one)
     self.assertStartsWith(
-        expected_start="parent_network_2/first_unique_child_name/dense",
+        expected_start="parent_network_1/first_unique_child_name/dense",
         actual=net2.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="parent_network_2/second_unique_child_name/dense",
+        expected_start="parent_network_1/second_unique_child_name/dense",
         actual=net2.trainable_weights[1].name)
-    self.assertEqual("parent_network_2", net2.name)
+    self.assertEqual("parent_network_1", net2.name)
     self.assertEqual("first_unique_child_name", net2.first.name)
     self.assertEqual("second_unique_child_name", net2.second.name)
 
@@ -755,15 +925,15 @@ class NetworkTest(test.TestCase):
     net2(one)
 
     self.assertStartsWith(
-        expected_start="first_parent_network_1/my_network_1/dense_1/",
+        expected_start="first_parent_network/my_network/dense/",
         actual=net2.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="second_parent_network_1/my_network_1/dense_1/",
+        expected_start="second_parent_network/my_network/dense/",
         actual=net2.trainable_weights[1].name)
-    self.assertEqual("second_parent_network_1", net2.name)
+    self.assertEqual("second_parent_network", net2.name)
     self.assertTrue(net2.first is net.first)
-    self.assertEqual("my_network_1", net2.first.name)
-    self.assertEqual("my_network_1", net2.second.name)
+    self.assertEqual("my_network", net2.first.name)
+    self.assertEqual("my_network", net2.second.name)
 
     # No name collision; the owned Network is added first and has a different
     # name than the shared Network.
@@ -781,15 +951,15 @@ class NetworkTest(test.TestCase):
     net3(one)
 
     self.assertStartsWith(
-        expected_start="third_parent_network_1/my_network_1/dense",
+        expected_start="third_parent_network/my_network/dense",
         actual=net3.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="first_parent_network_1/my_network_2/dense",
+        expected_start="first_parent_network/my_network_1/dense",
         actual=net3.trainable_weights[1].name)
-    self.assertEqual("third_parent_network_1", net3.name)
+    self.assertEqual("third_parent_network", net3.name)
     self.assertTrue(net3.second is net.second)
-    self.assertEqual("my_network_1", net3.first.name)
-    self.assertEqual("my_network_2", net3.second.name)
+    self.assertEqual("my_network", net3.first.name)
+    self.assertEqual("my_network_1", net3.second.name)
 
     # "Unavoidable" same-name Layer. The owned name is added first (fixed), then
     # a shared Network is added with the same name.
@@ -807,15 +977,15 @@ class NetworkTest(test.TestCase):
     net4(one)
 
     self.assertStartsWith(
-        expected_start="fourth_parent_network_1/my_network_1/dense_1/",
+        expected_start="fourth_parent_network/my_network/dense/",
         actual=net4.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="first_parent_network_1/my_network_1/dense_1/",
+        expected_start="first_parent_network/my_network/dense/",
         actual=net4.trainable_weights[1].name)
-    self.assertEqual("fourth_parent_network_1", net4.name)
+    self.assertEqual("fourth_parent_network", net4.name)
     self.assertTrue(net4.second is net.first)
-    self.assertEqual("my_network_1", net4.first.name)
-    self.assertEqual("my_network_1", net4.second.name)
+    self.assertEqual("my_network", net4.first.name)
+    self.assertEqual("my_network", net4.second.name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testRecursiveLayerRenaming(self):
@@ -846,28 +1016,28 @@ class NetworkTest(test.TestCase):
     net(one)
 
     self.assertStartsWith(
-        expected_start=("parent_network_1/network_with_layer_children_1/"
-                        "dense_1/"),
+        expected_start=("parent_network/network_with_layer_children/"
+                        "dense/"),
         actual=net.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start=("parent_network_1/network_with_layer_children_1/"
-                        "dense_2/"),
+        expected_start=("parent_network/network_with_layer_children/"
+                        "dense_1/"),
         actual=net.trainable_weights[1].name)
     self.assertStartsWith(
-        expected_start=("parent_network_1/network_with_layer_children_2/"
-                        "dense_1/"),
+        expected_start=("parent_network/network_with_layer_children_1/"
+                        "dense/"),
         actual=net.trainable_weights[2].name)
     self.assertStartsWith(
-        expected_start=("parent_network_1/network_with_layer_children_2/"
-                        "dense_2/"),
+        expected_start=("parent_network/network_with_layer_children_1/"
+                        "dense_1/"),
         actual=net.trainable_weights[3].name)
-    self.assertEqual("parent_network_1", net.name)
-    self.assertEqual("network_with_layer_children_1", net.first.name)
-    self.assertEqual("network_with_layer_children_2", net.second.name)
-    self.assertEqual("dense_1", net.first.first.name)
-    self.assertEqual("dense_2", net.first.second.name)
-    self.assertEqual("dense_1", net.second.first.name)
-    self.assertEqual("dense_2", net.second.second.name)
+    self.assertEqual("parent_network", net.name)
+    self.assertEqual("network_with_layer_children", net.first.name)
+    self.assertEqual("network_with_layer_children_1", net.second.name)
+    self.assertEqual("dense", net.first.first.name)
+    self.assertEqual("dense_1", net.first.second.name)
+    self.assertEqual("dense", net.second.first.name)
+    self.assertEqual("dense_1", net.second.second.name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testCallInDifferentOrderThanConstruct(self):
@@ -901,23 +1071,23 @@ class NetworkTest(test.TestCase):
     net1(one)
 
     self.assertStartsWith(
-        expected_start="first_network_1/my_network_1/dense_1/",
+        expected_start="first_network/my_network/dense/",
         actual=net1.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="first_network_1/my_network_2/dense_1/",
+        expected_start="first_network/my_network_1/dense/",
         actual=net1.trainable_weights[1].name)
     self.assertStartsWith(
-        expected_start="first_network_1/my_network_1/dense_1/",
+        expected_start="first_network/my_network/dense/",
         actual=net2.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="second_network_1/my_network_1/dense_1/",
+        expected_start="second_network/my_network/dense/",
         actual=net2.trainable_weights[1].name)
     self.assertTrue(net1.trainable_weights[0] is net2.trainable_weights[0])
-    self.assertEqual("first_network_1", net1.name)
-    self.assertEqual("my_network_1", net1.first.name)
-    self.assertEqual("my_network_2", net1.second.name)
+    self.assertEqual("first_network", net1.name)
+    self.assertEqual("my_network", net1.first.name)
+    self.assertEqual("my_network_1", net1.second.name)
     self.assertTrue(net2.first is net1.first)
-    self.assertEqual("my_network_1", net2.second.name)
+    self.assertEqual("my_network", net2.second.name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testLayerCallInDifferentOrderThanConstruct(self):
@@ -954,23 +1124,23 @@ class NetworkTest(test.TestCase):
     net1(one)
 
     self.assertStartsWith(
-        expected_start="first_network_1/dense_1/",
+        expected_start="first_network/dense/",
         actual=net1.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="first_network_1/dense_2/",
+        expected_start="first_network/dense_1/",
         actual=net1.trainable_weights[1].name)
     self.assertStartsWith(
-        expected_start="first_network_1/dense_1/",
+        expected_start="first_network/dense/",
         actual=net2.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="second_network_1/dense_1/",
+        expected_start="second_network/dense/",
         actual=net2.trainable_weights[1].name)
     self.assertTrue(net1.trainable_weights[0] is net2.trainable_weights[0])
-    self.assertEqual("first_network_1", net1.name)
-    self.assertEqual("dense_1", net1.first.name)
-    self.assertEqual("dense_2", net1.second.name)
+    self.assertEqual("first_network", net1.name)
+    self.assertEqual("dense", net1.first.name)
+    self.assertEqual("dense_1", net1.second.name)
     self.assertTrue(net2.first is net1.first)
-    self.assertEqual("dense_1", net2.second.name)
+    self.assertEqual("dense", net2.second.name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testLayerAlreadyBuilt(self):
@@ -999,13 +1169,13 @@ class NetworkTest(test.TestCase):
                                     # do not match their layer names.
         actual=net.trainable_weights[0].name)
     self.assertStartsWith(
-        expected_start="first_network_1/dense_1/",
+        expected_start="first_network/dense/",
         actual=net.trainable_weights[1].name)
     self.assertTrue(
         net.trainable_weights[0] is shared_layer.trainable_weights[0])
-    self.assertEqual("first_network_1", net.name)
+    self.assertEqual("first_network", net.name)
     self.assertEqual("dense_3", net.first.name)
-    self.assertEqual("dense_1", net.second.name)
+    self.assertEqual("dense", net.second.name)
 
 
 class SequentialTest(test.TestCase):

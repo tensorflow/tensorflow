@@ -17,9 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
+from tensorflow.python.ops import gen_dataset_ops
 
 
 def ignore_errors():
@@ -63,7 +64,8 @@ class IgnoreErrorsDataset(dataset_ops.Dataset):
     return gen_dataset_ops.ignore_errors_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.unwrap_sparse_types(self.output_types)))
 
   @property
   def output_shapes(self):

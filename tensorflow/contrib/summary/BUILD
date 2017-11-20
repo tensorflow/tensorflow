@@ -26,12 +26,30 @@ py_test(
     deps = [
         ":summary_ops",
         ":summary_test_util",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "summary_ops_graph_test",
+    srcs = ["summary_ops_graph_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":summary_ops",
+        ":summary_test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -44,9 +62,11 @@ py_library(
         ":gen_summary_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:layers_base",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:summary_op_util",
         "//tensorflow/python:training",

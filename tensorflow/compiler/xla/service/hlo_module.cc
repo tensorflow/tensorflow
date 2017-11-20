@@ -174,12 +174,6 @@ string HloModule::ToString(bool include_large_constants) const {
   std::ostringstream s;
   s << "HloModule " << name() << ":\n\n";
   for (const HloComputation* computation : MakeComputationPostOrder()) {
-    // Fusion computations are emitted with their fusion instruction and
-    // therefore don't need to be emitted as a separate comptutation in the
-    // module.
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }
