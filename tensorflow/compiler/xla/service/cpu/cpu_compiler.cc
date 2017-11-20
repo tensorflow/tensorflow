@@ -543,11 +543,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       parallel_computations.emplace(to_apply, instruction);
     }
 
-    size_t entry_computation_profile_idx = hlo_to_profile_idx.size();
-    IrEmitter ir_emitter(
-        *module, *assignment, llvm_module.get(), std::move(hlo_to_profile_idx),
-        /*entry_computation_profile_idx=*/entry_computation_profile_idx,
-        jit->target_machine(), jit->external_constant_pool());
+    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+                         hlo_to_profile_idx, hlo_to_profile_idx.size(),
+                         jit->target_machine(), jit->external_constant_pool());
 
     std::unique_ptr<HloInstructionMap<string>> function_names(
         new HloInstructionMap<string>());
@@ -625,11 +623,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // before the entry computation. The order of computations returned from
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
-    size_t entry_computation_profile_idx = hlo_to_profile_idx.size();
-    IrEmitter ir_emitter(
-        *module, *assignment, llvm_module.get(), std::move(hlo_to_profile_idx),
-        /*entry_computation_profile_idx=*/entry_computation_profile_idx,
-        jit->target_machine(), jit->external_constant_pool());
+    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+                         hlo_to_profile_idx, hlo_to_profile_idx.size(),
+                         jit->target_machine(), jit->external_constant_pool());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
