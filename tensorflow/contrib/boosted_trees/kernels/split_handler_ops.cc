@@ -39,6 +39,10 @@ using boosted_trees::learner::stochastic::GradientStats;
 using boosted_trees::learner::stochastic::NodeStats;
 using boosted_trees::learner::LearnerConfig_MultiClassStrategy;
 
+namespace {
+const int32 DUMMY_FEATURE_DIMENSION = -1;
+}  // namespace
+
 class BaseBuildSplitOp : public OpKernel {
  public:
   explicit BaseBuildSplitOp(OpKernelConstruction* const context)
@@ -128,7 +132,7 @@ class BuildDenseInequalitySplitsOp : public BaseBuildSplitOp {
 
     const Tensor* bucket_ids_t;
     OP_REQUIRES_OK(context, context->input("bucket_ids", &bucket_ids_t));
-    const auto& bucket_ids = bucket_ids_t->vec<int64>();
+    const auto& bucket_ids = bucket_ids_t->matrix<int64>();
 
     const Tensor* gradients_t;
     OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
@@ -219,7 +223,7 @@ class BuildDenseInequalitySplitsOp : public BaseBuildSplitOp {
           split_info.mutable_split_node()->mutable_dense_float_binary_split();
       dense_split->set_feature_column(feature_column_group_id_);
       dense_split->set_threshold(
-          bucket_boundaries(bucket_ids(best_bucket_idx)));
+          bucket_boundaries(bucket_ids(best_bucket_idx, 0)));
 
       auto* left_child = split_info.mutable_left_child();
       auto* right_child = split_info.mutable_right_child();
@@ -262,7 +266,9 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
 
     const Tensor* bucket_ids_t;
     OP_REQUIRES_OK(context, context->input("bucket_ids", &bucket_ids_t));
-    const auto& bucket_ids = bucket_ids_t->vec<int64>();
+    const auto& bucket_ids_and_dimensions = bucket_ids_t->matrix<int64>();
+
+    const int32 tensor_elements = partition_ids.size();
 
     const Tensor* gradients_t;
     OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
@@ -273,24 +279,59 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
     int class_id;
     ReadClassId(context, &class_id);
 
-    // Find the number of unique partitions before we allocate the output.
-    std::vector<int32> partition_boundaries;
+    // For each partition (tree node), store starting index for each dimension.
+    PartitionAndDimensionBoundaries partition_boundaries;
+    // Stores indices in partition_boundaries for those partitions that are
+    // not empty (have at least one dimension and a bucket apart from catch-all
+    // bucket of -1 bucket id and dimension 0.
     std::vector<int32> non_empty_partitions;
-    for (int i = 0; i < partition_ids.size() - 1; ++i) {
+    bool non_empty_partition = false;
+
+    for (int i = 0; i < partition_ids.size(); ++i) {
       // Make sure the input is sorted by partition_ids;
-      CHECK_LE(partition_ids(i), partition_ids(i + 1));
-      if (i == 0 || partition_ids(i) != partition_ids(i - 1)) {
-        partition_boundaries.push_back(i);
-        // Some partitions might only have bias feature. We don't want to split
-        // those so check that the partition has at least 2 buckets.
-        if (partition_ids(i) == partition_ids(i + 1)) {
-          non_empty_partitions.push_back(partition_boundaries.size() - 1);
+      if (i > 0) {
+        CHECK_LE(partition_ids(i - 1), partition_ids(i))
+            << "Partition ids should be sorted. Not sorted for " << i;
+      }
+      const int32 dimension = bucket_ids_and_dimensions(i, 1);
+
+      if (i == 0 || (partition_ids(i) != partition_ids(i - 1))) {
+        if (i != 0) {
+          // Not the first entry, so partition has changed.
+          if (non_empty_partition) {
+            // Saves the id of a previous partition in a list of non empty
+            // partitions, since it was non empty (had more than just a bias
+            // bucket -1.
+            non_empty_partitions.push_back(partition_boundaries.size() - 1);
+          }
+          // Add dummy dimension to signify the end for the previous dimension.
+          partition_boundaries.back().emplace_back(DUMMY_FEATURE_DIMENSION, i);
         }
+        // Allocate for a new partition.
+        partition_boundaries.emplace_back();
+        // Save info about the first dimension for a new partition.
+        partition_boundaries.back().emplace_back(dimension, i);
+
+        // Each partition has dummy -1 bucket with all gradients and then info
+        // for all other dimensions -> if we have >1 elements for a partition,
+        // then it is not empty.
+        non_empty_partition = (i < partition_ids.size() - 1) &&
+                              (partition_ids(i) == partition_ids(i + 1));
+      } else if (bucket_ids_and_dimensions(i, 1) !=
+                 bucket_ids_and_dimensions(i - 1, 1)) {
+        // Dimension changed.
+        partition_boundaries.back().emplace_back(dimension, i);
       }
     }
-    if (partition_ids.size() > 0) {
-      partition_boundaries.push_back(partition_ids.size());
+    if (tensor_elements > 0) {
+      if (non_empty_partition) {
+        non_empty_partitions.push_back(partition_boundaries.size() - 1);
+      }
+      // Add dummy dimension to signify the end for the previous dimension.
+      partition_boundaries.back().emplace_back(DUMMY_FEATURE_DIMENSION,
+                                               partition_ids.size());
     }
+
     int num_elements = non_empty_partitions.size();
     Tensor* output_partition_ids_t = nullptr;
     OP_REQUIRES_OK(context,
@@ -314,73 +355,128 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
                                 &output_splits_t));
     tensorflow::TTypes<string>::Vec output_splits =
         output_splits_t->vec<string>();
+    // For each tree node that needs to be split.
     for (int root_idx = 0; root_idx < num_elements; ++root_idx) {
+      const auto& dimension_boundaries =
+          partition_boundaries[non_empty_partitions[root_idx]];
+
       float best_gain = std::numeric_limits<float>::lowest();
-      int start_index = partition_boundaries[non_empty_partitions[root_idx]];
-      int end_index = partition_boundaries[non_empty_partitions[root_idx] + 1];
-      // First bucket ID in each partition should be the bias feature.
-      OP_REQUIRES(context, bucket_ids(start_index) == bias_feature_id_,
-                  errors::InvalidArgument("Bias feature ID missing."));
+      int32 best_dimension_idx = 0;
+      bool default_right = false;
+      int32 best_element_idx = 0;
+
+      NodeStats best_right_node_stats(0);
+      NodeStats best_left_node_stats(0);
+
+      // For each partition, the first bucket is dummy catch all.
+      int32 bias_start_index = dimension_boundaries[0].start_index;
+
+      OP_REQUIRES(
+          context,
+          bucket_ids_and_dimensions(bias_start_index, 0) == bias_feature_id_,
+          errors::InvalidArgument("Bias feature ID missing."));
+
+      // Dimension for bias feature is always 0
+      OP_REQUIRES(
+          context, bucket_ids_and_dimensions(bias_start_index, 1) == 0,
+          errors::InvalidArgument("Bias feature ID must be with dimension 0."));
+
       // For each root, we do two passes over the quantized feature buckets
       // accumulating gradients on one side and using the root aggregate
       // gradients to get the gradients for the other side.
       // Split gains are evaluated for each pass at every threshold and the best
       // split is picked.
-      GradientStats root_gradient_stats(*gradients_t, *hessians_t, start_index);
+      GradientStats root_gradient_stats(*gradients_t, *hessians_t,
+                                        bias_start_index);
       root_gradient_stats *= normalizer_ratio;
       NodeStats root_stats = ComputeNodeStats(root_gradient_stats);
-      GradientStats present_gradient_stats;
-      for (int64 bucket_idx = start_index + 1; bucket_idx < end_index;
-           ++bucket_idx) {
-        present_gradient_stats +=
-            GradientStats(*gradients_t, *hessians_t, bucket_idx);
-      }
-      present_gradient_stats *= normalizer_ratio;
-      int32 best_bucket_idx = 0;
-      NodeStats best_right_node_stats(0);
-      NodeStats best_left_node_stats(0);
-      GradientStats left_gradient_stats;
-      bool default_right = false;
-      for (int64 bucket_idx = start_index + 1; bucket_idx < end_index;
-           ++bucket_idx) {
-        GradientStats g(*gradients_t, *hessians_t, bucket_idx);
-        g *= normalizer_ratio;
-        left_gradient_stats += g;
-        // We have the sum of all present gradients. Use that to compute the
-        // backward pass gradients.
-        GradientStats right_gradient_stats =
-            present_gradient_stats - left_gradient_stats;
-        {
-          NodeStats left_stats_default_left =
-              ComputeNodeStats(root_gradient_stats - right_gradient_stats);
-          NodeStats right_stats_default_left =
-              ComputeNodeStats(right_gradient_stats);
-          if (left_stats_default_left.gain + right_stats_default_left.gain >
-              best_gain) {
-            best_gain =
-                left_stats_default_left.gain + right_stats_default_left.gain;
-            best_left_node_stats = left_stats_default_left;
-            best_right_node_stats = right_stats_default_left;
-            best_bucket_idx = bucket_idx;
-            default_right = false;
+
+      // Iterate through dimensions.
+      for (int j = 0; j < dimension_boundaries.size() - 1; ++j) {
+        const DimensionBoundary& dimension_and_start = dimension_boundaries[j];
+        const int32 dimension_id = dimension_and_start.dimension_id;
+
+        int start_index = dimension_and_start.start_index;
+        // Even for the last dimension, we always have additional dummy
+        // dimension that we can use to find the end index.
+        const int end_index =
+            partition_boundaries[non_empty_partitions[root_idx]][j + 1]
+                .start_index;
+        CHECK(bucket_ids_and_dimensions(start_index, 1) ==
+              bucket_ids_and_dimensions(end_index - 1, 1))
+            << "For bucket " << bucket_ids_and_dimensions(start_index, 0)
+            << " the dimension was "
+            << bucket_ids_and_dimensions(start_index, 1) << " and for "
+            << bucket_ids_and_dimensions(end_index - 1, 0) << " "
+            << bucket_ids_and_dimensions(end_index - 1, 1);
+        if (bucket_ids_and_dimensions(start_index, 0) == bias_feature_id_) {
+          // 0-dimension case which has a first bucket for catch all feature.
+          CHECK(bucket_ids_and_dimensions(start_index, 1) == 0)
+              << "Dimension of bias feature should be 0";
+          ++start_index;
+        }
+
+        GradientStats present_gradient_stats;
+        for (int64 bucket_idx = start_index; bucket_idx < end_index;
+             ++bucket_idx) {
+          present_gradient_stats +=
+              GradientStats(*gradients_t, *hessians_t, bucket_idx);
+        }
+        present_gradient_stats *= normalizer_ratio;
+
+        GradientStats left_gradient_stats;
+        for (int64 element_idx = start_index; element_idx < end_index;
+             ++element_idx) {
+          // Check that bucket ids are sorted.
+          if (element_idx != start_index) {
+            CHECK(bucket_ids_and_dimensions(element_idx - 1, 0) <
+                  bucket_ids_and_dimensions(element_idx, 0))
+                << "Bucket ids must be sorted."
+                << ", problem on " << element_idx << " and dimension is " << j;
+          }
+
+          GradientStats g(*gradients_t, *hessians_t, element_idx);
+          g *= normalizer_ratio;
+          left_gradient_stats += g;
+          // We have the sum of all present gradients. Use that to compute the
+          // backward pass gradients.
+          GradientStats right_gradient_stats =
+              present_gradient_stats - left_gradient_stats;
+          {
+            NodeStats left_stats_default_left =
+                ComputeNodeStats(root_gradient_stats - right_gradient_stats);
+            NodeStats right_stats_default_left =
+                ComputeNodeStats(right_gradient_stats);
+            if (left_stats_default_left.gain + right_stats_default_left.gain >
+                best_gain) {
+              best_gain =
+                  left_stats_default_left.gain + right_stats_default_left.gain;
+              best_left_node_stats = left_stats_default_left;
+              best_right_node_stats = right_stats_default_left;
+              best_element_idx = element_idx;
+              default_right = false;
+              best_dimension_idx = dimension_id;
+            }
+          }
+          {
+            NodeStats left_stats_default_right =
+                ComputeNodeStats(left_gradient_stats);
+            NodeStats right_stats_default_right =
+                ComputeNodeStats(root_gradient_stats - left_gradient_stats);
+            if (left_stats_default_right.gain + right_stats_default_right.gain >
+                best_gain) {
+              best_gain = left_stats_default_right.gain +
+                          right_stats_default_right.gain;
+              best_left_node_stats = left_stats_default_right;
+              best_right_node_stats = right_stats_default_right;
+              best_element_idx = element_idx;
+              default_right = true;
+              best_dimension_idx = dimension_id;
+            }
           }
         }
-        {
-          NodeStats left_stats_default_right =
-              ComputeNodeStats(left_gradient_stats);
-          NodeStats right_stats_default_right =
-              ComputeNodeStats(root_gradient_stats - left_gradient_stats);
-          if (left_stats_default_right.gain + right_stats_default_right.gain >
-              best_gain) {
-            best_gain =
-                left_stats_default_right.gain + right_stats_default_right.gain;
-            best_left_node_stats = left_stats_default_right;
-            best_right_node_stats = right_stats_default_right;
-            best_bucket_idx = bucket_idx;
-            default_right = true;
-          }
-        }
       }
+
       SplitInfo split_info;
       boosted_trees::trees::DenseFloatBinarySplit* dense_split = nullptr;
       if (default_right) {
@@ -393,8 +489,13 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
                           ->mutable_split();
       }
       dense_split->set_feature_column(feature_column_group_id_);
-      dense_split->set_threshold(
-          bucket_boundaries(bucket_ids(best_bucket_idx)));
+      // Set the feature index for the best feature column.
+      const int64 best_feature_id =
+          bucket_ids_and_dimensions(best_element_idx, 1);
+      const int32 best_bucket_id =
+          bucket_ids_and_dimensions(best_element_idx, 0);
+      dense_split->set_feature_id(best_feature_id);
+      dense_split->set_threshold(bucket_boundaries(best_bucket_id));
 
       auto* left_child = split_info.mutable_left_child();
       auto* right_child = split_info.mutable_right_child();
@@ -403,11 +504,23 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
       split_info.SerializeToString(&output_splits(root_idx));
       gains(root_idx) =
           best_gain - root_stats.gain - tree_complexity_regularization_;
-      output_partition_ids(root_idx) = partition_ids(start_index);
+      output_partition_ids(root_idx) = partition_ids(bias_start_index);
     }
   }
 
  private:
+  struct DimensionBoundary {
+    DimensionBoundary(const int32 dimension_id, const int32 start_index)
+        : dimension_id(dimension_id), start_index(start_index) {}
+
+    int32 dimension_id;
+    int32 start_index;
+  };
+
+  // For each partition, store start indices of feature column dimensions.
+  typedef std::vector<std::vector<DimensionBoundary>>
+      PartitionAndDimensionBoundaries;
+
   int64 bias_feature_id_;
 };
 REGISTER_KERNEL_BUILDER(Name("BuildSparseInequalitySplits").Device(DEVICE_CPU),
@@ -434,7 +547,7 @@ class BuildCategoricalEqualitySplitsOp : public BaseBuildSplitOp {
 
     const Tensor* feature_ids_t;
     OP_REQUIRES_OK(context, context->input("feature_ids", &feature_ids_t));
-    const auto& feature_ids = feature_ids_t->vec<int64>();
+    const auto& feature_ids = feature_ids_t->matrix<int64>();
 
     const Tensor* gradients_t;
     OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
@@ -491,7 +604,7 @@ class BuildCategoricalEqualitySplitsOp : public BaseBuildSplitOp {
       int start_index = partition_boundaries[non_empty_partitions[root_idx]];
       int end_index = partition_boundaries[non_empty_partitions[root_idx] + 1];
       // First feature ID in each partition should be the bias feature.
-      OP_REQUIRES(context, feature_ids(start_index) == bias_feature_id_,
+      OP_REQUIRES(context, feature_ids(start_index, 0) == bias_feature_id_,
                   errors::InvalidArgument("Bias feature ID missing."));
       GradientStats root_gradient_stats(*gradients_t, *hessians_t, start_index);
       root_gradient_stats *= normalizer_ratio;
@@ -519,7 +632,7 @@ class BuildCategoricalEqualitySplitsOp : public BaseBuildSplitOp {
       auto* equality_split = split_info.mutable_split_node()
                                  ->mutable_categorical_id_binary_split();
       equality_split->set_feature_column(feature_column_group_id_);
-      equality_split->set_feature_id(feature_ids(best_feature_idx));
+      equality_split->set_feature_id(feature_ids(best_feature_idx, 0));
       auto* left_child = split_info.mutable_left_child();
       auto* right_child = split_info.mutable_right_child();
       FillLeaf(class_id, best_left_node_stats, left_child);

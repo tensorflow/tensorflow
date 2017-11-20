@@ -153,7 +153,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                          Tensor* partitions_out, Tensor* indices_out,
                          DoneCallback done) {
     int32 M = std::max(N, num_partitions_);
-    // indices_in will be made slightly larger to accomodate
+    // indices_in will be made slightly larger to accommodate
     // later computations.
     OP_REQUIRES_OK_ASYNC(
         c, c->allocate_temp(DT_INT32, TensorShape({M}), indices_in), done);

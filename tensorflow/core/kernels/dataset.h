@@ -207,7 +207,7 @@ class GraphDefBuilderWrapper {
   // recursively adds all functions it references. If a function with a matching
   // name has already been added, returns with OK status. If a user-defined with
   // name `function_name` is not found in the FunctionLibraryDefinition, returns
-  // and InvalidArgumentError. If the function with name `function_name` or any
+  // an InvalidArgumentError. If the function with name `function_name` or any
   // of its dependent functions are stateful, returns an InvalidArgument error.
   Status AddFunction(OpKernelContext* ctx, const string& function_name) {
     if (b_->HasFunction(function_name)) {

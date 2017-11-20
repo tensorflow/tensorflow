@@ -169,6 +169,8 @@ class NumericColumnTest(test.TestCase):
   def test_defaults(self):
     a = fc.numeric_column('aaa')
     self.assertEqual('aaa', a.key)
+    self.assertEqual('aaa', a.name)
+    self.assertEqual('aaa', a._var_scope_name)
     self.assertEqual((1,), a.shape)
     self.assertIsNone(a.default_value)
     self.assertEqual(dtypes.float32, a.dtype)
@@ -370,6 +372,11 @@ class BucketizedColumnTest(test.TestCase):
     b = fc.bucketized_column(a, boundaries=[0, 1])
     self.assertEqual('aaa_bucketized', b.name)
 
+  def test_var_scope_name(self):
+    a = fc.numeric_column('aaa', dtype=dtypes.int32)
+    b = fc.bucketized_column(a, boundaries=[0, 1])
+    self.assertEqual('aaa_bucketized', b._var_scope_name)
+
   def test_parse_spec(self):
     a = fc.numeric_column('aaa', shape=[2], dtype=dtypes.int32)
     b = fc.bucketized_column(a, boundaries=[0, 1])
@@ -557,6 +564,7 @@ class HashedCategoricalColumnTest(test.TestCase):
   def test_defaults(self):
     a = fc.categorical_column_with_hash_bucket('aaa', 10)
     self.assertEqual('aaa', a.name)
+    self.assertEqual('aaa', a._var_scope_name)
     self.assertEqual('aaa', a.key)
     self.assertEqual(10, a.hash_bucket_size)
     self.assertEqual(dtypes.string, a.dtype)
@@ -818,6 +826,14 @@ class CrossedColumnTest(test.TestCase):
 
     crossed2 = fc.crossed_column([crossed1, 'd1', b], 10)
     self.assertEqual('a_bucketized_X_c_X_d1_X_d2', crossed2.name)
+
+  def test_var_scope_name(self):
+    a = fc.numeric_column('a', dtype=dtypes.int32)
+    b = fc.bucketized_column(a, boundaries=[0, 1])
+    crossed1 = fc.crossed_column(['d1', 'd2'], 10)
+
+    crossed2 = fc.crossed_column([b, 'c', crossed1], 10)
+    self.assertEqual('a_bucketized_X_c_X_d1_X_d2', crossed2._var_scope_name)
 
   def test_parse_spec(self):
     a = fc.numeric_column('a', shape=[2], dtype=dtypes.int32)
@@ -2189,6 +2205,8 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     column = fc.categorical_column_with_vocabulary_file(
         key='aaa', vocabulary_file='path_to_file', vocabulary_size=3)
     self.assertEqual('aaa', column.name)
+    self.assertEqual('aaa', column._var_scope_name)
+    self.assertEqual('aaa', column.key)
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
@@ -2572,6 +2590,8 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
     self.assertEqual('aaa', column.name)
+    self.assertEqual('aaa', column.key)
+    self.assertEqual('aaa', column._var_scope_name)
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
@@ -2581,6 +2601,8 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa', vocabulary_list=(12, 24, 36))
     self.assertEqual('aaa', column.name)
+    self.assertEqual('aaa', column.key)
+    self.assertEqual('aaa', column._var_scope_name)
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
@@ -2934,6 +2956,8 @@ class IdentityCategoricalColumnTest(test.TestCase):
   def test_constructor(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
     self.assertEqual('aaa', column.name)
+    self.assertEqual('aaa', column.key)
+    self.assertEqual('aaa', column._var_scope_name)
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
@@ -3218,11 +3242,15 @@ class IndicatorColumnTest(test.TestCase):
     a = fc.categorical_column_with_hash_bucket('a', 4)
     indicator_a = fc.indicator_column(a)
     self.assertEqual(indicator_a.categorical_column.name, 'a')
+    self.assertEqual(indicator_a.name, 'a_indicator')
+    self.assertEqual(indicator_a._var_scope_name, 'a_indicator')
     self.assertEqual(indicator_a._variable_shape, [1, 4])
 
     b = fc.categorical_column_with_hash_bucket('b', hash_bucket_size=100)
     indicator_b = fc.indicator_column(b)
     self.assertEqual(indicator_b.categorical_column.name, 'b')
+    self.assertEqual(indicator_b.name, 'b_indicator')
+    self.assertEqual(indicator_b._var_scope_name, 'b_indicator')
     self.assertEqual(indicator_b._variable_shape, [1, 100])
 
   def test_1D_shape_succeeds(self):
@@ -3409,6 +3437,7 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertIsNone(embedding_column.max_norm)
     self.assertTrue(embedding_column.trainable)
     self.assertEqual('aaa_embedding', embedding_column.name)
+    self.assertEqual('aaa_embedding', embedding_column._var_scope_name)
     self.assertEqual(
         (embedding_dimension,), embedding_column._variable_shape)
     self.assertEqual({
@@ -3434,6 +3463,7 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertEqual(42., embedding_column.max_norm)
     self.assertFalse(embedding_column.trainable)
     self.assertEqual('aaa_embedding', embedding_column.name)
+    self.assertEqual('aaa_embedding', embedding_column._var_scope_name)
     self.assertEqual(
         (embedding_dimension,), embedding_column._variable_shape)
     self.assertEqual({
@@ -4017,6 +4047,10 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
     self.assertEqual('bbb_shared_embedding', embedding_column_b.name)
     self.assertEqual(
+        'aaa_bbb_shared_embedding', embedding_column_a._var_scope_name)
+    self.assertEqual(
+        'aaa_bbb_shared_embedding', embedding_column_b._var_scope_name)
+    self.assertEqual(
         (embedding_dimension,), embedding_column_a._variable_shape)
     self.assertEqual(
         (embedding_dimension,), embedding_column_b._variable_shape)
@@ -4065,6 +4099,10 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertFalse(embedding_column_b.trainable)
     self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
     self.assertEqual('bbb_shared_embedding', embedding_column_b.name)
+    self.assertEqual(
+        'shared_embedding_collection_name', embedding_column_a._var_scope_name)
+    self.assertEqual(
+        'shared_embedding_collection_name', embedding_column_b._var_scope_name)
     self.assertEqual(
         (embedding_dimension,), embedding_column_a._variable_shape)
     self.assertEqual(
@@ -4231,15 +4269,15 @@ class SharedEmbeddingColumnTest(test.TestCase):
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertItemsEqual(
-        ['input_layer/aaa_shared_embedding/aaa_bbb_shared_embedding_weights:0'],
+        ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
         tuple([v.name for v in global_vars]))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     self.assertItemsEqual(
-        ['input_layer/aaa_shared_embedding/aaa_bbb_shared_embedding_weights:0'],
+        ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
         tuple([v.name for v in trainable_vars]))
     shared_embedding_vars = ops.get_collection('aaa_bbb_shared_embedding')
     self.assertItemsEqual(
-        ['input_layer/aaa_shared_embedding/aaa_bbb_shared_embedding_weights:0'],
+        ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
         tuple([v.name for v in shared_embedding_vars]))
     with _initialized_session():
       self.assertAllEqual(embedding_values, trainable_vars[0].eval())
@@ -4254,6 +4292,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
             key='ids', num_buckets=3),
         weight_feature_key='values')
     self.assertEqual('ids_weighted_by_values', column.name)
+    self.assertEqual('ids_weighted_by_values', column._var_scope_name)
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'ids': parsing_ops.VarLenFeature(dtypes.int64),

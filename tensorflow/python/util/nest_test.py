@@ -385,6 +385,15 @@ class NestTest(test.TestCase):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
 
+    inp_ab1 = {"a": (1, 1), "b": {"c": (2, 2)}}
+    inp_ab2 = {"a": (1, 1), "b": {"d": (2, 2)}}
+    expected_message = (
+        "The two structures don't have the same keys. Input "
+        "structure has keys \['c'\], while shallow structure has keys \['d'\].")
+
+    with self.assertRaisesRegexp(ValueError, expected_message):
+      nest.assert_shallow_structure(inp_ab2, inp_ab1)
+
   def testFlattenUpTo(self):
     # Shallow tree ends at scalar.
     input_tree = [[[2, 2], [3, 3]], [[4, 9], [5, 5]]]
@@ -430,7 +439,7 @@ class NestTest(test.TestCase):
                                                               input_tree)
     self.assertEqual(input_tree_flattened_as_shallow_tree, [0, 1, 2, 3, 4])
     shallow_tree = collections.OrderedDict([("a", 0),
-                                            ("b", {"d": 3, "e": 1})])
+                                            ("c", {"d": 3, "e": 1})])
     input_tree_flattened_as_shallow_tree = nest.flatten_up_to(shallow_tree,
                                                               input_tree)
     self.assertEqual(input_tree_flattened_as_shallow_tree,
