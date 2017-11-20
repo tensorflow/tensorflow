@@ -194,7 +194,7 @@ public class TensorFlowInferenceInterface {
    * @param outputNames A list of output nodes which should be filled by the inference pass.
    */
   public void run(String[] outputNames, boolean enableStats) {
-    run(outputNames, false, new String[] {});
+    run(outputNames, enableStats, new String[] {});
   }
 
   /**
