@@ -67,6 +67,15 @@ public:
           const Literal& literal,
           se::DeviceMemoryBase* destination) override;
 
+  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+          perftools::gputools::StreamExecutor* executor,
+          const ShapedBuffer& device_buffer) override;
+
+  Status TransferLiteralToDevice(
+          perftools::gputools::StreamExecutor* executor, const Literal& literal,
+          const ShapedBuffer& device_buffer) override;
+
+
   Status
   TransferLiteralToInfeed(se::StreamExecutor *executor,
                           const Literal &literal) override;
