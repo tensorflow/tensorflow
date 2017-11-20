@@ -104,9 +104,8 @@ class RenamedDevice : public Device {
 
   Status Sync() override { return underlying_->Sync(); }
 
-  Status MaybeRewriteGraph(const FunctionDefLibrary& library,
-                           std::unique_ptr<Graph>* graph) override {
-    return underlying_->MaybeRewriteGraph(library, graph);
+  Status MaybeRewriteGraph(std::unique_ptr<Graph>* graph) override {
+    return underlying_->MaybeRewriteGraph(graph);
   }
 
   Status FillContextMap(const Graph* graph,

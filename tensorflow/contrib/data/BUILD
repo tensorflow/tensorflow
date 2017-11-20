@@ -17,7 +17,6 @@ py_library(
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
-        "//tensorflow/contrib/data/python/ops:prefetching_py",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:util",
@@ -27,33 +26,20 @@ py_library(
 
 tf_custom_op_library(
     name = "_prefetching_ops.so",
-    srcs = [
-        "ops/prefetching_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/contrib/data/kernels:prefetching_kernels",
-    ],
-)
-
-# TODO(mrry): Move the kernels out of the core library into this library.
-tf_custom_op_library(
-    name = "_dataset_ops.so",
-    srcs = [
-        "ops/dataset_ops.cc",
-    ],
+    srcs = ["ops/prefetching_ops.cc"],
+    deps = ["//tensorflow/contrib/data/kernels:prefetching_kernels"],
 )
 
 tf_gen_op_libs(
-    op_lib_names = [
-        "dataset_ops",
-        "prefetching_ops",
-    ],
+    op_lib_names = ["prefetching_ops"],
 )
 
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["**/*"],
+        include = [
+            "**/*",
+        ],
         exclude = [
             "**/METADATA",
             "**/OWNERS",

@@ -125,6 +125,7 @@ cc_library(
         ":functionalize_control_flow",
         ":sharding_util",
         ":tf2xla_util",
+        "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -178,7 +179,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",

@@ -483,7 +483,8 @@ def train(train_op,
           chief_only_hooks=None,
           save_checkpoint_secs=600,
           save_summaries_steps=100,
-          config=None):
+          config=None,
+          max_wait_secs=7200):
   """Runs the training loop.
 
   Args:
@@ -506,6 +507,10 @@ def train(train_op,
       `save_summaries_steps` is set to `None`, then the default summary saver
       isn't used.
     config: An instance of `tf.ConfigProto`.
+    max_wait_secs: Maximum time workers should wait for the session to
+      become available. This should be kept relatively short to help detect
+      incorrect code, but sometimes may need to be increased if the chief takes
+      a while to start up.
 
   Returns:
     the value of the loss function after training.
@@ -532,7 +537,8 @@ def train(train_op,
       chief_only_hooks=chief_only_hooks,
       save_checkpoint_secs=save_checkpoint_secs,
       save_summaries_steps=save_summaries_steps,
-      config=config) as session:
+      config=config,
+      max_wait_secs=max_wait_secs) as session:
     loss = None
     while not session.should_stop():
       loss = session.run(train_op)

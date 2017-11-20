@@ -77,6 +77,7 @@ cc_library(
     hdrs = ["types.h"],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
@@ -174,6 +175,7 @@ cc_library(
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ptr_util",
     ],
 )
 
@@ -339,6 +341,7 @@ cc_library(
     name = "array",
     hdrs = ["array.h"],
     deps = [
+        ":status",
         ":types",
         "//tensorflow/core:lib",
     ],

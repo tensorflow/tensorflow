@@ -34,13 +34,13 @@ from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gradients as gradients_lib
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import training_util
 
@@ -143,7 +143,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
                   'server device is going to be {}.'.format(
                       devices, local_ps_device))
 
-  def replicated_model_fn(mode, features, labels, params=None, config=None):
+  def replicated_model_fn(features, labels, mode, params=None, config=None):
     """Replicated version of `model_fn` to be used instead."""
     feature_shards, label_shards = _split_batch(
         features, labels, len(devices), device=local_ps_device)
@@ -183,10 +183,17 @@ def _split_batch(features, labels, number_of_shards, device):
   """Split input features and labes into batches."""
 
   def split_dictionary(dictionary):
+    """Split a dictionary into shards."""
     shards = [{} for _ in range(number_of_shards)]
     for name, tensor in six.iteritems(dictionary):
-      for i, shard in enumerate(array_ops.split(tensor, number_of_shards)):
-        shards[i][name] = shard
+      if isinstance(tensor, sparse_tensor.SparseTensor):
+        for i, shard in enumerate(
+            sparse_ops.sparse_split(
+                sp_input=tensor, num_split=number_of_shards, axis=0)):
+          shards[i][name] = shard
+      else:
+        for i, shard in enumerate(array_ops.split(tensor, number_of_shards)):
+          shards[i][name] = shard
     return shards
 
   with ops_lib.name_scope('split_inputs'):
@@ -284,10 +291,7 @@ def _minimize_towers(tower_specs, optimizer):
   grad_lists = {}
   for tower_spec in tower_specs:
     with ops_lib.device(tower_spec.loss.device):
-      variables = variables_lib.trainable_variables()
-      gradients = gradients_lib.gradients(tower_spec.loss, variables)
-
-      for var, grad in zip(variables, gradients):
+      for grad, var in optimizer.compute_gradients(tower_spec.loss):
         if grad is not None:
           grad_lists.setdefault(var, []).append(grad)
 
@@ -313,7 +317,17 @@ def _call_optimizer_fn(optimizer_fn, params):
 
 def _compute_sum_on_device(values, device, name=None):
   with ops_lib.device(device):
-    return math_ops.add_n(values, name=name)
+    if isinstance(values[0], ops_lib.IndexedSlices):
+      if name:
+        raise ValueError('The name {} is not expected to be given to '
+                         'IndexedSlices {}'.format(name, values))
+
+      values_concat = array_ops.concat([v.values for v in values], axis=0)
+      indices_concat = array_ops.concat([v.indices for v in values], axis=0)
+      return ops_lib.IndexedSlices(values_concat, indices_concat,
+                                   values[0].dense_shape)
+    else:
+      return math_ops.add_n(values, name=name)
 
 
 def _train_spec(tower_specs,
@@ -338,25 +352,17 @@ def _eval_spec(tower_specs, aggregation_device, aggregated_loss_name='loss'):
       [spec.loss for spec in tower_specs], aggregation_device,
       aggregated_loss_name)
 
-  eval_metric_ops_lists = {}
+  update_ops = []
   for tower_spec in tower_specs:
-    metrics = tower_spec.eval_metric_ops or {}
-    for name, (_, update_op) in six.iteritems(metrics):
-      update_ops = eval_metric_ops_lists.setdefault(name, ([]))
+    for name, (_, update_op) in six.iteritems(tower_spec.eval_metric_ops):
       update_ops.append(update_op)
+
+  with ops_lib.control_dependencies(update_ops):
+    reduced_update_op = _reduce_metric_variables(len(tower_specs))
 
   eval_metric_ops = {}
   for name, (metric_tensor, _) in six.iteritems(tower_specs[0].eval_metric_ops):
-    with ops_lib.control_dependencies(eval_metric_ops_lists[name]):
-      # This operation reduces local variables across all metrics, yet is
-      # called for every metric.  This is redundant and it's done because
-      # it is hard to know what local variables correspond to what metric.
-      # Estimator is going to execute all `reduced_update_op`s as part of
-      # a group inside a single `Session.run()` call, which will avoid duplicate
-      # computation.
-      reduced_update_op = _reduce_metric_variables(len(tower_specs))
     eval_metric_ops[name] = (metric_tensor, reduced_update_op)
-
   estimator_spec['eval_metric_ops'] = eval_metric_ops
   return model_fn_lib.EstimatorSpec(**estimator_spec)
 

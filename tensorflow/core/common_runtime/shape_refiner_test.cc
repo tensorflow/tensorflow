@@ -1259,7 +1259,17 @@ TEST_F(ShapeRefinerTest, IncrementalUpdates) {
   EXPECT_FALSE(refined);
   ctx = m.GetContext(dequeue);
   EXPECT_EQ("[?,7]", ctx->DebugString(ctx->output(0)));
-  ASSERT_FALSE(SameHandle(ctx->Dim(ctx->output(0), 0), ctx->Dim(shp, 0)));
+  EXPECT_FALSE(SameHandle(ctx->Dim(ctx->output(0), 0), ctx->Dim(shp, 0)));
+
+  // Inject a shape of the same handle and expect refined to not change.
+  ctx = m.GetContext(queue);
+  shape_inference::ShapeHandle shp2 = shp;
+  ctx->set_output_handle_shapes_and_types(
+      0, std::vector<shape_inference::ShapeAndType>{{shp2, DT_FLOAT}});
+  refined = false;
+  TF_ASSERT_OK(m.UpdateNode(dequeue, /*relax=*/false, &refined));
+  EXPECT_FALSE(refined);
+  EXPECT_TRUE(SameHandle(ctx->Dim(shp, 0), ctx->Dim(shp2, 0)));
 }
 
 void TestSimpleFunctionInference(bool enable_function_inference,

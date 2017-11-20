@@ -181,17 +181,27 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::StringPiece outfeed_config);
 
-  // Creates a send instruction with the given channel id, which sends the
-  // operand data to a unique receive instruction in another computation that
-  // has the same channel id.
+  // Creates an asynchronous send instruction with the given channel id, which
+  // initiates sending the operand data to a unique receive instruction in
+  // another computation that has the same channel id.
   static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand,
                                                     int64 channel_id);
 
-  // Creates a receive instruction with the given channel id, which receives
-  // data of the given shape from a unique send instruction in another
-  // computation that has the same channel id.
+  // Blocks until data transfer for the Send instruction (operand) is complete.
+  // The operand must be kSend.
+  static std::unique_ptr<HloInstruction> CreateSendDone(
+      HloInstruction* operand);
+
+  // Creates an asynchronous receive instruction with the given channel id,
+  // which allocates resources to receive data of the given shape from a unique
+  // send instruction in another computation that has the same channel id.
   static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape,
                                                     int64 channel_id);
+
+  // Blocks until data transfer for the Recv instruction (operand) is complete
+  // and returns the receive buffer. The operand must be kRecv.
+  static std::unique_ptr<HloInstruction> CreateRecvDone(
+      HloInstruction* operand);
 
   // Creates a slice instruction, where the operand is sliced by the given
   // start/limit indices.
@@ -301,6 +311,11 @@ class HloInstruction {
   // instruction with the method FuseInstruction.
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root);
+
+  static std::unique_ptr<HloInstruction> CreateFusion(
+      const Shape& shape, FusionKind fusion_kind,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloComputation* fusion_computation);
 
   // Creates a fusion instruction that represents backward convolution. This is
   // similar to CreateFusion, but with extra arguments indicating the window and
@@ -853,6 +868,11 @@ class HloInstruction {
     return *window_;
   }
 
+  // Sets the window data in a windowed operation such as convolution.
+  void set_window(const Window& window) {
+    window_ = MakeUnique<Window>(window);
+  }
+
   // Returns the padding configuration for a pad node.
   //
   // Precondition: opcode() == HloOpcode::kPad
@@ -961,11 +981,6 @@ class HloInstruction {
   // Precondition: this op must be a reshape.
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
-
-  // Returns the opcode string for this instruction. This is the result from
-  // HloOpcodeString plus, for fusion nodes, the fusion kind, separated by a
-  // ':'.
-  string ExtendedOpcodeStr() const;
 
   // Returns a string identifier for this instruction. If no string identifier
   // has been explicitly set, then the identifier is the serialized pointer to
@@ -1224,6 +1239,10 @@ string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
 
+// Custom stringification functions for protos that live inside HloInstruction.
+string PaddingConfigToString(const PaddingConfig& padding);
+string OpMetadataToString(const OpMetadata& metadata);
+
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
 // Map classes that guarantee a deterministic iteration order when the key is
@@ -1231,6 +1250,9 @@ std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 // To make the iteration order over the map deterministic, the comparator
 // should not be using the pointer values, but rather an intrinsic property of
 // the hlo.
+//
+// Note that this cannot be used for HLO instructions across multiple modules
+// since the id of HLO instructions are only unique within each HLO module.
 struct HloPtrComparator {
   bool operator()(const HloInstruction* const& lhs,
                   const HloInstruction* const& rhs) const {

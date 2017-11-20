@@ -100,7 +100,7 @@ class Defun(object):
          grad_func - (optional).  A function implementing the gradient
            of the function-to-register.  This is must be a
            `_DefinedFunction` object. The gradient
-           function must satisify the criterion defined in
+           function must satisfy the criterion defined in
            function.proto:GradientDef.
 
          python_grad_func - (optional).  A function implementing the

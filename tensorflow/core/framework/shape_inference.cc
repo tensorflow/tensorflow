@@ -544,9 +544,10 @@ Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
       return_s1 = false;
     } else if (v0 != v1) {
       *out = nullptr;
-      return errors::InvalidArgument("Dimension ", i,
-                                     " in both shapes must be equal, but are ",
-                                     Value(d0), " and ", Value(d1));
+      return errors::InvalidArgument(
+          "Dimension ", i, " in both shapes must be equal, but are ", Value(d0),
+          " and ", Value(d1), ". Shapes are ", DebugString(s0), " and ",
+          DebugString(s1), ".");
     }
   }
 

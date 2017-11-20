@@ -70,15 +70,15 @@ if sys.version_info[0] == 2:
       if content_type is not None:
         total_size = int(content_type.strip())
       count = 0
-      while 1:
+      while True:
         chunk = response.read(chunk_size)
         count += 1
-        if not chunk:
-          reporthook(count, total_size, total_size)
-          break
-        if reporthook:
+        if reporthook is not None:
           reporthook(count, chunk_size, total_size)
-        yield chunk
+        if chunk:
+          yield chunk
+        else:
+          break
 
     response = urlopen(url, data)
     with open(filename, 'wb') as fd:
@@ -262,9 +262,9 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   Example:
 
   ```python
-     >>> from keras.data_utils import _hash_file
-     >>> _hash_file('/path/to/file.zip')
-     'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+      >>> from keras.data_utils import _hash_file
+      >>> _hash_file('/path/to/file.zip')
+      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
   ```
 
   Arguments:
@@ -318,32 +318,35 @@ class Sequence(object):
   """Base object for fitting to a sequence of data, such as a dataset.
 
   Every `Sequence` must implements the `__getitem__` and the `__len__` methods.
+  If you want to modify your dataset between epochs you may implement
+  `on_epoch_end`. The method `__getitem__` should return a complete batch.
 
+  Notes:
+  `Sequence` are a safer way to do multiprocessing. This structure guarantees
+   that the network will only train once on each sample per epoch which is not
+   the case with generators.
   Examples:
-
   ```python
-  from skimage.io import imread
-  from skimage.transform import resize
-  import numpy as np
-
-  # Here, `x_set` is list of path to the images
-  # and `y_set` are the associated classes.
-
-  class CIFAR10Sequence(Sequence):
-      def __init__(self, x_set, y_set, batch_size):
-          self.X,self.y = x_set,y_set
-          self.batch_size = batch_size
-
-      def __len__(self):
-          return len(self.X) // self.batch_size
-
-      def __getitem__(self,idx):
-          batch_x = self.X[idx*self.batch_size:(idx+1)*self.batch_size]
-          batch_y = self.y[idx*self.batch_size:(idx+1)*self.batch_size]
-
-          return np.array([
-              resize(imread(file_name), (200,200))
-                 for file_name in batch_x]), np.array(batch_y)
+      from skimage.io import imread
+      from skimage.transform import resize
+      import numpy as np
+      import math
+      # Here, `x_set` is list of path to the images
+      # and `y_set` are the associated classes.
+      class CIFAR10Sequence(Sequence):
+          def __init__(self, x_set, y_set, batch_size):
+              self.x, self.y = x_set, y_set
+              self.batch_size = batch_size
+          def __len__(self):
+              return math.ceil(len(self.x) / self.batch_size)
+          def __getitem__(self, idx):
+              batch_x = self.x[idx * self.batch_size:(idx + 1) *
+                        self.batch_size]
+              batch_y = self.y[idx * self.batch_size:(idx + 1) *
+                        self.batch_size]
+              return np.array([
+                  resize(imread(file_name), (200, 200))
+                     for file_name in batch_x]), np.array(batch_y)
   ```
   """
 
@@ -372,20 +375,30 @@ class Sequence(object):
   def on_epoch_end(self):
     """Method called at the end of every epoch.
     """
-    raise NotImplementedError
+    pass
 
 
-def get_index(ds, i):
-  """Quick fix for Python2, otherwise, it cannot be pickled.
+# Global variables to be shared across processes
+_SHARED_SEQUENCES = {}
+# We use a Value to provide unique id to different processes.
+_SEQUENCE_COUNTER = None
+
+
+def get_index(uid, i):
+  """Get the value from the Sequence `uid` at index `i`.
+
+  To allow multiple Sequences to be used at the same time, we use `uid` to
+  get a specific one. A single Sequence would cause the validation to
+  overwrite the training Sequence.
 
   Arguments:
-      ds: a Holder or Sequence object.
+      uid: int, Sequence identifier
       i: index
 
   Returns:
       The value at index `i`.
   """
-  return ds[i]
+  return _SHARED_SEQUENCES[uid][i]
 
 
 class SequenceEnqueuer(object):
@@ -397,13 +410,13 @@ class SequenceEnqueuer(object):
   Examples:
 
   ```python
-  enqueuer = SequenceEnqueuer(...)
-  enqueuer.start()
-  datas = enqueuer.get()
-  for data in datas:
-      # Use the inputs; training, evaluating, predicting.
-      # ... stop sometime.
-  enqueuer.close()
+      enqueuer = SequenceEnqueuer(...)
+      enqueuer.start()
+      datas = enqueuer.get()
+      for data in datas:
+          # Use the inputs; training, evaluating, predicting.
+          # ... stop sometime.
+      enqueuer.close()
   ```
 
   The `enqueuer.get()` should be an infinite stream of datas.
@@ -456,17 +469,21 @@ class OrderedEnqueuer(SequenceEnqueuer):
 
   Arguments:
       sequence: A `keras.utils.data_utils.Sequence` object.
-      use_multiprocessing: use multiprocessing if True, otherwise threading
-      scheduling: Sequential querying of datas if 'sequential', random
-        otherwise.
-      shuffle: Whether to shuffle the data at the beginning of each epoch.
+      use_multiprocessing: Use multiprocessing if True, otherwise threading
+      shuffle: Whether to shuffle the data at the beginning of each epoch
   """
 
-  def __init__(self,
-               sequence,
-               use_multiprocessing=False,
-               shuffle=False):
+  def __init__(self, sequence, use_multiprocessing=False, shuffle=False):
     self.sequence = sequence
+
+    # Doing Multiprocessing.Value += x is not process-safe.
+    global _SEQUENCE_COUNTER
+    if _SEQUENCE_COUNTER is None:
+      _SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
+
+    with _SEQUENCE_COUNTER.get_lock():
+      self.uid = _SEQUENCE_COUNTER.value
+      _SEQUENCE_COUNTER.value += 1
     self.use_multiprocessing = use_multiprocessing
     self.shuffle = shuffle
     self.workers = 0
@@ -490,15 +507,24 @@ class OrderedEnqueuer(SequenceEnqueuer):
       self.executor = multiprocessing.Pool(workers)
     else:
       self.executor = ThreadPool(workers)
+    self.workers = workers
     self.queue = queue.Queue(max_queue_size)
     self.stop_signal = threading.Event()
     self.run_thread = threading.Thread(target=self._run)
     self.run_thread.daemon = True
     self.run_thread.start()
 
+  def _wait_queue(self):
+    """Wait for the queue to be empty."""
+    while True:
+      time.sleep(0.1)
+      if self.queue.unfinished_tasks == 0 or self.stop_signal.is_set():
+        return
+
   def _run(self):
-    """Submits requests to the executor and queues the `Future` objects."""
+    """Function to submit request to the executor & queue `Future` objects."""
     sequence = list(range(len(self.sequence)))
+    self._send_sequence()  # Share the initial sequence
     while True:
       if self.shuffle:
         random.shuffle(sequence)
@@ -506,9 +532,18 @@ class OrderedEnqueuer(SequenceEnqueuer):
         if self.stop_signal.is_set():
           return
         self.queue.put(
-            self.executor.apply_async(get_index, (self.sequence, i)),
-            block=True)
+            self.executor.apply_async(get_index, (self.uid, i)), block=True)
+
+      # Done with the current epoch, waiting for the final batches
+      self._wait_queue()
+
+      if self.stop_signal.is_set():
+        # We're done
+        return
+
+      # Call the internal on epoch end.
       self.sequence.on_epoch_end()
+      self._send_sequence()  # Update the pool
 
   def get(self):
     """Creates a generator to extract data from the queue.
@@ -517,16 +552,28 @@ class OrderedEnqueuer(SequenceEnqueuer):
 
     Yields:
         Tuples (inputs, targets)
-            or (inputs, targets, sample_weights)
+        or (inputs, targets, sample_weights)
     """
     try:
       while self.is_running():
         inputs = self.queue.get(block=True).get()
+        self.queue.task_done()
         if inputs is not None:
           yield inputs
     except Exception as e:
       self.stop()
       raise StopIteration(e)
+
+  def _send_sequence(self):
+    """Send current Sequence to all workers."""
+    _SHARED_SEQUENCES[
+        self.uid] = self.sequence  # For new processes that may spawn
+
+    self._close_pool()
+    if self.use_multiprocessing:
+      self.executor = multiprocessing.Pool(self.workers)
+    else:
+      self.executor = ThreadPool(self.workers)
 
   def stop(self, timeout=None):
     """Stops running threads and wait for them to exit, if necessary.
@@ -541,36 +588,43 @@ class OrderedEnqueuer(SequenceEnqueuer):
       self.queue.queue.clear()
       self.queue.unfinished_tasks = 0
       self.queue.not_full.notify()
+    self._close_pool()
+    self.run_thread.join(timeout)
+    _SHARED_SEQUENCES[self.uid] = None
+
+  def _close_pool(self):
     self.executor.close()
     self.executor.join()
-    self.run_thread.join(timeout)
 
 
 class GeneratorEnqueuer(SequenceEnqueuer):
   """Builds a queue out of a data generator.
 
+  The provided generator can be finite in which case the class will throw
+  a `StopIteration` exception.
+
   Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
 
   Arguments:
-      generator: a generator function which endlessly yields data
+      generator: a generator function which yields data
       use_multiprocessing: use multiprocessing if True, otherwise threading
       wait_time: time to sleep in-between calls to `put()`
       random_seed: Initial seed for workers,
-          will be incremented by one for each workers.
+          will be incremented by one for each worker.
   """
 
   def __init__(self,
                generator,
                use_multiprocessing=False,
                wait_time=0.05,
-               random_seed=None):
+               seed=None):
     self.wait_time = wait_time
     self._generator = generator
     self._use_multiprocessing = use_multiprocessing
     self._threads = []
     self._stop_event = None
     self.queue = None
-    self.random_seed = random_seed
+    self.seed = seed
 
   def start(self, workers=1, max_queue_size=10):
     """Kicks off threads which add data from the generator into the queue.
@@ -589,6 +643,8 @@ class GeneratorEnqueuer(SequenceEnqueuer):
             self.queue.put(generator_output)
           else:
             time.sleep(self.wait_time)
+        except StopIteration:
+          break
         except Exception:
           self._stop_event.set()
           raise
@@ -605,11 +661,11 @@ class GeneratorEnqueuer(SequenceEnqueuer):
         if self._use_multiprocessing:
           # Reset random seed else all children processes
           # share the same seed
-          np.random.seed(self.random_seed)
+          np.random.seed(self.seed)
           thread = multiprocessing.Process(target=data_generator_task)
           thread.daemon = True
-          if self.random_seed is not None:
-            self.random_seed += 1
+          if self.seed is not None:
+            self.seed += 1
         else:
           thread = threading.Thread(target=data_generator_task)
         self._threads.append(thread)
@@ -661,4 +717,8 @@ class GeneratorEnqueuer(SequenceEnqueuer):
         if inputs is not None:
           yield inputs
       else:
-        time.sleep(self.wait_time)
+        all_finished = all([not thread.is_alive() for thread in self._threads])
+        if all_finished and self.queue.empty():
+          raise StopIteration()
+        else:
+          time.sleep(self.wait_time)

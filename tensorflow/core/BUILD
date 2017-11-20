@@ -320,6 +320,7 @@ cc_library(
         "lib/io/table_options.h",
         "lib/math/math_util.h",
         "lib/monitoring/counter.h",
+        "lib/monitoring/gauge.h",
         "lib/monitoring/sampler.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
@@ -454,6 +455,7 @@ tf_cuda_library(
         "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
+        "util/ptr_util.h",
         "util/reffed_status_callback.h",
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
@@ -490,6 +492,11 @@ cc_library(
         ":framework_lite",
         ":lib",
     ],
+)
+
+cc_library(
+    name = "ptr_util",
+    hdrs = ["util/ptr_util.h"],
 )
 
 cc_library(
@@ -1393,6 +1400,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/monitoring/collection_registry.h",
     "lib/monitoring/metric_def.h",
     "lib/monitoring/mobile_counter.h",
+    "lib/monitoring/mobile_gauge.h",
     "lib/monitoring/mobile_sampler.h",
     "lib/png/png_io.h",
     "lib/random/random.h",
@@ -2369,6 +2377,7 @@ tf_cc_tests(
         "lib/math/math_util_test.cc",
         "lib/monitoring/collection_registry_test.cc",
         "lib/monitoring/counter_test.cc",
+        "lib/monitoring/gauge_test.cc",
         "lib/monitoring/metric_def_test.cc",
         "lib/monitoring/sampler_test.cc",
         "lib/random/distribution_sampler_test.cc",

@@ -571,6 +571,13 @@ TEST_F(GraphTest, UpdateEdge) {
   EXPECT_EQ(
       s.error_message(),
       "Node 'A' (type: 'OneOutput', num of outputs: 1) does not have output 1");
+
+  // Update a's 1st input which is out of range.
+  s = graph_.UpdateEdge(c, 0, a, 0);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(
+      s.error_message(),
+      "Node 'A' (type: 'OneOutput', num of inputs: 0) does not have input 0");
 }
 
 TEST_F(GraphTest, InputEdges) {

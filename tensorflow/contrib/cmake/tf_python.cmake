@@ -238,6 +238,7 @@ add_python_module("tensorflow/python/keras/datasets")
 add_python_module("tensorflow/python/keras/datasets/boston_housing")
 add_python_module("tensorflow/python/keras/datasets/cifar10")
 add_python_module("tensorflow/python/keras/datasets/cifar100")
+add_python_module("tensorflow/python/keras/datasets/fashion_mnist")
 add_python_module("tensorflow/python/keras/datasets/imdb")
 add_python_module("tensorflow/python/keras/datasets/mnist")
 add_python_module("tensorflow/python/keras/datasets/reuters")
@@ -499,6 +500,19 @@ add_python_module("tensorflow/contrib/linear_optimizer/kernels/g3doc")
 add_python_module("tensorflow/contrib/linear_optimizer/python")
 add_python_module("tensorflow/contrib/linear_optimizer/python/kernel_tests")
 add_python_module("tensorflow/contrib/linear_optimizer/python/ops")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python")
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E touch
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/__init__.py")
+add_custom_command(
+    TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E touch
+    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/lite.py)
 add_python_module("tensorflow/contrib/lookup")
 add_python_module("tensorflow/contrib/losses")
 add_python_module("tensorflow/contrib/losses/python")
@@ -780,8 +794,6 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_cudnn_rnn_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cudnn_rnn/ops/gen_cudnn_rnn_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_data_dataset_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_dataset_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_data_prefetching_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_prefetching_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"

@@ -103,7 +103,7 @@ void SliceUsingEigen(const Device& d, Tensor* out, const Tensor& in,
 namespace functor {
 
 // Template parameter NDIM is not neccesary here. The aim of keeping it
-// is to compile struct slice seperately which minimizes the compiling time.
+// is to compile struct slice separately which minimizes the compiling time.
 template <typename Device, typename T, int NDIM>
 struct Slice {
   void operator()(const Device& d, Tensor* out, const Tensor& in,

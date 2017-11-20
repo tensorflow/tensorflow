@@ -60,61 +60,6 @@ def _safe_div(numerator, denominator, name):
       name=name)
 
 
-# TODO(ptucker): Move this somewhere common, to share with ops/losses/losses.py.
-def _assert_weights_rank(weights, values):
-  """`weights` rank must be either `0`, or the same as 'values'."""
-  return check_ops.assert_rank_in(weights, (0, array_ops.rank(values)))
-
-
-def _count_condition(values,
-                     weights=None,
-                     metrics_collections=None,
-                     updates_collections=None):
-  """Sums the weights of cases where the given values are True.
-
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-
-  Args:
-    values: A `bool` `Tensor` of arbitrary size.
-    weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `values`, and must be broadcastable to `values` (i.e., all dimensions
-      must be either `1`, or the same as the corresponding `values`
-      dimension).
-    metrics_collections: An optional list of collections that the metric
-      value variable should be added to.
-    updates_collections: An optional list of collections that the metric update
-      ops should be added to.
-
-  Returns:
-    value_tensor: A `Tensor` representing the current value of the metric.
-    update_op: An operation that accumulates the error from a batch of data.
-
-  Raises:
-    ValueError: If `weights` is not `None` and its shape doesn't match `values`,
-      or if either `metrics_collections` or `updates_collections` are not a list
-      or tuple.
-  """
-  check_ops.assert_type(values, dtypes.bool)
-  count_ = metrics_impl.metric_variable([], dtypes.float32, name='count')
-
-  values = math_ops.to_float(values)
-  if weights is not None:
-    weights = math_ops.to_float(weights)
-    with ops.control_dependencies((_assert_weights_rank(weights, values),)):
-      values = math_ops.multiply(values, weights)
-
-  value_tensor = array_ops.identity(count_)
-  update_op = state_ops.assign_add(count_, math_ops.reduce_sum(values))
-
-  if metrics_collections:
-    ops.add_to_collections(metrics_collections, value_tensor)
-
-  if updates_collections:
-    ops.add_to_collections(updates_collections, update_op)
-
-  return value_tensor, update_op
-
-
 def streaming_true_positives(predictions,
                              labels,
                              weights=None,
@@ -194,17 +139,13 @@ def streaming_true_negatives(predictions,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  with variable_scope.variable_scope(name, 'true_negatives',
-                                     (predictions, labels, weights)):
-
-    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
-        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
-        labels=math_ops.cast(labels, dtype=dtypes.bool),
-        weights=weights)
-    is_true_negative = math_ops.logical_and(
-        math_ops.equal(labels, False), math_ops.equal(predictions, False))
-    return _count_condition(is_true_negative, weights, metrics_collections,
-                            updates_collections)
+  return metrics.true_negatives(
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      updates_collections=updates_collections,
+      name=name)
 
 
 def streaming_false_positives(predictions,
@@ -292,34 +233,6 @@ def streaming_false_negatives(predictions,
       metrics_collections=metrics_collections,
       updates_collections=updates_collections,
       name=name)
-
-
-# TODO(ptucker): Move this somewhere common, to share with ops/losses/losses.py.
-def _broadcast_weights(weights, values):
-  """Broadcast `weights` to the same shape as `values`.
-
-  This returns a version of `weights` following the same broadcast rules as
-  `mul(weights, values)`. When computing a weighted average, use this function
-  to broadcast `weights` before summing them; e.g.,
-  `reduce_sum(w * v) / reduce_sum(_broadcast_weights(w, v))`.
-
-  Args:
-    weights: `Tensor` whose rank is either 0, or the same rank as `values`, and
-      must be broadcastable to `values` (i.e., all dimensions must be either
-      `1`, or the same as the corresponding `values` dimension).
-    values: `Tensor` of any shape.
-
-  Returns:
-    `weights` broadcast to `values` shape.
-  """
-  with ops.name_scope(None, 'broadcast_weights', (values, weights)) as scope:
-    weights_shape = weights.get_shape()
-    values_shape = values.get_shape()
-    if (weights_shape.is_fully_defined() and values_shape.is_fully_defined() and
-        weights_shape.is_compatible_with(values_shape)):
-      return weights
-    with ops.control_dependencies((_assert_weights_rank(weights, values),)):
-      return math_ops.multiply(weights, array_ops.ones_like(values), name=scope)
 
 
 def streaming_mean(values,
@@ -423,8 +336,10 @@ def streaming_mean_tensor(values,
       updates_collections=updates_collections,
       name=name)
 
-@deprecated(None, "Please switch to tf.metrics.accuracy. Note that the order "
-    "of the inputs of labels and predictions have been switched.")
+
+@deprecated(
+    None, 'Please switch to tf.metrics.accuracy. Note that the order of the '
+    'labels and predictions arguments has been switched.')
 def streaming_accuracy(predictions,
                        labels,
                        weights=None,
@@ -592,53 +507,6 @@ def streaming_recall(predictions,
       name=name)
 
 
-def _true_negatives(labels,
-                    predictions,
-                    weights=None,
-                    metrics_collections=None,
-                    updates_collections=None,
-                    name=None):
-  """Sum the weights of true negatives.
-
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-
-  Args:
-    labels: The ground truth values, a `Tensor` whose dimensions must match
-      `predictions`. Will be cast to `bool`.
-    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
-      be cast to `bool`.
-    weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `labels` dimension).
-    metrics_collections: An optional list of collections that the metric
-      value variable should be added to.
-    updates_collections: An optional list of collections that the metric update
-      ops should be added to.
-    name: An optional variable_scope name.
-
-  Returns:
-    value_tensor: A `Tensor` representing the current value of the metric.
-    update_op: An operation that accumulates the error from a batch of data.
-
-  Raises:
-    ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `weights` is not `None` and its shape doesn't match `predictions`, or if
-      either `metrics_collections` or `updates_collections` are not a list or
-      tuple.
-  """
-  with variable_scope.variable_scope(name, 'true_negatives',
-                                     (predictions, labels, weights)):
-
-    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
-        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
-        labels=math_ops.cast(labels, dtype=dtypes.bool),
-        weights=weights)
-    is_true_negative = math_ops.logical_and(
-        math_ops.equal(labels, False), math_ops.equal(predictions, False))
-    return _count_condition(is_true_negative, weights, metrics_collections,
-                            updates_collections)
-
-
 def streaming_false_positive_rate(predictions,
                                   labels,
                                   weights=None,
@@ -696,16 +564,16 @@ def streaming_false_positive_rate(predictions,
         weights=weights)
 
     false_p, false_positives_update_op = metrics.false_positives(
-        labels,
-        predictions,
-        weights,
+        labels=labels,
+        predictions=predictions,
+        weights=weights,
         metrics_collections=None,
         updates_collections=None,
         name=None)
-    true_n, true_negatives_update_op = _true_negatives(
-        labels,
-        predictions,
-        weights,
+    true_n, true_negatives_update_op = metrics.true_negatives(
+        labels=labels,
+        predictions=predictions,
+        weights=weights,
         metrics_collections=None,
         updates_collections=None,
         name=None)
@@ -1102,8 +970,10 @@ def streaming_curve_points(labels=None,
 
     return points, update_op
 
-@deprecated(None, "Please switch to tf.metrics.auc. Note that the order of "
-    "the inputs of labels and predictions have been switched.")
+
+@deprecated(
+    None, 'Please switch to tf.metrics.auc. Note that the order of the '
+    'labels and predictions arguments has been switched.')
 def streaming_auc(predictions,
                   labels,
                   weights=None,
@@ -1176,6 +1046,154 @@ def streaming_auc(predictions,
       curve=curve,
       updates_collections=updates_collections,
       name=name)
+
+
+def _compute_dynamic_auc(labels, predictions, curve='ROC'):
+  """Computes the apporixmate AUC by a Riemann sum with data-derived thresholds.
+
+  Computes the area under the ROC or PR curve using each prediction as a
+  threshold. This could be slow for large batches, but has the advantage of not
+  having its results degrade depending on the distribution of predictions.
+
+  Args:
+    labels: A `Tensor` of ground truth labels with the same shape as
+      `predictions` with values of 0 or 1 and type `int64`.
+    predictions: A 1-D `Tensor` of predictions whose values are `float64`.
+    curve: The name of the curve to be computed, 'ROC' for the Receiving
+      Operating Characteristic or 'PR' for the Precision-Recall curve.
+
+  Returns:
+    A scalar `Tensor` containing the area-under-curve value for the input.
+  """
+  # Count the total number of positive and negative labels in the input.
+  size = array_ops.size(predictions)
+  total_positive = math_ops.cast(math_ops.reduce_sum(labels), dtypes.int32)
+
+  def continue_computing_dynamic_auc():
+    """Continues dynamic auc computation, entered if labels are not all equal.
+
+    Returns:
+      A scalar `Tensor` containing the area-under-curve value.
+    """
+    # Sort the predictions descending, and the corresponding labels as well.
+    ordered_predictions, indices = nn.top_k(predictions, k=size)
+    ordered_labels = array_ops.gather(labels, indices)
+
+    # Get the counts of the unique ordered predictions.
+    _, _, counts = array_ops.unique_with_counts(ordered_predictions)
+
+    # Compute the indices of the split points between different predictions.
+    splits = math_ops.cast(
+        array_ops.pad(math_ops.cumsum(counts), paddings=[[1, 0]]), dtypes.int32)
+
+    # Count the positives to the left of the split indices.
+    positives = math_ops.cast(
+        array_ops.pad(math_ops.cumsum(ordered_labels), paddings=[[1, 0]]),
+        dtypes.int32)
+    true_positives = array_ops.gather(positives, splits)
+    if curve == 'ROC':
+      # Count the negatives to the left of every split point and the total
+      # number of negatives for computing the FPR.
+      false_positives = math_ops.subtract(splits, true_positives)
+      total_negative = size - total_positive
+      x_axis_values = math_ops.truediv(false_positives, total_negative)
+      y_axis_values = math_ops.truediv(true_positives, total_positive)
+    elif curve == 'PR':
+      x_axis_values = math_ops.truediv(true_positives, total_positive)
+      # For conformance, set precision to 1 when the number of positive
+      # classifications is 0.
+      y_axis_values = array_ops.where(
+          math_ops.greater(splits, 0),
+          math_ops.truediv(true_positives, splits),
+          array_ops.ones_like(true_positives, dtype=dtypes.float64))
+
+    # Calculate trapezoid areas.
+    heights = math_ops.add(y_axis_values[1:], y_axis_values[:-1]) / 2.0
+    widths = math_ops.abs(
+        math_ops.subtract(x_axis_values[1:], x_axis_values[:-1]))
+    return math_ops.reduce_sum(math_ops.multiply(heights, widths))
+
+  # If all the labels are the same, AUC isn't well-defined (but raising an
+  # exception seems excessive) so we return 0, otherwise we finish computing.
+  return control_flow_ops.cond(
+      math_ops.logical_or(
+          math_ops.equal(total_positive, 0),
+          math_ops.equal(total_positive, size)
+      ),
+      true_fn=lambda: array_ops.constant(0, dtypes.float64),
+      false_fn=continue_computing_dynamic_auc)
+
+
+def streaming_dynamic_auc(labels,
+                          predictions,
+                          curve='ROC',
+                          metrics_collections=(),
+                          updates_collections=(),
+                          name=None):
+  """Computes the apporixmate AUC by a Riemann sum with data-derived thresholds.
+
+  USAGE NOTE: this approach requires storing all of the predictions and labels
+  for a single evaluation in memory, so it may not be usable when the evaluation
+  batch size and/or the number of evaluation steps is very large.
+
+  Computes the area under the ROC or PR curve using each prediction as a
+  threshold. This has the advantage of being resilient to the distribution of
+  predictions by aggregating across batches, accumulating labels and predictions
+  and performing the final calculation using all of the concatenated values.
+
+  Args:
+    labels: A `Tensor` of ground truth labels with the same shape as `labels`
+      and with values of 0 or 1 whose values are castable to `int64`.
+    predictions: A `Tensor` of predictions whose values are castable to
+      `float64`. Will be flattened into a 1-D `Tensor`.
+    curve: The name of the curve for which to compute AUC, 'ROC' for the
+      Receiving Operating Characteristic or 'PR' for the Precision-Recall curve.
+    metrics_collections: An optional iterable of collections that `auc` should
+      be added to.
+    updates_collections: An optional iterable of collections that `update_op`
+      should be added to.
+    name: An optional name for the variable_scope that contains the metric
+      variables.
+
+  Returns:
+    auc: A scalar `Tensor` containing the current area-under-curve value.
+    update_op: An operation that concatenates the input labels and predictions
+      to the accumulated values.
+
+  Raises:
+    ValueError: If `labels` and `predictions` have mismatched shapes or if
+      `curve` isn't a recognized curve type.
+  """
+
+  if curve not in ['PR', 'ROC']:
+    raise ValueError('curve must be either ROC or PR, %s unknown' % curve)
+
+  with variable_scope.variable_scope(name, default_name='dynamic_auc'):
+    labels.get_shape().assert_is_compatible_with(predictions.get_shape())
+    predictions = array_ops.reshape(
+        math_ops.cast(predictions, dtypes.float64), [-1])
+    labels = array_ops.reshape(math_ops.cast(labels, dtypes.int64), [-1])
+    with ops.control_dependencies([
+        check_ops.assert_greater_equal(
+            labels,
+            array_ops.zeros_like(labels, dtypes.int64),
+            message='labels must be 0 or 1, at least one is <0'),
+        check_ops.assert_less_equal(
+            labels,
+            array_ops.ones_like(labels, dtypes.int64),
+            message='labels must be 0 or 1, at least one is >1')
+    ]):
+      preds_accum, update_preds = streaming_concat(predictions,
+                                                   name='concat_preds')
+      labels_accum, update_labels = streaming_concat(labels,
+                                                     name='concat_labels')
+      update_op = control_flow_ops.group(update_labels, update_preds)
+      auc = _compute_dynamic_auc(labels_accum, preds_accum, curve=curve)
+      if updates_collections:
+        ops.add_to_collections(updates_collections, update_op)
+      if metrics_collections:
+        ops.add_to_collections(metrics_collections, auc)
+      return auc, update_op
 
 
 def streaming_precision_recall_at_equal_thresholds(predictions,
@@ -1488,9 +1506,10 @@ def streaming_sensitivity_at_specificity(predictions,
       updates_collections=updates_collections,
       name=name)
 
+
 @deprecated(
-    None, "Please switch to tf.metrics.precision_at_thresholds. Note that the "
-    "order of of the inputs of labels and predictions have been switched.")
+    None, 'Please switch to tf.metrics.precision_at_thresholds. Note that the '
+    'order of the labels and predictions arguments has been switched.')
 def streaming_precision_at_thresholds(predictions,
                                       labels,
                                       thresholds,
@@ -1549,9 +1568,10 @@ def streaming_precision_at_thresholds(predictions,
       updates_collections=updates_collections,
       name=name)
 
+
 @deprecated(
-    None, "Please switch to tf.metrics.recall_at_thresholds. Note that the "
-    "order of of the inputs of labels and predictions have been switched.")
+    None, 'Please switch to tf.metrics.recall_at_thresholds. Note that the '
+    'order of the labels and predictions arguments has been switched.')
 def streaming_recall_at_thresholds(predictions,
                                    labels,
                                    thresholds,
@@ -1761,8 +1781,8 @@ def _at_k_name(name, k=None, class_id=None):
   return name
 
 
-@deprecated("2016-11-08", "Please use `streaming_sparse_recall_at_k`, "
-            "and reshape labels from [batch_size] to [batch_size, 1].")
+@deprecated('2016-11-08', 'Please use `streaming_sparse_recall_at_k`, '
+            'and reshape labels from [batch_size] to [batch_size, 1].')
 def streaming_recall_at_k(predictions,
                           labels,
                           k,
@@ -2395,7 +2415,8 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       updates_collections=updates_collections,
       name=name)
 
-@deprecated(None, "Please switch to tf.metrics.mean.")
+
+@deprecated(None, 'Please switch to tf.metrics.mean.')
 def streaming_mean_absolute_error(predictions,
                                   labels,
                                   weights=None,
@@ -3285,6 +3306,7 @@ __all__ = [
     'streaming_accuracy',
     'streaming_auc',
     'streaming_curve_points',
+    'streaming_dynamic_auc',
     'streaming_false_negative_rate',
     'streaming_false_negative_rate_at_thresholds',
     'streaming_false_negatives',

@@ -22,6 +22,8 @@ py_library(
         exclude = ["python/learn/**/*_test.py"],
     ),
     srcs_version = "PY2AND3",
+    # This library should not depend on sklearn, even though some of the code
+    # refers to it. (The code handles the presence of sklearn conditionally.)
     deps = [
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/framework:framework_py",
