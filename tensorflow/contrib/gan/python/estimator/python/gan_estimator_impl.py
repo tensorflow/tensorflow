@@ -105,6 +105,7 @@ class GANEstimator(estimator.Estimator):
                discriminator_loss_fn=None,
                generator_optimizer=None,
                discriminator_optimizer=None,
+               get_hooks_fn=None,
                add_summaries=None,
                use_loss_summaries=True,
                config=None):
@@ -132,6 +133,8 @@ class GANEstimator(estimator.Estimator):
         work.
       discriminator_optimizer: Same as `generator_optimizer`, but for the
         discriminator updates.
+      get_hooks_fn: A function that takes a GANTrainOps tuple and returns a list
+        of hooks.
       add_summaries: `None`, a single `SummaryType`, or a list of `SummaryType`.
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
@@ -146,7 +149,7 @@ class GANEstimator(estimator.Estimator):
               else discriminator_optimizer)
       gan_head = head_lib.gan_head(
           generator_loss_fn, discriminator_loss_fn, gopt, dopt,
-          use_loss_summaries)
+          use_loss_summaries, get_hooks_fn=get_hooks_fn)
       return _gan_model_fn(
           features, labels, mode, generator_fn, discriminator_fn, gan_head,
           add_summaries)
