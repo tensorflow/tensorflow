@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "google/protobuf/map.h"
 #include "google/protobuf/text_format.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -1260,6 +1261,12 @@ void StripCaretFromArrayNames(Model* model) {
   }
 }
 
+void StripZeroOutputIndexFromInputs(NodeDef* node) {
+  for (auto& input : *node->mutable_input()) {
+    input = StripSuffixString(input, ":0");
+  }
+}
+
 void AddExtraOutputsFedIntoOtherOps(Model* model) {
   for (const auto& consumer_op : model->operators) {
     for (const string& input : consumer_op->inputs) {
@@ -1347,10 +1354,22 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(const ModelFlags& model_flags,
     LogDumpGraphDef(kLogLevelModelChanged, "AFTER INLINING", inlined_graph);
   }
 
+  // Check input and output specification.
+  for (const auto& specified_input_array : model_flags.input_arrays()) {
+    CHECK(!absl::EndsWith(specified_input_array.name(), ":0"))
+        << "Unsupported explicit zero output index: "
+        << specified_input_array.name();
+  }
+  for (const string& specified_output_array : model_flags.output_arrays()) {
+    CHECK(!absl::EndsWith(specified_output_array, ":0"))
+        << "Unsupported explicit zero output index: " << specified_output_array;
+  }
+
   Model* model = new Model;
   ResolveModelFlags(model_flags, model);
 
-  for (const auto& node : inlined_graph.node()) {
+  for (auto node : inlined_graph.node()) {
+    StripZeroOutputIndexFromInputs(&node);
     if (node.op() == "Const") {
       ConvertConstOperator(node, model);
     } else if (node.op() == "Conv2D") {
