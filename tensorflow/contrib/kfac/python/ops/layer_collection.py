@@ -129,7 +129,10 @@ class LayerCollection(object):
         sum.
   """
 
-  def __init__(self, graph=None, name="LayerCollection"):
+  def __init__(self,
+               graph=None,
+               colocate_cov_ops_with_inputs=False,
+               name="LayerCollection"):
     self.fisher_blocks = LayerParametersDict()
     self.fisher_factors = OrderedDict()
     self._linked_parameters = dict(
@@ -140,6 +143,7 @@ class LayerCollection(object):
     self._default_generic_approximation = APPROX_FULL_NAME
     self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
     self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
+    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
@@ -710,6 +714,9 @@ class LayerCollection(object):
            "LayerCollection.fisher_factors. The pair cannot be hashed.").format(
                cls, args))
 
+    kwargs = {
+        "colocate_cov_ops_with_inputs": self._colocate_cov_ops_with_inputs
+    }
     with variable_scope.variable_scope(self._var_scope):
       return utils.setdefault(self.fisher_factors, (cls, args),
-                              lambda: cls(*args))
+                              lambda: cls(*args, **kwargs))

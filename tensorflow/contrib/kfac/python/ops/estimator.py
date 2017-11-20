@@ -18,14 +18,52 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+import itertools
 import math
 
 import numpy as np
 
 from tensorflow.contrib.kfac.python.ops import utils
+from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import nest
+
+
+class _DeviceContextGenerator(object):
+  """Class for generating device contexts in a round-robin fashion."""
+
+  def __init__(self, devices):
+    """Creates a _DeviceContextGenerator object.
+
+    Example usage:
+
+    ```python
+    dcg = _DeviceContextGenerator(['/gpu:0', 'gpu:1'])
+    with dcg():
+      # All operations in this context will be placed on GPU 0
+      ...
+    with dcg():
+      # All operations in this context will be placed on GPU 1
+      ...
+    ```
+
+    Args:
+      devices: An iterable of device strings (or None). Successive calls to
+          __call__ will give contexts which place devices on these devices in
+          a round-robin fashion.
+    """
+    self._cycle = None if devices is None else itertools.cycle(devices)
+
+  @contextlib.contextmanager
+  def __call__(self):
+    """Returns a context manager specifying the default device."""
+    if self._cycle is None:
+      yield
+    else:
+      with tf_ops.device(next(self._cycle)):
+        yield
 
 
 class FisherEstimator(object):
@@ -36,7 +74,10 @@ class FisherEstimator(object):
                cov_ema_decay,
                damping,
                layer_collection,
-               estimation_mode="gradients"):
+               estimation_mode="gradients",
+               colocate_gradients_with_ops=False,
+               cov_devices=None,
+               inv_devices=None):
     """Create a FisherEstimator object.
 
     Args:
@@ -69,6 +110,14 @@ class FisherEstimator(object):
           for each coordinate of the output instead of using 1/-1 vectors.  It
           is more expensive to compute than the other three options by a factor
           equal to the output dimension, roughly speaking.
+      colocate_gradients_with_ops: Whether we should request gradients be
+          colocated with their respective ops.
+      cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
+          computations will be placed on these devices in a round-robin fashion.
+          Can be None, which means that no devices are specified.
+      inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
+          computations will be placed on these devices in a round-robin fashion.
+          Can be None, which means that no devices are specified.
 
     Raises:
       ValueError: If no losses have been registered with layer_collection.
@@ -86,6 +135,12 @@ class FisherEstimator(object):
         "curvature_prop": self._get_grads_lists_curvature_prop,
         "exact": self._get_grads_lists_exact
     }
+    self._colocate_gradients_with_ops = colocate_gradients_with_ops
+    self._cov_device_context_generator = _DeviceContextGenerator(cov_devices)
+    if inv_devices == cov_devices:
+      self._inv_device_context_generator = self._cov_device_context_generator
+    else:
+      self._inv_device_context_generator = _DeviceContextGenerator(inv_devices)
     setup = self._setup(cov_ema_decay)
     self.cov_update_op, self.inv_update_op, self.inv_updates_dict = setup
 
@@ -219,8 +274,13 @@ class FisherEstimator(object):
       raise ValueError("Unrecognized value {} for estimation_mode.".format(
           self._estimation_mode))
 
+    # TODO(b/68033310): This loop round-robins the "concat" operations which
+    # gather the inputs for the cov_updates. In future, we might do these
+    # computations locally then communicate the results, which would require a
+    # modification to this code.
     for grads_list, fb in zip(grads_lists, fisher_blocks_list):
-      fb.instantiate_factors(grads_list, self.damping)
+      with self._cov_device_context_generator():
+        fb.instantiate_factors(grads_list, self.damping)
 
     cov_updates = [
         factor.make_covariance_update_op(cov_ema_decay)
@@ -233,18 +293,23 @@ class FisherEstimator(object):
 
   def _get_all_inverse_update_ops(self):
     for factor in self._layers.get_factors():
-      for op in factor.make_inverse_update_ops():
-        yield op
+      with self._inv_device_context_generator():
+        for op in factor.make_inverse_update_ops():
+          yield op
 
   def _get_grads_lists_gradients(self, tensors):
-    grads_flat = gradients_impl.gradients(self._layers.total_sampled_loss(),
-                                          nest.flatten(tensors))
+    grads_flat = gradients_impl.gradients(
+        self._layers.total_sampled_loss(),
+        nest.flatten(tensors),
+        colocate_gradients_with_ops=self._colocate_gradients_with_ops)
     grads_all = nest.pack_sequence_as(tensors, grads_flat)
     return tuple((grad,) for grad in grads_all)
 
   def _get_grads_lists_empirical(self, tensors):
-    grads_flat = gradients_impl.gradients(self._layers.total_loss(),
-                                          nest.flatten(tensors))
+    grads_flat = gradients_impl.gradients(
+        self._layers.total_loss(),
+        nest.flatten(tensors),
+        colocate_gradients_with_ops=self._colocate_gradients_with_ops)
     grads_all = nest.pack_sequence_as(tensors, grads_flat)
     return tuple((grad,) for grad in grads_all)
 
@@ -262,11 +327,17 @@ class FisherEstimator(object):
     grads_flat = gradients_impl.gradients(
         nest.flatten(loss_inputs),
         nest.flatten(tensors),
-        grad_ys=nest.flatten(transformed_random_signs))
+        grad_ys=nest.flatten(transformed_random_signs),
+        colocate_gradients_with_ops=self._colocate_gradients_with_ops)
     grads_all = nest.pack_sequence_as(tensors, grads_flat)
     return tuple((grad,) for grad in grads_all)
 
   def _get_grads_lists_exact(self, tensors):
+    """Returns a list of all gradients, computing them exactly.
+
+    Args:
+      tensors: Tensors for which to compute gradients.
+    """
     # Loop over all coordinates of all losses.
     grads_all = []
     for loss in self._layers.losses:
@@ -274,6 +345,9 @@ class FisherEstimator(object):
         transformed_one_hot = loss.multiply_fisher_factor_replicated_one_hot(
             index)
         grads_flat = gradients_impl.gradients(
-            loss.inputs, nest.flatten(tensors), grad_ys=transformed_one_hot)
+            loss.inputs,
+            nest.flatten(tensors),
+            grad_ys=transformed_one_hot,
+            colocate_gradients_with_ops=self._colocate_gradients_with_ops)
         grads_all.append(nest.pack_sequence_as(tensors, grads_flat))
     return zip(*grads_all)
