@@ -134,6 +134,7 @@ import math
 import numpy as np
 import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -554,6 +555,11 @@ def embedding_column(
     ValueError: if exactly one of `ckpt_to_load_from` and `tensor_name_in_ckpt`
       is specified.
     ValueError: if `initializer` is specified and is not callable.
+    RuntimeError: If eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution.
+  @end_compatibility
   """
   if (dimension is None) or (dimension < 1):
     raise ValueError('Invalid dimension {}.'.format(dimension))
@@ -565,6 +571,8 @@ def embedding_column(
     raise ValueError('initializer must be callable if specified. '
                      'Embedding of column_name: {}'.format(
                          categorical_column.name))
+  if not context.in_graph_mode():
+    raise RuntimeError('Embedding_column not supported in eager mode.')
   if initializer is None:
     initializer = init_ops.truncated_normal_initializer(
         mean=0.0, stddev=1 / math.sqrt(dimension))
