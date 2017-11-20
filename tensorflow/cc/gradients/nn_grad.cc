@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 
+
 namespace tensorflow {
 namespace ops {
 namespace {
@@ -46,6 +47,38 @@ Status SoftmaxGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Softmax", SoftmaxGrad);
+
+Status SoftmaxCrossEntropyWithLogitsGrad(const Scope& scope,
+                                          const Operation& op,
+                                          const std::vector<Output>&
+                                          grad_inputs,
+                                          std::vector<Output>* grad_outputs) {
+  // Softmax gradient with cross entropy logits function
+  // We multiply the backprop for cost with the gradients - op.output[1]
+  // There is no gradient for labels
+
+  auto softmaxGrad = op.output(1);
+  auto gradLoss = grad_inputs[0];
+  auto gradGrad = grad_inputs[1];
+
+  auto tempGrad = Mul(scope, gradLoss, softmaxGrad);
+
+  // TODO Check if the grad is not zero
+  if (gradGrad.op().output_type(0) != 0) {
+	  auto logits = op.input(0);
+	  auto softmax = ops::Softmax(scope, logits);
+	  auto prod = ops::MatMul(scope, gradGrad, softmax);
+	  auto squeezeProd = ops::Squeeze(scope, prod);
+	  auto fProd = Sub(scope, gradGrad, squeezeProd);
+	  auto grad = Add(scope, tempGrad, fProd);
+	  grad_outputs->push_back(grad);
+	  grad_outputs->push_back(NoGradient());
+  }
+  return scope.status();
+}
+
+REGISTER_GRADIENT_OP("SoftmaxCrossEntropyWithLogits",
+                      SoftmaxCrossEntropyWithLogitsGrad);
 
 Status LogSoftmaxGrad(const Scope& scope, const Operation& op,
                    const std::vector<Output>& grad_inputs,
@@ -195,6 +228,7 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
+
 
 }  // anonymous namespace
 }  // namespace ops
