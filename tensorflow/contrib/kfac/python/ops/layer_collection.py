@@ -620,9 +620,9 @@ class LayerCollection(object):
            "LayerCollection.fisher_factors. The pair cannot be hashed.").format(
                cls, args))
 
-    kwargs = {
-        "colocate_cov_ops_with_inputs": self._colocate_cov_ops_with_inputs
-    }
-    with variable_scope.variable_scope(self._var_scope):
-      return utils.setdefault(self.fisher_factors, (cls, args),
-                              lambda: cls(*args, **kwargs))
+    key = cls, args
+    if key not in self.fisher_factors:
+      colo = self._colocate_cov_ops_with_inputs
+      with variable_scope.variable_scope(self._var_scope):
+        self.fisher_factors[key] = cls(*args, colocate_cov_ops_with_inputs=colo)
+    return self.fisher_factors[key]
