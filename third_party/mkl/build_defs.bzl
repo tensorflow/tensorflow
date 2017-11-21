@@ -8,7 +8,9 @@ mkl_repository depends on the following environment variables:
   * `TF_MKL_ROOT`: The root folder where a copy of libmkl is located.
 """
 
+
 _TF_MKL_ROOT = "TF_MKL_ROOT"
+
 
 def if_mkl(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with MKL.
@@ -22,8 +24,10 @@ def if_mkl(if_true, if_false = []):
         "//conditions:default": if_false
     })
 
+
 def _enable_local_mkl(repository_ctx):
   return _TF_MKL_ROOT in repository_ctx.os.environ
+
 
 def _mkl_autoconf_impl(repository_ctx):
   """Implementation of the local_mkl_autoconf repository rule."""
@@ -48,7 +52,12 @@ def _mkl_autoconf_impl(repository_ctx):
   # Also setup BUILD file.
   repository_ctx.symlink(repository_ctx.attr.build_file, "BUILD")
 
+
 mkl_repository = repository_rule(
+    implementation = _mkl_autoconf_impl,
+    environ = [
+        _TF_MKL_ROOT,
+    ],
     attrs = {
         "build_file": attr.label(),
         "repository": attr.string(),
@@ -56,8 +65,4 @@ mkl_repository = repository_rule(
         "sha256": attr.string(default = ""),
         "strip_prefix": attr.string(default = ""),
     },
-    environ = [
-        _TF_MKL_ROOT,
-    ],
-    implementation = _mkl_autoconf_impl,
 )
