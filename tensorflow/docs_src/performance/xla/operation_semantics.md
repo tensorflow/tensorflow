@@ -75,14 +75,14 @@ Clamps an operand to within the range between a minimum and maximum value.
 | `computation` | `Computation`           | computation of type `T_0, T_1,   |
 :               :                         : ..., T_N -> S` with N parameters :
 :               :                         : of arbitrary type                :
-| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `min`         | `ComputationDataHandle` | array of type T                  |
+| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `max`         | `ComputationDataHandle` | array of type T                  |
 
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+range.  That is, `clamp(a, x, b) =  max(min(a, x), b)`.
 
 All three arrays must be the same shape. Alternately, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -94,7 +94,7 @@ let operand: s32[3] = {-1, 5, 9};
 let min: s32 = 0;
 let max: s32 = 6;
 ==>
-Clamp(operand, min, max) = s32[3]{0, 5, 6};
+Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ```
 
 ## Collapse
