@@ -549,12 +549,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kReduceWindow: {
       optional<HloComputation*> reduce_computation;
       optional<Window> window;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReduceWindow(
           shape, /*operand=*/operands[0], /*init_value=*/operands[1], *window,
@@ -647,10 +650,13 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> scatter;
       attrs["scatter"] = {/*required=*/true, AttrTy::kHloComputation, &scatter};
       optional<Window> window;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateSelectAndScatter(
