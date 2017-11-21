@@ -19,16 +19,18 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
-import multiprocessing
 import os
 import re
 import shutil
+import threading
+import unittest
 
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.summary.writer import writer_cache
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -498,7 +500,10 @@ class KerasCallbacksTest(test.TestCase):
       values = []
       with open(fp) as f:
         for x in csv.reader(f):
-          values.append(x)
+          # In windows, due to \r\n line ends we may end up reading empty lines
+          # after each line. Skip empty lines.
+          if x:
+            values.append(x)
       assert 'nan' in values[-1], 'The last epoch was not logged.'
 
   def test_TerminateOnNaN(self):
@@ -678,23 +683,38 @@ class KerasCallbacksTest(test.TestCase):
             batch_size=5)]
 
       # fit w/o validation data should raise ValueError if histogram_freq > 0
+      cbs = callbacks_factory(histogram_freq=1)
       with self.assertRaises(ValueError):
         model.fit(x_train, y_train, batch_size=BATCH_SIZE,
-                  callbacks=callbacks_factory(histogram_freq=1), epochs=3)
+                  callbacks=cbs, epochs=3)
+
+      for cb in cbs:
+        cb.on_train_end()
 
       # fit generator without validation data should raise ValueError if
       # histogram_freq > 0
+      cbs = callbacks_factory(histogram_freq=1)
       with self.assertRaises(ValueError):
         model.fit_generator(data_generator(True), len(x_train), epochs=2,
-                            callbacks=callbacks_factory(histogram_freq=1))
+                            callbacks=cbs)
+
+      for cb in cbs:
+        cb.on_train_end()
 
       # fit generator with validation data generator should raise ValueError if
       # histogram_freq > 0
+      cbs = callbacks_factory(histogram_freq=1)
       with self.assertRaises(ValueError):
         model.fit_generator(data_generator(True), len(x_train), epochs=2,
                             validation_data=data_generator(False),
                             validation_steps=1,
-                            callbacks=callbacks_factory(histogram_freq=1))
+                            callbacks=cbs)
+
+      for cb in cbs:
+        cb.on_train_end()
+
+      # Make sure file writer cache is clear to avoid failures during cleanup.
+      writer_cache.FileWriterCache.clear()
 
   def test_TensorBoard_multi_input_output(self):
     np.random.seed(1337)
@@ -767,6 +787,9 @@ class KerasCallbacksTest(test.TestCase):
                           callbacks=callbacks_factory(histogram_freq=1))
       assert os.path.isdir(filepath)
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_LambdaCallback(self):
     with self.test_session():
       np.random.seed(1337)
@@ -789,14 +812,15 @@ class KerasCallbacksTest(test.TestCase):
 
       # Start an arbitrary process that should run during model
       # training and be terminated after training has completed.
-      def target():
-        while True:
-          pass
+      e = threading.Event()
 
-      p = multiprocessing.Process(target=target)
-      p.start()
+      def target():
+        e.wait()
+
+      t = threading.Thread(target=target)
+      t.start()
       cleanup_callback = keras.callbacks.LambdaCallback(
-          on_train_end=lambda logs: p.terminate())
+          on_train_end=lambda logs: e.set())
 
       cbks = [cleanup_callback]
       model.fit(
@@ -807,8 +831,8 @@ class KerasCallbacksTest(test.TestCase):
           callbacks=cbks,
           epochs=5,
           verbose=0)
-      p.join()
-      assert not p.is_alive()
+      t.join()
+      assert not t.is_alive()
 
   def test_TensorBoard_with_ReduceLROnPlateau(self):
     with self.test_session():

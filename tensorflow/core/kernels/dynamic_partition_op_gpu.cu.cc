@@ -19,11 +19,12 @@ limitations under the License.
 // 2. We apply cub::DeviceRadixSort::SortPairs to the key - value pairs given
 //    by partitions and indices_in. This will result in two new vectors
 //    partitions_out and indices_out, with partitions_out sorted.
-// 3. The first dimension of outputs[i] is equal to the length of the interval
-//    of i-values in partitions_out. We determine it in two steps:
-//    - compute the starting and ending point of each interval,
-//    - subtract the starting and ending points to find the length.
-//    The result is placed in partition_count.
+// 3. The first dimension of outputs[i] is equal to the number of i-values in
+//    partitions_out. We determine it in two steps:
+//    - apply cub::DeviceReduce::ReduceByKey to count how many times each value
+//      appears in partitions_out,
+//    - move the results to partition_count. This handles missing values
+//      (corresponding to empty parts).
 // 4. Because partition_count is on the GPU, we bring it asynchronously to
 //    the CPU. Then we can allocate the output tensors.
 // 5. Finally, we use indices_out and the gather functor to collect the output.
@@ -35,6 +36,9 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "external/cub_archive/cub/device/device_radix_sort.cuh"
+#include "external/cub_archive/cub/device/device_reduce.cuh"
+#include "external/cub_archive/cub/iterator/constant_input_iterator.cuh"
+#include "external/cub_archive/cub/thread/thread_operators.cuh"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -44,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/gather_functor_gpu.cu.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/transform_output_iterator.h"
 
 namespace tensorflow {
 
@@ -57,34 +62,14 @@ __global__ void RangeInitKernel(const T start, const T delta, const int32 size,
   CUDA_1D_KERNEL_LOOP(i, size) { out[i] = start + i * delta; }
 }
 
-__global__ void FindEndpointsKernel(const int32* partitions, int32 size,
-                                    int32 nump, int32* start, int32* end) {
-  CUDA_1D_KERNEL_LOOP(i, size) {
-    int32 current = ldg(partitions + i);
-    if (FastBoundsCheck(current, nump)) {
-      if (i == 0)
-        start[current] = i;
-      else {
-        int32 before = ldg(partitions + i - 1);
-        if (before != current) start[current] = i;
-      }
-      if (i == size - 1)
-        end[current] = i + 1;
-      else {
-        int32 after = ldg(partitions + i + 1);
-        if (after != current) end[current] = i + 1;
-      }
-    }
-  }
-}
-
-// We create a local version of subtract, because the tf.subtract kernel
-// is not defined for int32. We use it to compute the length of an interval
-// by subtracting the endpoints.
-__global__ void IntervalLengthKernel(int32* start, int32 size, int32* end) {
-  CUDA_1D_KERNEL_LOOP(i, size) {
-    int32 start_point = ldg(start + i);
-    end[i] = end[i] - start_point;
+__global__ void MoveValuesKernel(const int32* keys, const int32* values,
+                                 const int32* size, int32 out_size,
+                                 int32* out) {
+  int32 N = min(ldg(size), out_size);
+  CUDA_1D_KERNEL_LOOP(i, N) {
+    int32 key = ldg(keys + i);
+    int32 value = ldg(values + i);
+    if (FastBoundsCheck(key, out_size)) out[key] = value;
   }
 }
 
@@ -99,23 +84,18 @@ void RangeInit(const GPUDevice& d, const T start, const T delta,
       start, delta, size, out.data());
 }
 
-// Partitions is a sorted vector of N non-negative integer numbers.
-// This function computes the starting and ending points of each interval
-// of values.
-void ComputeIntervals(const GPUDevice& d, Tensor* partitions, int32 N,
-                      int32 nump, int32* start_ptr, int32* end_ptr) {
-  CudaLaunchConfig config = GetCudaLaunchConfig(N, d);
-  FindEndpointsKernel<<<config.block_count, config.thread_per_block, 0,
-                        d.stream()>>>(partitions->flat<int32>().data(), N, nump,
-                                      start_ptr, end_ptr);
-}
-
-// Subtract the ending points of each interval to obtain the interval length.
-void ComputeItvLength(const GPUDevice& d, int32 num, int32* start_ptr,
-                      int32* end_ptr) {
-  CudaLaunchConfig config = GetCudaLaunchConfig(num, d);
-  IntervalLengthKernel<<<config.block_count, config.thread_per_block, 0,
-                         d.stream()>>>(start_ptr, num, end_ptr);
+// Given *num_runs pairs (key, value), this function moves the value
+// corresponding to key i at position i in the array out.
+void MoveValues(const GPUDevice& d, int32* keys, int32* values, int32* num_runs,
+                int32 out_size, int32* out) {
+  // Because num_runs is located on the GPU, we can not access it directly.
+  // So we launch the kernel with size = out_size.
+  // This is valid for correct inputs, because then out_size >= *num_runs.
+  // For wrong inputs, we may have out_size < *num_runs. In this case we will
+  // only handle the first out_size values.
+  CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
+  MoveValuesKernel<<<config.block_count, config.thread_per_block, 0,
+                     d.stream()>>>(keys, values, num_runs, out_size, out);
 }
 
 template <typename T>
@@ -130,10 +110,75 @@ void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
       out_size);
 }
 
+struct IdentityOp {
+  __device__ int32 __forceinline__ operator()(const int32& a) const {
+    return a;
+  }
+};
+
+// Define an output iterator that only allows assignment to
+// positions between [base, base + limit).
+class BoundedOutputIterator
+    : public TransformOutputIterator<int32, int32, IdentityOp> {
+ private:
+  int32 limit;
+  int32* base;
+
+  struct BoundedReference : Reference {
+    int32 limit;
+    int32* base;
+    // Constructor
+    __host__ __device__ __forceinline__
+    BoundedReference(int32* ptr, int32* base, IdentityOp op, int32 limit)
+        : Reference(ptr, op), base(base), limit(limit) {}
+
+    // Assignment
+    __host__ __device__ __forceinline__ int32 operator=(int32 val) {
+      if (ptr - base < limit && ptr - base >= 0) *ptr = val;
+      return val;
+    }
+  };
+
+ public:
+  typedef BoundedOutputIterator self_type;
+  typedef BoundedReference reference;
+
+  __host__ __device__ __forceinline__ BoundedOutputIterator(int32* ptr,
+                                                            IdentityOp op,
+                                                            int32 size)
+      : TransformOutputIterator(ptr, op), base(ptr), limit(size) {}
+
+  __host__ __device__ __forceinline__
+  BoundedOutputIterator(int32* ptr, int32* base, IdentityOp op, int32 size)
+      : TransformOutputIterator(ptr, op), base(base), limit(size) {}
+
+  // Indirection
+  __host__ __device__ __forceinline__ reference operator*() const {
+    return BoundedReference(ptr, base, conversion_op, limit);
+  }
+
+  // Array subscript
+  __host__ __device__ __forceinline__ reference operator[](int32 n) const {
+    return BoundedReference(ptr + n, base, conversion_op, limit);
+  }
+
+  // Addition
+  __host__ __device__ __forceinline__ self_type operator+(int32 n) const {
+    self_type retval(ptr + n, base, conversion_op, limit);
+    return retval;
+  }
+
+  // Subtraction
+  __host__ __device__ __forceinline__ self_type operator-(int32 n) const {
+    self_type retval(ptr - n, base, conversion_op, limit);
+    return retval;
+  }
+};
+
 }  // namespace
 
 // The current implementation has memory cost on GPU
-// I + P + max(3N + R, O + N), where:
+// I + P + max(3N + R + P, O + N), where:
 // I - the size of the input
 // N - the size of the partitions tensor
 // R - the temporary storage used by cub::RadixSort, about 2N
@@ -310,9 +355,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                          Tensor* partition_count, Tensor* indices_out,
                          DoneCallback done) {
     const GPUDevice& device = c->eigen_device<GPUDevice>();
+    const cudaStream_t& cu_stream = GetCudaStream(c);
     int32 N = partitions->NumElements();
     Tensor indices_in;
     Tensor partitions_out;
+    Tensor aggregates_out;
 
     // Allocate memory for Radix-Sort.
     this->AllocateTempSpace(c, N, &indices_in, &partitions_out, indices_out,
@@ -321,24 +368,66 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     this->RadixSort(c, partitions, &indices_in, &partitions_out, indices_out,
                     done);
     if (!c->status().ok()) return;
-    // We still need a little bit of additional memory. However,
-    // we can reuse the indices_in tensor. We could also use atomic
-    // operations and no additional memory, but this approach seems faster.
+    // We will now apply a reduce operation to count how many times
+    // each index appears in partitions.
 
-    // Zero-out the allocated memory.
+    // Zero-out the partition_count tensor.
     functor::SetZeroFunctor<GPUDevice, int32> zero_functor;
     zero_functor(device, partition_count->flat<int32>());
-    zero_functor(device, indices_in.flat<int32>());
+    // Allocate memory for aggregates_out.
+    OP_REQUIRES_OK_ASYNC(
+        c, c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
+                            &aggregates_out),
+        done);
     // Obtain the pointers to inner buffers.
-    int32* start_ptr = indices_in.flat<int32>().data();
-    int32* end_ptr = partition_count->flat<int32>().data();
-    // Obtain the starting and ending points of each interval.
-    ComputeIntervals(device, &partitions_out, N, num_partitions_, start_ptr,
-                     end_ptr);
-    // Subtract to compute the number of appearances of each id.
-    ComputeItvLength(device, num_partitions_, start_ptr, end_ptr);
-  }  // At this point indices_in and partitions_out will be marked
-     // for deallocation.
+    int32* keys_in_ptr = partitions_out.flat<int32>().data();
+    // Here we reuse the indices_in tensor for the unique keys output.
+    int32* unique_out_ptr = indices_in.flat<int32>().data();
+    int32* aggregates_out_ptr = aggregates_out.flat<int32>().data();
+    // We wrap the pointers in bounded output iterators to guard against
+    // wrong inputs (more than num_partitions distinct indices).
+    IdentityOp id_op;
+    BoundedOutputIterator unique_out_it(unique_out_ptr, id_op, num_partitions_);
+    BoundedOutputIterator aggregates_out_it(aggregates_out_ptr, id_op,
+                                            num_partitions_);
+
+    cub::ConstantInputIterator<int32> values_in(1);
+    cub::Sum reduction_op;
+
+    // Allocate space on GPU for the number of runs. This is required by CUB.
+    Tensor num_runs;
+    OP_REQUIRES_OK_ASYNC(
+        c, c->allocate_temp(DT_INT32, TensorShape({1}), &num_runs), done);
+    int32* num_runs_ptr = num_runs.flat<int32>().data();
+
+    // Determine temporary device storage requirements
+    Tensor cub_temp_storage;
+    size_t temp_storage_bytes = 0;
+    cub::DeviceReduce::ReduceByKey(NULL, temp_storage_bytes, keys_in_ptr,
+                                   unique_out_it, values_in, aggregates_out_it,
+                                   num_runs_ptr, reduction_op, N, cu_stream);
+    // Allocate temporary storage.
+    OP_REQUIRES_OK_ASYNC(
+        c, c->allocate_temp(
+               DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+               &cub_temp_storage),
+        done);
+    // Run reduce-by-key. The effect is that we count how many times
+    // each index appears in partitions. The distinct indices are stored
+    // in unique_out, while the count is stored in aggregates_out.
+    // The total number of distinct indices is stored in num_runs.
+    cub::DeviceReduce::ReduceByKey(cub_temp_storage.flat<int8>().data(),
+                                   temp_storage_bytes, keys_in_ptr,
+                                   unique_out_it, values_in, aggregates_out_it,
+                                   num_runs_ptr, reduction_op, N, cu_stream);
+    // We are not done yet. unique_out only contains the indices that appeared
+    // at least once in partitions. We move each value from aggregates_out
+    // to the corresponding position in partition_count. This will handle
+    // possibly empty parts.
+    MoveValues(device, unique_out_ptr, aggregates_out_ptr, num_runs_ptr,
+               num_partitions_, partition_count->flat<int32>().data());
+  }  // At this point indices_in, partitions_out, aggregates_out
+     // and cub_temp_storage will be marked for deallocation.
 
   void GatherSlices(OpKernelContext* c, const Tensor* data,
                     const Tensor* indices, int32 N, int64 slice_size,
@@ -358,7 +447,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     }
   }
 
-  int num_partitions_;
+  int32 num_partitions_;
 };
 
 #define REGISTER_DYNAMIC_PARTITION_GPU(T)                                 \
