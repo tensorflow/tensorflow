@@ -236,20 +236,29 @@ def input_layer(features,
       ordered_columns.append(column)
       with variable_scope.variable_scope(
           None, default_name=column._var_scope_name):  # pylint: disable=protected-access
-        tensor = column._get_dense_tensor(  # pylint: disable=protected-access
-            builder,
-            weight_collections=weight_collections,
-            trainable=trainable)
+        if column._var_scope_name == column.name:  # pylint: disable=protected-access
+          tensor = _get_dense_tensor(
+              column=column,
+              builder=builder,
+              weight_collections=weight_collections,
+              trainable=trainable)
+        else:
+          # This is typically the case for shared_embedding_columns. The
+          # embedding weights variable will be under the common variable_scope,
+          # but the ops for each column will be under a separate name_scope.
+          with ops.name_scope(column.name):
+            tensor = _get_dense_tensor(
+                column=column,
+                builder=builder,
+                weight_collections=weight_collections,
+                trainable=trainable)
+        output_tensors.append(tensor)
         if cols_to_vars is not None:
           # Retrieve any variables created (some _DenseColumn's don't create
           # variables, in which case an empty list is returned).
           cols_to_vars[column] = ops.get_collection(
               ops.GraphKeys.GLOBAL_VARIABLES,
               scope=variable_scope.get_variable_scope().name)
-        num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
-        batch_size = array_ops.shape(tensor)[0]
-        tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
-        output_tensors.append(tensor)
     _verify_static_batch_size_equality(output_tensors, ordered_columns)
     return array_ops.concat(output_tensors, 1)
 
@@ -345,13 +354,26 @@ def linear_model(features,
       with variable_scope.variable_scope(
           None, default_name=column._var_scope_name):  # pylint: disable=protected-access
         ordered_columns.append(column)
-        if isinstance(column, _CategoricalColumn):
-          weighted_sum = _create_categorical_column_weighted_sum(
-              column, builder, units, sparse_combiner, weight_collections,
-              trainable)
+        if column._var_scope_name == column.name:  # pylint: disable=protected-access
+          weighted_sum = _create_weighted_sum(
+              column=column,
+              builder=builder,
+              units=units,
+              sparse_combiner=sparse_combiner,
+              weight_collections=weight_collections,
+              trainable=trainable)
         else:
-          weighted_sum = _create_dense_column_weighted_sum(
-              column, builder, units, weight_collections, trainable)
+          # This is typically the case for shared_embedding_columns. The
+          # embedding weights variable will be under the common variable_scope,
+          # but the ops for each column will be under a separate name_scope.
+          with ops.name_scope(column.name):
+            weighted_sum = _create_weighted_sum(
+                column=column,
+                builder=builder,
+                units=units,
+                sparse_combiner=sparse_combiner,
+                weight_collections=weight_collections,
+                trainable=trainable)
         weighted_sums.append(weighted_sum)
         if cols_to_vars is not None:
           # Retrieve the variables created.
@@ -1488,7 +1510,7 @@ class _FeatureColumn(object):
 
   @abc.abstractproperty
   def name(self):
-    """Returns string. Used for naming."""
+    """Returns string. Used for naming and for name_scope."""
     pass
 
   @property
@@ -1584,6 +1606,38 @@ class _DenseColumn(_FeatureColumn):
       `Tensor` of shape [batch_size] + `_variable_shape`.
     """
     pass
+
+
+def _get_dense_tensor(
+    column,
+    builder,
+    weight_collections,
+    trainable):
+  """Creates a dense Tensor for a _DenseColumn for input_layer."""
+  tensor = column._get_dense_tensor(  # pylint: disable=protected-access
+      builder,
+      weight_collections=weight_collections,
+      trainable=trainable)
+  num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
+  batch_size = array_ops.shape(tensor)[0]
+  return array_ops.reshape(tensor, shape=(batch_size, num_elements))
+
+
+def _create_weighted_sum(
+    column,
+    builder,
+    units,
+    sparse_combiner,
+    weight_collections,
+    trainable):
+  """Creates a weighted sum for a dense or sparse column for linear_model."""
+  if isinstance(column, _CategoricalColumn):
+    return _create_categorical_column_weighted_sum(
+        column, builder, units, sparse_combiner, weight_collections,
+        trainable)
+  else:
+    return _create_dense_column_weighted_sum(
+        column, builder, units, weight_collections, trainable)
 
 
 def _create_dense_column_weighted_sum(
