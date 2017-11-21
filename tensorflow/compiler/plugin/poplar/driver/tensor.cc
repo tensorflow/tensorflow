@@ -137,7 +137,7 @@ AddPlainTensor(poplar::Graph& graph,
   poplar::Type poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
-  out = graph.addTensor(poplar_type, dim, inst->name());
+  out = graph.addVariable(poplar_type, dim, inst->name());
   popstd::mapTensorLinearly(graph, out);
   return out;
 }
@@ -155,7 +155,7 @@ AddConvolutionInput(poplar::Graph& graph,
 
   auto name = port::StrCat(inst->name(), "_input");
   poplar::Tensor out = popconv::createInput(graph, params, name, opts);
-  return ShuffleConvolutionInput(target, out);
+  return ShuffleConvolutionInputToTensorflow(target, out);
 }
 
 static port::StatusOr<poplar::Tensor>
@@ -171,8 +171,9 @@ AddConvolutionWeights(poplar::Graph& graph,
 
   auto name = port::StrCat(inst->name(), "_weights");
   poplar::Tensor out = popconv::createWeights(graph, params, name, opts);
+
   out = RemoveGroupsDimensionFromWeights(out);
-  return ShuffleConvolutionWeights(target, out);
+  return ShuffleConvolutionWeightsToTensorflow(target, out);
 }
 
 static port::StatusOr<poplar::Tensor>
@@ -287,11 +288,11 @@ AddConstantTensor(poplar::Graph& graph,
   const TYPE* data(static_cast<const TYPE*>(literal.InternalData()));
 
   if (num_elements == 0) {
-    tensor = graph.addConstantTensor(type, {0}, (TYPE)0);
+    tensor = graph.addConstant(type, {0}, (TYPE)0);
   } else if (num_elements == 1) {
-    tensor = graph.addConstantTensor(type, dim, data[0]);
+    tensor = graph.addConstant(type, dim, data[0]);
   } else {
-    tensor = graph.addConstantTensor(type, dim, data);
+    tensor = graph.addConstant(type, dim, data);
   }
 
   tensor = ConvertToDeviceLayout(shape, tensor);
@@ -313,11 +314,11 @@ Add64BitConstantTensor(poplar::Graph&graph,
   const int32* data32 = reinterpret_cast<const int32*>(converted.data());
 
   if (num_elements == 0) {
-    tensor = graph.addConstantTensor(type, {0}, (int32)0);
+    tensor = graph.addConstant(type, {0}, (int32)0);
   } else if (num_elements == 1) {
-    tensor = graph.addConstantTensor(type, dim, data32[0]);
+    tensor = graph.addConstant(type, dim, data32[0]);
   } else {
-    tensor = graph.addConstantTensor(type, dim, data32);
+    tensor = graph.addConstant(type, dim, data32);
   }
 }
 

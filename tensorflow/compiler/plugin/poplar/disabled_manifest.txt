@@ -1,6 +1,3 @@
-Conv3DTransposeTest.*                     # No 3D conv
-Conv3DBackpropFilterV2GradTest.*          # No 3D conv
-Conv3DTransposeTest.*                     # No 3D conv
 TensorArrayTest.testTensorArrayEvalEmpty  # Test generates invalid graph
 ReduceOpsTest.testReduceSumC64            # No support for C64
 ReduceOpsTest.testReduceProdC64           # No support for C64

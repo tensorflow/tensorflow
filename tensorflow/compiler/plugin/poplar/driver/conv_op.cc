@@ -31,18 +31,6 @@ GetConvolutionParameters(const HloInstruction* inst) {
 
   const Window& window(inst->window());
 
-  if (ShapeUtil::Rank(input) != 4 || ShapeUtil::Rank(kernel) != 4) {
-    return port::Status(
-            port::error::FAILED_PRECONDITION,
-            port::StrCat("Poplar supports 2D convolution only: ", inst->name()));
-  }
-
-  if (window.dimensions().size() != 2) {
-    return port::Status(
-            port::error::FAILED_PRECONDITION,
-            port::StrCat("Invalid window dimension count on ", inst->name()));
-  }
-
   poplar::Type dtype;
   TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(input));
 
@@ -53,39 +41,30 @@ GetConvolutionParameters(const HloInstruction* inst) {
   unsigned int n_b = input_dims[dims.input_batch_dimension()];
   unsigned int n_i = input_dims[dims.input_feature_dimension()];
   unsigned int n_o = kernel_dims[dims.kernel_output_feature_dimension()];
-  unsigned int n_y = input_dims[dims.spatial_dimensions(0)];
-  unsigned int n_x = input_dims[dims.spatial_dimensions(1)];
-  unsigned int f_y = kernel_dims[dims.kernel_spatial_dimensions(0)];
-  unsigned int f_x = kernel_dims[dims.kernel_spatial_dimensions(1)];
 
-  unsigned int s_y = window.dimensions(0).stride();
-  unsigned int s_x = window.dimensions(1).stride();
+  std::vector<std::size_t> n_s;
+  std::vector<std::size_t> f_s;
+  std::vector<unsigned int> w_s;
+  std::vector<int> p_l;
+  std::vector<int> p_u;
+  std::vector<int> k_l;
+  std::vector<int> k_h;
+  std::vector<unsigned int> d_i;
+  std::vector<unsigned int> d_w;
+  for (int64 i=0; i < window.dimensions().size(); i++) {
+    n_s.push_back(input_dims[dims.spatial_dimensions(i)]);
+    f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
+    w_s.push_back(window.dimensions(i).stride());
+    p_l.push_back(window.dimensions(i).padding_low());
+    p_u.push_back(window.dimensions(i).padding_high());
+    k_l.push_back(0);
+    k_h.push_back(0);
+    d_i.push_back(window.dimensions(i).base_dilation());
+    d_w.push_back(window.dimensions(i).window_dilation());
+  }
 
-  int pl_y = window.dimensions(0).padding_low();
-  int pl_x = window.dimensions(1).padding_low();
-
-  int pu_y = window.dimensions(0).padding_high();
-  int pu_x = window.dimensions(1).padding_high();
-
-  unsigned int di_y = window.dimensions(0).base_dilation();
-  unsigned int di_x = window.dimensions(1).base_dilation();
-
-  unsigned int dw_y = window.dimensions(0).window_dilation();
-  unsigned int dw_x = window.dimensions(1).window_dilation();
-
-  popconv::ConvParams params(dtype,
-                             n_b,
-                             {n_y, n_x},
-                             {f_y, f_x},
-                             n_i, n_o,
-                             {s_y, s_x},
-                             {pl_y, pl_x},
-                             {pu_y, pu_x},
-                             {di_y, di_x},
-                             {0, 0},
-                             {0, 0},
-                             {dw_y, dw_x},
-                             1);
+  popconv::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, w_s, p_l, p_u, d_i,
+                             k_l, k_h, d_w, 1);
 
   return params;
 }
@@ -98,18 +77,6 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
 
   const Window& window(inst->window());
 
-  if (ShapeUtil::Rank(input) != 4 || ShapeUtil::Rank(kernel) != 4) {
-    return port::Status(
-            port::error::FAILED_PRECONDITION,
-            port::StrCat("Poplar supports 2D convolution only: ", inst->name()));
-  }
-
-  if (window.dimensions().size() != 2) {
-    return port::Status(
-            port::error::FAILED_PRECONDITION,
-            port::StrCat("Invalid window dimension count on ", inst->name()));
-  }
-
   poplar::Type dtype;
   TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(input));
 
@@ -120,41 +87,32 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
   unsigned int n_b = input_dims[dims.input_batch_dimension()];
   unsigned int n_i = input_dims[dims.input_feature_dimension()];
   unsigned int n_o = kernel_dims[dims.kernel_output_feature_dimension()];
-  unsigned int n_y = input_dims[dims.spatial_dimensions(0)];
-  unsigned int n_x = input_dims[dims.spatial_dimensions(1)];
-  unsigned int f_y = kernel_dims[dims.kernel_spatial_dimensions(0)];
-  unsigned int f_x = kernel_dims[dims.kernel_spatial_dimensions(1)];
 
-  unsigned int s_y = window.dimensions(0).stride();
-  unsigned int s_x = window.dimensions(1).stride();
-
-  int pl_y = window.dimensions(0).padding_low();
-  int pl_x = window.dimensions(1).padding_low();
-
-  int pu_y = window.dimensions(0).padding_high();
-  int pu_x = window.dimensions(1).padding_high();
-
-  unsigned int di_y = window.dimensions(0).base_dilation();
-  unsigned int di_x = window.dimensions(1).base_dilation();
-
-  unsigned int dw_y = window.dimensions(0).window_dilation();
-  unsigned int dw_x = window.dimensions(1).window_dilation();
+  std::vector<std::size_t> n_s;
+  std::vector<std::size_t> f_s;
+  std::vector<unsigned int> w_s;
+  std::vector<int> p_l;
+  std::vector<int> p_u;
+  std::vector<int> k_l;
+  std::vector<int> k_h;
+  std::vector<unsigned int> d_i;
+  std::vector<unsigned int> d_w;
+  for (int64 i=0; i < window.dimensions().size(); i++) {
+    n_s.push_back(input_dims[dims.spatial_dimensions(i)]);
+    f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
+    w_s.push_back(window.dimensions(i).stride());
+    p_l.push_back(window.dimensions(i).padding_low());
+    p_u.push_back(window.dimensions(i).padding_high());
+    k_l.push_back(0);
+    k_h.push_back(0);
+    d_i.push_back(window.dimensions(i).base_dilation());
+    d_w.push_back(window.dimensions(i).window_dilation());
+  }
 
   n_o = n_o / n_i;
 
-  popconv::ConvParams params(dtype,
-                             n_b,
-                             {n_y, n_x},
-                             {f_y, f_x},
-                             1, n_o,
-                             {s_y, s_x},
-                             {pl_y, pl_x},
-                             {pu_y, pu_x},
-                             {di_y, di_x},
-                             {0, 0},
-                             {0, 0},
-                             {dw_y, dw_x},
-                             n_i);
+  popconv::ConvParams params(dtype, n_b, n_s, f_s, 1, n_o, w_s, p_l, p_u, d_i,
+                             k_l, k_h, d_w, n_i);
 
   return params;
 }
@@ -180,39 +138,101 @@ static bool is_identity_shuffle(const std::vector<unsigned int> shuffle) {
 }
 
 port::StatusOr<poplar::Tensor>
-ShuffleConvolutionInput(const HloInstruction* inst,
-                        const poplar::Tensor& tensor) {
+ShuffleConvolutionInputToPoplar(const HloInstruction* inst,
+                                const poplar::Tensor& tensor) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
 
-  std::vector<unsigned int> shuffle(4);
-  shuffle[d.input_batch_dimension()] = 0;
-  shuffle[d.input_feature_dimension()] = 1;
-  shuffle[d.spatial_dimensions(0)] = 2;
-  shuffle[d.spatial_dimensions(1)] = 3;
+  std::vector<unsigned int> shuffle(2 + d.spatial_dimensions_size());
+  shuffle[0] = d.input_batch_dimension();
+  shuffle[1] = d.input_feature_dimension();
+  for (int64 i = 0; i < d.spatial_dimensions_size(); i++) {
+    shuffle[2 + i] = d.spatial_dimensions(i);
+  }
 
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
 port::StatusOr<poplar::Tensor>
-ShuffleConvolutionWeights(const HloInstruction* inst,
-                          const poplar::Tensor& tensor) {
+ShuffleConvolutionWeightsToPoplar(const HloInstruction* inst,
+                                  const poplar::Tensor& tensor,
+                                  bool swap_features) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
 
-  std::vector<unsigned int> shuffle(4);
+  std::vector<unsigned int> shuffle(2 + d.kernel_spatial_dimensions_size());
+  if (swap_features) {
+    shuffle[0] = d.kernel_input_feature_dimension();
+    shuffle[1] = d.kernel_output_feature_dimension();
+  } else {
+    shuffle[0] = d.kernel_output_feature_dimension();
+    shuffle[1] = d.kernel_input_feature_dimension();
+  }
+  for (int64 i = 0; i < d.kernel_spatial_dimensions_size(); i++) {
+    shuffle[2 + i] = d.kernel_spatial_dimensions(i);
+  }
+
+  return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
+}
+
+port::StatusOr<poplar::Tensor>
+ShuffleConvolutionInputToTensorflow(const HloInstruction* inst,
+                                    const poplar::Tensor& tensor) {
+  const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
+
+  std::vector<unsigned int> shuffle(2 + d.spatial_dimensions_size());
+  shuffle[d.input_batch_dimension()] = 0;
+  shuffle[d.input_feature_dimension()] = 1;
+  for (int64 i = 0; i < d.spatial_dimensions_size(); i++) {
+    shuffle[d.spatial_dimensions(i)] = i + 2;
+  }
+
+  return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
+}
+
+port::StatusOr<poplar::Tensor>
+ShuffleConvolutionWeightsToTensorflow(const HloInstruction* inst,
+                                      const poplar::Tensor& tensor) {
+  const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
+
+  std::vector<unsigned int> shuffle(2 + d.kernel_spatial_dimensions_size());
   shuffle[d.kernel_output_feature_dimension()] = 0;
   shuffle[d.kernel_input_feature_dimension()] = 1;
-  shuffle[d.kernel_spatial_dimensions(0)] = 2;
-  shuffle[d.kernel_spatial_dimensions(1)] = 3;
+  for (int64 i = 0; i < d.spatial_dimensions_size(); i++) {
+    shuffle[d.kernel_spatial_dimensions(i)] = i + 2;
+  }
+
+  return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
+}
+
+port::StatusOr<poplar::Tensor>
+ShuffleConvolutionOutputToTensorflow(const HloInstruction* inst,
+                                     const poplar::Tensor& tensor) {
+  const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
+
+  std::vector<unsigned int> shuffle(2 + d.spatial_dimensions_size());
+  shuffle[d.output_batch_dimension()] = 0;
+  shuffle[d.output_feature_dimension()] = 1;
+  for (int64 i = 0; i < d.spatial_dimensions_size(); i++) {
+    shuffle[d.spatial_dimensions(i)] = i + 2;
+  }
 
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
 poplar::Tensor RemoveGroupsDimensionFromWeights(const poplar::Tensor& t) {
-  return t.reshape({t.dim(1), t.dim(2), t.dim(3), t.dim(4)});
+  std::vector<std::size_t> shape;
+  for (int64 i = 1; i < t.rank(); i++) {
+    shape.push_back(t.dim(i));
+  }
+  return t.reshape(shape);
 }
 
 poplar::Tensor AddGroupsDimensionToWeights(const poplar::Tensor& t) {
-  return t.reshape({1, t.dim(0), t.dim(1), t.dim(2), t.dim(3)});
+  std::vector<std::size_t> shape;
+  shape.push_back(1);
+  for (int64 i = 0; i < t.rank(); i++) {
+    shape.push_back(t.dim(i));
+  }
+  return t.reshape(shape);
 }
 
 port::StatusOr <poplar::program::Program>
@@ -234,55 +254,23 @@ CreateConv2D(poplar::Graph &graph,
   opts.cache = &res.convolution_cache;
   opts.pass = GetConvolutionPass(inst);
 
-  const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
-
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst));
 
   poplar::program::Sequence prog;
 
-  std::vector<unsigned int> shuffle(4);
-  shuffle[0] = d.input_batch_dimension();
-  shuffle[1] = d.input_feature_dimension();
-  shuffle[2] = d.spatial_dimensions(0);
-  shuffle[3] = d.spatial_dimensions(1);
+  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(inst, in));
 
-  if (!is_identity_shuffle(shuffle)) {
-    in = in.dimShuffle(shuffle);
-    auto name = port::StrCat(inst->name(), "_input_copy");
-    poplar::Tensor conv_in = popconv::createInput(graph, params, name, opts);
-    prog.add(poplar::program::Copy(in, conv_in));
-    in = conv_in;
-  }
+  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(inst, kernel,
+                                                                false));
 
-  shuffle[0] = d.kernel_output_feature_dimension();
-  shuffle[1] = d.kernel_input_feature_dimension();
-  shuffle[2] = d.kernel_spatial_dimensions(0);
-  shuffle[3] = d.kernel_spatial_dimensions(1);
-
-  if (!is_identity_shuffle(shuffle)) {
-    kernel = kernel.dimShuffle(shuffle);
-    kernel = AddGroupsDimensionToWeights(kernel);
-    auto name = port::StrCat(inst->name(), "_weights_copy");
-    poplar::Tensor conv_kernel = popconv::createWeights(graph, params, name, opts);
-    prog.add(poplar::program::Copy(kernel, conv_kernel));
-    kernel = conv_kernel;
-  } else {
-    kernel = AddGroupsDimensionToWeights(kernel);
-  }
+  kernel = AddGroupsDimensionToWeights(kernel);
 
   // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
                                             false, prog, inst->name(), opts);
 
-  shuffle[d.output_batch_dimension()] = 0;
-  shuffle[d.output_feature_dimension()] = 1;
-  shuffle[d.spatial_dimensions(0)] = 2;
-  shuffle[d.spatial_dimensions(1)] = 3;
-
-  if (!is_identity_shuffle(shuffle)) {
-    out = out.dimShuffle(shuffle);
-  }
+  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(inst, out));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -389,57 +377,29 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
   opts.cache = &res.convolution_cache;
   opts.pass = GetConvolutionPass(root);
 
-  const ConvolutionDimensionNumbers& d(root->convolution_dimension_numbers());
-
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetDepthConvolutionParameters(root));
 
   poplar::program::Sequence prog;
 
-  std::vector<unsigned int> shuffle(4);
-  shuffle[0] = d.input_batch_dimension();
-  shuffle[1] = d.input_feature_dimension();
-  shuffle[2] = d.spatial_dimensions(0);
-  shuffle[3] = d.spatial_dimensions(1);
+  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(root, in));
 
-  if (!is_identity_shuffle(shuffle)) {
-    in = in.dimShuffle(shuffle);
-    auto name = port::StrCat(root->name(), "_input_copy");
-    auto conv_in = popconv::createInput(graph, params, name, opts);
-    prog.add(poplar::program::Copy(in, conv_in));
-    in = conv_in;
-  }
+  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(root, kernel,
+                                                                false));
 
-  shuffle[0] = d.kernel_output_feature_dimension();
-  shuffle[1] = d.kernel_input_feature_dimension();
-  shuffle[2] = d.kernel_spatial_dimensions(0);
-  shuffle[3] = d.kernel_spatial_dimensions(1);
+  kernel = AddGroupsDimensionToWeights(kernel);
 
-  if (!is_identity_shuffle(shuffle)) {
-    kernel = kernel.dimShuffle(shuffle);
-    kernel = AddGroupsDimensionToWeights(kernel);
-    kernel = kernel.dimShuffle({2, 1, 0, 3, 4});
-    auto name = port::StrCat(root->name(), "_weights_copy");
-    auto conv_kernel = popconv::createWeights(graph, params, name, opts);
-    prog.add(poplar::program::Copy(kernel, conv_kernel));
-    kernel = conv_kernel;
-  } else {
-    kernel = AddGroupsDimensionToWeights(kernel);
-    kernel = kernel.dimShuffle({2, 1, 0, 3, 4});
-  }
-
-  // Add the convolution
+  // Swap IN and GROUPS
+  std::vector<unsigned int> shuffle(kernel.rank());
+  std::iota(shuffle.begin(), shuffle.end(), 0);
+  shuffle[0] = 2;
+  shuffle[2] = 0;
+  kernel = kernel.dimShuffle(shuffle);
+  
   auto out = popconv::convolution(graph, in, kernel, params, false, prog,
                                   inst->name(), opts);
 
-  shuffle[d.output_batch_dimension()] = 0;
-  shuffle[d.output_feature_dimension()] = 1;
-  shuffle[d.spatial_dimensions(0)] = 2;
-  shuffle[d.spatial_dimensions(1)] = 3;
-
-  if (!is_identity_shuffle(shuffle)) {
-    out = out.dimShuffle(shuffle);
-  }
+  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(root, out));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -467,45 +427,22 @@ Create2DConvWithReverse(poplar::Graph &graph,
   opts.cache = &res.convolution_cache;
   opts.pass = GetConvolutionPass(inst);
 
-  const ConvolutionDimensionNumbers& d(conv->convolution_dimension_numbers());
-
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(conv));
 
   poplar::program::Sequence prog;
 
-  std::vector<unsigned int> shuffle(4);
-  shuffle[0] = d.input_batch_dimension();
-  shuffle[1] = d.input_feature_dimension();
-  shuffle[2] = d.spatial_dimensions(0);
-  shuffle[3] = d.spatial_dimensions(1);
+  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(conv, in));
 
-  if (!is_identity_shuffle(shuffle)) {
-    in = in.dimShuffle(shuffle);
-  }
+  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
+                                                                true));
 
-  shuffle[0] = d.kernel_input_feature_dimension();
-  shuffle[1] = d.kernel_output_feature_dimension();
-  shuffle[2] = d.kernel_spatial_dimensions(0);
-  shuffle[3] = d.kernel_spatial_dimensions(1);
-
-  if (!is_identity_shuffle(shuffle)) {
-    kernel = kernel.dimShuffle(shuffle);
-  }
   kernel = AddGroupsDimensionToWeights(kernel);
 
-  // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
                                             true, prog, conv->name(), opts);
 
-  shuffle[d.output_batch_dimension()] = 0;
-  shuffle[d.output_feature_dimension()] = 1;
-  shuffle[d.spatial_dimensions(0)] = 2;
-  shuffle[d.spatial_dimensions(1)] = 3;
-
-  if (!is_identity_shuffle(shuffle)) {
-    out = out.dimShuffle(shuffle);
-  }
+  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
