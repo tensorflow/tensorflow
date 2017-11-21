@@ -200,7 +200,9 @@ class HalfNormalTest(test.TestCase):
     with self.test_session():
       scale = np.array([[1.0, 2.0, 3.0]])
       halfnorm = hn_lib.HalfNormal(scale=scale)
-
+      
+      # See https://en.wikipedia.org/wiki/Half-normal_distribution for the
+      # entropy formula used here.
       expected_entropy = 0.5 * np.log(np.pi * scale ** 2.0 / 2.0) + 0.5
 
       entropy = halfnorm.entropy()
