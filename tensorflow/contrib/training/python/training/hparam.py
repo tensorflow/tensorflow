@@ -582,6 +582,33 @@ class HParams(object):
     """
     return {n: getattr(self, n) for n in self._hparam_types.keys()}
 
+  def get(self, key, default=None):
+    """Returns the value of `key` if it exists, else `default`."""
+    if key in self._hparam_types:
+      # Ensure that default is compatible with the parameter type.
+      if default is not None:
+        param_type, is_param_list = self._hparam_types[key]
+        type_str = 'list<%s>' % param_type if is_param_list else str(param_type)
+        fail_msg = ("Hparam '%s' of type '%s' is incompatible with "
+                    'default=%s' % (key, type_str, default))
+
+        is_default_list = isinstance(default, list)
+        if is_param_list != is_default_list:
+          raise ValueError(fail_msg)
+
+        try:
+          if is_default_list:
+            for value in default:
+              _cast_to_type_if_compatible(key, param_type, value)
+          else:
+            _cast_to_type_if_compatible(key, param_type, default)
+        except ValueError as e:
+          raise ValueError('%s. %s' % (fail_msg, e))
+
+      return getattr(self, key)
+
+    return default
+
   def __contains__(self, key):
     return key in self._hparam_types
 
