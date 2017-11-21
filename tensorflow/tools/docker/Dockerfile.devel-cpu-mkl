@@ -4,7 +4,6 @@ LABEL maintainer="Clayne Robison<clayne.b.robison@intel.com>"
 
 # These arguments are parameterized. Use --build-args to override.
 ARG TF_BRANCH=r1.4
-ARG BAZEL_VERSION=0.7.0
 ARG WHL_DIR=/whl
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -19,16 +18,6 @@ RUN pip --no-cache-dir install --upgrade \
         pip setuptools
 
 RUN pip --no-cache-dir install wheel 
-
-# Use the specified Bazel version
-WORKDIR /
-RUN cd /bazel && \
-    rm -rf * && \
-    curl -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36" -fSsL -O https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh && \
-    curl -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36" -fSsL -o /bazel/LICENSE.txt https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE && \
-    chmod +x bazel-*.sh && \
-    ./bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh && \
-    rm -f /bazel/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh
 
 # Download and build TensorFlow.
 WORKDIR /
