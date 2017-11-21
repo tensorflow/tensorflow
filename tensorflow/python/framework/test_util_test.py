@@ -330,6 +330,15 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_callable_evaluate(self):
+    def model():
+      return resource_variable_ops.ResourceVariable(
+          name="same_name",
+          initial_value=1) + 1
+    with context.eager_mode():
+      self.assertEqual(2, self.evaluate(model))
+
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
@@ -420,7 +429,6 @@ class IsolationTest(test_util.TensorFlowTestCase):
       with context.eager_mode():
         with self.assertRaises(ValueError):
           first_container_variable.read_value()
-
 
 if __name__ == "__main__":
   googletest.main()

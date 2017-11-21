@@ -730,6 +730,8 @@ class TensorFlowTestCase(googletest.TestCase):
       return dict()
     elif tensors is None:
       return None
+    elif callable(tensors):
+      return self._eval_helper(tensors())
     else:
       raise ValueError("Unsupported type %s." % type(tensors))
 
