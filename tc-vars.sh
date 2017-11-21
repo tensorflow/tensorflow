@@ -107,6 +107,7 @@ BAZEL_CUDA_FLAGS="--config=cuda"
 ### Define build targets that we will re-ues in sourcing scripts.
 BUILD_TARGET_PIP="//tensorflow/tools/pip_package:build_pip_package"
 BUILD_TARGET_LIB_CPP_API="//tensorflow:libtensorflow_cc.so"
+BUILD_TARGET_LIB_FRAMEWORK="//tensorflow:libtensorflow_framework.so"
 BUILD_TARGET_GRAPH_TRANSFORMS="//tensorflow/tools/graph_transforms:transform_graph"
 BUILD_TARGET_GRAPH_SUMMARIZE="//tensorflow/tools/graph_transforms:summarize_graph"
 BUILD_TARGET_GRAPH_BENCHMARK="//tensorflow/tools/benchmark:benchmark_model"
