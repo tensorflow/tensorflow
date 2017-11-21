@@ -283,6 +283,7 @@ class TopoQueue {
   }
 
   bool empty() const { return queue_.empty(); }
+  std::size_t size() const { return queue_.size(); }
 
  private:
   // Graph nodes are created in (roughly) topological order. Therefore we can
@@ -701,9 +702,24 @@ Status GraphProperties::UpdateShapes(SymbolicShapeRefiner* shape_refiner,
 Status GraphProperties::PropagateShapes(
     SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
     const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
-        resources) {
+        resources) const {
+  // Limit the number of iterations to prevent infinite loops in the presence of
+  // incorrect shape functions. The algoritm should converge in at most
+  // num_nested_loops^2 * max_rank. We approximate max_rank with the constant 4.
+  // The same applies to resources.
+  const int num_loops = new_shapes->size();
+  const int max_loop_length = item_.graph.node_size();
+  const int max_rank = 4;
+  const int max_loop_iterations =
+      max_rank * max_loop_length * std::max(1, num_loops * num_loops);
+  const int num_queues = resources.size();
+  const int max_resource_iterations = num_queues * num_queues * max_rank;
+
+  int num_resource_iterations = 0;
   do {
-    while (!new_shapes->empty()) {
+    int num_loop_iterations = 0;
+    while (!new_shapes->empty() &&
+           num_loop_iterations++ < max_loop_iterations) {
       const Node* n = new_shapes->pop();
       for (const Node* fanout : n->out_nodes()) {
         TF_RETURN_IF_ERROR(
@@ -718,7 +734,8 @@ Status GraphProperties::PropagateShapes(
       TF_RETURN_IF_ERROR(UpdateResource(resource.first, resource.second,
                                         shape_refiner, relax, new_shapes));
     }
-  } while (!new_shapes->empty());
+  } while (!new_shapes->empty() &&
+           num_resource_iterations++ < max_resource_iterations);
 
   return Status::OK();
 }

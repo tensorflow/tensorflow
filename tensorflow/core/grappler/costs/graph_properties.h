@@ -99,10 +99,10 @@ class GraphProperties {
                              const Node* n, TopoQueue* new_shapes);
   // Propagate the shapes for the nodes enqueued in new_shapes and their
   // transitive fanout until a fixed point is reached.
-  static Status PropagateShapes(
+  Status PropagateShapes(
       SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
       const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
-          resources);
+          resources) const;
 };
 
 }  // end namespace grappler
