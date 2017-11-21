@@ -43,7 +43,7 @@ GetConvolutionParameters(const HloInstruction* inst) {
             port::StrCat("Invalid window dimension count on ", inst->name()));
   }
 
-  std::string dtype;
+  poplar::Type dtype;
   TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(input));
 
   std::vector<size_t> input_dims = PoplarShapeFromXlaShape(input);
@@ -110,7 +110,7 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
             port::StrCat("Invalid window dimension count on ", inst->name()));
   }
 
-  std::string dtype;
+  poplar::Type dtype;
   TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(input));
 
   std::vector<size_t> input_dims = PoplarShapeFromXlaShape(input);
@@ -360,8 +360,8 @@ ConvBiasApply(poplar::Graph &graph,
   float learning_rate = float_lit->GetFirstElement<float>();
 
   poplar::program::Sequence prog;
-  popconv::convolutionBiasUpdate(graph, deltas, biases, learning_rate, "float",
-                                 prog, inst->name());
+  popconv::convolutionBiasUpdate(graph, deltas, biases, learning_rate,
+                                 poplar::FLOAT, prog, inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, biases));
 

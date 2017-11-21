@@ -149,8 +149,8 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
   // popstd::dynamicUpdate() expects unsigned integer offsets, whereas
   // Tensorflow prefers signed int. Convert if necessary.
   auto type = indices.elementType();
-  if (type == "signed" || type == "signed int" || type == "int") {
-    indices = indices.reinterpret("unsigned");
+  if (type == poplar::INT) {
+    indices = indices.reinterpret(poplar::UNSIGNED_INT);
   }
 
   // `slice_dims` is the list of dimensions to slice on. popstd::dynamicUpdate()
@@ -195,8 +195,8 @@ CreateDynamicSliceOp(poplar::Graph &graph,
   // popstd::dynamicUpdate() expects unsigned integer offsets, whereas
   // Tensorflow prefers signed int. Convert if necessary.
   auto type = indices.elementType();
-  if (type == "signed" || type == "signed int" || type == "int") {
-    indices = indices.reinterpret("unsigned");
+  if (type == poplar::INT) {
+    indices = indices.reinterpret(poplar::UNSIGNED_INT);
   }
 
   // `slice_dims` is the list of dimensions to slice on. popstd::dynamicUpdate()

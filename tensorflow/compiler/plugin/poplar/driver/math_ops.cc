@@ -334,7 +334,7 @@ CreateCastOp(poplar::Graph &graph,
   poplar::Tensor in;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
-  std::string poplar_type;
+  poplar::Type poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
