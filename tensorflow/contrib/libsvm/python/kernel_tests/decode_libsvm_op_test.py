@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.libsvm.python.ops import libsvm_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -50,8 +51,8 @@ class DecodeLibsvmOpTest(test.TestCase):
       content = [["1 1:3.4 2:0.5 4:0.231", "1 1:3.4 2:0.5 4:0.231"],
                  ["1 2:2.5 3:inf 5:0.503", "1 2:2.5 3:inf 5:0.503"],
                  ["2 3:2.5 2:nan 1:0.105", "2 3:2.5 2:nan 1:0.105"]]
-      label, sparse_feature = libsvm_ops.decode_libsvm(content,
-                                                       num_features=6)
+      label, sparse_feature = libsvm_ops.decode_libsvm(
+          content, num_features=6, label_dtype=dtypes.float64)
       feature = sparse_ops.sparse_tensor_to_dense(sparse_feature,
                                                   validate_indices=False)
 

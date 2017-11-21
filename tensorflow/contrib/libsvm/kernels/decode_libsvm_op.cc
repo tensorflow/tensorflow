@@ -22,8 +22,12 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
-
+namespace {
 template <typename T>
+bool ConvertHelper(const string& s, T* value);
+}
+
+template <typename T, typename Tlabel>
 class DecodeLibsvmOp : public OpKernel {
  public:
   explicit DecodeLibsvmOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -41,7 +45,7 @@ class DecodeLibsvmOp : public OpKernel {
     Tensor* label_tensor;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, input_tensor->shape(), &label_tensor));
-    auto label = label_tensor->flat<int64>();
+    auto label = label_tensor->flat<Tlabel>();
 
     std::vector<T> out_values;
     std::vector<std::pair<int64, int64>> out_indices;
@@ -51,9 +55,9 @@ class DecodeLibsvmOp : public OpKernel {
       OP_REQUIRES(ctx, (entries.size() > 0),
                   errors::InvalidArgument("No entries found for input[", i,
                                           "]: \"", input_flat(i), "\""));
-      int64 label_value;
+      Tlabel label_value;
       OP_REQUIRES(
-          ctx, strings::safe_strto64(entries[0].c_str(), &label_value),
+          ctx, ConvertHelper<Tlabel>(entries[0].c_str(), &label_value),
           errors::InvalidArgument("Label format incorrect: ", entries[0]));
       label(i) = label_value;
       for (int j = 1; j < entries.size(); j++) {
@@ -70,7 +74,7 @@ class DecodeLibsvmOp : public OpKernel {
                         "Feature index should be >= 0, got ", feature_index));
         T feature_value;
         OP_REQUIRES(
-            ctx, Convert(pair[1], &feature_value),
+            ctx, ConvertHelper<T>(pair[1], &feature_value),
             errors::InvalidArgument("Feature format incorrect: ", entries[j]));
         out_values.emplace_back(feature_value);
         out_indices.emplace_back(std::pair<int64, int64>(i, feature_index));
@@ -122,31 +126,48 @@ class DecodeLibsvmOp : public OpKernel {
 
  private:
   int64 num_features_;
-
-  bool Convert(const string& s, T* value);
 };
 
+namespace {
 template <>
-bool DecodeLibsvmOp<float>::Convert(const string& s, float* value) {
+bool ConvertHelper<float>(const string& s, float* value) {
   return strings::safe_strtof(s.c_str(), value);
 }
 template <>
-bool DecodeLibsvmOp<double>::Convert(const string& s, double* value) {
+bool ConvertHelper<double>(const string& s, double* value) {
   return strings::safe_strtod(s.c_str(), value);
 }
 template <>
-bool DecodeLibsvmOp<int32>::Convert(const string& s, int32* value) {
+bool ConvertHelper<int32>(const string& s, int32* value) {
   return strings::safe_strto32(s.c_str(), value);
 }
 template <>
-bool DecodeLibsvmOp<int64>::Convert(const string& s, int64* value) {
+bool ConvertHelper<int64>(const string& s, int64* value) {
   return strings::safe_strto64(s.c_str(), value);
 }
+}  // namespace
 
-#define REGISTER_KERNEL(type)                                                \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("DecodeLibsvm").Device(DEVICE_CPU).TypeConstraint<type>("dtype"), \
-      DecodeLibsvmOp<type>);
+#define REGISTER_KERNEL(type)                                         \
+  REGISTER_KERNEL_BUILDER(Name("DecodeLibsvm")                        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("dtype")          \
+                              .TypeConstraint<int32>("label_dtype"),  \
+                          DecodeLibsvmOp<type, int32>);               \
+  REGISTER_KERNEL_BUILDER(Name("DecodeLibsvm")                        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("dtype")          \
+                              .TypeConstraint<int64>("label_dtype"),  \
+                          DecodeLibsvmOp<type, int64>);               \
+  REGISTER_KERNEL_BUILDER(Name("DecodeLibsvm")                        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("dtype")          \
+                              .TypeConstraint<float>("label_dtype"),  \
+                          DecodeLibsvmOp<type, float>);               \
+  REGISTER_KERNEL_BUILDER(Name("DecodeLibsvm")                        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("dtype")          \
+                              .TypeConstraint<double>("label_dtype"), \
+                          DecodeLibsvmOp<type, double>);
 
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);

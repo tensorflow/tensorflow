@@ -24,11 +24,12 @@ using shape_inference::ShapeHandle;
 
 REGISTER_OP("DecodeLibsvm")
     .Input("input: string")
-    .Output("label: int64")
+    .Output("label: label_dtype")
     .Output("feature_indices: int64")
     .Output("feature_values: dtype")
     .Output("feature_shape: int64")
     .Attr("dtype: {float, double, int32, int64} = DT_FLOAT")
+    .Attr("label_dtype: {float, double, int32, int64} = DT_INT64")
     .Attr("num_features: int >= 1")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(0));
