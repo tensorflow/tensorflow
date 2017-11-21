@@ -182,8 +182,8 @@ def _CheckAtLeast3DImage(image, require_static=True):
     return []
 
 
-def fix_image_flip_shape(image, result):
-  """Set the shape to 3 dimensional if we don't know anything else.
+def fix_image_flip_shape(image, result, rank=3):
+  """Set the shape to original dimensional if we don't know anything else.
 
   Args:
     image: original image size
@@ -195,7 +195,7 @@ def fix_image_flip_shape(image, result):
 
   image_shape = image.get_shape()
   if image_shape == tensor_shape.unknown_shape():
-    result.set_shape([None, None, None])
+    result.set_shape([None] * rank)
   else:
     result.set_shape(image_shape)
   return result
