@@ -1398,6 +1398,15 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   auto operand = reduce_window->mutable_operand(0);
   const Window& window = reduce_window->window();
   auto function = reduce_window->to_apply();
+  if (ShapeUtil::IsScalar(operand->shape())) {
+    TF_RET_CHECK(ShapeUtil::IsScalar(reduce_window->shape()));
+    return ReplaceWithNewInstruction(
+        reduce_window,
+        HloInstruction::CreateMap(reduce_window->shape(),
+                                  {operand, reduce_window->mutable_operand(1)},
+                                  function));
+  }
+
   VLOG(10) << "Considering folding Pad: " << operand->ToString()
            << "\ninto reduce-window: " << reduce_window->ToString();
 
