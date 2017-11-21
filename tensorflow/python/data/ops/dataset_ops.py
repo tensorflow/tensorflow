@@ -549,11 +549,14 @@ class Dataset(object):
   def repeat(self, count=None):
     """Repeats this dataset `count` times.
 
+    NOTE: If this dataset is a function of global state (e.g. a random number
+    generator), then different repetitions may produce different elements.
+
     Args:
       count: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        number of times the elements of this dataset should be repeated. The
-        default behavior (if `count` is `None` or `-1`) is for the elements to
-        be repeated indefinitely.
+        number of times the dataset should be repeated. The default behavior
+        (if `count` is `None` or `-1`) is for the dataset be repeated
+        indefinitely.
 
     Returns:
       A `Dataset`.
