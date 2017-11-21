@@ -39,9 +39,8 @@ class DecodeLibsvmOp : public OpKernel {
     const auto& input_flat = input_tensor->flat<string>();
 
     Tensor* label_tensor;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(0, TensorShape({input_flat.size()}),
-                                        &label_tensor));
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output(0, input_tensor->shape(), &label_tensor));
     auto label = label_tensor->flat<int64>();
 
     std::vector<T> out_values;
@@ -66,6 +65,9 @@ class DecodeLibsvmOp : public OpKernel {
         OP_REQUIRES(
             ctx, strings::safe_strto64(pair[0].c_str(), &feature_index),
             errors::InvalidArgument("Feature format incorrect: ", entries[j]));
+        OP_REQUIRES(ctx, (feature_index >= 0),
+                    errors::InvalidArgument(
+                        "Feature index should be >= 0, got ", feature_index));
         T feature_value;
         OP_REQUIRES(
             ctx, Convert(pair[1], &feature_value),
@@ -77,8 +79,9 @@ class DecodeLibsvmOp : public OpKernel {
 
     Tensor* indices_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(
-                            1, TensorShape({out_indices.size(),
-                                            input_tensor->shape().dims() + 1}),
+                            1,
+                            TensorShape({static_cast<int64>(out_indices.size()),
+                                         input_tensor->shape().dims() + 1}),
                             &indices_tensor));
     auto indices = indices_tensor->matrix<int64>();
     // Translate flat index to shaped index like np.unravel_index
@@ -100,8 +103,9 @@ class DecodeLibsvmOp : public OpKernel {
 
     Tensor* values_tensor;
     OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(2, TensorShape({out_values.size()}),
-                                        &values_tensor));
+                   ctx->allocate_output(
+                       2, TensorShape({static_cast<int64>(out_values.size())}),
+                       &values_tensor));
     auto values = values_tensor->vec<T>();
     std::copy_n(out_values.begin(), out_values.size(), &values(0));
 

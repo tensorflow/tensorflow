@@ -21,6 +21,7 @@ from tensorflow.contrib.libsvm.ops import gen_libsvm_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import resource_loader
 
@@ -39,9 +40,12 @@ def decode_libsvm(content, num_features, dtype=None):
 
   Returns:
     label: A `Tensor` of the same shape as content.
-    feature: A `Tensor` of the shape `[input_shape, num_features]`.
+    feature: A `SparseTensor` of the shape `[input_shape, num_features]`.
   """
-  return gen_libsvm_ops.decode_libsvm(content, num_features, dtype=dtype)
+  label, indices, values, shape = gen_libsvm_ops.decode_libsvm(content,
+                                                               num_features,
+                                                               dtype=dtype)
+  return label, sparse_tensor.SparseTensor(indices, values, shape)
 
 
 ops.NotDifferentiable('DecodeLibSVM')
