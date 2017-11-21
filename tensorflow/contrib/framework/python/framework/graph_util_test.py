@@ -21,6 +21,9 @@ from tensorflow.contrib.framework.python.framework import graph_util
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -55,6 +58,16 @@ class GraphUtilTest(test.TestCase):
                      [types_pb2.DT_FLOAT])
     self.assertEqual(fused_graph_def.node[2].name, 'D')
     self.assertEqual(fused_graph_def.node[3].name, 'E')
+
+
+class GetPlaceholdersTest(test.TestCase):
+
+  def test_get_placeholders(self):
+    with ops.Graph().as_default() as g:
+      placeholders = [array_ops.placeholder(dtypes.float32) for _ in range(5)]
+      results = graph_util.get_placeholders(g)
+      self.assertEqual(sorted(placeholders, key=lambda x: x._id),  # pylint: disable=protected-access
+                       sorted(results, key=lambda x: x._id))  # pylint: disable=protected-access
 
 
 if __name__ == '__main__':

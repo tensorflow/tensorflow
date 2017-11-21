@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import unittest
+
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
@@ -783,6 +786,9 @@ class TestDynamicTrainability(test.TestCase):
 
 class TestGeneratorMethods(test.TestCase):
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_generator_methods(self):
     arr_data = np.random.random((50, 2))
     arr_labels = np.random.random((50,))
