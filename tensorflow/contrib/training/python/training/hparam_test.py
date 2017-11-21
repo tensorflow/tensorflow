@@ -292,6 +292,16 @@ class HParamsTest(test.TestCase):
     self.assertEqual('relu4', hparams2.c_c)
     self.assertEqual(False, hparams2.d)
 
+    hparams3 = hparam.HParams(aaa=123)
+    self.assertEqual('{"aaa": 123}', hparams3.to_json())
+    self.assertEqual('{\n  "aaa": 123\n}', hparams3.to_json(indent=2))
+    self.assertEqual('{"aaa"=123}', hparams3.to_json(separators=(';', '=')))
+
+    hparams4 = hparam.HParams(aaa=123, b='hello', c_c=False)
+    self.assertEqual(
+        '{"aaa": 123, "b": "hello", "c_c": false}',
+        hparams4.to_json(sort_keys=True))
+
   def testSetHParam(self):
     hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d=True)
     self.assertDictEqual({

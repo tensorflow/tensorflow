@@ -550,13 +550,26 @@ class HParams(object):
   def get_model_structure(self):
     return self._model_structure
 
-  def to_json(self):
+  def to_json(self, indent=None, separators=None, sort_keys=False):
     """Serializes the hyperparameters into JSON.
+
+    Args:
+      indent: If a non-negative integer, JSON array elements and object members
+        will be pretty-printed with that indent level. An indent level of 0, or
+        negative, will only insert newlines. `None` (the default) selects the
+        most compact representation.
+      separators: Optional `(item_separator, key_separator)` tuple. Default is
+        `(', ', ': ')`.
+      sort_keys: If `True`, the output dictionaries will be sorted by key.
 
     Returns:
       A JSON string.
     """
-    return json.dumps(self.values())
+    return json.dumps(
+        self.values(),
+        indent=indent,
+        separators=separators,
+        sort_keys=sort_keys)
 
   def parse_json(self, values_json):
     """Override hyperparameter values, parsing new values from a json object.
