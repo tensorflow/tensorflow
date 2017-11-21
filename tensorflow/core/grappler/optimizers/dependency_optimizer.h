@@ -56,7 +56,7 @@ class DependencyOptimizer : public GraphOptimizer {
 
   bool HasOnlyControlOutputs(const NodeDef* node);
 
-  bool has_fetch_;
+  bool fetch_nodes_known_;
   RewriterConfig::Toggle opt_level_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
