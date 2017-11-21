@@ -299,17 +299,17 @@ GpuCompiler::GpuCompiler()
 
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/) {
-  {
-    Tracing::TraceMe annotation("HLO Transforms", module->name(),
-                                /*is_expensive=*/true);
-    TF_RETURN_IF_ERROR(
-        OptimizeHloModule(module.get(), ShapeSizeBytesFunction()));
-  }
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  Tracing::TraceMe annotation("HLO Transforms", module->name(),
+                              /*is_expensive=*/true);
+  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), ShapeSizeBytesFunction()));
   return std::move(module);
 }
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
+
   TF_RET_CHECK(stream_exec != nullptr);
 
   TF_RETURN_IF_ERROR(
@@ -366,8 +366,11 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
-  TF_RETURN_IF_ERROR(
-      entry_computation->root_instruction()->Accept(&ir_emitter));
+  {
+    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
+    TF_RETURN_IF_ERROR(
+        entry_computation->root_instruction()->Accept(&ir_emitter));
+  }
 
   if (user_pre_optimization_hook_) {
     TF_CHECK_OK(user_pre_optimization_hook_(llvm_module));
@@ -416,9 +419,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     cc_minor = 0;
   }
 
-  TF_ASSIGN_OR_RETURN(string ptx,
-                      CompileToPtx(&llvm_module, {cc_major, cc_minor},
-                                   module->config(), libdevice_dir));
+  string ptx;
+  {
+    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - CompileToPtx");
+    TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
+                                          module->config(), libdevice_dir));
+  }
 
   if (!ir_dump_directory.empty()) {
     TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
@@ -474,6 +480,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
                                                             int cc_major,
                                                             int cc_minor) {
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::CompilePtxOrGetCachedResult");
   Tracing::TraceMe annotation("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;

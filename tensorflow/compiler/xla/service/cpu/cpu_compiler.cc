@@ -444,7 +444,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     perftools::gputools::StreamExecutor* stream_exec) {
   const string timer_message =
       "Compiling [" + module->name() + "] for CPU using JIT";
-  ScopedLoggingTimer compiling_timer(timer_message, 1);
+  XLA_SCOPED_LOGGING_TIMER(timer_message);
 
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
