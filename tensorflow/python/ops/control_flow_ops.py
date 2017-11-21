@@ -2734,7 +2734,7 @@ class WhileContext(ControlFlowContext):
         if shape is not None:
           xs.append(shape)
       for x in xs:
-        inp_op = x.op.inputs[0]
+        inp_op = x.op.inputs[0].op
         control_inputs = graph._control_dependencies_for_inputs([inp_op])
         outer_control_inputs = [op for op in control_inputs
                                 if self._IsInOuterContext(op)]
