@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/gpu_tracer.h"
+#include "tensorflow/core/platform/device_tracer.h"
 
 #if GOOGLE_CUDA
 
@@ -101,7 +101,7 @@ const char *getActivityOverheadKindString(CUpti_ActivityOverheadKind kind) {
 }  // namespace
 
 namespace tensorflow {
-namespace gputracer {
+namespace devicetracer {
 
 // Forward declaration.
 class CUPTIManager;
@@ -286,14 +286,14 @@ CUPTIManager *GetCUPTIManager() {
 // for the duration of the CUPTI API callback.
 TF_STATIC_THREAD_LOCAL_POD(const char *, tls_current_annotation);
 
-class GPUTracerImpl : public GPUTracer,
-                      public CUPTIClient,
-                      public port::Tracing::Engine {
+class DeviceTracerImpl : public DeviceTracer,
+                         public CUPTIClient,
+                         public port::Tracing::Engine {
  public:
-  GPUTracerImpl();
-  ~GPUTracerImpl() override;
+  DeviceTracerImpl();
+  ~DeviceTracerImpl() override;
 
-  // GPUTracer interface:
+  // DeviceTracer interface:
   Status Start() override;
   Status Stop() override;
   Status Collect(StepStatsCollector *collector) override;
@@ -348,7 +348,7 @@ class GPUTracerImpl : public GPUTracer,
   };
 
   // This is the subscriber callback which is invoked directly by CUPTI.
-  // The 'userdata' argument will be a pointer to the active 'GPUTracerImpl'.
+  // The 'userdata' argument will be a pointer to the active 'DeviceTracerImpl'.
   static void CUPTIAPI ApiCallback(void *userdata, CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid, const void *cbdata);
 
@@ -375,28 +375,28 @@ class GPUTracerImpl : public GPUTracer,
   uint64_t start_timestamp_ GUARDED_BY(mu_);
   uint64_t end_timestamp_ GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUTracerImpl);
+  TF_DISALLOW_COPY_AND_ASSIGN(DeviceTracerImpl);
 };
 
-GPUTracerImpl::GPUTracerImpl() {
-  VLOG(1) << "GPUTracer created.";
+DeviceTracerImpl::DeviceTracerImpl() {
+  VLOG(1) << "DeviceTracer created.";
   cupti_manager_ = GetCUPTIManager();
   CHECK(cupti_manager_);
   cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
   enabled_ = false;
 }
 
-GPUTracerImpl::~GPUTracerImpl() {
+DeviceTracerImpl::~DeviceTracerImpl() {
   // Unregister the CUPTI callbacks if needed to prevent them from accessing
   // freed memory.
   Stop().IgnoreError();
 }
 
-Status GPUTracerImpl::Start() {
-  VLOG(1) << "GPUTracer::Start";
+Status DeviceTracerImpl::Start() {
+  VLOG(1) << "DeviceTracer::Start";
   mutex_lock l(mu_);
   if (enabled_) {
-    return errors::FailedPrecondition("GPUTracer is already enabled.");
+    return errors::FailedPrecondition("DeviceTracer is already enabled.");
   }
   // There can only be one CUPTI subscriber.  If we can't create one then
   // there is another trace in progress (possibly by external code).
@@ -451,8 +451,8 @@ Status GPUTracerImpl::Start() {
   return Status::OK();
 }
 
-Status GPUTracerImpl::Stop() {
-  VLOG(1) << "GPUTracer::Stop";
+Status DeviceTracerImpl::Stop() {
+  VLOG(1) << "DeviceTracer::Stop";
   mutex_lock l(mu_);
   if (!enabled_) {
     return Status::OK();
@@ -466,20 +466,20 @@ Status GPUTracerImpl::Stop() {
   return Status::OK();
 }
 
-void GPUTracerImpl::AddCorrelationId(uint32 correlation_id,
-                                     const string &name) {
+void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
+                                        const string &name) {
   VLOG(2) << correlation_id << " : " << name;
   mutex_lock l(trace_mu_);
   if (correlations_.size() >= kMaxRecords) return;
   correlations_.emplace(correlation_id, name);
 }
 
-/*static*/ void GPUTracerImpl::ApiCallback(void *userdata,
-                                           CUpti_CallbackDomain domain,
-                                           CUpti_CallbackId cbid,
-                                           const void *cbdata) {
+/*static*/ void DeviceTracerImpl::ApiCallback(void *userdata,
+                                              CUpti_CallbackDomain domain,
+                                              CUpti_CallbackId cbid,
+                                              const void *cbdata) {
   auto *cbInfo = reinterpret_cast<const CUpti_CallbackData *>(cbdata);
-  GPUTracerImpl *tracer = reinterpret_cast<GPUTracerImpl *>(userdata);
+  DeviceTracerImpl *tracer = reinterpret_cast<DeviceTracerImpl *>(userdata);
   VLOG(2) << "ApiCallback " << domain << ":" << cbid
           << " func: " << cbInfo->functionName;
 
@@ -533,7 +533,7 @@ void GPUTracerImpl::AddCorrelationId(uint32 correlation_id,
   }
 }
 
-void GPUTracerImpl::ActivityCallback(const CUpti_Activity &record) {
+void DeviceTracerImpl::ActivityCallback(const CUpti_Activity &record) {
   VLOG(2) << "ActivityCallback " << record.kind;
   mutex_lock l(trace_mu_);
   switch (record.kind) {
@@ -570,10 +570,10 @@ void GPUTracerImpl::ActivityCallback(const CUpti_Activity &record) {
   }
 }
 
-Status GPUTracerImpl::Collect(StepStatsCollector *collector) {
+Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
   mutex_lock l(mu_);
   if (enabled_) {
-    return errors::FailedPrecondition("GPUTracer is still enabled.");
+    return errors::FailedPrecondition("DeviceTracer is still enabled.");
   }
 
   // TODO(pbar) Handle device IDs and prefix properly.
@@ -630,10 +630,10 @@ Status GPUTracerImpl::Collect(StepStatsCollector *collector) {
   return Status::OK();
 }
 
-}  // namespace gputracer
+}  // namespace devicetracer
 
-std::unique_ptr<GPUTracer> CreateGPUTracer() {
-  std::unique_ptr<GPUTracer> tracer(new gputracer::GPUTracerImpl());
+std::unique_ptr<DeviceTracer> CreateDeviceTracer() {
+  std::unique_ptr<DeviceTracer> tracer(new devicetracer::DeviceTracerImpl());
   return tracer;
 }
 
@@ -643,7 +643,7 @@ std::unique_ptr<GPUTracer> CreateGPUTracer() {
 
 namespace tensorflow {
 
-std::unique_ptr<GPUTracer> CreateGPUTracer() { return nullptr; }
+std::unique_ptr<DeviceTracer> CreateDeviceTracer() { return nullptr; }
 
 }  // namespace tensorflow
 

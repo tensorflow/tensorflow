@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_GPU_TRACER_H_
-#define TENSORFLOW_CORE_PLATFORM_GPU_TRACER_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DEVICE_TRACER_H_
+#define TENSORFLOW_CORE_PLATFORM_DEVICE_TRACER_H_
 
 #include <memory>
 
@@ -24,16 +24,16 @@ namespace tensorflow {
 
 class StepStatsCollector;
 
-// 'GPUTracer' is an interface for collecting low-level execution timings
-// of GPU computation and DMA transfers.
+// 'DeviceTracer' is an interface for collecting low-level execution timings
+// of hardware accelerator (e.g. GPU) computation and DMA transfers.
 //
 // Typical usage pattern is as follows:
 //
-// GPUTracer* tracer = CreateGPUTracer();
+// DeviceTracer* tracer = CreateDeviceTracer();
 // if (tracer) {
 //   tracer->Start();
 //
-//   ... perform some GPU computations.
+//   ... perform some computations on a hardware accelerator.
 //
 //   tracer->Stop();
 //
@@ -44,23 +44,23 @@ class StepStatsCollector;
 //
 // Notes:
 // Tracing is not supported on all plaforms.  On platforms
-// with no GPU tracing support, 'CreateGPUTracer' will return 'nullptr'.
-// On most plaforms, GPU tracing will be a system-wide activity and
-// a single 'GPUTracer' will collect activity from all GPUs.
+// with no tracing support, 'CreateDeviceTracer' will return 'nullptr'.
+// On most plaforms, hardware tracing will be a system-wide activity and
+// a single 'DeviceTracer' will collect activity from all devices.
 // It is also common that only a single tracer may be active at any
 // given time.  The 'Start' method will return an error if tracing is
 // already in progress elsewhere.
 //
-class GPUTracer {
+class DeviceTracer {
  public:
-  virtual ~GPUTracer() {}
+  virtual ~DeviceTracer() {}
 
-  // Start GPU tracing.
+  // Start device tracing.
   // Note that only a single trace can be active, in which case this
   // methods will return an 'Unavailable' error.
   virtual Status Start() = 0;
 
-  // Stop GPU tracing.
+  // Stop device tracing.
   // It is safe to call 'Stop' on a tracer which is not enabled.
   virtual Status Stop() = 0;
 
@@ -70,10 +70,10 @@ class GPUTracer {
   virtual Status Collect(StepStatsCollector* collector) = 0;
 };
 
-// Creates a platform-specific GPUTracer.
+// Creates a platform-specific DeviceTracer.
 // Returns 'nullptr' on platforms where tracing is not supported.
-std::unique_ptr<GPUTracer> CreateGPUTracer();
+std::unique_ptr<DeviceTracer> CreateDeviceTracer();
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_GPU_TRACER_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DEVICE_TRACER_H_

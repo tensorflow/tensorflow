@@ -88,7 +88,7 @@ extra_failing_gpu_cc_tests="\
     //tensorflow/core:cuda_libdevice_path_test + \
     //tensorflow/core:common_runtime_direct_session_test + \
     //tensorflow/core:common_runtime_direct_session_with_tracking_alloc_test + \
-    //tensorflow/core:gpu_tracer_test + \
+    //tensorflow/core:device_tracer_test + \
     //tensorflow/core:ops_math_grad_test \
 "
 

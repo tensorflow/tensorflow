@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/gpu_tracer.h"
+#include "tensorflow/core/platform/device_tracer.h"
 
 #include <map>
 #include <memory>
@@ -50,7 +50,7 @@ std::unique_ptr<Session> CreateSession() {
   return std::unique_ptr<Session>(NewSession(options));
 }
 
-class GPUTracerTest : public ::testing::Test {
+class DeviceTracerTest : public ::testing::Test {
  public:
   void Initialize(std::initializer_list<float> a_values) {
     Graph graph(OpRegistry::Global());
@@ -84,10 +84,10 @@ class GPUTracerTest : public ::testing::Test {
 
  protected:
   void ExpectFailure(const Status& status, error::Code code) {
-    EXPECT_FALSE(status.ok());
+    EXPECT_FALSE(status.ok()) << status.ToString();
     if (!status.ok()) {
       LOG(INFO) << "Status message: " << status.error_message();
-      EXPECT_EQ(code, status.code());
+      EXPECT_EQ(code, status.code()) << status.ToString();
     }
   }
 
@@ -97,22 +97,22 @@ class GPUTracerTest : public ::testing::Test {
   GraphDef def_;
 };
 
-TEST_F(GPUTracerTest, StartStop) {
-  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
+TEST_F(DeviceTracerTest, StartStop) {
+  std::unique_ptr<DeviceTracer> tracer(CreateDeviceTracer());
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   TF_EXPECT_OK(tracer->Stop());
 }
 
-TEST_F(GPUTracerTest, StopBeforeStart) {
-  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
+TEST_F(DeviceTracerTest, StopBeforeStart) {
+  std::unique_ptr<DeviceTracer> tracer(CreateDeviceTracer());
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Stop());
   TF_EXPECT_OK(tracer->Stop());
 }
 
-TEST_F(GPUTracerTest, CollectBeforeStart) {
-  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
+TEST_F(DeviceTracerTest, CollectBeforeStart) {
+  std::unique_ptr<DeviceTracer> tracer(CreateDeviceTracer());
   if (!tracer) return;
   StepStats stats;
   StepStatsCollector collector(&stats);
@@ -120,8 +120,8 @@ TEST_F(GPUTracerTest, CollectBeforeStart) {
   EXPECT_EQ(stats.dev_stats_size(), 0);
 }
 
-TEST_F(GPUTracerTest, CollectBeforeStop) {
-  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
+TEST_F(DeviceTracerTest, CollectBeforeStop) {
+  std::unique_ptr<DeviceTracer> tracer(CreateDeviceTracer());
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   StepStats stats;
@@ -131,9 +131,9 @@ TEST_F(GPUTracerTest, CollectBeforeStop) {
   TF_EXPECT_OK(tracer->Stop());
 }
 
-TEST_F(GPUTracerTest, StartTwoTracers) {
-  std::unique_ptr<GPUTracer> tracer1(CreateGPUTracer());
-  std::unique_ptr<GPUTracer> tracer2(CreateGPUTracer());
+TEST_F(DeviceTracerTest, StartTwoTracers) {
+  std::unique_ptr<DeviceTracer> tracer1(CreateDeviceTracer());
+  std::unique_ptr<DeviceTracer> tracer2(CreateDeviceTracer());
   if (!tracer1 || !tracer2) return;
 
   TF_EXPECT_OK(tracer1->Start());
@@ -144,9 +144,9 @@ TEST_F(GPUTracerTest, StartTwoTracers) {
   TF_EXPECT_OK(tracer2->Stop());
 }
 
-TEST_F(GPUTracerTest, RunWithTracer) {
-  // On non-GPU platforms, we may not support GPUTracer.
-  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
+TEST_F(DeviceTracerTest, RunWithTracer) {
+  // On non-GPU platforms, we may not support DeviceTracer.
+  std::unique_ptr<DeviceTracer> tracer(CreateDeviceTracer());
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -172,8 +172,8 @@ TEST_F(GPUTracerTest, RunWithTracer) {
   EXPECT_FLOAT_EQ(5.0, mat(0, 0));
 }
 
-TEST_F(GPUTracerTest, TraceToStepStatsCollector) {
-  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
+TEST_F(DeviceTracerTest, TraceToStepStatsCollector) {
+  std::unique_ptr<DeviceTracer> tracer(CreateDeviceTracer());
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -198,10 +198,10 @@ TEST_F(GPUTracerTest, TraceToStepStatsCollector) {
   collector.Finalize();
   // Depending on whether this runs on CPU or GPU, we will have a
   // different number of devices.
-  EXPECT_GE(stats.dev_stats_size(), 1);
+  EXPECT_GE(stats.dev_stats_size(), 1) << "Saw stats: " << stats.DebugString();
 }
 
-TEST_F(GPUTracerTest, RunWithTraceOption) {
+TEST_F(DeviceTracerTest, RunWithTraceOption) {
   Initialize({3, 2, -1, 0});
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
