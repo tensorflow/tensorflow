@@ -29,7 +29,7 @@ from tensorflow.python.platform import resource_loader
 _libsvm_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_libsvm_ops.so"))
 
-def decode_libsvm(content, num_features, dtype=None):
+def decode_libsvm(content, num_features, dtype=None, label_dtype=None):
   """Convert Libsvm records to a tensor of label and a tensor of feature.
 
   Args:
@@ -37,14 +37,14 @@ def decode_libsvm(content, num_features, dtype=None):
       the Libsvm format.
     num_features: The number of features.
     dtype: The type of the output feature tensor. Default to tf.float32.
+    label_dtype: The type of the output label tensor. Default to tf.int64.
 
   Returns:
     label: A `Tensor` of the same shape as content.
     feature: A `SparseTensor` of the shape `[input_shape, num_features]`.
   """
-  label, indices, values, shape = gen_libsvm_ops.decode_libsvm(content,
-                                                               num_features,
-                                                               dtype=dtype)
+  label, indices, values, shape = gen_libsvm_ops.decode_libsvm(
+      content, num_features, dtype=dtype, label_dtype=label_dtype)
   return label, sparse_tensor.SparseTensor(indices, values, shape)
 
 
