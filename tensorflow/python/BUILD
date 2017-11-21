@@ -4422,7 +4422,11 @@ py_library(
         "grappler/cost_analyzer.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":pywrap_tensorflow_internal"],
+    deps = [
+        ":pywrap_tensorflow_internal",
+        ":tf_cluster",
+        ":tf_item",
+    ],
 )
 
 py_binary(

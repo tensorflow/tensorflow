@@ -52,6 +52,10 @@ class Cluster(object):
     if self._tf_cluster is not None:
       tf_cluster.TF_DeleteCluster(self._tf_cluster)
 
+  @property
+  def tf_cluster(self):
+    return self._tf_cluster
+
   def ListDevices(self):
     """Returns the list of available hardware devices."""
     devices = []
