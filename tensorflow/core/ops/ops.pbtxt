@@ -7323,7 +7323,7 @@ op {
   name: "DeserializeSparse"
   input_arg {
     name: "serialized_sparse"
-    description: "1-D, The serialized `SparseTensor` object. Must have 3 columns."
+    description: "The serialized `SparseTensor` objects. The last dimension\nmust have 3 columns."
     type: DT_STRING
   }
   output_arg {
@@ -7341,10 +7341,9 @@ op {
   attr {
     name: "dtype"
     type: "type"
-    description: "The `dtype` of the serialized `SparseTensor` object."
+    description: "The `dtype` of the serialized `SparseTensor` objects."
   }
-  summary: "Deserialize `SparseTensor` from a (serialized) string 3-vector (1-D `Tensor`)"
-  description: "object."
+  summary: "Deserialize `SparseTensor` objects."
 }
 op {
   name: "DestroyResourceOp"
