@@ -62,6 +62,7 @@ limitations under the License.
   #include "tensorflow/core/framework/graph.pb.h"
   #include "tensorflow/core/grappler/grappler_item.h"
   #include "tensorflow/core/grappler/grappler_item_builder.h"
+  #include "tensorflow/core/grappler/clusters/cluster.h"
   #include "tensorflow/core/grappler/clusters/utils.h"
   #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
   #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
@@ -91,6 +92,7 @@ void DetectDevices(std::unordered_map<string, tensorflow::DeviceProperties>* dev
 }
 
 PyObject* TF_OptimizeGraph(
+      tensorflow::grappler::Cluster* cluster,
       const tensorflow::RewriterConfig& rewriter_config,
       const tensorflow::MetaGraphDef& metagraph,
       bool verbose, const string& graph_id, TF_Status* out_status) {
@@ -99,13 +101,18 @@ PyObject* TF_OptimizeGraph(
     item_config.apply_optimizations = false;
     std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
         tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph, item_config);
-    std::unordered_map<string, tensorflow::DeviceProperties> device_map;
-    DetectDevices(&device_map);
+
+    std::unique_ptr<tensorflow::grappler::VirtualCluster> virtual_cluster;
+    if (cluster == nullptr) {
+      std::unordered_map<string, tensorflow::DeviceProperties> device_map;
+      DetectDevices(&device_map);
+      virtual_cluster.reset(new tensorflow::grappler::VirtualCluster(device_map));
+      cluster = virtual_cluster.get();
+    }
     tensorflow::DeviceBase* cpu_device = nullptr;
-    tensorflow::grappler::VirtualCluster cluster(device_map);
     tensorflow::GraphDef out_graph;
     tensorflow::grappler::MetaOptimizer optimizer(cpu_device, rewriter_config);
-    tensorflow::Status status = optimizer.Optimize(&cluster, *grappler_item, &out_graph);
+    tensorflow::Status status = optimizer.Optimize(cluster, *grappler_item, &out_graph);
     if (verbose) {
       optimizer.PrintResult();
     }
@@ -120,6 +127,7 @@ PyObject* TF_OptimizeGraph(
 
 // Wrap this function
 PyObject* TF_OptimizeGraph(
+    tensorflow::grappler::Cluster* cluster,
     const tensorflow::RewriterConfig& rewriter_config,
     const tensorflow::MetaGraphDef& metagraph, bool verbose,
     const string& graph_id, TF_Status* out_status);

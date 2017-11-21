@@ -1404,6 +1404,24 @@ int GetNumTranspose(const GraphDef& graph) {
   LOG(INFO) << "Number of Transpose nodes: " << number;
   return number;
 }
+
+int GetNumGPUs(const Cluster& cluster) {
+  auto devices = cluster.GetDevices();
+  int num_gpus = 0;
+  for (const auto& device : devices) {
+    if (device.second.type() == "GPU") {
+      if (device.second.environment().find("architecture") !=
+          device.second.environment().end()) {
+        const string arch = device.second.environment().at("architecture");
+        // TODO(yaozhang): Enable for Volta GPUs (compute capability version 7).
+        if (arch < "7") {
+          num_gpus++;
+        }
+      }
+    }
+  }
+  return num_gpus;
+}
 }  // namespace
 
 Status LayoutOptimizer::Tune(const GrapplerItem& item,
@@ -1424,10 +1442,7 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
-  if (num_gpus_ == 0) {
-    num_gpus_ = GetNumAvailableGPUs();
-  }
-  if (num_gpus_ < 1) {
+  if (GetNumGPUs(*cluster) < 1) {
     // LayoutOptimizer is currently only tuned for GPU.
     *output = item.graph;
     return Status::OK();

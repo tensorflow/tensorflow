@@ -26,10 +26,13 @@ from tensorflow.python.framework import errors
 def OptimizeGraph(rewriter_config,
                   metagraph,
                   verbose=True,
-                  graph_id=b'graph_to_optimize'):
+                  graph_id=b'graph_to_optimize',
+                  cluster=None):
   """Optimize the provided metagraph."""
   with errors.raise_exception_on_not_ok_status() as status:
-    ret_from_swig = tf_opt.TF_OptimizeGraph(rewriter_config.SerializeToString(),
+    ret_from_swig = tf_opt.TF_OptimizeGraph(None if cluster is None else
+                                            cluster.tf_cluster,
+                                            rewriter_config.SerializeToString(),
                                             metagraph.SerializeToString(),
                                             verbose, graph_id, status)
   if ret_from_swig is None:
