@@ -353,10 +353,6 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_batches):
     """See `Dataset.map()` for details."""
     super(_MapAndBatchDataset, self).__init__(input_dataset, map_func)
-    if sparse.any_sparse(self._output_types):
-      # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError("Batching of sparse tensors is not currently supported")
-
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
     self._num_parallel_batches = ops.convert_to_tensor(
@@ -422,9 +418,6 @@ def map_and_batch(map_func, batch_size, num_parallel_batches=1):
   """
 
   def _apply_fn(dataset):
-    if sparse.any_sparse(dataset.output_types):
-      # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError("Batching of sparse tensors is not currently supported")
     return _MapAndBatchDataset(dataset, map_func, batch_size,
                                num_parallel_batches)
 

@@ -291,6 +291,17 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "reshape_util",
+    srcs = ["reshape_util.cc"],
+    hdrs = ["reshape_util.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 tf_cc_test(
     name = "variable_ops_test",
     size = "small",
@@ -3666,7 +3677,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reshape_op",
     prefix = "sparse_reshape_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + [
+        ":reshape_util",
+    ],
 )
 
 tf_kernel_library(
@@ -3714,7 +3727,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "serialize_sparse_op",
     prefix = "serialize_sparse_op",
-    deps = SPARSE_DEPS + ["//tensorflow/core:protos_all_cc"],
+    deps = SPARSE_DEPS + [
+        ":reshape_util",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 tf_kernel_library(
@@ -4546,6 +4562,7 @@ filegroup(
         "reduction_ops_common.h",
         "relu_op.h",
         "relu_op_functor.h",
+        "reshape_util.h",
         "resize_bilinear_op.h",
         "resize_nearest_neighbor_op.h",
         "reverse_op.h",
@@ -4701,6 +4718,7 @@ filegroup(
         "reduction_ops_prod.cc",
         "reduction_ops_sum.cc",
         "relu_op.cc",
+        "reshape_util.cc",
         "resize_bilinear_op.cc",
         "resize_nearest_neighbor_op.cc",
         "restore_op.cc",

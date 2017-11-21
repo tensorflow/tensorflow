@@ -1332,9 +1332,6 @@ class BatchDataset(Dataset):
   def __init__(self, input_dataset, batch_size):
     """See `Dataset.batch()` for details."""
     super(BatchDataset, self).__init__()
-    if sparse.any_sparse(input_dataset.output_classes):
-      # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError("Batching of sparse tensors is not currently supported")
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
@@ -1412,7 +1409,8 @@ class PaddedBatchDataset(Dataset):
     super(PaddedBatchDataset, self).__init__()
     if sparse.any_sparse(input_dataset.output_classes):
       # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError("Batching of sparse tensors is not currently supported")
+      raise TypeError(
+          "Batching of padded sparse tensors is not currently supported")
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")

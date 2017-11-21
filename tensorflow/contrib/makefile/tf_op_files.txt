@@ -78,6 +78,7 @@ tensorflow/core/kernels/reverse_op.cc
 tensorflow/core/kernels/restore_op.cc
 tensorflow/core/kernels/resize_nearest_neighbor_op.cc
 tensorflow/core/kernels/resize_bilinear_op.cc
+tensorflow/core/kernels/reshape_util.cc
 tensorflow/core/kernels/reshape_op.cc
 tensorflow/core/kernels/relu_op.cc
 tensorflow/core/kernels/reduction_ops_sum.cc

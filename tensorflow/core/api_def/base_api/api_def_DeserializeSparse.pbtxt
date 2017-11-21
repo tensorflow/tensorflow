@@ -3,17 +3,15 @@ op {
   in_arg {
     name: "serialized_sparse"
     description: <<END
-1-D, The serialized `SparseTensor` object. Must have 3 columns.
+The serialized `SparseTensor` objects. The last dimension
+must have 3 columns.
 END
   }
   attr {
     name: "dtype"
     description: <<END
-The `dtype` of the serialized `SparseTensor` object.
+The `dtype` of the serialized `SparseTensor` objects.
 END
   }
-  summary: "Deserialize `SparseTensor` from a (serialized) string 3-vector (1-D `Tensor`)"
-  description: <<END
-object.
-END
+  summary: "Deserialize `SparseTensor` objects."
 }

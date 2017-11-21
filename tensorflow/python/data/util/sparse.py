@@ -88,7 +88,6 @@ def deserialize_sparse_tensors(tensors, types, shapes, classes):
     `tensors` with any serialized sparse tensors replaced by their deserialized
     version.
   """
-  # TODO(b/63669786): support batching of sparse tensors
   ret = nest.pack_sequence_as(types, [
       sparse_ops.deserialize_sparse(tensor, dtype=ty, rank=shape.ndims)
       if c is sparse_tensor.SparseTensor else tensor
