@@ -70,13 +70,13 @@ class _ScanDataset(dataset_ops.Dataset):
 
       @function.Defun(*(flat_state_types + nest.flatten(
           sparse.as_dense_types(input_dataset.output_types,
-                                input_dataset.output_classes))))  # pylint: disable=protected-access
+                                input_dataset.output_classes))))
       def tf_scan_func(*args):
         """A wrapper for Defun that facilitates shape inference."""
         # Pass in shape information from the state and input_dataset.
         # TODO(b/69424092): Check that neither inputs nor outputs are sparse.
         dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                              input_dataset.output_classes)  # pylint: disable=protected-access
+                                              input_dataset.output_classes)
         for arg, shape in zip(args,
                               flat_state_shapes + nest.flatten(dense_shapes)):
           arg.set_shape(shape)

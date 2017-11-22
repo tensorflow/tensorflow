@@ -14,6 +14,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 py_library(
     name = "dataset_ops",
     srcs = [
+        "counter.py",
         "dataset_ops.py",
     ],
     srcs_version = "PY2AND3",
