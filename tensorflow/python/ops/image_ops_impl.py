@@ -1168,7 +1168,7 @@ def random_hue(image, max_delta, seed=None):
       set_random_seed for its interaction with the graph-level random seed.
 
   Returns:
-    3-D float tensor of shape `[height, width, channels]`.
+    Adjusted image(s), same shape and DType as `image`.
 
   Raises:
     ValueError: if `max_delta` is invalid.
