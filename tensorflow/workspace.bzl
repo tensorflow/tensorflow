@@ -107,7 +107,7 @@ def _apply_patch(repo_ctx, patch_file):
     bazel_sh = _get_env_var(repo_ctx, "BAZEL_SH")
     if not bazel_sh:
       fail("BAZEL_SH environment variable is not set")
-    cmd = [bazel_sh, "-c", " ".join(cmd)]
+    cmd = [bazel_sh, "-l", "-c", " ".join(cmd)]
   _execute_and_check_ret_code(repo_ctx, cmd)
 
 # Download the repository and apply a patch to its root
