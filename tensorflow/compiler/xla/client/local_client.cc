@@ -275,9 +275,6 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
                                         device_ordinal, options));
 }
 
-// Copy the literal data to the device with the given ordinal and return as a
-// ScopedShapedBuffer. The given memory allocator is used for device memory
-// allocation.
 StatusOr<std::unique_ptr<ScopedShapedBuffer>>
 LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
                                    DeviceMemoryAllocator* allocator) {
@@ -298,8 +295,6 @@ LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
   return std::move(scoped_buffer);
 }
 
-// Copy the data from the device contained in the given ShapedBuffer and
-// return as a Literal.
 StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(
@@ -307,6 +302,24 @@ StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
       backend().stream_executor(shaped_buffer.device_ordinal()));
   return backend().transfer_manager()->TransferLiteralFromDevice(executor,
                                                                  shaped_buffer);
+}
+
+Status LocalClient::TransferToInfeedLocal(const Literal& literal,
+                                          int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                      backend().stream_executor(device_ordinal));
+  return backend().transfer_manager()->TransferLiteralToInfeed(executor,
+                                                               literal);
+}
+
+StatusOr<std::unique_ptr<Literal>> LocalClient::TransferFromOutfeedLocal(
+    const Shape& shape, int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                      backend().stream_executor(device_ordinal));
+  auto literal = MakeUnique<Literal>();
+  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
+      executor, shape, literal.get()));
+  return std::move(literal);
 }
 
 }  // namespace xla
