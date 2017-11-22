@@ -725,9 +725,12 @@ Status GraphProperties::PropagateShapes(
     while (!new_shapes->empty() &&
            num_loop_iterations++ < max_loop_iterations) {
       const Node* n = new_shapes->pop();
-      for (const Node* fanout : n->out_nodes()) {
-        TF_RETURN_IF_ERROR(
-            UpdateShapes(shape_refiner, relax, fanout, new_shapes));
+      for (const Edge* e : n->out_edges()) {
+        if (!e->IsControlEdge()) {
+          const Node* fanout = e->dst();
+          TF_RETURN_IF_ERROR(
+              UpdateShapes(shape_refiner, relax, fanout, new_shapes));
+        }
       }
     }
 
@@ -913,6 +916,9 @@ Status GraphProperties::InferStatically() {
                                          &input_properties[i]);
       }
       for (const auto& edge : node->in_edges()) {
+        if (edge->IsControlEdge()) {
+          continue;
+        }
         if (!edge->src()->IsConstant()) {
           continue;
         }
