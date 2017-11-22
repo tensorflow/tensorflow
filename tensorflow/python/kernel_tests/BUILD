@@ -2338,6 +2338,7 @@ cuda_py_test(
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:tensor_array_grad",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
