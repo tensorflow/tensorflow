@@ -50,10 +50,6 @@ class Item(object):
     self._tf_item = None
     self._BuildTFItem()
 
-  def __del__(self):
-    if self._tf_item:
-      tf_item.TF_DeleteItem(self._tf_item)
-
   def IdentifyImportantOps(self):
     return tf_item.TF_IdentifyImportantOps(self.tf_item)
 

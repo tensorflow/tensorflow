@@ -72,7 +72,6 @@ class Cluster(object):
       devices = []
       for raw_dev in ret_from_swig:
         devices.append(device_properties_pb2.NamedDevice.FromString(raw_dev))
-    print(str(devices))
     return devices
 
   def MeasureCosts(self, item):
