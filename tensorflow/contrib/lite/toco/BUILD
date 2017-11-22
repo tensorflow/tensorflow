@@ -221,6 +221,7 @@ cc_library(
         "graph_transformations/resolve_tensorflow_matmul.cc",
         "graph_transformations/resolve_tensorflow_merge.cc",
         "graph_transformations/resolve_tensorflow_squeeze.cc",
+        "graph_transformations/resolve_tensorflow_expand_dims.cc",
         "graph_transformations/resolve_tensorflow_switch.cc",
         "graph_transformations/resolve_tensorflow_tile.cc",
         "graph_transformations/unfuse_activation_functions.cc",

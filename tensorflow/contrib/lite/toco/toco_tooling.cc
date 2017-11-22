@@ -69,6 +69,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
   transformations->Add(new ResolveTensorFlowSqueeze);
+  transformations->Add(new ResolveTensorFlowExpandDims);
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
