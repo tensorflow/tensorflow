@@ -194,6 +194,14 @@ def _FindAttrInOpDef(attr_name, op_def):
   return None
 
 
+def _ProcessNewOps(graph):
+  """Processes the newly-added TF_Operations in `graph`."""
+  for c_op in c_api_util.new_tf_operations(graph):
+    graph._create_op_from_tf_operation(c_op)  # pylint: disable=protected-access
+
+  # TODO(skyewm): colocation logic
+
+
 @deprecated_args(None, 'Please file an issue at '
                  'https://github.com/tensorflow/tensorflow/issues if you depend'
                  ' on this feature.',
@@ -257,10 +265,12 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   if graph._c_graph:  # pylint: disable=protected-access
     scoped_options = c_api_util.ScopedTFImportGraphDefOptions()
 
-    with errors.raise_exception_on_not_ok_status() as status:
-      with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
+    with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
+      with errors.raise_exception_on_not_ok_status() as status:
         c_api.TF_GraphImportGraphDefWithResults(
             graph._c_graph, serialized, scoped_options.options, status)  # pylint: disable=protected-access
+
+    _ProcessNewOps(graph)
 
     if return_elements is not None:
       raise ValueError('return_elements not yet implemented with C API')

@@ -315,6 +315,24 @@ tensorflow::ImportNumpy();
   $2 = inputs.size();
 }
 
+// Typemaps for TF_GraphNextOperation().
+%typemap(in) size_t* pos (size_t pos) {
+  pos = PyLong_AsUnsignedLong($input);
+  $1 = &pos;
+}
+
+// Returns a (TF_Operation*, int pos) tuple.
+%typemap(argout) size_t* pos {
+  PyObject* new_result = PyTuple_New(2);
+  if (!new_result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create tuple");
+  }
+  // Steals $result reference
+  PyTuple_SET_ITEM(new_result, 0, $result);
+  PyTuple_SET_ITEM(new_result, 1, PyLong_FromSize_t(*$1));
+  $result = new_result;
+}
+
 // TODO(skyewm): SWIG emits a warning for the const char* in TF_WhileParams,
 // skip for now
 %ignore TF_WhileParams;
