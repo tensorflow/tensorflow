@@ -90,8 +90,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
     Status s_copy_init;
     for (int64 i = 0; i < input->NumElements(); ++i) {
       s_copy_init = VariantDeviceCopy(
-          VariantDeviceCopyDirection::HOST_TO_DEVICE, v[i], &v_out[i],
-          (input->NumElements() == 1) ? std::move(copier) : copier);
+          VariantDeviceCopyDirection::HOST_TO_DEVICE, v[i], &v_out[i], copier);
       if (!s_copy_init.ok()) {
         status_cb->UpdateStatus(s_copy_init);
         break;
@@ -149,8 +148,7 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
     Status s_copy_init;
     for (int64 i = 0; i < input->NumElements(); ++i) {
       s_copy_init = VariantDeviceCopy(
-          VariantDeviceCopyDirection::DEVICE_TO_HOST, v[i], &v_out[i],
-          (input->NumElements() == 1) ? std::move(copier) : copier);
+          VariantDeviceCopyDirection::DEVICE_TO_HOST, v[i], &v_out[i], copier);
       if (!s_copy_init.ok()) {
         status_cb->UpdateStatus(s_copy_init);
         break;
@@ -213,9 +211,9 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
     Variant* v_out = copy.flat<Variant>().data();
     Status s_copy_init;
     for (int64 i = 0; i < input->NumElements(); ++i) {
-      s_copy_init = VariantDeviceCopy(
-          VariantDeviceCopyDirection::DEVICE_TO_DEVICE, v[i], &v_out[i],
-          (input->NumElements() == 1) ? std::move(copier) : copier);
+      s_copy_init =
+          VariantDeviceCopy(VariantDeviceCopyDirection::DEVICE_TO_DEVICE, v[i],
+                            &v_out[i], copier);
       if (!s_copy_init.ok()) {
         status_cb->UpdateStatus(s_copy_init);
         break;

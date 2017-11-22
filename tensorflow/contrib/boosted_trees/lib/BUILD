@@ -406,48 +406,6 @@ tf_cc_test(
 )
 
 # Learner/stochastic
-
-cc_library(
-    name = "feature-column-handlers",
-    srcs = [
-        "learner/stochastic/handlers/bias-feature-column-handler.cc",
-        "learner/stochastic/handlers/categorical-feature-column-handler.cc",
-        "learner/stochastic/handlers/dense-quantized-feature-column-handler.cc",
-        "learner/stochastic/handlers/sparse-quantized-feature-column-handler.cc",
-    ],
-    hdrs = [
-        "learner/stochastic/handlers/bias-feature-column-handler.h",
-        "learner/stochastic/handlers/categorical-feature-column-handler.h",
-        "learner/stochastic/handlers/dense-quantized-feature-column-handler.h",
-        "learner/stochastic/handlers/feature-column-handler.h",
-        "learner/stochastic/handlers/sparse-quantized-feature-column-handler.h",
-    ],
-    deps = [
-        ":feature-split-candidate",
-        ":feature-stats-accumulator",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_cc_test(
-    name = "feature-column-handlers_test",
-    size = "small",
-    srcs = [
-        "learner/stochastic/handlers/bias-feature-column-handler_test.cc",
-        "learner/stochastic/handlers/categorical-feature-column-handler_test.cc",
-        "learner/stochastic/handlers/dense-quantized-feature-column-handler_test.cc",
-        "learner/stochastic/handlers/sparse-quantized-feature-column-handler_test.cc",
-    ],
-    deps = [
-        ":feature-column-handlers",
-        "//tensorflow/core:tensor_testutil",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "gradient-stats",
     hdrs = ["learner/stochastic/stats/gradient-stats.h"],

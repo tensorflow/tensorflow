@@ -64,13 +64,6 @@ class SequenceDict(object):
     return list(self._dict.items())
 
 
-def setdefault(dct, key, thunk):
-  """Like dict.setdefault but delays evaluation of the value to be set."""
-  if key not in dct:
-    dct[key] = thunk()
-  return dct[key]
-
-
 def tensors_to_column(tensors):
   """Converts a tensor or list of tensors to a column vector.
 

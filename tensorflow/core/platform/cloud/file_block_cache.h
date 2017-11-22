@@ -115,11 +115,35 @@ class FileBlockCache {
   /// The file block cache key is a {filename, offset} pair.
   typedef std::pair<string, size_t> Key;
 
+  /// \brief The state of a block.
+  ///
+  /// A block begins in the CREATED stage. The first thread will attempt to read
+  /// the block from the filesystem, transitioning the state of the block to
+  /// FETCHING. After completing, if the read was successful the state should
+  /// be FINISHED. Otherwise the state should be ERROR. A subsequent read can
+  /// re-fetch the block if the state is ERROR.
+  enum class FetchState {
+    CREATED,
+    FETCHING,
+    FINISHED,
+    ERROR,
+  };
+
   /// \brief A block of a file.
   ///
   /// A file block consists of the block data, the block's current position in
-  /// the LRU cache, and the timestamp (seconds since epoch) at which the block
-  /// was cached.
+  /// the LRU cache, the timestamp (seconds since epoch) at which the block
+  /// was cached, a coordination lock, and state & condition variables.
+  ///
+  /// Thread safety:
+  /// The iterator and timestamp fields should only be accessed while holding
+  /// the block-cache-wide mu_ instance variable. The state variable should only
+  /// be accessed while holding the Block's mu lock. The data vector should only
+  /// be accessed after state == FINISHED, and it should never be modified.
+  ///
+  /// In order to prevent deadlocks, never grab the block-cache-wide mu_ lock
+  /// AFTER grabbing any block's mu lock. It is safe to grab mu without locking
+  /// mu_.
   struct Block {
     /// The block data.
     std::vector<char> data;
@@ -129,6 +153,12 @@ class FileBlockCache {
     std::list<Key>::iterator lra_iterator;
     /// The timestamp (seconds since epoch) at which the block was cached.
     uint64 timestamp;
+    /// Mutex to guard state variable
+    mutex mu;
+    /// The state of the block.
+    FetchState state GUARDED_BY(mu) = FetchState::CREATED;
+    /// Wait on cond_var if state is FETCHING.
+    condition_variable cond_var;
   };
 
   /// \brief The block map type for the file block cache.
@@ -139,19 +169,20 @@ class FileBlockCache {
   /// Prune the cache by removing files with expired blocks.
   void Prune() LOCKS_EXCLUDED(mu_);
 
+  bool BlockNotStale(const std::shared_ptr<Block>& block)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Look up a Key in the block cache.
   std::shared_ptr<Block> Lookup(const Key& key) LOCKS_EXCLUDED(mu_);
 
-  /// Insert a block in the block cache with the given key.
-  std::shared_ptr<FileBlockCache::Block> Insert(const Key& key,
-                                                std::shared_ptr<Block> block)
+  Status MaybeFetch(const Key& key, const std::shared_ptr<Block>& block)
       LOCKS_EXCLUDED(mu_);
 
   /// Trim the block cache to make room for another entry.
-  void Trim() LOCKS_EXCLUDED(mu_);
+  void Trim() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Update LRU and LRA iterators for the block at `key`.
-  void UpdateLRU(const Key& key, const std::shared_ptr<Block>& block)
+  /// Update the LRU iterator for the block at `key`.
+  Status UpdateLRU(const Key& key, const std::shared_ptr<Block>& block)
       LOCKS_EXCLUDED(mu_);
 
   /// Remove all blocks of a file, with mu_ already held.
@@ -179,6 +210,9 @@ class FileBlockCache {
 
   /// The LRA (least recently added) list of block keys. The front of the list
   /// identifies the most recently added block.
+  ///
+  /// Note: blocks are added to lra_list_ only after they have successfully been
+  /// fetched from the underlying block store.
   std::list<Key> lra_list_ GUARDED_BY(mu_);
 
   /// The combined number of bytes in all of the cached blocks.

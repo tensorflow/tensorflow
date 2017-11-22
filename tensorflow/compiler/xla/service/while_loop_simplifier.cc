@@ -403,6 +403,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
   // Compute the shape of the while op after we remove the dead indices.
   std::vector<Shape> new_while_tuple_elem_shapes;
+  new_while_tuple_elem_shapes.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_tuple_elem_shapes.push_back(
         while_init->shape().tuple_shapes(old_idx));
@@ -469,6 +470,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
   std::vector<HloInstruction*> new_while_body_root_elems;
+  new_while_body_root_elems.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_body_root_elems.push_back(
         while_body_root->mutable_operand(old_idx));
@@ -483,6 +485,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // clean this up in the common case where while_init is a tuple op.  (It's
   // definitely tuple-shaped, but it's not necessarily a tuple op.)
   std::vector<HloInstruction*> new_while_init_elems;
+  new_while_init_elems.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_init_elems.push_back(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(

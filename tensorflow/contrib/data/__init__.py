@@ -17,6 +17,7 @@
 See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
 @@Dataset
+@@Counter
 @@Iterator
 @@TFRecordDataset
 @@FixedLengthRecordDataset
@@ -33,6 +34,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@unbatch
 @@parallel_interleave
 @@rejection_resample
+@@scan
 @@sloppy_interleave
 
 @@get_single_element
@@ -48,6 +50,7 @@ from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
 from tensorflow.contrib.data.python.ops.batching import padded_batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import unbatch
+from tensorflow.contrib.data.python.ops.counter import Counter
 from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
 from tensorflow.contrib.data.python.ops.dataset_ops import get_single_element
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
@@ -62,6 +65,7 @@ from tensorflow.contrib.data.python.ops.readers import SqlDataset
 from tensorflow.contrib.data.python.ops.readers import TextLineDataset
 from tensorflow.contrib.data.python.ops.readers import TFRecordDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
+from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.python.data.ops.iterator_ops import Iterator
 # pylint: enable=unused-import
 

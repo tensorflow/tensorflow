@@ -54,15 +54,13 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/core/platform/gpu_tracer.h"
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -555,15 +553,19 @@ Status DirectSession::Run(const RunOptions& run_options,
     args.stats_collector = run_state.collector.get();
   }
 
-#if GOOGLE_CUDA
-  std::unique_ptr<GPUTracer> tracer;
+  std::unique_ptr<DeviceTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer = CreateGPUTracer();
-    // tracer will be NULL on non-GPU platforms.
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    if (tracer) tracer->Start().IgnoreError();
+    tracer = CreateDeviceTracer();
+    // tracer may be NULL on platforms without accelerators.
+    if (tracer) {
+      Status s = tracer->Start();
+      if (!s.ok()) {
+        run_state.executors_done.Notify();
+        delete barrier;
+        return s;
+      }
+    }
   }
-#endif  // GOOGLE_CUDA
 
   // Register this step with session's cancellation manager, so that
   // `Session::Close()` will cancel the step.
@@ -598,13 +600,10 @@ Status DirectSession::Run(const RunOptions& run_options,
     run_state.status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
-#if GOOGLE_CUDA
   if (tracer) {
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    tracer->Stop().IgnoreError();
-    tracer->Collect(args.stats_collector).IgnoreError();
+    TF_RETURN_IF_ERROR(tracer->Stop());
+    TF_RETURN_IF_ERROR(tracer->Collect(args.stats_collector));
   }
-#endif  // GOOGLE_CUDA
 
   {
     mutex_lock l(run_state.mu_);
@@ -1136,7 +1135,7 @@ Status DirectSession::GetOrCreateExecutors(
 
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
-    std::unordered_set<StringPiece, StringPiece::Hasher> names;
+    std::unordered_set<StringPiece, StringPieceHasher> names;
     for (const string& input : inputs) {
       TensorId id(ParseTensorName(input));
       names.emplace(id.first);

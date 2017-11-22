@@ -152,12 +152,16 @@ class HloComputation {
   //   computation_map: a map from computation name to HloComputation*. This map
   //     must contain all computations which the newly constructed computation
   //     calls.
-  //  fusion_instruction: if non-null then the newly created computation will be
-  //     constructed as a fused computation with this instruction as its fusion
-  //     parent.
+  //   add_fused_computation: A function to call to add a fused
+  //     computation. Used only when the instruction is a fusion instruction.
+  //   fusion_instruction: if non-null then the newly created computation will
+  //     be constructed as a fused computation with this instruction as its
+  //     fusion parent.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       HloModule* module, const HloComputationProto& proto,
-      tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map,
+      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
+      const std::function<void(std::unique_ptr<HloComputation>)>&
+          add_fused_computation,
       HloInstruction* fusion_instruction = nullptr);
 
   // Gets the instructions in this computation.

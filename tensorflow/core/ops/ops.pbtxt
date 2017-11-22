@@ -1104,6 +1104,86 @@ op {
   description: "lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)\nm_t <- beta1 * m_{t-1} + (1 - beta1) * g_t\nv_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t\nvariable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)"
 }
 op {
+  name: "ApplyAddSign"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "alpha"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sign_decay"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and m tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the AddSign update."
+  description: "m_t <- beta1 * m_{t-1} + (1 - beta1) * g\nupdate <- (alpha + sign_decay * sign(g) *sign(m)) * g\nvariable <- variable - lr_t * update"
+}
+op {
   name: "ApplyCenteredRMSProp"
   input_arg {
     name: "var"
@@ -1505,6 +1585,86 @@ op {
   }
   summary: "Update \'*var\' according to the momentum scheme. Set use_nesterov = True if you"
   description: "want to use Nesterov momentum.\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+}
+op {
+  name: "ApplyPowerSign"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "logbase"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sign_decay"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and m tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the AddSign update."
+  description: "m_t <- beta1 * m_{t-1} + (1 - beta1) * g\nupdate <- exp(logbase * sign_decay * sign(g) * sign(m_t)) * g\nvariable <- variable - lr_t * update"
 }
 op {
   name: "ApplyProximalAdagrad"
@@ -4269,6 +4429,34 @@ op {
   }
   summary: "Bucketizes \'input\' based on \'boundaries\'."
   description: "For example, if the inputs are\n    boundaries = [0, 10, 100]\n    input = [[-5, 10000]\n             [150,   10]\n             [5,    100]]\n\nthen the output will be\n    output = [[0, 3]\n              [3, 2]\n              [1, 3]]"
+}
+op {
+  name: "BytesProducedStatsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Records the bytes size of each element of `input_dataset` in a StatsAggregator."
 }
 op {
   name: "CTCBeamSearchDecoder"
@@ -7140,7 +7328,7 @@ op {
   name: "DeserializeSparse"
   input_arg {
     name: "serialized_sparse"
-    description: "1-D, The serialized `SparseTensor` object. Must have 3 columns."
+    description: "The serialized `SparseTensor` objects. The last dimension\nmust have 3 columns."
     type: DT_STRING
   }
   output_arg {
@@ -7158,10 +7346,9 @@ op {
   attr {
     name: "dtype"
     type: "type"
-    description: "The `dtype` of the serialized `SparseTensor` object."
+    description: "The `dtype` of the serialized `SparseTensor` objects."
   }
-  summary: "Deserialize `SparseTensor` from a (serialized) string 3-vector (1-D `Tensor`)"
-  description: "object."
+  summary: "Deserialize `SparseTensor` objects."
 }
 op {
   name: "DestroyResourceOp"
@@ -11508,6 +11695,19 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorSetStatsAggregator"
+  input_arg {
+    name: "iterator_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "stats_aggregator_handle"
+    type: DT_RESOURCE
+  }
+  summary: "Associates the given iterator with the given statistics aggregator."
+  is_stateful: true
+}
+op {
   name: "IteratorToStringHandle"
   input_arg {
     name: "resource_handle"
@@ -11702,6 +11902,34 @@ op {
     }
   }
   summary: "Gradients for Local Response Normalization."
+}
+op {
+  name: "LatencyStatsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Records the latency of producing `input_dataset` elements in a StatsAggregator."
 }
 op {
   name: "LearnedUnigramCandidateSampler"
@@ -21711,6 +21939,79 @@ op {
   is_stateful: true
 }
 op {
+  name: "ResourceApplyAddSign"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "alpha"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sign_decay"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and m tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the AddSign update."
+  description: "m_t <- beta1 * m_{t-1} + (1 - beta1) * g\nupdate <- (alpha + sign_decay * sign(g) *sign(m)) * g\nvariable <- variable - lr_t * update"
+  is_stateful: true
+}
+op {
   name: "ResourceApplyCenteredRMSProp"
   input_arg {
     name: "var"
@@ -22073,6 +22374,79 @@ op {
   }
   summary: "Update \'*var\' according to the momentum scheme. Set use_nesterov = True if you"
   description: "want to use Nesterov momentum.\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+  is_stateful: true
+}
+op {
+  name: "ResourceApplyPowerSign"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "logbase"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sign_decay"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and m tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the AddSign update."
+  description: "m_t <- beta1 * m_{t-1} + (1 - beta1) * g\nupdate <- exp(logbase * sign_decay * sign(g) * sign(m_t)) * g\nvariable <- variable - lr_t * update"
   is_stateful: true
 }
 op {
@@ -29984,6 +30358,42 @@ op {
   }
   summary: "Outputs deterministic pseudorandom values from a truncated normal distribution."
   description: "The generated values follow a normal distribution with mean 0 and standard\ndeviation 1, except that values whose magnitude is more than 2 standard\ndeviations from the mean are dropped and re-picked.\n\nThe outputs are a deterministic function of `shape` and `seed`."
+}
+op {
+  name: "StatsAggregatorHandle"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Creates a statistics manager resource."
+  is_stateful: true
+}
+op {
+  name: "StatsAggregatorSummary"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  summary: "Produces a summary of any statistics recorded by the given statistics manager."
+  is_stateful: true
 }
 op {
   name: "StopGradient"

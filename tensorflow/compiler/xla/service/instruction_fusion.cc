@@ -33,7 +33,9 @@ namespace xla {
   switch (instruction.opcode()) {
     // Cheap instructions.
     case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
     case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
@@ -53,15 +55,14 @@ namespace xla {
     case HloOpcode::kInfeed:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
-    case HloOpcode::kAnd:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
     case HloOpcode::kReal:
@@ -88,9 +89,9 @@ namespace xla {
 
     // Expensive instructions.
     case HloOpcode::kAtan2:
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
@@ -104,19 +105,19 @@ namespace xla {
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
     case HloOpcode::kPower:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
       return true;
   }
 

@@ -127,9 +127,9 @@ load(
     "tf_additional_verbs_lib_defines",
     "tf_additional_mpi_lib_defines",
     "tf_additional_gdr_lib_defines",
-    "tf_additional_gpu_tracer_srcs",
-    "tf_additional_gpu_tracer_deps",
-    "tf_additional_gpu_tracer_cuda_deps",
+    "tf_additional_device_tracer_srcs",
+    "tf_additional_device_tracer_deps",
+    "tf_additional_device_tracer_cuda_deps",
     "tf_pyclif_proto_library",
     "tf_jspb_proto_library",
     "tf_nano_proto_library",
@@ -1467,7 +1467,7 @@ cc_library(
             "lib/jpeg/**/*",
             "platform/**/env_time.cc",
             "platform/**/cuda_libdevice_path.cc",
-            "platform/**/gpu_tracer.cc",
+            "platform/**/device_tracer.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
         ],
@@ -1478,7 +1478,7 @@ cc_library(
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
-            "platform/**/gpu_tracer.cc",
+            "platform/**/device_tracer.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
         ] +
@@ -2091,12 +2091,9 @@ tf_cuda_library(
         "util/env_var.h",
     ],
     copts = tf_copts(),
-    cuda_deps = [
-        ":gpu_tracer",
-    ],
-    linkstatic = 1,
     deps = [
         ":core_cpu_internal",
+        ":device_tracer",
         ":framework",
         ":lib",
         ":lib_internal",
@@ -2128,18 +2125,18 @@ cc_library(
 )
 
 tf_cuda_library(
-    name = "gpu_tracer",
-    srcs = tf_additional_gpu_tracer_srcs(),
+    name = "device_tracer",
+    srcs = tf_additional_device_tracer_srcs(),
     hdrs = [
-        "platform/gpu_tracer.h",
+        "platform/device_tracer.h",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_gpu_tracer_cuda_deps(),
+    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
     deps = [
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
-    ] + tf_additional_gpu_tracer_deps(),
+    ] + tf_additional_device_tracer_deps(),
 )
 
 GPU_RUNTIME_HEADERS = [
@@ -3378,7 +3375,7 @@ tf_cc_test(
 
 filegroup(
     name = "base_api_def",
-    data = glob(["api_def/base_api/*"]),
+    srcs = glob(["api_def/base_api/*"]),
 )
 
 filegroup(
@@ -3392,10 +3389,6 @@ tf_cc_test(
     data = [
         ":base_api_def",
         "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
-    ],
-    tags = [
-        "manual",
-        "notap",
     ],
     deps = [
         ":framework",
@@ -3412,9 +3405,9 @@ tf_cc_test(
 )
 
 tf_cc_test_gpu(
-    name = "gpu_tracer_test",
+    name = "device_tracer_test",
     size = "small",
-    srcs = ["platform/gpu_tracer_test.cc"],
+    srcs = ["platform/device_tracer_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
@@ -3422,12 +3415,12 @@ tf_cc_test_gpu(
         ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
+        ":device_tracer",
         ":direct_session",
         ":direct_session_internal",
         ":framework",
         ":framework_internal",
         ":gpu_runtime",
-        ":gpu_tracer",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",

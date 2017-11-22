@@ -112,8 +112,10 @@ def filter_irregular_batches(batch_size):
     tensor_batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
 
-    flattened = _RestructuredDataset(dataset,
-                                     tuple(nest.flatten(dataset.output_types)))
+    flattened = _RestructuredDataset(
+        dataset,
+        tuple(nest.flatten(dataset.output_types)),
+        output_classes=tuple(nest.flatten(dataset.output_classes)))
 
     def _predicate(*xs):
       """Return `True` if this element is a full batch."""
@@ -135,7 +137,11 @@ def filter_irregular_batches(batch_size):
 
     known_shapes = nest.map_structure(_set_first_dimension,
                                       dataset.output_shapes)
-    return _RestructuredDataset(filtered, dataset.output_types, known_shapes)
+    return _RestructuredDataset(
+        filtered,
+        dataset.output_types,
+        known_shapes,
+        output_classes=dataset.output_classes)
 
   return _apply_fn
 
@@ -238,6 +244,10 @@ class DenseToSparseBatchDataset(dataset_ops.Dataset):
         output_types=self.output_types)
 
   @property
+  def output_classes(self):
+    return (ops.Tensor, ops.Tensor, ops.Tensor)
+
+  @property
   def output_shapes(self):
     num_elements = tensor_shape.Dimension(None)
     return (tensor_shape.matrix(num_elements, self._row_shape.shape[0] + 1),
@@ -252,7 +262,11 @@ class DenseToSparseBatchDataset(dataset_ops.Dataset):
 class _RestructuredDataset(dataset_ops.Dataset):
   """An internal helper for changing the structure and shape of a dataset."""
 
-  def __init__(self, dataset, output_types, output_shapes=None):
+  def __init__(self,
+               dataset,
+               output_types,
+               output_shapes=None,
+               output_classes=None):
     """Creates a new dataset with the given output types and shapes.
 
     The given `dataset` must have a structure that is convertible:
@@ -268,6 +282,8 @@ class _RestructuredDataset(dataset_ops.Dataset):
       output_types: A nested structure of `tf.DType` objects.
       output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects.
         If omitted, the shapes will be inherited from `dataset`.
+      output_classes: (Optional.) A nested structure of class types.
+        If omitted, the class types will be inherited from `dataset`.
 
     Raises:
       ValueError: If either `output_types` or `output_shapes` is not compatible
@@ -307,9 +323,20 @@ class _RestructuredDataset(dataset_ops.Dataset):
                                                  output_shapes))
       self._output_shapes = nest.map_structure_up_to(
           output_types, tensor_shape.as_shape, output_shapes)
+    if output_classes is None:
+      # Inherit class types from the original `dataset`.
+      self._output_classes = nest.pack_sequence_as(output_types,
+                                                   nest.flatten(
+                                                       dataset.output_classes))
+    else:
+      self._output_classes = output_classes
 
   def _as_variant_tensor(self):
     return self._dataset._as_variant_tensor()  # pylint: disable=protected-access
+
+  @property
+  def output_classes(self):
+    return self._output_classes
 
   @property
   def output_types(self):
@@ -326,10 +353,6 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_batches):
     """See `Dataset.map()` for details."""
     super(_MapAndBatchDataset, self).__init__(input_dataset, map_func)
-    if sparse.any_sparse(self._output_types):
-      # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError("Batching of sparse tensors is not currently supported")
-
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
     self._num_parallel_batches = ops.convert_to_tensor(
@@ -345,8 +368,9 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
         batch_size=self._batch_size,
         num_parallel_batches=self._num_parallel_batches,
         output_types=nest.flatten(
-            sparse.unwrap_sparse_types(self.output_types)),
-        output_shapes=nest.flatten(self.output_shapes))
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
     # pylint: enable=protected-access
 
   @property
@@ -394,9 +418,6 @@ def map_and_batch(map_func, batch_size, num_parallel_batches=1):
   """
 
   def _apply_fn(dataset):
-    if sparse.any_sparse(dataset.output_types):
-      # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError("Batching of sparse tensors is not currently supported")
     return _MapAndBatchDataset(dataset, map_func, batch_size,
                                num_parallel_batches)
 

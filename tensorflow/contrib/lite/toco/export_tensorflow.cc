@@ -1283,6 +1283,10 @@ void ConvertMeanOperator(const Model& model, const MeanOperator& src_op,
   const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
   (*new_op->mutable_attr())["T"].set_type(params_type);
 
+  if (src_op.keep_dims) {
+    (*new_op->mutable_attr())["keep_dims"].set_b(true);
+  }
+
   // Create the params tensor.
   auto* params_op = tensorflow_graph->add_node();
   params_op->set_op("Const");
