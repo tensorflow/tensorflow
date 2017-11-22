@@ -1277,7 +1277,7 @@ def _may_reduce_to_scalar(keepdims, axis, reduction_indices, output):
   return output
 
 
-@deprecation.deprecated_args(
+@deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_sum(input_tensor,
                axis=None,
