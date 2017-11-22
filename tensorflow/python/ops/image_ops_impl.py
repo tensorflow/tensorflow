@@ -309,9 +309,18 @@ def flip_left_right(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
+  original_shape = image.get_shape()
+  image, is_batch = _EnsureTensorIs4D(image)
   image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
-  return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
+      _CheckAtLeast3DImage(image, require_static=False), image)
+
+  result = array_ops.reverse(image, [2])
+
+  if is_batch:
+    return fix_image_flip_shape_v2(original_shape, result, rank=4)
+  else:
+    result = array_ops.squeeze(result, squeeze_dims=[0])
+    return fix_image_flip_shape_v2(original_shape, result, rank=3)
 
 
 def flip_up_down(image):
