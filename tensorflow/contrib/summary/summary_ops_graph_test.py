@@ -21,7 +21,6 @@ import tempfile
 import six
 
 from tensorflow.contrib.summary import summary_ops
-from tensorflow.contrib.summary import summary_test_internal
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
