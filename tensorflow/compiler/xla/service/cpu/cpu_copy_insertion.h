@@ -13,24 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_COPY_INSERTION_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_COPY_INSERTION_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COPY_INSERTION_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COPY_INSERTION_H_
 
-#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
-namespace gpu {
 
 // Besides the modifications made by the generic xla::CopyInsertion, this
-// GPU-specific copy insertion also materializes operands of library calls by
-// inserting kCopy instructions.
-class GpuCopyInsertion : public CopyInsertion {
+// CPU-specific copy insertion pass also adds copies to values live out of
+// computations satisfying certain conditions (defined by constant or parameter,
+// etc). This is necessary because of deficiencies of buffer
+// assignment. Specifically, buffer assignment is computation-scoped and does
+// not recognized aliasing between arguments and outputs of computations.
+//
+// TODO(b/62548313): Remove this when buffer assignment is smarter
+// (module-scoped).
+class CpuCopyInsertion : public HloPassInterface {
  public:
+  tensorflow::StringPiece name() const override { return "copy-insertion"; }
+
   StatusOr<bool> Run(HloModule* module) override;
 };
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_COPY_INSERTION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COPY_INSERTION_H_

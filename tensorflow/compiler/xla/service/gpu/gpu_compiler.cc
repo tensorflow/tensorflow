@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
-#include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -224,9 +224,8 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<GpuCopyInsertion>();
-  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
+  pipeline.AddPass<GpuCopyInsertion>();
   return pipeline.Run(hlo_module).status();
 }
 
