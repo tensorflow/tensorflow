@@ -42,7 +42,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
-    'tensorflow-tensorboard >= 0.4.0rc1, < 0.5.0',
+    'tensorflow-tensorboard',
 ]
 
 project_name = 'tensorflow'
@@ -58,11 +58,11 @@ if sys.version_info.major == 3:
 else:
   REQUIRED_PACKAGES.append('wheel')
 
-# remove tensorboard from tf-nightly packages
+# tf-nightly should depend on tb-nightly
 if 'tf_nightly' in project_name:
-  for package in REQUIRED_PACKAGES:
-    if 'tensorflow-tensorboard' in package:
-      REQUIRED_PACKAGES.remove(package)
+  for i, pkg in enumerate(REQUIRED_PACKAGES):
+    if 'tensorboard' in pkg:
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.5.0a0, < 1.6.0a0'
       break
 
 # pylint: disable=line-too-long
@@ -75,13 +75,13 @@ CONSOLE_SCRIPTS = [
     # is now declared by the tensorboard pip package. If we remove the
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
-    'tensorboard = tensorboard.main:main',
+    'tensorboard = tensorboard.main:run_main',
 ]
 # pylint: enable=line-too-long
 
 # remove the tensorboard console script if building tf_nightly
 if 'tf_nightly' in project_name:
-  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:main')
+  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:run_main')
 
 TEST_PACKAGES = [
     'scipy >= 0.15.1',
