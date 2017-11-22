@@ -56,11 +56,19 @@ download_and_extract() {
   elif [[ "${url}" == *zip ]]; then
     tempdir=$(mktemp -d)
     tempdir2=$(mktemp -d)
-    wget -P ${tempdir} ${url}
-    unzip ${tempdir}/* -d ${tempdir2}
-    # unzip has no strip components, so unzip to a temp dir, and move the files
-    # we want from the tempdir to destination.
-    echo cp `find ${tempdir2} -type f` ${dir}/
+
+    curl -L ${url} > ${tempdir}/zipped.zip
+    unzip ${tempdir}/zipped.zip -d ${tempdir2}
+
+    # If the zip file contains nested directories, extract the files from the
+    # inner directory.
+    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+      # unzip has no strip components, so unzip to a temp dir, and move the
+      # files we want from the tempdir to destination.
+      cp -R ${tempdir2}/*/* ${dir}/
+    else
+      cp -R ${tempdir2}/* ${dir}/
+    fi
     rm -rf ${tempdir2} ${tempdir}
   fi
 
