@@ -64,7 +64,7 @@ reinstall_tensorflow_pip ${PIP_NAME}
 # https://github.com/tensorflow/tensorflow/issues/12844 is fixed.
 bazel test -c opt $BUILD_OPTS -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows \
-  --build_tag_filters=-no_pip,-no_windows --build_tests_only \
+  --test_tag_filters=-no_pip,-no_windows,-no_oss \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \
   --test_env=TF_SAVER_LENIENT_NAMES=True \
   //${PY_TEST_DIR}/tensorflow/python/...
