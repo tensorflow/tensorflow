@@ -95,7 +95,7 @@ TEST(StringPieceHasher, HashMap) {
   StringPiece p2(s2);
   StringPiece p3(s3);
 
-  std::unordered_map<StringPiece, int, StringPiece::Hasher> map;
+  std::unordered_map<StringPiece, int, StringPieceHasher> map;
 
   map.insert(std::make_pair(p1, 0));
   map.insert(std::make_pair(p2, 1));

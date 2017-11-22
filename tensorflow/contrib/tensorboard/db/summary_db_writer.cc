@@ -278,7 +278,7 @@ class GraphSaver {
   GraphDef* graph_;
   int64 graph_id_;
   std::vector<string> name_copies_;
-  std::unordered_map<StringPiece, int64, StringPiece::Hasher> name_to_node_id_;
+  std::unordered_map<StringPiece, int64, StringPieceHasher> name_to_node_id_;
 };
 
 class SummaryDbWriter : public SummaryWriterInterface {
