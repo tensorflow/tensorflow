@@ -61,7 +61,6 @@ tf_py_test(
     data = [
         ":toco_from_protos",
     ],
-    tags = ["no_pip"],
 )
 
 filegroup(

@@ -19,7 +19,6 @@ py_library(
         "python/training/external_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
         "python/training/moving_average_optimizer.py",
-        "python/training/multitask_optimizer_wrapper.py",
         "python/training/nadam_optimizer.py",
         "python/training/powersign.py",
         "python/training/sign_decay.py",
@@ -96,23 +95,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "multitask_optimizer_wrapper_test",
-    srcs = ["python/training/multitask_optimizer_wrapper_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":opt_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

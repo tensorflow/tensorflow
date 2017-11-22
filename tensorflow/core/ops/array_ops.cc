@@ -723,9 +723,7 @@ y: a tensor of the same shape and type as x but filled with zeros.
 REGISTER_OP("OnesLike")
     .Input("x: T")
     .Output("y: T")
-    .Attr(
-        "T: {float, double, int8, uint8, int16, uint16, int32, int64, "
-        "complex64, complex128, bool}")
+    .Attr("T: {float, double, int32, int64, complex64, complex128}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns a tensor of ones with the same shape and type as x.
@@ -2031,46 +2029,6 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 x: 1-D.
 y: 1-D.
 idx: 1-D.
-)doc");
-
-REGISTER_OP("UniqueV2")
-    .Input("x: T")
-    .Input("axis: int64")
-    .Output("y: T")
-    .Output("idx: out_idx")
-    .Attr("T: type")
-    .Attr("out_idx: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(1, c->input(0));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Finds unique elements in a 1-D tensor.
-
-This operation returns a tensor `y` containing all of the unique elements of `x`
-sorted in the same order that they occur in `x`. This operation also returns a
-tensor `idx` the same size as `x` that contains the index of each value of `x`
-in the unique output `y`. In other words:
-
-`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
-
-For example:
-
-```
-# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-y, idx = unique(x)
-y ==> [1, 2, 4, 7, 8]
-idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
-```
-
-
-x: A `Tensor`.
-axis: A `Tensor` of type `int64` (default: 0). The axis of the Tensor to
-  find the unique elements.
-y: A `Tensor`. Unique elements along the `axis` of `Tensor` x.
-idx: A 1-D Tensor. Has the same type as x that contains the index of each
-  value of x in the output y.
 )doc");
 
 // --------------------------------------------------------------------------

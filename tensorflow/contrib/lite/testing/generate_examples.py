@@ -36,10 +36,6 @@ import traceback
 import zipfile
 import numpy as np
 from six import StringIO
-
-# TODO(aselle): Disable GPU for now
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
 import tensorflow as tf
 from google.protobuf import text_format
 # TODO(aselle): switch to TensorFlow's resource_loader
@@ -383,13 +379,12 @@ def make_zip_of_tests(zip_path,
         report["toco_log"] = ""
         tf.reset_default_graph()
 
-        with tf.device('/cpu:0'):
-          try:
-            inputs, outputs = make_graph(param_dict_real)
-          except (tf.errors.UnimplementedError, tf.errors.InvalidArgumentError,
-                  ValueError):
-            report["tf_log"] += traceback.format_exc()
-            return None, report
+        try:
+          inputs, outputs = make_graph(param_dict_real)
+        except (tf.errors.UnimplementedError, tf.errors.InvalidArgumentError,
+                ValueError):
+          report["tf_log"] += traceback.format_exc()
+          return None, report
 
         sess = tf.Session()
         try:

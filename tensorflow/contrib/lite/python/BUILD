@@ -23,7 +23,6 @@ py_library(
 py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
-    srcs_version = "PY2AND3",
     deps = [
         ":lite",
         "//tensorflow/python:array_ops",

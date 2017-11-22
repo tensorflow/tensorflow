@@ -794,7 +794,7 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
                                      reduction_indices=[dim,],
-                                     keepdims=True)
+                                     keep_dims=True)
   mean_distance, update_op = mean(radial_diffs, weights,
                                   None,
                                   None,
