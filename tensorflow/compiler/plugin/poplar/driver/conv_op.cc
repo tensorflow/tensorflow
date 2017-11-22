@@ -301,8 +301,11 @@ CreateBiasAddOp(poplar::Graph &graph,
   poplar::Tensor bias;
   TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 1));
 
+  // Should this be taken from the convolution dimension numbers?
+  poplar::Tensor shuffled_in = in.dimShuffle({0, 3, 1, 2});
+
   poplar::program::Sequence prog;
-  popconv::addBias(graph, in, bias, prog, inst->name());
+  popconv::addBias(graph, shuffled_in, bias, prog, inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in));
   return prog;
@@ -320,8 +323,11 @@ CreateBiasAddBcastOp(poplar::Graph &graph,
   poplar::Tensor bias;
   TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 0));
 
+  // Should this be taken from the convolution dimension numbers?
+  poplar::Tensor shuffled_in = in.dimShuffle({0, 3, 1, 2});
+
   poplar::program::Sequence prog;
-  popconv::addBias(graph, in, bias, prog, inst->name());
+  popconv::addBias(graph, shuffled_in, bias, prog, inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in));
   return prog;

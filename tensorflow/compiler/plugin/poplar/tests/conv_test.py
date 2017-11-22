@@ -48,6 +48,24 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                 self.assertAllClose(result,
                                     np.zeros([1,14,14,128]))
 
+    def testConv8x8_WithBias(self):
+      with tf.device("/device:XLA_IPU:0"):
+        with tf.Session() as sess:
+          inp = tf.placeholder(tf.float32, [1,84,84,4], name="inp")
+          wei = tf.placeholder(tf.float32, [8,8,4,16], name="wei")
+          bia = tf.placeholder(tf.float32, [16], name="bia")
+          output = nn_ops.conv2d(inp, wei, strides=[1,4,4,1], padding="VALID")
+          output = nn_ops.bias_add(output, bia)
+
+          fd = {
+            inp: np.zeros([1,84,84,4]),
+            wei: np.zeros([8,8,4,16]),
+            bia: np.zeros([16]),
+          }
+          result = sess.run(output, fd)
+          self.assertAllClose(result,
+                              np.zeros([1, 20, 20, 16]))
+
 
     def testDepthwiseConv3x2(self):
         with tf.device("/device:XLA_IPU:0"):

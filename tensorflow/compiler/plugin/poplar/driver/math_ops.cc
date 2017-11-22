@@ -134,15 +134,15 @@ LookupBinaryInPlaceFn(const HloInstruction* inst) {
 
 static poplin::FullyConnectedPass GetMatMulPass(const HloInstruction* inst) {
   if (IsForwardMatMul(inst)) {
-    return poplin::FullyConnectedPass::FWD;
+    return poplin::FullyConnectedPass::TRAINING_FWD;
   }
   if (IsGradientMatMul(inst)) {
-    return poplin::FullyConnectedPass::BWD;
+    return poplin::FullyConnectedPass::TRAINING_BWD;
   }
   if (IsWeightUpdateMatMul(inst)) {
-    return poplin::FullyConnectedPass::WU;
+    return poplin::FullyConnectedPass::TRAINING_WU;
   }
-  return poplin::FullyConnectedPass::NONE;
+  return poplin::FullyConnectedPass::INFERENCE_FWD;
 }
 
 port::StatusOr<poplar::program::Program>

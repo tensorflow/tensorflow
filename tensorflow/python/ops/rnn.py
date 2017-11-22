@@ -810,7 +810,8 @@ def _dynamic_rnn_loop(cell,
 
   # Unpack final output if not using output tuples.
   if in_graph_mode:
-    final_outputs = tuple(ta.stack() for ta in output_final_ta)
+    final_outputs = tuple(
+      ta.gather(range(time_steps)) for ta in output_final_ta)
     # Restore some shape information
     for output, output_size in zip(final_outputs, flat_output_size):
       shape = _concat(
