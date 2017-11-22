@@ -577,6 +577,16 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(z.op.op_def.input_arg), 2)
     self.assertEqual(len(z.op.op_def.output_arg), 1)
 
+  def testInputFromDifferentGraphError(self):
+    g_0 = ops.Graph()
+    g_1 = ops.Graph()
+    with g_0.as_default():
+      x = constant_op.constant(1)
+    with g_1.as_default():
+      y = constant_op.constant(2)
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        y * x  # pylint: disable=pointless-statement
+
 
 @test_util.with_c_api
 class CreateOpTest(test_util.TensorFlowTestCase):
