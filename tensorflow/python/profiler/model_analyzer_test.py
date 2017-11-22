@@ -62,7 +62,7 @@ class PrintModelAnalysisTest(test.TestCase):
                          '  ScalarW (1, 1/1 params)\n',
                          f.read())
 
-  def testSelectEverthingDetail(self):
+  def testSelectEverythingDetail(self):
     ops.reset_default_graph()
     dev = '/device:GPU:0' if test.is_gpu_available() else '/device:CPU:0'
     outfile = os.path.join(test.get_temp_dir(), 'dump')
