@@ -29,9 +29,6 @@ class LayoutOptimizer : public GraphOptimizer {
 
   string name() const override { return "layout"; };
 
-  // This is for testing only.
-  void set_num_gpus(int num_gpus) { num_gpus_ = num_gpus; };
-
   struct TuningConfig {
     // If true, do not use the NHWC GEMM implementation. When filter size is
     // one or filter size is equal to input image size,
@@ -50,7 +47,7 @@ class LayoutOptimizer : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  int num_gpus_ = 0;
+  std::unordered_set<string> nodes_to_preserve_;
   Status Tune(const GrapplerItem& item, const GraphProperties& graph_properties,
               const string& default_device, const TuningConfig& config,
               GraphDef* output);

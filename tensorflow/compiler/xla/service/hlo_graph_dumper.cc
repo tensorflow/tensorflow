@@ -864,9 +864,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   // (eg, parameter).
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kComplex:
@@ -882,18 +883,19 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
-    case HloOpcode::kAnd:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
+    case HloOpcode::kRng:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -903,7 +905,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
-    case HloOpcode::kRng:
       // De-emphasize scalar-shaped elementwise ops -- they're generally
       // uninteresting.
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
@@ -911,9 +912,9 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       }
       return kYellow;
     case HloOpcode::kBitcast:
-    case HloOpcode::kTuple:
-    case HloOpcode::kTrace:
     case HloOpcode::kGetTupleElement:
+    case HloOpcode::kTrace:
+    case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
       // De-emphasize nodes which broadcast a scalar within a fusion node --
@@ -952,28 +953,28 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kRed;
     case HloOpcode::kParameter:
       return kParameterColor;
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kReduce:
-    case HloOpcode::kSelectAndScatter:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
       return kPurple;
-    case HloOpcode::kMap:
     case HloOpcode::kFusion:
+    case HloOpcode::kMap:
       return kGray;
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
+    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
       return kBrown;
+    case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
-    case HloOpcode::kCall:
       return kDarkGreen;
     case HloOpcode::kConstant:
       LOG(FATAL) << "Constants don't get their own nodes in the graph.";

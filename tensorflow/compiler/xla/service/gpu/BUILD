@@ -343,15 +343,16 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "copy_insertion",
-    srcs = ["copy_insertion.cc"],
-    hdrs = ["copy_insertion.h"],
+    name = "gpu_copy_insertion",
+    srcs = ["gpu_copy_insertion.cc"],
+    hdrs = ["gpu_copy_insertion.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:logical_buffer",
-        "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
+        "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
     ],
 )
@@ -427,8 +428,8 @@ cc_library(
     hdrs = ["gpu_compiler.h"],
     deps = [
         ":convolution_folding",
-        ":copy_insertion",
         ":fusion_merger",
+        ":gpu_copy_insertion",
         ":gpu_executable",
         ":hlo_schedule",
         ":instruction_fusion",
@@ -574,11 +575,14 @@ tf_cc_test(
     deps = [
         ":instruction_fusion",
         ":while_transformer",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:copy_insertion",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 

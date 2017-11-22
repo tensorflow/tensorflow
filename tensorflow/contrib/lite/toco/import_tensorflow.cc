@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "google/protobuf/map.h"
 #include "google/protobuf/text_format.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -587,6 +588,9 @@ void ConvertSumOperator(const NodeDef& node, Model* model) {
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  if (HasAttr(node, "keep_dims")) {
+    op->keep_dims = GetBoolAttr(node, "keep_dims");
+  }
 }
 
 void ConvertTileOperator(const NodeDef& node, Model* model) {
@@ -696,6 +700,11 @@ void ConvertMaxPoolOperator(const NodeDef& node, Model* model) {
   CHECK_EQ(node.op(), "MaxPool");
   CHECK_EQ(GetInputsCount(node, model->flags.drop_control_dependency()), 1);
   const auto& input_name = node.input(0);
+  // We only support NHWC, which is the default data_format.
+  // So if data_format is not defined, we're all good.
+  if (node.attr().count("data_format")) {
+    CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
+  }
   if (HasAttr(node, "T")) {
     CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
   } else {
@@ -731,6 +740,11 @@ void ConvertAvgPoolOperator(const NodeDef& node, Model* model) {
   CHECK_EQ(node.op(), "AvgPool");
   CHECK_EQ(GetInputsCount(node, model->flags.drop_control_dependency()), 1);
   const auto& input_name = node.input(0);
+  // We only support NHWC, which is the default data_format.
+  // So if data_format is not defined, we're all good.
+  if (node.attr().count("data_format")) {
+    CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
+  }
   CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
   auto* avgpool = new AveragePoolOperator;
   avgpool->inputs.push_back(input_name);
@@ -901,6 +915,9 @@ void ConvertMaxOperator(const NodeDef& node, Model* model) {
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  if (HasAttr(node, "keep_dims")) {
+    op->keep_dims = GetBoolAttr(node, "keep_dims");
+  }
 }
 
 void ConvertMinOperator(const NodeDef& node, Model* model) {
@@ -911,6 +928,9 @@ void ConvertMinOperator(const NodeDef& node, Model* model) {
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  if (HasAttr(node, "keep_dims")) {
+    op->keep_dims = GetBoolAttr(node, "keep_dims");
+  }
 }
 
 void ConvertMaximumOperator(const NodeDef& node, Model* model) {
@@ -1221,6 +1241,9 @@ void ConvertMeanOperator(const NodeDef& node, Model* model) {
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  if (HasAttr(node, "keep_dims")) {
+    op->keep_dims = GetBoolAttr(node, "keep_dims");
+  }
 }
 
 void ConvertSvdfOperator(const NodeDef& node, Model* model) {
@@ -1257,6 +1280,12 @@ void StripCaretFromArrayNames(Model* model) {
     if (absl::StartsWith(array.first, "^")) {
       LOG(FATAL) << "What?";
     }
+  }
+}
+
+void StripZeroOutputIndexFromInputs(NodeDef* node) {
+  for (auto& input : *node->mutable_input()) {
+    input = string(absl::StripSuffix(input, ":0"));
   }
 }
 
@@ -1347,10 +1376,22 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(const ModelFlags& model_flags,
     LogDumpGraphDef(kLogLevelModelChanged, "AFTER INLINING", inlined_graph);
   }
 
+  // Check input and output specification.
+  for (const auto& specified_input_array : model_flags.input_arrays()) {
+    CHECK(!absl::EndsWith(specified_input_array.name(), ":0"))
+        << "Unsupported explicit zero output index: "
+        << specified_input_array.name();
+  }
+  for (const string& specified_output_array : model_flags.output_arrays()) {
+    CHECK(!absl::EndsWith(specified_output_array, ":0"))
+        << "Unsupported explicit zero output index: " << specified_output_array;
+  }
+
   Model* model = new Model;
   ResolveModelFlags(model_flags, model);
 
-  for (const auto& node : inlined_graph.node()) {
+  for (auto node : inlined_graph.node()) {
+    StripZeroOutputIndexFromInputs(&node);
     if (node.op() == "Const") {
       ConvertConstOperator(node, model);
     } else if (node.op() == "Conv2D") {

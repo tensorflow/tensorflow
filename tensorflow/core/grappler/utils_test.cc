@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -181,12 +182,71 @@ TEST_F(UtilsTest, NumOutputs) {
   EXPECT_EQ(1, NumOutputs(CreateDequeueNode()));
 }
 
-TEST(AsControlDependency, BasicTest) {
+TEST_F(UtilsTest, AsControlDependency) {
   NodeDef node;
   node.set_name("foo");
   EXPECT_EQ("^foo", AsControlDependency(node));
   EXPECT_EQ("^foo", AsControlDependency(node.name()));
   EXPECT_EQ("^foo", AsControlDependency("^foo"));
+}
+
+TEST_F(UtilsTest, GetTailOfChain) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c0 = ops::Const(s.WithOpName("c0"), {1.0f, 2.0f}, {1, 2});
+  Output c1 = ops::Const(s.WithOpName("c1"), {3.0f, 4.0f}, {1, 2});
+  // Add a node with only connected by control output.
+  Output neg0 = ops::Neg(s.WithOpName("neg0"), c1);
+  // Add a node with two outputs.
+  Output neg1 =
+      ops::Neg(s.WithControlDependencies(neg0).WithOpName("neg1"), c0);
+  Output neg2 = ops::Neg(s.WithOpName("neg2"), neg1);
+  Output id1 = ops::Identity(s.WithOpName("id1"), neg2);
+  Output id2 = ops::Identity(s.WithOpName("id2"), neg1);
+  auto noop = ops::NoOp(s.WithControlDependencies(neg0).WithOpName("noop"));
+  GraphDef graph;
+  TF_CHECK_OK(s.ToGraphDef(&graph));
+  LOG(INFO) << graph.DebugString();
+
+  ASSERT_EQ("c0", graph.node(0).name());
+  ASSERT_EQ("c1", graph.node(1).name());
+  ASSERT_EQ("neg0", graph.node(2).name());
+  ASSERT_EQ("neg1", graph.node(3).name());
+  ASSERT_EQ("neg2", graph.node(4).name());
+  ASSERT_EQ("id1", graph.node(5).name());
+  ASSERT_EQ("id2", graph.node(6).name());
+  ASSERT_EQ("noop", graph.node(7).name());
+
+  NodeMap node_map(&graph);
+  auto is_neg = [&](const NodeDef& node) { return node.op() == "Neg"; };
+  // We walk backwards, starting as "id1", so tail should be "neg1".
+  NodeDef* tail = GetTailOfChain(graph.node(5), node_map,
+                                 /*follow_control_input=*/false, is_neg);
+  EXPECT_NE(tail, nullptr);
+  EXPECT_EQ("neg1", tail->name());
+
+  // We stop at branching nodes, so tail should be "neg2".
+  auto is_neg_and_non_branching = [&](const NodeDef& node) {
+    return node.op() == "Neg" && NumNonControlOutputs(node, node_map) == 1;
+  };
+  tail =
+      GetTailOfChain(graph.node(5), node_map,
+                     /*follow_control_input=*/false, is_neg_and_non_branching);
+  EXPECT_NE(tail, nullptr);
+  EXPECT_EQ("neg2", tail->name());
+
+  // We walk backwards, starting from "noop", also following control inputs,
+  // so tail should be "neg0".
+  tail = GetTailOfChain(graph.node(7), node_map,
+                        /*follow_control_input=*/true, is_neg);
+  EXPECT_NE(tail, nullptr);
+  EXPECT_EQ("neg0", tail->name());
+
+  // We walk backwards, starting from "noop", not following control inputs,
+  // so tail should be "noop" itself.
+  tail = GetTailOfChain(graph.node(7), node_map,
+                        /*follow_control_input=*/false, is_neg);
+  EXPECT_NE(tail, nullptr);
+  EXPECT_EQ("noop", tail->name());
 }
 
 }  // namespace

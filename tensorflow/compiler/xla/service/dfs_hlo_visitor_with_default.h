@@ -167,6 +167,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleWhile(HloInstructionPtr xla_while) override {
     return DefaultAction(xla_while);
   }
+  Status HandleConditional(HloInstructionPtr conditional) override {
+    return DefaultAction(conditional);
+  }
   Status HandleRecv(HloInstructionPtr recv) override {
     return DefaultAction(recv);
   }

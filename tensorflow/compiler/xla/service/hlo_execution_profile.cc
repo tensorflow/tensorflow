@@ -83,7 +83,7 @@ static HloProfilePrinter CreateOwnedHloProfilePrinter(
       instruction_info->transcendental_count =
           cost_analysis.transcendental_count(*hlo);
       instruction_info->bytes_accessed = cost_analysis.bytes_accessed(*hlo);
-      instruction_info->seconds = cost_analysis.seconds(*hlo);
+      instruction_info->optimal_seconds = cost_analysis.optimal_seconds(*hlo);
       instruction_info->profile_index =
           hlo_profile_index_map.GetProfileIndexFor(*hlo);
       CHECK_LT(instruction_info->profile_index, max_profile_index);

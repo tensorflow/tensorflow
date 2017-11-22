@@ -295,6 +295,66 @@ TEST(CAPI, Execute) {
   TF_DeleteStatus(status);
 }
 
+TEST(CAPI, Function) {
+  // First create a simple identity function.
+  TF_Graph* function_graph = TF_NewGraph();
+  TF_OperationDescription* arg_descr =
+      TF_NewOperation(function_graph, "Placeholder", "arg");
+  TF_SetAttrType(arg_descr, "dtype", TF_INT32);
+  TF_Status* status = TF_NewStatus();
+  TF_Operation* arg = TF_FinishOperation(arg_descr, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_OperationDescription* id_descr =
+      TF_NewOperation(function_graph, "Identity", "id");
+  TF_SetAttrType(id_descr, "T", TF_INT32);
+  TF_AddInput(id_descr, {arg, 0});
+  TF_Operation* id = TF_FinishOperation(id_descr, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_Output input{arg, 0};
+  TF_Output output{id, 0};
+  TF_Function* fn =
+      TF_GraphToFunction(function_graph, "ident", 0, 1, &id, 1, &input, 1,
+                         &output, nullptr, nullptr, "test", status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_DeleteGraph(function_graph);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+  TFE_ContextAddFunction(ctx, fn, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_DeleteFunction(fn);
+
+  TF_Tensor* t = TF_AllocateTensor(TF_INT32, nullptr, 0, 1);
+  *reinterpret_cast<tensorflow::int32*>(TF_TensorData(t)) = 42;
+  TFE_TensorHandle* h = TFE_NewTensorHandle(t, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_DeleteTensor(t);
+
+  TFE_Op* op = TFE_NewOp(ctx, "ident", status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TFE_OpAddInput(op, h, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+
+  std::vector<TFE_TensorHandle*> result;
+  result.push_back(nullptr);
+  int num_retvals = 1;
+  TFE_Execute(op, result.data(), &num_retvals, status);
+  TFE_DeleteOp(op);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  ASSERT_EQ(num_retvals, 1);
+
+  TF_Tensor* r = TFE_TensorHandleResolve(result[0], status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  EXPECT_EQ(*reinterpret_cast<tensorflow::int32*>(TF_TensorData(r)), 42);
+  TFE_DeleteTensorHandle(h);
+  TF_DeleteTensor(r);
+  TFE_DeleteTensorHandle(result[0]);
+  TFE_DeleteContext(ctx, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_DeleteStatus(status);
+}
+
 string MatMulFunction() {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(

@@ -70,7 +70,7 @@ class UserComputation {
 
   // Enqueues a pad instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddPadInstruction(
-      const PadRequest& parameter_request);
+      const PadRequest& pad_request);
 
   // Enqueues a tracing instruction onto this user computation.
   // Returns an error status if the operand cannot be resolved.
@@ -105,7 +105,7 @@ class UserComputation {
   // Enqueues a ternary instruction onto this user computation.
   // Returns an error status if the operand indices are out of bounds.
   StatusOr<ComputationDataHandle> AddTernaryInstruction(
-      const TernaryOpRequest& request);
+      const TernaryOpRequest& ternary_request);
 
   // Enqueues a variadic instruction onto this user computation.
   // Returns an error status if the operand indices are out of bounds.
@@ -179,26 +179,30 @@ class UserComputation {
 
   // Enqueues a concatenate instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddConcatenateInstruction(
-      const ConcatenateRequest& slice_request);
+      const ConcatenateRequest& concatenate_request);
 
   // Enqueues a convert instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddConvertInstruction(
       const ConvertRequest& convert_request);
 
+  // Enqueues a bitcast element instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddBitcastConvertInstruction(
+      const ConvertRequest& convert_request);
+
   // Enqueues a reduce instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddReduceInstruction(
       const ReduceRequest& reduce_request,
-      const UserComputation& reduction_computation);
+      const UserComputation& to_apply_computation);
 
   // Enqueues a windowed reduce instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddReduceWindowInstruction(
       const ReduceWindowRequest& reduce_window_request,
-      const UserComputation& reduction_computation);
+      const UserComputation& to_apply_computation);
 
   // Enqueues a select-and-scatter instruction onto this user
   // computation.
   StatusOr<ComputationDataHandle> AddSelectAndScatterInstruction(
-      const SelectAndScatterRequest& scatter_to_selected_window_element_request,
+      const SelectAndScatterRequest& select_and_scatter_request,
       const UserComputation& select_computation,
       const UserComputation& scatter_computation);
 

@@ -46,9 +46,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
-#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -332,15 +332,16 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<CopyInsertion>();
+  pipeline.AddPass<FlattenCallGraph>();
+  pipeline.AddPass<CpuCopyInsertion>();
   if (options::CpuParallelBackendRequested(module->config())) {
     // Re-run the outlining, in case any copies were inserted into the entry
     // computation.
     pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
                                                  ShapeSizeBytesFunction());
+    pipeline.AddPass<CpuCopyInsertion>();
   }
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(module).status();
 }
 
@@ -426,11 +427,25 @@ Status InitializeModuleHooks(
 
 }  // namespace
 
-StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> module,
+    perftools::gputools::StreamExecutor* /*stream_exec*/) {
+  VLOG(2) << "Before optimization:";
+  XLA_VLOG_LINES(2, module->ToString());
+
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
+
+  VLOG(2) << "After optimization:";
+  XLA_VLOG_LINES(2, module->ToString());
+  return std::move(module);
+}
+
+StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
+    std::unique_ptr<HloModule> module,
+    perftools::gputools::StreamExecutor* stream_exec) {
   const string timer_message =
       "Compiling [" + module->name() + "] for CPU using JIT";
-  ScopedLoggingTimer compiling_timer(timer_message, 1);
+  XLA_SCOPED_LOGGING_TIMER(timer_message);
 
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
@@ -457,14 +472,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       pre_optimization_ir_hook, post_optimization_ir_hook);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
-
-  VLOG(2) << "Before optimization:";
-  XLA_VLOG_LINES(2, module->ToString());
-
-  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
-
-  VLOG(2) << "After optimization:";
-  XLA_VLOG_LINES(2, module->ToString());
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
@@ -537,11 +544,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       parallel_computations.emplace(to_apply, instruction);
     }
 
-    size_t entry_computation_profile_idx = hlo_to_profile_idx.size();
-    IrEmitter ir_emitter(
-        *module, *assignment, llvm_module.get(), std::move(hlo_to_profile_idx),
-        /*entry_computation_profile_idx=*/entry_computation_profile_idx,
-        jit->target_machine(), jit->external_constant_pool());
+    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+                         hlo_to_profile_idx, hlo_to_profile_idx.size(),
+                         jit->target_machine(), jit->external_constant_pool());
 
     std::unique_ptr<HloInstructionMap<string>> function_names(
         new HloInstructionMap<string>());
@@ -619,11 +624,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // before the entry computation. The order of computations returned from
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
-    size_t entry_computation_profile_idx = hlo_to_profile_idx.size();
-    IrEmitter ir_emitter(
-        *module, *assignment, llvm_module.get(), std::move(hlo_to_profile_idx),
-        /*entry_computation_profile_idx=*/entry_computation_profile_idx,
-        jit->target_machine(), jit->external_constant_pool());
+    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+                         hlo_to_profile_idx, hlo_to_profile_idx.size(),
+                         jit->target_machine(), jit->external_constant_pool());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {

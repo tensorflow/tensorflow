@@ -110,6 +110,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
                            PrimitiveType_Name(from_type).c_str(),
                            PrimitiveType_Name(to_type).c_str());
     }
+    case HloOpcode::kBitcastConvert: {
+      PrimitiveType from_type = op->operand(0)->shape().element_type();
+      PrimitiveType to_type = op->shape().element_type();
+      CHECK(primitive_util::IsIntegralType(from_type));
+      if (from_type == to_type) {
+        return operand_value;
+      }
+      if (primitive_util::BitWidth(from_type) ==
+          primitive_util::BitWidth(to_type)) {
+        return ir_builder_->CreateBitCast(
+            operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_));
+      }
+      return InvalidArgument(
+          "bitcast conversion from primitive type %s to %s with unequal "
+          "bit-widths (%u versus %u) ",
+          PrimitiveType_Name(from_type).c_str(),
+          PrimitiveType_Name(to_type).c_str(),
+          primitive_util::BitWidth(from_type),
+          primitive_util::BitWidth(to_type));
+    }
     case HloOpcode::kAbs: {
       bool is_signed =
           primitive_util::IsSignedIntegralType(op->shape().element_type());
@@ -202,6 +222,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return Unimplemented("unhandled conversion operation: %s => %s",
                            PrimitiveType_Name(from_type).c_str(),
                            PrimitiveType_Name(to_type).c_str());
+    }
+    case HloOpcode::kBitcastConvert: {
+      PrimitiveType from_type = op->operand(0)->shape().element_type();
+      PrimitiveType to_type = op->shape().element_type();
+      CHECK(primitive_util::IsFloatingPointType(from_type));
+      if (from_type == to_type) {
+        return operand_value;
+      }
+      if (primitive_util::BitWidth(from_type) ==
+          primitive_util::BitWidth(to_type)) {
+        return ir_builder_->CreateBitCast(
+            operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_));
+      }
+      return InvalidArgument(
+          "bitcast conversion from primitive type %s to %s with unequal "
+          "bit-widths (%u versus %u) ",
+          PrimitiveType_Name(from_type).c_str(),
+          PrimitiveType_Name(to_type).c_str(),
+          primitive_util::BitWidth(from_type),
+          primitive_util::BitWidth(to_type));
     }
     case HloOpcode::kExp:
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {operand_value},
@@ -1073,6 +1113,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -1081,11 +1122,11 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
     case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kTanh:
-    case HloOpcode::kNot:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
@@ -1094,6 +1135,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitUnaryOp(hlo, operand_value);
       };
     case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
     case HloOpcode::kDivide:
@@ -1106,14 +1148,13 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
+    case HloOpcode::kOr:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kAnd:
-    case HloOpcode::kOr:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kSubtract:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         const HloInstruction* lhs = hlo->operand(0);

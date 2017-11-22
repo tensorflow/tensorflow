@@ -32,8 +32,25 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 
 
-_SUMMARY_OPS = ("ScalarSummary",)
-_PLACEHOLDER_OPS = ("Placeholder",)
+# Operations that indicate some error in the users graph, e.g. a placeholder
+# that's introduced outside of the infeed.
+_BLACKLISTED_OPS = set([
+    "Placeholder",
+])
+
+# These operations will currently fail to compile, but we should be able to
+# support them eventually via CPU offload or extending our operation set.
+_NOT_IMPLEMENTED_OPS = set([
+    "AudioSummary",
+    "AudioSummaryV2",
+    "HistogramSummary",
+    "ImageSummary",
+    "MergeSummary",
+    "Print",
+    "ScalarSummary",
+    "TensorSummary",
+    "TensorSummaryV2",
+    ])
 
 
 def initialize_system(embedding_config=None, job=None):
@@ -108,12 +125,13 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if op.type in _PLACEHOLDER_OPS:
-      raise ValueError("Placeholder %s is not supported." % op.name)
+    if op.type in _BLACKLISTED_OPS:
+      raise ValueError("Operation of type %s (%s) is not supported on the TPU" %
+                       (op.type, op.name))
 
-    if op.type in _SUMMARY_OPS:
+    if op.type in _NOT_IMPLEMENTED_OPS:
       logging.warning(
-          "Summary operations are not currently supported (%s)" % op.name)
+          "Operation %s (%s) is not currently supported", op.type, op.name)
 
     if any(x.dtype._is_ref_dtype for x in op.inputs):
       raise NotImplementedError(

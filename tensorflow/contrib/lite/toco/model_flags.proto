@@ -16,7 +16,7 @@ import "tensorflow/contrib/lite/toco/types.proto";
 
 package toco;
 
-// Next ID to USE: 5.
+// Next ID to USE: 6.
 message InputArray {
   // Name of the input arrays, i.e. the arrays from which input activations
   // will be read.
@@ -46,6 +46,31 @@ message InputArray {
   // (TensorFlow via LegacyFedInput).
   optional float mean_value = 3;
   optional float std_value = 4 [default = 1.];
+
+  // Data type of the input.
+  //
+  // In many graphs, the input arrays already have defined data types,
+  // e.g. Placeholder nodes in a TensorFlow GraphDef have a dtype attribute.
+  // In those cases, it is not needed to specify this data_type flag.
+  // The purpose of this flag is only to define the data type of input
+  // arrays whose type isn't defined in the input graph file. For example,
+  // when specifying an arbitrary (not Placeholder) --input_array into
+  // a TensorFlow GraphDef.
+  //
+  // When this data_type is quantized (e.g. QUANTIZED_UINT8), the
+  // corresponding quantization parameters are the mean_value, std_value
+  // fields.
+  //
+  // It is also important to understand the nuance between this data_type
+  // flag and the inference_input_type in TocoFlags. The basic difference
+  // is that this data_type (like all ModelFlags) describes a property
+  // of the input graph, while inference_input_type (like all TocoFlags)
+  // describes an aspect of the toco transformation process and thus of
+  // the output file. The types of input arrays may be different between
+  // the input and output files if quantization or dequantization occurred.
+  // Such differences can only occur for real-number data i.e. only
+  // between FLOAT and quantized types (e.g. QUANTIZED_UINT8).
+  optional IODataType data_type = 5;
 }
 
 // ModelFlags encodes properties of a model that, depending on the file

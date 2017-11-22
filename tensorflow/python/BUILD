@@ -3046,7 +3046,9 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_memory",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core:lib",
@@ -4414,6 +4416,7 @@ cuda_py_test(
         ":nn",
         ":ops",
         ":random_ops",
+        ":tf_cluster",
         ":tf_optimizer",
         ":training",
         "//third_party/py/numpy",
@@ -4428,7 +4431,11 @@ py_library(
         "grappler/cost_analyzer.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":pywrap_tensorflow_internal"],
+    deps = [
+        ":pywrap_tensorflow_internal",
+        ":tf_cluster",
+        ":tf_item",
+    ],
 )
 
 py_binary(

@@ -17,10 +17,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -28,6 +30,13 @@ namespace {
 
 class LayoutOptimizerTest : public ::testing::Test {
  protected:
+  void SetUp() override {
+    DeviceProperties device_properties;
+    device_properties.set_type("GPU");
+    device_properties.mutable_environment()->insert({"architecture", "6"});
+    virtual_cluster_.reset(new VirtualCluster({{"/GPU:0", device_properties}}));
+  }
+
   Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
                       const string& padding) {
     int batch_size = 128;
@@ -99,6 +108,8 @@ class LayoutOptimizerTest : public ::testing::Test {
     CHECK(tensor.FromProto(node.attr().at({"value"}).tensor()));
     return tensor;
   }
+
+  std::unique_ptr<VirtualCluster> virtual_cluster_;
 };
 
 TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
@@ -108,9 +119,9 @@ TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   LayoutOptimizer optimizer;
-  optimizer.set_num_gpus(1);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   string input_name = AddPrefixToNodeName("Conv2DBackpropInput-InputSizes",
                                           "LayoutOptimizer", "-");
@@ -132,9 +143,8 @@ TEST_F(LayoutOptimizerTest, FilterSizeIsOne) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   LayoutOptimizer optimizer;
-  optimizer.set_num_gpus(1);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   EXPECT_FALSE(
       node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input"));
@@ -147,9 +157,8 @@ TEST_F(LayoutOptimizerTest, FilterSizeNotOne) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   LayoutOptimizer optimizer;
-  optimizer.set_num_gpus(1);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   EXPECT_FALSE(
       node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input"));
@@ -162,9 +171,8 @@ TEST_F(LayoutOptimizerTest, EqualSizeWithValidPadding) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   LayoutOptimizer optimizer;
-  optimizer.set_num_gpus(1);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   EXPECT_FALSE(
       node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input"));
@@ -177,9 +185,8 @@ TEST_F(LayoutOptimizerTest, EqualSizeWithSamePadding) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   LayoutOptimizer optimizer;
-  optimizer.set_num_gpus(1);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   EXPECT_TRUE(
       node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input-0"));
@@ -192,9 +199,8 @@ TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   LayoutOptimizer optimizer;
-  optimizer.set_num_gpus(1);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   EXPECT_TRUE(
       node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input-0"));
@@ -209,9 +215,8 @@ TEST_F(LayoutOptimizerTest, Pad) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   LayoutOptimizer optimizer;
-  optimizer.set_num_gpus(1);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
 
   auto pad = node_map.GetNode("p");
@@ -246,9 +251,8 @@ TEST_F(LayoutOptimizerTest, Connectivity) {
   auto node_i2 = node_map_original.GetNode("i2");
   node_i2->Swap(node_i1);
   LayoutOptimizer optimizer;
-  optimizer.set_num_gpus(1);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map_output(&output);
   auto node_i2_output = node_map_output.GetNode("i2");
   // Layout optimizer should process i2, as it detects i2 is connected with the
@@ -257,6 +261,21 @@ TEST_F(LayoutOptimizerTest, Connectivity) {
   // i1 and i2 should cancel each other, and as a result i2 is directly
   // connected to i1.
   EXPECT_EQ(node_i2_output->input(0), "i1");
+}
+
+TEST_F(LayoutOptimizerTest, PreserveFetch) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto i = ops::Identity(s.WithOpName("i"), conv);
+  GrapplerItem item;
+  item.fetch.push_back("Conv2D");
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto conv_node = node_map.GetNode("Conv2D");
+  EXPECT_EQ(conv_node->attr().at({"data_format"}).s(), "NHWC");
 }
 
 }  // namespace

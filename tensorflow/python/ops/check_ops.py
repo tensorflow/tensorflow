@@ -104,6 +104,11 @@ def _assert_static(condition, data):
                                       message='\n'.join(data_static))
 
 
+def _shape_and_dtype_str(tensor):
+  """Returns a string containing tensor's shape and dtype."""
+  return 'shape=%s dtype=%s' % (tensor.shape, tensor.dtype.name)
+
+
 def assert_proper_iterable(values):
   """Static assert that values is a "proper" iterable.
 
@@ -159,10 +164,14 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):
   with ops.name_scope(name, 'assert_negative', [x, data]):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
+      if context.in_eager_mode():
+        name = _shape_and_dtype_str(x)
+      else:
+        name = x.name
       data = [
           message,
           'Condition x < 0 did not hold element-wise:',
-          'x (%s) = ' % x.name, x]
+          'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
     return assert_less(x, zero, data=data, summarize=summarize)
 
@@ -195,9 +204,13 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):
   with ops.name_scope(name, 'assert_positive', [x, data]):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
+      if context.in_eager_mode():
+        name = _shape_and_dtype_str(x)
+      else:
+        name = x.name
       data = [
           message, 'Condition x > 0 did not hold element-wise:',
-          'x (%s) = ' % x.name, x]
+          'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
     return assert_less(zero, x, data=data, summarize=summarize)
 
@@ -232,7 +245,7 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
       if context.in_eager_mode():
-        name = str(x)
+        name = _shape_and_dtype_str(x)
       else:
         name = x.name
       data = [
@@ -272,10 +285,14 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None):
   with ops.name_scope(name, 'assert_non_positive', [x, data]):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
+      if context.in_eager_mode():
+        name = _shape_and_dtype_str(x)
+      else:
+        name = x.name
       data = [
           message,
           'Condition x <= 0 did not hold element-wise:'
-          'x (%s) = ' % x.name, x]
+          'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
     return assert_less_equal(x, zero, data=data, summarize=summarize)
 
@@ -408,8 +425,8 @@ def assert_none_equal(
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
     if context.in_eager_mode():
-      x_name = 'x'
-      y_name = 'y'
+      x_name = _shape_and_dtype_str(x)
+      y_name = _shape_and_dtype_str(y)
     else:
       x_name = x.name
       y_name = y.name
@@ -456,8 +473,8 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
     if context.in_eager_mode():
-      x_name = 'x'
-      y_name = 'y'
+      x_name = _shape_and_dtype_str(x)
+      y_name = _shape_and_dtype_str(y)
     else:
       x_name = x.name
       y_name = y.name
@@ -502,11 +519,18 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
   with ops.name_scope(name, 'assert_less_equal', [x, y, data]):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
+    if context.in_eager_mode():
+      x_name = _shape_and_dtype_str(x)
+      y_name = _shape_and_dtype_str(y)
+    else:
+      x_name = x.name
+      y_name = y.name
+
     if data is None:
       data = [
           message,
           'Condition x <= y did not hold element-wise:'
-          'x (%s) = ' % x.name, x, 'y (%s) = ' % y.name, y
+          'x (%s) = ' % x_name, x, 'y (%s) = ' % y_name, y
       ]
     condition = math_ops.reduce_all(math_ops.less_equal(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
@@ -542,11 +566,18 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
   with ops.name_scope(name, 'assert_greater', [x, y, data]):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
+    if context.in_eager_mode():
+      x_name = _shape_and_dtype_str(x)
+      y_name = _shape_and_dtype_str(y)
+    else:
+      x_name = x.name
+      y_name = y.name
+
     if data is None:
       data = [
           message,
           'Condition x > y did not hold element-wise:'
-          'x (%s) = ' % x.name, x, 'y (%s) = ' % y.name, y
+          'x (%s) = ' % x_name, x, 'y (%s) = ' % y_name, y
       ]
     condition = math_ops.reduce_all(math_ops.greater(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
@@ -584,11 +615,18 @@ def assert_greater_equal(x, y, data=None, summarize=None, message=None,
   with ops.name_scope(name, 'assert_greater_equal', [x, y, data]):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
+    if context.in_eager_mode():
+      x_name = _shape_and_dtype_str(x)
+      y_name = _shape_and_dtype_str(y)
+    else:
+      x_name = x.name
+      y_name = y.name
+
     if data is None:
       data = [
           message,
           'Condition x >= y did not hold element-wise:'
-          'x (%s) = ' % x.name, x, 'y (%s) = ' % y.name, y
+          'x (%s) = ' % x_name, x, 'y (%s) = ' % y_name, y
       ]
     condition = math_ops.reduce_all(math_ops.greater_equal(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
@@ -676,10 +714,15 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
     static_condition = lambda actual_rank, given_rank: actual_rank == given_rank
     dynamic_condition = math_ops.equal
 
+    if context.in_eager_mode():
+      name = ''
+    else:
+      name = x.name
+
     if data is None:
       data = [
           message,
-          'Tensor %s must have rank' % x.name, rank, 'Received shape: ',
+          'Tensor %s must have rank' % name, rank, 'Received shape: ',
           array_ops.shape(x)
       ]
 
@@ -691,7 +734,7 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
       if e.args[0] == 'Static rank condition failed':
         raise ValueError(
             '%s.  Tensor %s must have rank %d.  Received rank %d, shape %s' %
-            (message, x.name, e.args[2], e.args[1], x.get_shape()))
+            (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
         raise
 
@@ -734,10 +777,16 @@ def assert_rank_at_least(
 
     static_condition = lambda actual_rank, given_rank: actual_rank >= given_rank
     dynamic_condition = math_ops.greater_equal
+
+    if context.in_eager_mode():
+      name = ''
+    else:
+      name = x.name
+
     if data is None:
       data = [
           message,
-          'Tensor %s must have rank at least' % x.name, rank,
+          'Tensor %s must have rank at least' % name, rank,
           'Received shape: ', array_ops.shape(x)
       ]
 
@@ -749,7 +798,7 @@ def assert_rank_at_least(
       if e.args[0] == 'Static rank condition failed':
         raise ValueError(
             '%s.  Tensor %s must have rank at least %d.  Received rank %d, '
-            'shape %s' % (message, x.name, e.args[2], e.args[1], x.get_shape()))
+            'shape %s' % (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
         raise
 
@@ -856,9 +905,14 @@ def assert_rank_in(
     ranks = tuple([ops.convert_to_tensor(rank, name='rank') for rank in ranks])
     message = message or ''
 
+    if context.in_eager_mode():
+      name = ''
+    else:
+      name = x.name
+
     if data is None:
       data = [
-          message, 'Tensor %s must have rank in' % x.name
+          message, 'Tensor %s must have rank in' % name
       ] + list(ranks) + [
           'Received shape: ', array_ops.shape(x)
       ]
@@ -871,7 +925,7 @@ def assert_rank_in(
       if e.args[0] == 'Static rank condition failed':
         raise ValueError(
             '%s.  Tensor %s must have rank in %s.  Received rank %d, '
-            'shape %s' % (message, x.name, e.args[2], e.args[1], x.get_shape()))
+            'shape %s' % (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
         raise
 
@@ -903,9 +957,13 @@ def assert_integer(x, message=None, name=None):
   with ops.name_scope(name, 'assert_integer', [x]):
     x = ops.convert_to_tensor(x, name='x')
     if not x.dtype.is_integer:
+      if context.in_eager_mode():
+        name = 'tensor'
+      else:
+        name = x.name
       err_msg = (
           '%s  Expected "x" to be integer type.  Found: %s of dtype %s'
-          % (message, x.name, x.dtype))
+          % (message, name, x.dtype))
       raise TypeError(err_msg)
 
     return control_flow_ops.no_op('statically_determined_was_integer')
@@ -1079,6 +1137,10 @@ def assert_scalar(tensor, name=None):
     tensor = ops.convert_to_tensor(tensor, name=name_scope)
     shape = tensor.get_shape()
     if shape.ndims != 0:
-      raise ValueError('Expected scalar shape for %s, saw shape: %s.'
-                       % (tensor.name, shape))
+      if context.in_eager_mode():
+        raise ValueError('Expected scalar shape, saw shape: %s.'
+                         % (shape,))
+      else:
+        raise ValueError('Expected scalar shape for %s, saw shape: %s.'
+                         % (tensor.name, shape))
     return tensor

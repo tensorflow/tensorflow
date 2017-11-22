@@ -181,11 +181,11 @@ def Input(  # pylint: disable=invalid-name
 class GraphNetwork(base.Layer):
   """A GraphNetwork is a directed acyclic graph of layers.
 
-  It is the topological form of a "model".
-  A Model is simply a GraphNetwork with added training/evaluation routines.
+  It is the topological form of a `tf.keras.models.Model`. A `Model` is simply a
+  `GraphNetwork` with added training/evaluation routines.
 
-  A GraphNetwork instance implements the full Layer API. In particular, a
-  GraphNetwork can be called on new inputs.
+  A `GraphNetwork` instance implements the full `Layer` API. In particular, a
+  `GraphNetwork` can be called on new inputs.
 
   Example:
 

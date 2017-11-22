@@ -35,7 +35,6 @@ from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 # Names for various approximations that can be requested for Fisher blocks.
@@ -129,7 +128,10 @@ class LayerCollection(object):
         sum.
   """
 
-  def __init__(self, graph=None, name="LayerCollection"):
+  def __init__(self,
+               graph=None,
+               colocate_cov_ops_with_inputs=False,
+               name="LayerCollection"):
     self.fisher_blocks = LayerParametersDict()
     self.fisher_factors = OrderedDict()
     self._linked_parameters = dict(
@@ -140,6 +142,7 @@ class LayerCollection(object):
     self._default_generic_approximation = APPROX_FULL_NAME
     self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
     self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
+    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
@@ -216,39 +219,24 @@ class LayerCollection(object):
   def register_block(self, layer_key, fisher_block, reuse=VARIABLE_SCOPE):
     """Validates and registers the layer_key associated with the fisher_block.
 
-    Validation consists of checking whether the key was already registered or
-    if any of the elements of layer_key (if it's a tuple) were already
-    registered as part of another tuple (throws an error if so). If any of the
-    elements were registered by themselves, or as part of tuples that are
-    subsets of this layer_key, those registrations are first removed.
-
-    If the layer_key is a subset of an existing registration, registration of
-    the new, smaller layer_key is skipped.
-
-    e.g. If registrations include {'a': foo, ('b', 'c'): bar}, then
-      - register_layer('a', baz) -> ValueError
-      - register_layer(('b', 'c', 'd'), baz) ->
-        {'a': foo, ('b', 'c', 'd'): baz}
-      - register_layer('b', baz) ->
-        {'a': foo, ('b', 'c'): bar} (No change)
-      - register_layer(('a', 'd'), baz) ->
-        {('a', 'd'): baz, ('b', 'c'): bar}
-      - register_layer(('b', 'd'), baz) -> ValueError
-
     Args:
-      layer_key: The key to check for in existing registrations and to register
-          if valid.
-      fisher_block: The associated fisher block.
-      reuse: Method to use for inserting new FisherBlocks. One of True, False,
+      layer_key: A variable or tuple of variables. The key to check for in
+          existing registrations and to register if valid.
+      fisher_block: The associated `FisherBlock`.
+      reuse: Method to use for inserting new `FisherBlock`s. One of True, False,
         or VARIABLE_SCOPE.
 
     Raises:
-      ValueError: If the layer_key was already registered, or if a subset of the
-          layer_key has already been registered as part of a different tuple.
+      ValueError: If `layer_key` was already registered and reuse is `False`,
+        if `layer_key` was registered with a different block type, or if
+        `layer_key` shares any variables with but is not equal to a previously
+        registered key.
+      KeyError: If `reuse` is `True` but `layer_key` was not previously
+        registered.
 
     Returns:
-      FisherBlock registered under 'layer_key'. May or may not be the same as
-      'fisher_block'.
+      The `FisherBlock` registered under `layer_key`. If `layer_key` was already
+      registered, this will be the previously registered `FisherBlock`.
     """
     if reuse is VARIABLE_SCOPE:
       reuse = variable_scope.get_variable_scope().reuse
@@ -268,100 +256,22 @@ class LayerCollection(object):
     # Insert fisher_block into self.fisher_blocks.
     if layer_key in self.fisher_blocks:
       raise ValueError("Duplicate registration: {}".format(layer_key))
-    if isinstance(layer_key, (tuple, list)):
-      return self._register_block_with_sequence_key(layer_key, fisher_block)
-    else:
-      return self._register_block_with_nonsequence_key(layer_key, fisher_block)
-
-  def _register_block_with_sequence_key(self, layer_key, fisher_block):
-    """Validates and registers the layer_key if it's a sequence."""
-    # Find all keys that are either supersets or subsets of 'layer_key'.
-    inclusions = {
-        fisher_elt
-        for layer_elt in layer_key
-        for fisher_elt in self.fisher_blocks
-        if self._equal_or_subset(layer_elt, fisher_elt)
+    # Raise an error if any variable in layer_key has been registered in any
+    # other blocks.
+    variable_to_block = {
+        var: (params, block)
+        for (params, block) in self.fisher_blocks.items()
+        for var in ensure_sequence(params)
     }
-
-    if not inclusions:
-      self.fisher_blocks[layer_key] = fisher_block
-      return fisher_block
-
-    result_key = None
-    for key in inclusions:
-      fisher_block_key = key if isinstance(key, (tuple, list)) else (key,)
-      in_existing_only = set(fisher_block_key) - set(layer_key)
-      in_new_only = set(layer_key) - set(fisher_block_key)
-
-      if in_existing_only and in_new_only:
-        # Existing and new key have an intersection but neither is a subset of
-        # the other. This is an error.
+    for variable in ensure_sequence(layer_key):
+      if variable in variable_to_block:
+        prev_key, prev_block = variable_to_block[variable]
         raise ValueError(
-            "Inconsistent registration, expected new key to be a subset or "
-            "superset of the existing key: existing is {}, new is {}".format(
-                key, layer_key))
-      elif in_existing_only and not in_new_only:
-        # Existing key is strict superset of new key. Return existing
-        # FisherBlock.
-        logging.warning("Graph Registration Warning: tried to register "
-                        "a subset ({}) of an already registered tuple "
-                        "({}), skipping".format(layer_key, fisher_block_key))
-        assert result_key is None
-        result_key = key
-      elif in_new_only and not in_existing_only:
-        # Existing key is a strict subset of new key. Replace existing
-        # FisherBlock with new one.
-        #
-        # TODO(b/68715045): This is dangerous. If there are existing
-        # registrations for a minibatch from elsewhere in the graph, they won't
-        # be re-registered with this new FisherBlock. The type of FisherBlock
-        # could also change here.
-        logging.warning(
-            "Replacing existing FisherBlock for key {} with new FisherBlock "
-            "for key {}. {} registered minibatches from the existing "
-            "FisherBlock will not be migrated.".format(
-                key, layer_key,
-                self.fisher_blocks[key].num_registered_minibatches))
-        self.fisher_blocks.pop(key)
-        self.fisher_blocks[layer_key] = fisher_block
-        assert result_key is None
-        result_key = layer_key
-      elif not in_new_only and not in_existing_only:
-        # Existing and new are identical. Reuse the old FisherBlock.
-        #
-        # TODO(b/68715045): This is dangerous. If the new FisherBlock has
-        # existing registered minibatches, they will not be migrated to the
-        # existing FisherBlock.
-        assert result_key is None
-        result_key = key
-      else:
-        raise ValueError("Unexpected layer key conflict: {} vs. {}".format(
-            layer_key, key))
-
-    return self.fisher_blocks[result_key]
-
-  def _register_block_with_nonsequence_key(self, layer_key, fisher_block):
-    """Validates and registers the layer_key if it's not a sequence."""
-    inclusions = {
-        fisher_elt
-        for fisher_elt in self.fisher_blocks
-        if self._equal_or_subset(layer_key, fisher_elt)
-    }
-
-    if not inclusions:
-      self.fisher_blocks[layer_key] = fisher_block
-    else:
-      logging.warning("Graph Registration Warning: tried to register "
-                      "variable ({}) but a containing tuple was already "
-                      "registered ({}), skipping".format(layer_key, inclusions))
-
+            "Attempted to register layer_key {} with block {}, but variable {}"
+            " was already registered in key {} with block {}.".format(
+                layer_key, fisher_block, variable, prev_key, prev_block))
+    self.fisher_blocks[layer_key] = fisher_block
     return fisher_block
-
-  def _equal_or_subset(self, elt1, elt2):
-    """Checks if the elements are equal or one is contained in the other."""
-    return (elt1 == elt2 or (isinstance(elt1,
-                                        (tuple, list)) and elt2 in elt1) or
-            (isinstance(elt2, (tuple, list)) and elt1 in elt2))
 
   def get_use_count_map(self):
     """Returns a dict of variables to their number of registrations."""
@@ -710,6 +620,9 @@ class LayerCollection(object):
            "LayerCollection.fisher_factors. The pair cannot be hashed.").format(
                cls, args))
 
-    with variable_scope.variable_scope(self._var_scope):
-      return utils.setdefault(self.fisher_factors, (cls, args),
-                              lambda: cls(*args))
+    key = cls, args
+    if key not in self.fisher_factors:
+      colo = self._colocate_cov_ops_with_inputs
+      with variable_scope.variable_scope(self._var_scope):
+        self.fisher_factors[key] = cls(*args, colocate_cov_ops_with_inputs=colo)
+    return self.fisher_factors[key]

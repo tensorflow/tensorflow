@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/batch_util.h"
 
 namespace tensorflow {
 
@@ -92,44 +93,6 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
    private:
-    // Copies element into the index^th slice of parent (in the 0th dimension).
-    //
-    // TODO(mrry): Reconcile this method with the similar method in
-    // the queue implementation.
-    template <typename T>
-    static Status HandleElementToSlice(const Tensor& element, Tensor* parent,
-                                       int64 index) {
-      if (element.NumElements() !=
-          (parent->NumElements() / parent->dim_size(0))) {
-        TensorShape chip_shape = parent->shape();
-        chip_shape.RemoveDim(0);
-        return errors::InvalidArgument(
-            "HandleElementToSlice Cannot copy slice: number of elements does "
-            "not match. Shapes are: [element]: ",
-            element.shape().DebugString(),
-            ", [parent slice]: ", chip_shape.DebugString());
-      }
-      auto parent_as_matrix = parent->flat_outer_dims<T>();
-      parent_as_matrix.chip(index, 0) = element.flat<T>();
-      return Status::OK();
-    }
-
-    // Copies element into the index^th slice of parent (in the 0th dimension).
-    static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                     int64 index) {
-#define HANDLE_TYPE(T)                                      \
-  case DataTypeToEnum<T>::value: {                          \
-    return HandleElementToSlice<T>(element, parent, index); \
-  }
-
-      switch (element.dtype()) {
-        TF_CALL_DATASET_TYPES(HANDLE_TYPE);
-#undef HANDLE_TYPE
-        default:
-          return errors::Unimplemented(
-              "CopyElementToSlice Unhandled data type: ", element.dtype());
-      }
-    }
 
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -188,8 +151,9 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           // Build the output tuple component by copying one slice
           // from each input element in the batch.
           for (size_t i = 0; i < num_batch_elements; ++i) {
-            TF_RETURN_IF_ERROR(CopyElementToSlice(
-                batch_elements[i][component_index], &batch_component, i));
+            TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
+                std::move(batch_elements[i][component_index]), &batch_component,
+                i));
           }
           out_tensors->emplace_back(std::move(batch_component));
         }
