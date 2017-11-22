@@ -166,7 +166,7 @@ def _wals_factorization_model_function(features, labels, mode, params):
 
   # TRAIN mode:
   if mode == model_fn.ModeKeys.TRAIN:
-    # Training consists of the folowing ops (controlled using a SweepHook).
+    # Training consists of the following ops (controlled using a SweepHook).
     # Before a row sweep:
     #   row_update_prep_gramian_op
     #   initialize_row_update_op

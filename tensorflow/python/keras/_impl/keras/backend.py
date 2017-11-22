@@ -2487,7 +2487,7 @@ class Function(object):
   """Runs a computation graph.
 
   It's possible to pass arguments to `tf.Session.run()` via `session_kwargs`.
-  In particular additonal operations via `fetches` argument and additional
+  In particular additional operations via `fetches` argument and additional
   tensor substitutions via `feed_dict` arguments. Note that given
   substitutions are merged with substitutions from `inputs`. Even though
   `feed_dict` is passed once in the constructor (called in `model.compile()`)
