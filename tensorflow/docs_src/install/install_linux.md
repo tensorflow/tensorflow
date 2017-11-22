@@ -394,7 +394,7 @@ Prior to installing TensorFlow with GPU support, ensure that your system meets a
 with NVidia GPU support, enter a command of the following format:
 
 <pre>
-$ <b>nvidia-docker run -it</b> <i>-p hostPort:containerPort TensorFlowGPUImage</i>
+$ <b>docker run --runtime=nvidia -it</b> <i>-p hostPort:containerPort TensorFlowGPUImage</i>
 </pre>
 
 where:
@@ -421,7 +421,7 @@ following command launches the latest TensorFlow GPU binary image in a
 Docker container from which you can run TensorFlow programs in a shell:
 
 <pre>
-$ <b>nvidia-docker run -it gcr.io/tensorflow/tensorflow:latest-gpu bash</b>
+$ <b>docker run --runtime=nvidia -it gcr.io/tensorflow/tensorflow:latest-gpu bash</b>
 </pre>
 
 The following command also launches the latest TensorFlow GPU binary image
@@ -429,19 +429,32 @@ in a Docker container. In this Docker container, you can run TensorFlow
 programs in a Jupyter notebook:
 
 <pre>
-$ <b>nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu</b>
+$ <b>docker run --runtime=nvidia -it -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu</b>
 </pre>
 
 The following command installs an older TensorFlow version (0.12.1):
 
 <pre>
-$ <b>nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:0.12.1-gpu</b>
+$ <b>docker run --runtime=nvidia -it -p 8888:8888 gcr.io/tensorflow/tensorflow:0.12.1-gpu</b>
 </pre>
 
 Docker will download the TensorFlow binary image the first time you launch it.
 For more details see the
 [TensorFlow docker readme](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/docker).
 
+**Note**: If you are using `docker-nivida` with a (deprecated) version 1, you will need to replace all the commands starting with:
+
+<pre>
+$ <b>docker run --runtime=nvidia</b>
+</pre>
+
+to:
+
+<pre>
+$ <b>nvidia-docker run</b>
+</pre>
+
+and you won't be able to set `nvidia` as the default Docker runtime, so you won't be able to configure the daemon to use Docker Compose.
 
 ### Next Steps
 
