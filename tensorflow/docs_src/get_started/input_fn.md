@@ -191,7 +191,7 @@ import pandas as pd
 
 def get_input_fn_from_pandas(data_set, num_epochs=None, shuffle=True):
   return tf.estimator.inputs.pandas_input_fn(
-      x=pdDataFrame(...),
+      x=pd.DataFrame(...),
       y=pd.Series(...),
       num_epochs=num_epochs,
       shuffle=shuffle)
@@ -267,8 +267,8 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 Define the column names for the data set in `COLUMNS`. To distinguish features
 from the label, also define `FEATURES` and `LABEL`. Then read the three CSVs
-(@{tf.train},
-@{tf.test}, and
+([train](http://download.tensorflow.org/data/boston_train.csv),
+[test](http://download.tensorflow.org/data/boston_test.csv), and
 [predict](http://download.tensorflow.org/data/boston_predict.csv)) into _pandas_
 `DataFrame`s:
 

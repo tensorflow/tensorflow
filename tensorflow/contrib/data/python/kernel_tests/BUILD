@@ -11,6 +11,7 @@ py_test(
     size = "small",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
@@ -373,6 +374,7 @@ py_test(
     size = "small",
     srcs = ["sequence_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
@@ -450,6 +452,7 @@ py_test(
     size = "small",
     srcs = ["zip_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
@@ -466,7 +469,10 @@ py_test(
     size = "small",
     srcs = ["prefetching_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],  # b/68785503
+    tags = [
+        "manual",
+        "no_oss",  # b/68785503
+    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:prefetching_py",
         "//tensorflow/core:protos_all_py",

@@ -930,6 +930,25 @@ tf_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "bincount_op_test",
+    size = "small",
+    srcs = ["bincount_op_test.cc"],
+    deps = [
+        ":bincount_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "constant_op_test",
     size = "small",
     srcs = ["constant_op_test.cc"],
@@ -1617,7 +1636,10 @@ DYNAMIC_DEPS = [
 tf_kernel_library(
     name = "dynamic_partition_op",
     prefix = "dynamic_partition_op",
-    deps = DYNAMIC_DEPS,
+    deps = DYNAMIC_DEPS + [
+        ":fill_functor",
+        ":gather_functor",
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -1687,7 +1709,7 @@ tf_kernel_library(
     ],
 )
 
-tf_cc_tests(
+tf_cuda_cc_tests(
     name = "dynamic_op_test",
     size = "small",
     srcs = [
@@ -1698,6 +1720,7 @@ tf_cc_tests(
         ":data_flow",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -2572,8 +2595,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bucketize_op",
+    gpu_srcs = ["cuda_device_array.h"],
     prefix = "bucketize_op",
-    deps = MATH_DEPS,
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
@@ -3174,7 +3198,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-    ],
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(

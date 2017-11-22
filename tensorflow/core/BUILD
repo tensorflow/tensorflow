@@ -2710,6 +2710,7 @@ tf_cc_test_mkl(
     srcs = [
         "graph/mkl_layout_pass_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
+        "util/mkl_util_test.cc",
     ],
     linkstatic = 1,
     deps = [
