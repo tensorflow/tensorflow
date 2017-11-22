@@ -147,8 +147,9 @@ Status CpuExecutable::ExecuteComputeFunction(
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
     HloExecutionProfile* hlo_execution_profile) {
   std::vector<se::DeviceMemoryBase> argument_buffers;
-  for (int i = 0; i < arguments.size(); ++i) {
-    argument_buffers.push_back(arguments[i]->buffer(/*index=*/{}));
+  argument_buffers.reserve(arguments.size());
+  for (const auto* argument : arguments) {
+    argument_buffers.push_back(argument->buffer(/*index=*/{}));
   }
   return ExecuteComputeFunction(run_options, argument_buffers, buffers,
                                 hlo_execution_profile);

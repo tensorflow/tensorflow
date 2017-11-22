@@ -22,6 +22,48 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+const char kAddSignCommonDocStr[] = R"doc(
+Update '*var' according to the AddSign update.
+
+m_t <- beta1 * m_{t-1} + (1 - beta1) * g
+update <- (alpha + sign_decay * sign(g) *sign(m)) * g
+variable <- variable - lr_t * update
+
+var: Should be from a Variable().
+m: Should be from a Variable().
+lr: Scaling factor. Must be a scalar.
+sign_decay: Must be a scalar.
+alpha: Must be a scalar.
+beta: Must be a scalar.
+grad: The gradient.
+)doc";
+
+const char kPowerSignCommonDocStr[] = R"doc(
+Update '*var' according to the AddSign update.
+
+m_t <- beta1 * m_{t-1} + (1 - beta1) * g
+update <- exp(logbase * sign_decay * sign(g) * sign(m_t)) * g
+variable <- variable - lr_t * update
+
+var: Should be from a Variable().
+m: Should be from a Variable().
+lr: Scaling factor. Must be a scalar.
+logbase: Must be a scalar.
+sign_decay: Must be a scalar.
+beta: Must be a scalar.
+grad: The gradient.
+)doc";
+
+const char kOutDocStr[] = R"doc(
+out: Same as "var".
+)doc";
+
+const char kLockDocStr[] = R"doc(
+use_locking: If `True`, updating of the var and m tensors is
+  protected by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc";
+
 static ShapeHandle ShapeOrHandleShape(InferenceContext* c, int input) {
   auto* handle_data = c->input_handle_shapes_and_types(input);
   if (handle_data != nullptr && !handle_data->empty() &&
@@ -1795,5 +1837,100 @@ use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
   protected by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
 )doc");
+
+static Status ApplyAddSignShapeFn(InferenceContext* c, bool sparse) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // m
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // alpha
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // sign_decay
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // beta
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs(c, sparse, 6 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyAddSign")
+    .Input("var: Ref(T)")
+    .Input("m: Ref(T)")
+    .Input("lr: T")
+    .Input("alpha: T")
+    .Input("sign_decay: T")
+    .Input("beta: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAddSignShapeFn(c, /*sparse=*/false);
+    })
+    .Doc(strings::StrCat(kAddSignCommonDocStr, kOutDocStr, kLockDocStr));
+
+REGISTER_OP("ResourceApplyAddSign")
+    .Input("var: resource")
+    .Input("m: resource")
+    .Input("lr: T")
+    .Input("alpha: T")
+    .Input("sign_decay: T")
+    .Input("beta: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAddSignShapeFn(c, /*sparse=*/false);
+    })
+    .Doc(strings::StrCat(kAddSignCommonDocStr, kLockDocStr));
+
+static Status ApplyPowerSignShapeFn(InferenceContext* c, bool sparse) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // m
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // logbase
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // sign_delay
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // beta
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs(c, sparse, 6 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyPowerSign")
+    .Input("var: Ref(T)")
+    .Input("m: Ref(T)")
+    .Input("lr: T")
+    .Input("logbase: T")
+    .Input("sign_decay: T")
+    .Input("beta: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyPowerSignShapeFn(c, /*sparse=*/false);
+    })
+    .Doc(strings::StrCat(kPowerSignCommonDocStr, kOutDocStr, kLockDocStr));
+
+REGISTER_OP("ResourceApplyPowerSign")
+    .Input("var: resource")
+    .Input("m: resource")
+    .Input("lr: T")
+    .Input("logbase: T")
+    .Input("sign_decay: T")
+    .Input("beta: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyPowerSignShapeFn(c, /*sparse=*/false);
+    })
+    .Doc(strings::StrCat(kPowerSignCommonDocStr, kLockDocStr));
+
 
 }  // namespace tensorflow

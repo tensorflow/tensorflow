@@ -38,6 +38,7 @@ REGISTER_OP("CreateSummaryFileWriter")
     .Input("max_queue: int32")
     .Input("flush_millis: int32")
     .Input("filename_suffix: string")
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Creates a summary file writer accessible by the given resource handle.
 
@@ -99,7 +100,7 @@ writer: A handle to the summary writer resource.
 
 REGISTER_OP("WriteSummary")
     .Input("writer: resource")
-    .Input("global_step: int64")
+    .Input("step: int64")
     .Input("tensor: T")
     .Input("tag: string")
     .Input("summary_metadata: string")
@@ -109,7 +110,7 @@ REGISTER_OP("WriteSummary")
 Outputs a `Summary` protocol buffer with a tensor.
 
 writer: A handle to a summary writer.
-global_step: The step to write the summary for.
+step: The step to write the summary for.
 tensor: A tensor to serialize.
 tag: The summary's tag.
 summary_metadata: Serialized SummaryMetadata protocol buffer containing
@@ -132,7 +133,7 @@ event: A string containing a binary-encoded tf.Event proto.
 
 REGISTER_OP("WriteScalarSummary")
     .Input("writer: resource")
-    .Input("global_step: int64")
+    .Input("step: int64")
     .Input("tag: string")
     .Input("value: T")
     .Attr("T: realnumbertype")
@@ -143,14 +144,14 @@ Writes a `Summary` protocol buffer with scalar values.
 The input `tag` and `value` must have the scalars.
 
 writer: A handle to a summary writer.
-global_step: The step to write the summary for.
+step: The step to write the summary for.
 tag: Tag for the summary.
 value: Value for the summary.
 )doc");
 
 REGISTER_OP("WriteHistogramSummary")
     .Input("writer: resource")
-    .Input("global_step: int64")
+    .Input("step: int64")
     .Input("tag: string")
     .Input("values: T")
     .Attr("T: realnumbertype = DT_FLOAT")
@@ -165,14 +166,14 @@ has one summary value containing a histogram for `values`.
 This op reports an `InvalidArgument` error if any value is not finite.
 
 writer: A handle to a summary writer.
-global_step: The step to write the summary for.
+step: The step to write the summary for.
 tag: Scalar.  Tag to use for the `Summary.Value`.
 values: Any shape. Values to use to build the histogram.
 )doc");
 
 REGISTER_OP("WriteImageSummary")
     .Input("writer: resource")
-    .Input("global_step: int64")
+    .Input("step: int64")
     .Input("tag: string")
     .Input("tensor: T")
     .Input("bad_color: uint8")
@@ -217,7 +218,7 @@ replaced by this tensor in the output image.  The default value is the color
 red.
 
 writer: A handle to a summary writer.
-global_step: The step to write the summary for.
+step: The step to write the summary for.
 tag: Scalar. Used to build the `tag` attribute of the summary values.
 tensor: 4-D of shape `[batch_size, height, width, channels]` where
   `channels` is 1, 3, or 4.
@@ -227,7 +228,7 @@ bad_color: Color to use for pixels with non-finite values.
 
 REGISTER_OP("WriteAudioSummary")
     .Input("writer: resource")
-    .Input("global_step: int64")
+    .Input("step: int64")
     .Input("tag: string")
     .Input("tensor: float")
     .Input("sample_rate: float")
@@ -249,7 +250,7 @@ build the `tag` of the summary values:
    generated sequentially as '*tag*/audio/0', '*tag*/audio/1', etc.
 
 writer: A handle to a summary writer.
-global_step: The step to write the summary for.
+step: The step to write the summary for.
 tag: Scalar. Used to build the `tag` attribute of the summary values.
 tensor: 2-D of shape `[batch_size, frames]`.
 sample_rate: The sample rate of the signal in hertz.
@@ -258,14 +259,14 @@ max_outputs: Max number of batch elements to generate audio for.
 
 REGISTER_OP("WriteGraphSummary")
     .Input("writer: resource")
-    .Input("global_step: int64")
+    .Input("step: int64")
     .Input("tensor: string")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Writes a `GraphDef` protocol buffer to a `SummaryWriter`.
 
 writer: Handle of `SummaryWriter`.
-global_step: The step to write the summary for.
+step: The step to write the summary for.
 tensor: A scalar string of the serialized tf.GraphDef proto.
 )doc");
 

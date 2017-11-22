@@ -134,6 +134,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
             ". Graph size after: ", optimized_graph->node_size());
       }
       result_.push_back(std::make_pair(optimizer->name(), result));
+      VLOG(1) << "Optimizer " << optimizer->name()
+              << " return status: " << result;
     } else {
       GrapplerItem optimized_item(item, std::move(*optimized_graph));
       auto status =
@@ -152,6 +154,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
             ". Graph size after: ", optimized_graph->node_size());
       }
       result_.push_back(std::make_pair(optimizer->name(), result));
+      VLOG(1) << "Optimizer " << optimizer->name()
+              << " return status: " << result;
     }
   }
 

@@ -62,18 +62,11 @@ bool IsRematerializable(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kOutfeed:
-    case HloOpcode::kInfeed:
     case HloOpcode::kParameter:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kTrace:
     case HloOpcode::kWhile:
       return false;
     default:
-      return true;
+      return !instruction->HasSideEffect();
   }
 }
 

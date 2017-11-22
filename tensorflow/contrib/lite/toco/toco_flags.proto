@@ -36,7 +36,7 @@ enum FileFormat {
 // are not normally encoded in model files and in general may not be thought
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
-// Next Id: 11
+// Next Id: 12
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -44,23 +44,47 @@ message TocoFlags {
   // Output file format
   optional FileFormat output_format = 2;
 
-  // Numeric data types of the input arrays in the output format.
-  // This controls what input types the output file will be expecting.
-  // This is not a description of the input types of the input file.
-  // For example, the input file may have a float input placeholder,
-  // but we may want to generate a quantized TFLite file from it,
-  // or a float TFLite file taking a quantized input.
+  // Similar to inference_type, but allows to control specifically the
+  // quantization of input arrays, separately from other arrays.
   //
-  // The length of this list should match the length of the input_arrays
-  // list in ModelFlags.
-  repeated IODataType input_types = 9;
+  // If not set, then the value of inference_type is implicitly used, i.e.
+  // by default input arrays are quantized like other arrays.
+  //
+  // Like inference_type, this only affects real-number arrays. By "real-number"
+  // we mean float arrays, and quantized arrays. This excludes plain
+  // integer arrays, strings arrays, and every other data type.
+  //
+  // The typical use for this flag is for vision models taking a bitmap
+  // as input, typically with uint8 channels, yet still requiring floating-point
+  // inference. For such image models, the uint8 input is quantized, i.e.
+  // the uint8 values are interpreted as real numbers, and the quantization
+  // parameters used for such input arrays are their mean_value, std_value
+  // parameters.
+  optional IODataType inference_input_type = 11;
 
-  // Numeric data type of the internal activations array and output array.
+  // Sets the type of real-number arrays in the output file, that is, controls
+  // the representation (quantization) of real numbers in the output file,
+  // except for input arrays, which are controlled by inference_input_type.
   //
-  // As a matter of implementation detail, most model
-  // parameter arrays (weights, etc) will tend to also use this data type.
-  // Not all will, though: for instance, bias vectors will typically
-  // get quantized as int32 when weights and activations get quantized as uint8.
+  // NOTE: this flag only impacts real-number arrays. By "real-number"
+  // we mean float arrays, and quantized arrays. This excludes plain
+  // integer arrays, strings arrays, and every other data type.
+  //
+  // For real-number arrays, the impact of this flag is to allow the output
+  // file to choose a different real-numbers representation (quantization)
+  // from what the input file used. For any other types of arrays, changing
+  // the data type would not make sense.
+  //
+  // Specifically:
+  //    - If FLOAT, then real-numbers arrays will be of type float in
+  //      the output file. If they were quantized in the input file, then
+  //      they get dequantized.
+  //    - If QUANTIZED_UINT8, then real-numbers arrays will be quantized
+  //      as uint8 in the output file. If they were float in the input file,
+  //      then they get quantized.
+  //    - If not set, then all real-numbers arrays retain the same type in the
+  //      output file as they have in the input file.
+  //
   optional IODataType inference_type = 4;
 
   // default_ranges_min and default_ranges_max are helpers to experiment

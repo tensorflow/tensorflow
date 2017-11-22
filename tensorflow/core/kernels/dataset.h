@@ -17,22 +17,17 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/util/tensor_bundle/naming.h"
-#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -40,8 +35,6 @@ limitations under the License.
 #define TF_CALL_DATASET_TYPES(m) TF_CALL_ALL_TYPES(m) TF_CALL_QUANTIZED_TYPES(m)
 
 namespace tensorflow {
-
-class ResourceMgr;
 
 // Interface for reading values from a key-value store.
 // Used for restoring iterator state.
@@ -240,19 +233,16 @@ class GraphDefBuilderWrapper {
       if (op_reg_data->is_function_op) {
         TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name()));
       }
+      // Recursively add functions in attrs of this NodeDef.
+      for (const auto& pair : node_def.attr()) {
+        TF_RETURN_IF_ERROR(AddAttrFunctions(pair.second, ctx));
+      }
     }
 
     // Recursively add functions in attrs of function_name.
     for (auto iter = f_def->attr().begin(); iter != f_def->attr().end();
          iter++) {
-      const AttrValue& attr_value = iter->second;
-      if (attr_value.has_func()) {
-        TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
-      } else if (attr_value.has_list()) {
-        for (const NameAttrList& name_attr_list : attr_value.list().func()) {
-          TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name()));
-        }
-      }
+      TF_RETURN_IF_ERROR(AddAttrFunctions(iter->second, ctx));
     }
     return Status::OK();
   }
@@ -281,6 +271,13 @@ class GraphDefBuilderWrapper {
     for (const NodeDef& node_def : function_def->node_def()) {
       const OpDef* op_def;
       TF_RETURN_IF_ERROR(lib_def->LookUpOpDef(node_def.op(), &op_def));
+      // TODO(b/65524810): Hack to allow functions to capture Dataset op
+      // nodes needed for FlatMap. Currently, source datasets nodes have been
+      // marked stateful to avoid constant folding since we do not have a
+      // good way of serializing them.
+      if (IsOpWhitelisted(op_def)) {
+        continue;
+      }
       if (op_def->is_stateful()) {
         return errors::InvalidArgument(
             "Op[name: ", node_def.name(), ", type: ", node_def.op(), "] ",
@@ -291,12 +288,21 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-  bool HasAttr(const string& op_type_name, const string& attr_name) {
+  bool IsOpWhitelisted(const OpDef* op_def) const {
+    return StringPiece(op_def->name()).ends_with("Dataset") &&
+           HasAttr(op_def, "output_shapes");
+  }
+
+  bool HasAttr(const string& op_type_name, const string& attr_name) const {
     const OpDef* op_def = nullptr;
     Status s = b_->opts().op_registry()->LookUpOpDef(op_type_name, &op_def);
     if (!s.ok() || op_def == nullptr) {
       return false;
     }
+    return HasAttr(op_def, attr_name);
+  }
+
+  bool HasAttr(const OpDef* op_def, const string& attr_name) const {
     for (auto attr : op_def->attr()) {
       if (attr.name() == attr_name) {
         return true;
@@ -305,8 +311,21 @@ class GraphDefBuilderWrapper {
     return false;
   }
 
+  Status AddAttrFunctions(const AttrValue& attr_value, OpKernelContext* ctx) {
+    if (attr_value.has_func()) {
+      TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
+    } else if (attr_value.has_list()) {
+      for (const NameAttrList& name_attr_list : attr_value.list().func()) {
+        TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name()));
+      }
+    }
+    return Status::OK();
+  }
+
   GraphDefBuilder* b_;
 };
+
+class StatsAggregator;
 
 // A cut-down version of OpKernelContext for running computations in
 // iterators. Note that we cannot simply use OpKernelContext here
@@ -331,6 +350,16 @@ class IteratorContext {
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
+
+    // A function that returns the current `StatsAggregator` instance to be
+    // used when recording statistics about the iterator.
+    //
+    // NOTE(mrry): This is somewhat awkward, because (i) the `StatsAggregator`
+    // is a property of the `IteratorResource` (which this class does not know
+    // about), and (ii) it can change after the `IteratorContext` has been
+    // created. Better suggestions are welcome!
+    std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
+        nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
@@ -339,6 +368,14 @@ class IteratorContext {
 
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
+  }
+
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    if (params_.stats_aggregator_getter) {
+      return params_.stats_aggregator_getter();
+    } else {
+      return nullptr;
+    }
   }
 
  private:

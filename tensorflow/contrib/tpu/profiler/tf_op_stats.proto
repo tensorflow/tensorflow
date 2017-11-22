@@ -104,12 +104,28 @@ message HloExtraInfoResult {
   optional string category = 1;
   // The long name of the HLO that includes the dimensions.
   optional string long_name = 2;
+  // The per-TPU-core batch size inferred from this HLO.
+  optional int64 per_core_batch_size = 3;
 }
 
 // Result proto for HloExtraInfoMap.
 message HloExtraInfoMapResult {
   // A map from HLO name to HloExtraInfo.
   map<string, HloExtraInfoResult> hlo_extrainfo_map = 1;
+}
+
+// Result proto for RunEnvironment (the run environment of a profiling session).
+message RunEnvironmentResult {
+  // Number of hosts used.
+  optional int32 host_count = 1;
+  // The type of TPU used.
+  optional string tpu_type = 2;
+  // The number of TPU cores used.
+  optional int32 tpu_core_count = 3;
+  // The per-TPU-core batch size.
+  optional int32 per_core_batch_size = 4;
+  // Job information including build target and command line.
+  optional string job_info = 5;
 }
 
 // Result proto for TfStatsHelper.
@@ -126,4 +142,6 @@ message TfOpStats {
   optional HloExtraInfoMapResult hlo_extrainfo_map = 5;
   // Overall matrix unit utilization in percentage.
   optional double matrix_unit_utilization_percent = 6;
+  // The run environment of this profiling session.
+  optional RunEnvironmentResult run_environment = 7;
 }

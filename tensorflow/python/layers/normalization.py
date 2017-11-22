@@ -142,7 +142,10 @@ class BatchNormalization(base.Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
-    self.axis = axis
+    if isinstance(axis, list):
+      self.axis = axis[:]
+    else:
+      self.axis = axis
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
