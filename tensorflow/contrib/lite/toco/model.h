@@ -819,6 +819,7 @@ struct SubOperator : Operator {
 // of global reduction across all dimensions.
 struct TensorFlowSumOperator : Operator {
   TensorFlowSumOperator() : Operator(OperatorType::kTensorFlowSum) {}
+  bool keep_dims = false;
 };
 
 // TensorFlow Tile equivalent. Refer to TensorFlow documentation for details.
@@ -971,6 +972,7 @@ struct TensorFlowGreaterEqualOperator : Operator {
 // of global reduction across all dimensions.
 struct TensorFlowMaxOperator : Operator {
   TensorFlowMaxOperator() : Operator(OperatorType::kTensorFlowMax) {}
+  bool keep_dims = false;
 };
 
 // Global min reduction: computes the min of all of entries in the input array.
@@ -983,6 +985,7 @@ struct TensorFlowMaxOperator : Operator {
 // of global reduction across all dimensions.
 struct TensorFlowMinOperator : Operator {
   TensorFlowMinOperator() : Operator(OperatorType::kTensorFlowMin) {}
+  bool keep_dims = false;
 };
 
 // Element-wise maximum operator. Currently it only supports scalar as
@@ -1121,6 +1124,7 @@ struct MeanOperator : Operator {
   MeanOperator() : Operator(OperatorType::kMean) {}
 
   std::vector<int> reduction_indices;
+  bool keep_dims = false;
 };
 
 // Svdf operator:

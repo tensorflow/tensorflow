@@ -588,6 +588,9 @@ void ConvertSumOperator(const NodeDef& node, Model* model) {
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  if (HasAttr(node, "keep_dims")) {
+    op->keep_dims = GetBoolAttr(node, "keep_dims");
+  }
 }
 
 void ConvertTileOperator(const NodeDef& node, Model* model) {
@@ -697,6 +700,11 @@ void ConvertMaxPoolOperator(const NodeDef& node, Model* model) {
   CHECK_EQ(node.op(), "MaxPool");
   CHECK_EQ(GetInputsCount(node, model->flags.drop_control_dependency()), 1);
   const auto& input_name = node.input(0);
+  // We only support NHWC, which is the default data_format.
+  // So if data_format is not defined, we're all good.
+  if (node.attr().count("data_format")) {
+    CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
+  }
   if (HasAttr(node, "T")) {
     CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
   } else {
@@ -732,6 +740,11 @@ void ConvertAvgPoolOperator(const NodeDef& node, Model* model) {
   CHECK_EQ(node.op(), "AvgPool");
   CHECK_EQ(GetInputsCount(node, model->flags.drop_control_dependency()), 1);
   const auto& input_name = node.input(0);
+  // We only support NHWC, which is the default data_format.
+  // So if data_format is not defined, we're all good.
+  if (node.attr().count("data_format")) {
+    CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
+  }
   CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
   auto* avgpool = new AveragePoolOperator;
   avgpool->inputs.push_back(input_name);
@@ -902,6 +915,9 @@ void ConvertMaxOperator(const NodeDef& node, Model* model) {
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  if (HasAttr(node, "keep_dims")) {
+    op->keep_dims = GetBoolAttr(node, "keep_dims");
+  }
 }
 
 void ConvertMinOperator(const NodeDef& node, Model* model) {
@@ -912,6 +928,9 @@ void ConvertMinOperator(const NodeDef& node, Model* model) {
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  if (HasAttr(node, "keep_dims")) {
+    op->keep_dims = GetBoolAttr(node, "keep_dims");
+  }
 }
 
 void ConvertMaximumOperator(const NodeDef& node, Model* model) {
@@ -1222,6 +1241,9 @@ void ConvertMeanOperator(const NodeDef& node, Model* model) {
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  if (HasAttr(node, "keep_dims")) {
+    op->keep_dims = GetBoolAttr(node, "keep_dims");
+  }
 }
 
 void ConvertSvdfOperator(const NodeDef& node, Model* model) {
