@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/host/host_stream.h"
 
 namespace se = ::perftools::gputools;
 
@@ -241,6 +242,37 @@ Status CpuExecutable::ExecuteComputeFunction(
   return Status::OK();
 }
 
+static void LogLiveAddresses(
+    const std::unordered_set<const void*>& marked_addresses) {
+  VLOG(3) << "Live addresses in output marking found "
+          << marked_addresses.size() << " addresses:\n"
+          << tensorflow::str_util::Join(
+                 marked_addresses, ", ", [](string* out, const void* address) {
+                   tensorflow::strings::StrAppend(
+                       out, tensorflow::strings::Printf("%p", address));
+                 });
+}
+
+static Status DeallocateTempBuffers(
+    DeviceMemoryAllocator* allocator, se::Stream* stream,
+    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
+    const std::unordered_set<const void*>& marked_addresses) {
+  // Keep those marked live because they are referenced by the output of the
+  // computation and are needed by the service. They will be deallocated by the
+  // service.
+  for (size_t i = 0; i < buffers.size(); ++i) {
+    se::DeviceMemoryBase alloc = buffers[i];
+    if (marked_addresses.count(alloc.opaque()) == 0 && !alloc.is_null()) {
+      VLOG(3) << "CpuExecutable deallocating buffer #" << i << " ["
+              << alloc.opaque() << "]";
+      TF_RETURN_IF_ERROR(
+          allocator->Deallocate(stream->parent()->device_ordinal(), &alloc));
+    }
+  }
+
+  return Status::OK();
+}
+
 StatusOr<perftools::gputools::DeviceMemoryBase> CpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
@@ -263,26 +295,9 @@ StatusOr<perftools::gputools::DeviceMemoryBase> CpuExecutable::ExecuteOnStream(
   MarkLiveAddressesInOutput(top_level_output.opaque(), result_shape(),
                             &marked_addresses);
 
-  VLOG(3) << "Live addresses in output marking found "
-          << marked_addresses.size() << " addresses:\n"
-          << tensorflow::str_util::Join(
-                 marked_addresses, ", ", [](string* out, const void* address) {
-                   tensorflow::strings::StrAppend(
-                       out, tensorflow::strings::Printf("%p", address));
-                 });
-
-  // Computation is done - deallocate temp buffers. Keep those marked live
-  // because they are referenced by the output of the computation and are needed
-  // by the service. They will be deallocated by the service.
-  for (size_t i = 0; i < buffers.size(); ++i) {
-    se::DeviceMemoryBase alloc = buffers[i];
-    if (marked_addresses.count(alloc.opaque()) == 0 && !alloc.is_null()) {
-      VLOG(3) << "CpuExecutable deallocating buffer #" << i << " ["
-              << alloc.opaque() << "]";
-      TF_RETURN_IF_ERROR(memory_allocator->Deallocate(
-          stream->parent()->device_ordinal(), &alloc));
-    }
-  }
+  LogLiveAddresses(marked_addresses);
+  TF_RETURN_IF_ERROR(DeallocateTempBuffers(memory_allocator, stream, buffers,
+                                           marked_addresses));
 
   return top_level_output;
 }
@@ -360,9 +375,44 @@ StatusOr<perftools::gputools::DeviceMemoryBase>
 CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
-  // TODO(b/30671675): Implement asynchronous execution mode.
-  return Unimplemented(
-      "Asynchronous execution on stream is not yet supported on CPU.");
+  if (hlo_profiling_enabled()) {
+    return Unimplemented(
+        "Asynchronous execution on stream with hlo profiling is not yet "
+        "supported on CPU.");
+  }
+
+  auto* host_stream = dynamic_cast<perftools::gputools::host::HostStream*>(
+      run_options->stream()->implementation());
+  se::Stream* stream = run_options->stream();
+  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+  std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
+
+  TF_RETURN_IF_ERROR(AllocateBuffers(
+      memory_allocator, stream->parent()->device_ordinal(), &buffers));
+
+  // Mark the buffers that are actually live (used in the output) when the
+  // computation finishes executing.
+  std::unordered_set<const void*> marked_addresses;
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                      assignment_->GetUniqueTopLevelOutputSlice());
+  se::DeviceMemoryBase top_level_output = buffers[result_slice.index()];
+  MarkLiveAddressesInOutput(top_level_output.opaque(), result_shape(),
+                            &marked_addresses);
+
+  LogLiveAddresses(marked_addresses);
+
+  host_stream->EnqueueTask([this, run_options, arguments, buffers,
+                            marked_addresses, memory_allocator, stream]() {
+    // Failing a CHECK here is not great, but I don't see an obvious way to
+    // return a failed Status asynchronously.
+    TF_CHECK_OK(ExecuteComputeFunction(&run_options->run_options(), arguments,
+                                       buffers,
+                                       /*hlo_execution_profile=*/nullptr));
+    TF_CHECK_OK(DeallocateTempBuffers(memory_allocator, stream, buffers,
+                                      marked_addresses));
+  });
+
+  return top_level_output;
 }
 
 /*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
