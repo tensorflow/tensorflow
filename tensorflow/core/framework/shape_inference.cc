@@ -921,7 +921,7 @@ Status InferenceContext::Add(DimensionHandle first, DimensionOrConstant second,
   if (first_value == 0) {
     *out = MakeDim(second);
   } else if (second_value == 0) {
-    *out = MakeDim(first);
+    *out = first;
   } else if (first_value == kUnknownDim || second_value == kUnknownDim) {
     *out = UnknownDim();
   } else {
@@ -946,7 +946,7 @@ Status InferenceContext::Subtract(DimensionHandle first,
   const int64 second_value = Value(second);
   // Special cases.
   if (second_value == 0) {
-    *out = MakeDim(first);
+    *out = first;
   } else if (first_value == kUnknownDim || second_value == kUnknownDim) {
     *out = UnknownDim();
   } else {

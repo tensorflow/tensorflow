@@ -702,12 +702,16 @@ Status GraphProperties::UpdateShapes(SymbolicShapeRefiner* shape_refiner,
 Status GraphProperties::PropagateShapes(
     SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
     const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
-        resources) const {
+        resources,
+    int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
   // incorrect shape functions. The algoritm should converge in at most
   // num_nested_loops^2 * max_rank. We approximate max_rank with the constant 4.
   // The same applies to resources.
-  const int64 num_loops = new_shapes->size();
+  VLOG(1) << "Propagating (relax=" << relax << ") " << new_shapes->size()
+          << " new shapes through " << num_loops << " loops and "
+          << resources.size() << " resources" << std::endl;
+
   const int64 max_loop_length = item_.graph.node_size();
   const int64 max_rank = 4;
   const int64 max_loop_iterations =
@@ -818,6 +822,7 @@ Status GraphProperties::InferStatically() {
   std::unordered_map<const Node*, std::unordered_set<const Node*>> resources;
   std::unordered_set<const Node*> enter_nodes;
   std::unordered_set<const Node*> merge_nodes;
+  int num_loops = 0;
   for (const Node* const node : graph.nodes()) {
     for (int i = 0; i < node->num_inputs(); ++i) {
       if (node->input_type(i) == DataType::DT_RESOURCE) {
@@ -830,6 +835,8 @@ Status GraphProperties::InferStatically() {
       enter_nodes.insert(node);
     } else if (node->IsMerge()) {
       merge_nodes.insert(node);
+    } else if (node->IsNextIteration()) {
+      ++num_loops;
     }
   }
 
@@ -853,7 +860,7 @@ Status GraphProperties::InferStatically() {
     }
     // Propagate shapes normally.
     TF_RETURN_IF_ERROR(
-        PropagateShapes(&refiner, relax, &new_shapes, resources));
+        PropagateShapes(&refiner, relax, &new_shapes, resources, num_loops));
   }
 
   // Track shapes globally across the graph.
