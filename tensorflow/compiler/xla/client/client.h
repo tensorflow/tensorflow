@@ -142,7 +142,7 @@ class Client {
 
   // Returns a vector of global data handles that point to the tuple elements.
   StatusOr<std::vector<std::unique_ptr<GlobalData>>> DeconstructTuple(
-      const GlobalData& computation);
+      const GlobalData& data);
 
   // Retrieves the statistics of the given computation.
   StatusOr<ComputationStats> GetComputationStats(
