@@ -1462,18 +1462,23 @@ bool InlineAllFunctions(GraphDef* graphdef) {
 
   tensorflow::Graph graph(fld);
   tensorflow::GraphConstructorOptions gc_opts;
-  TF_CHECK_OK(
-      tensorflow::ConvertGraphDefToGraph(gc_opts, graphdef_copy, &graph));
+  const auto& tf_convert_status =
+      tensorflow::ConvertGraphDefToGraph(gc_opts, graphdef_copy, &graph);
+  if (!tf_convert_status.ok()) {
+    LOG(ERROR) << "tensorflow::ConvertGraphDefToGraph failed with status: "
+               << tf_convert_status.ToString();
+    return false;
+  }
 
   // Iterate over the graph until there are no more nodes to be inlined.
   bool graph_modified = false;
   while (tensorflow::ExpandInlineFunctions(flr, &graph)) {
     graph_modified = true;
-    LOG(INFO) << "Found functions that were inlined.";
   }
 
   // Output inlined graph
   if (graph_modified) {
+    LOG(INFO) << "Found and inlined TensorFlow functions.";
     graph.ToGraphDef(graphdef);
   }
   return graph_modified;
