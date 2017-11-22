@@ -164,8 +164,8 @@ def toco_convert(input_data,
   toco = _toco_flags_pb2.TocoFlags()
   toco.input_format = input_format
   toco.output_format = output_format
+  toco.drop_control_dependency = drop_control_dependency
   model = _model_flags_pb2.ModelFlags()
-  model.drop_control_dependency = drop_control_dependency
   toco.inference_type = inference_type
   for idx, input_tensor in enumerate(input_tensors):
     if input_tensor.dtype == _dtypes.float32:

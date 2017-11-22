@@ -112,13 +112,6 @@ bool ParseModelFlagsFromCommandLineFlags(
            "exclusive "
            "with the 'batch' field: at most one of these two fields can be "
            "set."),
-      Flag(
-          "drop_control_dependency",
-          parsed_flags.drop_control_dependency.bind(),
-          parsed_flags.drop_control_dependency.default_value(),
-          "If true, ignore control dependency requirements in input TensorFlow "
-          "GraphDef. Otherwise an error will be raised upon control dependency "
-          "inputs."),
       Flag("rnn_states", parsed_flags.rnn_states.bind(),
            parsed_flags.rnn_states.default_value(), ""),
       Flag("model_checks", parsed_flags.model_checks.bind(),
@@ -316,7 +309,6 @@ void ReadModelFlagsFromCommandLineFlags(
   } while (false)
 
   READ_MODEL_FLAG(variable_batch);
-  READ_MODEL_FLAG(drop_control_dependency);
 
 #undef READ_MODEL_FLAG
 

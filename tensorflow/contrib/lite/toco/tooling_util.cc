@@ -1016,7 +1016,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   }
 
   RESOLVE_MODEL_FLAG(variable_batch)
-  RESOLVE_MODEL_FLAG(drop_control_dependency)
 
 #undef RESOLVE_MODEL_FLAG
 

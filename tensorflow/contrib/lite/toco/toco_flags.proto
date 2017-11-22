@@ -36,7 +36,7 @@ enum FileFormat {
 // are not normally encoded in model files and in general may not be thought
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
-// Next Id: 12
+// Next Id: 13
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -128,4 +128,12 @@ message TocoFlags {
   // If true, allow TOCO to create TF Lite Custom operators for all the
   // unsupported Tensorflow ops.
   optional bool allow_custom_ops = 10;
+
+  // Applies only to the case when the input format is TENSORFLOW_GRAPHDEF.
+  // If true, then control dependencies will be immediately dropped during
+  // import.
+  // If not set, the default behavior is as follows:
+  //    - Default to false if the output format is TENSORFLOW_GRAPHDEF.
+  //    - Default to true in all other cases.
+  optional bool drop_control_dependency = 12;
 }

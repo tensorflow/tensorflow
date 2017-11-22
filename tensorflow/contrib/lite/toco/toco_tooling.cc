@@ -127,9 +127,16 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
                               const string& input_file_contents) {
   std::unique_ptr<Model> model;
   switch (toco_flags.input_format()) {
-    case TENSORFLOW_GRAPHDEF:
-      model = ImportTensorFlowGraphDef(model_flags, input_file_contents);
+    case TENSORFLOW_GRAPHDEF: {
+      TensorFlowImportFlags tf_import_flags;
+      tf_import_flags.drop_control_dependency =
+          toco_flags.has_drop_control_dependency()
+              ? toco_flags.drop_control_dependency()
+              : (toco_flags.output_format() != TENSORFLOW_GRAPHDEF);
+      model = ImportTensorFlowGraphDef(model_flags, tf_import_flags,
+                                       input_file_contents);
       break;
+    }
     case TFLITE:
       model = toco::tflite::Import(model_flags, input_file_contents);
       ResolveModelFlags(model_flags, model.get());
