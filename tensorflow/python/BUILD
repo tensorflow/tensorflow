@@ -3326,6 +3326,7 @@ py_test(
     tags = [
         "no_gpu",
         "no_oss",
+        "no_pip",
         "no_pip_gpu",
         "notap",
     ],
