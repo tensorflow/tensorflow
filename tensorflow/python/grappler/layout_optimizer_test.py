@@ -102,11 +102,12 @@ def _get_config(layout_optimizer=True):
   return config
 
 
-def _simple_metagraph():
+def _simple_metagraph(depthwise=False):
   random_seed.set_random_seed(0)
   x = variables.Variable(random_ops.truncated_normal([1, 200, 200, 3], seed=0))
-  y = conv_layers.conv2d(x, 32, [3, 3])
-  z = conv_layers.conv2d(y, 32, [3, 3])
+  conv = conv_layers.separable_conv2d if depthwise else conv_layers.conv2d
+  y = conv(x, 32, [3, 3])
+  z = conv(y, 32, [3, 3])
   optimizer = gradient_descent.GradientDescentOptimizer(1e-4)
   loss = math_ops.reduce_mean(z)
   train_op = optimizer.minimize(loss)
@@ -114,6 +115,15 @@ def _simple_metagraph():
   graph.add_to_collection('train_op', train_op)
   meta_graph = saver_lib.export_meta_graph(graph_def=graph.as_graph_def())
   return meta_graph
+
+
+def _get_cluster():
+  named_device = device_properties_pb2.NamedDevice()
+  named_device.name = '/GPU:0'
+  named_device.properties.type = 'GPU'
+  named_device.properties.environment['architecture'] = '4'
+  cluster = gcluster.Cluster(devices=[named_device])
+  return cluster
 
 
 class LayoutOptimizerTest(test.TestCase):
@@ -202,13 +212,8 @@ class LayoutOptimizerTest(test.TestCase):
     meta_graph = _simple_metagraph()
     rewrite_options = rewriter_config_pb2.RewriterConfig(
         layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
-    named_device = device_properties_pb2.NamedDevice()
-    named_device.name = '/GPU:0'
-    named_device.properties.type = 'GPU'
-    named_device.properties.environment['architecture'] = '4'
-    cluster = gcluster.Cluster(devices=[named_device])
     optimized_graph = tf_optimizer.OptimizeGraph(
-        rewrite_options, meta_graph, cluster=cluster)
+        rewrite_options, meta_graph, cluster=_get_cluster())
 
     found = 0
     for node in optimized_graph.node:
@@ -216,6 +221,23 @@ class LayoutOptimizerTest(test.TestCase):
         found += 1
         self.assertEqual(node.attr['data_format'].s, 'NCHW')
     self.assertEqual(found, 5)
+
+  def testDepthwise(self):
+    meta_graph = _simple_metagraph(depthwise=True)
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
+    optimized_graph = tf_optimizer.OptimizeGraph(
+        rewrite_options, meta_graph, cluster=_get_cluster())
+
+    found = 0
+    for node in optimized_graph.node:
+      if node.op in [
+          'DepthwiseConv2dNative', 'DepthwiseConv2dNativeBackpropFilter',
+          'DepthwiseConv2dNativeBackpropInput'
+      ]:
+        found += 1
+        self.assertEqual(node.attr['data_format'].s, 'NCHW')
+    self.assertEqual(found, 6)
 
   def testCheckpointCompatibility(self):
     if not test.is_gpu_available(cuda_only=True):

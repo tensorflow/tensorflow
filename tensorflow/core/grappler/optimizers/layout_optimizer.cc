@@ -45,18 +45,22 @@ const char kReshapeConst[] = "LayoutOptimizerReshapeConst";
 const char kReductionConst[] = "LayoutOptimizerReductionConst";
 
 std::set<string> GetOpsFormatSupported() {
-  std::set<string> ops_format_supported = {"AvgPool",
-                                           "AvgPoolGrad",
-                                           "Conv2D",
-                                           "Conv2DBackpropFilter",
-                                           "Conv2DBackpropInput",
-                                           "BiasAdd",
-                                           "BiasAddGrad",
-                                           "FusedBatchNorm",
-                                           "FusedBatchNormGrad",
-                                           "FusedConv2DBiasActivation",
-                                           "MaxPool",
-                                           "MaxPoolGrad"};
+  std::set<string> ops_format_supported = {
+      "AvgPool",
+      "AvgPoolGrad",
+      "Conv2D",
+      "Conv2DBackpropFilter",
+      "Conv2DBackpropInput",
+      "BiasAdd",
+      "BiasAddGrad",
+      "DepthwiseConv2dNative",
+      "DepthwiseConv2dNativeBackpropInput",
+      "DepthwiseConv2dNativeBackpropFilter",
+      "FusedBatchNorm",
+      "FusedBatchNormGrad",
+      "FusedConv2DBiasActivation",
+      "MaxPool",
+      "MaxPoolGrad"};
   return ops_format_supported;
 }
 
@@ -1289,6 +1293,13 @@ class DataLayoutOptimizer : GraphProcessor {
         } else if (IsConv2DBackpropInput(*node)) {
           node_processor.reset(
               new Conv2DBackpropInputProcessor(opt_cxt, config_.no_gemm));
+        } else if (IsDepthwiseConv2dNative(*node)) {
+          node_processor.reset(new Conv2DProcessor(opt_cxt, true));
+        } else if (IsDepthwiseConv2dNativeBackpropFilter(*node)) {
+          node_processor.reset(
+              new Conv2DBackpropFilterProcessor(opt_cxt, true));
+        } else if (IsDepthwiseConv2dNativeBackpropInput(*node)) {
+          node_processor.reset(new Conv2DBackpropInputProcessor(opt_cxt, true));
         } else if (IsFusedBatchNormGradV1(*node)) {
           node_processor.reset(new FusedBatchNormGradProcessor(opt_cxt));
         } else if (IsMaxPoolGradV1(*node)) {

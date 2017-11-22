@@ -69,6 +69,21 @@ bool IsConv2DBackpropInput(const NodeDef& node) {
   return op == "Conv2DBackpropInput";
 }
 
+bool IsDepthwiseConv2dNative(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "DepthwiseConv2dNative";
+}
+
+bool IsDepthwiseConv2dNativeBackpropFilter(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "DepthwiseConv2dNativeBackpropFilter";
+}
+
+bool IsDepthwiseConv2dNativeBackpropInput(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "DepthwiseConv2dNativeBackpropInput";
+}
+
 bool IsDequeueOp(const NodeDef& node) {
   const auto& op = node.op();
   return op == "QueueDequeueManyV2" || op == "QueueDequeueMany" ||
