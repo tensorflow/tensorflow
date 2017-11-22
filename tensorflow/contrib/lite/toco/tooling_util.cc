@@ -294,6 +294,7 @@ void LogArray(int log_level, const Model& model, const string& name) {
   VLOG(log_level) << "Array: " << name;
   switch (array.data_type) {
     case ArrayDataType::kNone:
+      VLOG(log_level) << "  Data type:";
       break;
     case ArrayDataType::kFloat:
       VLOG(log_level) << "  Data type: kFloat";
@@ -306,6 +307,24 @@ void LogArray(int log_level, const Model& model, const string& name) {
       break;
     default:
       VLOG(log_level) << "  Data type: other (numerical value: "
+                      << static_cast<int>(array.data_type) << ")";
+      break;
+  }
+  switch (array.final_data_type) {
+    case ArrayDataType::kNone:
+      VLOG(log_level) << "  Final type:";
+      break;
+    case ArrayDataType::kFloat:
+      VLOG(log_level) << "  Final type: kFloat";
+      break;
+    case ArrayDataType::kInt32:
+      VLOG(log_level) << "  Final type: kInt32";
+      break;
+    case ArrayDataType::kUint8:
+      VLOG(log_level) << "  Final type: kUint8";
+      break;
+    default:
+      VLOG(log_level) << "  Final type: other (numerical value: "
                       << static_cast<int>(array.data_type) << ")";
       break;
   }
@@ -1562,7 +1581,11 @@ void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.arrays) {
     const auto& array = *array_entry.second;
     if (array.final_data_type != ArrayDataType::kNone) {
-      CHECK(array.final_data_type == array.data_type);
+      CHECK(array.final_data_type == array.data_type)
+          << "Array \"" << array_entry.first
+          << "\" has mis-matching actual and final data types ("
+          << static_cast<int>(array.data_type) << ","
+          << static_cast<int>(array.final_data_type) << ").";
     }
   }
 }
