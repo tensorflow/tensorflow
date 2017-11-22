@@ -1055,9 +1055,13 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
                                      GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
-  GraphProperties graph_properties(item);
-  TF_RETURN_IF_ERROR(graph_properties.InferStatically());
-  TF_RETURN_IF_ERROR(graph_properties.AnnotateOutputShapes(optimized_graph));
+
+  if (opt_level_ == RewriterConfig::AGGRESSIVE) {
+    // Shapes are only needed in aggressive mode.
+    GraphProperties graph_properties(item);
+    TF_RETURN_IF_ERROR(graph_properties.InferStatically());
+    TF_RETURN_IF_ERROR(graph_properties.AnnotateOutputShapes(optimized_graph));
+  }
 
   DedupComputations(optimized_graph);
   TF_RETURN_IF_ERROR(SimplifyArithmeticOps(optimized_graph));
