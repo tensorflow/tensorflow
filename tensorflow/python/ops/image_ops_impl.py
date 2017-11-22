@@ -252,15 +252,22 @@ def random_flip_up_down(image, seed=None):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
+  original_shape = image.get_shape()
+  image, is_batch = _EnsureTensorIs4D(image)
   image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
-  uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
-  mirror_cond = math_ops.less(uniform_random, .5)
-  result = control_flow_ops.cond(mirror_cond,
-                                 lambda: array_ops.reverse(image, [0]),
-                                 lambda: image)
+      _CheckAtLeast3DImage(image, require_static=False), image)
 
-  return fix_image_flip_shape(image, result)
+  batch, height, width, depth = _ImageDimensions(image, rank=4)
+
+  uniform_random = random_ops.random_uniform([batch], 0, 1.0, seed=seed)
+  mirror_cond = math_ops.less(uniform_random, .5)
+  result = array_ops.where(mirror_cond, x=image, y=array_ops.reverse(image, [1]))
+
+  if is_batch:
+    return fix_image_flip_shape_v2(original_shape, result, rank=4)
+  else:
+    result = array_ops.squeeze(result, squeeze_dims=[0])
+    return fix_image_flip_shape_v2(original_shape, result, rank=3)
 
 
 def random_flip_left_right(image, seed=None):
@@ -298,7 +305,6 @@ def random_flip_left_right(image, seed=None):
   else:
     result = array_ops.squeeze(result, squeeze_dims=[0])
     return fix_image_flip_shape_v2(original_shape, result, rank=3)
-
 
 
 def flip_left_right(image):
