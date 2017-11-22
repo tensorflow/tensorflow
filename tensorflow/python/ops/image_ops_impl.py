@@ -182,6 +182,22 @@ def _CheckAtLeast3DImage(image, require_static=True):
     return []
 
 
+def _EnsureTensorIs4D(image):
+    original_shape = image.get_shape()
+    is_batch = True
+    if original_shape.ndims == 3:
+      is_batch = False
+      image = array_ops.expand_dims(image, 0)
+    elif original_shape.ndims is None:
+      is_batch = False
+      image = array_ops.expand_dims(image, 0)
+      image.set_shape([None] * 4)
+    elif original_shape.ndims != 4:
+        raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+    return (image, is_batch)
+
+
 def fix_image_flip_shape(image, result, rank=3):
   """Set the shape to original dimensional if we don't know anything else.
 
@@ -445,21 +461,9 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
       negative.
   """
   image = ops.convert_to_tensor(image, name='image')
-
-  is_batch = True
-  image_shape = image.get_shape()
-  if image_shape.ndims == 3:
-    is_batch = False
-    image = array_ops.expand_dims(image, 0)
-  elif image_shape.ndims is None:
-    is_batch = False
-    image = array_ops.expand_dims(image, 0)
-    image.set_shape([None] * 4)
-  elif image_shape.ndims != 4:
-    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+  image, is_batch = _EnsureTensorIs4D(image)
 
   assert_ops = _CheckAtLeast3DImage(image, require_static=False)
-
   batch, height, width, depth = _ImageDimensions(image, rank=4)
 
   after_padding_width = target_width - offset_width - width
@@ -524,21 +528,9 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
       negative, or either `target_height` or `target_width` is not positive.
   """
   image = ops.convert_to_tensor(image, name='image')
-
-  is_batch = True
-  image_shape = image.get_shape()
-  if image_shape.ndims == 3:
-    is_batch = False
-    image = array_ops.expand_dims(image, 0)
-  elif image_shape.ndims is None:
-    is_batch = False
-    image = array_ops.expand_dims(image, 0)
-    image.set_shape([None] * 4)
-  elif image_shape.ndims != 4:
-    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+  image, is_batch = _EnsureTensorIs4D(image)
 
   assert_ops = _CheckAtLeast3DImage(image, require_static=False)
-
   batch, height, width, depth = _ImageDimensions(image, rank=4)
 
   assert_ops += _assert(offset_width >= 0, ValueError,
@@ -599,17 +591,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     `[new_height, new_width, channels]`.
   """
   image = ops.convert_to_tensor(image, name='image')
-  image_shape = image.get_shape()
-  is_batch = True
-  if image_shape.ndims == 3:
-    is_batch = False
-    image = array_ops.expand_dims(image, 0)
-  elif image_shape.ndims is None:
-    is_batch = False
-    image = array_ops.expand_dims(image, 0)
-    image.set_shape([None] * 4)
-  elif image_shape.ndims != 4:
-    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+  image, is_batch = _EnsureTensorIs4D(image)
 
   assert_ops = _CheckAtLeast3DImage(image, require_static=False)
   assert_ops += _assert(target_width > 0, ValueError,
