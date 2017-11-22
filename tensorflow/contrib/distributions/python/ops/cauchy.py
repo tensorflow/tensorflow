@@ -30,6 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 
+
 __all__ = [
     "Cauchy",
 ]
@@ -96,7 +97,7 @@ class Cauchy(distribution.Distribution):
                validate_args=False,
                allow_nan_stats=True,
                name="Cauchy"):
-    """Construct Cauchy distributions.
+    """Construct Cauchy distributions with loc and and scale `loc` and `scale`.
 
     The parameters `loc` and `scale` must be shaped in a way that supports
     broadcasting (e.g. `loc + scale` is a valid operation).
@@ -120,8 +121,8 @@ class Cauchy(distribution.Distribution):
     """
     parameters = locals()
     with ops.name_scope(name, values=[loc, scale]):
-      with ops.control_dependencies([check_ops.assert_positive(scale)]
-                                    if validate_args else []):
+      with ops.control_dependencies([check_ops.assert_positive(scale)] if
+                                    validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
         check_ops.assert_same_float_dtype([self._loc, self._scale])
@@ -137,8 +138,8 @@ class Cauchy(distribution.Distribution):
   @staticmethod
   def _param_shapes(sample_shape):
     return dict(
-        zip(("loc", "scale"),
-            ([ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)] * 2)))
+        zip(("loc", "scale"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def loc(self):
@@ -152,10 +153,13 @@ class Cauchy(distribution.Distribution):
 
   def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
-        array_ops.shape(self.loc), array_ops.shape(self.scale))
+        array_ops.shape(self.loc),
+        array_ops.shape(self.scale))
 
   def _batch_shape(self):
-    return array_ops.broadcast_static_shape(self.loc.shape, self.scale.shape)
+    return array_ops.broadcast_static_shape(
+        self.loc.shape,
+        self.scale.shape)
 
   def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)

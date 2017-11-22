@@ -119,7 +119,7 @@ def tf_library(name, graph, config,
             out_nodes_file,
         ] + freeze_saver_srcs,
         outs=[freeze_file],
-        cmd=("$(location @org_tensorflow//tensorflow/python/tools:freeze_graph)" +
+        cmd=("$(location //tensorflow/python/tools:freeze_graph)" +
              freeze_args),
         tools=["@org_tensorflow//tensorflow/python/tools:freeze_graph"],
         tags=tags,
@@ -152,7 +152,7 @@ def tf_library(name, graph, config,
            " --target_triple=" + target_llvm_triple() +
            " --out_header=$(@D)/" + header_file +
            " --out_object=$(@D)/" + object_file +
-           " " + flags),
+           flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
@@ -189,7 +189,7 @@ def tf_library(name, graph, config,
            " --cpp_class=" + cpp_class +
            " --target_triple=" + target_llvm_triple() +
            " --out_session_module=$(@D)/" + session_module_pb +
-           " " + flags),
+           flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
@@ -256,7 +256,7 @@ def tf_library(name, graph, config,
         ],
         outs=[test_file],
         cmd=("sed " + sed_replace +
-             " $(location @org_tensorflow//tensorflow/compiler/aot:test.cc) " +
+             " $(location //tensorflow/compiler/aot:test.cc) " +
              "> $(OUTS)"),
         tags=tags,
     )

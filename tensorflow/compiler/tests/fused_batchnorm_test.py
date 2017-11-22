@@ -76,8 +76,7 @@ class FusedBatchNormTest(XLATestCase):
       # To avoid constant folding
       t_val = array_ops.placeholder(np.float32, shape=x_shape, name="x")
       scale = array_ops.placeholder(np.float32, shape=scale_shape, name="scale")
-      offset = array_ops.placeholder(
-          np.float32, shape=scale_shape, name="offset")
+      offset = array_ops.placeholder(np.float32, shape=scale_shape, name="offset")
       epsilon = 0.001
       y_ref, mean_ref, var_ref = self._reference_training(
           x_val, scale_val, offset_val, epsilon, data_format)
@@ -113,8 +112,7 @@ class FusedBatchNormTest(XLATestCase):
       # To avoid constant folding
       t_val = array_ops.placeholder(np.float32, shape=x_shape, name="x")
       scale = array_ops.placeholder(np.float32, shape=scale_shape, name="scale")
-      offset = array_ops.placeholder(
-          np.float32, shape=scale_shape, name="offset")
+      offset = array_ops.placeholder(np.float32, shape=scale_shape, name="offset")
       epsilon = 0.001
       y, mean, var = nn.fused_batch_norm(
           t_val,

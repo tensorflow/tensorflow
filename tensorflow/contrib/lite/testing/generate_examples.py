@@ -40,7 +40,6 @@ from six import StringIO
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-# pylint: disable=g-import-not-at-top
 import tensorflow as tf
 from google.protobuf import text_format
 # TODO(aselle): switch to TensorFlow's resource_loader
@@ -384,7 +383,7 @@ def make_zip_of_tests(zip_path,
         report["toco_log"] = ""
         tf.reset_default_graph()
 
-        with tf.device("/cpu:0"):
+        with tf.device('/cpu:0'):
           try:
             inputs, outputs = make_graph(param_dict_real)
           except (tf.errors.UnimplementedError, tf.errors.InvalidArgumentError,

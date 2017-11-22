@@ -30,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
+from tensorflow.python.util.deprecation import deprecated_args
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -439,13 +439,9 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 
 # pylint: disable=redefined-builtin
-@deprecation.deprecated_args(
-    None, 'keep_dims is deprecated, use keepdims instead', 'keep_dims')
-def norm(tensor,
-         ord='euclidean',
-         axis=None,
-         keepdims=None,
-         name=None,
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
+def norm(tensor, ord='euclidean', axis=None, keepdims=None, name=None,
          keep_dims=None):
   r"""Computes the norm of vectors, matrices, and tensors.
 
@@ -482,7 +478,6 @@ def norm(tensor,
     keepdims: If True, the axis indicated in `axis` are kept with size 1.
       Otherwise, the dimensions in `axis` are removed from the output shape.
     name: The name of the op.
-    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     output: A `Tensor` of the same type as tensor, containing the vector or
@@ -505,8 +500,11 @@ def norm(tensor,
      higher order tensors.
   @end_compatibility
   """
-  keepdims = deprecation.deprecated_argument_lookup('keepdims', keepdims,
-                                                    'keep_dims', keep_dims)
+
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
   if keepdims is None:
     keepdims = False
 
@@ -557,8 +555,8 @@ def norm(tensor,
       else:
         # General p-norms (positive p only)
         result = math_ops.pow(
-            math_ops.reduce_sum(math_ops.pow(result, ord), axis, keepdims=True),
-            1.0 / ord)
+            math_ops.reduce_sum(
+                math_ops.pow(result, ord), axis, keepdims=True), 1.0 / ord)
     if not keepdims:
       result = array_ops.squeeze(result, axis)
     return result

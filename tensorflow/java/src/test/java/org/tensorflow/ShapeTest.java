@@ -84,9 +84,10 @@ public class ShapeTest {
     assertEquals(Shape.scalar(), Shape.scalar());
     assertEquals(Shape.make(1, 2, 3), Shape.make(1, 2, 3));
 
-    assertNotEquals(Shape.make(1, 2), null);
-    assertNotEquals(Shape.make(1, 2), new Object());
+    assertNotEquals(Shape.make(1,2), null);
+    assertNotEquals(Shape.make(1,2), new Object());
     assertNotEquals(Shape.make(1, 2, 3), Shape.make(1, 2, 4));
+
 
     assertNotEquals(Shape.unknown(), Shape.unknown());
     assertNotEquals(Shape.make(-1), Shape.make(-1));
@@ -102,3 +103,4 @@ public class ShapeTest {
     assertNotEquals(Shape.make(1, 2).hashCode(), Shape.make(1, 3).hashCode());
   }
 }
+

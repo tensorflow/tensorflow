@@ -34,18 +34,12 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = [
-    'PowerSignOptimizer',
-    'AddSignOptimizer'
+    'PowerSignOptimizer', 'AddSignOptimizer'
     'DelayCompensatedGradientDescentOptimizer',
-    'DropStaleGradientOptimizer',
-    'ExternalOptimizerInterface',
-    'LazyAdamOptimizer',
-    'NadamOptimizer',
-    'MovingAverageOptimizer',
-    'ScipyOptimizerInterface',
-    'VariableClippingOptimizer',
-    'MultitaskOptimizerWrapper',
-    'clip_gradients_by_global_norm',
+    'DropStaleGradientOptimizer', 'ExternalOptimizerInterface',
+    'LazyAdamOptimizer', 'NadamOptimizer', 'MovingAverageOptimizer',
+    'ScipyOptimizerInterface', 'VariableClippingOptimizer',
+    'MultitaskOptimizerWrapper', 'clip_gradients_by_global_norm',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

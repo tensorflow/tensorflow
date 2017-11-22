@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import numpy as np
+import os
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1441,6 +1441,7 @@ class PoolingTest(test.TestCase):
           padding="VALID",
           use_gpu=True,
           v2=v2)
+
 
     # Propagate the diff in cases of NaNs
     os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
