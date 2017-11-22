@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_OP_TYPES_H_
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -59,8 +60,25 @@ bool IsSwitch(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 
+// Return true if the op is an aggregation (e.g. Add, AddN).
+// Returns false if it could not be determined to be so.
+bool IsAggregate(const NodeDef& node);
+
+// Return true if the op is commutative (e.g. Mul, Add).
+// Returns false if it could not be determined to be so.
+bool IsCommutative(const NodeDef& node);
+
 bool IsFreeOfSideEffect(const NodeDef& node);
 bool ModifiesFrameInfo(const NodeDef& node);
+
+// Returns true if the op is an element-wise involution, i.e. if it is its
+// own inverse such that f(f(x)) == x.
+bool IsInvolution(const NodeDef& node);
+
+// Returns true if the op in node only rearranges the order of elements in its
+// first input tensor and possible changes its shape. More precisely, this
+// function returns true if the op commutes with all element-wise operations.
+bool IsValuePreserving(const NodeDef& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

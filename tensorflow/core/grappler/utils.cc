@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -245,6 +246,57 @@ int NumOutputs(const NodeDef& node) {
     }
   }
   return num_outputs;
+}
+
+int NumNonControlInputs(const NodeDef& node) {
+  int num_inputs = node.input_size();
+  for (int i = 0; i < node.input_size(); ++i) {
+    if (IsControlInput(node.input(i))) {
+      --num_inputs;
+    }
+  }
+  return num_inputs;
+}
+
+int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (const string& input : output->input()) {
+      if (input == node.name()) {
+        ++num_outputs;
+      }
+    }
+  }
+  return num_outputs;
+}
+
+// Returns the data type in attribute `attr_name` of `node`. If that attribute
+// doesn't exist, returns DT_INVALID.
+DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
+  if (!node.attr().count(attr_name)) {
+    return DT_INVALID;
+  }
+  const auto& attr = node.attr().at(attr_name);
+  if (attr.value_case() != AttrValue::kType) {
+    return DT_INVALID;
+  }
+  return attr.type();
+}
+
+NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
+                        bool follow_control_input,
+                        const std::function<bool(const NodeDef&)>& pred_fn) {
+  const NodeDef* current = &source;
+  const NodeDef* next = current;
+  while (next == &source || pred_fn(*next)) {
+    current = next;
+    if (current->input_size() == 0 ||
+        (!follow_control_input && IsControlInput(current->input(0)))) {
+      break;
+    }
+    next = node_map.GetNode(current->input(0));
+  }
+  return const_cast<NodeDef*>(current);
 }
 
 }  // end namespace grappler

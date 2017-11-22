@@ -32,49 +32,6 @@ namespace tensorflow {
 namespace grappler {
 
 namespace {
-// A vector with a set. The set stores the same elements as the vector, and
-// quickly answers whether a value is in the vector. Duplicated elements are not
-// allowed for now.
-template <class T>
-class SetVector {
- public:
-  // Returns false if value already existed in the set, true otherwise.
-  bool PushBack(const T& value) {
-    if (!set_.insert(value).second) {
-      return false;
-    }
-    vector_.push_back(value);
-    return true;
-  }
-
-  T PopBack() {
-    T back = vector_.back();
-    set_.erase(back);
-    vector_.pop_back();
-    return back;
-  }
-
-  bool Exists(const T& value) const { return set_.count(value); }
-
-  bool Empty() const { return vector_.empty(); }
-
-  void Reserve(int64 size) { vector_.reserve(size); }
-
- private:
-  std::unordered_set<T> set_;
-  std::vector<T> vector_;
-};
-
-bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map) {
-  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
-    for (const string& input : output->input()) {
-      if (!IsControlInput(input) && NodeName(input) == node.name()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
 int RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
   int num_removed = 0;
@@ -119,7 +76,7 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  if (!fetch_nodes_known_ || HasRegularOutputs(node, *node_map_)) {
+  if (!fetch_nodes_known_ || NumNonControlOutputs(node, *node_map_) > 0) {
     return false;
   }
   if (IsMerge(node) || IsSwitch(node)) {

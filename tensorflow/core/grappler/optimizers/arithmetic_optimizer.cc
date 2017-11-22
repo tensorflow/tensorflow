@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -80,22 +81,6 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
   return Status::OK();
 }
 
-bool IsInvolution(const NodeDef& node) {
-  const std::unordered_set<string> involution_ops = {
-      "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"};
-  return involution_ops.count(node.op()) > 0;
-}
-
-// Returns true if the op in node only rearranges the order of elements in an
-// input tensor, or more specifically, if it commutes with all element-wise
-// operations on the values.
-bool IsValuePreserving(const NodeDef& node) {
-  const std::unordered_set<string> value_preserving_ops = {
-      "Transpose",  "Reshape",      "Identity",        "InvertPermutation",
-      "Reverse",    "StopGradient", "PreventGradient", "CheckNumerics",
-      "ExpandDims", "Squeeze"};
-  return value_preserving_ops.count(node.op()) > 0;
-}
 
 template <typename T>
 bool AreInversePermutations(const std::vector<T>& a, const std::vector<T>& b) {
@@ -185,39 +170,6 @@ bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
   return false;
 }
 
-// Follow a chain (through input(0)) of ops starting at `source->input(0)` as
-// long as they
-//  1. preserve the values of their first input,
-//  2. have a single (non-control) output,
-//  3. are not in nodes_to_preserve.
-// Returns the last node in the chain satisfying these properties or source
-// itself if a chain of length zero was found.
-//
-// source <- vp <- vp <- vp <- non_vp
-//                       ^^
-//                   return value
-NodeDef* GetTailOfValuePreservingChain(
-    const NodeDef* source, const NodeMap* node_map,
-    const std::unordered_set<string>& nodes_to_preserve) {
-  const NodeDef* source_parent = source;
-  if (!IsControlInput(source->input(0))) {
-    source = node_map->GetNode(source->input(0));
-    while (IsValuePreserving(*source) &&
-           node_map->GetOutputs(source->name()).size() == 1 &&
-           // Do not skip over preserved nodes, because folding will change
-           // the results of these skipped data-reordering nodes.
-           // TODO(jingyue): A more elegant way is to copy this chain of
-           // data-reordering nodes and modify only the copy.
-           !nodes_to_preserve.count(source->name())) {
-      source_parent = source;
-      if (IsControlInput(source->input(0))) {
-        break;
-      }
-      source = node_map->GetNode(source->input(0));
-    }
-  }
-  return const_cast<NodeDef*>(source_parent);
-}
 
 bool MaybeAddControlInput(const string& new_input, NodeDef* node,
                           GraphDef* graph, NodeMap* node_map) {
@@ -247,43 +199,6 @@ int CopyControlInputs(const NodeDef& from, NodeDef* to, GraphDef* graph,
     }
   }
   return num_copied;
-}
-
-// Returns the data type in attribute `attr_name` of `node`. If that attribute
-// doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
-  if (!node.attr().count(attr_name)) {
-    return DT_INVALID;
-  }
-  const auto& attr = node.attr().at(attr_name);
-  if (attr.value_case() != AttrValue::kType) {
-    return DT_INVALID;
-  }
-  return attr.type();
-}
-
-bool IsCommutative(const NodeDef& node) {
-  if (node.op() == "Add" && node.input_size() > 0) {
-    // Workaround for "Add" not being marked is_commutative and is_aggregate.
-    // (See cl/173915048).
-    const auto type = GetDataTypeFromAttr(node, "T");
-    return type != DT_INVALID && type != DT_STRING;
-  }
-  const OpDef* op_def = nullptr;
-  const Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
-  return status.ok() && op_def->is_commutative();
-}
-
-bool IsAggregate(const NodeDef& node) {
-  if (node.op() == "Add" && node.input_size() > 0) {
-    // Workaround for "Add" not being marked is_commutative and is_aggregate.
-    // (See cl/173915048).
-    const auto type = GetDataTypeFromAttr(node, "T");
-    return type != DT_INVALID && type != DT_STRING;
-  }
-  const OpDef* op_def = nullptr;
-  const Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
-  return status.ok() && op_def->is_aggregate();
 }
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
@@ -405,6 +320,18 @@ void AddFrameControlDeps(const NodeDef* old_node,
       }
     }
   }
+}
+
+NodeDef* GetTailOfValuePreservingChain(
+    const NodeDef& node, const NodeMap& node_map,
+    const std::unordered_set<string>& nodes_to_preserve) {
+  auto is_value_preserving_non_branching = [&](const NodeDef& node) {
+    return IsValuePreserving(node) &&
+           NumNonControlOutputs(node, node_map) == 1 &&
+           nodes_to_preserve.count(node.name()) == 0;
+  };
+  return GetTailOfChain(node, node_map, /*follow_control_input=*/false,
+                        is_value_preserving_non_branching);
 }
 
 }  // namespace
@@ -591,7 +518,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // the two instances of the involution from the graph, since they cancel
     // each other.
     NodeDef* tail =
-        GetTailOfValuePreservingChain(node, node_map, nodes_to_preserve_);
+        GetTailOfValuePreservingChain(*node, *node_map, nodes_to_preserve_);
     NodeDef* involution = node_map->GetNode(tail->input(0));
     if (involution->op() == node->op()) {
       // Skip both *node and *involution since they cancel each other.
@@ -609,7 +536,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
 
   // Remove inverse transposes.
   if (node->op() == "Transpose" || node->op() == "ConjugateTranspose") {
-    const NodeDef* input = node_map->GetNode(node->input(0));
+    NodeDef* input = node_map->GetNode(node->input(0));
     if (input->op() == node->op()) {
       const NodeDef* node_perm = node_map->GetNode(node->input(1));
       const NodeDef* input_perm = node_map->GetNode(input->input(1));
@@ -798,7 +725,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // since the weights tend to be smaller than the activations.
     if (weights->op() == "Const") {
       const NodeDef* source = node_map->GetNode(
-          GetTailOfValuePreservingChain(node, node_map, nodes_to_preserve_)
+          GetTailOfValuePreservingChain(*node, *node_map, nodes_to_preserve_)
               ->input(0));
       if (source->op() == "Mul" &&
           node_map->GetOutputs(source->name()).size() == 1) {
@@ -1065,40 +992,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
 
   return "";
 }
-
-namespace {
-// A vector with a set. The set stores the same elements as the vector, and
-// quickly answers whether a value is in the vector. Duplicated elements are not
-// allowed for now.
-template <class T>
-class SetVector {
- public:
-  // Returns false if value already existed in the set, true otherwise.
-  bool PushBack(const T& value) {
-    if (!set_.insert(value).second) {
-      VLOG(2) << "Value " << value << " is already in the set.";
-      return false;
-    }
-    vector_.push_back(value);
-    return true;
-  }
-
-  T PopBack() {
-    T back = vector_.back();
-    set_.erase(back);
-    vector_.pop_back();
-    return back;
-  }
-
-  bool Exists(const T& value) const { return set_.count(value); }
-
-  bool Empty() const { return vector_.empty(); }
-
- private:
-  std::unordered_set<T> set_;
-  std::vector<T> vector_;
-};
-}  // namespace
 
 Status ArithmeticOptimizer::SimplifyArithmeticOps(
     GraphDef* optimized_graph) const {

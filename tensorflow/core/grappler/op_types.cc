@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/op_types.h"
+#include <unordered_set>
+
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -233,5 +237,38 @@ bool ModifiesFrameInfo(const NodeDef& node) {
   return IsEnter(node) || IsExit(node) || IsNextIteration(node);
 }
 
-}  // end namespace grappler
+#define OPDEF_PROPERTY_HELPER(PROPERTY_CAP, PROPERTY)                      \
+  bool Is##PROPERTY_CAP(const NodeDef& node) {                             \
+    if (node.op() == "Add") {                                              \
+      /* Workaround for "Add" not being marked is_commutative and */       \
+      /* is_aggregate. (See cl/173915048). */                              \
+      const auto type = GetDataTypeFromAttr(node, "T");                    \
+      return type != DT_INVALID && type != DT_STRING;                      \
+    }                                                                      \
+    const OpDef* op_def = nullptr;                                         \
+    Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def); \
+    return status.ok() && op_def->is_##PROPERTY();                         \
+  }
+
+OPDEF_PROPERTY_HELPER(Aggregate, aggregate)
+OPDEF_PROPERTY_HELPER(Commutative, commutative)
+
+bool IsInvolution(const NodeDef& node) {
+  const std::unordered_set<string> involution_ops{
+      "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"};
+  return involution_ops.count(node.op()) > 0;
+}
+
+bool IsValuePreserving(const NodeDef& node) {
+  if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
+    return true;
+  }
+  const std::unordered_set<string> value_preserving_ops{
+      "Transpose",  "Reshape",      "Identity",        "InvertPermutation",
+      "Reverse",    "StopGradient", "PreventGradient", "CheckNumerics",
+      "ExpandDims", "Squeeze"};
+  return value_preserving_ops.count(node.op()) > 0;
+}
+
+}  // namespace grappler
 }  // end namespace tensorflow
