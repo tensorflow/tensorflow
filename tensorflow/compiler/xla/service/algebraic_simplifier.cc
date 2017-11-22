@@ -1108,9 +1108,15 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   if (IsAll(rhs, -1)) {
     auto* one = computation_->AddInstruction(HloInstruction::CreateConstant(
         Literal::One(rhs->shape().element_type()).CloneToUnique()));
+
+    // Explicitly broadcast scalar 1 to the output shape, to avoid implicit
+    // broadcast in divide HLO as we are trying to eliminate implicit
+    // broadcasting at HLO level.
+    auto* broadcast_one = computation_->AddInstruction(
+        HloInstruction::CreateBroadcast(power->shape(), one, {}));
     return ReplaceWithNewInstruction(
         power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kDivide,
-                                            one, lhs));
+                                            broadcast_one, lhs));
   }
   return Status::OK();
 }

@@ -2978,6 +2978,25 @@ void ComputationLowerer::Visit(
       HloInstruction* rhs = lookup_instruction(ternary_op_request.rhs());
       HloInstruction* ehs = lookup_instruction(ternary_op_request.ehs());
       auto hlo_opcode = TernaryOperationToHloOpcode(ternary_op_request.triop());
+
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
+        if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
+          // lhs side is being implicitly broadcast. Change to explicit.
+          lhs =
+              ImplicitBroadcastToExplicitBroadcast(lhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
+          rhs =
+              ImplicitBroadcastToExplicitBroadcast(rhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), ehs->shape())) {
+          ehs =
+              ImplicitBroadcastToExplicitBroadcast(ehs, request.output_shape());
+        }
+      }
+
       hlo_instruction = add_instruction(HloInstruction::CreateTernary(
           request.output_shape(), hlo_opcode, lhs, rhs, ehs));
       break;
