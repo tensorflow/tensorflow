@@ -1062,12 +1062,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
          "--output_arrays flag must be given on the command-line.";
 
   for (const auto& input_array_proto : model->flags.input_arrays()) {
-    QCHECK(!input_array_proto.shape().empty())
-        << "This model does not have shape defined for input array "
-        << input_array_proto.name()
-        << ", so one must be specified by a non-empty --input_shape "
-           "command-line flag.";
-
     auto& input_array = model->GetOrCreateArray(input_array_proto.name());
     if (input_array_proto.has_data_type()) {
       const ArrayDataType specified_type =
@@ -1088,6 +1082,14 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       // that may get replaced by a uint8 array later, by
       // MakeInitialDequantizeOp.
       input_array.data_type = ArrayDataType::kFloat;
+    }
+
+    if (!input_array.has_shape()) {
+      QCHECK(!input_array_proto.shape().empty())
+          << "This model does not have shape defined for input array "
+          << input_array_proto.name()
+          << ", so one must be specified by a non-empty --input_shape "
+             "command-line flag.";
     }
 
     // Compare/merge the model->flags describing the input_shape with

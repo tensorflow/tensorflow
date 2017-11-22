@@ -1507,7 +1507,6 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   }
 
   Model* model = new Model;
-  ResolveModelFlags(model_flags, model);
 
   for (auto node : inlined_graph.node()) {
     StripZeroOutputIndexFromInputs(&node);
@@ -1638,6 +1637,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }
   }
+
+  ResolveModelFlags(model_flags, model);
 
   StripCaretFromArrayNames(model);
   AddExtraOutputsFedIntoOtherOps(model);
