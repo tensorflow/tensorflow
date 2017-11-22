@@ -45,7 +45,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":summary_ops",
-        ":summary_test_internal",
         ":summary_test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
