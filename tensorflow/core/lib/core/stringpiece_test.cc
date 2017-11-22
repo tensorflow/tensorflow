@@ -66,7 +66,7 @@ TEST(StringPiece, Contains) {
 }
 
 TEST(StringPieceHasher, Equality) {
-  StringPiece::Hasher hasher;
+  StringPieceHasher hasher;
 
   StringPiece s1("foo");
   StringPiece s2("bar");
