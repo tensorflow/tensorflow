@@ -507,13 +507,13 @@ class ConvolutionTest(test.TestCase):
         self.assertEqual(
             len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
 
-  def testConvWithBatchNorm(self):
+  def testConvWithNorm(self):
     height, width = 7, 9
     with self.test_session():
       images = random_ops.random_uniform((5, height, width, 32), seed=1)
       with arg_scope(
           [layers_lib.convolution2d],
-          normalizer_fn=_layers.batch_norm,
+          normalizer_fn=_layers._norm,
           normalizer_params={'decay': 0.9}):
         net = layers_lib.convolution2d(images, 32, [3, 3])
         net = layers_lib.convolution2d(net, 32, [3, 3])
@@ -1739,6 +1739,11 @@ class BatchNormTest(test.TestCase):
     expected_var *= correction_factor
     return expected_var, correction_factor
 
+  def testBatchNormCenterFalse(self)
+    a = array_ops.placeholder(dtype.float32, shape=(10, 10, 10, 10))
+    b = _layers.batch_norm(a, center=False, data_format='NCHW',
+    zero_debias_moving_mean=True)
+    
   def testUnknownShape(self):
     with ops.Graph().as_default() as g, self.test_session(g):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
@@ -3688,16 +3693,6 @@ class LegacyFullyConnectedTest(test.TestCase):
                                    'rank of x must be at least 2 not: 1'):
         x = constant_op.constant([[]], shape=[0])
         _layers.legacy_fully_connected(x, 2, activation_fn=nn_ops.softmax)
-  
-class zero_debias_moving_mean(test.TestCase):
-  
-  def Error_in_tf.contrib.layers.batch_norm_when(self):
-    import tensorflow as tf
-    a = tf.placeholder(tf.float32, shape=(10, 10, 10, 10))
-    b = tf.contrib.layers.batch_norm(a, center=False, data_format='NCHW',
-    zero_debias_moving_mean=True)
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
     
     
 if __name__ == '__main__':
