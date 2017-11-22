@@ -1691,7 +1691,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
   v1 = foo()  # Creates v.
   v2 = foo()  # Gets the same, existing v.
   assert v1 == v2
-
+  ```
 
   Basic example of sharing a variable with reuse=True:
 

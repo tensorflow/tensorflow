@@ -152,7 +152,7 @@ def tf_library(name, graph, config,
            " --target_triple=" + target_llvm_triple() +
            " --out_header=$(@D)/" + header_file +
            " --out_object=$(@D)/" + object_file +
-           flags),
+           " " + flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
