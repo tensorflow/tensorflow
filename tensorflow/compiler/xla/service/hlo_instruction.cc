@@ -518,6 +518,15 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBitcastConvert(const Shape& shape,
+                                     HloInstruction* operand) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBitcastConvert, shape));
+  instruction->AppendOperand(operand);
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
     const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
@@ -1115,6 +1124,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateConvert(shape, new_operands[0]);
       break;
+    case HloOpcode::kBitcastConvert:
+      CHECK_EQ(new_operands.size(), 1);
+      clone = CreateBitcastConvert(shape, new_operands[0]);
+      break;
     case HloOpcode::kReducePrecision:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateReducePrecision(shape, new_operands[0], exponent_bits_,
@@ -1555,6 +1568,7 @@ bool HloInstruction::IdenticalSlowPath(
     // A convert result is determined by the primitive type that the operand is
     // converted into.
     case HloOpcode::kConvert:
+    case HloOpcode::kBitcastConvert:
       return shape().element_type() == other.shape().element_type();
 
     // A reduce-precision operation is determined by the bit sizes.
@@ -2295,6 +2309,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConcatenate(this);
     case HloOpcode::kConvert:
       return visitor->HandleConvert(this);
+    case HloOpcode::kBitcastConvert:
+      return visitor->HandleBitcastConvert(this);
     case HloOpcode::kCopy:
       return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:
@@ -2667,6 +2683,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:

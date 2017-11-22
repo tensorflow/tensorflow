@@ -1364,6 +1364,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status =
           computation->AddConvertInstruction(arg->convert_request());
       break;
+    case OpRequest::kBitcastConvertRequest:
+      handle_status = computation->AddBitcastConvertInstruction(
+          arg->bitcast_convert_request());
+      break;
     case OpRequest::kConvolveRequest:
       handle_status =
           computation->AddConvolveInstruction(arg->convolve_request());

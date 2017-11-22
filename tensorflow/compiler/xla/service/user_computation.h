@@ -185,6 +185,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddConvertInstruction(
       const ConvertRequest& convert_request);
 
+  // Enqueues a bitcast element instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddBitcastConvertInstruction(
+      const ConvertRequest& convert_request);
+
   // Enqueues a reduce instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddReduceInstruction(
       const ReduceRequest& reduce_request,

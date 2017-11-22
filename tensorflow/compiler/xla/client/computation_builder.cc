@@ -1164,6 +1164,34 @@ ComputationDataHandle ComputationBuilder::ConvertElementType(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::BitcastConvertType(
+    const ComputationDataHandle& operand, PrimitiveType new_element_type) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  StatusOr<std::unique_ptr<Shape>> shape_status = GetShape(operand);
+  if (!shape_status.ok()) {
+    first_error_ = shape_status.status();
+    return ComputationDataHandle();
+  }
+  std::unique_ptr<Shape> original = shape_status.ConsumeValueOrDie();
+
+  ConvertRequest request;
+  *request.mutable_operand() = operand;
+  request.set_new_element_type(new_element_type);
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_bitcast_convert_request() = request;
+  AddCommonFieldsToOpRequest(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making bitcast convert request";
+  Status s = client_->stub()->Op(&op_request, &response);
+
+  return ParseOpResponse(s, &response);
+}
+
 ComputationDataHandle ComputationBuilder::SquareF32(
     const ComputationDataHandle& operand) {
   return BinaryOp(BINOP_POW, operand, ConstantR0<float>(2.0),

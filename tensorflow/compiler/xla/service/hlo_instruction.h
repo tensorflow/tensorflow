@@ -176,6 +176,11 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
                                                        HloInstruction* operand);
 
+  // Creates a bitcast conversion instruction, where operand is the data to
+  // convert and shape is the target shape for the conversion.
+  static std::unique_ptr<HloInstruction> CreateBitcastConvert(
+      const Shape& shape, HloInstruction* operand);
+
   // Creates an infeed instruction, which reads data of the given shape from the
   // Infeed interface of the device.
   static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape,

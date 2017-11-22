@@ -434,6 +434,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateConvert(shape, operands[0]));
       break;
     }
+    case HloOpcode::kBitcastConvert: {
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateBitcastConvert(shape, operands[0]));
+      break;
+    }
     case HloOpcode::kCrossReplicaSum: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
