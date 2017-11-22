@@ -25,6 +25,7 @@ namespace grappler {
 bool IsAdd(const NodeDef& node);
 bool IsAddN(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
+bool IsAssert(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
 bool IsConcatOffset(const NodeDef& node);
 bool IsConstant(const NodeDef& node);

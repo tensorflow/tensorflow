@@ -81,6 +81,38 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ("c1", new_mul.input(1));
 }
 
+TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output p = ops::Placeholder(s, DT_BOOL, ops::Placeholder::Shape({}));
+  Output c = ops::Const(s.WithOpName("c"), {3.14, 2.7}, {1, 2});
+  auto check1 = ops::CheckNumerics(s.WithOpName("check1"), c, "foo");
+  auto check2 = ops::CheckNumerics(s.WithOpName("check2"), c, "foo");
+  auto assert1 = ops::Assert(s.WithOpName("assert1"), p, {c});
+  auto assert2 = ops::Assert(s.WithOpName("assert2"), p, {c});
+  Output mul = ops::Multiply(s.WithOpName("mul").WithControlDependencies(
+                                 {assert1.operation, assert2.operation}),
+                             check1, check2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(5, output.node_size());
+  const NodeDef& new_mul = output.node(3);
+  EXPECT_EQ(4, new_mul.input_size());
+  EXPECT_EQ("check1", new_mul.input(0));
+  EXPECT_EQ("check1", new_mul.input(1));
+  EXPECT_EQ("^assert1", new_mul.input(2));
+  EXPECT_EQ("^assert1", new_mul.input(3));
+}
+
 TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output c1 = ops::Const(s.WithOpName("c1"), {1.0f, 2.0f}, {1, 2});

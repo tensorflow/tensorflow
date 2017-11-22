@@ -449,6 +449,10 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (node.device().find("SPU") != string::npos) {
     return false;
   }
+  // Workaround for Assert mistakenly being labeled as stateful.
+  if (IsAssert(node)) {
+    return true;
+  }
   return IsFreeOfSideEffect(node);
 }
 
