@@ -109,8 +109,11 @@ bool IsMaxPoolGradV1(const NodeDef& node) {
 
 class GraphProcessor {
  public:
-  GraphProcessor(GraphDef* graph, NodeMap* node_map)
-      : graph_(graph), node_map_(node_map) {}
+  GraphProcessor(GraphDef* graph, NodeMap* node_map,
+                 const std::unordered_set<string>& nodes_to_preserve)
+      : graph_(graph),
+        node_map_(node_map),
+        nodes_to_preserve_(nodes_to_preserve) {}
 
  protected:
   NodeDef* AddNodePermConst(const string& name, const string& device,
@@ -174,27 +177,30 @@ class GraphProcessor {
 
   GraphDef* graph_;
   NodeMap* node_map_;
-
- private:
+  const std::unordered_set<string>& nodes_to_preserve_;
 };
 
 struct OptimizeContext {
   OptimizeContext(GraphDef* graph, NodeDef* node, NodeMap* node_map,
+                  const std::unordered_set<string>& nodes_to_preserve,
                   bool is_in_frame)
       : graph(graph),
         node(node),
         node_map(node_map),
+        nodes_to_preserve(nodes_to_preserve),
         is_in_frame(is_in_frame) {}
   GraphDef* graph;
   NodeDef* node;
   NodeMap* node_map;
+  const std::unordered_set<string>& nodes_to_preserve;
   bool is_in_frame;
 };
 
 class NodeProcessor : public GraphProcessor {
  public:
   explicit NodeProcessor(const OptimizeContext& opt_cxt)
-      : GraphProcessor(opt_cxt.graph, opt_cxt.node_map),
+      : GraphProcessor(opt_cxt.graph, opt_cxt.node_map,
+                       opt_cxt.nodes_to_preserve),
         node_(opt_cxt.node),
         is_in_frame_(opt_cxt.is_in_frame) {}
   virtual ~NodeProcessor() {}
@@ -246,8 +252,12 @@ class NodeProcessor : public GraphProcessor {
     return Status::OK();
   }
 
+  bool MustPreserve() const {
+    return nodes_to_preserve_.find(node_->name()) != nodes_to_preserve_.end();
+  }
+
   virtual bool ShouldProcess() const {
-    return IsNHWC() && IsDimsFour(*node_) && HasOutputs();
+    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs();
   }
 
   void UpdateAttrDataFormat() {
@@ -523,6 +533,9 @@ class BiasAddGradProcessor : public NodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
+    if (MustPreserve()) {
+      return false;
+    }
     auto input = node_map_->GetNode(node_->input(0));
     if (input) {
       if ((IsNHWC() && IsDimsFour(*input)) || IsNodeNCHWToNHWC(input->name())) {
@@ -542,7 +555,7 @@ class Conv2DProcessor : public NodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
+    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
            (!IsGemmUsed() || no_gemm_);
   }
 
@@ -679,7 +692,8 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC();
+    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+           IsNodeAfterNCHWToNHWC();
   }
 
   bool IsNodeAfterNCHWToNHWC() const {
@@ -729,7 +743,8 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+           IsNodeAfterNCHWToNHWC() &&
            (Is4DOperateWithND(4) || Is4DOperateWithScalar() ||
             Is4DOperateWithVector());
   }
@@ -839,8 +854,8 @@ class ConcatProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           IsAlongDimC();
+    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+           IsNodeAfterNCHWToNHWC() && IsAlongDimC();
   }
 
   std::vector<int> GetInputPos() const override {
@@ -904,8 +919,8 @@ class PadProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           PaddingSupported();
+    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+           IsNodeAfterNCHWToNHWC() && PaddingSupported();
   }
   Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
 
@@ -1116,8 +1131,8 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return IsDimsN(*node_, 2) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           IsInputConvertible() && IsAlongDimHW();
+    return !MustPreserve() && IsDimsN(*node_, 2) && HasOutputs() &&
+           IsNodeAfterNCHWToNHWC() && IsInputConvertible() && IsAlongDimHW();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
@@ -1166,7 +1181,7 @@ class SumProcessor : public AgnosticNodeProcessor {
  protected:
   bool ShouldProcess() const override {
     auto input0 = node_map_->GetNode(node_->input(0));
-    return HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
            (IsDimsFour(*input0) || IsNodeNCHWToNHWC(input0->name())) &&
            IsAlongDimNHW();
   }
@@ -1227,12 +1242,13 @@ class SumProcessor : public AgnosticNodeProcessor {
 
 class DataLayoutOptimizer : GraphProcessor {
  public:
-  explicit DataLayoutOptimizer(const string& default_device, GraphDef* graph,
-                               NodeMap* node_map,
-                               LayoutOptimizer::TuningConfig config)
-      : GraphProcessor(graph, node_map),
-        default_device_(default_device),
-        config_(config) {}
+  explicit DataLayoutOptimizer(
+      LayoutOptimizer::TuningConfig config,
+      const std::unordered_set<string>& nodes_to_preserve,
+      const string& default_device, GraphDef* graph, NodeMap* node_map)
+      : GraphProcessor(graph, node_map, nodes_to_preserve),
+        config_(config),
+        default_device_(default_device) {}
 
   Status Optimize() {
     LOG(INFO) << "Number of nodes for original graph: " << graph_->node_size();
@@ -1279,7 +1295,8 @@ class DataLayoutOptimizer : GraphProcessor {
           ops_format_supported.end()) {
         auto node = graph_->mutable_node(i);
         bool is_in_frame = !frames[node].empty();
-        OptimizeContext opt_cxt(graph_, node, node_map_, is_in_frame);
+        OptimizeContext opt_cxt(graph_, node, node_map_, nodes_to_preserve_,
+                                is_in_frame);
         std::unique_ptr<NodeProcessor> node_processor;
         if (IsAvgPoolGrad(*node)) {
           node_processor.reset(new AvgPoolGradProcessor(opt_cxt));
@@ -1326,7 +1343,8 @@ class DataLayoutOptimizer : GraphProcessor {
             ops_format_agnostic.end()) {
           auto node = graph_->mutable_node(i);
           bool is_in_frame = !frames[node].empty();
-          OptimizeContext opt_cxt(graph_, node, node_map_, is_in_frame);
+          OptimizeContext opt_cxt(graph_, node, node_map_, nodes_to_preserve_,
+                                  is_in_frame);
           std::unique_ptr<NodeProcessor> node_processor;
           if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
@@ -1401,8 +1419,8 @@ class DataLayoutOptimizer : GraphProcessor {
     return Status::OK();
   }
 
-  string default_device_;
   LayoutOptimizer::TuningConfig config_;
+  string default_device_;
 };
 
 int GetNumTranspose(const GraphDef& graph) {
@@ -1445,8 +1463,8 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
     return status;
   }
   NodeMap node_map(output);
-  DataLayoutOptimizer layout_optimizer(default_device, output, &node_map,
-                                       config);
+  DataLayoutOptimizer layout_optimizer(config, nodes_to_preserve_,
+                                       default_device, output, &node_map);
   status = layout_optimizer.Optimize();
   return status;
 }
@@ -1459,6 +1477,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
+  nodes_to_preserve_ = item.NodesToPreserve();
   GraphProperties graph_properties(item);
   auto status = graph_properties.InferStatically();
   if (!status.ok()) {

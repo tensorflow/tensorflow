@@ -72,9 +72,11 @@ std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
 std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
   std::unordered_set<string> result;
   for (const string& f : fetch) {
+    VLOG(1) << "Add fetch " << f;
     result.insert(NodeName(f));
   }
   for (const auto& f : feed) {
+    VLOG(1) << "Add feed " << f.first;
     result.insert(NodeName(f.first));
   }
   for (const auto& node : init_ops) {

@@ -263,6 +263,21 @@ TEST_F(LayoutOptimizerTest, Connectivity) {
   EXPECT_EQ(node_i2_output->input(0), "i1");
 }
 
+TEST_F(LayoutOptimizerTest, PreserveFetch) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto i = ops::Identity(s.WithOpName("i"), conv);
+  GrapplerItem item;
+  item.fetch.push_back("Conv2D");
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto conv_node = node_map.GetNode("Conv2D");
+  EXPECT_EQ(conv_node->attr().at({"data_format"}).s(), "NHWC");
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

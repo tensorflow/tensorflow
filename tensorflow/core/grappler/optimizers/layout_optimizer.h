@@ -47,6 +47,7 @@ class LayoutOptimizer : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  std::unordered_set<string> nodes_to_preserve_;
   Status Tune(const GrapplerItem& item, const GraphProperties& graph_properties,
               const string& default_device, const TuningConfig& config,
               GraphDef* output);
