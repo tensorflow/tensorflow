@@ -473,8 +473,7 @@ PoolingDescriptor::PoolingDescriptor(int ndims)
       propagate_nans_(false),
       window_(ndims, 0),
       padding_(ndims, 0),
-      strides_(ndims, 1),
-      propagate_nans_(false) {}
+      strides_(ndims, 1) {}
 
 PoolingDescriptor::PoolingDescriptor() : PoolingDescriptor(/*ndims=*/2) {}
 
