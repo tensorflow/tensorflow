@@ -323,6 +323,36 @@ bool safe_strtod(const char* str, double* value) {
   return *str != '\0' && *endptr == '\0';
 }
 
+template <>
+bool SafeStringToNumeric<int32>(StringPiece s, int32* value) {
+  return safe_strto32(s, value);
+}
+
+template <>
+bool SafeStringToNumeric<uint32>(StringPiece s, uint32* value) {
+  return safe_strtou32(s, value);
+}
+
+template <>
+bool SafeStringToNumeric<int64>(StringPiece s, int64* value) {
+  return safe_strto64(s, value);
+}
+
+template <>
+bool SafeStringToNumeric<uint64>(StringPiece s, uint64* value) {
+  return safe_strtou64(s, value);
+}
+
+template <>
+bool SafeStringToNumeric<float>(StringPiece s, float* value) {
+  return safe_strtof(s.ToString().c_str(), value);
+}
+
+template <>
+bool SafeStringToNumeric<double>(StringPiece s, double* value) {
+  return safe_strtod(s.ToString().c_str(), value);
+}
+
 char* FloatToBuffer(float value, char* buffer) {
   // FLT_DIG is 6 for IEEE-754 floats, which are used on almost all
   // platforms these days.  Just in case some system exists where FLT_DIG

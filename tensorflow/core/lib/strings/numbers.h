@@ -122,6 +122,12 @@ bool safe_strtof(const char* str, float* value);
 // Values may be rounded on over- and underflow.
 bool safe_strtod(const char* str, double* value);
 
+// Convert strings to number of type T.
+// Leading and trailing spaces are allowed.
+// Values may be rounded on over- and underflow.
+template <typename T>
+bool SafeStringToNumeric(StringPiece s, T* value);
+
 // Converts from an int64 to a human readable string representing the
 // same number, using decimal powers.  e.g. 1200000 -> "1.20M".
 string HumanReadableNum(int64 value);
