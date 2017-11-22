@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/maxpooling_op.h"
 
 #include <vector>
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
@@ -359,7 +359,8 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
 
     use_dnn_ = CanUseCudnn();
-    ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false, &propagate_nans_);
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
+                                   &propagate_nans_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -888,7 +889,8 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
 
-    ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false, &propagate_nans_);
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
+                                   &propagate_nans_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1052,7 +1054,8 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
                     "Pooling is not yet supported on the batch dimension."));
     use_dnn_ = CanUseCudnn();
 
-    ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false, &propagate_nans_);
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
+                                   &propagate_nans_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1137,7 +1140,8 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
     }
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     use_dnn_ = CanUseCudnn();
-    ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false, &propagate_nans_);
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
+                                   &propagate_nans_));
   }
 
   void Compute(OpKernelContext* context) override {

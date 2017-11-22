@@ -1779,7 +1779,8 @@ class BatchNormTest(test.TestCase):
       dtype = dtypes.float32
     height, width = 3, 3
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3)).astype(dtype.as_numpy_dtype)
+      images = np.random.uniform(size=(5, height, width, 3)).astype(
+          dtype.as_numpy_dtype)
       output = _layers.batch_norm(images, fused=fused)
       expected_name = ('BatchNorm/FusedBatchNorm' if fused else
                        'BatchNorm/batchnorm')
@@ -2665,18 +2666,18 @@ class BatchNormTest(test.TestCase):
     # Test case for 11673
     with self.test_session() as sess:
       a_32 = array_ops.placeholder(dtypes.float32, shape=(10, 10, 10, 10))
-      b_32 = _layers.batch_norm(a_32, center=False, data_format='NCHW',
-                                zero_debias_moving_mean=True)
+      _layers.batch_norm(
+          a_32, center=False, data_format='NCHW', zero_debias_moving_mean=True)
       a_16 = array_ops.placeholder(dtypes.float16, shape=(10, 10, 10, 10))
-      b_16 = _layers.batch_norm(a_16, center=False, data_format='NCHW',
-                                zero_debias_moving_mean=True)
+      _layers.batch_norm(
+          a_16, center=False, data_format='NCHW', zero_debias_moving_mean=True)
       sess.run(variables_lib.global_variables_initializer())
 
   def testVariablesAreFloat32(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3),
-                                         seed=1, dtype=dtypes.float16)
+      images = random_ops.random_uniform(
+          (5, height, width, 3), seed=1, dtype=dtypes.float16)
       _layers.batch_norm(images, scale=True)
       beta = variables.get_variables_by_name('beta')[0]
       gamma = variables.get_variables_by_name('gamma')[0]
@@ -2691,17 +2692,13 @@ class BatchNormTest(test.TestCase):
     channels = shape[1]
     images = np.arange(np.product(shape), dtype=dtype).reshape(shape)
     beta = init_ops.constant_initializer(
-        np.arange(
-            2, channels + 2, dtype=np.float32))
+        np.arange(2, channels + 2, dtype=np.float32))
     gamma = init_ops.constant_initializer(
-        np.arange(
-            10, channels + 10, dtype=np.float32) * 2.0)
+        np.arange(10, channels + 10, dtype=np.float32) * 2.0)
     mean = init_ops.constant_initializer(
-        np.arange(
-            3, channels + 3, dtype=np.float32) * 5.0)
+        np.arange(3, channels + 3, dtype=np.float32) * 5.0)
     variance = init_ops.constant_initializer(
-        np.arange(
-            1, channels + 1, dtype=np.float32) * 4.0)
+        np.arange(1, channels + 1, dtype=np.float32) * 4.0)
     output = _layers.batch_norm(
         images,
         fused=True,
@@ -2725,7 +2722,6 @@ class BatchNormTest(test.TestCase):
       res_32 = self._runFusedBatchNorm(shape, np.float32)
       res_16 = self._runFusedBatchNorm(shape, np.float16)
       self.assertAllClose(res_32, res_16, rtol=1e-3)
-
 
   def testAdjustmentCreated(self):
     # Tests that the adjustment is appropriately passed to and used by the core
