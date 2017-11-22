@@ -423,9 +423,18 @@ def transpose_image(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
+  original_shape = image.get_shape()
+  image, is_batch = _EnsureTensorIs4D(image)
   image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
-  return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
+      _CheckAtLeast3DImage(image, require_static=False), image)
+
+  result = array_ops.transpose(image, [0, 2, 1, 3], name='transpose_image')
+
+  if is_batch:
+    return result
+  else:
+    result = array_ops.squeeze(result, squeeze_dims=[0])
+    return result
 
 
 def central_crop(image, central_fraction):
