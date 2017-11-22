@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -43,25 +44,6 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element,
   }
   auto parent_as_matrix = parent.flat_outer_dims<T>();
   element->flat<T>() = parent_as_matrix.chip(index, 0);
-  return Status::OK();
-}
-
-template <DataType DT>
-Status HandleElementToSlice(const Tensor& element, Tensor* parent, int index) {
-  typedef typename EnumToDataType<DT>::Type T;
-  DCHECK_NE(parent->dim_size(0), 0);
-  DCHECK_GE(index, 0);
-  if (element.NumElements() != (parent->NumElements() / parent->dim_size(0))) {
-    TensorShape chip_shape = parent->shape();
-    chip_shape.RemoveDim(0);
-    return errors::Internal(
-        "HandleElementToSlice Cannot copy slice: number of elements does not "
-        "match.  Shapes are: [element]: ",
-        element.shape().DebugString(), ", [parent slice]: ",
-        chip_shape.DebugString());
-  }
-  auto parent_as_matrix = parent->flat_outer_dims<T>();
-  parent_as_matrix.chip(index, 0) = element.flat<T>();
   return Status::OK();
 }
 
@@ -382,35 +364,10 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
                                parent.dtype());
 }
 
-// Static method
+/* static */
 Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
                                      int64 index) {
-#define HANDLE_TYPE(DT)                                                   \
-  if (element.dtype() == DT) {                                            \
-    TF_RETURN_IF_ERROR(HandleElementToSlice<DT>(element, parent, index)); \
-    return Status::OK();                                                  \
-  }
-  HANDLE_TYPE(DT_FLOAT);
-  HANDLE_TYPE(DT_HALF);
-  HANDLE_TYPE(DT_DOUBLE);
-  HANDLE_TYPE(DT_INT32);
-  HANDLE_TYPE(DT_UINT8);
-  HANDLE_TYPE(DT_INT16);
-  HANDLE_TYPE(DT_INT8);
-  HANDLE_TYPE(DT_STRING);
-  HANDLE_TYPE(DT_COMPLEX64);
-  HANDLE_TYPE(DT_COMPLEX128);
-  HANDLE_TYPE(DT_INT64);
-  HANDLE_TYPE(DT_BOOL);
-  HANDLE_TYPE(DT_QINT8);
-  HANDLE_TYPE(DT_QUINT8);
-  HANDLE_TYPE(DT_QINT32);
-  HANDLE_TYPE(DT_QINT16);
-  HANDLE_TYPE(DT_QUINT16);
-  HANDLE_TYPE(DT_UINT16);
-#undef HANDLE_TYPE
-  return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
-                               element.dtype());
+  return batch_util::CopyElementToSlice(element, parent, index);
 }
 
 }  // namespace tensorflow

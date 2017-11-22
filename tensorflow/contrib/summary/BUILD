@@ -45,11 +45,17 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":summary_ops",
+        ":summary_test_internal",
         ":summary_test_util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
+        "@six_archive//:six",
     ],
 )
 
@@ -60,6 +66,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_summary_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -72,6 +79,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "@six_archive//:six",
     ],
 )
 

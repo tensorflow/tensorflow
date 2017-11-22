@@ -44,6 +44,9 @@ namespace window_util {
   if (dim.window_dilation() != 1) {
     StrAppend(&str, ",window_dilation=", dim.window_dilation());
   }
+  if (dim.window_reversal()) {
+    StrAppend(&str, ",window_reversal");
+  }
   StrAppend(&str, ")");
   return str;
 }

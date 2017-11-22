@@ -431,8 +431,11 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                           true));
 
   TF_ASSIGN_OR_RETURN(
+      module, backend->compiler()->RunHloPasses(std::move(module), executor));
+
+  TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), executor));
+      backend->compiler()->RunBackend(std::move(module), executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -1360,6 +1363,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kConvertRequest:
       handle_status =
           computation->AddConvertInstruction(arg->convert_request());
+      break;
+    case OpRequest::kBitcastConvertRequest:
+      handle_status = computation->AddBitcastConvertInstruction(
+          arg->bitcast_convert_request());
       break;
     case OpRequest::kConvolveRequest:
       handle_status =

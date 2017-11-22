@@ -26,7 +26,7 @@ When set to True, find the nth-largest value in the vector and vice
 versa.
 END
   }
-  summary: "Finds values of the `n`-th order statistic for the last dmension."
+  summary: "Finds values of the `n`-th order statistic for the last dimension."
   description: <<END
 If the input is a vector (rank-1), finds the entries which is the nth-smallest
 value in the vector and outputs their values as scalar tensor.

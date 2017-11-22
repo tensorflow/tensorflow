@@ -891,10 +891,6 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     Py_DECREF(grads);
     Py_DECREF(backward_function);
     if (py_result == nullptr) {
-      VLOG(1) << "Gradient function threw exceptions";
-      if (VLOG_IS_ON(1)) {
-        PyErr_Print();
-      }
       return tensorflow::errors::Internal("gradient function threw exceptions");
     }
     result->clear();
@@ -981,6 +977,11 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
   status->status = tape_obj->tape->ComputeGradient(
       c_vspace, target_vec, sources_vec, outgrad_vec, &result);
   if (!status->status.ok()) {
+    if (PyErr_Occurred()) {
+      // Do not propagate the erroneous status as that would swallow the
+      // exception which caused the problem.
+      status->status = tensorflow::Status::OK();
+    }
     return nullptr;
   }
   if (!result.empty()) {

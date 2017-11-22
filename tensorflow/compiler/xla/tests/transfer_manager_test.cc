@@ -33,29 +33,26 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
-
 namespace {
 
 class TransferManagerTest : public LocalClientTestBase {
  protected:
-  TransferManagerTest() {
-    shape_size_fn_ = [this](const Shape& shape) {
-      return transfer_manager_->GetByteSizeRequirement(shape);
-    };
-  }
+  TransferManagerTest()
+      : shape_size_fn_([this](const Shape& shape) {
+          return transfer_manager_->GetByteSizeRequirement(shape);
+        }) {}
 
-  ~TransferManagerTest() override {}
+  ~TransferManagerTest() override = default;
 
   std::unique_ptr<ScopedShapedBuffer> AllocateDeviceBuffer(const Shape& shape) {
     return ScopedShapedBuffer::Allocate(
                shape, GetOrCreateAllocator(local_client_->platform()),
                /*device_ordinal=*/0, shape_size_fn_)
-        .ConsumeValueOrDie();
+        .ValueOrDie();
   }
 
+ private:
   std::function<int64(const Shape&)> shape_size_fn_;
 };
 
@@ -215,5 +212,4 @@ XLA_TEST_F(TransferManagerTest, TransferNestedTuple) {
 }
 
 }  // namespace
-
 }  // namespace xla

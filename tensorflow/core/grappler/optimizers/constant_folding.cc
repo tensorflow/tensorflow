@@ -1158,8 +1158,13 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   }
 
   GraphProperties properties(item);
-  Status s = properties.InferStatically();
-  bool has_feed = !item.feed.empty();
+  const bool has_feed = !item.feed.empty();
+  bool needs_shapes = !has_feed || opt_level_ == RewriterConfig::AGGRESSIVE;
+  Status s = errors::Unknown(
+      "The graph properties are needed but were not initialized");
+  if (needs_shapes) {
+    s = properties.InferStatically();
+  }
 
   if (!has_feed && s.ok()) {
     // Only use static shape information when there is no feed in the

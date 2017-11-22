@@ -1435,17 +1435,22 @@ def serialize_many_sparse(sp_input, name=None):
 
 
 def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
-  """Deserialize `SparseTensor` from a string 3-vector (1-D `Tensor`) object.
+  """Deserialize `SparseTensor` objects.
+
+  The input is expected to have shape [d_1, ..., d_m, 3], where the last
+  dimension stores a serialized `SparseTensor`. The method deserializes
+  all input `SparseTensor`s, concatenates them into a single tensor, and
+  reshapes the sparse tensor to preserve the structure of the input.
 
   Args:
-    serialized_sparse: 1-D, The serialized `SparseTensor` object.
-      Must have 3 columns.
-    dtype: The `dtype` of the serialized `SparseTensor` object.
-    rank: (optional) Python int, the rank of the `SparseTensor` object.
-    name: A name prefix for the returned tensors (optional)
+    serialized_sparse: The serialized `SparseTensor` objects.
+      The last dimension must have 3 columns.
+    dtype: The `dtype` of the serialized `SparseTensor` objects.
+    rank: (optional) Python int, the rank of the `SparseTensor` objects.
+    name: A name prefix for the returned tensors (optional).
 
   Returns:
-    A `SparseTensor` representing the deserialized `SparseTensor` object.
+    A `SparseTensor` representing the deserialized `SparseTensor` objects.
 
   """
   output_indices, output_values, output_shape = (

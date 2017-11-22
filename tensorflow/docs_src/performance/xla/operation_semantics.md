@@ -13,6 +13,28 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## BitcastConvertType
+
+See also
+[`ComputationBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
+operation from a data shape to a target shape. The dimensions must match, and
+the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
+via bitcast routine. Bitcast is implemented as a low-level cast, so machines
+with different floating point representations will give different results.
+
+<b> `BitcastConvertType(operand, new_element_type)` </b>
+
+Arguments          | Type                    | Semantics
+------------------ | ----------------------- | ---------------------------
+`operand`          | `ComputationDataHandle` | array of type T with dims D
+`new_element_type` | `PrimitiveType`         | type U
+
+The dimensions of the operand and the target shape must match. The bit-width of
+the source and destination element types must be equal. The source
+and destination element types must not be tuples.
+
 ## Broadcast
 
 See also
@@ -75,14 +97,14 @@ Clamps an operand to within the range between a minimum and maximum value.
 | `computation` | `Computation`           | computation of type `T_0, T_1,   |
 :               :                         : ..., T_N -> S` with N parameters :
 :               :                         : of arbitrary type                :
-| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `min`         | `ComputationDataHandle` | array of type T                  |
+| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `max`         | `ComputationDataHandle` | array of type T                  |
 
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+range.  That is, `clamp(a, x, b) =  max(min(a, x), b)`.
 
 All three arrays must be the same shape. Alternately, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -94,7 +116,7 @@ let operand: s32[3] = {-1, 5, 9};
 let min: s32 = 0;
 let max: s32 = 6;
 ==>
-Clamp(operand, min, max) = s32[3]{0, 5, 6};
+Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ```
 
 ## Collapse
@@ -234,9 +256,8 @@ Arguments          | Type                    | Semantics
 `operand`          | `ComputationDataHandle` | array of type T with dims D
 `new_element_type` | `PrimitiveType`         | type U
 
-If the dimensions of the operand and the target shape do not match, or an
-invalid conversion is requested (e.g. to/from a tuple) an error will be
-produced.
+The dimensions of the operand and the target shape must match. The source and
+destination element types must not be tuples.
 
 A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
 conversion routine such as round-to-nearest-even.
@@ -646,8 +667,8 @@ Normalizes an array across batch and spatial dimensions.
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the mean and variance
 across all the other dimensions and use the mean and variance to normalize each
-element in `operand`. If an invalid `feature_index` is passed, an error is
-produced.
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
 
 The algorithm goes as follows for each batch in `operand` \\(x\\) that
 contains `m` elements with `w` and `h` as the size of spatial dimensions (
@@ -702,8 +723,8 @@ Normalizes an array across batch and spatial dimensions.
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the mean and variance
 across all the other dimensions and use the mean and variance to normalize each
-element in `operand`. If an invalid `feature_index` is passed, an error is
-produced.
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
 
 `BatchNormInference`  is equivalent to calling `BatchNormTraining` without
 computing `mean` and `variance` for each batch. It uses the input `mean` and
@@ -742,8 +763,8 @@ Calculates gradients of batch norm.
 
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the gradients with
-respect to `operand`, `offset` and `scale` across all the other dimensions. If
-an invalid `feature_index` is passed, an error is produced.
+respect to `operand`, `offset` and `scale` across all the other dimensions. The
+`feature_index` must be a valid index for the feature dimension in `operand`.
 
 The three gradients are defined by the following formulas:
 
@@ -808,8 +829,7 @@ device, interpreting the data as the given shape and its layout, and returns a
 `ComputationDataHandle` of the data. Multiple Infeed operations are allowed in a
 computation, but there must be a total order among the Infeed operations. For
 example, two Infeeds in the code below have a total order since there is a
-dependency between the while loops. The compiler issues an error if there isn't
-a total order.
+dependency between the while loops.
 
 ```
 result1 = while (condition, init = init_value) {

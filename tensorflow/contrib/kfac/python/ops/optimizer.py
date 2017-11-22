@@ -35,17 +35,19 @@ from tensorflow.python.training import gradient_descent
 class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
   """The KFAC Optimizer (https://arxiv.org/abs/1503.05671)."""
 
-  def __init__(
-      self,
-      learning_rate,
-      cov_ema_decay,
-      damping,
-      layer_collection,
-      momentum=0.,
-      momentum_type="regular",
-      norm_constraint=None,
-      name="KFAC",
-      estimation_mode="gradients"):
+  def __init__(self,
+               learning_rate,
+               cov_ema_decay,
+               damping,
+               layer_collection,
+               momentum=0.,
+               momentum_type="regular",
+               norm_constraint=None,
+               name="KFAC",
+               estimation_mode="gradients",
+               colocate_gradients_with_ops=False,
+               cov_devices=None,
+               inv_devices=None):
     """Initializes the KFAC optimizer with the given settings.
 
     Args:
@@ -77,6 +79,14 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           'gradients', 'empirical', 'curvature_propagation', or 'exact'.
           (Default: 'gradients'). See the doc-string for FisherEstimator for
           more a more detailed description of these options.
+      colocate_gradients_with_ops: Whether we should request gradients we
+          compute in the estimator be colocated with their respective ops.
+      cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
+          computations will be placed on these devices in a round-robin fashion.
+          Can be None, which means that no devices are specified.
+      inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
+          computations will be placed on these devices in a round-robin fashion.
+          Can be None, which means that no devices are specified.
 
     Raises:
       ValueError: If the momentum type is unsupported.
@@ -90,9 +100,15 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     # now it's just all the trainable variables.
     variables = tf_variables.trainable_variables()
 
-    self._fisher_est = est.FisherEstimator(variables, cov_ema_decay, damping,
-                                           layer_collection,
-                                           estimation_mode=estimation_mode)
+    self._fisher_est = est.FisherEstimator(
+        variables,
+        cov_ema_decay,
+        damping,
+        layer_collection,
+        estimation_mode=estimation_mode,
+        colocate_gradients_with_ops=colocate_gradients_with_ops,
+        cov_devices=cov_devices,
+        inv_devices=inv_devices)
 
     momentum_type = momentum_type.lower()
     legal_momentum_types = ["regular", "adam", "qmodel"]

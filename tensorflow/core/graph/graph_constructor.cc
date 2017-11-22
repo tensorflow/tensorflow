@@ -241,13 +241,13 @@ class GraphConstructor {
   };
   // TODO(vrv): Profile this data structure to see if we should use an
   // alternative implementation of std::unordered_map.
-  std::unordered_map<StringPiece, NodeInfo, StringPiece::Hasher> gdef_nodes_;
+  std::unordered_map<StringPiece, NodeInfo, StringPieceHasher> gdef_nodes_;
 
   // Mapping from node name to the existing node in g_.
-  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> existing_nodes_;
+  std::unordered_map<StringPiece, Node*, StringPieceHasher> existing_nodes_;
 
   // Prefixes already used in the graph.
-  std::unordered_set<StringPiece, StringPiece::Hasher> existing_prefixes_;
+  std::unordered_set<StringPiece, StringPieceHasher> existing_prefixes_;
 
   // Imported node names that have been uniquified. The key is the original
   // name, the value is the new unique name.

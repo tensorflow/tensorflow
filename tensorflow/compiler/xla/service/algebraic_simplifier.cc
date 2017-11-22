@@ -1108,9 +1108,15 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   if (IsAll(rhs, -1)) {
     auto* one = computation_->AddInstruction(HloInstruction::CreateConstant(
         Literal::One(rhs->shape().element_type()).CloneToUnique()));
+
+    // Explicitly broadcast scalar 1 to the output shape, to avoid implicit
+    // broadcast in divide HLO as we are trying to eliminate implicit
+    // broadcasting at HLO level.
+    auto* broadcast_one = computation_->AddInstruction(
+        HloInstruction::CreateBroadcast(power->shape(), one, {}));
     return ReplaceWithNewInstruction(
         power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kDivide,
-                                            one, lhs));
+                                            broadcast_one, lhs));
   }
   return Status::OK();
 }
@@ -1398,6 +1404,15 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   auto operand = reduce_window->mutable_operand(0);
   const Window& window = reduce_window->window();
   auto function = reduce_window->to_apply();
+  if (ShapeUtil::IsScalar(operand->shape())) {
+    TF_RET_CHECK(ShapeUtil::IsScalar(reduce_window->shape()));
+    return ReplaceWithNewInstruction(
+        reduce_window,
+        HloInstruction::CreateMap(reduce_window->shape(),
+                                  {operand, reduce_window->mutable_operand(1)},
+                                  function));
+  }
+
   VLOG(10) << "Considering folding Pad: " << operand->ToString()
            << "\ninto reduce-window: " << reduce_window->ToString();
 

@@ -43,7 +43,8 @@ bool ParseModelFlagsFromCommandLineFlags(
   std::vector<tensorflow::Flag> flags = {
       Flag("input_array", parsed_flags.input_array.bind(),
            parsed_flags.input_array.default_value(),
-           "Name of the input array. If not specified, will try to read "
+           "Deprecated: use --input_arrays instead. Name of the input array. "
+           "If not specified, will try to read "
            "that information from the input file."),
       Flag("input_arrays", parsed_flags.input_arrays.bind(),
            parsed_flags.input_arrays.default_value(),
@@ -51,7 +52,8 @@ bool ParseModelFlagsFromCommandLineFlags(
            "will try to read that information from the input file."),
       Flag("output_array", parsed_flags.output_array.bind(),
            parsed_flags.output_array.default_value(),
-           "Name of the output array, when specifying a unique output array. "
+           "Deprecated: use --output_arrays instead. Name of the output array, "
+           "when specifying a unique output array. "
            "If not specified, will try to read that information from the "
            "input file."),
       Flag("output_arrays", parsed_flags.output_arrays.bind(),
@@ -60,8 +62,9 @@ bool ParseModelFlagsFromCommandLineFlags(
            "If not specified, will try to read "
            "that information from the input file."),
       Flag("input_shape", parsed_flags.input_shape.bind(),
-           parsed_flags.output_arrays.default_value(),
-           "Input array shape. For many models the shape takes the form "
+           parsed_flags.input_shape.default_value(),
+           "Deprecated: use --input_shapes instead. Input array shape. For "
+           "many models the shape takes the form "
            "batch size, input array height, input array width, input array "
            "depth."),
       Flag("input_shapes", parsed_flags.input_shapes.bind(),
@@ -69,9 +72,22 @@ bool ParseModelFlagsFromCommandLineFlags(
            "Shapes corresponding to --input_arrays, colon-separated. For "
            "many models each shape takes the form batch size, input array "
            "height, input array width, input array depth."),
+      Flag("input_data_type", parsed_flags.input_data_type.bind(),
+           parsed_flags.input_data_type.default_value(),
+           "Deprecated: use --input_data_types instead. Input array type, if "
+           "not already provided in the graph. "
+           "Typically needs to be specified when passing arbitrary arrays "
+           "to --input_array."),
+      Flag("input_data_types", parsed_flags.input_data_types.bind(),
+           parsed_flags.input_data_types.default_value(),
+           "Input arrays types, comma-separated, if not already provided in "
+           "the graph. "
+           "Typically needs to be specified when passing arbitrary arrays "
+           "to --input_arrays."),
       Flag("mean_value", parsed_flags.mean_value.bind(),
            parsed_flags.mean_value.default_value(),
-           "mean_value parameter for image models, used to compute input "
+           "Deprecated: use --mean_values instead. mean_value parameter for "
+           "image models, used to compute input "
            "activations from input pixel data."),
       Flag("mean_values", parsed_flags.mean_values.bind(),
            parsed_flags.mean_values.default_value(),
@@ -81,7 +97,8 @@ bool ParseModelFlagsFromCommandLineFlags(
            "--input_arrays."),
       Flag("std_value", parsed_flags.std_value.bind(),
            parsed_flags.std_value.default_value(),
-           "std_value parameter for image models, used to compute input "
+           "Deprecated: use --std_values instead. std_value parameter for "
+           "image models, used to compute input "
            "activations from input pixel data."),
       Flag("std_values", parsed_flags.std_values.bind(),
            parsed_flags.std_values.default_value(),
@@ -230,6 +247,23 @@ void ReadModelFlagsFromCommandLineFlags(
       model_flags->mutable_input_arrays(i)->set_std_value(
           strtod(std_values[i].data(), &last));
       CHECK(last != std_values[i].data());
+    }
+  }
+  if (parsed_model_flags.input_data_type.specified()) {
+    QCHECK(uses_single_input_flags);
+    IODataType type;
+    QCHECK(IODataType_Parse(parsed_model_flags.input_data_type.value(), &type));
+    model_flags->mutable_input_arrays(0)->set_data_type(type);
+  }
+  if (parsed_model_flags.input_data_types.specified()) {
+    QCHECK(uses_multi_input_flags);
+    std::vector<string> input_data_types =
+        absl::StrSplit(parsed_model_flags.input_data_types.value(), ',');
+    QCHECK(input_data_types.size() == model_flags->input_arrays_size());
+    for (int i = 0; i < input_data_types.size(); ++i) {
+      IODataType type;
+      QCHECK(IODataType_Parse(input_data_types[i], &type));
+      model_flags->mutable_input_arrays(i)->set_data_type(type);
     }
   }
   if (parsed_model_flags.input_shape.specified()) {

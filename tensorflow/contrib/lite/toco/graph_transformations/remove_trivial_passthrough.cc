@@ -19,13 +19,12 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
-#include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace toco {
-
 namespace {
+
 // Reroute all edges involving a given discardable array to another
 // array instead. from_array is assumed to be discardable, and consequently
 // this only updates operator edges (since discardable arrays only
@@ -46,7 +45,7 @@ void RerouteEdges(const string& from_array, const string& to_array,
   }
 }
 
-}  // end anonymous namespace
+}  // namespace
 
 bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
                                 Model* model, std::size_t op_index) {
