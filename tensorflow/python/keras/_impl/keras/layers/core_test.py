@@ -48,6 +48,10 @@ class CoreLayersTest(test.TestCase):
           input_shape=(3, 2))
 
     with self.test_session():
+      dropout = keras.layers.Dropout(0.5)
+      self.assertEqual(True, dropout.supports_masking)
+
+    with self.test_session():
       testing_utils.layer_test(
           keras.layers.SpatialDropout1D,
           kwargs={'rate': 0.5},
