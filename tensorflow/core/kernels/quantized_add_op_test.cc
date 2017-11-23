@@ -276,10 +276,10 @@ void BenchmarkVectorPlusTensor() {
   TimeAdd({100000, 100}, {100}, 1);
 }
 
-#if !defined(__ANDROID__)
+}  // end namespace tensorflow
 
 #define RUN_TEST(t) \
-  TEST(QuantizedAddOpTest, t) { t(); }
+  TEST(QuantizedAddOpTest, t) { tensorflow::t(); }
 
 RUN_TEST(TestManualScalar);
 RUN_TEST(TestManualVector);
@@ -288,24 +288,16 @@ RUN_TEST(TestScalar);
 RUN_TEST(TestVector);
 RUN_TEST(TestVectorPlusTensor);
 
-#undef RUN_TEST
-
-#endif  // __ANDROID__
-
-}  // end namespace tensorflow
-
 #if defined(__ANDROID__)
-int main(int argc, char** argv) {
-  LOG(INFO) << "TestManualScalar:";
-  tensorflow::TestManualScalar();
-  LOG(INFO) << "TestManualVector:";
-  tensorflow::TestManualVector();
-  LOG(INFO) << "TestManualVectorPlusTensor:";
-  tensorflow::TestManualVectorPlusTensor();
-  tensorflow::BenchmarkTensorScalar();
-  tensorflow::BenchmarkVector();
-  tensorflow::BenchmarkVectorPlusTensor();
-  LOG(INFO) << "All tests complete";
-  return 0;
-}
+
+RUN_TEST(BenchmarkTensorScalar);
+RUN_TEST(BenchmarkVector);
+RUN_TEST(BenchmarkVectorPlusTensor);
+
 #endif  // __ANDROID__
+
+int main(int argc, char** argv) {
+  // On Linux, add: FLAGS_logtostderr = true;
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

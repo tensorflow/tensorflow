@@ -265,6 +265,36 @@ public final class OperationBuilder {
     return this;
   }
 
+  public OperationBuilder setAttr(String name, Shape[] value) {
+    int[] numDimensions = new int[value.length];
+    int totalNumDimensions = 0;
+    for (int idx = 0; idx < value.length; ++idx) {
+      int n = value[idx].numDimensions();
+      numDimensions[idx] = n;
+      if (n > 0) {
+        totalNumDimensions += n;
+      }
+    }
+    // Flatten the shapes into a single array to avoid too much overhead in the
+    // native part
+    long[] shapes = new long[totalNumDimensions];
+    int shapeIdx = 0;
+    for (Shape shape : value) {
+      if (shape.numDimensions() > 0) {
+        for (long dim : shape.asArray()) {
+          shapes[shapeIdx++] = dim;
+        }
+      }
+    }
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrShapeList(unsafeNativeHandle, name, shapes, numDimensions);
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
   public OperationBuilder setAttr(String name, String[] value) {
     Charset utf8 = Charset.forName("UTF-8");
     Object[] objects = new Object[value.length];
@@ -297,8 +327,6 @@ public final class OperationBuilder {
 
   // The names of all the setAttr* family functions below correspond to the C library types, not the
   // Java library types. Roughly, setAttrFoo calls the TensorFlow C library function: TF_SetAttrFoo.
-  // TODO(ashankar):
-  // - setAttrShapeList: Which would take in a long[][]
 
   private static native void setAttrString(long handle, String name, byte[] value);
 
@@ -323,6 +351,8 @@ public final class OperationBuilder {
   private static native void setAttrTensorList(long handle, String name, long[] tensorHandle);
 
   private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
+
+  private static native void setAttrShapeList(long handle, String name, long[] shapes, int[] numDims);
 
   private static native void setAttrStringList(long handle, String name, Object[] value);
 }

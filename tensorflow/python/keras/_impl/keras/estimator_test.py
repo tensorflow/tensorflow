@@ -33,6 +33,7 @@ from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.applications import mobilenet
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.summary.writer import writer_cache
 
 
 try:
@@ -132,6 +133,8 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         tf_random_seed=_RANDOM_SEED, model_dir=self._base_dir)
 
   def tearDown(self):
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
     if os.path.isdir(self._base_dir):
       gfile.DeleteRecursively(self._base_dir)
 
@@ -153,6 +156,8 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
         after_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
         self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
+
+      writer_cache.FileWriterCache.clear()
       gfile.DeleteRecursively(self._config.model_dir)
 
   def test_evaluate(self):

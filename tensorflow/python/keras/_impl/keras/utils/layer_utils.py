@@ -24,6 +24,18 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.conv_utils import convert_kernel
 
 
+def count_params(weights):
+  """Count the total number of scalars composing the weights.
+
+  Arguments:
+    weights: An iterable containing the weights on which to compute params
+
+  Returns:
+    The total number of scalars composing the weights
+  """
+  return int(np.sum([K.count_params(p) for p in set(weights)]))
+
+
 def print_summary(model, line_length=None, positions=None, print_fn=None):
   """Prints a summary of a model.
 
@@ -46,12 +58,28 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     sequential_like = True
   else:
     sequential_like = True
-    for v in model._nodes_by_depth.values():  # pylint: disable=protected-access
+    nodes_by_depth = model._nodes_by_depth.values()  # pylint: disable=protected-access
+    nodes = []
+    for v in nodes_by_depth:
       if (len(v) > 1) or (len(v) == 1 and len(v[0].inbound_layers) > 1):
         # If the model has multiple nodes or if the nodes have
         # multiple inbound_layers, the model is no longer sequential.
         sequential_like = False
         break
+      nodes += v
+    if sequential_like:
+      # search for shared layers
+      for layer in model.layers:
+        flag = False
+        for node in layer.inbound_nodes:
+          if node in nodes:
+            if flag:
+              sequential_like = False
+              break
+            else:
+              flag = True
+        if not sequential_like:
+          break
 
   if sequential_like:
     line_length = line_length or 65
@@ -61,7 +89,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     # header names for the different log elements
     to_display = ['Layer (type)', 'Output Shape', 'Param #']
   else:
-    line_length = line_length or 100
+    line_length = line_length or 98
     positions = positions or [.33, .55, .67, 1.]
     if positions[-1] <= 1:
       positions = [int(line_length * p) for p in positions]
@@ -144,8 +172,12 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     else:
       print_fn('_' * line_length)
 
-  trainable_count = int(
-      np.sum([K.count_params(p) for p in set(model.trainable_weights)]))
+  model._check_trainable_weights_consistency()  # pylint: disable=protected-access
+  if hasattr(model, '_collected_trainable_weights'):
+    trainable_count = count_params(model._collected_trainable_weights)  # pylint: disable=protected-access
+  else:
+    trainable_count = count_params(model.trainable_weights)
+
   non_trainable_count = int(
       np.sum([K.count_params(p) for p in set(model.non_trainable_weights)]))
 

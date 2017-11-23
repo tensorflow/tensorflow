@@ -1104,6 +1104,86 @@ op {
   description: "lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)\nm_t <- beta1 * m_{t-1} + (1 - beta1) * g_t\nv_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t\nvariable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)"
 }
 op {
+  name: "ApplyAddSign"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "alpha"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sign_decay"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and m tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the AddSign update."
+  description: "m_t <- beta1 * m_{t-1} + (1 - beta1) * g\nupdate <- (alpha + sign_decay * sign(g) *sign(m)) * g\nvariable <- variable - lr_t * update"
+}
+op {
   name: "ApplyCenteredRMSProp"
   input_arg {
     name: "var"
@@ -1505,6 +1585,86 @@ op {
   }
   summary: "Update \'*var\' according to the momentum scheme. Set use_nesterov = True if you"
   description: "want to use Nesterov momentum.\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+}
+op {
+  name: "ApplyPowerSign"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "logbase"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sign_decay"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and m tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the AddSign update."
+  description: "m_t <- beta1 * m_{t-1} + (1 - beta1) * g\nupdate <- exp(logbase * sign_decay * sign(g) * sign(m_t)) * g\nvariable <- variable - lr_t * update"
 }
 op {
   name: "ApplyProximalAdagrad"
@@ -4271,6 +4431,34 @@ op {
   description: "For example, if the inputs are\n    boundaries = [0, 10, 100]\n    input = [[-5, 10000]\n             [150,   10]\n             [5,    100]]\n\nthen the output will be\n    output = [[0, 3]\n              [3, 2]\n              [1, 3]]"
 }
 op {
+  name: "BytesProducedStatsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Records the bytes size of each element of `input_dataset` in a StatsAggregator."
+}
+op {
   name: "CTCBeamSearchDecoder"
   input_arg {
     name: "inputs"
@@ -6064,6 +6252,32 @@ op {
   description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
 }
 op {
+  name: "DatasetToSingleElement"
+  input_arg {
+    name: "dataset"
+    description: "A handle to a dataset that contains a single element."
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    description: "The components of the single element of `input`."
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Outputs the single element from the given dataset."
+}
+op {
   name: "DebugGradientIdentity"
   input_arg {
     name: "input"
@@ -6695,6 +6909,41 @@ op {
   description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
 }
 op {
+  name: "DenseToSparseBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    description: "A handle to an input dataset. Must have a single component."
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    description: "A scalar representing the number of elements to accumulate in a\nbatch."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "row_shape"
+    description: "A vector representing the dense shape of each row in the produced\nSparseTensor. The shape may be partially specified, using `-1` to indicate\nthat a particular dimension should use the maximum size of all batch elements."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that yields a SparseTensor for each element of the input."
+}
+op {
   name: "DenseToSparseSetOperation"
   input_arg {
     name: "set1"
@@ -7034,6 +7283,21 @@ op {
   description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nif T == qint8, in[i] += (range(T) + 1)/ 2.0\nout[i] = min_range + (in[i]* (max_range - min_range) / range(T))\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nIf the input comes from a QuantizedRelu6, the output type is\nquint8 (range of 0-255) but the possible range of QuantizedRelu6 is\n0-6.  The min_range and max_range values are therefore 0.0 and 6.0.\nDequantize on quint8 will take each value, cast to float, and multiply\nby 6 / 255.\nNote that if quantizedtype is qint8, the operation will additionally add\neach value by 128 prior to casting.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```c++\nnum_discrete_values = 1 << (# of bits in T)\nrange_adjust = num_discrete_values / (num_discrete_values - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = range / num_discrete_values\nconst double offset_input = static_cast<double>(input) - lowest_quantized;\nresult = range_min + ((input - numeric_limits<T>::min()) * range_scale)\n```\n\n*SCALED mode Example*\n\n`SCALED` mode matches the quantization approach used in\n`QuantizeAndDequantize{V2|V3}`.\n\nIf the mode is `SCALED`, we do not use the full range of the output type,\nchoosing to elide the lowest possible value for symmetry (e.g., output range is\n-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to\n0.\n\nWe first find the range of values in our tensor. The\nrange we use is always centered on 0, so we find m such that\n```c++\n  m = max(abs(input_min), abs(input_max))\n```\n\nOur input tensor range is then `[-m, m]`.\n\nNext, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.\nIf T is signed, this is\n```\n  num_bits = sizeof(T) * 8\n  [min_fixed, max_fixed] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]\n```\n\nOtherwise, if T is unsigned, the fixed-point range is\n```\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]\n```\n\nFrom this we compute our scaling factor, s:\n```c++\n  s = (2 * m) / (max_fixed - min_fixed)\n```\n\nNow we can dequantize the elements of our tensor:\n```c++\nresult = input * s\n```"
 }
 op {
+  name: "DeserializeIterator"
+  input_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "serialized"
+    description: "A variant tensor storing the state of the iterator contained in the\nresource."
+    type: DT_VARIANT
+  }
+  summary: "Converts the given variant tensor to an iterator and stores it in the given resource."
+  is_stateful: true
+}
+op {
   name: "DeserializeManySparse"
   input_arg {
     name: "serialized_sparse"
@@ -7059,6 +7323,32 @@ op {
   }
   summary: "Deserialize and concatenate `SparseTensors` from a serialized minibatch."
   description: "The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where\n`N` is the minibatch size and the rows correspond to packed outputs of\n`SerializeSparse`.  The ranks of the original `SparseTensor` objects\nmust all match.  When the final `SparseTensor` is created, it has rank one\nhigher than the ranks of the incoming `SparseTensor` objects\n(they have been concatenated along a new row dimension).\n\nThe output `SparseTensor` object\'s shape values for all dimensions but the\nfirst are the max across the input `SparseTensor` objects\' shape values\nfor the corresponding dimensions.  Its first shape value is `N`, the minibatch\nsize.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the serialized input is a `[2 x 3]` matrix representing two\noriginal `SparseTensor` objects:\n\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n\nand\n\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n\nthen the final deserialized `SparseTensor` will be:\n\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]"
+}
+op {
+  name: "DeserializeSparse"
+  input_arg {
+    name: "serialized_sparse"
+    description: "The serialized `SparseTensor` objects. The last dimension\nmust have 3 columns."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "sparse_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The `dtype` of the serialized `SparseTensor` objects."
+  }
+  summary: "Deserialize `SparseTensor` objects."
 }
 op {
   name: "DestroyResourceOp"
@@ -10148,6 +10438,71 @@ op {
   description: "*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
+  name: "GroupByWindowDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "key_func_other_arguments"
+    type_list_attr: "Tkey_func_other_arguments"
+  }
+  input_arg {
+    name: "reduce_func_other_arguments"
+    type_list_attr: "Treduce_func_other_arguments"
+  }
+  input_arg {
+    name: "window_size_func_other_arguments"
+    type_list_attr: "Twindow_size_func_other_arguments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "key_func"
+    type: "func"
+    description: "A function mapping an element of `input_dataset`, concatenated\nwith `key_func_other_arguments` to a scalar value of type DT_INT64."
+  }
+  attr {
+    name: "reduce_func"
+    type: "func"
+  }
+  attr {
+    name: "window_size_func"
+    type: "func"
+  }
+  attr {
+    name: "Tkey_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Treduce_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Twindow_size_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that computes a windowed group-by on `input_dataset`."
+  description: "// TODO(mrry): Support non-int64 keys."
+}
+op {
   name: "HSVToRGB"
   input_arg {
     name: "images"
@@ -10606,6 +10961,30 @@ op {
   }
   summary: "Compute the upper regularized incomplete Gamma function `Q(a, x)`."
   description: "The upper regularized incomplete Gamma function is defined as:\n\n\\\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\\\)\n\nwhere\n\n\\\\(Gamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\\\\)\n\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
+}
+op {
+  name: "IgnoreErrorsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that contains the elements of `input_dataset` ignoring errors."
 }
 op {
   name: "Imag"
@@ -11316,6 +11695,19 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorSetStatsAggregator"
+  input_arg {
+    name: "iterator_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "stats_aggregator_handle"
+    type: DT_RESOURCE
+  }
+  summary: "Associates the given iterator with the given statistics aggregator."
+  is_stateful: true
+}
+op {
   name: "IteratorToStringHandle"
   input_arg {
     name: "resource_handle"
@@ -11510,6 +11902,34 @@ op {
     }
   }
   summary: "Gradients for Local Response Normalization."
+}
+op {
+  name: "LatencyStatsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Records the latency of producing `input_dataset` elements in a StatsAggregator."
 }
 op {
   name: "LearnedUnigramCandidateSampler"
@@ -12377,6 +12797,54 @@ op {
   summary: "Makes a new iterator from the given `dataset` and stores it in `iterator`."
   description: "This operation may be executed multiple times. Each execution will reset the\niterator in `iterator` to the first element of `dataset`."
   is_stateful: true
+}
+op {
+  name: "MapAndBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "batch_size"
+    description: "A scalar representing the number of elements to accumulate in a\nbatch. It determines the number of concurrent invocations of `f` that process\nelements from `input_dataset` in parallel."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_parallel_batches"
+    description: "A scalar representing the number of batches to create in\nparallel. Processing multiple batches in parallel benefits workloads prone to\nstragglers."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset` and then"
+  description: "batches `batch_size` of them.\n\nUnlike a \"MapDataset\", which applies `f` sequentially, this dataset invokes up\nto `batch_size * num_parallel_batches` copies of `f` in parallel."
 }
 op {
   name: "MapClear"
@@ -15252,7 +15720,7 @@ op {
       }
     }
   }
-  summary: "Finds values of the `n`-th order statistic for the last dmension."
+  summary: "Finds values of the `n`-th order statistic for the last dimension."
   description: "If the input is a vector (rank-1), finds the entries which is the nth-smallest\nvalue in the vector and outputs their values as scalar tensor.\n\nFor matrices (resp. higher rank input), computes the entries which is the\nnth-smallest value in each row (resp. vector along the last dimension). Thus,\n\n    values.shape = input.shape[:-1]"
 }
 op {
@@ -16049,6 +16517,57 @@ op {
   description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues may be merged in parallel, so if an index appears in both `indices[m][i]`\nand `indices[n][j]`, the result may be invalid. This differs from the normal\nDynamicStitch operator that defines the behavior in that case.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
 }
 op {
+  name: "ParallelInterleaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sloppy"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  description: "The resulting dataset is similar to the `InterleaveDataset`, with the exception\nthat if retrieving the next value from a dataset would cause the requester to\nblock, it will skip that input dataset. This dataset is especially useful\nwhen loading data from a variable-latency datastores (e.g. HDFS, GCS), as it\nallows the training step to proceed so long as some data is available.\n\n!! WARNING !! This dataset is not deterministic!"
+}
+op {
   name: "ParallelMapDataset"
   input_arg {
     name: "input_dataset"
@@ -16718,7 +17237,6 @@ op {
     name: "U"
     type: "list(type)"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "message"
@@ -21421,6 +21939,79 @@ op {
   is_stateful: true
 }
 op {
+  name: "ResourceApplyAddSign"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "alpha"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sign_decay"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and m tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the AddSign update."
+  description: "m_t <- beta1 * m_{t-1} + (1 - beta1) * g\nupdate <- (alpha + sign_decay * sign(g) *sign(m)) * g\nvariable <- variable - lr_t * update"
+  is_stateful: true
+}
+op {
   name: "ResourceApplyCenteredRMSProp"
   input_arg {
     name: "var"
@@ -21783,6 +22374,79 @@ op {
   }
   summary: "Update \'*var\' according to the momentum scheme. Set use_nesterov = True if you"
   description: "want to use Nesterov momentum.\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+  is_stateful: true
+}
+op {
+  name: "ResourceApplyPowerSign"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "logbase"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sign_decay"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and m tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the AddSign update."
+  description: "m_t <- beta1 * m_{t-1} + (1 - beta1) * g\nupdate <- exp(logbase * sign_decay * sign(g) * sign(m_t)) * g\nvariable <- variable - lr_t * update"
   is_stateful: true
 }
 op {
@@ -23856,6 +24520,53 @@ op {
   description: "The input `tags` and `values` must have the same shape.  The generated summary\nhas a summary value for each tag-value pair in `tags` and `values`."
 }
 op {
+  name: "ScanDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "initial_state"
+    type_list_attr: "Tstate"
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Tstate"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset successively reduces `f` over the elements of `input_dataset`."
+}
+op {
   name: "ScatterAdd"
   input_arg {
     name: "ref"
@@ -25048,6 +25759,21 @@ op {
     }
   }
   summary: "Computes gradients for the scaled exponential linear (Selu) operation."
+}
+op {
+  name: "SerializeIterator"
+  input_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "serialized"
+    description: "A variant tensor storing the state of the iterator contained in the\nresource."
+    type: DT_VARIANT
+  }
+  summary: "Converts the given `resource_handle` representing an iterator to a variant tensor."
+  is_stateful: true
 }
 op {
   name: "SerializeManySparse"
@@ -28960,6 +29686,42 @@ op {
   summary: "Splits a tensor into `num_split` tensors along one dimension."
 }
 op {
+  name: "SqlDataset"
+  input_arg {
+    name: "driver_name"
+    description: "The database type. Currently, the only supported type is \'sqlite\'."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data_source_name"
+    description: "A connection string to connect to the database."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "query"
+    description: "A SQL query to execute."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that executes a SQL query and emits rows of the result set."
+  is_stateful: true
+}
+op {
   name: "Sqrt"
   input_arg {
     name: "x"
@@ -29596,6 +30358,42 @@ op {
   }
   summary: "Outputs deterministic pseudorandom values from a truncated normal distribution."
   description: "The generated values follow a normal distribution with mean 0 and standard\ndeviation 1, except that values whose magnitude is more than 2 standard\ndeviations from the mean are dropped and re-picked.\n\nThe outputs are a deterministic function of `shape` and `seed`."
+}
+op {
+  name: "StatsAggregatorHandle"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Creates a statistics manager resource."
+  is_stateful: true
+}
+op {
+  name: "StatsAggregatorSummary"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  summary: "Produces a summary of any statistics recorded by the given statistics manager."
+  is_stateful: true
 }
 op {
   name: "StopGradient"
@@ -31412,6 +32210,14 @@ op {
       b: true
     }
     description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
+  }
+  attr {
+    name: "identical_element_shapes"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true (default is false), then all\nelements in the TensorArray will be expected to have have identical shapes.\nThis allows certain behaviors, like dynamically checking for\nconsistent shapes on write, and being able to fill in properly\nshaped zero tensors on stack -- even if the element_shape attribute\nis not fully defined."
   }
   attr {
     name: "tensor_array_name"

@@ -153,7 +153,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/stateless/python/kernel_tests/*_test.py"
@@ -171,7 +171,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/keras/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/learn/*_test.py"
     )
@@ -225,6 +224,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Numerical issues, calculations off.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/wals_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/data_utils_test.py"
       # Float division by zero
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
       # Flaky, for unknown reasons. Cannot reproduce in terminal. Revisit once we can get stack traces.

@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
@@ -121,6 +122,36 @@ class FilterDatasetTest(test.TestCase):
     with self.test_session() as sess:
       sess.run(init_op)
       self.assertAllEqual(input_data[0], sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def assertSparseValuesEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
+
+  def testSparse(self):
+    def _map_fn(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+
+    def _filter_fn(_, i):
+      return math_ops.equal(i % 2, 0)
+
+    iterator = (
+        dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
+            lambda x, i: x).make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(5):
+        actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[i*2], dense_shape=[1, 1])
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, expected.eval())
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

@@ -103,7 +103,7 @@ class ResNet50Test(tf.test.TestCase):
         images, labels = random_batch(2)
         train_one_step(model, images, labels, optimizer)
         self.assertEqual(320, len(model.variables))
-    events = summary_test_util.events_from_file(logdir)
+    events = summary_test_util.events_from_logdir(logdir)
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].tag, 'loss')
 

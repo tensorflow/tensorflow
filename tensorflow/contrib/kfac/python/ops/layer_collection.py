@@ -35,20 +35,41 @@ from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-
 
 # Names for various approximations that can be requested for Fisher blocks.
 APPROX_KRONECKER_NAME = "kron"
 APPROX_DIAGONAL_NAME = "diagonal"
 APPROX_FULL_NAME = "full"
 
+_GENERIC_APPROX_TO_BLOCK_TYPES = {
+    APPROX_FULL_NAME: fb.FullFB,
+    APPROX_DIAGONAL_NAME: fb.NaiveDiagonalFB,
+}
+
+_FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_NAME: fb.FullyConnectedKFACBasicFB,
+    APPROX_DIAGONAL_NAME: fb.FullyConnectedDiagonalFB,
+}
+
+_CONV2D_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_NAME: fb.ConvKFCBasicFB,
+    APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
+}
+
 # Possible value for 'reuse' keyword argument. Sets 'reuse' to
 # tf.get_variable_scope().reuse.
 VARIABLE_SCOPE = "VARIABLE_SCOPE"
 
 # TODO(jamesmartens): need to add find_canonical_output back into this somewhere
+
+
+def ensure_sequence(obj):
+  """If `obj` isn't a tuple or list, return a tuple containing `obj`."""
+  if isinstance(obj, (tuple, list)):
+    return obj
+  else:
+    return (obj,)
 
 
 class LayerParametersDict(OrderedDict):
@@ -107,12 +128,21 @@ class LayerCollection(object):
         sum.
   """
 
-  def __init__(self, graph=None, name="LayerCollection"):
+  def __init__(self,
+               graph=None,
+               colocate_cov_ops_with_inputs=False,
+               name="LayerCollection"):
     self.fisher_blocks = LayerParametersDict()
     self.fisher_factors = OrderedDict()
+    self._linked_parameters = dict(
+    )  # dict mapping sets of variables to optionally specified approximations.
     self._graph = graph or ops.get_default_graph()
     self._loss_dict = {}  # {str: LossFunction}
     self._subgraph = None
+    self._default_generic_approximation = APPROX_FULL_NAME
+    self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
+    self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
+    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
@@ -122,42 +152,91 @@ class LayerCollection(object):
     """LossFunctions registered with this LayerCollection."""
     return list(self._loss_dict.values())
 
+  def is_variable_registered(self, variable):
+    """Checks whether the variable has already been registered.
+
+    Args:
+      variable: A single variable or tensor.
+    Returns:
+      True if the variable has been registered either by itself or as part of a
+      tuple.
+    """
+    return any([
+        variable in key if isinstance(key, (tuple, list)) else variable == key
+        for key in self.fisher_blocks.keys()
+    ])
+
+  @property
+  def linked_parameters(self):
+    """Groups of parameters with an optionally specified approximation.
+
+    Linked parameters can be added using `define_linked_parameters`.
+    If an approximation is specified, then this approximation will be used
+    when registering a layer with exactly these parameters, unless an
+    approximation is specified when calling the registration function.
+
+    Returns:
+      A `dict` mapping tuples of parameters to an optional string.
+    """
+    return self._linked_parameters
+
+  @property
+  def default_generic_approximation(self):
+    return self._default_generic_approximation
+
+  @default_generic_approximation.setter
+  def default_generic_approximation(self, value):
+    if value not in _GENERIC_APPROX_TO_BLOCK_TYPES:
+      raise ValueError(
+          "{} is not a valid approximation for generic variables.".format(
+              value))
+    self._default_generic_approximation = value
+
+  @property
+  def default_fully_connected_approximation(self):
+    return self._default_fully_connected_approximation
+
+  @default_fully_connected_approximation.setter
+  def default_fully_connected_approximation(self, value):
+    if value not in _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES:
+      raise ValueError(
+          "{} is not a valid approximation for fully connected layers.".format(
+              value))
+    self._default_fully_connected_approximation = value
+
+  @property
+  def default_conv2d_approximation(self):
+    return self._default_convolution_2d_approximation
+
+  @default_conv2d_approximation.setter
+  def default_conv2d_approximation(self, value):
+    if value not in _CONV2D_APPROX_TO_BLOCK_TYPES:
+      raise ValueError(
+          "{} is not a valid approximation for 2d convolutional layers.".format(
+              value))
+    self._default_convolution_2d_approximation = value
+
   def register_block(self, layer_key, fisher_block, reuse=VARIABLE_SCOPE):
     """Validates and registers the layer_key associated with the fisher_block.
 
-    Validation consists of checking whether the key was already registered or
-    if any of the elements of layer_key (if it's a tuple) were already
-    registered as part of another tuple (throws an error if so). If any of the
-    elements were registered by themselves, or as part of tuples that are
-    subsets of this layer_key, those registrations are first removed.
-
-    If the layer_key is a subset of an existing registration, registration of
-    the new, smaller layer_key is skipped.
-
-    e.g. If registrations include {'a': foo, ('b', 'c'): bar}, then
-      - register_layer('a', baz) -> ValueError
-      - register_layer(('b', 'c', 'd'), baz) ->
-        {'a': foo, ('b', 'c', 'd'): baz}
-      - register_layer('b', baz) ->
-        {'a': foo, ('b', 'c'): bar} (No change)
-      - register_layer(('a', 'd'), baz) ->
-        {('a', 'd'): baz, ('b', 'c'): bar}
-      - register_layer(('b', 'd'), baz) -> ValueError
-
     Args:
-      layer_key: The key to check for in existing registrations and to register
-          if valid.
-      fisher_block: The associated fisher block.
-      reuse: Method to use for inserting new FisherBlocks. One of True, False,
+      layer_key: A variable or tuple of variables. The key to check for in
+          existing registrations and to register if valid.
+      fisher_block: The associated `FisherBlock`.
+      reuse: Method to use for inserting new `FisherBlock`s. One of True, False,
         or VARIABLE_SCOPE.
 
     Raises:
-      ValueError: If the layer_key was already registered, or if a subset of the
-          layer_key has already been registered as part of a different tuple.
+      ValueError: If `layer_key` was already registered and reuse is `False`,
+        if `layer_key` was registered with a different block type, or if
+        `layer_key` shares any variables with but is not equal to a previously
+        registered key.
+      KeyError: If `reuse` is `True` but `layer_key` was not previously
+        registered.
 
     Returns:
-      FisherBlock registered under 'layer_key'. May or may not be the same as
-      'fisher_block'.
+      The `FisherBlock` registered under `layer_key`. If `layer_key` was already
+      registered, this will be the previously registered `FisherBlock`.
     """
     if reuse is VARIABLE_SCOPE:
       reuse = variable_scope.get_variable_scope().reuse
@@ -177,99 +256,22 @@ class LayerCollection(object):
     # Insert fisher_block into self.fisher_blocks.
     if layer_key in self.fisher_blocks:
       raise ValueError("Duplicate registration: {}".format(layer_key))
-    if isinstance(layer_key, (tuple, list)):
-      return self._register_block_with_sequence_key(layer_key, fisher_block)
-    else:
-      return self._register_block_with_nonsequence_key(layer_key, fisher_block)
-
-  def _register_block_with_sequence_key(self, layer_key, fisher_block):
-    """Validates and registers the layer_key if it's a sequence."""
-    # Find all keys that are either supersets or subsets of 'layer_key'.
-    inclusions = {
-        fisher_elt
-        for layer_elt in layer_key for fisher_elt in self.fisher_blocks
-        if self._equal_or_subset(layer_elt, fisher_elt)
+    # Raise an error if any variable in layer_key has been registered in any
+    # other blocks.
+    variable_to_block = {
+        var: (params, block)
+        for (params, block) in self.fisher_blocks.items()
+        for var in ensure_sequence(params)
     }
-
-    if not inclusions:
-      self.fisher_blocks[layer_key] = fisher_block
-      return fisher_block
-
-    result_key = None
-    for key in inclusions:
-      fisher_block_key = key if isinstance(key, (tuple, list)) else (key,)
-      in_existing_only = set(fisher_block_key) - set(layer_key)
-      in_new_only = set(layer_key) - set(fisher_block_key)
-
-      if in_existing_only and in_new_only:
-        # Existing and new key have an intersection but neither is a subset of
-        # the other. This is an error.
+    for variable in ensure_sequence(layer_key):
+      if variable in variable_to_block:
+        prev_key, prev_block = variable_to_block[variable]
         raise ValueError(
-            "Inconsistent registration, expected new key to be a subset or "
-            "superset of the existing key: existing is {}, new is {}".format(
-                key, layer_key))
-      elif in_existing_only and not in_new_only:
-        # Existing key is strict superset of new key. Return existing
-        # FisherBlock.
-        logging.warning("Graph Registration Warning: tried to register "
-                        "a subset ({}) of an already registered tuple "
-                        "({}), skipping".format(layer_key, fisher_block_key))
-        assert result_key is None
-        result_key = key
-      elif in_new_only and not in_existing_only:
-        # Existing key is a strict subset of new key. Replace existing
-        # FisherBlock with new one.
-        #
-        # TODO(b/68715045): This is dangerous. If there are existing
-        # registrations for a minibatch from elsewhere in the graph, they won't
-        # be re-registered with this new FisherBlock. The type of FisherBlock
-        # could also change here.
-        logging.warning(
-            "Replacing existing FisherBlock for key {} with new FisherBlock "
-            "for key {}. {} registered minibatches from the existing "
-            "FisherBlock will not be migrated.".format(
-                key, layer_key,
-                self.fisher_blocks[key].num_registered_minibatches))
-        self.fisher_blocks.pop(key)
-        self.fisher_blocks[layer_key] = fisher_block
-        assert result_key is None
-        result_key = layer_key
-      elif not in_new_only and not in_existing_only:
-        # Existing and new are identical. Reuse the old FisherBlock.
-        #
-        # TODO(b/68715045): This is dangerous. If the new FisherBlock has
-        # existing registered minibatches, they will not be migrated to the
-        # existing FisherBlock.
-        assert result_key is None
-        result_key = key
-      else:
-        raise ValueError("Unexpected layer key conflict: {} vs. {}".format(
-            layer_key, key))
-
-    return self.fisher_blocks[result_key]
-
-  def _register_block_with_nonsequence_key(self, layer_key, fisher_block):
-    """Validates and registers the layer_key if it's not a sequence."""
-    inclusions = {
-        fisher_elt
-        for fisher_elt in self.fisher_blocks
-        if self._equal_or_subset(layer_key, fisher_elt)
-    }
-
-    if not inclusions:
-      self.fisher_blocks[layer_key] = fisher_block
-    else:
-      logging.warning("Graph Registration Warning: tried to register "
-                      "variable ({}) but a containing tuple was already "
-                      "registered ({}), skipping".format(layer_key, inclusions))
-
+            "Attempted to register layer_key {} with block {}, but variable {}"
+            " was already registered in key {} with block {}.".format(
+                layer_key, fisher_block, variable, prev_key, prev_block))
+    self.fisher_blocks[layer_key] = fisher_block
     return fisher_block
-
-  def _equal_or_subset(self, elt1, elt2):
-    """Checks if the elements are equal or one is contained in the other."""
-    return (elt1 == elt2 or (isinstance(elt1,
-                                        (tuple, list)) and elt2 in elt1) or
-            (isinstance(elt2, (tuple, list)) and elt1 in elt2))
 
   def get_use_count_map(self):
     """Returns a dict of variables to their number of registrations."""
@@ -294,6 +296,49 @@ class LayerCollection(object):
   def subgraph(self):
     return self._subgraph
 
+  def define_linked_parameters(self, params, approximation=None):
+    """Identify a set of parameters that should be grouped together.
+
+    During automatic graph scanning, any matches containing variables that have
+    been identified as part of a linked group will be filtered out unless
+    the match parameters are exactly equal to the ones specified in the linked
+    group.
+
+    Args:
+      params: A variable, or a tuple or list of variables. The variables
+        to be linked.
+      approximation: Optional string specifying the type of approximation to use
+        for these variables. If unspecified, this layer collection's default
+        approximation for the layer type will be used.
+
+    Raises:
+      ValueError: If the parameters were already registered in a layer or
+        identified as part of an incompatible group.
+    """
+    params = frozenset(ensure_sequence(params))
+
+    # Check if any of the variables in 'params' is already in
+    # 'self.fisher_blocks.keys()'.
+    for registered_params, fisher_block in self.fisher_blocks.items():
+      registered_params_set = set(ensure_sequence(registered_params))
+      for variable in params:
+        if (variable in registered_params_set and
+            params != registered_params_set):
+          raise ValueError(
+              "Can't link parameters {}, variable {} was already registered in "
+              "group {} with layer {}".format(params, variable,
+                                              registered_params, fisher_block))
+
+    # Check if any of the variables in 'params' is already in
+    # 'self.linked_parameters'.
+    for variable in params:
+      for other_linked_params in self.linked_parameters:
+        if variable in other_linked_params:
+          raise ValueError("Can't link parameters {}, variable {} was already "
+                           "linked in group {}.".format(params, variable,
+                                                        other_linked_params))
+    self._linked_parameters[params] = approximation
+
   def create_subgraph(self):
     if not self.losses:
       raise ValueError("Must have at least one registered loss.")
@@ -307,11 +352,19 @@ class LayerCollection(object):
     return math_ops.add_n(
         tuple(loss.evaluate_on_sample() for loss in self.losses))
 
+  def _get_linked_approx(self, params):
+    """If params were linked, return their specified approximation."""
+    params_set = frozenset(ensure_sequence(params))
+    if params_set in self.linked_parameters:
+      return self.linked_parameters[params_set]
+    else:
+      return None
+
   def register_fully_connected(self,
                                params,
                                inputs,
                                outputs,
-                               approx=APPROX_KRONECKER_NAME,
+                               approx=None,
                                reuse=VARIABLE_SCOPE):
     """Registers a fully connnected layer.
 
@@ -332,15 +385,15 @@ class LayerCollection(object):
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
-    approx_to_block_types = {
-        APPROX_KRONECKER_NAME: fb.FullyConnectedKFACBasicFB,
-        APPROX_DIAGONAL_NAME: fb.FullyConnectedDiagonalFB,
-    }
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_fully_connected_approximation
 
-    if approx not in approx_to_block_types:
+    if approx not in _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES:
       raise ValueError("Bad value {} for approx.".format(approx))
 
-    block_type = approx_to_block_types[approx]
+    block_type = _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES[approx]
     has_bias = isinstance(params, (tuple, list))
 
     block = self.register_block(params, block_type(self, has_bias), reuse=reuse)
@@ -352,7 +405,7 @@ class LayerCollection(object):
                       padding,
                       inputs,
                       outputs,
-                      approx=APPROX_KRONECKER_NAME,
+                      approx=None,
                       reuse=VARIABLE_SCOPE):
     """Registers a convolutional layer.
 
@@ -377,15 +430,16 @@ class LayerCollection(object):
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
-    approx_to_block_types = {
-        APPROX_KRONECKER_NAME: fb.ConvKFCBasicFB,
-        APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
-    }
 
-    if approx not in approx_to_block_types:
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_conv2d_approximation
+
+    if approx not in _CONV2D_APPROX_TO_BLOCK_TYPES:
       raise ValueError("Bad value {} for approx.".format(approx))
 
-    block_type = approx_to_block_types[approx]
+    block_type = _CONV2D_APPROX_TO_BLOCK_TYPES[approx]
     block = self.register_block(
         params, block_type(self, params, strides, padding), reuse=reuse)
     block.register_additional_minibatch(inputs, outputs)
@@ -393,7 +447,7 @@ class LayerCollection(object):
   def register_generic(self,
                        params,
                        batch_size,
-                       approx=APPROX_DIAGONAL_NAME,
+                       approx=None,
                        reuse=VARIABLE_SCOPE):
     """Registers a generic layer.
 
@@ -413,15 +467,16 @@ class LayerCollection(object):
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
-    approx_to_block_types = {
-        APPROX_FULL_NAME: fb.FullFB,
-        APPROX_DIAGONAL_NAME: fb.NaiveDiagonalFB,
-    }
 
-    if approx not in approx_to_block_types:
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_generic_approximation
+
+    if approx not in _GENERIC_APPROX_TO_BLOCK_TYPES:
       raise ValueError("Bad value {} for approx.".format(approx))
 
-    block_type = approx_to_block_types[approx]
+    block_type = _GENERIC_APPROX_TO_BLOCK_TYPES[approx]
     block = self.register_block(params, block_type(self, params), reuse=reuse)
     block.register_additional_minibatch(batch_size)
 
@@ -448,10 +503,10 @@ class LayerCollection(object):
         tf.get_variable_scope().reuse.
 
     Raises:
-      ValueError: If reuse=True and name != None.
-      ValueError: If reuse=True and seed != None.
-      KeyError: If reuse=True and no existing LossFunction with 'name' found.
-      KeyError: If reuse=False and existing LossFunction with 'name' found.
+      ValueError: If reuse == True and name == None.
+      ValueError: If reuse == True and seed != None.
+      KeyError: If reuse == True and no existing LossFunction with 'name' found.
+      KeyError: If reuse == False and existing LossFunction with 'name' found.
     """
     name = name or self._graph.unique_name(
         "register_categorical_predictive_distribution")
@@ -560,11 +615,14 @@ class LayerCollection(object):
     try:
       hash(args)
     except TypeError:
-      raise TypeError((
-          "Unable to use (cls, args) = ({}, {}) as a key in "
-          "LayerCollection.fisher_factors. The pair cannot be hashed."
-      ).format(cls, args))
+      raise TypeError(
+          ("Unable to use (cls, args) = ({}, {}) as a key in "
+           "LayerCollection.fisher_factors. The pair cannot be hashed.").format(
+               cls, args))
 
-    with variable_scope.variable_scope(self._var_scope):
-      return utils.setdefault(self.fisher_factors, (cls, args),
-                              lambda: cls(*args))
+    key = cls, args
+    if key not in self.fisher_factors:
+      colo = self._colocate_cov_ops_with_inputs
+      with variable_scope.variable_scope(self._var_scope):
+        self.fisher_factors[key] = cls(*args, colocate_cov_ops_with_inputs=colo)
+    return self.fisher_factors[key]

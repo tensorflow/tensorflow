@@ -192,6 +192,8 @@ class TestImage(test.TestCase):
     _ = keras.preprocessing.image.load_img(fname)
     _ = keras.preprocessing.image.load_img(fname, grayscale=True)
     _ = keras.preprocessing.image.load_img(fname, target_size=(10, 10))
+    _ = keras.preprocessing.image.load_img(fname, target_size=(10, 10),
+                                           interpolation='bilinear')
 
     # create iterator
     generator = keras.preprocessing.image.ImageDataGenerator()

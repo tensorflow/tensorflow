@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -440,6 +441,14 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
+  auto old_element_type = operand_shape.element_type();
+  if (primitive_util::IsComplexType(old_element_type) &&
+      !primitive_util::IsComplexType(new_element_type)) {
+    return Unimplemented(
+        "Unsupported conversion from complex to real type: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
   if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -447,6 +456,36 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return InvalidArgument(
         "cannot convert from or to tuple type; requested conversion: %s => %s",
         ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+
+  return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferBitcastConvertShape(
+    const Shape& operand_shape, PrimitiveType new_element_type) {
+  auto old_element_type = operand_shape.element_type();
+  if (primitive_util::IsComplexType(old_element_type) !=
+      primitive_util::IsComplexType(new_element_type)) {
+    return Unimplemented(
+        "Unsupported conversion between real and complex types: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+  if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
+    // Note: we may want to support tuple conversions via this operation in the
+    // future, by recursing into the tuple elements to check all sub-conversions
+    // are valid. For now we just reject them, though.
+    return InvalidArgument(
+        "cannot convert from or to tuple type; requested conversion: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+  if (primitive_util::BitWidth(old_element_type) !=
+      primitive_util::BitWidth(new_element_type)) {
+    return InvalidArgument(
+        "cannot bitcast types with different bit-widths: %s => %s",
+        PrimitiveType_Name(old_element_type).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
 
@@ -770,8 +809,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(lhs, "lhs of binary operation"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(rhs, "rhs of binary operation"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
+      lhs, tensorflow::strings::StrCat("lhs of binary operation ",
+                                       BinaryOperation_Name(operation))));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
+      rhs, tensorflow::strings::StrCat("rhs of binary operation ",
+                                       BinaryOperation_Name(operation))));
   switch (operation) {
     case BINOP_DOT:
       return InferDotOpShape(lhs, rhs);
@@ -1943,7 +1986,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
-        "Reshape dimensions not a permutation of the operand dimensions.");
+        "Reshape dimensions [%s] are not a permutation of the operand "
+        "dimensions (operand shape is %s).",
+        tensorflow::str_util::Join(dimensions, ",").c_str(),
+        ShapeUtil::HumanString(operand).c_str());
   }
 
   return inferred_shape;

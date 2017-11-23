@@ -117,6 +117,18 @@ class VariableScopeTest(test.TestCase):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.dtype.base_dtype, dtypes.float16)
 
+  def testEagerVaribleStore(self):
+    with context.eager_mode():
+      store = variable_scope.EagerVariableStore()
+      with store.as_default():
+        v = variable_scope.get_variable("v", shape=(), trainable=True)
+        w = variable_scope.get_variable("w", shape=(), trainable=False)
+
+      self.assertTrue(v in store.variables())
+      self.assertTrue(w in store.variables())
+      self.assertTrue(v in store.trainable_variables())
+      self.assertFalse(w in store.trainable_variables())
+
   @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonTensorValue(self):
     v = variable_scope.get_variable("v4", initializer=4, dtype=dtypes.int32)

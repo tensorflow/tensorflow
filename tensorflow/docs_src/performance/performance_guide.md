@@ -127,7 +127,7 @@ Reading large numbers of small files significantly impacts I/O performance.
 One approach to get maximum I/O throughput is to preprocess input data into
 larger (~100MB) `TFRecord` files. For smaller data sets (200MB-1GB), the best
 approach is often to load the entire data set into memory. The document
-[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/research/slim#Data)
+[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/research/slim#downloading-and-converting-to-tfrecord-format)
 includes information and scripts for creating `TFRecords` and this
 [script](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10_estimator/generate_cifar10_tfrecords.py)
 converts the CIFAR-10 data set into `TFRecords`.

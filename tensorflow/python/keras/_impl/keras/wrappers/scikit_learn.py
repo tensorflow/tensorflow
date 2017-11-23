@@ -352,5 +352,5 @@ class KerasRegressor(BaseWrapper):
     kwargs = self.filter_sk_params(Sequential.evaluate, kwargs)
     loss = self.model.evaluate(x, y, **kwargs)
     if isinstance(loss, list):
-      return loss[0]
-    return loss
+      return -loss[0]
+    return -loss

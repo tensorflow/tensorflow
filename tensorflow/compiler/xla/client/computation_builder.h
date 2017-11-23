@@ -68,6 +68,7 @@ class ShardingBuilder {
                          const TileAssignment& tile_assignment) {
     OpSharding result;
     result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    *result.mutable_tile_shape() = tile_shape;
     for (int64 dim : tile_assignment.dimensions()) {
       result.add_tile_assignment_dimensions(dim);
     }
@@ -120,14 +121,10 @@ class ComputationBuilder {
   // result, OpMetadata is set on the Computation Builder. All subsequent
   // instructions generated via this Computation Builder will have the same
   // OpMetadata attached until a call to ClearOpMetdata.
-  void SetOpMetadata(const OpMetadata& metadata) {
-    metadata_ = metadata;
-  }
+  void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
 
   // Clears the HloMetadata state.
-  void ClearOpMetadata() {
-    metadata_.Clear();
-  }
+  void ClearOpMetadata() { metadata_.Clear(); }
 
   // Sets an OpSharding that will be attached to all instructions until cleared.
   void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
@@ -670,6 +667,13 @@ class ComputationBuilder {
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
   ComputationDataHandle ConvertElementType(const ComputationDataHandle& operand,
+                                           PrimitiveType new_element_type);
+
+  // Enqueues a no-op instruction onto the computation that changes
+  // the element type of the operand array to primitive_type. The
+  // bit-widths of the source and destination element types must be
+  // identical.
+  ComputationDataHandle BitcastConvertType(const ComputationDataHandle& operand,
                                            PrimitiveType new_element_type);
 
   // Enqueues a float32 reciprocal instruction onto the computation.

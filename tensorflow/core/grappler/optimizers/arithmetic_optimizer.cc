@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -80,22 +81,6 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
   return Status::OK();
 }
 
-bool IsInvolution(const NodeDef& node) {
-  const std::unordered_set<string> involution_ops = {
-      "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"};
-  return involution_ops.count(node.op()) > 0;
-}
-
-// Returns true if the op in node only rearranges the order of elements in an
-// input tensor, or more specifically, if it commutes with all element-wise
-// operations on the values.
-bool IsValuePreserving(const NodeDef& node) {
-  const std::unordered_set<string> value_preserving_ops = {
-      "Transpose",  "Reshape",      "Identity",        "InvertPermutation",
-      "Reverse",    "StopGradient", "PreventGradient", "CheckNumerics",
-      "ExpandDims", "Squeeze"};
-  return value_preserving_ops.count(node.op()) > 0;
-}
 
 template <typename T>
 bool AreInversePermutations(const std::vector<T>& a, const std::vector<T>& b) {
@@ -185,74 +170,34 @@ bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
   return false;
 }
 
-bool SimplyReordersData(const NodeDef& node) {
-  return node.op() == "Transpose";
+bool MaybeAddControlInput(const string& new_input, NodeDef* node,
+                          GraphDef* graph, NodeMap* node_map) {
+  bool already_exists = false;
+  for (const string& input : node->input()) {
+    if (input == new_input || AsControlDependency(input) == new_input) {
+      already_exists = true;
+      break;
+    }
+  }
+  if (!already_exists) {
+    const string ctrl_dep =
+        ConstantFolding::AddControlDependency(new_input, graph, node_map);
+    node->add_input(ctrl_dep);
+    node_map->AddOutput(NodeName(new_input), node->name());
+  }
+  return !already_exists;
 }
 
-// Follow a chain (through input(0)) of ops starting at `source->input(0)` as
-// long as they
-//  1. preserve the values of their first input,
-//  2. have a single output,
-//  3. are not in nodes_to_preserve.
-// Returns the last node in the chain satisfying these properties or source
-// itself if a chain of length zero was found.
-//
-// source <- vp <- vp <- vp <- non_vp
-//                       ^^
-//                   return value
-NodeDef* GetTailOfValuePreservingChain(
-    const NodeDef* source, const NodeMap* node_map,
-    const std::unordered_set<string>& nodes_to_preserve) {
-  const NodeDef* source_parent = source;
-  source = node_map->GetNode(source->input(0));
-  while (IsValuePreserving(*source) &&
-         node_map->GetOutputs(source->name()).size() == 1 &&
-         // Do not skip over preserved nodes, because folding will change
-         // the results of these skipped data-reordering nodes.
-         // TODO(jingyue): A more elegant way is to copy this chain of
-         // data-reordering nodes and modify only the copy.
-         !nodes_to_preserve.count(source->name())) {
-    source_parent = source;
-    source = node_map->GetNode(source->input(0));
+int CopyControlInputs(const NodeDef& from, NodeDef* to, GraphDef* graph,
+                      NodeMap* node_map) {
+  int num_copied = 0;
+  for (const string& input : from.input()) {
+    if (IsControlInput(input) &&
+        MaybeAddControlInput(input, to, graph, node_map)) {
+      ++num_copied;
+    }
   }
-  return const_cast<NodeDef*>(source_parent);
-}
-
-// Returns the data type in attribute `attr_name` of `node`. If that attribute
-// doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
-  if (!node.attr().count(attr_name)) {
-    return DT_INVALID;
-  }
-  const auto& attr = node.attr().at(attr_name);
-  if (attr.value_case() != AttrValue::kType) {
-    return DT_INVALID;
-  }
-  return attr.type();
-}
-
-bool IsCommutative(const NodeDef& node) {
-  if (node.op() == "Add" && node.input_size() > 0) {
-    // Workaround for "Add" not being marked is_commutative and is_aggregate.
-    // (See cl/173915048).
-    const auto type = GetDataTypeFromAttr(node, "T");
-    return type != DT_INVALID && type != DT_STRING;
-  }
-  const OpDef* op_def = nullptr;
-  const Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
-  return status.ok() && op_def->is_commutative();
-}
-
-bool IsAggregate(const NodeDef& node) {
-  if (node.op() == "Add" && node.input_size() > 0) {
-    // Workaround for "Add" not being marked is_commutative and is_aggregate.
-    // (See cl/173915048).
-    const auto type = GetDataTypeFromAttr(node, "T");
-    return type != DT_INVALID && type != DT_STRING;
-  }
-  const OpDef* op_def = nullptr;
-  const Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
-  return status.ok() && op_def->is_aggregate();
+  return num_copied;
 }
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
@@ -376,6 +321,18 @@ void AddFrameControlDeps(const NodeDef* old_node,
   }
 }
 
+NodeDef* GetTailOfValuePreservingChain(
+    const NodeDef& node, const NodeMap& node_map,
+    const std::unordered_set<string>& nodes_to_preserve) {
+  auto is_value_preserving_non_branching = [&](const NodeDef& node) {
+    return IsValuePreserving(node) &&
+           NumNonControlOutputs(node, node_map) == 1 &&
+           nodes_to_preserve.count(node.name()) == 0;
+  };
+  return GetTailOfChain(node, node_map, /*follow_control_input=*/false,
+                        is_value_preserving_non_branching);
+}
+
 }  // namespace
 
 class UniqueNodes {
@@ -485,27 +442,17 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  if (IsEnter(node) || IsExit(node) || IsPlaceholder(node)) {
+  if (IsEnter(node) || IsExit(node)) {
     return false;
   }
   if (node.device().find("SPU") != string::npos) {
     return false;
   }
-  const OpDef* op_def = nullptr;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
-  if (!status.ok()) {
-    return false;
+  // Workaround for Assert mistakenly being labeled as stateful.
+  if (IsAssert(node)) {
+    return true;
   }
-  if (op_def->is_stateful()) {
-    return false;
-  }
-  // Don't consolidate ops such as AssignAdd
-  for (const auto& input : op_def->input_arg()) {
-    if (input.is_ref()) {
-      return false;
-    }
-  }
-  return true;
+  return IsFreeOfSideEffect(node);
 }
 
 void ArithmeticOptimizer::DedupComputations(GraphDef* optimized_graph) const {
@@ -574,7 +521,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // the two instances of the involution from the graph, since they cancel
     // each other.
     NodeDef* tail =
-        GetTailOfValuePreservingChain(node, node_map, nodes_to_preserve_);
+        GetTailOfValuePreservingChain(*node, *node_map, nodes_to_preserve_);
     NodeDef* involution = node_map->GetNode(tail->input(0));
     if (involution->op() == node->op()) {
       // Skip both *node and *involution since they cancel each other.
@@ -592,7 +539,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
 
   // Remove inverse transposes.
   if (node->op() == "Transpose" || node->op() == "ConjugateTranspose") {
-    const NodeDef* input = node_map->GetNode(node->input(0));
+    NodeDef* input = node_map->GetNode(node->input(0));
     if (input->op() == node->op()) {
       const NodeDef* node_perm = node_map->GetNode(node->input(1));
       const NodeDef* input_perm = node_map->GetNode(input->input(1));
@@ -707,7 +654,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           node_map->AddOutput(new_transpose->name(), new_cast->name());
 
           new_nodes->push_back(new_transpose);
-          new_nodes->push_back(new_cast);
           //  Add frame dependencies that the original node might have had.
           AddFrameControlDeps(node, {new_transpose, new_cast},
                               new_transpose->input(0), {new_transpose},
@@ -782,7 +728,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     // since the weights tend to be smaller than the activations.
     if (weights->op() == "Const") {
       const NodeDef* source = node_map->GetNode(
-          GetTailOfValuePreservingChain(node, node_map, nodes_to_preserve_)
+          GetTailOfValuePreservingChain(*node, *node_map, nodes_to_preserve_)
               ->input(0));
       if (source->op() == "Mul" &&
           node_map->GetOutputs(source->name()).size() == 1) {
@@ -799,7 +745,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
               scale_tensor.tensor_shape().dim_size() == 0) {
             // Create new node `scaled_weights`.
             NodeDef* scaled_weights = graph_def->add_node();
-            scaled_weights->set_name(weights->name() + "_scaled");
+            scaled_weights->set_name(weights->name() + "_scaled_" +
+                                     conv->name());
             scaled_weights->set_op("Mul");
             scaled_weights->set_device(weights->device());
             (*scaled_weights->mutable_attr())["T"] =
@@ -837,8 +784,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     }
   }
 
-  if (node->input_size() > 0 && IsAggregate(*node) &&
-      !node_map->GetOutputs(node->name()).empty()) {
+  if (node->input_size() > 0 && IsAggregate(*node)) {
     // Discard aggregate nodes with a single input.
     if (node->input_size() == 1) {
       return node->input(0);
@@ -853,18 +799,22 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     //   Mul(Const(N), x))
     //
     bool all_equal = true;
+    int num_inputs = 1;
     for (int i = 1; i < node->input_size(); ++i) {
+      if (IsControlInput(node->input(i))) {
+        break;
+      }
+      ++num_inputs;
       if (node->input(i) != node->input(0)) {
         all_equal = false;
         break;
       }
     }
-    if (all_equal) {
+    if (all_equal && node_map->GetNode(node->name() + "_const") == nullptr) {
       // 1. Create constant node with value N.
-      const int N = node->input_size();
       const auto type = GetDataTypeFromAttr(*node, "T");
       Tensor t(type, TensorShape({}));
-      Status status = SetTensorValue(type, N, &t);
+      Status status = SetTensorValue(type, num_inputs, &t);
       if (!status.ok()) {
         LOG(WARNING) << "Failed to create const node: "
                      << status.error_message();
@@ -885,12 +835,12 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       new_mul_node->set_device(node->device());
       SetDataTypeToAttr(type, "T", new_mul_node);
       node_map->AddNode(new_mul_node->name(), new_mul_node);
-      new_nodes->push_back(new_mul_node);
       new_mul_node->add_input(new_const_node->name());
       node_map->AddOutput(new_const_node->name(), new_mul_node->name());
       new_mul_node->add_input(node->input(0));
       node_map->AddOutput(node->input(0), new_mul_node->name());
 
+      CopyControlInputs(*node, new_mul_node, graph_def, node_map);
       AddFrameControlDeps(node, {new_const_node, new_mul_node}, node->input(0),
                           {new_const_node}, graph_def, node_map, frame_map);
       return new_mul_node->name();
@@ -902,11 +852,12 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   // where all the inputs are Mul nodes. This pattern occurs frequently in
   // regularization terms for the gradients during training.
   if (node->input_size() > 1 && IsAggregate(*node) &&
-      !node_map->GetOutputs(node->name()).empty()) {
+      node_map->GetNode(node->name() + "_hoist_add") == nullptr) {
     // Determine the set of common factors if the input nodes are all Mul nodes.
     std::set<string> common_factors;
     int i = 0;
-    while (i < node->input_size() && (i == 0 || !common_factors.empty())) {
+    while (i < node->input_size() && (i == 0 || !common_factors.empty()) &&
+           !IsControlInput(node->input(i))) {
       const NodeDef* input = node_map->GetNode(node->input(i));
       if (input->op() == "Mul") {
         std::set<string> factors_i{input->input(0), input->input(1)};
@@ -936,32 +887,34 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       NodeDef* new_mul_node = graph_def->add_node();
       NodeDef* new_add_node = graph_def->add_node();
       *new_add_node = *node;
-      new_add_node->set_name(node->name() + "_hoist");
+      new_add_node->set_name(node->name() + "_hoist_add");
       new_nodes->push_back(new_add_node);
       node_map->AddNode(new_add_node->name(), new_add_node);
       for (int i = 0; i < node->input_size(); ++i) {
-        NodeDef* mul_node = node_map->GetNode(node->input(i));
+        const string& input = node->input(i);
+        if (IsControlInput(input)) {
+          MaybeAddControlInput(input, new_add_node, graph_def, node_map);
+          continue;
+        }
+        NodeDef* mul_node = node_map->GetNode(input);
         int unique_factor_index = mul_node->input(0) == common_factor ? 1 : 0;
         const string unique_factor = mul_node->input(unique_factor_index);
         new_add_node->set_input(i, unique_factor);
         // 2. Use a copy of the first Mul node for the outer multiplication.
         if (i == 0) {
           *new_mul_node = *mul_node;
-          new_mul_node->set_name(new_mul_node->name() + "_hoist");
+          new_mul_node->set_device(node->device());
+          new_mul_node->set_name(node->name() + "_hoist_mul");
           new_mul_node->set_input(0, common_factor);
           new_mul_node->set_input(1, new_add_node->name());
-          new_nodes->push_back(new_mul_node);
           node_map->AddNode(new_mul_node->name(), new_mul_node);
         }
       }
-      // 3. Set the device of the new nodes to that of the common factor "x".
-      NodeDef* common_factor_node = node_map->GetNode(common_factor);
-      new_add_node->set_device(common_factor_node->device());
-      new_mul_node->set_device(common_factor_node->device());
 
-      // 4. Add frame dependencies that the original node might have had.
+      // 3. Add frame dependencies that the original node might have had.
       AddFrameControlDeps(node, {new_add_node, new_mul_node}, common_factor,
                           {new_add_node}, graph_def, node_map, frame_map);
+
       return new_mul_node->name();
     }
   }
@@ -1015,8 +968,9 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   }
 
   // Fold Conj into Transpose or ConjugateTranspose.
-  if (node->op() == "Conj" || node->op() == "Transpose" ||
-      node->op() == "ConjugateTranspose") {
+  if ((node->op() == "Conj" || node->op() == "Transpose" ||
+       node->op() == "ConjugateTranspose") &&
+      node_map->GetNode(node->name() + "_fused") == nullptr) {
     const NodeDef* input = node_map->GetNode(node->input(0));
     const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
     const NodeDef* conj_op = node->op() == "Conj" ? node : input;
@@ -1042,36 +996,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   return "";
 }
 
-namespace {
-// A vector with a set. The set stores the same elements as the vector, and
-// quickly answers whether a value is in the vector. Duplicated elements are not
-// allowed for now.
-template <class T>
-class SetVector {
- public:
-  void PushBack(const T& value) {
-    CHECK(!Exists(value)) << "Value " << value << " is already in the set.";
-    set_.insert(value);
-    vector_.push_back(value);
-  }
-
-  T PopBack() {
-    T back = vector_.back();
-    set_.erase(back);
-    vector_.pop_back();
-    return back;
-  }
-
-  bool Exists(const T& value) const { return set_.count(value); }
-
-  bool Empty() const { return vector_.empty(); }
-
- private:
-  std::unordered_set<T> set_;
-  std::vector<T> vector_;
-};
-}  // namespace
-
 Status ArithmeticOptimizer::SimplifyArithmeticOps(
     GraphDef* optimized_graph) const {
   NodeMap node_map(optimized_graph);
@@ -1093,7 +1017,12 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(
     }
 
     if (NodeName(simplified_tensor) != node->name()) {
-      // When `node` is simplifed to another node rather than in-place, the
+      // Always consider simplified_tensor for further optimizations.
+      const NodeDef* simplified_node = node_map.GetNode(simplified_tensor);
+      if (simplified_node != nullptr) {
+        nodes_to_simplify.PushBack(simplified_node);
+      }
+      // When `node` is simplified to another node rather than in-place, the
       // consumers of `node` are already redirected to `simplified_tensor`.
       // Re-push the consumers into `nodes_to_simplify` for further
       // optimizations.
@@ -1114,15 +1043,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(
                   << consumer->name() << " to " << simplified_tensor;
         }
         node_map.UpdateInput(consumer->name(), node->name(), simplified_tensor);
-        if (!nodes_to_simplify.Exists(consumer)) {
-          nodes_to_simplify.PushBack(consumer);
-        }
+        nodes_to_simplify.PushBack(consumer);
       }
     }
     for (const NodeDef* new_node : new_nodes) {
-      if (!nodes_to_simplify.Exists(new_node)) {
-        nodes_to_simplify.PushBack(new_node);
-      }
+      nodes_to_simplify.PushBack(new_node);
     }
   }
   return Status::OK();
@@ -1134,9 +1059,12 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   *optimized_graph = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
 
-  GraphProperties graph_properties(item);
-  TF_RETURN_IF_ERROR(graph_properties.InferStatically());
-  TF_RETURN_IF_ERROR(graph_properties.AnnotateOutputShapes(optimized_graph));
+  if (opt_level_ == RewriterConfig::AGGRESSIVE) {
+    // Shapes are only needed in aggressive mode.
+    GraphProperties graph_properties(item);
+    TF_RETURN_IF_ERROR(graph_properties.InferStatically());
+    TF_RETURN_IF_ERROR(graph_properties.AnnotateOutputShapes(optimized_graph));
+  }
 
   DedupComputations(optimized_graph);
   TF_RETURN_IF_ERROR(SimplifyArithmeticOps(optimized_graph));

@@ -52,12 +52,14 @@ namespace xla {
   V(kBatchNormInference, "batch-norm-inference")             \
   V(kBatchNormTraining, "batch-norm-training")               \
   V(kBitcast, "bitcast")                                     \
+  V(kBitcastConvert, "bitcast-convert")                      \
   V(kBroadcast, "broadcast")                                 \
   V(kCall, "call", kHloOpcodeIsVariadic)                     \
   V(kCeil, "ceil")                                           \
   V(kClamp, "clamp")                                         \
   V(kComplex, "complex")                                     \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)       \
+  V(kConditional, "conditional")                             \
   V(kConstant, "constant")                                   \
   V(kConvert, "convert")                                     \
   V(kConvolution, "convolution")                             \
@@ -97,6 +99,7 @@ namespace xla {
   V(kPower, "power")                                         \
   V(kReal, "real")                                           \
   V(kRecv, "recv")                                           \
+  V(kRecvDone, "recv-done")                                  \
   V(kReduce, "reduce")                                       \
   V(kReducePrecision, "reduce-precision")                    \
   V(kReduceWindow, "reduce-window")                          \
@@ -108,6 +111,7 @@ namespace xla {
   V(kSelect, "select")                                       \
   V(kSelectAndScatter, "select-and-scatter")                 \
   V(kSend, "send")                                           \
+  V(kSendDone, "send-done")                                  \
   V(kShiftLeft, "shift-left")                                \
   V(kShiftRightArithmetic, "shift-right-arithmetic")         \
   V(kShiftRightLogical, "shift-right-logical")               \

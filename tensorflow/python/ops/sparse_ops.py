@@ -1434,6 +1434,35 @@ def serialize_many_sparse(sp_input, name=None):
       sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
 
 
+def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
+  """Deserialize `SparseTensor` objects.
+
+  The input is expected to have shape [d_1, ..., d_m, 3], where the last
+  dimension stores a serialized `SparseTensor`. The method deserializes
+  all input `SparseTensor`s, concatenates them into a single tensor, and
+  reshapes the sparse tensor to preserve the structure of the input.
+
+  Args:
+    serialized_sparse: The serialized `SparseTensor` objects.
+      The last dimension must have 3 columns.
+    dtype: The `dtype` of the serialized `SparseTensor` objects.
+    rank: (optional) Python int, the rank of the `SparseTensor` objects.
+    name: A name prefix for the returned tensors (optional).
+
+  Returns:
+    A `SparseTensor` representing the deserialized `SparseTensor` objects.
+
+  """
+  output_indices, output_values, output_shape = (
+      gen_sparse_ops._deserialize_sparse(serialized_sparse, dtype, name=name))
+
+  # Feed rank data back in, if available
+  output_indices.set_shape([None, rank])
+  output_shape.set_shape([rank])
+
+  return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)
+
+
 def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   """Deserialize and concatenate `SparseTensors` from a serialized minibatch.
 

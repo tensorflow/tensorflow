@@ -50,13 +50,43 @@ using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
 // spits out the human-readable duration form.
+//
+// By default, the timing traces are only printed at VLOG(1) and above:
+//
+//   XLA_SCOPED_LOGGING_TIMER("fooing bar");  // nop if !VLOG_IS_ON(1).
+//
+// but you can control this via:
+//
+//   XLA_SCOPED_LOGGING_TIMER_LEVEL("fooing bar", 2);  // nop if !VLOG_IS_ON(2)
+//
+#define XLA_SCOPED_LOGGING_TIMER(label) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__)
+#define XLA_SCOPED_LOGGING_TIMER_LEVEL(label, level) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, __COUNTER__)
+
+// Helper for implementing macros above.  Do not use directly.
+//
+// Forces the evaluation of "counter", which we expect is equal to __COUNTER__.
+#define XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, counter) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)
+
+// Helper for macros above.  Don't use directly.
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
+      label, VLOG_IS_ON(level))
+
+// RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
+// macros above.  Recommended usage is via the macros so you don't have to give
+// the timer a name or worry about calling VLOG_IS_ON yourself.
 struct ScopedLoggingTimer {
-  explicit ScopedLoggingTimer(const string& label, int32 vlog_level = 1);
+  // The timer does nothing if enabled is false.  This lets you pass in your
+  // file's VLOG_IS_ON value.
+  ScopedLoggingTimer(const string& label, bool enabled);
   ~ScopedLoggingTimer();
 
-  uint64 start_micros;
+  bool enabled;
   string label;
-  int32 vlog_level;
+  uint64 start_micros;
 };
 
 // Given a vector<T>, returns a MutableArraySlice<char> that points at its

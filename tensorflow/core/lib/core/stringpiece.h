@@ -35,6 +35,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+struct StringPieceHasher;
+
 class StringPiece {
  public:
   typedef size_t size_type;
@@ -50,11 +52,6 @@ class StringPiece {
 
   // Create a slice that refers to s[0,strlen(s)-1]
   StringPiece(const char* s) : data_(s), size_(strlen(s)) {}
-
-  void set(const void* data, size_t len) {
-    data_ = reinterpret_cast<const char*>(data);
-    size_ = len;
-  }
 
   // Return a pointer to the beginning of the referenced data
   const char* data() const { return data_; }
@@ -77,12 +74,6 @@ class StringPiece {
   char operator[](size_t n) const {
     assert(n < size());
     return data_[n];
-  }
-
-  // Change this slice to refer to an empty array
-  void clear() {
-    data_ = "";
-    size_ = 0;
   }
 
   // Drop the first "n" bytes from this slice.
@@ -114,9 +105,7 @@ class StringPiece {
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 
-  struct Hasher {
-    size_t operator()(StringPiece arg) const;
-  };
+  using Hasher = ::tensorflow::StringPieceHasher;
 
   // Return a string that contains the copy of the referenced data.
   std::string ToString() const { return std::string(data_, size_); }
@@ -142,6 +131,10 @@ class StringPiece {
   size_t size_;
 
   // Intentionally copyable
+};
+
+struct StringPieceHasher {
+  size_t operator()(StringPiece s) const;
 };
 
 inline bool operator==(StringPiece x, StringPiece y) {

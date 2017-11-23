@@ -431,8 +431,11 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                           true));
 
   TF_ASSIGN_OR_RETURN(
+      module, backend->compiler()->RunHloPasses(std::move(module), executor));
+
+  TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), executor));
+      backend->compiler()->RunBackend(std::move(module), executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -573,29 +576,15 @@ Service::ExecuteParallelAndRegisterResult(
   for (auto& index_to_profiled_stream : index_to_profiled_streams) {
     int64 device = index_to_profiled_stream.first;
     se::Stream* stream = index_to_profiled_stream.second;
-    HloExecutionProfile hlo_profile;
-    TF_RETURN_IF_ERROR(executables[device]->PopulateExecutionProfile(
-        &hlo_profile, stream->parent()));
-
-    std::unordered_set<const xla::HloComputation*> profiled_computations =
-        hlo_profile.profiled_computations();
-    // To ensure we have print the profiles in a stable order, iterate over the
-    // computations in post order.
-    auto& module = executables[device]->module();
-    std::list<xla::HloComputation*> all_computations =
-        module.MakeComputationPostOrder();
-    for (xla::HloComputation* computation : all_computations) {
-      if (profiled_computations.count(computation) > 0) {
-        string profile_string = hlo_profile.ToString(
-            *computation, streams[0]->parent()->GetDeviceDescription(),
-            executables[device]->CreateCostAnalysis().get());
-        if (!profile_string.empty()) {
-          LOG(INFO) << "HLO profile for execution on device " << device
-                    << ":\n";
-          XLA_LOG_LINES(tensorflow::INFO, profile_string);
-        }
-      }
-    }
+    Executable* executable = executables[device];
+    const HloModule& module = executable->module();
+    HloExecutionProfile hlo_profile(&executable->hlo_profile_printer(),
+                                    &executable->hlo_profile_index_map());
+    TF_RETURN_IF_ERROR(
+        executable->PopulateExecutionProfile(&hlo_profile, stream->parent()));
+    XLA_LOG_LINES(
+        tensorflow::INFO,
+        hlo_profile.ToString(streams[0]->parent()->GetDeviceDescription()));
     hlo_graph_dumper::MaybeDumpHloModule(module, "Service::Execute",
                                          &hlo_profile);
   }
@@ -1375,6 +1364,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kConvertRequest:
       handle_status =
           computation->AddConvertInstruction(arg->convert_request());
+      break;
+    case OpRequest::kBitcastConvertRequest:
+      handle_status = computation->AddBitcastConvertInstruction(
+          arg->bitcast_convert_request());
       break;
     case OpRequest::kConvolveRequest:
       handle_status =

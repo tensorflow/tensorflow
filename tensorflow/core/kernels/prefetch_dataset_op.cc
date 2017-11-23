@@ -36,6 +36,8 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
     int64 buffer_size;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
+    OP_REQUIRES(ctx, buffer_size > 0,
+                errors::InvalidArgument("buffer_size must be > 0"));
 
     *output = new Dataset(input, buffer_size);
   }

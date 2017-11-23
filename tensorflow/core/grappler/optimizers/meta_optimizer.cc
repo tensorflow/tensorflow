@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
@@ -53,6 +54,10 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(
         new AutoParallel(cfg_.auto_parallel().num_replicas()));
   }
+  if (optimizer == "dependency") {
+    graph_optimizer.reset(
+        new DependencyOptimizer(cfg_.dependency_optimization()));
+  }
   return graph_optimizer;
 }
 
@@ -64,14 +69,18 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(new ModelPruner()));
     }
     if (cfg_.constant_folding() != RewriterConfig::OFF) {
-      optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new ConstantFolding(cpu_device_)));
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+          new ConstantFolding(cfg_.constant_folding(), cpu_device_)));
     }
     if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new ArithmeticOptimizer(cfg_.arithmetic_optimization())));
     }
-    if (cfg_.optimize_tensor_layout()) {
+    if (cfg_.dependency_optimization() == RewriterConfig::ON) {
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+          new DependencyOptimizer(cfg_.dependency_optimization())));
+    }
+    if (cfg_.layout_optimizer() == RewriterConfig::ON) {
       optimizers.push_back(
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
@@ -92,9 +101,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           new AutoParallel(cfg_.auto_parallel().num_replicas())));
     }
   } else {
-    std::set<string> available_optimizers = {"pruning",      "constfold",
-                                             "layout",       "memory",
-                                             "autoparallel", "arithmetic"};
+    std::set<string> available_optimizers = {
+        "pruning",      "constfold",  "layout",    "memory",
+        "autoparallel", "arithmetic", "dependency"};
     for (const auto& optimizer : cfg_.optimizers()) {
       if (available_optimizers.find(optimizer) != available_optimizers.end()) {
         optimizers.push_back(NewOptimizer(optimizer));
@@ -125,6 +134,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
             ". Graph size after: ", optimized_graph->node_size());
       }
       result_.push_back(std::make_pair(optimizer->name(), result));
+      VLOG(1) << "Optimizer " << optimizer->name()
+              << " return status: " << result;
     } else {
       GrapplerItem optimized_item(item, std::move(*optimized_graph));
       auto status =
@@ -143,6 +154,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
             ". Graph size after: ", optimized_graph->node_size());
       }
       result_.push_back(std::make_pair(optimizer->name(), result));
+      VLOG(1) << "Optimizer " << optimizer->name()
+              << " return status: " << result;
     }
   }
 
@@ -175,8 +188,10 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 }
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
-  return !cfg.disable_model_pruning() || cfg.optimize_tensor_layout() ||
+  return !cfg.disable_model_pruning() ||
+         cfg.layout_optimizer() == RewriterConfig::ON ||
          cfg.constant_folding() != RewriterConfig::OFF ||
+         cfg.dependency_optimization() == RewriterConfig::ON ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          cfg.auto_parallel().enable() || cfg.memory_optimization() > 1 ||
          !cfg.optimizers().empty();

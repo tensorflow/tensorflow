@@ -1225,7 +1225,13 @@ class EagerVariableStore(object):
     return with_variable_store(self._store)
 
   def variables(self):
-    return self._store._vars.values()  # pylint: disable=protected-access
+    return sorted(self._store._vars.values(), key=lambda x: x.name)  # pylint: disable=protected-access
+
+  def trainable_variables(self):
+    # pylint: disable=protected-access
+    return sorted([x for x in self._store._vars.values() if x._trainable],
+                  key=lambda x: x.name)
+    # pylint: enable=protected-access
 
 
 def get_variable(name,
@@ -1685,7 +1691,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
   v1 = foo()  # Creates v.
   v2 = foo()  # Gets the same, existing v.
   assert v1 == v2
-
+  ```
 
   Basic example of sharing a variable with reuse=True:
 
@@ -1822,7 +1828,13 @@ class variable_scope(object):  # pylint: disable=invalid-name
     self._current_name_scope = None
 
   def __enter__(self):
-    if self._in_graph_mode:
+    # If the default graph is building a function, then we should not replace it
+    # with the cached graph.
+    if ops.get_default_graph().building_function:
+      self._building_function = True
+    else:
+      self._building_function = False
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager = self._graph.as_default()
       self._graph_context_manager.__enter__()
     if self._cached_pure_variable_scope is not None:
@@ -1901,7 +1913,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
         type_arg, value_arg, traceback_arg)
     if self._current_name_scope:
       self._current_name_scope.__exit__(type_arg, value_arg, traceback_arg)
-    if self._in_graph_mode:
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager.__exit__(type_arg, value_arg, traceback_arg)
 
 
@@ -1973,8 +1985,10 @@ def variable(initial_value=None,
              validate_shape=True,
              caching_device=None,
              name=None,
-             dtype=None):
-  use_resource = get_variable_scope().use_resource
+             dtype=None,
+             use_resource=None):
+  if use_resource is None:
+    use_resource = get_variable_scope().use_resource
   if use_resource or (use_resource is None and context.in_eager_mode()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,

@@ -265,7 +265,7 @@ for arch in $archs; do
                                           -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/'"$arch"'/include \
                                           -I../../platform/c++11 -I../../platform/gcc \
                                           -I../../platform/posix -pthread
-                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE
+                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE -fPIC
                         PLATFORM_LDFLAGS=-pthread
                         MKDEP=${CC} -M -std=c++11
                         PLATFORM_C=../../platform/c++11/src/nsync_semaphore_mutex.cc \

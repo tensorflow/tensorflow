@@ -30,6 +30,8 @@ limitations under the License.
   $1 = &temp;
 }
 
+%newobject TF_NewItem;
+
 %{
 #include <unordered_set>
 #include <map>
@@ -64,10 +66,6 @@ static tensorflow::grappler::GrapplerItem* TF_NewItem(
   }
   tensorflow::Set_TF_Status_from_Status(out_status, tensorflow::Status::OK());
   return item.release();
-}
-
-static void TF_DeleteItem(tensorflow::grappler::GrapplerItem* item) {
-  delete item;
 }
 
 static std::vector<string> TF_IdentifyImportantOps(const tensorflow::grappler::GrapplerItem* item) {
@@ -129,6 +127,5 @@ static PyObject* TF_GetOpProperties(const tensorflow::grappler::GrapplerItem* it
 static tensorflow::grappler::GrapplerItem* TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
     bool ignore_user_placement, TF_Status* out_status);
-static void TF_DeleteItem(tensorflow::grappler::GrapplerItem* item);
 static std::vector<string> TF_IdentifyImportantOps(const tensorflow::grappler::GrapplerItem* item);
 static PyObject* TF_GetOpProperties(const tensorflow::grappler::GrapplerItem* item);
