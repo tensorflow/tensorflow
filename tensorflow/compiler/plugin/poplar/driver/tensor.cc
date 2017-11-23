@@ -39,31 +39,31 @@ namespace sep = ::perftools::gputools::poplarplugin;
 namespace xla {
 namespace poplarplugin {
 
-port::StatusOr<std::string>
+port::StatusOr<poplar::Type>
 PoplarDataType(const xla::Shape& shape) {
   switch (shape.element_type()) {
     case PRED:
-      return std::string("bool");
+      return poplar::BOOL;
     case S8:
-      return std::string("char");
+      return poplar::CHAR;
     case S16:
-      return std::string("short");
+      return poplar::SHORT;
     case S32:
-      return std::string("int");
+      return poplar::INT;
     case S64:
-      return std::string("int");
+      return poplar::INT;
     case U8:
-      return std::string("unsigned char");
+      return poplar::UNSIGNED_CHAR;
     case U16:
-      return std::string("unsigned short");
+      return poplar::UNSIGNED_SHORT;
     case U32:
-      return std::string("unsigned int");
+      return poplar::UNSIGNED_INT;
     case U64:
-      return std::string("unsigned int");
+      return poplar::UNSIGNED_INT;
     case F16:
-      return std::string("half");
+      return poplar::HALF;
     case F32:
-      return std::string("float");
+      return poplar::FLOAT;
     default:
       return tensorflow::errors::FailedPrecondition(
               port::StrCat("unsupported primitive type in poplar ",
@@ -134,10 +134,10 @@ AddPlainTensor(poplar::Graph& graph,
                const xla::Shape& shape) {
   poplar::Tensor out;
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
-  std::string poplar_type;
+  poplar::Type poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
-  out = graph.addTensor(poplar_type, dim, inst->name());
+  out = graph.addVariable(poplar_type, dim, inst->name());
   popstd::mapTensorLinearly(graph, out);
   return out;
 }
@@ -155,7 +155,7 @@ AddConvolutionInput(poplar::Graph& graph,
 
   auto name = port::StrCat(inst->name(), "_input");
   poplar::Tensor out = popconv::createInput(graph, params, name, opts);
-  return ShuffleConvolutionInput(target, out);
+  return ShuffleConvolutionInputToTensorflow(target, out);
 }
 
 static port::StatusOr<poplar::Tensor>
@@ -171,8 +171,9 @@ AddConvolutionWeights(poplar::Graph& graph,
 
   auto name = port::StrCat(inst->name(), "_weights");
   poplar::Tensor out = popconv::createWeights(graph, params, name, opts);
+
   out = RemoveGroupsDimensionFromWeights(out);
-  return ShuffleConvolutionWeights(target, out);
+  return ShuffleConvolutionWeightsToTensorflow(target, out);
 }
 
 static port::StatusOr<poplar::Tensor>
@@ -180,7 +181,7 @@ AddLeftMatMul(poplar::Graph& graph,
               const HloInstruction* inst,
               const HloInstruction* target,
               CompilerResources& resources) {
-  std::string type;
+  poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
   poplin::MatMulOptions opts;
   opts.cache = &resources.dot_cache;
@@ -195,7 +196,7 @@ AddRightMatMul(poplar::Graph& graph,
               const HloInstruction* inst,
               const HloInstruction* target,
               CompilerResources& resources) {
-  std::string type;
+  poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
   poplin::MatMulOptions opts;
   opts.cache = &resources.dot_cache;
@@ -280,18 +281,18 @@ static void
 AddConstantTensor(poplar::Graph& graph,
                   const xla::Literal& literal,
                   const xla::Shape& shape,
-                  const std::string& type,
+                  const poplar::Type& type,
                   poplar::Tensor& tensor) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const TYPE* data(static_cast<const TYPE*>(literal.InternalData()));
 
   if (num_elements == 0) {
-    tensor = graph.addConstantTensor(type, {0}, (TYPE)0);
+    tensor = graph.addConstant(type, {0}, (TYPE)0);
   } else if (num_elements == 1) {
-    tensor = graph.addConstantTensor(type, dim, data[0]);
+    tensor = graph.addConstant(type, dim, data[0]);
   } else {
-    tensor = graph.addConstantTensor(type, dim, data);
+    tensor = graph.addConstant(type, dim, data);
   }
 
   tensor = ConvertToDeviceLayout(shape, tensor);
@@ -301,7 +302,7 @@ static void
 Add64BitConstantTensor(poplar::Graph&graph,
                   const xla::Literal &literal,
                   const xla::Shape &shape,
-                  const std::string &type,
+                  const poplar::Type &type,
                   poplar::Tensor& tensor) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
@@ -313,11 +314,11 @@ Add64BitConstantTensor(poplar::Graph&graph,
   const int32* data32 = reinterpret_cast<const int32*>(converted.data());
 
   if (num_elements == 0) {
-    tensor = graph.addConstantTensor(type, {0}, (int32)0);
+    tensor = graph.addConstant(type, {0}, (int32)0);
   } else if (num_elements == 1) {
-    tensor = graph.addConstantTensor(type, dim, data32[0]);
+    tensor = graph.addConstant(type, dim, data32[0]);
   } else {
-    tensor = graph.addConstantTensor(type, dim, data32);
+    tensor = graph.addConstant(type, dim, data32);
   }
 }
 
@@ -328,7 +329,7 @@ AddConstantTensor(poplar::Graph& graph,
                   CompilerResources& resources) {
   poplar::Tensor tensor;
 
-  std::string type;
+  poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(literal.shape()));
 
   switch (literal.shape().element_type()) {

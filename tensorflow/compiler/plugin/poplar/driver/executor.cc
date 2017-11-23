@@ -469,7 +469,7 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
           poplar::Engine::ReportOptions opts;
           opts.doLayerWiseProfile = true;
           if (getenv("TF_POPLAR_REPORT_TENSOR_STORAGE") != NULL) {
-            opts.showTensorStorage = true;
+            opts.showVariableStorage = true;
           }
           engine->report(stream, opts);
 

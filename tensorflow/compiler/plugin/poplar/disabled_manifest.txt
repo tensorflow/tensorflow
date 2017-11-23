@@ -1,9 +1,7 @@
-Conv3DTransposeTest.*                     # No 3D conv
-Conv3DBackpropFilterV2GradTest.*          # No 3D conv
-Conv3DTransposeTest.*                     # No 3D conv
 TensorArrayTest.testTensorArrayEvalEmpty  # Test generates invalid graph
 ReduceOpsTest.testReduceSumC64            # No support for C64
 ReduceOpsTest.testReduceProdC64           # No support for C64
 ReduceOpsTest.testReduceMeanC64           # No support for C64
 DepthwiseConv2DTest.testDepthwiseConv2DInputGradCompare      # Too slow at the moment
 DepthwiseConv2DTest.testDepthwiseConv2DFilterGradCompare     # Too slow at the moment
+Pooling3DTest.testMaxPool3dSamePaddingDifferentStrides  # Too slow at the moment

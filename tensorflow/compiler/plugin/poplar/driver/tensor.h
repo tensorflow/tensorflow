@@ -11,6 +11,7 @@
 namespace poplar {
   class Tensor;
   class Graph;
+  class Type;
 }
 
 namespace port = ::perftools::gputools::port;
@@ -21,7 +22,7 @@ namespace poplarplugin {
 
 struct CompilerResources;
 
-port::StatusOr<std::string>
+port::StatusOr<poplar::Type>
 PoplarDataType(const xla::Shape& shape);
 
 std::vector<size_t>
