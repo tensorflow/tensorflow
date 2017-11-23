@@ -41,12 +41,6 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
   RpcRemoteRendezvous(const WorkerEnv* env, int64 step_id)
       : BaseRemoteRendezvous(env, step_id) {}
 
-  Status Initialize(WorkerSession* session) override;
-
-  void SetLogging(bool active);
-
-  bool RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* response);
-
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
                            const Rendezvous::Args& args,
@@ -269,77 +263,9 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env)
     : BaseRendezvousMgr(env) {}
 
-void RpcRendezvousMgr::SetLogging(bool active){
-  mutex_lock l(mu_);
-  this->is_logging_active_ = active;
-  for (const auto& session: table_){
-    auto rpc_remote_rendezvous = (RpcRemoteRendezvous*) session.second;
-    if (rpc_remote_rendezvous){
-      rpc_remote_rendezvous->SetLogging(active);
-    }
-  }
-}
-
-bool RpcRendezvousMgr::RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* response){
-  auto ret = false;
-  mutex_lock l(mu_);
-  for (const auto& session: table_){
-    auto rpc_remote_rendezvous = (RpcRemoteRendezvous*) session.second;
-    if (rpc_remote_rendezvous) {
-      ret |= rpc_remote_rendezvous->RetrieveLogs(step_id, response);
-    }
-  }
-  return ret;
-}
-
-bool RpcRendezvousMgr::IsLoggingActive(){
-  return this->is_logging_active_;
-}
-
-
 BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64 step_id,
                                                const WorkerEnv* worker_env) {
   return new RpcRemoteRendezvous(worker_env, step_id);
-}
-
-
-void RpcRemoteRendezvous::SetLogging(bool active){
-  auto session = this->session();
-  if (session){
-    auto* worker_cache = session->worker_cache.get();
-    if (worker_cache) {
-      worker_cache->SetLogging(active);
-    }
-  }
-}
-
-bool RpcRemoteRendezvous::RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* response){
-  auto session = this->session();
-  if (!session){
-    return false;
-  }
-  auto* worker_cache = session->worker_cache.get();
-  if (!worker_cache){
-    return false;
-  }
-
-  auto step_stats = StepStats();
-  if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
-    auto* labeled_step_stats = response->add_step();
-    labeled_step_stats->set_step_id(step_id);
-    labeled_step_stats->mutable_step_stats()->Swap(&step_stats);
-    return true;
-  }
-  return false;
-}
-
-Status RpcRemoteRendezvous::Initialize(WorkerSession* session){
-  const auto& response = BaseRemoteRendezvous::Initialize(session);
-  auto rpc_rendezvous_mgr = (RpcRendezvousMgr*) this->env_->rendezvous_mgr;
-  if (rpc_rendezvous_mgr) {
-    this->SetLogging(rpc_rendezvous_mgr->IsLoggingActive());
-  }
-  return response;
 }
 
 }  // end namespace tensorflow

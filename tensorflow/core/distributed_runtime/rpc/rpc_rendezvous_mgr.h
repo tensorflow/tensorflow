@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/base_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
@@ -47,17 +46,10 @@ class RpcRendezvousMgr : public BaseRendezvousMgr {
  public:
   explicit RpcRendezvousMgr(const WorkerEnv* env);
 
-  void SetLogging(bool active);
-
-  bool RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* response);
-
-  bool IsLoggingActive();
-
  protected:
   BaseRemoteRendezvous* Create(int64 step_id, const WorkerEnv* worker_env);
 
  private:
-  bool is_logging_active_ = false;
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRendezvousMgr);
 };
 
