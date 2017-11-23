@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -433,6 +434,40 @@ TEST(FileBlockCacheTest, ParallelReads) {
   // The `threads` destructor blocks until the threads can be joined, once their
   // respective reads finish (which happens once they are all concurrently being
   // executed, or 10 seconds have passed).
+}
+
+TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
+  // Concurrent reads to the same file blocks should be de-duplicated.
+  const size_t block_size = 16;
+  int num_requests = 0;
+  Notification notification;
+  auto fetcher = [&num_requests, &notification, block_size](
+                     const string& filename, size_t offset, size_t n,
+                     std::vector<char>* out) {
+    EXPECT_EQ(n, block_size);
+    EXPECT_EQ(offset, 0);
+    num_requests++;
+    out->resize(n, 'x');
+    notification.Notify();
+    // Wait for other thread to issue read.
+    Env::Default()->SleepForMicroseconds(100000);  // 0.1 secs
+    return Status::OK();
+  };
+  FileBlockCache cache(block_size, block_size, 0, fetcher);
+  // Fork off thread for parallel read.
+  std::unique_ptr<Thread> concurrent(
+      Env::Default()->StartThread({}, "concurrent", [&cache] {
+        std::vector<char> out;
+        TF_EXPECT_OK(cache.Read("", 0, block_size / 2, &out));
+        EXPECT_EQ(out.size(), block_size / 2);
+      }));
+  EXPECT_TRUE(WaitForNotificationWithTimeout(&notification, 1000))
+      << "Timeout waiting for concurrent thread to start.";
+  std::vector<char> out;
+  TF_EXPECT_OK(cache.Read("", block_size / 2, block_size / 2, &out));
+  EXPECT_EQ(out.size(), block_size / 2);
+
+  EXPECT_EQ(1, num_requests);
 }
 
 }  // namespace

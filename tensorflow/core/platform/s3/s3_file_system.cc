@@ -38,7 +38,7 @@ static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int kS3GetChildrenMaxKeys = 100;
 
 Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
-  static mutex cfg_lock;
+  static mutex cfg_lock(LINKER_INITIALIZED);
   static bool init(false);
   static Aws::Client::ClientConfiguration cfg;
 

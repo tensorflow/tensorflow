@@ -994,6 +994,32 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvertInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddBitcastConvertInstruction(
+    const ConvertRequest& convert_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(convert_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(Shape new_shape, ShapeInference::InferConvertShape(
+                                           operand->output_shape(),
+                                           convert_request.new_element_type()));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = new_shape;
+  *request.mutable_request()->mutable_bitcast_convert_request() =
+      convert_request;
+
+  VLOG(1) << "AddBitcastConvertInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << convert_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddReducePrecisionInstruction(
     const ReducePrecisionRequest& reduce_precision_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -2370,6 +2396,13 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kBitcastConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().bitcast_convert_request();
+      apply(convert_request.operand());
+      break;
+    }
+
     case OpRequest::kWhileRequest: {
       const WhileRequest& while_request = request.request().while_request();
       apply(while_request.init());
@@ -2954,6 +2987,15 @@ void ComputationLowerer::Visit(
       break;
     }
 
+    case OpRequest::kBitcastConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().bitcast_convert_request();
+      HloInstruction* operand = lookup_instruction(convert_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateBitcastConvert(
+          request.output_shape(), operand));
+      break;
+    }
+
     case OpRequest::kWhileRequest: {
       const WhileRequest& while_request = request.request().while_request();
       CHECK_EQ(2, request.embedded_computation_versions_size());
@@ -2978,6 +3020,25 @@ void ComputationLowerer::Visit(
       HloInstruction* rhs = lookup_instruction(ternary_op_request.rhs());
       HloInstruction* ehs = lookup_instruction(ternary_op_request.ehs());
       auto hlo_opcode = TernaryOperationToHloOpcode(ternary_op_request.triop());
+
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
+        if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
+          // lhs side is being implicitly broadcast. Change to explicit.
+          lhs =
+              ImplicitBroadcastToExplicitBroadcast(lhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
+          rhs =
+              ImplicitBroadcastToExplicitBroadcast(rhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), ehs->shape())) {
+          ehs =
+              ImplicitBroadcastToExplicitBroadcast(ehs, request.output_shape());
+        }
+      }
+
       hlo_instruction = add_instruction(HloInstruction::CreateTernary(
           request.output_shape(), hlo_opcode, lhs, rhs, ehs));
       break;
@@ -3137,7 +3198,7 @@ void ComputationLowerer::Visit(
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
   (*instructions)[handle.handle()] = hlo_instruction;
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace
 

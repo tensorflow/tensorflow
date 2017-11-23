@@ -173,9 +173,6 @@ def copy_op_handler(info, op, copy_shape=True):
   if op._original_op:
     op_._original_op = op._original_op
 
-  # Add op to the graph
-  info.graph_._add_op(op_)
-
   return op_, op_.outputs
 
 

@@ -19,57 +19,99 @@ from __future__ import print_function
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import sparse_ops
 
 
-def any_sparse(types):
-  """Checks for sparse tensor types.
+def any_sparse(classes):
+  """Checks for sparse tensor.
 
   Args:
-    types: a structure with tensor types.
+    classes: a structure of objects that identify the dataset item classes
 
   Returns:
-    `True` if `types` contains a sparse tensor type and `False` otherwise.
+    `True` if `classes` contains a sparse tensor type and `False` otherwise.
   """
-  return any([isinstance(ty, SparseType) for ty in nest.flatten(types)])
+  return any([c is sparse_tensor.SparseTensor for c in nest.flatten(classes)])
 
 
-def deserialize_sparse_tensors(tensors, types):
+def as_dense_shapes(shapes, classes):
+  """Converts sparse tensor shapes to their physical shapes.
+
+  Args:
+    shapes: a structure of shapes to convert.
+    classes: a structure of objects that identify the dataset item classes
+
+  Returns:
+    a structure matching the nested structure of `shapes`, containing
+    `tensor_shape.unknown_shape()` at positions where `classes` contains
+    `tf.SparseTensor` and matching contents of `shapes` otherwise
+  """
+  ret = nest.pack_sequence_as(shapes, [
+      tensor_shape.unknown_shape() if c is sparse_tensor.SparseTensor else shape
+      for shape, c in zip(nest.flatten(shapes), nest.flatten(classes))
+  ])
+  return ret
+
+
+def as_dense_types(types, classes):
+  """Converts sparse tensor types to `dtypes.string`.
+
+  Args:
+    types: a structure of types to convert.
+    classes: a structure of objects that identify the dataset item classes
+
+  Returns:
+    a structure matching the nested structure of `types`, containing
+    `dtypes.string` at positions where `classes` contains `tf.SparseTensor` and
+    matching contents of `types` otherwise
+  """
+  ret = nest.pack_sequence_as(types, [
+      dtypes.string if c is sparse_tensor.SparseTensor else ty
+      for ty, c in zip(nest.flatten(types), nest.flatten(classes))
+  ])
+  return ret
+
+
+def deserialize_sparse_tensors(tensors, types, shapes, classes):
   """Deserializes sparse tensors.
 
   Args:
     tensors: a structure of tensors to deserialize.
-    types: a structure object the holds information about which tensors in
-      `tensors` represent serialized sparse tensors
+    types: a structure that holds information about types of `tensors`
+    shapes: a structure that holds information about shapes of `tensors`
+    classes: a structure of objects that identify the dataset item classes
 
   Returns:
     `tensors` with any serialized sparse tensors replaced by their deserialized
     version.
   """
-  # TODO(b/63669786): support batching of sparse tensors
   ret = nest.pack_sequence_as(types, [
-      sparse_ops.deserialize_sparse(tensor, ty.dtype)
-      if isinstance(ty, SparseType) else tensor
-      for (tensor, ty) in zip(nest.flatten(tensors), nest.flatten(types))
+      sparse_ops.deserialize_sparse(tensor, dtype=ty, rank=shape.ndims)
+      if c is sparse_tensor.SparseTensor else tensor
+      for (tensor, ty, shape, c) in zip(
+          nest.flatten(tensors), nest.flatten(types), nest.flatten(shapes),
+          nest.flatten(classes))
   ])
   return ret
 
 
-def get_sparse_types(tensors):
-  """Gets sparse types for a structure of tensors.
+def get_classes(tensors):
+  """Gets classes for a structure of tensors.
 
   Args:
-    tensors: the tensor structure to get sparse types for.
+    tensors: the tensor structure to get classes for.
 
   Returns:
     a structure matching the nested structure of `tensors`, containing
-    `SparseType` at positions where `tensors` contains a sparse tensor and
-    `None` otherwise
+    `tf.SparseTensor` at positions where `tensors` contains a sparse tensor and
+    `tf.Tensor` otherwise
   """
   return nest.pack_sequence_as(tensors, [
-      SparseType(tensor.dtype)
-      if isinstance(tensor, sparse_tensor.SparseTensor) else None
+      sparse_tensor.SparseTensor
+      if isinstance(tensor, sparse_tensor.SparseTensor) else ops.Tensor
       for tensor in nest.flatten(tensors)
   ])
 
@@ -90,74 +132,3 @@ def serialize_sparse_tensors(tensors):
       for tensor in nest.flatten(tensors)
   ])
   return ret
-
-
-def unwrap_sparse_types(types):
-  """Unwraps sparse tensor types as `dtypes.string`.
-
-  Args:
-    types: a structure of types to unwrap.
-
-  Returns:
-    a structure matching the nested structure of `types`, containing
-    `dtypes.string` at positions where `types` contains a sparse tensor and
-    matching contents of `types` otherwise
-  """
-  ret = nest.pack_sequence_as(types, [
-      dtypes.string if isinstance(ty, SparseType) else ty
-      for ty in nest.flatten(types)
-  ])
-  return ret
-
-
-def wrap_sparse_types(tensors, types):
-  """Wraps sparse tensor types in `SparseType`.
-
-  Args:
-    tensors: a structure of tensors for which to wrap types.
-    types: a structure that holds information about which tensors in
-      `tensors` represent serialized sparse tensors
-
-  Returns:
-    a structure matching the nested structure of `tensors`, containing
-    `SparseType` at positions where `tensors` contains a sparse tensor and
-    `DType` otherwise
-  """
-  ret = nest.pack_sequence_as(types, [
-      tensor.dtype if ty is None else ty
-      for tensor, ty in zip(nest.flatten(tensors), nest.flatten(types))
-  ])
-  return ret
-
-
-class SparseType(object):
-  """Wrapper class for representing types of sparse tensors in tf.data."""
-
-  def __init__(self, dtype):
-    """Creates a new instace of `SparseType`.
-
-    Args:
-      dtype: the sparse tensor type to wrap.
-    """
-    self._dtype = dtype
-
-  def __repr__(self):
-    return "SparseType({0!r})".format(self._dtype)
-
-  def __eq__(self, other):
-    """Returns `True` iff `self == other`."""
-    if not isinstance(other, SparseType):
-      return False
-    return self._dtype == other.dtype
-
-  def __ne__(self, other):
-    """Returns `True` iff `self != other`."""
-    return not self.__eq__(other)
-
-  def __hash__(self):
-    return self._dtype.__hash__()
-
-  @property
-  def dtype(self):
-    """Returns the wrapped sparse tensor type."""
-    return self._dtype

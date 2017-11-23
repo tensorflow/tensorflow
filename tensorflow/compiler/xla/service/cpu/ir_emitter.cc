@@ -26,14 +26,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "llvm/CodeGen/TargetRegisterInfo.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -795,7 +795,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // operand index is within the bounds. The unsigned comparison includes
   // checking whether the operand index >= 0.
   llvm_ir::IrArray::Index operand_index(source_index.size());
-  llvm::Value* in_bounds_condition = ir_builder_.getInt1(true);
+  llvm::Value* in_bounds_condition = ir_builder_.getTrue();
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* strided_index = ir_builder_.CreateNSWMul(
         source_index[i], ir_builder_.getInt64(window.dimensions(i).stride()));
@@ -1140,7 +1140,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
           return ir_builder_.CreateICmpEQ(remainder, ir_builder_.getInt64(0));
         };
 
-        llvm::Value* in_bounds_condition = nullptr;
+        llvm::Value* in_bounds_condition = ir_builder_.getInt1(true);
         for (int i = 0; i < num_spatial_dims; ++i) {
           llvm::ConstantInt* input_bound =
               ir_builder_.getInt64(window_util::DilatedBound(
@@ -1153,9 +1153,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
           llvm::Value* dim_ok =
               ir_builder_.CreateAnd(dim_in_bound, dim_not_in_hole);
           in_bounds_condition =
-              in_bounds_condition
-                  ? ir_builder_.CreateAnd(in_bounds_condition, dim_ok)
-                  : dim_ok;
+              ir_builder_.CreateAnd(in_bounds_condition, dim_ok);
         }
 
         // Now we need to map the dilated base coordinates back to the actual

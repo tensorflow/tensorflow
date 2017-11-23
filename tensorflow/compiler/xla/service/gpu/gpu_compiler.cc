@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
-#include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -126,7 +126,7 @@ string GetLibdeviceDir(const string& config_cuda_data_dir) {
 
 // Runs optimization passes on the given HLO module.
 tensorflow::Status OptimizeHloModule(
-    HloModule* hlo_module, const se::DeviceDescription& device_desc,
+    HloModule* hlo_module,
     const HloCostAnalysis::ShapeSizeFunction& shape_size_function) {
   {
     HloPassPipeline pipeline("optimization");
@@ -224,9 +224,8 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<GpuCopyInsertion>();
-  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
+  pipeline.AddPass<GpuCopyInsertion>();
   return pipeline.Run(hlo_module).status();
 }
 
@@ -297,19 +296,23 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
 GpuCompiler::GpuCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
-StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
+StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/) {
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  Tracing::TraceMe annotation("HLO Transforms", module->name(),
+                              /*is_expensive=*/true);
+  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), ShapeSizeBytesFunction()));
+  return std::move(module);
+}
+
+StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
+
   TF_RET_CHECK(stream_exec != nullptr);
 
-  {
-    Tracing::TraceMe annotation("HLO Transforms", module->name(),
-                                /*is_expensive=*/true);
-    TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(),
-                                         stream_exec->GetDeviceDescription(),
-                                         ShapeSizeBytesFunction()));
-    TF_RETURN_IF_ERROR(
-        PrepareHloModuleForIrEmitting(module.get(), ShapeSizeBytesFunction()));
-  }
+  TF_RETURN_IF_ERROR(
+      PrepareHloModuleForIrEmitting(module.get(), ShapeSizeBytesFunction()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -362,8 +365,11 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
-  TF_RETURN_IF_ERROR(
-      entry_computation->root_instruction()->Accept(&ir_emitter));
+  {
+    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
+    TF_RETURN_IF_ERROR(
+        entry_computation->root_instruction()->Accept(&ir_emitter));
+  }
 
   if (user_pre_optimization_hook_) {
     TF_CHECK_OK(user_pre_optimization_hook_(llvm_module));
@@ -412,9 +418,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     cc_minor = 0;
   }
 
-  TF_ASSIGN_OR_RETURN(string ptx,
-                      CompileToPtx(&llvm_module, {cc_major, cc_minor},
-                                   module->config(), libdevice_dir));
+  string ptx;
+  {
+    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - CompileToPtx");
+    TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
+                                          module->config(), libdevice_dir));
+  }
 
   if (!ir_dump_directory.empty()) {
     TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
@@ -456,10 +465,20 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   VLOG(2) << "Printing the thunk schedule...";
   XLA_VLOG_LINES(2, thunk_schedule->ToString());
 
-  auto* gpu_executable =
-      new GpuExecutable(ptx, cubin, {cc_major, cc_minor},
-                        std::move(thunk_schedule), std::move(module),
-                        std::move(buffer_assignment), ShapeSizeBytesFunction());
+  std::unique_ptr<HloProfileIndexMap> profile_index_map;
+  std::unique_ptr<HloProfilePrinter> profile_printer;
+
+  if (module->config().hlo_profiling_enabled()) {
+    HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
+    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
+    profile_printer =
+        CreateHloProfilePrinter(*profile_index_map, cost_analysis);
+  }
+
+  auto* gpu_executable = new GpuExecutable(
+      ptx, cubin, {cc_major, cc_minor}, std::move(thunk_schedule),
+      std::move(module), std::move(buffer_assignment),
+      std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -470,6 +489,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
                                                             int cc_major,
                                                             int cc_minor) {
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::CompilePtxOrGetCachedResult");
   Tracing::TraceMe annotation("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;

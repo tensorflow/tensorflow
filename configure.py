@@ -905,6 +905,28 @@ def set_trisycl_include_dir(environ_cp):
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR',
                               trisycl_include_dir)
 
+def set_trisycl_include_dir(environ_cp):
+  """Set TRISYCL_INCLUDE_DIR."""
+  ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
+                             'include directory. (Use --config=sycl_trisycl '
+                             'when building with Bazel) '
+                             '[Default is %s]: ') % (
+                                 _DEFAULT_TRISYCL_INCLUDE_DIR)
+  while True:
+    trisycl_include_dir = get_from_env_or_user_or_default(
+        environ_cp, 'TRISYCL_INCLUDE_DIR', ask_trisycl_include_dir,
+        _DEFAULT_TRISYCL_INCLUDE_DIR)
+    if os.path.exists(trisycl_include_dir):
+      break
+
+    print('Invalid triSYCL include directory, %s cannot be found' %
+          (trisycl_include_dir))
+
+  # Set TRISYCL_INCLUDE_DIR
+  environ_cp['TRISYCL_INCLUDE_DIR'] = trisycl_include_dir
+  write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR', trisycl_include_dir)
+
+
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
   default_mpi_home = which('mpirun') or which('mpiexec') or ''

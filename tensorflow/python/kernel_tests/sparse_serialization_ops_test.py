@@ -64,6 +64,93 @@ class SerializeSparseTest(test.TestCase):
     shape = np.array([3, 4, 5]).astype(np.int64)
     return sparse_tensor_lib.SparseTensorValue(ind, val, shape)
 
+  def testSerializeDeserialize(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensorValue_5x6(np.arange(6))
+      serialized = sparse_ops.serialize_sparse(sp_input)
+      sp_deserialized = sparse_ops.deserialize_sparse(
+          serialized, dtype=dtypes.int32)
+
+      indices, values, shape = sess.run(sp_deserialized)
+
+      self.assertAllEqual(indices, sp_input[0])
+      self.assertAllEqual(values, sp_input[1])
+      self.assertAllEqual(shape, sp_input[2])
+
+  def testSerializeDeserializeBatch(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensorValue_5x6(np.arange(6))
+      serialized = sparse_ops.serialize_sparse(sp_input)
+      serialized = array_ops.stack([serialized, serialized])
+
+      sp_deserialized = sparse_ops.deserialize_sparse(
+          serialized, dtype=dtypes.int32)
+
+      combined_indices, combined_values, combined_shape = sess.run(
+          sp_deserialized)
+
+      self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
+      self.assertAllEqual(combined_indices[:6, 1:], sp_input[0])
+      self.assertAllEqual(combined_indices[6:, 0], [1] * 6)  # minibatch 1
+      self.assertAllEqual(combined_indices[6:, 1:], sp_input[0])
+      self.assertAllEqual(combined_values[:6], sp_input[1])
+      self.assertAllEqual(combined_values[6:], sp_input[1])
+      self.assertAllEqual(combined_shape, [2, 5, 6])
+
+  def testSerializeDeserializeBatchInconsistentShape(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input0 = self._SparseTensorValue_5x6(np.arange(6))
+      sp_input1 = self._SparseTensorValue_3x4(np.arange(6))
+      serialized0 = sparse_ops.serialize_sparse(sp_input0)
+      serialized1 = sparse_ops.serialize_sparse(sp_input1)
+      serialized = array_ops.stack([serialized0, serialized1])
+
+      sp_deserialized = sparse_ops.deserialize_sparse(
+          serialized, dtype=dtypes.int32)
+
+      combined_indices, combined_values, combined_shape = sess.run(
+          sp_deserialized)
+
+      self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
+      self.assertAllEqual(combined_indices[:6, 1:], sp_input0[0])
+      self.assertAllEqual(combined_indices[6:, 0], [1] * 6)  # minibatch 1
+      self.assertAllEqual(combined_indices[6:, 1:], sp_input1[0])
+      self.assertAllEqual(combined_values[:6], sp_input0[1])
+      self.assertAllEqual(combined_values[6:], sp_input1[1])
+      self.assertAllEqual(combined_shape, [2, 5, 6])
+
+  def testSerializeDeserializeNestedBatch(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensorValue_5x6(np.arange(6))
+      serialized = sparse_ops.serialize_sparse(sp_input)
+      serialized = array_ops.stack([serialized, serialized])
+      serialized = array_ops.stack([serialized, serialized])
+
+      sp_deserialized = sparse_ops.deserialize_sparse(
+          serialized, dtype=dtypes.int32)
+
+      combined_indices, combined_values, combined_shape = sess.run(
+          sp_deserialized)
+
+      # minibatch 0
+      self.assertAllEqual(combined_indices[:6, :2], [[0, 0]] * 6)
+      self.assertAllEqual(combined_indices[:6, 2:], sp_input[0])
+      self.assertAllEqual(combined_values[:6], sp_input[1])
+      # minibatch 1
+      self.assertAllEqual(combined_indices[6:12, :2], [[0, 1]] * 6)
+      self.assertAllEqual(combined_indices[6:12, 2:], sp_input[0])
+      self.assertAllEqual(combined_values[6:12], sp_input[1])
+      # minibatch 2
+      self.assertAllEqual(combined_indices[12:18, :2], [[1, 0]] * 6)
+      self.assertAllEqual(combined_indices[12:18, 2:], sp_input[0])
+      self.assertAllEqual(combined_values[12:18], sp_input[1])
+      # minibatch 3
+      self.assertAllEqual(combined_indices[18:, :2], [[1, 1]] * 6)
+      self.assertAllEqual(combined_indices[18:, 2:], sp_input[0])
+      self.assertAllEqual(combined_values[18:], sp_input[1])
+
+      self.assertAllEqual(combined_shape, [2, 2, 5, 6])
+
   def testSerializeDeserializeMany(self):
     with self.test_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorValue_5x6(np.arange(6))

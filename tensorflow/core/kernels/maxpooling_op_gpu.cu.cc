@@ -405,17 +405,17 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
   if (propagate_nans) {
     MaxPoolForwardNHWC<true>
         <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-           kThreadsPerBlock, 0, d.stream()>>>
-        (output_size, bottom_data, height, width, channels, pooled_height,
-         pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-         top_data, mask);
+           kThreadsPerBlock, 0, d.stream()>>>(
+            output_size, bottom_data, height, width, channels, pooled_height,
+            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+            top_data, mask);
   } else {
     MaxPoolForwardNHWC<false>
         <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-           kThreadsPerBlock, 0, d.stream()>>>
-        (output_size, bottom_data, height, width, channels, pooled_height,
-         pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-         top_data, mask);
+           kThreadsPerBlock, 0, d.stream()>>>(
+            output_size, bottom_data, height, width, channels, pooled_height,
+            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+            top_data, mask);
   }
   return d.ok();
 }

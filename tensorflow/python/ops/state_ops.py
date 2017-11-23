@@ -348,4 +348,4 @@ def scatter_update(ref, indices, updates, use_locking=True, name=None):
     return gen_state_ops.scatter_update(ref, indices, updates,
                                         use_locking=use_locking, name=name)
   return gen_resource_variable_ops.resource_scatter_update(
-      ref.handle, indices, updates, name=name)
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype), name=name)
