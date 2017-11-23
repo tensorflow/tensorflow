@@ -143,6 +143,7 @@ py_test(
     srcs = ["filter_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
