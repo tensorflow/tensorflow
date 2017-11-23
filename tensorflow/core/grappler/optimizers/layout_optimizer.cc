@@ -714,9 +714,23 @@ class FusedBatchNormGradProcessor : public NodeProcessor {
       : NodeProcessor(opt_cxt) {}
 
  protected:
+  bool ShouldProcess() const override {
+    return NodeProcessor::ShouldProcess() && IsTraining();
+  }
+
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos = {0, 1};
     return input_pos;
+  }
+
+ private:
+  bool IsTraining() const {
+    if (node_->attr().find("is_training") != node_->attr().end()) {
+      if (node_->attr().at("is_training").b()) {
+        return true;
+      }
+    }
+    return false;
   }
 };
 
