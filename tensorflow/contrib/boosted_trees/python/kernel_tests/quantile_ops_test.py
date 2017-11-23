@@ -48,15 +48,16 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
   def testBasicQuantileBuckets(self):
     """Sets up the quantile summary op test as follows.
 
-    Create a batch of 6 examples having a dense and sparse features.
+    Create a batch of 6 examples having a dense and sparse features. SparseM is
+    a sparse multi-dimensional (multivalent) feature.
     The data looks like this
-    | Instance | instance weights | Dense 0  | Sparse 0
-    | 0        |     10           |   1      |
-    | 1        |     1            |   2      |    2
-    | 2        |     1            |   3      |    3
-    | 3        |     1            |   4      |    4
-    | 4        |     1            |   4      |    5
-    | 5        |     1            |   5      |    6
+    | Instance | instance weights | Dense 0  | Sparse 0 | SparseM
+    | 0        |     10           |   1      |          |   |   |
+    | 1        |     1            |   2      |    2     | 2 |   |
+    | 2        |     1            |   3      |    3     | 3 |   |
+    | 3        |     1            |   4      |    4     |   | 4 |
+    | 4        |     1            |   4      |    5     |   | 5 |
+    | 5        |     1            |   5      |    6     |   | 6 |
     """
 
     dense_float_tensor_0 = constant_op.constant(
@@ -66,20 +67,29 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
     sparse_values_0 = constant_op.constant(
         [2, 3, 4, 5, 6], dtype=dtypes.float32)
     sparse_shape_0 = constant_op.constant([6, 1], dtype=dtypes.int64)
+    # Multi-dimensional feature that should have the same quantiles as Sparse 0.
+    sparse_indices_m = constant_op.constant(
+        [[1, 1], [2, 0], [3, 1], [4, 1], [5, 1]], dtype=dtypes.int64)
+    sparse_values_m = constant_op.constant(
+        [2, 3, 4, 5, 6], dtype=dtypes.float32)
+    sparse_shape_m = constant_op.constant([6, 2], dtype=dtypes.int64)
+
     example_weights = constant_op.constant(
         [10, 1, 1, 1, 1, 1], dtype=dtypes.float32)
 
     with self.test_session():
       config = self._gen_config(0.33, 3)
       dense_buckets, sparse_buckets = quantile_ops.quantile_buckets(
-          [dense_float_tensor_0], [sparse_indices_0], [sparse_values_0],
-          [sparse_shape_0],
+          [dense_float_tensor_0], [sparse_indices_0, sparse_indices_m],
+          [sparse_values_0, sparse_values_m], [sparse_shape_0, sparse_shape_m],
           example_weights=example_weights,
           dense_config=[config],
-          sparse_config=[config])
+          sparse_config=[config, config])
 
       self.assertAllEqual([1, 3, 5], dense_buckets[0].eval())
       self.assertAllEqual([2, 4, 6.], sparse_buckets[0].eval())
+      # Multidimensional sparse.
+      self.assertAllEqual([2, 4, 6.], sparse_buckets[1].eval())
 
   def testStreamingQuantileBucketsWithVaryingBatch(self):
     """Sets up the quantile summary op test as follows.
@@ -214,10 +224,10 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       sparse_indices_0 = constant_op.constant(
-          [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]], dtype=dtypes.int64)
+          [[1, 0], [2, 1], [3, 0], [4, 2], [5, 0]], dtype=dtypes.int64)
       sparse_values_0 = constant_op.constant(
           [2.0, 3.0, 4.0, 5.0, 6.0], dtype=dtypes.float32)
-      sparse_shape_0 = constant_op.constant([6, 1], dtype=dtypes.int64)
+      sparse_shape_0 = constant_op.constant([6, 3], dtype=dtypes.int64)
       example_weights = constant_op.constant(
           [10, 1, 1, 1, 1, 1], dtype=dtypes.float32, shape=[6, 1])
       update = accumulator.add_summary(

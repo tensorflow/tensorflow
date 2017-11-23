@@ -114,11 +114,16 @@ HloRunner::~HloRunner() {
 StatusOr<se::DeviceMemoryBase> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
-    Shape* result_shape) {
+    Shape* result_shape, bool run_hlo_passes) {
+  if (run_hlo_passes) {
+    TF_ASSIGN_OR_RETURN(
+        module, backend().compiler()->RunHloPasses(
+                    std::move(module), backend().default_stream_executor()));
+  }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend().compiler()->Compile(std::move(module),
-                                    backend().default_stream_executor()));
+      backend().compiler()->RunBackend(std::move(module),
+                                       backend().default_stream_executor()));
 
   se::Stream stream(backend().default_stream_executor());
   stream.Init();
@@ -193,10 +198,12 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::TransferFromDevice(
 
 StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteAndTransfer(
     std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
+    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
+    bool run_hlo_passes) {
   Shape result_shape;
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase device_base,
-                      Execute(std::move(module), arguments, &result_shape));
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase device_base,
+      Execute(std::move(module), arguments, &result_shape, run_hlo_passes));
   return TransferFromDevice(result_shape, device_base);
 }
 

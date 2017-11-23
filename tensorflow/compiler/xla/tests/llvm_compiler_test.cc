@@ -73,8 +73,8 @@ class LLVMCompilerTest : public ::testing::Test {
     compiler->SetPostOptimizationHook(post_opt_hook);
 
     ASSERT_TRUE(compiler
-                    ->Compile(std::move(hlo_module),
-                              backend_->default_stream_executor())
+                    ->RunBackend(std::move(hlo_module),
+                                 backend_->default_stream_executor())
                     .ok());
 
     // Test that hooks were called.

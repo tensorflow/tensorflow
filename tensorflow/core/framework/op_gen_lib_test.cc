@@ -455,5 +455,62 @@ op {
   status = api_map.LoadApiDef(api_def3);
   ASSERT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
 }
+
+TEST(OpGenLibTest, ApiDefUpdateDocs) {
+  const string op_list1 = R"(op {
+  name: "testop"
+  input_arg {
+    name: "arg_a"
+    description: "`arg_a`, `arg_c`, `attr_a`, `testop`"
+  }
+  output_arg {
+    name: "arg_c"
+    description: "`arg_a`, `arg_c`, `attr_a`, `testop`"
+  }
+  attr {
+    name: "attr_a"
+    description: "`arg_a`, `arg_c`, `attr_a`, `testop`"
+  }
+  description: "`arg_a`, `arg_c`, `attr_a`, `testop`"
+}
+)";
+
+  const string api_def1 = R"(
+op {
+  graph_op_name: "testop"
+  endpoint {
+    name: "testop2"
+  }
+  in_arg {
+    name: "arg_a"
+    rename_to: "arg_aa"
+  }
+  out_arg {
+    name: "arg_c"
+    rename_to: "arg_cc"
+    description: "New description: `arg_a`, `arg_c`, `attr_a`, `testop`"
+  }
+  attr {
+    name: "attr_a"
+    rename_to: "attr_aa"
+  }
+}
+)";
+  OpList op_list;
+  protobuf::TextFormat::ParseFromString(op_list1, &op_list);  // NOLINT
+  ApiDefMap api_map(op_list);
+  TF_CHECK_OK(api_map.LoadApiDef(api_def1));
+  api_map.UpdateDocs();
+
+  const string expected_description =
+      "`arg_aa`, `arg_cc`, `attr_aa`, `testop2`";
+  EXPECT_EQ(expected_description, api_map.GetApiDef("testop")->description());
+  EXPECT_EQ(expected_description,
+            api_map.GetApiDef("testop")->in_arg(0).description());
+  EXPECT_EQ("New description: " + expected_description,
+            api_map.GetApiDef("testop")->out_arg(0).description());
+  EXPECT_EQ(expected_description,
+            api_map.GetApiDef("testop")->attr(0).description());
+}
 }  // namespace
 }  // namespace tensorflow

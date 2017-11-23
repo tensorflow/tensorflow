@@ -281,6 +281,9 @@ static void StringReplace(const string& from, const string& to, string* s) {
     } else {
       split.push_back(s->substr(pos, found - pos));
       pos = found + from.size();
+      if (pos == s->size()) {  // handle case where `from` is at the very end.
+        split.push_back("");
+      }
     }
   }
   // Join the pieces back together with a new delimiter.
@@ -313,6 +316,36 @@ static void RenameInDocs(const string& from, const string& to, OpDef* op_def) {
   }
   if (!op_def->description().empty()) {
     StringReplace(from_quoted, to_quoted, op_def->mutable_description());
+  }
+}
+
+static void RenameInDocs(const string& from, const string& to,
+                         ApiDef* api_def) {
+  const string from_quoted = strings::StrCat("`", from, "`");
+  const string to_quoted = strings::StrCat("`", to, "`");
+  for (int i = 0; i < api_def->in_arg_size(); ++i) {
+    if (!api_def->in_arg(i).description().empty()) {
+      StringReplace(from_quoted, to_quoted,
+                    api_def->mutable_in_arg(i)->mutable_description());
+    }
+  }
+  for (int i = 0; i < api_def->out_arg_size(); ++i) {
+    if (!api_def->out_arg(i).description().empty()) {
+      StringReplace(from_quoted, to_quoted,
+                    api_def->mutable_out_arg(i)->mutable_description());
+    }
+  }
+  for (int i = 0; i < api_def->attr_size(); ++i) {
+    if (!api_def->attr(i).description().empty()) {
+      StringReplace(from_quoted, to_quoted,
+                    api_def->mutable_attr(i)->mutable_description());
+    }
+  }
+  if (!api_def->summary().empty()) {
+    StringReplace(from_quoted, to_quoted, api_def->mutable_summary());
+  }
+  if (!api_def->description().empty()) {
+    StringReplace(from_quoted, to_quoted, api_def->mutable_description());
   }
 }
 
@@ -521,6 +554,7 @@ Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
           ". All elements in arg_order override must match base arg_order: ",
           str_util::Join(base_api_def->arg_order(), ", "));
     }
+
     base_api_def->clear_arg_order();
     std::copy(
         new_api_def.arg_order().begin(), new_api_def.arg_order().end(),
@@ -606,6 +640,32 @@ Status ApiDefMap::LoadApiDef(const string& api_def_file_contents) {
     }
   }
   return Status::OK();
+}
+
+void ApiDefMap::UpdateDocs() {
+  for (auto& name_and_api_def : map_) {
+    auto& api_def = name_and_api_def.second;
+    CHECK_GT(api_def.endpoint_size(), 0);
+    const string canonical_name = api_def.endpoint(0).name();
+    if (api_def.graph_op_name() != canonical_name) {
+      RenameInDocs(api_def.graph_op_name(), canonical_name, &api_def);
+    }
+    for (const auto& in_arg : api_def.in_arg()) {
+      if (in_arg.name() != in_arg.rename_to()) {
+        RenameInDocs(in_arg.name(), in_arg.rename_to(), &api_def);
+      }
+    }
+    for (const auto& out_arg : api_def.out_arg()) {
+      if (out_arg.name() != out_arg.rename_to()) {
+        RenameInDocs(out_arg.name(), out_arg.rename_to(), &api_def);
+      }
+    }
+    for (const auto& attr : api_def.attr()) {
+      if (attr.name() != attr.rename_to()) {
+        RenameInDocs(attr.name(), attr.rename_to(), &api_def);
+      }
+    }
+  }
 }
 
 const tensorflow::ApiDef* ApiDefMap::GetApiDef(const string& name) const {

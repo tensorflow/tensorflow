@@ -1119,9 +1119,8 @@ def rgb_to_grayscale(images, name=None):
     # https://en.wikipedia.org/wiki/Luma_%28video%29
     rgb_weights = [0.2989, 0.5870, 0.1140]
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
-    gray_float = math_ops.reduce_sum(flt_image * rgb_weights,
-                                     rank_1,
-                                     keepdims=True)
+    gray_float = math_ops.reduce_sum(
+        flt_image * rgb_weights, rank_1, keepdims=True)
     gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
     return convert_image_dtype(gray_float, orig_dtype, name=name)
 

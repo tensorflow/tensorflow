@@ -85,9 +85,9 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
                                              HloOpcode opcode) {
     HloComputation::Builder b("scalar_computation");
     auto scalar_lhs = b.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {}), "scalar_lhs"));
+        0, ShapeUtil::MakeShape(primitive_type, {}), "scalar_lhs"));
     auto scalar_rhs = b.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {}), "scalar_rhs"));
+        1, ShapeUtil::MakeShape(primitive_type, {}), "scalar_rhs"));
     auto scalar_op = b.AddInstruction(
         HloInstruction::CreateBinary(ShapeUtil::MakeShape(primitive_type, {}),
                                      opcode, scalar_lhs, scalar_rhs));
@@ -152,22 +152,30 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
   // Expand batch norm training into smaller HLO ops.
   HloInstruction* operand = batch_norm->mutable_operand(0);
   const Shape operand_shape = operand->shape();
+  PrimitiveType ptype = operand_shape.element_type();
   int64 feature_index = batch_norm->feature_index();
   const int64 feature_count = operand_shape.dimensions(feature_index);
   const int64 size_in_elements = ShapeUtil::ElementsIn(operand_shape);
-  auto elements_per_feature =
-      computation_->AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR0<float>(size_in_elements / feature_count)));
+  auto elements_per_feature_literal =
+      Literal::CreateR0<float>(size_in_elements / feature_count);
+  TF_ASSIGN_OR_RETURN(elements_per_feature_literal,
+                      elements_per_feature_literal->Convert(ptype));
+  auto elements_per_feature = computation_->AddInstruction(
+      HloInstruction::CreateConstant(std::move(elements_per_feature_literal)));
 
   HloInstruction* scale = batch_norm->mutable_operand(1);
   HloInstruction* offset = batch_norm->mutable_operand(2);
   const Shape feature_shape = scale->shape();
 
+  auto zero_literal = Literal::CreateR0(0.0f);
+  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
   auto zero = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
+      HloInstruction::CreateConstant(std::move(zero_literal)));
 
+  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
   auto epsilon = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
+      HloInstruction::CreateConstant(std::move(epsilon_literal)));
 
   std::vector<int64> dimensions_without_feature;
 
@@ -184,7 +192,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
       HloInstruction::CreateBroadcast(operand_shape, offset, {feature_index}));
 
   HloComputation* add_reduce_computation =
-      GetScalarBinaryComputation(F32, HloOpcode::kAdd);
+      GetScalarBinaryComputation(ptype, HloOpcode::kAdd);
 
   // X^2.
   auto operand_squared =
@@ -243,8 +251,10 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
       computation_->AddInstruction(HloInstruction::CreateBinary(
           operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon));
 
+  auto neg_half_literal = Literal::CreateR0(-0.5f);
+  TF_ASSIGN_OR_RETURN(neg_half_literal, neg_half_literal->Convert(ptype));
   auto neg_half = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
+      HloInstruction::CreateConstant(std::move(neg_half_literal)));
 
   // 1 / Sqrt[Var[X] + epsilon].
   auto rsqrt_var_add_epsilon =
@@ -286,6 +296,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormInference(
   HloInstruction* operand = batch_norm->mutable_operand(0);
   const Shape operand_shape = operand->shape();
   int64 feature_index = batch_norm->feature_index();
+  PrimitiveType ptype = operand_shape.element_type();
 
   HloInstruction* scale = batch_norm->mutable_operand(1);
   HloInstruction* offset = batch_norm->mutable_operand(2);
@@ -293,8 +304,10 @@ Status BatchNormRewriterVisitor::HandleBatchNormInference(
   HloInstruction* var = batch_norm->mutable_operand(4);
   const Shape feature_shape = scale->shape();
 
+  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
   auto epsilon = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
+      HloInstruction::CreateConstant(std::move(epsilon_literal)));
 
   std::vector<int64> dimensions_without_feature;
 
@@ -321,8 +334,10 @@ Status BatchNormRewriterVisitor::HandleBatchNormInference(
       computation_->AddInstruction(HloInstruction::CreateBinary(
           operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon));
 
+  auto neg_half_literal = Literal::CreateR0(-0.5f);
+  TF_ASSIGN_OR_RETURN(neg_half_literal, neg_half_literal->Convert(ptype));
   auto neg_half = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
+      HloInstruction::CreateConstant(std::move(neg_half_literal)));
 
   // 1 / Sqrt[Var[X] + epsilon].
   auto rsqrt_var_add_epsilon =
@@ -373,6 +388,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
 
   HloInstruction* activation = batch_norm->mutable_operand(0);
   const Shape activation_shape = activation->shape();
+  PrimitiveType ptype = activation_shape.element_type();
   HloInstruction* scale = batch_norm->mutable_operand(1);
   const Shape feature_shape = scale->shape();
   HloInstruction* mean = batch_norm->mutable_operand(2);
@@ -383,18 +399,27 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
 
   const int64 size_in_elements = ShapeUtil::ElementsIn(activation_shape);
   const int64 feature_count = activation_shape.dimensions(feature_index);
-  auto elements_per_feature =
-      computation_->AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR0<float>(size_in_elements / feature_count)));
+  auto elements_per_feature_literal =
+      Literal::CreateR0<float>(size_in_elements / feature_count);
+  TF_ASSIGN_OR_RETURN(elements_per_feature_literal,
+                      elements_per_feature_literal->Convert(ptype));
+  auto elements_per_feature = computation_->AddInstruction(
+      HloInstruction::CreateConstant(std::move(elements_per_feature_literal)));
 
+  auto zero_literal = Literal::CreateR0(0.0f);
+  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
   auto zero = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
+      HloInstruction::CreateConstant(std::move(zero_literal)));
 
+  auto neg_half_literal = Literal::CreateR0(-0.5f);
+  TF_ASSIGN_OR_RETURN(neg_half_literal, neg_half_literal->Convert(ptype));
   auto neg_half = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
+      HloInstruction::CreateConstant(std::move(neg_half_literal)));
 
+  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
   auto epsilon = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
+      HloInstruction::CreateConstant(std::move(epsilon_literal)));
 
   std::vector<int64> dimensions_without_feature;
 
@@ -442,7 +467,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
                                    grad_output, activation_minus_mean));
 
   HloComputation* add_reduce_computation =
-      GetScalarBinaryComputation(F32, HloOpcode::kAdd);
+      GetScalarBinaryComputation(ptype, HloOpcode::kAdd);
 
   // sum(Grad[Y] * (X - E[X])).
   auto sum_grad_output_times_activiation_minus_mean =

@@ -36,17 +36,21 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
     super(ParallelInterleaveDataset, self).__init__()
     self._input_dataset = input_dataset
 
-    @function.Defun(
-        *nest.flatten(sparse.unwrap_sparse_types(input_dataset.output_types)))
+    @function.Defun(*nest.flatten(
+        sparse.as_dense_types(input_dataset.output_types,
+                              input_dataset.output_classes)))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       # Pass in shape information from the input_dataset.
-      for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
+      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
+                                            input_dataset.output_classes)
+      for arg, shape in zip(args, nest.flatten(dense_shapes)):
         arg.set_shape(shape)
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
       nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types)
+          nested_args, input_dataset.output_types, input_dataset.output_shapes,
+          input_dataset.output_classes)
       if dataset_ops._should_unpack_args(nested_args):  # pylint: disable=protected-access
         dataset = map_func(*nested_args)
       else:
@@ -55,6 +59,7 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
       if not isinstance(dataset, dataset_ops.Dataset):
         raise TypeError("`map_func` must return a `Dataset` object.")
 
+      self._output_classes = dataset.output_classes
       self._output_types = dataset.output_types
       self._output_shapes = dataset.output_shapes
 
@@ -79,8 +84,13 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
         self._sloppy,
         f=self._map_func,
         output_types=nest.flatten(
-            sparse.unwrap_sparse_types(self.output_types)),
-        output_shapes=nest.flatten(self.output_shapes))
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+
+  @property
+  def output_classes(self):
+    return self._output_classes
 
   @property
   def output_shapes(self):

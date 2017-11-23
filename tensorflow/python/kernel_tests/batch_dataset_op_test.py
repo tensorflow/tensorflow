@@ -101,13 +101,91 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={count: 14, batch_size: 0})
 
-  def testBatchSparseError(self):
-    def _map_fn(i):
-      return sparse_tensor.SparseTensor(
-          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+  def assertSparseValuesEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
 
-    with self.assertRaises(TypeError):
-      _ = dataset_ops.Dataset.range(10).map(_map_fn).batch(10)
+  def testBatchSparse(self):
+
+    def _sparse(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0]], values=(i * [1]), dense_shape=[1])
+
+    iterator = dataset_ops.Dataset.range(10).map(_sparse).batch(
+        5).make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(2):
+        actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
+            values=[i * 5, i * 5 + 1, i * 5 + 2, i * 5 + 3, i * 5 + 4],
+            dense_shape=[5, 1])
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, expected.eval())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testBatchSparseWithDifferentDenseShapes(self):
+
+    def _sparse(i):
+      return sparse_tensor.SparseTensor(
+          indices=array_ops.expand_dims(
+              math_ops.range(i, dtype=dtypes.int64), 1),
+          values=array_ops.fill([math_ops.to_int32(i)], i),
+          dense_shape=[i])
+
+    iterator = dataset_ops.Dataset.range(10).map(_sparse).batch(
+        5).make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(2):
+        actual = sess.run(get_next)
+        expected_indices = []
+        expected_values = []
+        for j in range(5):
+          for k in range(i * 5 + j):
+            expected_indices.append([j, k])
+            expected_values.append(i * 5 + j)
+        expected = sparse_tensor.SparseTensor(
+            indices=expected_indices,
+            values=expected_values,
+            dense_shape=[5, (i + 1) * 5 - 1])
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, expected.eval())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testNestedBatchSparse(self):
+
+    def _sparse(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0]], values=(i * [1]), dense_shape=[1])
+
+    iterator = dataset_ops.Dataset.range(10).map(_sparse).batch(5).batch(
+        2).make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      actual = sess.run(get_next)
+      expected = sparse_tensor.SparseTensor(
+          indices=[[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 3, 0], [0, 4, 0],
+                   [1, 0, 0], [1, 1, 0], [1, 2, 0], [1, 3, 0], [1, 4, 0]],
+          values=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+          dense_shape=[2, 5, 1])
+      self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+      self.assertSparseValuesEqual(actual, expected.eval())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
   def testPaddedBatchDataset(self):
     seq_lens = array_ops.placeholder(dtypes.int32, shape=[None])

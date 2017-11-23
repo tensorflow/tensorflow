@@ -309,7 +309,6 @@ def _fused_batch_norm(inputs,
         new_shape = [-1, channels, 1, 1]
       inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
-    dtype = inputs.dtype.base_dtype
     if data_format == DATA_FORMAT_NHWC:
       params_shape = inputs_shape[-1:]
     else:

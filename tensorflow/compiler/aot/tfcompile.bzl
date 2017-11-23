@@ -189,7 +189,7 @@ def tf_library(name, graph, config,
            " --cpp_class=" + cpp_class +
            " --target_triple=" + target_llvm_triple() +
            " --out_session_module=$(@D)/" + session_module_pb +
-           flags),
+           " " + flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,

@@ -431,8 +431,11 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                           true));
 
   TF_ASSIGN_OR_RETURN(
+      module, backend->compiler()->RunHloPasses(std::move(module), executor));
+
+  TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), executor));
+      backend->compiler()->RunBackend(std::move(module), executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -572,12 +575,13 @@ Service::ExecuteParallelAndRegisterResult(
   // profile.
   for (auto& index_to_profiled_stream : index_to_profiled_streams) {
     int64 device = index_to_profiled_stream.first;
-    auto& module = executables[device]->module();
     se::Stream* stream = index_to_profiled_stream.second;
-    HloExecutionProfile hlo_profile(module,
-                                    *executables[device]->CreateCostAnalysis());
-    TF_RETURN_IF_ERROR(executables[device]->PopulateExecutionProfile(
-        &hlo_profile, stream->parent()));
+    Executable* executable = executables[device];
+    const HloModule& module = executable->module();
+    HloExecutionProfile hlo_profile(&executable->hlo_profile_printer(),
+                                    &executable->hlo_profile_index_map());
+    TF_RETURN_IF_ERROR(
+        executable->PopulateExecutionProfile(&hlo_profile, stream->parent()));
     XLA_LOG_LINES(
         tensorflow::INFO,
         hlo_profile.ToString(streams[0]->parent()->GetDeviceDescription()));
@@ -1360,6 +1364,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kConvertRequest:
       handle_status =
           computation->AddConvertInstruction(arg->convert_request());
+      break;
+    case OpRequest::kBitcastConvertRequest:
+      handle_status = computation->AddBitcastConvertInstruction(
+          arg->bitcast_convert_request());
       break;
     case OpRequest::kConvolveRequest:
       handle_status =

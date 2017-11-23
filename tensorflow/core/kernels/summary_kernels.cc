@@ -111,8 +111,8 @@ class WriteSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
     OP_REQUIRES_OK(ctx, ctx->input("summary_metadata", &tmp));
@@ -121,8 +121,7 @@ class WriteSummaryOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
 
-    OP_REQUIRES_OK(ctx,
-                   s->WriteTensor(global_step, *t, tag, serialized_metadata));
+    OP_REQUIRES_OK(ctx, s->WriteTensor(step, *t, tag, serialized_metadata));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("WriteSummary").Device(DEVICE_CPU),
@@ -158,15 +157,15 @@ class WriteScalarSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("value", &t));
 
-    OP_REQUIRES_OK(ctx, s->WriteScalar(global_step, *t, tag));
+    OP_REQUIRES_OK(ctx, s->WriteScalar(step, *t, tag));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("WriteScalarSummary").Device(DEVICE_CPU),
@@ -181,15 +180,15 @@ class WriteHistogramSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("values", &t));
 
-    OP_REQUIRES_OK(ctx, s->WriteHistogram(global_step, *t, tag));
+    OP_REQUIRES_OK(ctx, s->WriteHistogram(step, *t, tag));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("WriteHistogramSummary").Device(DEVICE_CPU),
@@ -210,8 +209,8 @@ class WriteImageSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
     const Tensor* bad_color;
@@ -224,8 +223,7 @@ class WriteImageSummaryOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
 
-    OP_REQUIRES_OK(
-        ctx, s->WriteImage(global_step, *t, tag, max_images_, *bad_color));
+    OP_REQUIRES_OK(ctx, s->WriteImage(step, *t, tag, max_images_, *bad_color));
   }
 
  private:
@@ -247,8 +245,8 @@ class WriteAudioSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
     OP_REQUIRES_OK(ctx, ctx->input("sample_rate", &tmp));
@@ -257,8 +255,8 @@ class WriteAudioSummaryOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
 
-    OP_REQUIRES_OK(
-        ctx, s->WriteAudio(global_step, *t, tag, max_outputs_, sample_rate));
+    OP_REQUIRES_OK(ctx,
+                   s->WriteAudio(step, *t, tag, max_outputs_, sample_rate));
   }
 
  private:
@@ -278,8 +276,8 @@ class WriteGraphSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* t;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &t));
-    const int64 global_step = t->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &t));
+    const int64 step = t->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
     std::unique_ptr<GraphDef> graph{new GraphDef};
     if (!ParseProtoUnlimited(graph.get(), t->scalar<string>()())) {
@@ -287,7 +285,7 @@ class WriteGraphSummaryOp : public OpKernel {
           errors::DataLoss("Bad tf.GraphDef binary proto tensor string"));
       return;
     }
-    OP_REQUIRES_OK(ctx, s->WriteGraph(global_step, std::move(graph)));
+    OP_REQUIRES_OK(ctx, s->WriteGraph(step, std::move(graph)));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("WriteGraphSummary").Device(DEVICE_CPU),

@@ -59,11 +59,13 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleConvert(HloInstruction* convert) override {
-    if (ShapeUtil::ElementIsComplex(convert->operand(0)->shape())) {
-      TF_RET_CHECK(ShapeUtil::ElementIsComplex(convert->shape()))
-          << "Unsupported complex->real kConvert";
-    }
     return CheckShape(convert, ShapeInference::InferConvertShape(
+                                   convert->operand(0)->shape(),
+                                   convert->shape().element_type()));
+  }
+
+  Status HandleBitcastConvert(HloInstruction* convert) override {
+    return CheckShape(convert, ShapeInference::InferBitcastConvertShape(
                                    convert->operand(0)->shape(),
                                    convert->shape().element_type()));
   }
@@ -261,6 +263,15 @@ class ShapeVerifier : public DfsHloVisitor {
     // calls.
     return CheckShape(xla_while,
                       xla_while->while_body()->ComputeProgramShape().result());
+  }
+
+  Status HandleConditional(HloInstruction* conditional) override {
+    TF_RETURN_IF_ERROR(CheckShape(
+        conditional,
+        conditional->true_computation()->ComputeProgramShape().result()));
+    return CheckShape(
+        conditional,
+        conditional->false_computation()->ComputeProgramShape().result());
   }
 
   Status HandlePad(HloInstruction* pad) override {
@@ -571,7 +582,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
         // or ComputationLowerer::Visit()
         TF_RET_CHECK(instruction->dimensions().size() ==
                      ShapeUtil::Rank(instruction->operand(0)->shape()))
-                << "Broadcast HLO has invalid number of dimensions.";
+            << "Broadcast HLO has invalid number of dimensions.";
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         auto* while_cond = instruction->while_condition();
         auto* while_body = instruction->while_body();

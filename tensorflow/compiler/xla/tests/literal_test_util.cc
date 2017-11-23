@@ -340,6 +340,9 @@ class NearComparator {
     multi_index_.resize(expected.shape().dimensions_size(), 0);
 
     switch (expected.shape().element_type()) {
+      case BF16:
+        ExpectLiteralsNear<bfloat16>(expected, actual, 0);
+        break;
       case F32:
         ExpectLiteralsNear<float>(expected, actual, 0);
         break;
@@ -523,6 +526,13 @@ void NearComparator::ExpectNear<complex64>(complex64 expected, complex64 actual,
   EXPECT_NEAR(expected.imag(), actual.imag(), error_.abs)
       << "expected:\n  " << expected << "\n\tvs actual:\n  " << actual << "\n"
       << message;
+}
+
+template <>
+bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
+                                                bfloat16 actual) {
+  return ExpectValuesNear(static_cast<float>(expected),
+                          static_cast<float>(actual));
 }
 
 }  // namespace

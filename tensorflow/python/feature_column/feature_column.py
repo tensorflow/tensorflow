@@ -134,6 +134,7 @@ import math
 import numpy as np
 import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -235,20 +236,29 @@ def input_layer(features,
       ordered_columns.append(column)
       with variable_scope.variable_scope(
           None, default_name=column._var_scope_name):  # pylint: disable=protected-access
-        tensor = column._get_dense_tensor(  # pylint: disable=protected-access
-            builder,
-            weight_collections=weight_collections,
-            trainable=trainable)
+        if column._var_scope_name == column.name:  # pylint: disable=protected-access
+          tensor = _get_dense_tensor(
+              column=column,
+              builder=builder,
+              weight_collections=weight_collections,
+              trainable=trainable)
+        else:
+          # This is typically the case for shared_embedding_columns. The
+          # embedding weights variable will be under the common variable_scope,
+          # but the ops for each column will be under a separate name_scope.
+          with ops.name_scope(column.name):
+            tensor = _get_dense_tensor(
+                column=column,
+                builder=builder,
+                weight_collections=weight_collections,
+                trainable=trainable)
+        output_tensors.append(tensor)
         if cols_to_vars is not None:
           # Retrieve any variables created (some _DenseColumn's don't create
           # variables, in which case an empty list is returned).
           cols_to_vars[column] = ops.get_collection(
               ops.GraphKeys.GLOBAL_VARIABLES,
               scope=variable_scope.get_variable_scope().name)
-        num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
-        batch_size = array_ops.shape(tensor)[0]
-        tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
-        output_tensors.append(tensor)
     _verify_static_batch_size_equality(output_tensors, ordered_columns)
     return array_ops.concat(output_tensors, 1)
 
@@ -344,13 +354,26 @@ def linear_model(features,
       with variable_scope.variable_scope(
           None, default_name=column._var_scope_name):  # pylint: disable=protected-access
         ordered_columns.append(column)
-        if isinstance(column, _CategoricalColumn):
-          weighted_sum = _create_categorical_column_weighted_sum(
-              column, builder, units, sparse_combiner, weight_collections,
-              trainable)
+        if column._var_scope_name == column.name:  # pylint: disable=protected-access
+          weighted_sum = _create_weighted_sum(
+              column=column,
+              builder=builder,
+              units=units,
+              sparse_combiner=sparse_combiner,
+              weight_collections=weight_collections,
+              trainable=trainable)
         else:
-          weighted_sum = _create_dense_column_weighted_sum(
-              column, builder, units, weight_collections, trainable)
+          # This is typically the case for shared_embedding_columns. The
+          # embedding weights variable will be under the common variable_scope,
+          # but the ops for each column will be under a separate name_scope.
+          with ops.name_scope(column.name):
+            weighted_sum = _create_weighted_sum(
+                column=column,
+                builder=builder,
+                units=units,
+                sparse_combiner=sparse_combiner,
+                weight_collections=weight_collections,
+                trainable=trainable)
         weighted_sums.append(weighted_sum)
         if cols_to_vars is not None:
           # Retrieve the variables created.
@@ -554,6 +577,11 @@ def embedding_column(
     ValueError: if exactly one of `ckpt_to_load_from` and `tensor_name_in_ckpt`
       is specified.
     ValueError: if `initializer` is specified and is not callable.
+    RuntimeError: If eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution.
+  @end_compatibility
   """
   if (dimension is None) or (dimension < 1):
     raise ValueError('Invalid dimension {}.'.format(dimension))
@@ -565,6 +593,8 @@ def embedding_column(
     raise ValueError('initializer must be callable if specified. '
                      'Embedding of column_name: {}'.format(
                          categorical_column.name))
+  if not context.in_graph_mode():
+    raise RuntimeError('Embedding_column not supported in eager mode.')
   if initializer is None:
     initializer = init_ops.truncated_normal_initializer(
         mean=0.0, stddev=1 / math.sqrt(dimension))
@@ -689,12 +719,30 @@ def _shared_embedding_columns(
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
     initializer = init_ops.truncated_normal_initializer(
-        mean=0.0, stddev=1 / math.sqrt(dimension))
-  # TODO(b/67952670): Validate categorical_columns.
+        mean=0.0, stddev=1. / math.sqrt(dimension))
+
+  # Sort the columns so the default collection name is deterministic even if the
+  # user passes columns from an unsorted collection, such as dict.values().
+  sorted_columns = sorted(categorical_columns, key=lambda x: x.name)
+
+  c0 = sorted_columns[0]
+  if not isinstance(c0, _CategoricalColumn):
+    raise ValueError(
+        'All categorical_columns must be subclasses of _CategoricalColumn. '
+        'Given: {}, of type: {}'.format(c0, type(c0)))
+  if isinstance(c0, _WeightedCategoricalColumn):
+    c0 = c0.categorical_column
+  for c in sorted_columns[1:]:
+    if isinstance(c, _WeightedCategoricalColumn):
+      c = c.categorical_column
+    if not isinstance(c, type(c0)):
+      raise ValueError(
+          'To use shared_embedding_column, all categorical_columns must have '
+          'the same type, or be weighted_categorical_column of the same type. '
+          'Given column: {} of type: {} does not match given column: {} of '
+          'type: {}'.format(c0, type(c0), c, type(c)))
+
   if not shared_embedding_collection_name:
-    # Sort the columns so the name is deterministic even if the user passes
-    # columns from an unsorted collection, such as dict.values().
-    sorted_columns = sorted(categorical_columns, key=lambda x: x.name)
     shared_embedding_collection_name = '_'.join(c.name for c in sorted_columns)
     shared_embedding_collection_name += '_shared_embedding'
 
@@ -1462,7 +1510,7 @@ class _FeatureColumn(object):
 
   @abc.abstractproperty
   def name(self):
-    """Returns string. Used for naming."""
+    """Returns string. Used for naming and for name_scope."""
     pass
 
   @property
@@ -1558,6 +1606,38 @@ class _DenseColumn(_FeatureColumn):
       `Tensor` of shape [batch_size] + `_variable_shape`.
     """
     pass
+
+
+def _get_dense_tensor(
+    column,
+    builder,
+    weight_collections,
+    trainable):
+  """Creates a dense Tensor for a _DenseColumn for input_layer."""
+  tensor = column._get_dense_tensor(  # pylint: disable=protected-access
+      builder,
+      weight_collections=weight_collections,
+      trainable=trainable)
+  num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
+  batch_size = array_ops.shape(tensor)[0]
+  return array_ops.reshape(tensor, shape=(batch_size, num_elements))
+
+
+def _create_weighted_sum(
+    column,
+    builder,
+    units,
+    sparse_combiner,
+    weight_collections,
+    trainable):
+  """Creates a weighted sum for a dense or sparse column for linear_model."""
+  if isinstance(column, _CategoricalColumn):
+    return _create_categorical_column_weighted_sum(
+        column, builder, units, sparse_combiner, weight_collections,
+        trainable)
+  else:
+    return _create_dense_column_weighted_sum(
+        column, builder, units, weight_collections, trainable)
 
 
 def _create_dense_column_weighted_sum(
