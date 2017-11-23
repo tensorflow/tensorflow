@@ -51,8 +51,7 @@ class Bfloat16Test : public ClientLibraryTestBase {
   const ErrorSpec error_spec_{0.001, 0.001};
 };
 
-XLA_TEST_F(Bfloat16Test, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
-                             DISABLED_ON_CPU(ScalarOperation)))) {
+XLA_TEST_F(Bfloat16Test, ScalarOperation) {
   ComputationBuilder builder(client_, TestName());
   auto x = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(2.0f));
   auto y = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(1.0f));
@@ -62,13 +61,90 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
                                 error_spec_);
 }
 
-XLA_TEST_F(Bfloat16Test, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
-                             DISABLED_ON_CPU(NegateScalarF16)))) {
+XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
   ComputationBuilder builder(client_, TestName());
   builder.Neg(builder.ConstantR0<bfloat16>(static_cast<bfloat16>(2.1f)));
 
   ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(-2.1f), {},
                                 error_spec_);
+}
+
+XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
+  const int kFeatureIndex = 2;
+  ComputationBuilder builder(client_, TestName());
+
+  auto operand = builder.ConstantR4FromArray4D<bfloat16>(
+      {{{{static_cast<bfloat16>(1.f)}, {static_cast<bfloat16>(2.f)}},
+        {{static_cast<bfloat16>(3.f)}, {static_cast<bfloat16>(4.f)}}},
+       {{{static_cast<bfloat16>(5.f)}, {static_cast<bfloat16>(6.f)}},
+        {{static_cast<bfloat16>(7.f)}, {static_cast<bfloat16>(8.f)}}}});
+
+  auto scale = builder.ConstantR1<bfloat16>(
+      {static_cast<bfloat16>(2.0f), static_cast<bfloat16>(3.0f)});
+
+  auto offset = builder.ConstantR1<bfloat16>(
+      {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(2.0f)});
+
+  auto tuple = builder.BatchNormTraining(operand, scale, offset,
+                                         /*epsilon=*/0.001, kFeatureIndex);
+
+  auto expected = *Literal::MakeTuple(
+      {Literal::CreateR4<bfloat16>(
+           {{{{static_cast<bfloat16>(-1.7f)}, {static_cast<bfloat16>(-2.04f)}},
+             {{static_cast<bfloat16>(0.105f)}, {static_cast<bfloat16>(0.65f)}}},
+            {{{static_cast<bfloat16>(1.89f)}, {static_cast<bfloat16>(3.35f)}},
+             {{static_cast<bfloat16>(3.7f)}, {static_cast<bfloat16>(6.04f)}}}})
+           .get(),
+       Literal::CreateR1<bfloat16>(
+           {static_cast<bfloat16>(4), static_cast<bfloat16>(5)})
+           .get(),
+       Literal::CreateR1<bfloat16>(
+           {static_cast<bfloat16>(5), static_cast<bfloat16>(5)})
+           .get()});
+
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.01));
+}
+
+XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
+  const int kFeatureIndex = 2;
+  ComputationBuilder builder(client_, TestName());
+
+  auto operand = builder.ConstantR4FromArray4D<bfloat16>(
+      Array4D<bfloat16>(2, 2, 2, 1, static_cast<bfloat16>(0.0f)));
+
+  auto scale = builder.ConstantR1<bfloat16>(
+      {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(1.0f)});
+
+  auto mean = builder.ConstantR1<bfloat16>(
+      {static_cast<bfloat16>(0.0f), static_cast<bfloat16>(0.0f)});
+
+  auto var = builder.ConstantR1<bfloat16>(
+      {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(1.0f)});
+
+  auto grad_output = builder.ConstantR4FromArray4D<bfloat16>(
+      {{{{static_cast<bfloat16>(1.f)}, {static_cast<bfloat16>(2.f)}},
+        {{static_cast<bfloat16>(3.f)}, {static_cast<bfloat16>(4.f)}}},
+       {{{static_cast<bfloat16>(5.f)}, {static_cast<bfloat16>(6.f)}},
+        {{static_cast<bfloat16>(7.f)}, {static_cast<bfloat16>(8.f)}}}});
+
+  builder.BatchNormGrad(operand, scale, mean, var, grad_output,
+                        /*epsilon=*/0.0, kFeatureIndex);
+
+  auto expected = *Literal::MakeTuple(
+      {Literal::CreateR4<bfloat16>(
+           {{{{static_cast<bfloat16>(-3.f)}, {static_cast<bfloat16>(-3.f)}},
+             {{static_cast<bfloat16>(-1.f)}, {static_cast<bfloat16>(-1.f)}}},
+            {{{static_cast<bfloat16>(1.f)}, {static_cast<bfloat16>(1.f)}},
+             {{static_cast<bfloat16>(3.f)}, {static_cast<bfloat16>(3.f)}}}})
+           .get(),
+       Literal::CreateR1<bfloat16>(
+           {static_cast<bfloat16>(0), static_cast<bfloat16>(0)})
+           .get(),
+       Literal::CreateR1<bfloat16>(
+           {static_cast<bfloat16>(16), static_cast<bfloat16>(20)})
+           .get()});
+
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.01));
 }
 
 }  // namespace

@@ -773,6 +773,11 @@ xla_test(
 xla_test(
     name = "bfloat16_test",
     srcs = ["bfloat16_test.cc"],
+    blacklisted_backends = [
+        "cpu",
+        "cpu_parallel",
+        "gpu",
+    ],
     shard_count = 40,
     deps = [
         ":test_utils",
@@ -1343,6 +1348,7 @@ xla_test(
     srcs = ["client_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",

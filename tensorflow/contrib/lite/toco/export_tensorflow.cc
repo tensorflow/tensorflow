@@ -35,8 +35,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
+using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
+using tensorflow::DT_INT64;
+using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::TensorProto;
 
@@ -1500,10 +1503,29 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   }
 }
 
-void AddPlaceholder(const string& name, GraphDef* tensorflow_graph) {
+void AddPlaceholder(const string& name, ArrayDataType type,
+                    GraphDef* tensorflow_graph) {
   auto* placeholder = tensorflow_graph->add_node();
   placeholder->set_op("Placeholder");
-  (*placeholder->mutable_attr())["dtype"].set_type(DT_FLOAT);
+  switch (type) {
+    case ArrayDataType::kBool:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_BOOL);
+      break;
+    case ArrayDataType::kFloat:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_FLOAT);
+      break;
+    case ArrayDataType::kUint8:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_UINT8);
+      break;
+    case ArrayDataType::kInt32:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_INT32);
+      break;
+    case ArrayDataType::kInt64:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_INT64);
+      break;
+    default:
+      LOG(FATAL) << "Unexpected data type in array \"" << name << "\"";
+  }
   placeholder->set_name(name);
 }
 
@@ -1531,7 +1553,9 @@ void AddPlaceholderForRNNState(const Model& model, const string& name, int size,
 void ExportTensorFlowGraphDefImplementation(const Model& model,
                                             GraphDef* tensorflow_graph) {
   for (const auto& input_array : model.flags.input_arrays()) {
-    AddPlaceholder(input_array.name(), tensorflow_graph);
+    AddPlaceholder(input_array.name(),
+                   model.arrays.at(input_array.name())->data_type,
+                   tensorflow_graph);
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     AddPlaceholderForRNNState(model, rnn_state.state_array(), rnn_state.size(),
