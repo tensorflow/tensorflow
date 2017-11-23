@@ -384,27 +384,34 @@ def rot90(image, k=1, name=None):
   """
   with ops.name_scope(name, 'rot90', [image, k]) as scope:
     image = ops.convert_to_tensor(image, name='image')
+    image, is_batch = _EnsureTensorIs4D(image)
     image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+        _CheckAtLeast3DImage(image, require_static=False), image)
     k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
     k.get_shape().assert_has_rank(0)
     k = math_ops.mod(k, 4)
 
     def _rot90():
-      return array_ops.transpose(array_ops.reverse_v2(image, [1]),
-                                 [1, 0, 2])
+      return array_ops.transpose(array_ops.reverse_v2(image, [2]),
+                                 [0, 2, 1, 3])
     def _rot180():
-      return array_ops.reverse_v2(image, [0, 1])
+      return array_ops.reverse_v2(image, [1, 2])
     def _rot270():
-      return array_ops.reverse_v2(array_ops.transpose(image, [1, 0, 2]),
-                                  [1])
+      return array_ops.reverse_v2(array_ops.transpose(image, [0, 2, 1, 3]),
+                                  [2])
     cases = [(math_ops.equal(k, 1), _rot90),
              (math_ops.equal(k, 2), _rot180),
              (math_ops.equal(k, 3), _rot270)]
 
     ret = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
                                 name=scope)
-    ret.set_shape([None, None, image.get_shape()[2]])
+
+    shape = image.get_shape()
+    ret.set_shape([shape[0], None, None, shape[3]])
+
+    if is_batch != True:
+      ret = array_ops.squeeze(ret, squeeze_dims=[0])
+
     return ret
 
 
@@ -423,7 +430,6 @@ def transpose_image(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  original_shape = image.get_shape()
   image, is_batch = _EnsureTensorIs4D(image)
   image = control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
