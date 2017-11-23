@@ -231,7 +231,7 @@ Status FillFunctionBody(
 }
 
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
-// code in third_party/tensorflow/python/framework/function.py.
+// code in tensorflow/tensorflow/python/framework/function.py.
 Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           bool append_hash_to_fn_name,
                           const std::vector<const Node*>& body_nodes,
