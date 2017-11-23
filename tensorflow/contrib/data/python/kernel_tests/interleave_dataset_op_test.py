@@ -22,8 +22,10 @@ import math
 import threading
 import time
 
+import numpy as np
 from six.moves import zip_longest
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.python.framework import dtypes
@@ -207,6 +209,46 @@ class InterleaveDatasetTest(test.TestCase):
           self.assertAllEqual(expected, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+
+class InterleaveDatasetSeriazationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_iterator_graph(self, input_values, cycle_length, block_length):
+    repeat_count = 2
+    return dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
+        repeat_count).interleave(
+            lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
+            cycle_length, block_length)
+
+  def testSerializationCore(self):
+    input_values = np.array([4, 5, 6], dtype=np.int64)
+    num_outputs = np.sum(input_values) * 2
+    # cycle_length > 1, block_length > 1
+    cycle_length = 2
+    block_length = 3
+    # pylint: disable=g-long-lambda
+    self.run_core_tests(
+        lambda: self._build_iterator_graph(
+            input_values, cycle_length, block_length),
+        lambda: self._build_iterator_graph(
+            input_values, cycle_length * 2, block_length * 1),
+        num_outputs)
+    # cycle_length = 1
+    cycle_length = 1
+    block_length = 3
+    self.run_core_tests(
+        lambda: self._build_iterator_graph(
+            input_values, cycle_length, block_length),
+        None, num_outputs)
+    # block_length = 1
+    cycle_length = 2
+    block_length = 1
+    self.run_core_tests(
+        lambda: self._build_iterator_graph(
+            input_values, cycle_length, block_length),
+        None, num_outputs)
+    # pylint: enable=g-long-lambda
 
 
 class ParallelInterleaveDatasetTest(test.TestCase):

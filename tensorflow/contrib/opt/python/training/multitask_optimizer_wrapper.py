@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""An optimizer wrapper that ensures correct behaviour
-of stateful optimizers with multitask loss."""
+"""An optimizer wrapper for stateful optimizers with multitask loss."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,26 +28,27 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 
-__all__ = ["MultitaskOptimizerWrapper",
-           "clip_gradients_by_global_norm"]
+__all__ = ['MultitaskOptimizerWrapper', 'clip_gradients_by_global_norm']
+
 
 def _is_all_zeros(grad):
   all_zeros = math_ops.equal(math_ops.count_nonzero(grad), 0)
   return all_zeros
 
+
 def _get_wrapper(fn, opt):
+
   def wrapper(self, grad, *args, **kwargs):  # pylint: disable=unused-argument
     all_zeros = _is_all_zeros(grad)
-    return control_flow_ops.cond(
-        all_zeros,
-        control_flow_ops.no_op,
-        lambda: fn(grad, *args, **kwargs))
+    return control_flow_ops.cond(all_zeros, control_flow_ops.no_op,
+                                 lambda: fn(grad, *args, **kwargs))
+
   wrapper = types.MethodType(wrapper, opt)
   return wrapper
 
+
 class MultitaskOptimizerWrapper(object):
-  """Optimizer wrapper that ensures that
-  all-zero gradients don't affect the optimizer state.
+  """Optimizer wrapper making all-zero gradients harmless.
 
   This might be useful when a multi-task loss is used,
   and some components of the loss might be
@@ -88,20 +87,20 @@ class MultitaskOptimizerWrapper(object):
     gradvars_clipped, global_step=batch)
   ```
   """
+
   def __init__(self, opt):
-    """
+    """Constructor.
+
     Args:
-    opt: an instance of a class that implements tf.train.Optimizer.
+      opt: an instance of a class that implements tf.train.Optimizer.
     """
     if not isinstance(opt, optimizer.Optimizer):
       raise TypeError(
-          "Supplied optimizer must be an instance of tf.train.Optimizer")
+          'Supplied optimizer must be an instance of tf.train.Optimizer')
     self._opt = opt
-    overriden_methods = ('_apply_dense',
-                         '_resource_apply_dense',
-                         '_apply_sparse',
-                         '_resource_apply_sparse')
-    for name in overriden_methods:
+    overridden_methods = ('_apply_dense', '_resource_apply_dense',
+                          '_apply_sparse', '_resource_apply_sparse')
+    for name in overridden_methods:
       fn = getattr(self._opt, name)
       wrapper = _get_wrapper(fn, self._opt)
       setattr(self._opt, name, wrapper)
@@ -112,27 +111,30 @@ class MultitaskOptimizerWrapper(object):
 
 def clip_gradients_by_global_norm(gradients_variables, clip_norm=20.):
   """Clips gradients of a multitask loss by their global norm.
+
   Ignores all-zero tensors when computing the global norm.
 
   Args:
-  gradients_variables: a list of pairs (gradient, variable).
-  clip_norm: a float Tensor, the global norm to clip on. Default is 20.0.
+    gradients_variables: a list of pairs (gradient, variable).
+    clip_norm: a float Tensor, the global norm to clip on. Default is 20.0.
 
   Returns:
-  list: A list of pairs of the same type as gradients_variables,.
-  fixed_global_norm: A 0-D (scalar) Tensor representing the global norm.
+    list: A list of pairs of the same type as gradients_variables,.
+    fixed_global_norm: A 0-D (scalar) Tensor representing the global norm.
   """
   gradients, variables = six.moves.zip(*gradients_variables)
+
   def _replace_nonexisting_grad(grad):
     if grad is None:
       return grad
     all_zeros = _is_all_zeros(grad)
-    return control_flow_ops.cond(all_zeros,
-                                 lambda: array_ops.zeros(
-                                     [], dtype=dtypes.as_dtype(grad.dtype)),
-                                 lambda: grad)
+    return control_flow_ops.cond(
+        all_zeros,
+        lambda: array_ops.zeros([], dtype=dtypes.as_dtype(grad.dtype)),
+        lambda: grad)
+
   nonzero_gradients = [_replace_nonexisting_grad(g) for g in gradients]
   fixed_global_norm = clip_ops.global_norm(nonzero_gradients)
-  gradients, _ = clip_ops.clip_by_global_norm(gradients, clip_norm,
-                                              use_norm=fixed_global_norm)
+  gradients, _ = clip_ops.clip_by_global_norm(
+      gradients, clip_norm, use_norm=fixed_global_norm)
   return list(six.moves.zip(gradients, variables)), fixed_global_norm

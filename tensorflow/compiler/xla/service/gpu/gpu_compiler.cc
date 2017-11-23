@@ -465,10 +465,20 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   VLOG(2) << "Printing the thunk schedule...";
   XLA_VLOG_LINES(2, thunk_schedule->ToString());
 
-  auto* gpu_executable =
-      new GpuExecutable(ptx, cubin, {cc_major, cc_minor},
-                        std::move(thunk_schedule), std::move(module),
-                        std::move(buffer_assignment), ShapeSizeBytesFunction());
+  std::unique_ptr<HloProfileIndexMap> profile_index_map;
+  std::unique_ptr<HloProfilePrinter> profile_printer;
+
+  if (module->config().hlo_profiling_enabled()) {
+    HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
+    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
+    profile_printer =
+        CreateHloProfilePrinter(*profile_index_map, cost_analysis);
+  }
+
+  auto* gpu_executable = new GpuExecutable(
+      ptx, cubin, {cc_major, cc_minor}, std::move(thunk_schedule),
+      std::move(module), std::move(buffer_assignment),
+      std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);

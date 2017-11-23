@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
@@ -696,6 +697,18 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                   bucket, "/", object);
 
+  if (out->size() < block_size()) {
+    // Check stat cache to see if we encountered an interrupted read.
+    FileStatistics stat;
+    if (stat_cache_->Lookup(filename, &stat)) {
+      if (offset + out->size() < stat.length) {
+        return errors::Internal(strings::Printf(
+            "File contents are inconsistent for file: %s @ %lu.",
+            filename.c_str(), offset));
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -816,7 +829,8 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
     return errors::Internal("'stat' cannot be nullptr.");
   }
   if (object.empty()) {
-    return errors::InvalidArgument("'object' must be a non-empty string.");
+    return errors::InvalidArgument(strings::Printf(
+        "'object' must be a non-empty string. (File: %s)", fname.c_str()));
   }
 
   StatCache::ComputeFunc compute_func =

@@ -13,10 +13,10 @@
 // limitations under the License.
 //
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_STOCHASTIC_STATS_FEATURE_SPLIT_CANDIDATE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_STOCHASTIC_STATS_FEATURE_SPLIT_CANDIDATE_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_FEATURE_SPLIT_CANDIDATE_H_
+#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_FEATURE_SPLIT_CANDIDATE_H_
 
-#include "tensorflow/contrib/boosted_trees/lib/learner/stochastic/stats/split-stats.h"
+#include "tensorflow/contrib/boosted_trees/lib/learner/common/stats/split-stats.h"
 #include "tensorflow/contrib/boosted_trees/proto/tree_config.pb.h"
 
 namespace tensorflow {
@@ -58,4 +58,4 @@ struct FeatureSplitCandidate {
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_STOCHASTIC_STATS_FEATURE_SPLIT_CANDIDATE_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_FEATURE_SPLIT_CANDIDATE_H_

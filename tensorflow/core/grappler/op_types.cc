@@ -24,64 +24,40 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-bool IsAdd(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Add";
-}
+bool IsAdd(const NodeDef& node) { return node.op() == "Add"; }
 
-bool IsAddN(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "AddN";
-}
+bool IsAddN(const NodeDef& node) { return node.op() == "AddN"; }
 
-bool IsAvgPoolGrad(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "AvgPoolGrad";
-}
+bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
-bool IsBiasAddGrad(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "BiasAddGrad";
-}
+bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
 
-bool IsConcatOffset(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "ConcatOffset";
-}
+bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
-bool IsConstant(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Const";
-}
+bool IsConcatOffset(const NodeDef& node) { return node.op() == "ConcatOffset"; }
 
-bool IsConv2D(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Conv2D";
-}
+bool IsConstant(const NodeDef& node) { return node.op() == "Const"; }
+
+bool IsConv2D(const NodeDef& node) { return node.op() == "Conv2D"; }
 
 bool IsConv2DBackpropFilter(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Conv2DBackpropFilter";
+  return node.op() == "Conv2DBackpropFilter";
 }
 
 bool IsConv2DBackpropInput(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Conv2DBackpropInput";
+  return node.op() == "Conv2DBackpropInput";
 }
 
 bool IsDepthwiseConv2dNative(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "DepthwiseConv2dNative";
+  return node.op() == "DepthwiseConv2dNative";
 }
 
 bool IsDepthwiseConv2dNativeBackpropFilter(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "DepthwiseConv2dNativeBackpropFilter";
+  return node.op() == "DepthwiseConv2dNativeBackpropFilter";
 }
 
 bool IsDepthwiseConv2dNativeBackpropInput(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "DepthwiseConv2dNativeBackpropInput";
+  return node.op() == "DepthwiseConv2dNativeBackpropInput";
 }
 
 bool IsDequeueOp(const NodeDef& node) {
@@ -101,14 +77,10 @@ bool IsExit(const NodeDef& node) {
   return op == "Exit" || op == "RefExit";
 }
 
-bool IsFloorMod(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "FloorMod";
-}
+bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
 
 bool IsFusedBatchNormGradV1(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "FusedBatchNormGrad";
+  return node.op() == "FusedBatchNormGrad";
 }
 
 bool IsIdentity(const NodeDef& node) {
@@ -121,25 +93,16 @@ bool IsMerge(const NodeDef& node) {
   return op == "Merge" || op == "RefMerge";
 }
 
-bool IsMul(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Mul";
-}
+bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
 
-bool IsNoOp(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "NoOp";
-}
+bool IsNoOp(const NodeDef& node) { return node.op() == "NoOp"; }
 
 bool IsNextIteration(const NodeDef& node) {
   const auto& op = node.op();
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
-bool IsPad(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Pad";
-}
+bool IsPad(const NodeDef& node) { return node.op() == "Pad"; }
 
 bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
@@ -147,20 +110,11 @@ bool IsPlaceholder(const NodeDef& node) {
          op == "PlaceholderWithDefault";
 }
 
-bool IsRealDiv(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "RealDiv";
-}
+bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }
 
-bool IsReluGrad(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "ReluGrad";
-}
+bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 
-bool IsRecv(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "_Recv";
-}
+bool IsRecv(const NodeDef& node) { return node.op() == "_Recv"; }
 
 bool IsReduction(const NodeDef& node) {
   const auto& op = node.op();
@@ -175,53 +129,34 @@ bool IsRestore(const NodeDef& node) {
           node.op() == "RestoreSlice");
 }
 
-bool IsSend(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "_Send";
-}
+bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
 
-bool IsSlice(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Slice";
-}
+bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
 
 bool IsSquaredDifference(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "SquaredDifference";
+  return node.op() == "SquaredDifference";
 }
 
-bool IsSqueeze(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Squeeze";
-}
+bool IsSqueeze(const NodeDef& node) { return node.op() == "Squeeze"; }
 
 bool IsStopGradient(const NodeDef& node) {
   const auto& op = node.op();
   return op == "StopGradient" || op == "PreventGradient";
 }
 
-bool IsSub(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Sub";
-}
+bool IsSub(const NodeDef& node) { return node.op() == "Sub"; }
 
-bool IsSum(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Sum";
-}
+bool IsSum(const NodeDef& node) { return node.op() == "Sum"; }
 
 bool IsSwitch(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Switch" || op == "RefSwitch";
 }
 
-bool IsTranspose(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Transpose";
-}
+bool IsTranspose(const NodeDef& node) { return node.op() == "Transpose"; }
 
 bool IsVariable(const NodeDef& node) {
-  const auto op = node.op();
+  const auto& op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
          op == "VarHandleOp" || op == "ReadVariableOp";
 }

@@ -723,5 +723,41 @@ class BatchDatasetSerializationTest(
         num_outputs)
 
 
+class PaddedBatchDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def testPaddedBatch(self):
+
+    def build_dataset(seq_lens):
+      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
+          lambda x: array_ops.fill([x], x)).padded_batch(
+              4, padded_shapes=[-1])
+
+    seq_lens1 = np.random.randint(1, 20, size=(32,)).astype(np.int32)
+    seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
+    self.run_core_tests(lambda: build_dataset(seq_lens1),
+                        lambda: build_dataset(seq_lens2), 8)
+
+  def testPaddedBatchNonDefaultPadding(self):
+
+    def build_dataset(seq_lens):
+
+      def fill_tuple(x):
+        filled = array_ops.fill([x], x)
+        return (filled, string_ops.as_string(filled))
+
+      padded_shape = [-1]
+      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
+          fill_tuple).padded_batch(
+              4,
+              padded_shapes=(padded_shape, padded_shape),
+              padding_values=(-1, "<end>"))
+
+    seq_lens1 = np.random.randint(1, 20, size=(32,)).astype(np.int32)
+    seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
+    self.run_core_tests(lambda: build_dataset(seq_lens1),
+                        lambda: build_dataset(seq_lens2), 8)
+
+
 if __name__ == "__main__":
   test.main()
