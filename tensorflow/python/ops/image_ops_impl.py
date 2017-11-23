@@ -234,19 +234,20 @@ def fix_image_flip_shape_v2(original_shape, result, rank=3):
   return result
 
 def random_flip_up_down(image, seed=None):
-  """Randomly flips an image vertically (upside down).
+  """Randomly flips image(s) vertically (upside down).
 
-  With a 1 in 2 chance, outputs the contents of `image` flipped along the first
-  dimension, which is `height`.  Otherwise output the image as-is.
+  With a 1 in 2 chance, outputs the contents of `image` flipped along the height
+  dimension. Otherwise output the image as-is.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
       @{tf.set_random_seed}
       for behavior.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -271,19 +272,20 @@ def random_flip_up_down(image, seed=None):
 
 
 def random_flip_left_right(image, seed=None):
-  """Randomly flip an image horizontally (left to right).
+  """Randomly flip image(s) horizontally (left to right).
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the
-  second dimension, which is `width`.  Otherwise output the image as-is.
+  width dimension. Otherwise output the image as-is.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
       @{tf.set_random_seed}
       for behavior.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -310,16 +312,16 @@ def random_flip_left_right(image, seed=None):
 def flip_left_right(image):
   """Flip an image horizontally (left to right).
 
-  Outputs the contents of `image` flipped along the second dimension, which is
-  `width`.
+  Outputs the contents of `image` flipped along the width dimension.
 
   See also `reverse()`.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -342,16 +344,16 @@ def flip_left_right(image):
 def flip_up_down(image):
   """Flip an image vertically (upside down).
 
-  Outputs the contents of `image` flipped along the first dimension, which is
-  `height`.
+  Outputs the contents of `image` flipped along the height dimension.
 
   See also `reverse()`.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -372,15 +374,19 @@ def flip_up_down(image):
 
 
 def rot90(image, k=1, name=None):
-  """Rotate an image counter-clockwise by 90 degrees.
+  """Rotate image(s) counter-clockwise by 90 degrees.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels]`.
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     k: A scalar integer. The number of times the image is rotated by 90 degrees.
     name: A name for this operation (optional).
 
   Returns:
-    A rotated 3-D tensor of the same type and shape as `image`.
+    A rotated of the same type and shape as `image`.
+
+  Raises:
+    ValueError: if the shape of `image` not supported.
   """
   with ops.name_scope(name, 'rot90', [image, k]) as scope:
     image = ops.convert_to_tensor(image, name='image')
@@ -416,15 +422,19 @@ def rot90(image, k=1, name=None):
 
 
 def transpose_image(image):
-  """Transpose an image by swapping the first and second dimension.
+  """Transpose an image by swapping the height and width dimension.
 
   See also `transpose()`.
 
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
 
   Returns:
-    A 3-D tensor of shape `[width, height, channels]`
+    If `image` was 4-D, a 4-D float Tensor of shape
+    `[batch, width, height, channels]`
+    If `image` was 3-D, a 3-D float Tensor of shape
+    `[width, height, channels]`
 
   Raises:
     ValueError: if the shape of `image` not supported.
