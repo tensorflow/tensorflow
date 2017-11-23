@@ -47,7 +47,7 @@ class CoreLayersTest(test.TestCase):
                   'noise_shape': [3, 1]},
           input_shape=(3, 2))
 
-    # Test attribute `supports_masking`  default value.
+    # Github issue: 14819
     with self.test_session():
       dropout = keras.layers.Dropout(0.5)
       self.assertEqual(True, dropout.supports_masking)
