@@ -101,6 +101,7 @@ static PyObject* TF_GetOpProperties(const tensorflow::grappler::GrapplerItem* it
     Py_RETURN_NONE;
   }
 
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PyObject* props = PyDict_New();
   for (const auto& node : item->graph.node()) {
     const string& node_name = node.name();
@@ -115,8 +116,8 @@ static PyObject* TF_GetOpProperties(const tensorflow::grappler::GrapplerItem* it
       PyList_SetItem(prop, i, output_prop);
     }
     CHECK_EQ(0, PyDict_SetItem(props, PyString_FromString(node_name.c_str()), prop));
-   }
-
+  }
+  PyGILState_Release(gstate);
   return props;
 }
 

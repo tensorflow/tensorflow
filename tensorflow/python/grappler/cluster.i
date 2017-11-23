@@ -138,6 +138,7 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(
 
 static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster) {
   const std::unordered_map<string, tensorflow::DeviceProperties>& devices = cluster->GetDevices();
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PyObject* result = PyList_New(devices.size());
   int i = 0;
   for (auto& dev : devices) {
@@ -150,6 +151,7 @@ static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster) {
     PyList_SetItem(result, i, dev_obj);
     ++i;
   }
+  PyGILState_Release(gstate);
   return result;
 }
 
@@ -184,6 +186,7 @@ static PyObject* TF_MeasureCosts(
   if (!status.ok()) {
     Py_RETURN_NONE;
   }
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PyObject* op_perf_objs = PyList_New(
       op_performance_data.op_performance_size());
   for (int i = 0; i < op_performance_data.op_performance_size(); i++) {
@@ -211,8 +214,10 @@ static PyObject* TF_MeasureCosts(
     status = tensorflow::Status(tensorflow::error::Code::INTERNAL,
                                 "Error setting return tuples.");
     tensorflow::Set_TF_Status_from_Status(out_status, status);
-    Py_RETURN_NONE;
+    Py_INCREF(Py_None);
+    ret = Py_None;
   }
+  PyGILState_Release(gstate);
   return ret;
 }
 
@@ -240,6 +245,7 @@ static PyObject* TF_DeterminePeakMemoryUsage(
     Py_RETURN_NONE;
   }
 
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PyObject* result = PyDict_New();
   for (const auto& device : cluster->GetDevices()) {
     const tensorflow::grappler::GraphMemory::MemoryUsage& usage =
@@ -261,6 +267,7 @@ static PyObject* TF_DeterminePeakMemoryUsage(
     PyTuple_SetItem(ret, 1, per_device);
     PyDict_SetItem(result, PyString_FromString(device.first.c_str()), ret);
   }
+  PyGILState_Release(gstate);
   return result;
 }
 
