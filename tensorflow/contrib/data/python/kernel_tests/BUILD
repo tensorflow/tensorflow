@@ -304,6 +304,18 @@ py_test(
 )
 
 py_test(
+    name = "prefetch_dataset_op_test",
+    size = "small",
+    srcs = ["prefetch_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "range_dataset_op_test",
     size = "small",
     srcs = ["range_dataset_op_test.py"],
