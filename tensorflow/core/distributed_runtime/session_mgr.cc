@@ -52,7 +52,9 @@ Status SessionMgr::CreateSession(const string& session,
   WorkerCacheInterface* worker_cache = nullptr;
   TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
 
-  worker_cache->SetLogging(this->is_logging_active_);
+  if (worker_cache) {
+    worker_cache->SetLogging(this->is_logging_active_);
+  }
 
   std::vector<Device*> renamed_devices;
   for (Device* d : worker_env_->local_devices) {
