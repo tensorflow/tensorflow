@@ -216,22 +216,6 @@ def fix_image_flip_shape(image, result, rank=3):
     result.set_shape(image_shape)
   return result
 
-def fix_image_flip_shape_v2(original_shape, result, rank=3):
-  """Set the shape to original dimensional if we don't know anything else.
-
-  Args:
-    image: original image size
-    result: flipped or transformed image
-
-  Returns:
-    An image whose shape is at least None,None,None.
-  """
-
-  if original_shape == tensor_shape.unknown_shape():
-    result.set_shape([None] * rank)
-  else:
-    result.set_shape(original_shape)
-  return result
 
 def random_flip_up_down(image, seed=None):
   """Randomly flips image(s) vertically (upside down).
@@ -253,7 +237,7 @@ def random_flip_up_down(image, seed=None):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  original_shape = image.get_shape()
+  original_image = image
   image, is_batch = _EnsureTensorIs4D(image)
   image = control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
@@ -265,10 +249,10 @@ def random_flip_up_down(image, seed=None):
   result = array_ops.where(mirror_cond, x=image, y=array_ops.reverse(image, [1]))
 
   if is_batch:
-    return fix_image_flip_shape_v2(original_shape, result, rank=4)
+    return fix_image_flip_shape(original_image, result, rank=4)
   else:
     result = array_ops.squeeze(result, squeeze_dims=[0])
-    return fix_image_flip_shape_v2(original_shape, result, rank=3)
+    return fix_image_flip_shape(original_image, result, rank=3)
 
 
 def random_flip_left_right(image, seed=None):
@@ -291,7 +275,7 @@ def random_flip_left_right(image, seed=None):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  original_shape = image.get_shape()
+  original_image = image
   image, is_batch = _EnsureTensorIs4D(image)
   image = control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
@@ -303,10 +287,10 @@ def random_flip_left_right(image, seed=None):
 
   result = array_ops.where(mirror_cond, x=image, y=array_ops.reverse(image, [2]))
   if is_batch:
-    return fix_image_flip_shape_v2(original_shape, result, rank=4)
+    return fix_image_flip_shape(original_image, result, rank=4)
   else:
     result = array_ops.squeeze(result, squeeze_dims=[0])
-    return fix_image_flip_shape_v2(original_shape, result, rank=3)
+    return fix_image_flip_shape(original_image, result, rank=3)
 
 
 def flip_left_right(image):
@@ -327,7 +311,7 @@ def flip_left_right(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  original_shape = image.get_shape()
+  original_image = image
   image, is_batch = _EnsureTensorIs4D(image)
   image = control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
@@ -335,10 +319,10 @@ def flip_left_right(image):
   result = array_ops.reverse(image, [2])
 
   if is_batch:
-    return fix_image_flip_shape_v2(original_shape, result, rank=4)
+    return fix_image_flip_shape(original_image, result, rank=4)
   else:
     result = array_ops.squeeze(result, squeeze_dims=[0])
-    return fix_image_flip_shape_v2(original_shape, result, rank=3)
+    return fix_image_flip_shape(original_image, result, rank=3)
 
 
 def flip_up_down(image):
@@ -359,7 +343,7 @@ def flip_up_down(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  original_shape = image.get_shape()
+  original_image = image
   image, is_batch = _EnsureTensorIs4D(image)
   image = control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
@@ -367,10 +351,10 @@ def flip_up_down(image):
   result = array_ops.reverse(image, [1])
 
   if is_batch:
-    return fix_image_flip_shape_v2(original_shape, result, rank=4)
+    return fix_image_flip_shape(original_image, result, rank=4)
   else:
     result = array_ops.squeeze(result, squeeze_dims=[0])
-    return fix_image_flip_shape_v2(original_shape, result, rank=3)
+    return fix_image_flip_shape(original_image, result, rank=3)
 
 
 def rot90(image, k=1, name=None):
