@@ -113,14 +113,15 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
-    HloCostAnalysis::ShapeSizeFunction shape_size_function)
-    : Executable(std::move(hlo_module)),
+    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+                 std::move(hlo_profile_index_map)),
       ptx_(ptx),
       cubin_(cubin),
       compute_capability_(compute_capability),
       thunk_schedule_(std::move(thunk_schedule)),
-      assignment_(std::move(assignment)),
-      shape_size_function_(std::move(shape_size_function)) {}
+      assignment_(std::move(assignment)) {}
 
 Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
@@ -356,10 +357,6 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& GpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
-}
-
-std::unique_ptr<HloCostAnalysis> GpuExecutable::CreateCostAnalysis() const {
-  return MakeUnique<HloCostAnalysis>(shape_size_function_);
 }
 
 }  // namespace gpu

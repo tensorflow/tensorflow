@@ -427,6 +427,11 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        DepthwiseConv2dNativeOp<GPUDevice, Eigen::half>);
+
 REGISTER_KERNEL_BUILDER(
     Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     DepthwiseConv2dNativeOp<GPUDevice, Eigen::half>);

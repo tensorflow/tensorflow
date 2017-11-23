@@ -1720,6 +1720,7 @@ tf_cuda_cc_tests(
         ":data_flow",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

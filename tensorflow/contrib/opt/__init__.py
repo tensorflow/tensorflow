@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+    # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
 from tensorflow.contrib.opt.python.training.nadam_optimizer import *
-from tensorflow.contrib.opt.python.training.nadam_optimizer import *
 from tensorflow.contrib.opt.python.training.powersign import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
 # pylint: enable=wildcard-import
@@ -35,12 +34,18 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = [
-    'PowerSignOptimizer', 'AddSignOptimizer'
+    'PowerSignOptimizer',
+    'AddSignOptimizer'
     'DelayCompensatedGradientDescentOptimizer',
-    'DropStaleGradientOptimizer', 'ExternalOptimizerInterface',
-    'LazyAdamOptimizer', 'NadamOptimizer', 'MovingAverageOptimizer',
-    'ScipyOptimizerInterface', 'VariableClippingOptimizer',
-    'MultitaskOptimizerWrapper', 'clip_gradients_by_global_norm',
+    'DropStaleGradientOptimizer',
+    'ExternalOptimizerInterface',
+    'LazyAdamOptimizer',
+    'NadamOptimizer',
+    'MovingAverageOptimizer',
+    'ScipyOptimizerInterface',
+    'VariableClippingOptimizer',
+    'MultitaskOptimizerWrapper',
+    'clip_gradients_by_global_norm',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

@@ -108,10 +108,16 @@ class SerializeSparseTest(test.TestCase):
       sp_deserialized = sparse_ops.deserialize_sparse(
           serialized, dtype=dtypes.int32)
 
-      with self.assertRaisesOpError(
-          r"Inconsistent shape across SparseTensors: dimension 0 prior to "
-          r"SparseTensor\[1\] was: 5 but rank of SparseTensor\[1\] is: 3"):
-        sess.run(sp_deserialized)
+      combined_indices, combined_values, combined_shape = sess.run(
+          sp_deserialized)
+
+      self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
+      self.assertAllEqual(combined_indices[:6, 1:], sp_input0[0])
+      self.assertAllEqual(combined_indices[6:, 0], [1] * 6)  # minibatch 1
+      self.assertAllEqual(combined_indices[6:, 1:], sp_input1[0])
+      self.assertAllEqual(combined_values[:6], sp_input0[1])
+      self.assertAllEqual(combined_values[6:], sp_input1[1])
+      self.assertAllEqual(combined_shape, [2, 5, 6])
 
   def testSerializeDeserializeNestedBatch(self):
     with self.test_session(use_gpu=False) as sess:

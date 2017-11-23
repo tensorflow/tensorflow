@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+  /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ REGISTER4(UnaryOp, CPU, "Asinh", functor::asinh, float, double,
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Asinh", functor::asinh, float, double);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 REGISTER2(UnaryOp, GPU, "Asinh", functor::asinh, float, double);

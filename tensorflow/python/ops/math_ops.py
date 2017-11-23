@@ -170,14 +170,13 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
-from tensorflow.python.util.deprecation import deprecated
-from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util import deprecation
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
 
-arg_max = deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
-arg_min = deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+arg_max = deprecation.deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
+arg_min = deprecation.deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 
 
 def _set_doc(doc):
@@ -190,7 +189,8 @@ def _set_doc(doc):
 
 
 # pylint: disable=redefined-builtin
-@deprecated_args(None, "Use the `axis` argument instead", "dimension")
+@deprecation.deprecated_args(None, "Use the `axis` argument instead",
+                             "dimension")
 @_set_doc(
     gen_math_ops.arg_max.__doc__.replace("dimensions", "axes").replace(
         "dimension", "axis"))
@@ -208,7 +208,8 @@ def argmax(input,
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
-@deprecated_args(None, "Use the `axis` argument instead", "dimension")
+@deprecation.deprecated_args(None, "Use the `axis` argument instead",
+                             "dimension")
 @_set_doc(
     gen_math_ops.arg_min.__doc__.replace("dimensions", "axes").replace(
         "dimension", "axis"))
@@ -324,7 +325,7 @@ multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
-@deprecated(
+@deprecation.deprecated(
     "2016-12-30",
     "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
 def _mul(x, y, name=None):
@@ -343,7 +344,7 @@ subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
-@deprecated(
+@deprecation.deprecated(
     "2016-12-30",
     "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
 def _sub(x, y, name=None):
@@ -381,8 +382,9 @@ def negative(x, name=None):
 
 
 # pylint: disable=g-docstring-has-escape
-@deprecated("2016-12-30",
-            "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
+@deprecation.deprecated(
+    "2016-12-30",
+    "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
 def _neg(x, name=None):
   """Computes numerical negative value element-wise.
 
@@ -1277,7 +1279,7 @@ def _may_reduce_to_scalar(keepdims, axis, reduction_indices, output):
   return output
 
 
-@deprecated_args(
+@deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_sum(input_tensor,
                axis=None,
@@ -1314,6 +1316,7 @@ def reduce_sum(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1322,14 +1325,12 @@ def reduce_sum(input_tensor,
   Equivalent to np.sum
   @end_compatibility
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
 
-  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
                                gen_math_ops._sum(
                                    input_tensor,
                                    _ReductionDims(input_tensor, axis,
@@ -1338,8 +1339,8 @@ def reduce_sum(input_tensor,
                                    name=name))
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def count_nonzero(input_tensor,
                   axis=None,
                   keepdims=None,
@@ -1381,14 +1382,13 @@ def count_nonzero(input_tensor,
     dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor (number of nonzero values).
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
 
@@ -1405,8 +1405,8 @@ def count_nonzero(input_tensor,
         dtype=dtype)
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_mean(input_tensor,
                 axis=None,
                 keepdims=None,
@@ -1440,6 +1440,7 @@ def reduce_mean(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1447,7 +1448,10 @@ def reduce_mean(input_tensor,
   @compatibility(numpy)
   Equivalent to np.mean
 
-  Please note that `np.mean` has a `dtype` parameter that could be used to specify the output type. By default this is `dtype=float64`. On the other hand, `tf.reduce_mean` has an aggressive type inference from `input_tensor`, for example:
+  Please note that `np.mean` has a `dtype` parameter that could be used to
+  specify the output type. By default this is `dtype=float64`. On the other
+  hand, `tf.reduce_mean` has an aggressive type inference from `input_tensor`,
+  for example:
 
   ```python
   x = tf.constant([1, 0, 1, 0])
@@ -1458,13 +1462,12 @@ def reduce_mean(input_tensor,
 
   @end_compatibility
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+
   if keepdims is None:
     keepdims = False
-  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
                                gen_math_ops._mean(
                                    input_tensor,
                                    _ReductionDims(input_tensor, axis,
@@ -1473,8 +1476,8 @@ def reduce_mean(input_tensor,
                                    name=name))
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_prod(input_tensor,
                 axis=None,
                 keepdims=None,
@@ -1499,6 +1502,7 @@ def reduce_prod(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1507,13 +1511,12 @@ def reduce_prod(input_tensor,
   Equivalent to np.prod
   @end_compatibility
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+
   if keepdims is None:
     keepdims = False
-  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
                                gen_math_ops._prod(
                                    input_tensor,
                                    _ReductionDims(input_tensor, axis,
@@ -1522,8 +1525,8 @@ def reduce_prod(input_tensor,
                                    name=name))
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_min(input_tensor,
                axis=None,
                keepdims=None,
@@ -1548,6 +1551,7 @@ def reduce_min(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1556,13 +1560,11 @@ def reduce_min(input_tensor,
   Equivalent to np.min
   @end_compatibility
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
-  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
                                gen_math_ops._min(
                                    input_tensor,
                                    _ReductionDims(input_tensor, axis,
@@ -1571,8 +1573,8 @@ def reduce_min(input_tensor,
                                    name=name))
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_max(input_tensor,
                axis=None,
                keepdims=None,
@@ -1597,6 +1599,7 @@ def reduce_max(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1605,13 +1608,11 @@ def reduce_max(input_tensor,
   Equivalent to np.max
   @end_compatibility
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
-  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
                                gen_math_ops._max(
                                    input_tensor,
                                    _ReductionDims(input_tensor, axis,
@@ -1620,8 +1621,8 @@ def reduce_max(input_tensor,
                                    name=name))
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_all(input_tensor,
                axis=None,
                keepdims=None,
@@ -1655,6 +1656,7 @@ def reduce_all(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1663,13 +1665,11 @@ def reduce_all(input_tensor,
   Equivalent to np.all
   @end_compatibility
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
-  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
                                gen_math_ops._all(
                                    input_tensor,
                                    _ReductionDims(input_tensor, axis,
@@ -1678,8 +1678,8 @@ def reduce_all(input_tensor,
                                    name=name))
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_any(input_tensor,
                axis=None,
                keepdims=None,
@@ -1713,6 +1713,7 @@ def reduce_any(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1721,13 +1722,11 @@ def reduce_any(input_tensor,
   Equivalent to np.any
   @end_compatibility
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
-  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
                                gen_math_ops._any(
                                    input_tensor,
                                    _ReductionDims(input_tensor, axis,
@@ -1736,8 +1735,8 @@ def reduce_any(input_tensor,
                                    name=name))
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_logsumexp(input_tensor,
                      axis=None,
                      keepdims=None,
@@ -1777,14 +1776,13 @@ def reduce_logsumexp(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
   """
-  if keep_dims is not None:
-    if keepdims is not None:
-      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
-    keepdims = keep_dims
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
@@ -1807,7 +1805,7 @@ def reduce_logsumexp(input_tensor,
       if isinstance(axis, int):
         axis = [axis]
       result = array_ops.squeeze(result, axis)
-    return _may_reduce_to_scalar(keep_dims, axis, reduction_indices, result)
+    return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
 def trace(x, name=None):

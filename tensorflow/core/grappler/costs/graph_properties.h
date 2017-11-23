@@ -108,7 +108,8 @@ class GraphProperties {
   Status PropagateShapes(
       SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
       const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
-          resources) const;
+          resources,
+      int num_loops) const;
 };
 
 }  // end namespace grappler

@@ -352,13 +352,15 @@ class DeserializeSparseOp : public OpKernel {
                 i, "] was: ", shape.dims() - 1, " but rank of SparseTensor[", i,
                 "] is: ", expanded_tensor_shape.dims() - 1));
         for (int j = 1; j < shape.dims(); ++j) {
-          OP_REQUIRES(
-              context, shape.dim_size(j) == expanded_tensor_shape.dim_size(j),
-              errors::InvalidArgument(
-                  "Inconsistent shape across SparseTensors: dimension ", j - 1,
-                  " prior to SparseTensor[", i, "] was: ", shape.dim_size(j),
-                  " but rank of SparseTensor[", i,
-                  "] is: ", expanded_tensor_shape.dim_size(j)));
+          // NOTE(mrry): For compatibility with the implementations of
+          // DeserializeManySparse, and many ops that generate
+          // SparseTensors to batch that do not have a fixed
+          // dense_shape (e.g. `tf.parse_single_example()`), we
+          // compute the maximum in each dimension to find the
+          // smallest dense_shape that bounds all of the input
+          // SparseTensors.
+          shape.set_dim(j, std::max(shape.dim_size(j),
+                                    expanded_tensor_shape.dim_size(j)));
         }
       }
     }

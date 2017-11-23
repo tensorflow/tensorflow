@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
@@ -42,26 +44,26 @@ TEST_F(ClientTest, ExecuteWithLayout) {
     for (const std::vector<int64>& transfer_layout : layouts) {
       b.Add(b.ConstantR2<int32>({{1, 2}, {3, 4}}),
             b.ConstantR2<int32>({{10, 20}, {30, 40}}));
-      auto computation = b.Build();
-      ASSERT_TRUE(computation.ok()) << computation.status();
+      TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
       ExecutionOptions execution_options = execution_options_;
       *execution_options.mutable_shape_with_output_layout() =
           ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                          execute_layout);
-      std::unique_ptr<GlobalData> data =
-          client_->Execute(computation.ValueOrDie(), {}, &execution_options)
-              .ConsumeValueOrDie();
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<GlobalData> data,
+          client_->Execute(computation, {}, &execution_options));
 
       std::unique_ptr<Literal> expected_literal =
           Literal::CreateR2WithLayout<int32>(
               {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
 
-      auto computed = client_->Transfer(*data, &expected_literal->shape());
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto computed, client_->Transfer(*data, &expected_literal->shape()));
 
-      LiteralTestUtil::AssertEqualShapesAndLayouts(
-          expected_literal->shape(), computed.ValueOrDie()->shape());
-      LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());
+      LiteralTestUtil::AssertEqualShapesAndLayouts(expected_literal->shape(),
+                                                   computed->shape());
+      LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
     }
   }
 }
@@ -72,8 +74,7 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
   b.Tuple({b.ConstantR2<int32>({{1, 2}, {3, 4}}),
            b.ConstantR2<int32>({{10, 20}, {30, 40}})});
 
-  auto computation = b.Build();
-  ASSERT_TRUE(computation.ok()) << computation.status();
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
   ExecutionOptions execution_options = execution_options_;
   // Create a result shape with one element column major and the other row
@@ -85,10 +86,9 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
            ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                           /*minor_to_major=*/{1, 0})});
 
-  auto result =
-      client_
-          ->ExecuteAndTransfer(computation.ValueOrDie(), {}, &execution_options)
-          .ConsumeValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result,
+      client_->ExecuteAndTransfer(computation, {}, &execution_options));
   LiteralTestUtil::ExpectR2Equal<int32>({{1, 2}, {3, 4}},
                                         result->tuple_literals(0));
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
@@ -105,6 +105,43 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
       ShapeUtil::GetTupleElementShape(result->shape(), 1),
       ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                      /*minor_to_major=*/{1, 0})));
+}
+
+TEST_F(ClientTest, DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(ExecuteParallel))) {
+  Computation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> const_arg,
+      client_->TransferToServer(*Literal::CreateR2<int32>({{5, 6}, {7, 8}})));
+
+  ComputationBuilder b(client_, TestName() + ".add");
+  b.Add(b.Parameter(0, shape, "param_0"),
+        b.ConstantR2<int32>({{1, 2}, {3, 4}}));
+  TF_ASSERT_OK_AND_ASSIGN(add_with_one_arg, b.Build());
+
+  // We can't really test parallel execution on CPU since all of the cores in a
+  // CPU are presented as a single device.  So for now we test "parallel"
+  // execution on a single device.
+  std::vector<Client::ComputationInstance> computation_instances;
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
+                          client_->GetDeviceHandles(1));
+  ASSERT_EQ(devices.size(), 1);
+
+  ExecutionOptions options = execution_options_;
+  *options.add_device_handles() = devices[0];
+  computation_instances.push_back(Client::ComputationInstance(
+      add_with_one_arg, {const_arg.get()}, options, nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          client_->ExecuteParallel(computation_instances));
+  auto expected_result = Literal::CreateR2<int32>({{6, 8}, {10, 12}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result_literal,
+      client_->Transfer(*results[0], &expected_result->shape()));
+
+  LiteralTestUtil::ExpectEqual(*expected_result, *result_literal);
 }
 
 }  // namespace

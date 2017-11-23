@@ -752,6 +752,12 @@ __device__ EIGEN_ALWAYS_INLINE T CudaShuffleDown(unsigned mask, T value,
   return __shfl_down_sync(mask, value, delta, width);
 }
 
+__device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleDown(
+    unsigned mask, Eigen::half value, int delta, int width = warpSize) {
+  return Eigen::half(
+      __shfl_down_sync(mask, static_cast<uint16>(value), delta, width));
+}
+
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
@@ -772,6 +778,12 @@ __device__ EIGEN_ALWAYS_INLINE T CudaShuffleXor(unsigned mask, T value,
                                                 int laneMask,
                                                 int width = warpSize) {
   return __shfl_xor_sync(mask, value, laneMask, width);
+}
+
+__device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleXor(
+    unsigned mask, Eigen::half value, int laneMask, int width = warpSize) {
+  return Eigen::half(
+      __shfl_xor_sync(mask, static_cast<uint16>(value), laneMask, width));
 }
 
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned

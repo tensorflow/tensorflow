@@ -194,7 +194,6 @@ struct ParsedModelFlags {
   Arg<string> input_data_type;
   Arg<string> input_data_types;
   Arg<bool> variable_batch = Arg<bool>(false);
-  Arg<bool> drop_control_dependency = Arg<bool>(false);
   Arg<toco::IntList> input_shape;
   Arg<toco::StringMapList> rnn_states;
   Arg<toco::StringMapList> model_checks;
@@ -224,6 +223,7 @@ struct ParsedTocoFlags {
   // Deprecated flags
   Arg<string> input_type;
   Arg<string> input_types;
+  Arg<bool> drop_control_dependency = Arg<bool>(false);
 };
 
 }  // namespace toco
