@@ -68,7 +68,7 @@ class NodeNameMapping {
   // This is a superset of values in name_mapping_.
   std::unordered_set<string> used_names_;
   // Mapping from original node name from the graph to the normalized
-  // and uniqified version of it.
+  // and uniquified version of it.
   std::unordered_map<string, string> name_mapping_;
 };
 
