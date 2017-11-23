@@ -1778,6 +1778,7 @@ class PrefetchDataset(Dataset):
 
   def __init__(self, input_dataset, buffer_size):
     """See `Dataset.prefetch()` for details."""
+    assert buffer_size > 0, "The buffer_size ({}) has to be > 0.".format(buffer_size)
     super(PrefetchDataset, self).__init__()
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
