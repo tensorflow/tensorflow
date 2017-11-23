@@ -40,6 +40,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
                cov_ema_decay,
                damping,
                layer_collection,
+               var_list=None,
                momentum=0.,
                momentum_type="regular",
                norm_constraint=None,
@@ -66,6 +67,9 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           blocks, kronecker factors, and losses associated with the
           graph.  The layer_collection cannot be modified after KfacOptimizer's
           initialization.
+      var_list: Optional list or tuple of variables to train. Defaults to the
+          list of variables collected in the graph under the key
+          `GraphKeys.TRAINABLE_VARIABLES`.
       momentum: The momentum value for this optimizer. Only applies when
           momentum_type is 'regular' or 'adam'. (Default: 0)
       momentum_type: The type of momentum to use in this optimizer, one of
@@ -96,9 +100,9 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           or 'adam'.
     """
 
-    # We may consider determining the set of variables some other way, but for
-    # now it's just all the trainable variables.
-    variables = tf_variables.trainable_variables()
+    variables = var_list
+    if variables is None:
+      variables = tf_variables.trainable_variables()
 
     self._fisher_est = est.FisherEstimator(
         variables,
@@ -123,7 +127,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       raise ValueError("Momentum must be unspecified if using a momentum_type "
                        "other than 'regular' or 'adam'.")
 
-    self._momentum = ops.convert_to_tensor(momentum, name="momentum")
+    self._momentum = momentum
     self._momentum_type = momentum_type
     self._norm_constraint = norm_constraint
 
@@ -313,14 +317,17 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
         self._batch_size, dtype=fft_precon_grads[0].dtype)
 
     # compute the entries of the 2x2 matrix
-    m_11 = (_inner_product_list(fft_precon_grads, fft_precon_grads) / batch_size
-            + self.damping * _inner_product_list(precon_grads, precon_grads))
+    m_11 = (
+        _inner_product_list(fft_precon_grads, fft_precon_grads) / batch_size +
+        self.damping * _inner_product_list(precon_grads, precon_grads))
 
-    m_21 = (_inner_product_list(fft_prev_updates, fft_precon_grads) / batch_size
-            + self.damping * _inner_product_list(prev_updates, precon_grads))
+    m_21 = (
+        _inner_product_list(fft_prev_updates, fft_precon_grads) / batch_size +
+        self.damping * _inner_product_list(prev_updates, precon_grads))
 
-    m_22 = (_inner_product_list(fft_prev_updates, fft_prev_updates) / batch_size
-            + self.damping * _inner_product_list(prev_updates, prev_updates))
+    m_22 = (
+        _inner_product_list(fft_prev_updates, fft_prev_updates) / batch_size +
+        self.damping * _inner_product_list(prev_updates, prev_updates))
 
     def non_zero_prevupd_case():
       r"""Computes optimal (alpha, mu) given non-zero previous update.
@@ -406,8 +413,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       grads = list(grad for (grad, _) in grads_and_vars)
       variables = list(var for (_, var) in grads_and_vars)
       # previous updates are the negative velocities (up to scaling by LR)
-      prev_updates = list(-self._zeros_slot(var, "velocity", self._name)
-                          for var in variables)
+      prev_updates = list(
+          -self._zeros_slot(var, "velocity", self._name) for var in variables)
 
       # Compute optimal velocity update parameters according to quadratic model
       alpha, mu, _ = self._compute_qmodel_hyperparams(

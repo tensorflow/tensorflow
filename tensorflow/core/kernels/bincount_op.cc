@@ -97,8 +97,9 @@ class BincountOp : public OpKernel {
     const Tensor& weights_t = ctx->input(2);
 
     int32 size = size_tensor.scalar<int32>()();
-    OP_REQUIRES(ctx, size >= 0, errors::InvalidArgument(
-                                    "size (", size, ") must be non-negative"));
+    OP_REQUIRES(
+        ctx, size >= 0,
+        errors::InvalidArgument("size (", size, ") must be non-negative"));
 
     const auto arr = arr_t.flat<int32>();
     const auto weights = weights_t.flat<T>();

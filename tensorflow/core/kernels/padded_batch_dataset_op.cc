@@ -181,16 +181,18 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
       padding_values.push_back(tensor::DeepCopy(padding_value_t));
     }
 
-    *output = new Dataset(batch_size, std::move(padded_shapes),
+    *output = new Dataset(ctx, batch_size, std::move(padded_shapes),
                           std::move(padding_values), input);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 batch_size, std::vector<PartialTensorShape> padded_shapes,
+    Dataset(OpKernelContext* ctx, int64 batch_size,
+            std::vector<PartialTensorShape> padded_shapes,
             std::vector<Tensor> padding_values, const DatasetBase* input)
-        : batch_size_(batch_size),
+        : GraphDatasetBase(ctx),
+          batch_size_(batch_size),
           padded_shapes_(std::move(padded_shapes)),
           padding_values_(std::move(padding_values)),
           input_(input) {
@@ -232,6 +234,47 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
                              ")::Dataset");
     }
 
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      Node* batch_size = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
+
+      std::vector<NodeBuilder::NodeOut> padded_shapes;
+      padded_shapes.reserve(padded_shapes_.size());
+      for (int i = 0; i < padded_shapes_.size(); i++) {
+        Node* node;
+        Tensor t(DT_INT64, TensorShape({padded_shapes_[i].dims()}));
+        for (int j = 0; j < padded_shapes_[i].dims(); j++) {
+          t.vec<int64>()(j) = padded_shapes_[i].dim_size(j);
+        }
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        padded_shapes.emplace_back(node);
+      }
+
+      std::vector<NodeBuilder::NodeOut> padding_values;
+      padding_values.reserve(padding_values_.size());
+      for (const Tensor& t : padding_values_) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        padding_values.emplace_back(node);
+      }
+
+      AttrValue output_types;
+      b->BuildAttrValue(output_dtypes(), &output_types);
+
+      AttrValue N;
+      b->BuildAttrValue<int64>(padded_shapes_.size(), &N);
+
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {{0, input_graph_node}, {1, batch_size}},
+                        {{2, padded_shapes}, {3, padding_values}},
+                        {{"Toutput_types", output_types}, {"N", N}}, output));
+      return Status::OK();
+    }
+
    private:
     // Copies element into the index^th slice of parent (in the 0th dimension).
     //
@@ -248,17 +291,25 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
         // Each row of `batch_elements` is a tuple of tensors from the
         // input iterator.
         std::vector<std::vector<Tensor>> batch_elements;
-        batch_elements.reserve(dataset()->batch_size_);
         {
           mutex_lock l(mu_);
-          *end_of_sequence = false;
-          for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence;
-               ++i) {
-            std::vector<Tensor> batch_element_tuple;
-            TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &batch_element_tuple,
-                                                    end_of_sequence));
-            if (!*end_of_sequence) {
-              batch_elements.push_back(std::move(batch_element_tuple));
+          if (!input_impl_) {
+            *end_of_sequence = true;
+            return Status::OK();
+          } else {
+            *end_of_sequence = false;
+            batch_elements.reserve(dataset()->batch_size_);
+            for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence;
+                 ++i) {
+              std::vector<Tensor> batch_element_tuple;
+              TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &batch_element_tuple,
+                                                      end_of_sequence));
+              if (!*end_of_sequence) {
+                batch_elements.push_back(std::move(batch_element_tuple));
+              }
+            }
+            if (*end_of_sequence) {
+              input_impl_.reset();
             }
           }
         }
@@ -344,6 +395,28 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
           out_tensors->push_back(std::move(batch_component));
         }
         *end_of_sequence = false;
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (input_impl_)
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        else
+          TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("exhausted"), ""));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        if (reader->Contains(full_name("exhausted"))) {
+          input_impl_.reset();
+        } else {
+          input_impl_ = dataset()->input_->MakeIterator(prefix());
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        }
         return Status::OK();
       }
 

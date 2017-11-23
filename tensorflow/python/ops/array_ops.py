@@ -1194,18 +1194,19 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           "Number of mask dimensions must be specified, even if some dimensions"
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
-    shape_tensor[axis:axis+ndims_mask].assert_is_compatible_with(shape_mask)
+    shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
 
-    leading_size = gen_math_ops._prod(shape(tensor)[axis:axis+ndims_mask], [0])
+    leading_size = gen_math_ops._prod(
+        shape(tensor)[axis:axis + ndims_mask], [0])
     tensor = reshape(tensor,
-                     concat([shape(tensor)[:axis],
-                             [leading_size],
-                             shape(tensor)[axis+ndims_mask:]], 0))
-    first_dim = shape_tensor[axis:axis+ndims_mask].num_elements()
+                     concat([
+                         shape(tensor)[:axis], [leading_size],
+                         shape(tensor)[axis + ndims_mask:]
+                     ], 0))
+    first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
     tensor.set_shape(
-        tensor_shape.as_shape(shape_tensor[:axis])
-        .concatenate([first_dim])
-        .concatenate(shape_tensor[axis+ndims_mask:]))
+        tensor_shape.as_shape(shape_tensor[:axis]).concatenate([first_dim])
+        .concatenate(shape_tensor[axis + ndims_mask:]))
 
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask, axis)

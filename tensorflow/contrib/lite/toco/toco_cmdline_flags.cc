@@ -103,6 +103,13 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.allow_custom_ops.default_value(),
            "If true, allow TOCO to create TF Lite Custom operators for all the"
            "unsupported Tensorflow ops."),
+      Flag(
+          "drop_control_dependency",
+          parsed_flags.drop_control_dependency.bind(),
+          parsed_flags.drop_control_dependency.default_value(),
+          "If true, ignore control dependency requirements in input TensorFlow "
+          "GraphDef. Otherwise an error will be raised upon control dependency "
+          "inputs."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -163,6 +170,7 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(drop_fake_quant, FlagRequirement::kNone);
   READ_TOCO_FLAG(reorder_across_fake_quant, FlagRequirement::kNone);
   READ_TOCO_FLAG(allow_custom_ops, FlagRequirement::kNone);
+  READ_TOCO_FLAG(drop_control_dependency, FlagRequirement::kNone);
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {

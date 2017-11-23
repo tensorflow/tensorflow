@@ -575,12 +575,13 @@ Service::ExecuteParallelAndRegisterResult(
   // profile.
   for (auto& index_to_profiled_stream : index_to_profiled_streams) {
     int64 device = index_to_profiled_stream.first;
-    auto& module = executables[device]->module();
     se::Stream* stream = index_to_profiled_stream.second;
-    HloExecutionProfile hlo_profile(module,
-                                    *executables[device]->CreateCostAnalysis());
-    TF_RETURN_IF_ERROR(executables[device]->PopulateExecutionProfile(
-        &hlo_profile, stream->parent()));
+    Executable* executable = executables[device];
+    const HloModule& module = executable->module();
+    HloExecutionProfile hlo_profile(&executable->hlo_profile_printer(),
+                                    &executable->hlo_profile_index_map());
+    TF_RETURN_IF_ERROR(
+        executable->PopulateExecutionProfile(&hlo_profile, stream->parent()));
     XLA_LOG_LINES(
         tensorflow::INFO,
         hlo_profile.ToString(streams[0]->parent()->GetDeviceDescription()));

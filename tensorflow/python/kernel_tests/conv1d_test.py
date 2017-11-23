@@ -52,7 +52,6 @@ class Conv1DTest(test.TestCase):
           self.assertEqual(len(output), 2)
           self.assertAllClose(output, [2 * 1 + 1 * 2, 2 * 3 + 1 * 4])
 
-
   def testConv1DTranspose(self):
     with self.test_session():
       stride = 2
@@ -92,6 +91,7 @@ class Conv1DTest(test.TestCase):
           cache_values[n, -1, k] = cache_values[n, -2, k]
 
     self.assertAllClose(cache_values, value)
+
 
 if __name__ == "__main__":
   test.main()

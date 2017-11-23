@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#include "tensorflow/contrib/boosted_trees/lib/learner/stochastic/stats/node-stats.h"
+#include "tensorflow/contrib/boosted_trees/lib/learner/common/stats/node-stats.h"
 
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"

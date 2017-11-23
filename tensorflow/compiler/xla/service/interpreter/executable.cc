@@ -42,7 +42,8 @@ namespace sep = ::perftools::gputools::interpreter;
 
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<const HloModule> hlo_module)
-    : Executable(std::move(hlo_module)) {}
+    : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,
+                 /*hlo_profile_index_map=*/nullptr) {}
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
@@ -154,11 +155,6 @@ StatusOr<se::DeviceMemoryBase> InterpreterExecutable::ExecuteAsyncOnStream(
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-}
-
-std::unique_ptr<HloCostAnalysis> InterpreterExecutable::CreateCostAnalysis()
-    const {
-  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace interpreter

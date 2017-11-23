@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_STOCHASTIC_STATS_NODE_STATS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_STOCHASTIC_STATS_NODE_STATS_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_
+#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/Eigen/Eigenvalues"
-#include "tensorflow/contrib/boosted_trees/lib/learner/stochastic/stats/gradient-stats.h"
+#include "tensorflow/contrib/boosted_trees/lib/learner/common/stats/gradient-stats.h"
 #include "tensorflow/contrib/boosted_trees/proto/learner.pb.h"
 #include "tensorflow/contrib/boosted_trees/proto/tree_config.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -298,4 +298,4 @@ struct NodeStats {
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_STOCHASTIC_STATS_NODE_STATS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_
