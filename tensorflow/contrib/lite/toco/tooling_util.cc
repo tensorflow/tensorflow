@@ -991,6 +991,11 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
             specified_input_array.shape());
       }
     }
+
+    if (specified_input_array.has_data_type()) {
+      QCHECK(!dst_input_array->has_data_type());
+      dst_input_array->set_data_type(specified_input_array.data_type());
+    }
   }
 
   if (model_flags.output_arrays_size() > 0) {
@@ -1046,6 +1051,20 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
            "command-line flag.";
 
     auto& input_array = model->GetOrCreateArray(input_array_proto.name());
+    if (input_array_proto.has_data_type()) {
+      const ArrayDataType specified_type =
+          ConvertIODataTypeToArrayDataType(input_array_proto.data_type());
+      QCHECK(specified_type != ArrayDataType::kNone);
+      if (input_array.data_type != ArrayDataType::kNone) {
+        QCHECK(specified_type == input_array.data_type)
+            << "For input array " << input_array_proto.name()
+            << " the specified input data type "
+            << IODataType_Name(input_array_proto.data_type())
+            << " conflicts with the existing type.";
+      }
+      input_array.data_type = specified_type;
+    }
+
     if (input_array.data_type == ArrayDataType::kNone) {
       // We start out with a float input array;
       // that may get replaced by a uint8 array later, by
@@ -1546,6 +1565,21 @@ void CheckFinalDataTypesSatisfied(const Model& model) {
     if (array.final_data_type != ArrayDataType::kNone) {
       CHECK(array.final_data_type == array.data_type);
     }
+  }
+}
+
+ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
+  switch (type) {
+    case FLOAT:
+      return ArrayDataType::kFloat;
+    case QUANTIZED_UINT8:
+      return ArrayDataType::kUint8;
+    case INT32:
+      return ArrayDataType::kInt32;
+    case INT64:
+      return ArrayDataType::kInt64;
+    default:
+      return ArrayDataType::kNone;
   }
 }
 

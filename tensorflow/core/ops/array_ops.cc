@@ -2420,6 +2420,7 @@ REGISTER_OP("Slice")
           TF_RETURN_IF_ERROR(
               c->WithRank(begin_value, c->Rank(sizes_value), &begin_value));
           std::vector<DimensionHandle> dims;
+          dims.reserve(c->Rank(sizes_value));
           for (int i = 0; i < c->Rank(sizes_value); ++i) {
             dims.emplace_back(c->Dim(sizes_value, i));
           }

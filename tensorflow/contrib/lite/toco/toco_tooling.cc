@@ -86,38 +86,36 @@ void MakeGeneralGraphTransformationsSet(
 }
 
 void SetArrayFinalDataTypes(const TocoFlags& toco_flags, Model* model) {
-  const bool output_is_tflite = toco_flags.output_format() == TFLITE;
+  const bool output_supports_only_float =
+      toco_flags.output_format() == TENSORFLOW_GRAPHDEF;
 
-  if (output_is_tflite) {
-    if (!toco_flags.input_types().empty()) {
-      for (int i = 0; i < model->flags.input_arrays_size(); i++) {
-        int input_types_index = toco_flags.input_types_size() == 1 ? 0 : i;
-        const auto input_type = toco_flags.input_types(input_types_index);
-        ArrayDataType final_data_type = ArrayDataType::kNone;
-        switch (input_type) {
-          case FLOAT:
-            final_data_type = ArrayDataType::kFloat;
-            break;
-          case QUANTIZED_UINT8:
-            final_data_type = ArrayDataType::kUint8;
-            break;
-          case INT32:
-            final_data_type = ArrayDataType::kInt32;
-            break;
-          case INT64:
-            final_data_type = ArrayDataType::kInt64;
-            break;
-          default:
-            LOG(FATAL) << "Unknown data type";
-        }
-        model->arrays[model->flags.input_arrays(i).name()]->final_data_type =
-            final_data_type;
-      }
-    }
+  ArrayDataType specified_final_data_type = ArrayDataType::kNone;
+  if (toco_flags.has_inference_input_type()) {
+    specified_final_data_type =
+        ConvertIODataTypeToArrayDataType(toco_flags.inference_input_type());
+  } else if (toco_flags.has_inference_type()) {
+    specified_final_data_type =
+        ConvertIODataTypeToArrayDataType(toco_flags.inference_type());
+  }
+  ArrayDataType final_data_type = ArrayDataType::kNone;
+  if (output_supports_only_float) {
+    QCHECK(specified_final_data_type == ArrayDataType::kNone ||
+           specified_final_data_type == ArrayDataType::kFloat);
+    final_data_type = ArrayDataType::kFloat;
   } else {
-    for (int i = 0; i < model->flags.input_arrays_size(); i++) {
-      model->arrays[model->flags.input_arrays(i).name()]->final_data_type =
-          ArrayDataType::kFloat;
+    final_data_type = specified_final_data_type;
+  }
+  for (int i = 0; i < model->flags.input_arrays_size(); i++) {
+    auto* array = model->arrays[model->flags.input_arrays(i).name()].get();
+    // Note that the notion of changing data types only applies to real-numbers
+    // arrays (see the documentation for inference_input_type).
+    // TODO(benoitjacob) this is assuming that uint8 arrays are quantized,
+    // i.e. represent real numbers by means of quantization parameters,
+    // and not plain integer uint8 input arrays.
+    const bool is_real_numbers = array->data_type == ArrayDataType::kFloat ||
+                                 array->data_type == ArrayDataType::kUint8;
+    if (is_real_numbers) {
+      array->final_data_type = final_data_type;
     }
   }
 }
@@ -155,17 +153,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   const bool output_is_tflite_quantized =
       output_is_tflite && inference_type == QUANTIZED_UINT8;
 
-  if (output_is_tflite) {
-    QCHECK(toco_flags.input_types_size() == 1 ||
-           toco_flags.input_types_size() == model->flags.input_arrays_size())
-        << "Mismatched numbers of input_arrays and input_types";
-  }
-
   if (output_is_tflite_quantized) {
-    for (const auto& input_type : toco_flags.input_types()) {
-      QCHECK_NE(input_type, FLOAT)
-          << "Quantized inference is not allowed with float inputs.";
-    }
+    QCHECK_NE(toco_flags.inference_input_type(), FLOAT)
+        << "Quantized inference is not allowed with float inputs.";
   }
 
   SetArrayFinalDataTypes(toco_flags, model);

@@ -441,6 +441,14 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
+  auto old_element_type = operand_shape.element_type();
+  if (primitive_util::IsComplexType(old_element_type) &&
+      !primitive_util::IsComplexType(new_element_type)) {
+    return Unimplemented(
+        "Unsupported conversion from complex to real type: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
   if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -448,6 +456,36 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return InvalidArgument(
         "cannot convert from or to tuple type; requested conversion: %s => %s",
         ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+
+  return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferBitcastConvertShape(
+    const Shape& operand_shape, PrimitiveType new_element_type) {
+  auto old_element_type = operand_shape.element_type();
+  if (primitive_util::IsComplexType(old_element_type) !=
+      primitive_util::IsComplexType(new_element_type)) {
+    return Unimplemented(
+        "Unsupported conversion between real and complex types: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+  if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
+    // Note: we may want to support tuple conversions via this operation in the
+    // future, by recursing into the tuple elements to check all sub-conversions
+    // are valid. For now we just reject them, though.
+    return InvalidArgument(
+        "cannot convert from or to tuple type; requested conversion: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+  if (primitive_util::BitWidth(old_element_type) !=
+      primitive_util::BitWidth(new_element_type)) {
+    return InvalidArgument(
+        "cannot bitcast types with different bit-widths: %s => %s",
+        PrimitiveType_Name(old_element_type).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
 

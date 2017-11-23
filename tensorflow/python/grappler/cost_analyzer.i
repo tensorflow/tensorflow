@@ -43,7 +43,7 @@ limitations under the License.
 
 %{
 string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool
-per_node_report) {
+per_node_report, tensorflow::grappler::Cluster* cluster) {
   tensorflow::grappler::ItemConfig cfg;
   cfg.apply_optimizations = false;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> item =
@@ -51,20 +51,9 @@ per_node_report) {
   if (!item) {
     return "Error: failed to preprocess metagraph: check your log file for errors";
   }
-  
-  // TODO(bsteiner): we should wrap the tf session instead to properly handle the case of a
-  // distributed setup.
-  const int timeout_s = 3600;
-  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
-  int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
-  tensorflow::grappler::SingleMachine cluster(timeout_s, num_cpu_cores, num_gpus);
-  cluster.SetNumWarmupSteps(10);
-  cluster.AllowSoftPlacement(true);
-  cluster.DisableDetailedStats(false);
-  TF_CHECK_OK(cluster.Provision());
 
   string suffix;
-  tensorflow::grappler::CostAnalyzer analyzer(*item, &cluster, suffix);
+  tensorflow::grappler::CostAnalyzer analyzer(*item, cluster, suffix);
 
   std::stringstream os;
   analyzer.GenerateReport(os, per_node_report);
@@ -74,4 +63,4 @@ per_node_report) {
 %}
 
 string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool
-per_node_report);
+                          per_node_report, tensorflow::grappler::Cluster* cluster);

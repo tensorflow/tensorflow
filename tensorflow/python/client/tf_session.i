@@ -24,6 +24,49 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 
+// Helper function to convert a Python list of Tensors to a C++ vector of
+// TF_Outputs.
+//
+// Returns true if successful. Otherwise, returns false and sets error_msg.
+bool PyTensorListToVector(PyObject* py_tensor_list,
+                          std::vector<TF_Output>* vec,
+                          string* error_msg) {
+  if (!PyList_Check(py_tensor_list)) {
+    *error_msg = "expected Python list.";
+    return false;
+  }
+  size_t size = PyList_Size(py_tensor_list);
+  for (int i = 0; i < size; ++i) {
+    PyObject* item = PyList_GetItem(py_tensor_list, i);
+    TF_Output* input_ptr;
+    if (!SWIG_IsOK(SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
+                                   SWIGTYPE_p_TF_Output, 0))) {
+      *error_msg = "expected Python list of wrapped TF_Output objects. "
+          "Found python list of something else.";
+      return false;
+    }
+    vec->push_back(*input_ptr);
+  }
+  return true;
+}
+
+// Helper function to convert a TF_Output to a wrapped TF_Output Python object.
+PyObject* CreateWrappedTFOutput(TF_Output tf_output) {
+  // We used heap-allocated pointers in the Python runtime (this is what SWIG
+  // generates by default for functions returning TF_Output).
+  TF_Output* tf_output_ptr = new TF_Output(tf_output);
+  // Use SWIG_POINTER_OWN so the TF_Output* is deleted by Python.
+  return SWIG_NewPointerObj(tf_output_ptr, SWIGTYPE_p_TF_Output,
+                            SWIG_POINTER_OWN);
+}
+
+// Helper function to convert a TF_Operation to a wrapped TF_Operation Python
+// object.
+PyObject* CreateWrappedTFOperation(TF_Operation* tf_operation) {
+  // No flags since operation is owned by TF_Graph.
+  return SWIG_NewPointerObj(tf_operation, SWIGTYPE_p_TF_Operation, 0);
+}
+
 %}
 
 %include "tensorflow/python/client/tf_sessionrun_wrapper.i"
@@ -98,8 +141,7 @@ tensorflow::ImportNumpy();
   }
 
   for (size_t i = 0; i < $1.size(); ++i) {
-    PyList_SET_ITEM($result, i, SWIG_NewPointerObj(
-                            $1[i], SWIGTYPE_p_TF_Operation, 0));
+    PyList_SET_ITEM($result, i, CreateWrappedTFOperation($1[i]));
   }
 }
 
@@ -118,13 +160,7 @@ tensorflow::ImportNumpy();
   // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>> via &
   std::vector<TF_Output>* tf_outputs = &$1;
   for (size_t i = 0; i < $1.size(); ++i) {
-    // We used wrapped heap-allocated pointers in the Python runtime (this is
-    // what SWIG generates by default for functions returning TF_Output).
-    TF_Output* tf_output_ptr = new TF_Output((*tf_outputs)[i]);
-    // Use SWIG_POINTER_OWN so the TF_Output* is deleted by Python.
-    PyList_SET_ITEM($result, i,
-                    SWIG_NewPointerObj(tf_output_ptr, SWIGTYPE_p_TF_Output,
-                                       SWIG_POINTER_OWN));
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput((*tf_outputs)[i]));
   }
 }
 
@@ -267,34 +303,6 @@ tensorflow::ImportNumpy();
   $result = PyBytes_FromStringAndSize(
       reinterpret_cast<const char*>($1.data), $1.length);
 }
-
-%inline %{
-// Helper function to convert a Python list of Tensors to a C++ vector of
-// TF_Outputs.
-//
-// Returns true if successful. Otherwise, returns false and sets error_msg.
-bool PyTensorListToVector(PyObject* py_tensor_list,
-                          std::vector<TF_Output>* vec,
-                          string* error_msg) {
-  if (!PyList_Check(py_tensor_list)) {
-    *error_msg = "expected Python list.";
-    return false;
-  }
-  size_t size = PyList_Size(py_tensor_list);
-  for (int i = 0; i < size; ++i) {
-    PyObject* item = PyList_GetItem(py_tensor_list, i);
-    TF_Output* input_ptr;
-    if (!SWIG_IsOK(SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
-                                   SWIGTYPE_p_TF_Output, 0))) {
-      *error_msg = "expected Python list of wrapped TF_Output objects. "
-          "Found python list of something else.";
-      return false;
-    }
-    vec->push_back(*input_ptr);
-  }
-  return true;
-}
-%}
 
 // Converts input Python list of wrapped TF_Outputs into a single array
 %typemap(in) (const TF_Output* inputs, int num_inputs)

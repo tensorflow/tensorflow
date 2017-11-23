@@ -181,17 +181,19 @@ arg_min = deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=u
 
 
 def _set_doc(doc):
+
   def _decorator(func):
     func.__doc__ = doc
     return func
+
   return _decorator
 
 
 # pylint: disable=redefined-builtin
 @deprecated_args(None, "Use the `axis` argument instead", "dimension")
-@_set_doc(gen_math_ops.arg_max.__doc__
-          .replace("dimensions", "axes")
-          .replace("dimension", "axis"))
+@_set_doc(
+    gen_math_ops.arg_max.__doc__.replace("dimensions", "axes").replace(
+        "dimension", "axis"))
 def argmax(input,
            axis=None,
            name=None,
@@ -207,9 +209,9 @@ def argmax(input,
 
 
 @deprecated_args(None, "Use the `axis` argument instead", "dimension")
-@_set_doc(gen_math_ops.arg_min.__doc__
-          .replace("dimensions", "axes")
-          .replace("dimension", "axis"))
+@_set_doc(
+    gen_math_ops.arg_min.__doc__.replace("dimensions", "axes").replace(
+        "dimension", "axis"))
 def argmin(input,
            axis=None,
            name=None,
@@ -275,6 +277,8 @@ def abs(x, name=None):
 # pylint: disable=redefined-builtin
 def _bucketize(input, boundaries, name=None):
   return gen_math_ops._bucketize(input=input, boundaries=boundaries, name=name)
+
+
 # pylint: enable=redefined-builtin
 
 
@@ -327,8 +331,8 @@ def _mul(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
 
 
-_mul.__doc__ = (gen_math_ops._mul.__doc__ +
-                ("" if _mul.__doc__ is None else _mul.__doc__))
+_mul.__doc__ = (
+    gen_math_ops._mul.__doc__ + ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
 def subtract(x, y, name=None):
@@ -346,8 +350,8 @@ def _sub(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
 
 
-_sub.__doc__ = (gen_math_ops._sub.__doc__ +
-                ("" if _sub.__doc__ is None else _sub.__doc__))
+_sub.__doc__ = (
+    gen_math_ops._sub.__doc__ + ("" if _sub.__doc__ is None else _sub.__doc__))
 
 
 # pylint: disable=g-docstring-has-escape
@@ -957,8 +961,8 @@ _TRUEDIV_TABLE = {
 # to explicitly use the "/" operator to invoke either truediv or div.
 def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
   """Internal helper function for 'sp_t / dense_t'."""
-  with ops.name_scope(name, "truediv", [sp_indices, sp_values, sp_shape,
-                                        y]) as name:
+  with ops.name_scope(name, "truediv",
+                      [sp_indices, sp_values, sp_shape, y]) as name:
     sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
     y = ops.convert_to_tensor(y, name="y")
     x_dtype = sp_values.dtype.base_dtype
@@ -1265,8 +1269,16 @@ def _ReductionDims(x, axis, reduction_indices):
     return range(0, array_ops.rank(x))
 
 
-@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
-                 "keep_dims")
+def _may_reduce_to_scalar(keepdims, axis, reduction_indices, output):
+  """Set a reduction's output's shape to be a scalar if we are certain."""
+  if (not output.shape.is_fully_defined()) and (not keepdims) and (
+      axis is None) and (reduction_indices is None):
+    output.set_shape(())
+  return output
+
+
+@deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_sum(input_tensor,
                axis=None,
                keepdims=None,
@@ -1310,7 +1322,6 @@ def reduce_sum(input_tensor,
   Equivalent to np.sum
   @end_compatibility
   """
-
   if keep_dims is not None:
     if keepdims is not None:
       raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
@@ -1318,11 +1329,13 @@ def reduce_sum(input_tensor,
   if keepdims is None:
     keepdims = False
 
-  return gen_math_ops._sum(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keepdims,
-      name=name)
+  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+                               gen_math_ops._sum(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
 @deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
@@ -1451,11 +1464,13 @@ def reduce_mean(input_tensor,
     keepdims = keep_dims
   if keepdims is None:
     keepdims = False
-  return gen_math_ops._mean(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keepdims,
-      name=name)
+  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+                               gen_math_ops._mean(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
 @deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
@@ -1498,11 +1513,13 @@ def reduce_prod(input_tensor,
     keepdims = keep_dims
   if keepdims is None:
     keepdims = False
-  return gen_math_ops._prod(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keepdims,
-      name=name)
+  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+                               gen_math_ops._prod(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
 @deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
@@ -1545,11 +1562,13 @@ def reduce_min(input_tensor,
     keepdims = keep_dims
   if keepdims is None:
     keepdims = False
-  return gen_math_ops._min(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keepdims,
-      name=name)
+  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+                               gen_math_ops._min(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
 @deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
@@ -1592,11 +1611,13 @@ def reduce_max(input_tensor,
     keepdims = keep_dims
   if keepdims is None:
     keepdims = False
-  return gen_math_ops._max(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keepdims,
-      name=name)
+  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+                               gen_math_ops._max(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
 @deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
@@ -1648,11 +1669,13 @@ def reduce_all(input_tensor,
     keepdims = keep_dims
   if keepdims is None:
     keepdims = False
-  return gen_math_ops._all(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keepdims,
-      name=name)
+  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+                               gen_math_ops._all(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
 @deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
@@ -1704,11 +1727,13 @@ def reduce_any(input_tensor,
     keepdims = keep_dims
   if keepdims is None:
     keepdims = False
-  return gen_math_ops._any(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keepdims,
-      name=name)
+  return _may_reduce_to_scalar(keep_dims, axis, reduction_indices,
+                               gen_math_ops._any(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
 @deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
@@ -1770,8 +1795,7 @@ def reduce_logsumexp(input_tensor,
         keepdims=True)
     my_max = array_ops.stop_gradient(
         array_ops.where(
-            gen_math_ops.is_finite(raw_max),
-            raw_max,
+            gen_math_ops.is_finite(raw_max), raw_max,
             array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum(
@@ -1783,7 +1807,7 @@ def reduce_logsumexp(input_tensor,
       if isinstance(axis, int):
         axis = [axis]
       result = array_ops.squeeze(result, axis)
-    return result
+    return _may_reduce_to_scalar(keep_dims, axis, reduction_indices, result)
 
 
 def trace(x, name=None):
@@ -1947,9 +1971,9 @@ def matmul(a,
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
-    if (not a_is_sparse and not b_is_sparse) and (
-        (a_shape is None or len(a_shape) > 2) and
-        (b_shape is None or len(b_shape) > 2)):
+    if (not a_is_sparse and
+        not b_is_sparse) and ((a_shape is None or len(a_shape) > 2) and
+                              (b_shape is None or len(b_shape) > 2)):
       # BatchMatmul does not support transpose, so we conjugate the matrix and
       # use adjoint instead. Conj() is a noop for real matrices.
       if transpose_a:
@@ -1974,8 +1998,8 @@ def matmul(a,
     use_sparse_matmul = False
     if a_is_sparse or b_is_sparse:
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
-      use_sparse_matmul = (a.dtype in sparse_matmul_types and
-                           b.dtype in sparse_matmul_types)
+      use_sparse_matmul = (
+          a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
     if a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16:
       # matmul currently doesn't handle bfloat16 inputs.
       use_sparse_matmul = True
@@ -2066,8 +2090,8 @@ def _as_indexed_slices_list(inputs, optimize=True):
   for o in outputs:
     if o.indices.dtype == dtypes.int32:
       casted_outputs.append(
-          ops.IndexedSlices(o.values,
-                            cast(o.indices, dtypes.int64), o.dense_shape))
+          ops.IndexedSlices(o.values, cast(o.indices, dtypes.int64),
+                            o.dense_shape))
     else:
       casted_outputs.append(o)
   return casted_outputs
@@ -2166,8 +2190,8 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   if tensor_dtype is None:
     tensor_dtype = inputs[0].dtype
   if tensor_dtype != inputs[0].dtype:
-    raise TypeError("tensor_dtype is {}, but input is of type {}"
-                    .format(tensor_dtype, inputs[0].dtype))
+    raise TypeError("tensor_dtype is {}, but input is of type {}".format(
+        tensor_dtype, inputs[0].dtype))
   if len(inputs) == 1:
     return inputs[0]
   with ops.name_scope(name, "AccumulateN", inputs) as name:
@@ -2568,7 +2592,8 @@ def tensordot(a, b, axes, name=None):
       rank_a = array_ops.rank(a)
       axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
       axes = cast(axes >= 0, dtypes.int32) * axes + cast(
-          axes < 0, dtypes.int32) * (axes + rank_a)
+          axes < 0, dtypes.int32) * (
+              axes + rank_a)
       free, _ = array_ops.setdiff1d(range(rank_a), axes)
       free_dims = array_ops.gather(shape_a, free)
       axes_dims = array_ops.gather(shape_a, axes)
@@ -2594,8 +2619,8 @@ def tensordot(a, b, axes, name=None):
         return range(a_shape.ndims - axes, a_shape.ndims), range(axes)
       else:
         rank = array_ops.rank(a)
-        return (range(rank - axes, rank, dtype=dtypes.int32), range(
-            axes, dtype=dtypes.int32))
+        return (range(rank - axes, rank, dtype=dtypes.int32),
+                range(axes, dtype=dtypes.int32))
     elif isinstance(axes, (list, tuple)):
       if len(axes) != 2:
         raise ValueError("'axes' must be an integer or have length 2.")
@@ -2619,8 +2644,8 @@ def tensordot(a, b, axes, name=None):
     b = ops.convert_to_tensor(b, name="b")
     a_axes, b_axes = _tensordot_axes(a, axes)
     a_reshape, a_free_dims, a_free_dims_static = _tensordot_reshape(a, a_axes)
-    b_reshape, b_free_dims, b_free_dims_static = _tensordot_reshape(b, b_axes,
-                                                                    True)
+    b_reshape, b_free_dims, b_free_dims_static = _tensordot_reshape(
+        b, b_axes, True)
     ab_matmul = matmul(a_reshape, b_reshape)
     if isinstance(a_free_dims, list) and isinstance(b_free_dims, list):
       return array_ops.reshape(ab_matmul, a_free_dims + b_free_dims, name=name)

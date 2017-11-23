@@ -28,11 +28,6 @@ namespace grappler {
 // run a model.
 class ArithmeticOptimizer : public GraphOptimizer {
  public:
-  // Returns true if it is safe to dedup node from the graph.
-  // TODO(rmlarsen): Refactor to op_types.{h,cc}.
-  static bool CanDedup(const NodeDef& node,
-                       const std::unordered_set<string>& nodes_to_preserve);
-
   ArithmeticOptimizer() : opt_level_(RewriterConfig::ON) {}
   explicit ArithmeticOptimizer(RewriterConfig::Toggle opt_level)
       : opt_level_(opt_level) {}
@@ -47,6 +42,9 @@ class ArithmeticOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  // Returns true if it is safe to dedup node from the graph.
+  bool CanDedup(const NodeDef& node) const;
+
   void DedupComputations(GraphDef* optimized_graph) const;
   // Runs peep-hole optimizations on `optimized_graph`, e.g., removing inverse
   // transposes.

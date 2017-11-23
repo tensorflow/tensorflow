@@ -252,6 +252,11 @@ REGISTER_OP("IntInput")
     .Input("a: int32")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("IntInputIntOutput")
+    .Input("a: int32")
+    .Output("b: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("FloatInput")
     .Input("a: float32")
     .SetShapeFn(shape_inference::UnknownShape);

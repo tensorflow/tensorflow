@@ -224,6 +224,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Numerical issues, calculations off.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/wals_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/data_utils_test.py"
       # Float division by zero
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
       # Flaky, for unknown reasons. Cannot reproduce in terminal. Revisit once we can get stack traces.

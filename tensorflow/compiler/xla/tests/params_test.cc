@@ -252,8 +252,8 @@ XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
 }
 
 // Only run the 3,000-parameter tests in opt mode to avoid test timeouts.
-// Timeout last observed on 2017-09-12.
-#ifndef NDEBUG
+// Timeout last observed on 2017-11-20.
+#ifdef NDEBUG
 
 // TODO(b/65525254) Fails on GPU on 2017-09-10 because we try to reserve too
 // much space in parameter memory for the kernel.

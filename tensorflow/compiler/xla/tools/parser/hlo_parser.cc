@@ -434,6 +434,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateConvert(shape, operands[0]));
       break;
     }
+    case HloOpcode::kBitcastConvert: {
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateBitcastConvert(shape, operands[0]));
+      break;
+    }
     case HloOpcode::kCrossReplicaSum: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -549,12 +558,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kReduceWindow: {
       optional<HloComputation*> reduce_computation;
       optional<Window> window;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReduceWindow(
           shape, /*operand=*/operands[0], /*init_value=*/operands[1], *window,
@@ -564,12 +576,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kConvolution: {
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
           shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums));
@@ -644,10 +659,13 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> scatter;
       attrs["scatter"] = {/*required=*/true, AttrTy::kHloComputation, &scatter};
       optional<Window> window;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateSelectAndScatter(
@@ -1164,12 +1182,6 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
 // rank2345 ::= shape nested_array
 bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
                                      const Shape& shape) {
-  const int64 size = ShapeUtil::ElementsIn(shape);
-  if (size == 0) {
-    *literal = Literal::CreateFromShape(shape);
-    return true;
-  }
-
   const int64 rank = ShapeUtil::Rank(shape);
   if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
     return false;

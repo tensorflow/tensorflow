@@ -67,13 +67,14 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     const SessionOptions& session_opts,
                     const StatsPublisherFactory& stats_publisher_factory,
                     GraphExecutionState* execution_state, bool is_partial,
-                    WorkerCacheInterface* worker_cache)
+                    WorkerCacheInterface* worker_cache, bool should_deregister)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
         session_opts_(session_opts),
         is_partial_(is_partial),
         debug_opts_(bopts.debug_options),
-        worker_cache_(worker_cache) {
+        worker_cache_(worker_cache),
+        should_deregister_(should_deregister) {
     VLOG(1) << "Created ReffedClientGraph for node with "
             << client_graph()->graph.num_node_ids();
 
@@ -85,7 +86,11 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     }
   }
 
-  ~ReffedClientGraph() override { DeregisterPartitions(); }
+  ~ReffedClientGraph() override {
+    if (should_deregister_) {
+      DeregisterPartitions();
+    }
+  }
 
   const ClientGraph* client_graph() { return client_graph_.get(); }
 
@@ -208,7 +213,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const bool is_partial_;
   const DebugOptions& debug_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
-  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
+  std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node_;
+  const bool should_deregister_;
 
   // Graph partitioned into per-location subgraphs.
   struct Part {
@@ -486,7 +492,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<StringPiece, size_t, StringPiece::Hasher> feeds(3);
+  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
 
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     if (!feeds.insert({req.feed_name(i), i}).second) {
@@ -1262,7 +1268,7 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
       auto entry = new ReffedClientGraph(
           handle_, opts, std::move(client_graph), session_opts_,
           stats_publisher_factory_, execution_state_.get(), is_partial,
-          worker_cache);
+          worker_cache, !should_delete_worker_sessions_);
       iter = m->insert({hash, entry}).first;
       VLOG(1) << "Preparing to execute new graph";
     }

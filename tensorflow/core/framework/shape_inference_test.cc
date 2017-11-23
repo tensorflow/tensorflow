@@ -544,9 +544,10 @@ TEST_F(ShapeInferenceTest, RelaxDim) {
   auto d_unknown_b = c.Dim(c.input(0), 4);
   DimensionHandle out;
 
-  // Relaxing anything with unknown returns a new unknown.
+  // Relaxing anything with unknown returns a new unknown or the existing
+  // unknown.
   Relax(&c, d2, d_unknown, &out);
-  EXPECT_FALSE(SameHandle(d_unknown, out));
+  EXPECT_TRUE(SameHandle(d_unknown, out));
   EXPECT_FALSE(SameHandle(d_unknown_b, out));
   EXPECT_EQ(InferenceContext::kUnknownDim, c.Value(out));
   Relax(&c, d_unknown, d2, &out);
@@ -554,7 +555,7 @@ TEST_F(ShapeInferenceTest, RelaxDim) {
   EXPECT_EQ(InferenceContext::kUnknownDim, c.Value(out));
   Relax(&c, d_unknown, d_unknown_b, &out);
   EXPECT_FALSE(SameHandle(d_unknown, out));
-  EXPECT_FALSE(SameHandle(d_unknown_b, out));
+  EXPECT_TRUE(SameHandle(d_unknown_b, out));
   EXPECT_EQ(InferenceContext::kUnknownDim, c.Value(out));
 
   // Relaxing with self returns self.
@@ -602,7 +603,7 @@ TEST_F(ShapeInferenceTest, RelaxShape) {
   EXPECT_EQ("?", c.DebugString(out));
   Relax(&c, s_unknown, s_unknown_b, &out);
   EXPECT_FALSE(SameHandle(s_unknown, out));
-  EXPECT_FALSE(SameHandle(s_unknown_b, out));
+  EXPECT_TRUE(SameHandle(s_unknown_b, out));
   EXPECT_EQ("?", c.DebugString(out));
 
   // Relaxing with self returns self.
@@ -623,7 +624,7 @@ TEST_F(ShapeInferenceTest, RelaxShape) {
   Relax(&c, s_u_2, s_1_u, &out);
   EXPECT_EQ("[?,?]", c.DebugString(out));
   EXPECT_FALSE(SameHandle(c.Dim(s_u_2, 0), c.Dim(out, 0)));
-  EXPECT_FALSE(SameHandle(c.Dim(s_1_u, 1), c.Dim(out, 1)));
+  EXPECT_TRUE(SameHandle(c.Dim(s_1_u, 1), c.Dim(out, 1)));
   auto s_u1 = c.UnknownShapeOfRank(1);
   auto s_u2 = c.UnknownShapeOfRank(1);
   Relax(&c, s_u1, s_u2, &out);
@@ -637,7 +638,7 @@ TEST_F(ShapeInferenceTest, RelaxShape) {
   EXPECT_EQ("[?,?]", c.DebugString(out));
   out = s_unknown;
   Relax(&c, s_1_3, s_u_2, &out);
-  EXPECT_FALSE(SameHandle(c.Dim(s_u_2, 0), c.Dim(out, 0)));
+  EXPECT_TRUE(SameHandle(c.Dim(s_u_2, 0), c.Dim(out, 0)));
   EXPECT_EQ("[?,?]", c.DebugString(out));
   out = s_unknown;
 

@@ -485,7 +485,6 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
     Status s = vspace.CallBackwardFunction(trace.backward_function,
                                            out_gradients, &in_gradients);
     if (!s.ok()) {
-      VLOG(1) << "Gradient function failed.";
       cleanup();
       return s;
     }

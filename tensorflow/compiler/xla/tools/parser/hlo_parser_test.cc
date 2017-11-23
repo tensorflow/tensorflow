@@ -92,6 +92,28 @@ ENTRY %ConstantF32.v4 () -> f32[] {
 
 )"
 },
+// f32 constant, rank 1 empty array.
+{
+"ConstantF32R1Empty",
+R"(HloModule ConstantF32Empty_module:
+
+ENTRY %ConstantF32Empty.v4 () -> f32[0] {
+  ROOT %constant = f32[0]{0} constant({})
+}
+
+)"
+},
+// f32 constant, rank 4 empty array.
+{
+"ConstantF32R4Empty",
+R"(HloModule ConstantF32R4Empty_module:
+
+ENTRY %ConstantF32R4Empty.v4 () -> f32[2,0,4,3] {
+  ROOT %constant = f32[2,0,4,3]{3,2,1,0} constant(f32[2,0,4,3] { { /*i0=0*/ }, { /*i0=1*/ } })
+}
+
+)"
+},
 // constant 4D
 {
 "Constant4D",
@@ -290,6 +312,25 @@ ENTRY %R4UnitWindow.v3 (operand: f32[13,12,8,15]) -> f32[13,3,8,15] {
 
 )"
 },
+// reduce window on scalar
+{
+"ReduceWindowScalar",
+R"(HloModule reduce_window_scalar:
+
+%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+ENTRY %R4UnitWindowScalar () -> f32[] {
+  %constant = f32[] constant(42)
+  %constant.1 = f32[] constant(1)
+  ROOT %reduce-window = f32[] reduce-window(f32[] %constant, f32[] %constant.1), to_apply=%add_F32.v3
+}
+
+)"
+},
 // convolution
 {
 "Convolution",
@@ -312,7 +353,7 @@ R"(HloModule ConvolveR2_module:
 ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[1,1]) -> f32[1,2] {
   %input = f32[1,2]{1,0} parameter(0)
   %filter = f32[1,1]{1,0} parameter(1)
-  ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[1,1]{1,0} %filter), window={size=1}, dim_labels=bf_io->bf
+  ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[1,1]{1,0} %filter), dim_labels=bf_io->bf
 }
 
 )"
@@ -402,6 +443,32 @@ ENTRY %R4F32OverlapSmall.v4 () -> f32[4,5,1,1] {
   %constant.1 = f32[2,2,1,1]{3,2,1,0} constant(f32[2,2,1,1] { { /*i0=0*/ { /*i1=0*/ {2} }, { /*i1=1*/ {6} } }, { /*i0=1*/ { /*i1=0*/ {3} }, { /*i1=1*/ {1} } } })
   %constant.2 = f32[] constant(0)
   ROOT %select-and-scatter = f32[4,5,1,1]{3,2,1,0} select-and-scatter(f32[4,5,1,1]{3,2,1,0} %constant, f32[2,2,1,1]{3,2,1,0} %constant.1, f32[] %constant.2), window={size=2x3x1x1 stride=2x2x1x1}, select=%ge_F32.v3, scatter=%add_F32.v3
+}
+
+)"
+},
+// select and scatter on scalar
+{
+"SelectAndScatterScalar",
+R"(HloModule select_and_scatter_scalar:
+
+%ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %greater-than-or-equal-to = pred[] greater-than-or-equal-to(f32[] %lhs, f32[] %rhs)
+}
+
+%add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
+  %lhs.1 = f32[] parameter(0)
+  %rhs.1 = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs.1, f32[] %rhs.1)
+}
+
+ENTRY %SelectAndScatterScalar () -> f32[] {
+  %constant = f32[] constant(42)
+  %constant.1 = f32[] constant(1)
+  %constant.2 = f32[] constant(2)
+  ROOT %select-and-scatter = f32[] select-and-scatter(f32[] %constant, f32[] %constant.1, f32[] %constant.2), select=%ge_F32.v3, scatter=%add_F32.v3
 }
 
 )"

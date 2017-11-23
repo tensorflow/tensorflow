@@ -188,7 +188,7 @@ def toco_convert(input_data,
 
     input_array.name = _tensor_name(input_tensor)
     input_array.shape.extend(map(int, input_tensor.get_shape()))
-    toco.input_types.append(tflite_input_type)
+    toco.inference_input_type = tflite_input_type
 
   for output_tensor in output_tensors:
     model.output_arrays.append(_tensor_name(output_tensor))
