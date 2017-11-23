@@ -101,6 +101,8 @@ public:
 
   Status HandleWhile(HloInstruction* inst) override;
 
+  Status HandleConditional(HloInstruction* inst) override;
+
   Status HandlePad(HloInstruction* inst) override;
 
   Status HandleReducePrecision(HloInstruction* inst) override;

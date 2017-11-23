@@ -39,7 +39,11 @@ class PoplarCompiler : public Compiler {
   PoplarCompiler() {}
   ~PoplarCompiler() override {}
 
-  StatusOr<std::unique_ptr<Executable>> Compile(
+  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+          std::unique_ptr<HloModule> module,
+          perftools::gputools::StreamExecutor* executor) override;
+
+  StatusOr<std::unique_ptr<Executable>> RunBackend(
           std::unique_ptr<HloModule> module,
           perftools::gputools::StreamExecutor* executor) override;
 
@@ -57,8 +61,6 @@ class PoplarCompiler : public Compiler {
   perftools::gputools::Platform::Id PlatformId() const override;
 
  private:
-
-  Status RunHloOptimization(HloModule* hlo_module);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarCompiler);
 };

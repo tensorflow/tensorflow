@@ -26,10 +26,14 @@ namespace poplarplugin {
 
 PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloModule> hlo_module,
+        std::unique_ptr<HloProfilePrinter> profile_printer,
+        std::unique_ptr<HloProfileIndexMap> profile_index_map,
         std::shared_ptr<poplar::Engine> engine,
         const sep::OutputMap& output_map,
         const std::vector<Shape>& parameter_shapes)
-    : Executable(std::move(hlo_module)),
+    : Executable(std::move(hlo_module),
+                 std::move(profile_printer),
+                 std::move(profile_index_map)),
       poplar_engine_(std::move(engine)),
       output_map_(std::move(output_map)),
       parameter_shapes_(std::move(parameter_shapes)) {}
@@ -128,11 +132,6 @@ PoplarExecutable::ExecuteAsyncOnStream(
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   return tensorflow::errors::Unimplemented(
           "ExecuteAsyncOnStream is not yet supported on Poplar.");
-}
-
-std::unique_ptr<HloCostAnalysis> PoplarExecutable::CreateCostAnalysis()
-    const {
-  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 /*static*/ int64 PoplarExecutable::ShapeSizeBytes(const Shape& shape) {

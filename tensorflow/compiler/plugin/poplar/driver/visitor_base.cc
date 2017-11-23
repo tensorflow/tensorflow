@@ -493,6 +493,10 @@ Status BaseVisitor::HandleWhile(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleConditional(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 Status BaseVisitor::HandlePad(HloInstruction* inst) {
   return Unimplemented(inst);
 }

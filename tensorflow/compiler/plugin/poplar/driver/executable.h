@@ -44,6 +44,8 @@ namespace poplarplugin {
 class PoplarExecutable : public Executable {
  public:
   PoplarExecutable(std::unique_ptr<HloModule> hlo_module,
+                   std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
                    std::shared_ptr<poplar::Engine> engine,
                    const sep::OutputMap& output_map,
                    const std::vector<Shape>& parameter_shapes);
@@ -67,8 +69,6 @@ class PoplarExecutable : public Executable {
           arguments) override;
 
   static int64 ShapeSizeBytes(const Shape& shape);
-
-  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
  private:
   friend class GraphCompileIoMapTest;

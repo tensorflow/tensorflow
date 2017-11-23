@@ -58,9 +58,12 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
 
   PoplarCompiler compiler;
 
+  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
+                                     nullptr).ConsumeValueOrDie();
+
   std::unique_ptr<Executable> executable =
-          compiler.Compile(std::move(hlo_module),
-                           nullptr).ConsumeValueOrDie();
+          compiler.RunBackend(std::move(hlo_module),
+                              nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(0, GetMap(e).size());
@@ -91,9 +94,12 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
 
   PoplarCompiler compiler;
 
+  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
+                                     nullptr).ConsumeValueOrDie();
+
   std::unique_ptr<Executable> executable =
-          compiler.Compile(std::move(hlo_module),
-                           nullptr).ConsumeValueOrDie();
+        compiler.RunBackend(std::move(hlo_module),
+                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(1, GetMap(e).size());
@@ -125,9 +131,12 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
 
   PoplarCompiler compiler;
 
+  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
+                                     nullptr).ConsumeValueOrDie();
+
   std::unique_ptr<Executable> executable =
-          compiler.Compile(std::move(hlo_module),
-                           nullptr).ConsumeValueOrDie();
+        compiler.RunBackend(std::move(hlo_module),
+                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(1, GetMap(e).size());
@@ -172,9 +181,12 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
 
   PoplarCompiler compiler;
 
+  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
+                                     nullptr).ConsumeValueOrDie();
+
   std::unique_ptr<Executable> executable =
-          compiler.Compile(std::move(hlo_module),
-                           nullptr).ConsumeValueOrDie();
+        compiler.RunBackend(std::move(hlo_module),
+                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   ASSERT_EQ(2, GetMap(e).size());
@@ -213,9 +225,12 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
 
   PoplarCompiler compiler;
 
+  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
+                                     nullptr).ConsumeValueOrDie();
+
   std::unique_ptr<Executable> executable =
-          compiler.Compile(std::move(hlo_module),
-                           nullptr).ConsumeValueOrDie();
+        compiler.RunBackend(std::move(hlo_module),
+                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   ASSERT_EQ(1, GetMap(e).size());

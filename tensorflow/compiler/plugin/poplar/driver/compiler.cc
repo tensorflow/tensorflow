@@ -232,7 +232,10 @@ private:
   std::set<HloComputation*> done;
 };
 
-Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
+StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
+        std::unique_ptr<HloModule> module,
+        perftools::gputools::StreamExecutor* executor) {
+  VLOG(1) << "Begin HloPasses: " << module->name();
   HloPassPipeline pipeline("IPU");
   pipeline.AddPass<BatchNormRewriter>(true, true, true, false);
   pipeline.AddPass<HloCSE>(false);
@@ -248,16 +251,22 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloDCE>();
-  return pipeline.Run(hlo_module).status();
+
+  bool ok;
+  TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));
+
+  if (!ok) {
+    VLOG(1) << "HLO module optimization returned false";
+  }
+
+  return std::move(module);
 }
 
-StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module,
-    se::StreamExecutor* stream_exec) {
+StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
+        std::unique_ptr<HloModule> module,
+        perftools::gputools::StreamExecutor* stream_exec) {
 
-  VLOG(1) << "Begin compilation of module " << hlo_module->name();
-
-  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
+  VLOG(1) << "Begin compilation: " << module->name();
 
   bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
 
@@ -277,9 +286,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   popstd::addCodelets(*graph);
   poprand::addCodelets(*graph);
 
-  CompilerResources resources(hlo_module->config().seed());
+  CompilerResources resources(module->config().seed());
 
-  HloComputation* entry = hlo_module->entry_computation();
+  HloComputation* entry = module->entry_computation();
 
   VLOG(2) << "Running poplar call site finder";
 
@@ -291,18 +300,18 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   {
     AllocationFinder finder;
-    TF_RETURN_IF_ERROR(finder.CreateAllocationMap(hlo_module.get()));
+    TF_RETURN_IF_ERROR(finder.CreateAllocationMap(module.get()));
     resources.tensor_allocation_map = std::move(finder.tensor_allocation_map);
   }
 
   {
     InplaceFinder finder;
-    TF_RETURN_IF_ERROR(finder.FindInplaceInstructions(hlo_module.get()));
+    TF_RETURN_IF_ERROR(finder.FindInplaceInstructions(module.get()));
     resources.inplace_instructions = std::move(finder.inplace_instructions);
   }
 
   // Set layout if there isn't one
-  auto comp_layout = hlo_module->mutable_entry_computation_layout()
+  auto comp_layout = module->mutable_entry_computation_layout()
           ->mutable_result_layout();
   if (!comp_layout->LayoutIsSet()) {
     auto shape = entry->root_instruction()->shape();
@@ -333,7 +342,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     VLOG(1) << "Skip engine compilation - all outputs are inputs";
   } else {
     try {
-      VLOG(1) << "Compile engine " << hlo_module->name();
+      VLOG(1) << "Compile engine " << module->name();
 
       engine.reset(new poplar::Engine(dev, *graph, progs));
     }
@@ -358,9 +367,20 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     graph->outputComputeGraph(stream, progs);
   }
 
+  std::unique_ptr<HloProfileIndexMap> profile_index_map;
+  std::unique_ptr<HloProfilePrinter> profile_printer;
+  if (module->config().hlo_profiling_enabled()) {
+    HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
+    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
+    profile_printer =
+            CreateHloProfilePrinter(*profile_index_map, cost_analysis);
+  }
+
   std::unique_ptr<Executable> executable;
   executable.reset(
-          new PoplarExecutable(std::move(hlo_module),
+          new PoplarExecutable(std::move(module),
+                               std::move(profile_printer),
+                               std::move(profile_index_map),
                                std::move(engine),
                                std::move(visitor.output_map),
                                std::move(visitor.parameter_shapes)));
@@ -410,8 +430,10 @@ static bool RegisterComputationPlacer() {
 
 bool placer_registration = RegisterComputationPlacer();
 
-REGISTER_MODULE_INITIALIZER(poplar_compiler, {
-  xla::Compiler::RegisterCompilerFactory(sep::kPoplarPlatformId, []() {
+static bool InitModule() {
+  xla::Compiler::RegisterCompilerFactory(se::poplarplugin::kPoplarPlatformId, []() {
     return xla::MakeUnique<xla::poplarplugin::PoplarCompiler>();
   });
-});
+  return true;
+}
+static bool module_initialized = InitModule();
