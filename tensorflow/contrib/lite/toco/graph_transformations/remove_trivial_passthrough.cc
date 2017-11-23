@@ -63,19 +63,28 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
       main_input_array_index = i;
     }
   }
-  CHECK_LE(count_nonconstant_input_arrays, 1);
 
   const string main_input_name = passthru_op->inputs[main_input_array_index];
   const string output_name = passthru_op->outputs[0];
+
+  // Build the list of all input and output arrays of the passthrough node
+  // that we are considering removing. Any of these arrays is a candidate
+  // for being removed as well, if nothing else references it. Doing that
+  // arrays-removal together with the passthrough-node-removal proved too
+  // error-prone.
+  std::vector<string> removal_candidates;
+  for (const string& input : passthru_op->inputs) {
+    removal_candidates.push_back(input);
+  }
+  removal_candidates.push_back(output_name);
+
   if (IsDiscardableArray(*model, output_name)) {
     transformation->AddMessageF(
         "Removing %s, keeping its non-constant input array",
         LogName(*passthru_op));
-    model->arrays.erase(output_name);
     for (const string& input : passthru_op->inputs) {
       if (IsDiscardableArray(*model, input) && input != main_input_name &&
           CountOpsWithInput(*model, input) == 1) {
-        model->arrays.erase(input);
       }
     }
     RerouteEdges(output_name, main_input_name, model);
@@ -85,13 +94,12 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
     for (const string& input : passthru_op->inputs) {
       if (IsDiscardableArray(*model, input) &&
           (input == main_input_name || CountOpsWithInput(*model, input) == 1)) {
-        model->arrays.erase(input);
       }
     }
     RerouteEdges(main_input_name, output_name, model);
   } else {
     transformation->AddMessageF(
-        "Cannot remove %s, neither its nonconstant input nor its output may be "
+        "Cannot remove %s, neither its main input nor its output may be "
         "discarded",
         LogName(*passthru_op));
     return false;
@@ -99,6 +107,26 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
 
   // Remove the pass-through node.
   model->operators.erase(passthru_it);
+
+  // Remove any array that is no longer used.
+  for (const string& removal_candidate : removal_candidates) {
+    bool is_referenced = false;
+    for (const auto& op : model->operators) {
+      for (const string& input : op->inputs) {
+        if (input == removal_candidate) {
+          is_referenced = true;
+        }
+      }
+      for (const string& output : op->outputs) {
+        if (output == removal_candidate) {
+          is_referenced = true;
+        }
+      }
+    }
+    if (!is_referenced) {
+      model->arrays.erase(removal_candidate);
+    }
+  }
 
   return true;
 }
