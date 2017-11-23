@@ -333,6 +333,7 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
     name: A name for this operation (optional).
+    dim: Deprecated alias for axis.
 
   Returns:
     A `Tensor` with the same shape as `x`.

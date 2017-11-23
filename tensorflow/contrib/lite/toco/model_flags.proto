@@ -138,8 +138,4 @@ message ModelFlags {
     optional int32 count_max = 3 [default = -1];
   }
   repeated ModelCheck model_checks = 14;
-
-  // If true, ignore control dependency requirements in input TensorFlow
-  // GraphDef. Otherwise an error will be raised upon control dependency inputs.
-  optional bool drop_control_dependency = 15;
 }

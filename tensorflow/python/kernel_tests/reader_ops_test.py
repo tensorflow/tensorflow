@@ -1018,15 +1018,15 @@ class LMDBReaderTest(test.TestCase):
     with self.test_session() as sess:
       reader1 = io_ops.LMDBReader(name="test_read_from_same_file1")
       reader2 = io_ops.LMDBReader(name="test_read_from_same_file2")
-      filename_queue = input_lib.string_input_producer([self.db_path],
-                                                       num_epochs=None)
+      filename_queue = input_lib.string_input_producer(
+          [self.db_path], num_epochs=None)
       key1, value1 = reader1.read(filename_queue)
       key2, value2 = reader2.read(filename_queue)
 
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
-      for i in range(3):
-        for j in range(10):
+      for _ in range(3):
+        for _ in range(10):
           k1, v1, k2, v2 = sess.run([key1, value1, key2, value2])
           self.assertAllEqual(compat.as_bytes(k1), compat.as_bytes(k2))
           self.assertAllEqual(compat.as_bytes(v1), compat.as_bytes(v2))
@@ -1054,14 +1054,14 @@ class LMDBReaderTest(test.TestCase):
   def testReadFromFileRepeatedly(self):
     with self.test_session() as sess:
       reader = io_ops.LMDBReader(name="test_read_from_file_repeated")
-      filename_queue = input_lib.string_input_producer([self.db_path],
-                                                       num_epochs=None)
+      filename_queue = input_lib.string_input_producer(
+          [self.db_path], num_epochs=None)
       key, value = reader.read(filename_queue)
 
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
       # Iterate over the lmdb 3 times.
-      for i in range(3):
+      for _ in range(3):
         # Go over all 10 records each time.
         for j in range(10):
           k, v = sess.run([key, value])
@@ -1070,6 +1070,7 @@ class LMDBReaderTest(test.TestCase):
               compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + j))))
       coord.request_stop()
       coord.join(threads)
+
 
 if __name__ == "__main__":
   test.main()
