@@ -43,6 +43,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kAveragePool || type == OperatorType::kMaxPool ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
          type == OperatorType::kSqueeze ||
+         type == OperatorType::kExpandDims ||
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kMul || type == OperatorType::kSpaceToDepth ||
          type == OperatorType::kDepthToSpace;

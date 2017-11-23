@@ -66,6 +66,7 @@ enum class OperatorType {
   kStridedSlice,
   kSlice,
   kSqueeze,
+  kExpandDims,
   kMean,
   // The SVDF Op is a decomposition of a densely connected Op into
   // low rank filters. For details:
@@ -83,6 +84,7 @@ enum class OperatorType {
   kTensorFlowIdentity,
   kTensorFlowLess,
   kTensorFlowLessEqual,
+  kTensorFlowEqual,
   kTensorFlowMax,
   kTensorFlowMaximum,
   kTensorFlowMin,
@@ -754,6 +756,17 @@ struct SqueezeOperator : Operator {
   std::vector<int> squeeze_dims;
 };
 
+// Add dimensions of size 1 from the shape of a tensor.
+// https://www.tensorflow.org/api_docs/python/tf/expand_dims
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: ExpandDims
+struct ExpandDimsOperator : Operator {
+  ExpandDimsOperator() : Operator(OperatorType::kExpandDims) {}
+};
+
 // Element-wise reciprocal-square-root (x^-0.5) operator.
 //
 // Inputs:
@@ -940,6 +953,17 @@ struct TensorFlowLessOperator : Operator {
 struct TensorFlowLessEqualOperator : Operator {
   TensorFlowLessEqualOperator()
       : Operator(OperatorType::kTensorFlowLessEqual) {}
+};
+
+// TensorFlow Equal equivalent. Refer to TensorFlow documentation for
+// details.
+// Not fully supported, just a placeholder to handle TensorFlow graphs and
+// support graph transformations to other operator types by matching sub-graphs.
+// Typically, this is only used as an input to an Assert node, so can be
+// removed as an unused node as we drop Assert nodes.
+struct TensorFlowEqualOperator : Operator {
+  TensorFlowEqualOperator()
+      : Operator(OperatorType::kTensorFlowEqual) {}
 };
 
 // TensorFlow Less equivalent. Refer to TensorFlow documentation for details.
