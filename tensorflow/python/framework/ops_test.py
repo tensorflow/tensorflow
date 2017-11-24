@@ -1464,6 +1464,29 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testEager(self):
+    def future():
+      future.calls += 1
+      return constant_op.constant(2.0)
+    future.calls = 0
+
+    if context.in_graph_mode():
+      g = ops.Graph()
+      with g.as_default():
+        a = constant_op.constant(1.0)
+        b = future()
+        with g.control_dependencies([a, b]):
+          c = constant_op.constant(3.0)
+      self.assertEqual(c.op.control_inputs, [a.op, b.op])
+      self.assertEqual(future.calls, 1)
+    else:
+      a = constant_op.constant(1.0)
+      b = future
+      with ops.control_dependencies([a, b]):
+        c = constant_op.constant(3.0)
+      self.assertEqual(future.calls, 1)
+
   def testBasicWithConversion(self):
     g = ops.Graph()
     a = _apply_op(g, "FloatOutput", [], [dtypes.float32])
