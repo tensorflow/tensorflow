@@ -1322,6 +1322,19 @@ void ConvertSqueezeOperator(const Model& model, const SqueezeOperator& src_op,
   }
 }
 
+void ConvertExpandDimsOperator(const Model& model, const ExpandDimsOperator& src_op,
+                            GraphDef* tensorflow_graph) {
+  auto* new_op = tensorflow_graph->add_node();
+  new_op->set_op("ExpandDims");
+  new_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *new_op->add_input() = src_op.inputs[0];
+  *new_op->add_input() = src_op.inputs[1];
+
+  const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*new_op->mutable_attr())["T"].set_type(params_type);
+}
+
 void ConvertSubOperator(const Model& model, const SubOperator& src_op,
                         GraphDef* tensorflow_graph) {
   auto* sub_op = tensorflow_graph->add_node();
@@ -1494,6 +1507,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
         tensorflow_graph);
   } else if (src_op.type == OperatorType::kSqueeze) {
     ConvertSqueezeOperator(model, static_cast<const SqueezeOperator&>(src_op),
+                           tensorflow_graph);
+  } else if (src_op.type == OperatorType::kExpandDims) {
+    ConvertExpandDimsOperator(model, static_cast<const ExpandDimsOperator&>(src_op),
                            tensorflow_graph);
   } else if (src_op.type == OperatorType::kSlice) {
     ConvertSliceOperator(model, static_cast<const SliceOperator&>(src_op),

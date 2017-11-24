@@ -149,6 +149,8 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
       outval = val0 < val1;
     } else if (binary_op->type == OperatorType::kTensorFlowLessEqual) {
       outval = val0 <= val1;
+    } else if (binary_op->type == OperatorType::kTensorFlowEqual) {
+      outval = val0 == val1;
     } else if (binary_op->type == OperatorType::kTensorFlowGreater) {
       outval = val0 > val1;
     } else if (binary_op->type == OperatorType::kTensorFlowGreaterEqual) {
@@ -195,6 +197,7 @@ bool ResolveConstantBinaryOperator::Run(Model* model, std::size_t op_index) {
       binary_op->type != OperatorType::kTensorFlowMaximum &&
       binary_op->type != OperatorType::kTensorFlowLess &&
       binary_op->type != OperatorType::kTensorFlowLessEqual &&
+      binary_op->type != OperatorType::kTensorFlowEqual &&
       binary_op->type != OperatorType::kTensorFlowGreater &&
       binary_op->type != OperatorType::kTensorFlowGreaterEqual) {
     return false;

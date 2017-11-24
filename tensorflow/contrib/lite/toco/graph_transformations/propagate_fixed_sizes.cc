@@ -907,6 +907,33 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
   *output_array.mutable_shape()->mutable_dims() = output_dims;
 }
 
+void ProcessExpandDimsOperator(Model* model, ExpandDimsOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+
+  const auto& input_array = *model->arrays[op->inputs[0]];
+
+  const auto& expand_dim_array = *model->arrays[op->inputs[1]];
+  const auto& expand_dim_vector = expand_dim_array.GetBuffer<ArrayDataType::kInt32>().data;
+  CHECK_EQ(expand_dim_vector.size(), 1);
+  const int expand_dim = expand_dim_vector[0];
+
+  auto& output_array = *model->arrays[op->outputs[0]];
+  if (output_array.has_shape()) return;
+
+  const std::vector<int>& input_dims = input_array.shape().dims();
+  // -1-input.dims() <= dim <= input.dims()
+  QCHECK_GE(expand_dim, -1 - input_dims.size());
+  QCHECK_GE(input_dims.size(), expand_dim);
+
+  std::vector<int> output_dims;
+  output_dims.assign(input_dims.begin(), input_dims.begin() + expand_dim);
+  output_dims.push_back(1);
+  output_dims.assign(input_dims.begin() + expand_dim, input_dims.end());
+
+  *output_array.mutable_shape()->mutable_dims() = output_dims;
+}
+
 void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
   CHECK(op->inputs.size() == 3 || op->inputs.size() == 4);
   const auto& input_array = *model->arrays[op->inputs[0]];
@@ -979,6 +1006,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kDiv:
     case OperatorType::kTensorFlowLess:
     case OperatorType::kTensorFlowLessEqual:
+    case OperatorType::kTensorFlowEqual:
     case OperatorType::kTensorFlowGreater:
     case OperatorType::kTensorFlowMaximum:
     case OperatorType::kTensorFlowMinimum:
@@ -1053,6 +1081,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       break;
     case OperatorType::kSqueeze:
       ProcessSqueezeOperator(model, static_cast<SqueezeOperator*>(op));
+      break;
+    case OperatorType::kExpandDims:
+      ProcessExpandDimsOperator(model, static_cast<ExpandDimsOperator*>(op));
       break;
     case OperatorType::kTensorFlowConcat:
     case OperatorType::kTensorFlowConcatV2:

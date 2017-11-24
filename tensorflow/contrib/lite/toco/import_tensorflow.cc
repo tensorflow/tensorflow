@@ -577,6 +577,18 @@ void ConvertSqueezeOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertExpandDimsOperator(const NodeDef& node,
+                               const TensorFlowImportFlags& tf_import_flags,
+                               Model* model) {
+  CHECK_EQ(node.op(), "ExpandDims");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new ExpandDimsOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertSquareOperator(const NodeDef& node,
                            const TensorFlowImportFlags& tf_import_flags,
                            Model* model) {
@@ -952,6 +964,19 @@ void ConvertLessEqualOperator(const NodeDef& node,
                               Model* model) {
   CHECK_EQ(node.op(), "LessEqual");
   auto* op = new TensorFlowLessEqualOperator;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertEqualOperator(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK_EQ(node.op(), "Equal");
+  auto* op = new TensorFlowEqualOperator;
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
@@ -1550,6 +1575,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertRsqrtOperator(node, tf_import_flags, model);
     } else if (node.op() == "Squeeze") {
       ConvertSqueezeOperator(node, tf_import_flags, model);
+    } else if (node.op() == "ExpandDims") {
+      ConvertExpandDimsOperator(node, tf_import_flags, model);
     } else if (node.op() == "Sqrt") {
       ConvertSqrtOperator(node, tf_import_flags, model);
     } else if (node.op() == "Square") {
@@ -1578,6 +1605,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertLessOperator(node, tf_import_flags, model);
     } else if (node.op() == "LessEqual") {
       ConvertLessEqualOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Equal") {
+      ConvertEqualOperator(node, tf_import_flags, model);
     } else if (node.op() == "Greater") {
       ConvertGreaterOperator(node, tf_import_flags, model);
     } else if (node.op() == "GreaterEqual") {
