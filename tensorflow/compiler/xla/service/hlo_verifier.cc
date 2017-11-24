@@ -283,7 +283,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
   Status HandleSend(HloInstruction* send) override {
     TF_RET_CHECK(send->users().size() == 1);
-    const HloInstruction* send_done = send->users()[0];
+    const HloInstruction* send_done = send->users().front();
     TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
     TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
     return CheckShape(
@@ -301,7 +301,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
   Status HandleRecv(HloInstruction* recv) override {
     TF_RET_CHECK(recv->users().size() == 1);
-    const HloInstruction* recv_done = recv->users()[0];
+    const HloInstruction* recv_done = recv->users().front();
     TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
     TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
     return CheckShape(recv,

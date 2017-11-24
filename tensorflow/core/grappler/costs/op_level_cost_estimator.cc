@@ -510,7 +510,12 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
     bool* found_unknown_shapes) const {
   double ops = 0;
 
-  // first matrix
+  if (op_features.inputs_size() < 2) {
+    LOG(ERROR) << "Need 2 inputs but got " << op_features.inputs_size();
+    *found_unknown_shapes = true;
+    return 0;
+  }
+
   auto& a_matrix = op_features.inputs(0);
   auto& b_matrix = op_features.inputs(1);
 
