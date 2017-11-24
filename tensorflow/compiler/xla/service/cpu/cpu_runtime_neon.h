@@ -49,14 +49,16 @@ struct V4F32NEON;
 
 extern "C" {
 
+#ifdef __ARM_NEON__
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
 xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_ExpV4F32NEON(
-    xla::cpu::runtime::V4F32NEON x) TF_ATTRIBUTE_WEAK;
+    xla::cpu::runtime::V4F32NEON x);
 
 xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_LogV4F32NEON(
-    xla::cpu::runtime::V4F32NEON x) TF_ATTRIBUTE_WEAK;
+    xla::cpu::runtime::V4F32NEON x);
+#endif  // __ARM_NEON__
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_NEON_H_

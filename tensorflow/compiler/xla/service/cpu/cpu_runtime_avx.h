@@ -38,14 +38,16 @@ typedef float V8F32AVX __attribute__((__vector_size__(32)));
 
 extern "C" {
 
+#ifdef __AVX__
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
 xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_ExpV8F32AVX(
-    xla::cpu::runtime::V8F32AVX x) TF_ATTRIBUTE_WEAK;
+    xla::cpu::runtime::V8F32AVX x);
 
 xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_LogV8F32AVX(
-    xla::cpu::runtime::V8F32AVX x) TF_ATTRIBUTE_WEAK;
+    xla::cpu::runtime::V8F32AVX x);
+#endif
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_AVX_H_
