@@ -973,9 +973,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       transformed_unknown_batch = op(p_unknown_batch)
       self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
 
-      #TODO: JoshVarty: Uncomment and fix after all ops are implemented
-      #with self.assertRaisesRegexp(ValueError, "must be three-dimensional"):
-      #  op(p_wrong_rank)
+      with self.assertRaisesRegexp(ValueError, "must have either 3 or 4 dimensions."):
+        op(p_wrong_rank)
       with self.assertRaisesRegexp(ValueError, "must be > 0"):
         op(p_zero_dim)
 
