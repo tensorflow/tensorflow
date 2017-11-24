@@ -73,7 +73,7 @@ class Metric(object):
   * `result()`: Computes and returns a final value for the metric
     from the variables in `self`.
 
-  Decendants may override `aggregate()`, but usually won't need to.  It
+  Descendants may override `aggregate()`, but usually won't need to.  It
   adds in the state from a list of metrics of the same type as `self`.
   (Default is to sum all the variables.) Note that users should not call
   `aggregate()`, it is for use by TensorFlow infrastructure.

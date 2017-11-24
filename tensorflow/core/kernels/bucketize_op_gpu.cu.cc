@@ -77,10 +77,10 @@ struct BucketizeFunctor<GPUDevice, T> {
     TF_RETURN_IF_ERROR(boundaries_array.Finalize());
 
     CudaLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
-    BucketizeCustomKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        input.size(), input.data(), boundaries_vector.size(),
-        boundaries_array.data(), output.data());
+    BucketizeCustomKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            input.size(), input.data(), boundaries_vector.size(),
+            boundaries_array.data(), output.data());
 
     return Status::OK();
   }

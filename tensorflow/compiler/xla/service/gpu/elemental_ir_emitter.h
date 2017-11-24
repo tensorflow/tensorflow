@@ -61,6 +61,10 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const HloInstruction* op, llvm::Value* lhs_value,
       llvm::Value* rhs_value) const override;
 
+  StatusOr<llvm::Value*> EmitComplexBinaryOp(
+      const HloInstruction* op, llvm::Value* lhs_value,
+      llvm::Value* rhs_value) const override;
+
   StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
                                      llvm::Value* value) const override;
 

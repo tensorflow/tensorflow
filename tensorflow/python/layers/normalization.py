@@ -142,7 +142,10 @@ class BatchNormalization(base.Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
-    self.axis = axis
+    if isinstance(axis, list):
+      self.axis = axis[:]
+    else:
+      self.axis = axis
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -264,34 +267,34 @@ class BatchNormalization(base.Layer):
           self.axis[idx] = x + 1      # Account for added dimension
 
     if self.scale:
-      self.gamma = self.add_variable(name='gamma',
-                                     shape=param_shape,
-                                     dtype=param_dtype,
-                                     initializer=self.gamma_initializer,
-                                     regularizer=self.gamma_regularizer,
-                                     constraint=self.gamma_constraint,
-                                     trainable=True)
+      self.gamma = self.add_variable(
+          name='gamma',
+          shape=param_shape,
+          dtype=param_dtype,
+          initializer=self.gamma_initializer,
+          regularizer=self.gamma_regularizer,
+          constraint=self.gamma_constraint,
+          trainable=True)
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = array_ops.constant(1.0,
-                                               dtype=param_dtype,
-                                               shape=param_shape)
+        self._gamma_const = array_ops.constant(
+            1.0, dtype=param_dtype, shape=param_shape)
 
     if self.center:
-      self.beta = self.add_variable(name='beta',
-                                    shape=param_shape,
-                                    dtype=param_dtype,
-                                    initializer=self.beta_initializer,
-                                    regularizer=self.beta_regularizer,
-                                    constraint=self.beta_constraint,
-                                    trainable=True)
+      self.beta = self.add_variable(
+          name='beta',
+          shape=param_shape,
+          dtype=param_dtype,
+          initializer=self.beta_initializer,
+          regularizer=self.beta_regularizer,
+          constraint=self.beta_constraint,
+          trainable=True)
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = array_ops.constant(0.0,
-                                              dtype=param_dtype,
-                                              shape=param_shape)
+        self._beta_const = array_ops.constant(
+            0.0, dtype=param_dtype, shape=param_shape)
 
     # Disable variable partitioning when creating the moving mean and variance
     try:
@@ -324,11 +327,12 @@ class BatchNormalization(base.Layer):
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
-          var = self.add_variable(name=name,
-                                  shape=shape,
-                                  dtype=param_dtype,
-                                  initializer=init_ops.zeros_initializer(),
-                                  trainable=False)
+          var = self.add_variable(
+              name=name,
+              shape=shape,
+              dtype=param_dtype,
+              initializer=init_ops.zeros_initializer(),
+              trainable=False)
           return var
 
         with ops.device(None):

@@ -357,6 +357,10 @@ message WindowDimension {
   // means no dilation. base_dilation - 1 no-op entries ("holes") are implicitly
   // placed between each base area element. See documentation for convolution.
   int64 base_dilation = 6;
+
+  // Window reversal means that this dimension was logically reversed before the
+  // operation.
+  bool window_reversal = 7;
 }
 
 // Describes the windowing in an operation such as convolution.
@@ -440,7 +444,7 @@ message ConvolutionDimensionNumbers {
 message ConvolveRequest {
   ComputationDataHandle lhs = 2;
   ComputationDataHandle rhs = 3;  // This is the filter/kernel.
-  Window window = 4;              // Describes the filter/kenel.
+  Window window = 4;              // Describes the filter/kernel.
   ConvolutionDimensionNumbers dimension_numbers = 5;
 }
 
@@ -903,7 +907,8 @@ message OpRequest {
     BatchNormGradRequest batch_norm_grad_request = 37;
     BatchNormInferenceRequest batch_norm_inference_request = 38;
     FftRequest fft_request = 41;
-    // Next: 42
+    ConvertRequest bitcast_convert_request = 42;
+    // Next: 43
   }
 }
 

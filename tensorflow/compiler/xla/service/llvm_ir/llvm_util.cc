@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -163,8 +164,9 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
         // z, and reinterpret_cast<cv T(&)[2]>(z)[1] shall designate the
         // imaginary part of z.
         return llvm::StructType::create(
-            "complex64", llvm::Type::getFloatTy(module->getContext()),
-            llvm::Type::getFloatTy(module->getContext()));
+            {llvm::Type::getFloatTy(module->getContext()),
+             llvm::Type::getFloatTy(module->getContext())},
+            "complex64", /*isPacked=*/true);
       }
       return cplx_t;
     }
@@ -176,6 +178,21 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
+}
+
+int GetSizeInBits(llvm::Type* type) {
+  const llvm::StructType* struct_ty = llvm::dyn_cast<llvm::StructType>(type);
+  if (struct_ty) {
+    CHECK(struct_ty->isPacked());
+    int bits = 0;
+    for (auto element_type : struct_ty->elements()) {
+      bits += GetSizeInBits(element_type);
+    }
+    return bits;
+  }
+  int bits = type->getPrimitiveSizeInBits();
+  CHECK_GT(bits, 0) << "type is not sized";
+  return bits;
 }
 
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
@@ -628,14 +645,27 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
+static string GetProcessUniqueIrFileName(tensorflow::StringPiece prefix) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static NameUniquer* uniquer = new NameUniquer(/*separator=*/"-");
+
+  tensorflow::mutex_lock lock(mu);
+  return uniquer->GetUniqueName(prefix);
+}
+
 Status DumpIRToDirectory(const string& directory_name,
                          const string& hlo_module_name,
                          const llvm::Module& llvm_module, bool optimized) {
-  string safe_file_name_base = SanitizeFileName(hlo_module_name);
+  // We can end up compiling different modules with the same name when using
+  // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
+  // dumped from the same process in such cases.
+  string unique_and_safe_file_name = GetProcessUniqueIrFileName(
+      tensorflow::strings::StrCat("ir-", SanitizeFileName(hlo_module_name), "-",
+                                  optimized ? "with" : "no", "-opt"));
+
   string ir_file_name = tensorflow::io::JoinPath(
       directory_name,
-      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-",
-                                  optimized ? "with" : "no", "-opt.ll"));
+      tensorflow::strings::StrCat(unique_and_safe_file_name, ".ll"));
 
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(

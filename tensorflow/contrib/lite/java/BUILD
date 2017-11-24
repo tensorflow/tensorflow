@@ -58,6 +58,7 @@ java_test(
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     deps = [
+        ":libtensorflowlite_jni.so",
         ":tensorflowlitelib",
         "@com_google_truth",
         "@junit",
@@ -70,6 +71,44 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.DataTypeTest",
+    deps = [
+        ":libtensorflowlite_jni.so",
+        ":tensorflowlitelib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "NativeInterpreterWrapperTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/lite/NativeInterpreterWrapperTest.java"],
+    data = [
+        "src/testdata/add.bin",
+        "src/testdata/int32.bin",
+        "src/testdata/int64.bin",
+        "src/testdata/invalid_model.bin",
+        "src/testdata/uint8.bin",
+    ],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
+    deps = [
+        ":libtensorflowlite_jni.so",
+        ":tensorflowlitelib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "TensorTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/lite/TensorTest.java"],
+    data = [
+        "src/testdata/add.bin",
+    ],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.TensorTest",
     deps = [
         ":tensorflowlitelib",
         "@com_google_truth",

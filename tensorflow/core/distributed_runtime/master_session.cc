@@ -67,13 +67,14 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     const SessionOptions& session_opts,
                     const StatsPublisherFactory& stats_publisher_factory,
                     GraphExecutionState* execution_state, bool is_partial,
-                    WorkerCacheInterface* worker_cache)
+                    WorkerCacheInterface* worker_cache, bool should_deregister)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
         session_opts_(session_opts),
         is_partial_(is_partial),
         debug_opts_(bopts.debug_options),
-        worker_cache_(worker_cache) {
+        worker_cache_(worker_cache),
+        should_deregister_(should_deregister) {
     VLOG(1) << "Created ReffedClientGraph for node with "
             << client_graph()->graph.num_node_ids();
 
@@ -85,7 +86,11 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     }
   }
 
-  ~ReffedClientGraph() override { DeregisterPartitions(); }
+  ~ReffedClientGraph() override {
+    if (should_deregister_) {
+      DeregisterPartitions();
+    }
+  }
 
   const ClientGraph* client_graph() { return client_graph_.get(); }
 
@@ -208,7 +213,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const bool is_partial_;
   const DebugOptions& debug_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
-  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
+  std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node_;
+  const bool should_deregister_;
 
   // Graph partitioned into per-location subgraphs.
   struct Part {
@@ -486,7 +492,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<StringPiece, size_t, StringPiece::Hasher> feeds(3);
+  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
 
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     if (!feeds.insert({req.feed_name(i), i}).second) {
@@ -498,6 +504,9 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
 
   // Collect execution cost stats on a smoothly decreasing frequency.
   ExecutorOpts exec_opts;
+  if (pss->report_tensor_allocations_upon_oom) {
+    exec_opts.set_report_tensor_allocations_upon_oom(true);
+  }
   if (pss->collect_costs) {
     exec_opts.set_record_costs(true);
   }
@@ -1041,6 +1050,7 @@ Status MasterSession::Create(GraphDef* graph_def,
         graph_def, execution_options, &execution_state_));
   }
   if (options.cluster_def != nullptr) {
+    should_delete_worker_sessions_ = true;
     return CreateWorkerSessions(options);
   }
   return Status::OK();
@@ -1109,6 +1119,59 @@ Status MasterSession::CreateWorkerSessions(
       done.DecrementCount();
     };
     workers[i].worker->CreateWorkerSessionAsync(&workers[i].request,
+                                                &workers[i].response, cb);
+  }
+
+  done.Wait();
+  for (size_t i = 0; i < workers.size(); ++i) {
+    status.Update(workers[i].status);
+  }
+  return status;
+}
+
+Status MasterSession::DeleteWorkerSessions() {
+  WorkerCacheInterface* worker_cache = get_worker_cache();
+  std::vector<string> worker_names;
+  worker_cache->ListWorkers(&worker_names);
+
+  struct WorkerGroup {
+    // The worker name. (Not owned.)
+    const string* name;
+
+    // The worker referenced by name. (Not owned.)
+    WorkerInterface* worker = nullptr;
+
+    // Request and responses used for a given worker.
+    DeleteWorkerSessionRequest request;
+    DeleteWorkerSessionResponse response;
+    Status status = Status::OK();
+  };
+  BlockingCounter done(worker_names.size());
+  std::vector<WorkerGroup> workers(worker_names.size());
+
+  // Release the workers.
+  auto cleanup = gtl::MakeCleanup([this, &workers, worker_cache] {
+    for (auto&& worker_group : workers) {
+      if (worker_group.worker != nullptr) {
+        worker_cache->ReleaseWorker(*worker_group.name, worker_group.worker);
+      }
+    }
+  });
+
+  Status status = Status::OK();
+  // Create all the workers & kick off the computations.
+  for (size_t i = 0; i < worker_names.size(); ++i) {
+    workers[i].name = &worker_names[i];
+    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
+    workers[i].request.set_session_handle(handle_);
+  }
+
+  for (size_t i = 0; i < worker_names.size(); ++i) {
+    auto cb = [i, &workers, &done](const Status& s) {
+      workers[i].status = s;
+      done.DecrementCount();
+    };
+    workers[i].worker->DeleteWorkerSessionAsync(&workers[i].request,
                                                 &workers[i].response, cb);
   }
 
@@ -1205,7 +1268,7 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
       auto entry = new ReffedClientGraph(
           handle_, opts, std::move(client_graph), session_opts_,
           stats_publisher_factory_, execution_state_.get(), is_partial,
-          worker_cache);
+          worker_cache, !should_delete_worker_sessions_);
       iter = m->insert({hash, entry}).first;
       VLOG(1) << "Preparing to execute new graph";
     }
@@ -1368,6 +1431,8 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     const auto count = run_state->count;
     pss.collect_timeline =
         req.options().trace_level() == RunOptions::FULL_TRACE;
+    pss.report_tensor_allocations_upon_oom =
+        req.options().report_tensor_allocations_upon_oom();
 
     // Build the cost model every 'build_cost_model_every' steps after skipping
     // an
@@ -1528,7 +1593,8 @@ Status MasterSession::DoRunWithLocalExecution(
   TRACEPRINTF("stepid %llu", step_id);
 
   pss.collect_timeline = req.options().trace_level() == RunOptions::FULL_TRACE;
-
+  pss.report_tensor_allocations_upon_oom =
+      req.options().report_tensor_allocations_upon_oom();
   // Build the cost model every 'build_cost_model_every' steps after skipping an
   // initial 'build_cost_model_after' steps.
   const int64 build_cost_model_after =
@@ -1598,6 +1664,12 @@ Status MasterSession::Close() {
     ClearRunsTable(&to_unref, &partial_run_graphs_);
   }
   for (ReffedClientGraph* rcg : to_unref) rcg->Unref();
+  if (should_delete_worker_sessions_) {
+    Status s = DeleteWorkerSessions();
+    if (!s.ok()) {
+      LOG(WARNING) << s;
+    }
+  }
   return Status::OK();
 }
 

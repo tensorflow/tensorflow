@@ -332,8 +332,10 @@ void ClientLibraryTestBase::ComputeAndCompareR0(
     ComputationBuilder* builder, NativeT expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR0<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -355,8 +357,9 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
     ComputationBuilder* builder, tensorflow::gtl::ArraySlice<NativeT> expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR1<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,

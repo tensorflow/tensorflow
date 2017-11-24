@@ -232,7 +232,7 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
 //   invoke {
 //     id: xyz
 //     input: 1,2,1,1,1,2,3,4
-//     ouput: 4,5,6
+//     output: 4,5,6
 //   }
 class Invoke : public Message {
  public:

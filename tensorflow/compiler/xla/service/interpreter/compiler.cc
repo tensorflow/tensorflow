@@ -69,11 +69,19 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   return pipeline.Run(hlo_module).status();
 }
 
-StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::Compile(
+StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> hlo_module,
+    se::StreamExecutor* /*stream_exec*/) {
+  VLOG(1) << "Run hlo passes on graph " << hlo_module->name();
+  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
+  return std::move(hlo_module);
+}
+
+StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
     std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  VLOG(1) << "Generate graph " << hlo_module->name();
+  VLOG(1) << "Run backend " << hlo_module->name();
 
   TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
 

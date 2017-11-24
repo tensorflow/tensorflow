@@ -42,7 +42,9 @@ class ArithmeticOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  // Returns true if it is safe to dedup node from the graph.
   bool CanDedup(const NodeDef& node) const;
+
   void DedupComputations(GraphDef* optimized_graph) const;
   // Runs peep-hole optimizations on `optimized_graph`, e.g., removing inverse
   // transposes.

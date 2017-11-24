@@ -375,6 +375,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_fold/llgtm/...",
     ],
@@ -644,6 +645,7 @@ filegroup(
         "//tensorflow/tools/test:all_files",
         "//tensorflow/user_ops:all_files",
         "//third_party/hadoop:all_files",
+        "//third_party/mpi:all_files",
         "//third_party/sycl:all_files",
         "//third_party/sycl/sycl:all_files",
     ],

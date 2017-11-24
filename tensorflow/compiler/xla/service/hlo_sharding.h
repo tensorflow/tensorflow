@@ -222,6 +222,11 @@ class HloSharding {
         tile_assignment_({0}),
         tuple_elements_(tuple_shardings) {}
 
+  // Internal helper to validate a tuple sharding.
+  Status ValidateTuple(const Shape& shape, int64 num_devices) const;
+  // Internal helper to validate a non-tuple (leaf) sharding.
+  Status ValidateNonTuple(const Shape& shape, int64 num_devices) const;
+
   bool replicated_;
   bool maximal_;
   bool tuple_;

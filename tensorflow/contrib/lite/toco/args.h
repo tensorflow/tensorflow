@@ -191,12 +191,14 @@ struct ParsedModelFlags {
   Arg<string> mean_values;
   Arg<float> std_value = Arg<float>(1.f);
   Arg<string> std_values;
+  Arg<string> input_data_type;
+  Arg<string> input_data_types;
   Arg<bool> variable_batch = Arg<bool>(false);
-  Arg<bool> drop_control_dependency = Arg<bool>(false);
   Arg<toco::IntList> input_shape;
   Arg<toco::StringMapList> rnn_states;
   Arg<toco::StringMapList> model_checks;
-  // Debugging output options
+  // Debugging output options.
+  // TODO(benoitjacob): these shouldn't be ModelFlags.
   Arg<string> graphviz_first_array;
   Arg<string> graphviz_last_array;
   Arg<string> dump_graphviz;
@@ -213,12 +215,15 @@ struct ParsedTocoFlags {
   // TODO(aselle): command_line_flags  doesn't support doubles
   Arg<float> default_ranges_min = Arg<float>(0.);
   Arg<float> default_ranges_max = Arg<float>(0.);
-  Arg<string> input_type;
-  Arg<string> input_types;
   Arg<string> inference_type;
+  Arg<string> inference_input_type;
   Arg<bool> drop_fake_quant = Arg<bool>(false);
   Arg<bool> reorder_across_fake_quant = Arg<bool>(false);
   Arg<bool> allow_custom_ops = Arg<bool>(false);
+  // Deprecated flags
+  Arg<string> input_type;
+  Arg<string> input_types;
+  Arg<bool> drop_control_dependency = Arg<bool>(false);
 };
 
 }  // namespace toco

@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.kfac.python.ops import estimator
 from tensorflow.contrib.kfac.python.ops import layer_collection as lc
 from tensorflow.contrib.kfac.python.ops import utils
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -31,6 +32,30 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 _ALL_ESTIMATION_MODES = ["gradients", "empirical", "curvature_prop", "exact"]
+
+
+class DeviceContextGeneratorTest(test.TestCase):
+
+  def testNoDevice(self):
+    device_context_generator = estimator._DeviceContextGenerator(None)
+    with ops.device("/device:CPU:0"):  # This is what will be used
+      with device_context_generator():  # Does nothing
+        a = constant_op.constant([2.0], name="a")
+    self.assertEqual("/device:CPU:0", a.op.device)
+
+  def testTwoDevices(self):
+    device_context_generator = estimator._DeviceContextGenerator(
+        ["/device:GPU:0", "/device:GPU:1"])
+    with ops.device("/device:CPU:0"):  # Will be over-ridden by the inner scopes
+      with device_context_generator():
+        a = constant_op.constant([2.0], name="a")
+      with device_context_generator():
+        b = constant_op.constant([2.0], name="b")
+      with device_context_generator():
+        c = constant_op.constant([2.0], name="c")
+    self.assertEqual("/device:GPU:0", a.op.device)
+    self.assertEqual("/device:GPU:1", b.op.device)
+    self.assertEqual("/device:GPU:0", c.op.device)
 
 
 class EstimatorTest(test.TestCase):

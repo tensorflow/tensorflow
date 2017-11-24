@@ -16,6 +16,7 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_VERBS
 
 #include "tensorflow/contrib/verbs/rdma.h"
+#include <fcntl.h>
 #include <cstdlib>
 #include <fcntl.h>
 #include "tensorflow/contrib/verbs/verbs_util.h"
@@ -137,7 +138,7 @@ ibv_device* set_device() {
   if (!env_p_rdma_device.empty()) {
     for (device_index = 0; device_index < dev_num; device_index++) {
       if (!env_p_rdma_device.compare(
-               ibv_get_device_name(dev_list[device_index]))) {
+              ibv_get_device_name(dev_list[device_index]))) {
         CHECK(get_dev_active_port_count(dev_list[device_index]) != 0)
             << "Device " << ibv_get_device_name(dev_list[device_index])
             << " has no active ports";
@@ -147,7 +148,7 @@ ibv_device* set_device() {
     // check validity of input device
     CHECK(false) << "The device " << env_p_rdma_device << " wasn't found";
   } else {
-  // set default device
+    // set default device
     str_port_num = get_env_var("RDMA_DEVICE_PORT");
     CHECK(str_port_num.empty())
         << "RDMA_DEVICE should be provided if RDMA_DEVICE_PORT is set by user";
@@ -177,7 +178,7 @@ ibv_device* set_device() {
 // Returns:
 //   port to use
 uint8_t set_port(ibv_context* context) {
-  uint8_t port_num = 0; //0 is illegal port number
+  uint8_t port_num = 0;  // 0 is illegal port number
   string str_port_num;
   ibv_device_attr device_att;
   ibv_port_attr port_attr;
@@ -199,9 +200,7 @@ uint8_t set_port(ibv_context* context) {
     // check if port id active
     CHECK(port_attr.state == IBV_PORT_ACTIVE)
         << "Selected RDMA_DEVICE_PORT is not active";
-  }
-  // set default port
-  else {
+  } else {  // set default port
     for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
       rc = ibv_query_port(context, port_index, &port_attr);
       CHECK(!rc) << "Failed to query the port" << port_index;
@@ -269,7 +268,7 @@ bool is_gid_type_roce_v2(ibv_context* context, uint8_t port_num,
 // Function to set GID index.
 // If the port link is IB, no GID index should be selected.
 // If Ethernet but RDMA_GID_INDEX not set gid index that supports
-//   RoCE V2 will be chosen(fails if more then one IP is configured)
+//   RoCE V2 will be chosen(fails if more than one IP is configured)
 // Args:
 //   context - device context
 //   port_num - port number
@@ -302,7 +301,7 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
     }
   }
   switch (port_attr.link_layer) {
-    case(IBV_LINK_LAYER_ETHERNET) :
+    case (IBV_LINK_LAYER_ETHERNET):
       gid_str = get_env_var("RDMA_GID_INDEX");
       if (!gid_str.empty()) {
         gid_index = stoi(gid_str);
@@ -313,7 +312,7 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
             << "More than one IP is available, please specify GID_INDEX";
       }
       break;
-    case(IBV_LINK_LAYER_INFINIBAND) :  // no need in GID index
+    case (IBV_LINK_LAYER_INFINIBAND):  // no need in GID index
       break;
     default:
       LOG(INFO) << "Unknown port link layer. Currently supporting Ethernet and "
@@ -374,7 +373,8 @@ enum ibv_mtu set_mtu(uint8_t port_num, ibv_context* context) {
         break;
       default:
         CHECK(0) << "Error: MTU input value must be one of the following: 256, "
-                    "512, 1024, 2048, 4096. MTU " << mtu << " is invalid\n";
+                    "512, 1024, 2048, 4096. MTU "
+                 << mtu << " is invalid\n";
         break;
     }
     CHECK(mtu < port_attr.active_mtu)

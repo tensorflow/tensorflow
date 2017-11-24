@@ -165,6 +165,55 @@ class BackendUtilsTest(test.TestCase):
     for y in ys:
       self.assertEqual(y.op.name[:12], 'StopGradient')
 
+  def test_function_tf_fetches(self):
+    # Additional operations can be passed to tf.Session().run() via its
+    # `fetches` arguments. In contrast to `updates` argument of
+    # keras.backend.function() these do not have control dependency on `outputs`
+    # so they can run in parallel. Also they should not contribute to output of
+    # keras.backend.function().
+    with self.test_session():
+      x = keras.backend.variable(0.)
+      y = keras.backend.variable(0.)
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      f = keras.backend.function(inputs=[x_placeholder, y_placeholder],
+                                 outputs=[x_placeholder + y_placeholder],
+                                 updates=[(x, x_placeholder + 1.)],
+                                 fetches=[keras.backend.update(y, 5.)])
+      output = f([10., 20.])
+      assert output == [30.]
+      assert keras.backend.get_session().run(fetches=[x, y]) == [11., 5.]
+
+  def test_function_tf_feed_dict(self):
+    # Additional substitutions can be passed to `tf.Session().run()` via its
+    # `feed_dict` arguments. Note that the feed_dict is passed once in the
+    # constructor but we can modify the values in the dictionary. Through
+    # this feed_dict we can provide additional substitutions besides Keras
+    # inputs.
+    with self.test_session():
+      x = keras.backend.variable(0.)
+      y = keras.backend.variable(0.)
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      feed_dict = {y_placeholder: 3.}
+      fetches = [keras.backend.update(y, y_placeholder * 10.)]
+      f = keras.backend.function(inputs=[x_placeholder],
+                                 outputs=[x_placeholder + 1.],
+                                 updates=[(x, x_placeholder + 10.)],
+                                 feed_dict=feed_dict,
+                                 fetches=fetches)
+      output = f([10.])
+      assert output == [11.]
+      assert keras.backend.get_session().run(fetches=[x, y]) == [20., 30.]
+
+      # updated value in feed_dict will be modified within the K.function()
+      feed_dict[y_placeholder] = 4.
+      output = f([20.])
+      assert output == [21.]
+      assert keras.backend.get_session().run(fetches=[x, y]) == [30., 40.]
+
 
 class BackendVariableTest(test.TestCase):
 

@@ -305,6 +305,7 @@ def implicit_val_and_grad(f):
   is not known ahead of time.
 
   Example:
+
   ```python
   dense_layer = tf.layers.Dense(1)
   def loss(x, y):
@@ -350,9 +351,9 @@ def implicit_val_and_grad(f):
         raise ValueError("Cannot differentiate a function that returns None; "
                          "did you forget to return a value from {}?".format(
                              f.__name__))
-      variables = tape.top_tape_watched_variables()
     finally:
       popped_tape = tape.pop_tape()
+      variables = popped_tape.watched_variables()
     sources = [x.handle for x in variables]
 
     if not sources:
@@ -378,6 +379,7 @@ def implicit_grad(f):
   is not known ahead of time.
 
   Example:
+
   ```python
   dense_layer = tf.layers.Dense(1)
   def loss(x, y):
@@ -733,12 +735,20 @@ _last_shape_dtype = [None, None]
 _last_zero = [None]
 
 
+def _fast_fill(value, shape, dtype):
+  return array_ops.fill(shape, constant_op.constant(value, dtype=dtype))
+
+
 def _zeros(shape, dtype):
   """Wraps array_ops.zeros to cache last zero for a given shape and dtype."""
   if [shape, dtype] != _last_shape_dtype:
     _last_shape_dtype[:] = [shape, dtype]
-    _last_zero[0] = array_ops.zeros(shape, dtype)
+    _last_zero[0] = _fast_fill(0, shape, dtype)
   return _last_zero[0]
+
+
+def _ones(shape, dtype):
+  return _fast_fill(1, shape, dtype)
 
 
 _default_vspace = imperative_grad.VSpace(
@@ -746,7 +756,7 @@ _default_vspace = imperative_grad.VSpace(
     aggregate_fn=_aggregate_grads,
     tensor_id=ops.tensor_id,
     zeros=_zeros,
-    ones=array_ops.ones)
+    ones=_ones)
 
 
 class GradientTape(object):

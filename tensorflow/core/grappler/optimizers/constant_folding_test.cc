@@ -840,7 +840,7 @@ TEST_F(ConstantFoldingTest, Packing) {
   EXPECT_GT(8000, output.ByteSizeLong());
 }
 
-TEST_F(ConstantFoldingTest, ConstantMaterialization) {
+TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a =
       ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
@@ -916,6 +916,48 @@ TEST_F(ConstantFoldingTest, ConstantMaterialization) {
     }
   }
   EXPECT_EQ(7, found);
+}
+
+TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input =
+      ops::Placeholder(s.WithOpName("input"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
+  Output indices = ops::Placeholder(s.WithOpName("indices"), DT_INT32);
+  Output sum = ops::Sum(s.WithOpName("sum"), input, indices);
+  Output size = ops::Const(s.WithOpName("size"), 1, {1});
+  Output reshape = ops::Reshape(s.WithOpName("reshape"), sum, size);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("reshape");
+
+  ConstantFolding fold(RewriterConfig::AGGRESSIVE, nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // Run a second time to make sure the optimization is idempotent.
+  item.graph.Swap(&output);
+  status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  int found = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "ConstantFolding/sum-reduction_indices") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ("^indices", node.input(0));
+      EXPECT_EQ(2, TensorShape(node.attr().at("value").tensor().tensor_shape())
+                       .num_elements());
+    } else if (node.name() == "sum") {
+      ++found;
+      EXPECT_EQ("ConstantFolding/sum-reduction_indices", node.input(1));
+    } else if (node.name() == "indices") {
+      ++found;
+    }
+  }
+  EXPECT_EQ(3, found);
 }
 
 }  // namespace

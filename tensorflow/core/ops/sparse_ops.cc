@@ -237,6 +237,30 @@ sparse_values: 1-D.  The `values` of the minibatch `SparseTensor`.
 sparse_shape: 1-D.  The `shape` of the minibatch `SparseTensor`.
 )doc");
 
+REGISTER_OP("DeserializeSparse")
+    .Input("serialized_sparse: string")
+    .Attr("dtype: type")
+    .Output("sparse_indices: int64")
+    .Output("sparse_values: dtype")
+    .Output("sparse_shape: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      // serialized sparse is [?, ..., ?, 3] vector.
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), -1), 3, &unused));
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim,
+                                 InferenceContext::kUnknownDim));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Deserialize `SparseTensor` objects.
+
+serialized_sparse: The serialized `SparseTensor` objects. The last dimension
+  must have 3 columns.
+dtype: The `dtype` of the serialized `SparseTensor` objects.
+)doc");
+
 REGISTER_OP("DeserializeManySparse")
     .Input("serialized_sparse: string")
     .Attr("dtype: type")

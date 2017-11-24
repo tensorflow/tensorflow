@@ -23,6 +23,8 @@ import collections
 from contextlib import contextmanager
 import copy
 import threading
+import time
+
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
@@ -490,11 +492,28 @@ class _InfeedThreadController(_InfeedOutfeedThreadBaseController):
           count += 1
 
     except Exception:  # pylint: disable=broad-except
+      # Close the session to avoid the main thread from hanging. If input
+      # pipeline triggers any error, the infeed thread dies but the main thread
+      # for TPU computation waits for the infeed enqueue forever. Close the
+      # Session to cancel the main thread Session.run execution.
+      #
+      # However, sleep for 2 minutes before explicit closing to give some time
+      # for the TPU compilation error, if any, propagating, from TPU to CPU
+      # host. Compilation errors should be reported by the main thread so that
+      # the program can be interrupted and users can take action.  Due to a race
+      # condition, the infeed thread might see an error first.  Closing the
+      # session here immediately would result in a session cancellation
+      # exception in the main thread, instead of the expected compile error.
+      # User code that depends on having the proper exception type will
+      # therefore be confused.
       logging.error(
           'Failed running infeed, closing session.\n'
-          'You may see an exception from your main session after this.',
+          'You may see an exception from your main session after this. '
+          'Sleep for 2 minutes before close Session from infeed thread to '
+          'allow the main thread returning an error first, if any.',
           exc_info=1
       )
+      time.sleep(120)
       session.close()
 
   def join(self):
@@ -946,19 +965,10 @@ class _InputPipeline(object):
     # user code, so, log a warning.
     if ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
       err_msg = ('Input pipeline contains one or more QueueRunners. '
-                 'These are not supported via TPUEstimator. You must convert '
-                 'your input pipeline to use `tf.data` instead (see '
+                 'It could be slow and not scalable. Please consider '
+                 'converting your input pipeline to use `tf.data` instead (see '
                  'https://www.tensorflow.org/programmers_guide/datasets for '
                  'instructions.')
-      if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
-        raise RuntimeError(err_msg)
-      else:
-        logging.warn(err_msg)
-    elif ops.get_default_graph().get_collection(ops.GraphKeys.SUMMARIES):
-      # Queue Runner has summary Ops by default. So here we use elif to do
-      # necessary checks for Dataset input pipeline only.
-      err_msg = ('Input pipeline contains `tf.summary` operations. '
-                 'These are not currently supported.')
       if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
         raise RuntimeError(err_msg)
       else:

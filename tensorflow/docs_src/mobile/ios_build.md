@@ -98,7 +98,7 @@ There are three demo applications for iOS, all defined in Xcode projects inside
 
 ## Building the TensorFlow iOS libraries from source
 
-While Cocapods is the quickest and easiest way of getting started, you sometimes
+While Cocoapods is the quickest and easiest way of getting started, you sometimes
 need more flexibility to determine which parts of TensorFlow your app should be
 shipped with. For such cases, you can build the iOS libraries from the
 sources. [This

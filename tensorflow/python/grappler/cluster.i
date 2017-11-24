@@ -15,6 +15,37 @@ limitations under the License.
 
 %include "tensorflow/python/platform/base.i"
 
+%{
+#include "tensorflow/core/protobuf/device_properties.pb.h"
+
+template <>
+bool _PyObjAs(PyObject *input, tensorflow::NamedDevice *out) {
+  char* c_string;
+  Py_ssize_t py_size;
+  if (PyBytes_AsStringAndSize(input, &c_string, &py_size) == -1) {
+    // Python has raised an error (likely TypeError or UnicodeEncodeError).
+    return false;
+  }
+
+  tensorflow::NamedDevice named_device;
+  if (!named_device.ParseFromString(string(c_string, py_size))) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "The NamedDevice could not be parsed as a valid protocol buffer");
+    return false;
+  }
+  if (out) *out = named_device;
+  return true;
+}
+%}
+
+%typemap(in) const std::vector<tensorflow::NamedDevice>& (std::vector<tensorflow::NamedDevice> temp) {
+  if (!tf_vector_input_helper($input, &temp, &_PyObjAs<tensorflow::NamedDevice>)) {
+    SWIG_fail;
+  }
+  $1 = &temp;
+}
+
 %typemap(in) const tensorflow::RunMetadata& (tensorflow::RunMetadata temp) {
   char* c_string;
   Py_ssize_t py_size;
@@ -26,7 +57,7 @@ limitations under the License.
   if (!temp.ParseFromString(string(c_string, py_size))) {
     PyErr_SetString(
         PyExc_TypeError,
-        "The MetaGraphDef could not be parsed as a valid protocol buffer");
+        "The RunMetadata could not be parsed as a valid protocol buffer");
     SWIG_fail;
   }
   $1 = &temp;
@@ -41,22 +72,41 @@ limitations under the License.
 }
 
 %{
+#include <vector>
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/costs/measuring_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/utils.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 static tensorflow::grappler::Cluster* TF_NewCluster(
-    bool allow_soft_placement, bool disable_detailed_stats, TF_Status* out_status) {
+    bool allow_soft_placement,
+    bool disable_detailed_stats, TF_Status* out_status) {
   int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
   int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();;
   int timeout_s = 60 * 10;
-  tensorflow::grappler::Cluster* cluster = new tensorflow::grappler::SingleMachine(
-      timeout_s, num_cpu_cores, num_gpus);
+  tensorflow::grappler::Cluster* cluster =
+      new tensorflow::grappler::SingleMachine(
+          timeout_s, num_cpu_cores, num_gpus);
   cluster->DisableDetailedStats(disable_detailed_stats);
   cluster->AllowSoftPlacement(allow_soft_placement);
+  tensorflow::Status status = cluster->Provision();
+  tensorflow::Set_TF_Status_from_Status(out_status, status);
+  return cluster;
+}
+
+static tensorflow::grappler::Cluster* TF_NewVirtualCluster(
+    const std::vector<tensorflow::NamedDevice>& named_devices,
+    TF_Status* out_status) {
+  std::unordered_map<string, tensorflow::DeviceProperties> devices;
+  for (const auto& named_device : named_devices) {
+    devices[named_device.name()]= named_device.properties();
+  }
+  tensorflow::grappler::Cluster* cluster =
+      new tensorflow::grappler::VirtualCluster(devices);
   tensorflow::Status status = cluster->Provision();
   tensorflow::Set_TF_Status_from_Status(out_status, status);
   return cluster;
@@ -67,10 +117,11 @@ static void TF_DeleteCluster(tensorflow::grappler::Cluster* cluster) {
   delete cluster;
 }
 
-tensorflow::Status _GetOpPerformanceDataAndRunTime(const tensorflow::grappler::GrapplerItem& item,
-                                       tensorflow::grappler::CostEstimator* cost_measure,
-                                       tensorflow::OpPerformanceList* op_performance_data,
-                                       tensorflow::grappler::Costs* costs) {
+tensorflow::Status _GetOpPerformanceDataAndRunTime(
+    const tensorflow::grappler::GrapplerItem& item,
+    tensorflow::grappler::CostEstimator* cost_measure,
+    tensorflow::OpPerformanceList* op_performance_data,
+    tensorflow::grappler::Costs* costs) {
   tensorflow::Status status = cost_measure->Initialize(item);
   if (!status.ok()) return status;
 
@@ -85,8 +136,26 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(const tensorflow::grappler::G
   return tensorflow::Status::OK();
 }
 
+static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster) {
+  const std::unordered_map<string, tensorflow::DeviceProperties>& devices = cluster->GetDevices();
+  PyObject* result = PyList_New(devices.size());
+  int i = 0;
+  for (auto& dev : devices) {
+    tensorflow::NamedDevice d;
+    d.set_name(dev.first);
+    *d.mutable_properties() = dev.second;
+    string dev_str = d.SerializeAsString();
+    PyObject* dev_obj = PyBytes_FromStringAndSize(dev_str.data(),
+                                                  dev_str.size());
+    PyList_SetItem(result, i, dev_obj);
+    ++i;
+  }
+  return result;
+}
+
 static PyObject* TF_MeasureCosts(
-    const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
+    const tensorflow::grappler::GrapplerItem* item,
+    tensorflow::grappler::Cluster* cluster,
     bool generate_timeline, TF_Status* out_status) {
   tensorflow::OpPerformanceList op_performance_data;
   tensorflow::StepStats step_stats;
@@ -94,15 +163,16 @@ static PyObject* TF_MeasureCosts(
   tensorflow::grappler::MeasuringCostEstimator cost_measure(cluster, 10, 0);
 
   tensorflow::grappler::Costs costs;
-  tensorflow::Status status = _GetOpPerformanceDataAndRunTime(*item, &cost_measure,
-                                                 &op_performance_data, &costs);
+  tensorflow::Status status = _GetOpPerformanceDataAndRunTime(
+      *item, &cost_measure, &op_performance_data, &costs);
   double run_time = FLT_MAX;
   if (status.ok()) {
     run_time = static_cast<double>(costs.execution_time.count()) / 1e9;
   }
   if (generate_timeline) {
     tensorflow::RunMetadata metadata;
-    tensorflow::Status s = cluster->Run(item->graph, item->feed, item->fetch, &metadata);
+    tensorflow::Status s = cluster->Run(
+        item->graph, item->feed, item->fetch, &metadata);
     if (s.ok()) {
       step_stats = metadata.step_stats();
     } else {
@@ -114,9 +184,11 @@ static PyObject* TF_MeasureCosts(
   if (!status.ok()) {
     Py_RETURN_NONE;
   }
-  PyObject* op_perf_objs = PyList_New(op_performance_data.op_performance_size());
+  PyObject* op_perf_objs = PyList_New(
+      op_performance_data.op_performance_size());
   for (int i = 0; i < op_performance_data.op_performance_size(); i++) {
-    string op_perf_str = op_performance_data.op_performance(i).SerializeAsString();
+    string op_perf_str =
+        op_performance_data.op_performance(i).SerializeAsString();
     PyObject* op_perf_obj = PyBytes_FromStringAndSize(op_perf_str.data(),
                                                       op_perf_str.size());
     PyList_SetItem(op_perf_objs, i, op_perf_obj);
@@ -146,7 +218,8 @@ static PyObject* TF_MeasureCosts(
 
 
 static PyObject* TF_DeterminePeakMemoryUsage(
-    const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
+    const tensorflow::grappler::GrapplerItem* item,
+    tensorflow::grappler::Cluster* cluster,
     TF_Status* out_status) {
   if (!item || !cluster) {
     tensorflow::Status status(tensorflow::error::Code::INTERNAL,
@@ -197,10 +270,15 @@ static PyObject* TF_DeterminePeakMemoryUsage(
 
 static tensorflow::grappler::Cluster* TF_NewCluster(
     bool allow_soft_placement, bool disable_detailed_stats, TF_Status* out_status);
+static tensorflow::grappler::Cluster* TF_NewVirtualCluster(
+    const std::vector<tensorflow::NamedDevice>& named_devices,
+    TF_Status* out_status);
 static void TF_DeleteCluster(tensorflow::grappler::Cluster* cluster);
+static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster);
 static PyObject* TF_MeasureCosts(
     const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
     bool generate_timeline, TF_Status* out_status);
 static PyObject* TF_DeterminePeakMemoryUsage(
     const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
     TF_Status* out_status);
+

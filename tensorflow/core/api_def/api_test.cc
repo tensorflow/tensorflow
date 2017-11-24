@@ -221,9 +221,18 @@ std::unordered_map<string, ApiDefs> GenerateApiDef(
 
   std::unordered_map<string, ApiDefs> api_defs_map;
 
+  // These ops are included in OpList only if TF_NEED_GCP
+  // is set to true. So, we skip them for now so that this test passes
+  // whether TF_NEED_GCP is set or not.
+  const std::unordered_set<string> ops_to_exclude = {
+      "BigQueryReader", "GenerateBigQueryReaderPartitions"};
   for (const auto& op : ops.op()) {
     CHECK(!op.name().empty())
         << "Encountered empty op name: %s" << op.DebugString();
+    if (ops_to_exclude.find(op.name()) != ops_to_exclude.end()) {
+      LOG(INFO) << "Skipping " << op.name();
+      continue;
+    }
     string file_path = io::JoinPath(api_def_dir, kApiDefFileFormat);
     file_path = strings::Printf(file_path.c_str(), op.name().c_str());
     ApiDef* api_def = api_defs_map[file_path].add_op();
@@ -272,7 +281,10 @@ void RunApiTest(bool update_api_def, const string& api_files_dir) {
 
   for (auto new_api_entry : new_api_defs_map) {
     const auto& file_path = new_api_entry.first;
-    const auto& golden_api_defs_str = golden_api_defs_map.at(file_path);
+    std::string golden_api_defs_str = "";
+    if (golden_api_defs_map.find(file_path) != golden_api_defs_map.end()) {
+      golden_api_defs_str = golden_api_defs_map.at(file_path);
+    }
     string new_api_defs_str = new_api_entry.second.DebugString();
     new_api_defs_str = PBTxtToMultiline(new_api_defs_str, multi_line_fields);
     if (golden_api_defs_str == new_api_defs_str) {

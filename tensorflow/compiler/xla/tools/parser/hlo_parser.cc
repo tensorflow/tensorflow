@@ -103,6 +103,7 @@ class HloParser {
     kSliceRanges,
     kPaddingConfig,
     kMetadata,
+    kFusionKind,
   };
 
   struct AttrConfig {
@@ -172,6 +173,7 @@ class HloParser {
   bool ParseString(string* result);
   bool ParseShape(Shape* result);
   bool ParseOpcode(HloOpcode* result);
+  bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseInt64(int64* result);
   bool ParseDouble(double* result);
   bool ParseBool(bool* result);
@@ -432,6 +434,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateConvert(shape, operands[0]));
       break;
     }
+    case HloOpcode::kBitcastConvert: {
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateBitcastConvert(shape, operands[0]));
+      break;
+    }
     case HloOpcode::kCrossReplicaSum: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -547,12 +558,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kReduceWindow: {
       optional<HloComputation*> reduce_computation;
       optional<Window> window;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReduceWindow(
           shape, /*operand=*/operands[0], /*init_value=*/operands[1], *window,
@@ -562,12 +576,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kConvolution: {
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
           shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums));
@@ -642,10 +659,13 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> scatter;
       attrs["scatter"] = {/*required=*/true, AttrTy::kHloComputation, &scatter};
       optional<Window> window;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateSelectAndScatter(
@@ -761,12 +781,45 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands[0], /*padding_value=*/operands[1], *padding));
       break;
     }
+    case HloOpcode::kFusion: {
+      optional<HloComputation*> fusion_computation;
+      attrs["calls"] = {/*required=*/true, AttrTy::kHloComputation,
+                        &fusion_computation};
+      optional<HloInstruction::FusionKind> fusion_kind;
+      attrs["kind"] = {/*required=*/true, AttrTy::kFusionKind, &fusion_kind};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateFusion(
+          shape, *fusion_kind, operands, *fusion_computation));
+      break;
+    }
+    case HloOpcode::kInfeed: {
+      optional<string> config;
+      attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateInfeed(shape, config ? *config : ""));
+      break;
+    }
+    case HloOpcode::kOutfeed: {
+      optional<string> config;
+      attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
+          shape, operands[0], config ? *config : ""));
+      break;
+    }
+    case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRng:
-    case HloOpcode::kFusion:
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
@@ -791,7 +844,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     instruction->set_metadata(*metadata);
   }
   return AddInstruction(name, instruction);
-}
+}  // NOLINT(readability/fn_size)
 
 // ::= '{' (single_sharding | tuple_sharding) '}'
 //
@@ -1129,12 +1182,6 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
 // rank2345 ::= shape nested_array
 bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
                                      const Shape& shape) {
-  const int64 size = ShapeUtil::ElementsIn(shape);
-  if (size == 0) {
-    *literal = Literal::CreateFromShape(shape);
-    return true;
-  }
-
   const int64 rank = ShapeUtil::Rank(shape);
   if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
     return false;
@@ -1450,6 +1497,15 @@ bool HloParser::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kFusionKind: {
+        HloInstruction::FusionKind result;
+        if (!ParseFusionKind(&result)) {
+          return false;
+        }
+        static_cast<optional<HloInstruction::FusionKind>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
       case AttrTy::kBracedInt64List: {
         std::vector<int64> result;
         if (!ParseInt64List(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
@@ -1612,8 +1668,8 @@ bool HloParser::ParseConvolutionDimensionNumbers(
     return TokenError(
         "convolution lhs, rhs, and output must have the same rank");
   }
-  if (rank < 3) {
-    return TokenError("convolution rank must >=3");
+  if (rank < 2) {
+    return TokenError("convolution rank must >=2");
   }
 
   auto is_unique = [](string str) -> bool {
@@ -1973,6 +2029,16 @@ bool HloParser::ParseOpcode(HloOpcode* result) {
     return TokenError("expects opcode");
   }
   *result = lexer_.GetOpcodeVal();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
+  VLOG(1) << "ParseFusionKind";
+  if (lexer_.GetKind() != TokKind::kFusionKind) {
+    return TokenError("expects fusion kind");
+  }
+  *result = lexer_.GetFusionKindVal();
   lexer_.Lex();
   return true;
 }

@@ -22,13 +22,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace xla {
 
 constexpr char HloCostAnalysis::kFlopsKey[];
 constexpr char HloCostAnalysis::kTranscendentalsKey[];
 constexpr char HloCostAnalysis::kBytesAccessedKey[];
-constexpr char HloCostAnalysis::kSecondsKey[];
+constexpr char HloCostAnalysis::kOptimalSecondsKey[];
 
 HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
     : HloCostAnalysis(shape_size, {}) {}
@@ -60,16 +61,16 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   if (current_should_compute_bottleneck_time_) {
     // Compute the time as the time of the bottleneck, i.e. the slowest property
     // given the per-second rate of each property.
-    float max_seconds = 0.0f;
+    float optimal_seconds = 0.0f;
     for (const auto& property : current_properties_) {
-      if (property.first != kSecondsKey) {
-        max_seconds = std::max(
-            max_seconds,
+      if (property.first != kOptimalSecondsKey) {
+        optimal_seconds = std::max(
+            optimal_seconds,
             property.second /
                 GetProperty(property.first, per_second_rates_, INFINITY));
       }
     }
-    current_properties_[kSecondsKey] = max_seconds;
+    current_properties_[kOptimalSecondsKey] = optimal_seconds;
   }
 
   TF_RET_CHECK(hlo_properties_.emplace(hlo, current_properties_).second);
@@ -480,6 +481,25 @@ Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
+  // Compute the cost of the true and false computations and take the maximum
+  // from those for each property.
+  TF_ASSIGN_OR_RETURN(const Properties true_computation_properties,
+                      ProcessSubcomputation(conditional->true_computation()));
+  TF_ASSIGN_OR_RETURN(const Properties false_computation_properties,
+                      ProcessSubcomputation(conditional->false_computation()));
+  current_properties_ = true_computation_properties;
+  for (const auto& property : false_computation_properties) {
+    if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_, property)) {
+      current_properties_[property.first] =
+          std::max(current_properties_[property.first], property.second);
+    }
+  }
+  current_should_compute_bottleneck_time_ = false;
+
+  return Status::OK();
+}
+
 Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }
@@ -496,8 +516,8 @@ float HloCostAnalysis::bytes_accessed() const {
   return GetProperty(kBytesAccessedKey, properties_sum_);
 }
 
-float HloCostAnalysis::seconds() const {
-  return GetProperty(kSecondsKey, properties_sum_);
+float HloCostAnalysis::optimal_seconds() const {
+  return GetProperty(kOptimalSecondsKey, properties_sum_);
 }
 
 int64 HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
@@ -512,8 +532,8 @@ int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_);
 }
 
-float HloCostAnalysis::seconds(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kSecondsKey, hlo_properties_);
+float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(

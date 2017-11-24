@@ -28,7 +28,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -111,7 +110,7 @@ class BackpropTest(test.TestCase):
       return x, grad
 
     # TODO(apassos) raise the right error here
-    with self.assertRaises(errors_impl.InternalError):
+    with self.assertRaises(RuntimeError):
       backprop.gradients_function(f)(constant_op.constant(1.0))
 
   def testImplicitGradOverEmbeddingLookup(self):

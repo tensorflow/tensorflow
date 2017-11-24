@@ -87,6 +87,7 @@ struct Point {
   // The actual metric value, dependent on the value_type enum.
   ValueType value_type;
   int64 int64_value;
+  string string_value;
   HistogramProto histogram_value;
 
   // start_timestamp and end_timestamp indicate the time period over which this

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -160,7 +161,7 @@ TokKind HloLexer::LexToken() {
 // keyword  ::= HloModule, ENTRY, ...
 // opcode   ::= add, greater-than, ...
 // attribute_name ::= condition, body, dimensions, ...
-// dim_labels_pattern ::= [0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,}
+// dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
 TokKind HloLexer::LexIdentifier() {
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
@@ -226,10 +227,17 @@ TokKind HloLexer::LexIdentifier() {
     return TokKind::kOpcode;
   }
 
+  // See if this is an fusion kind.
+  auto kind = xla::StringToFusionKind(identifier.ToString());
+  if (kind.ok()) {
+    fusion_kind_val_ = kind.ValueOrDie();
+    return TokKind::kFusionKind;
+  }
+
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     static LazyRE2 dim_labels_pattern = {
-        R"([0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,})"};
+        R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
     if (RE2::Consume(&consumable, *dim_labels_pattern)) {
       current_ptr_ = consumable.begin();
       str_val_.assign(token_start_, current_ptr_);
@@ -261,7 +269,7 @@ TokKind HloLexer::LexPercent() {
 //
 // fp with exp ::= [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
 // fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
-// dim_labels_pattern ::= [0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,}
+// dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
 // dxd_pattern ::= [0-9]+(x[0-9]+)+
 // pad_pattern ::= [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
 // int ::=  [-]?[0-9]+
@@ -278,7 +286,7 @@ TokKind HloLexer::LexNumberOrPattern() {
   }
 
   static LazyRE2 dim_labels_pattern = {
-      R"([0-9bf]{3,}_[0-9io]{3,}->[0-9bf]{3,})"};
+      R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
   static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
   static LazyRE2 pad_pattern = {
       R"([0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*)"};
@@ -426,6 +434,8 @@ string TokKindToString(TokKind kind) {
       return "kShape";
     case TokKind::kOpcode:
       return "kOpcode";
+    case TokKind::kFusionKind:
+      return "kFusionKind";
     case TokKind::kInt:
       return "kInt";
     case TokKind::kDecimal:

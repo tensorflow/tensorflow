@@ -21,16 +21,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace se = ::perftools::gputools;
 
 namespace xla {
+
+using ::tensorflow::strings::Appendf;
 
 /* static */ StatusOr<std::unique_ptr<ShapedBuffer>>
 ShapedBuffer::MakeArrayShapedBuffer(const Shape& shape,
@@ -80,10 +82,33 @@ se::DeviceMemoryBase* ShapedBuffer::mutable_buffer(const ShapeIndex& index) {
   return &buffers_[shape_index_to_buffer_entry_.element(index)];
 }
 
+string ShapedBuffer::ToString() const {
+  string s = "ShapedBuffer(" + platform_->Name() + "):\n";
+  ShapeUtil::ForEachSubshape(
+      shape(), [this, &s](const Shape& subshape, const ShapeIndex& index) {
+        string shape_str;
+        if (ShapeUtil::IsTuple(subshape)) {
+          shape_str = "tuple";
+        } else {
+          shape_str = ShapeUtil::HumanStringWithLayout(subshape);
+        }
+        const se::DeviceMemoryBase& memory = buffer(index);
+        Appendf(&s, "  %s%p (%lld bytes) : %s\n",
+                string(index.size() * 2, ' ').c_str(), memory.opaque(),
+                memory.size(), shape_str.c_str());
+      });
+  return s;
+}
+
+std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
+  out << buffer.ToString();
+  return out;
+}
+
 /* static */ StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-ScopedShapedBuffer::Allocate(const Shape& shape,
-                             DeviceMemoryAllocator* allocator,
-                             int device_ordinal) {
+ScopedShapedBuffer::Allocate(
+    const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
+    const std::function<int64(const Shape&)>& shape_size_fn) {
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("Shape must have a layout: %s",
                            ShapeUtil::HumanStringWithLayout(shape).c_str());
@@ -93,51 +118,17 @@ ScopedShapedBuffer::Allocate(const Shape& shape,
       WrapUnique(new ScopedShapedBuffer(shape, allocator, device_ordinal));
 
   // Allocate an appropriate sized buffer for each element in the shape
-  // including the tuple pointer arrays. Gather tuple element addresses in
-  // 'element_addresses'. These will be written in the respective tuple's array
-  // of pointers on the device.
-  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager,
-                      TransferManager::GetForPlatform(allocator->platform()));
-  ShapeTree<std::vector<se::DeviceMemoryBase>> element_addresses(shape);
+  // including the tuple pointer arrays.
   for (auto& pair : shaped_buffer->shape_index_to_buffer_entry_) {
     const ShapeIndex& index = pair.first;
     size_t& buffer_entry = pair.second;
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase memory_base,
-        shaped_buffer->allocator_->Allocate(
-            shaped_buffer->device_ordinal(),
-            transfer_manager->GetByteSizeRequirement(
-                ShapeUtil::GetSubshape(shaped_buffer->shape(), index))));
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase memory_base,
+                        shaped_buffer->allocator_->Allocate(
+                            shaped_buffer->device_ordinal(),
+                            shape_size_fn(ShapeUtil::GetSubshape(
+                                shaped_buffer->shape(), index))));
     shaped_buffer->buffers_.push_back(memory_base);
     buffer_entry = shaped_buffer->buffers_.size() - 1;
-
-    // If this is a tuple element, then push the address on to the
-    // vector of tuple element addresses.
-    if (!index.empty()) {
-      ShapeIndex parent_index = index;
-      parent_index.pop_back();
-      element_addresses.mutable_element(parent_index)->push_back(memory_base);
-    }
-  }
-
-  // Fill in the tuple pointer arrays with the addresses of their respective
-  // elements.
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                      allocator->platform()->ExecutorForDevice(
-                          shaped_buffer->device_ordinal()));
-  for (const auto& pair : element_addresses) {
-    const ShapeIndex& index = pair.first;
-    const std::vector<se::DeviceMemoryBase>& addresses = pair.second;
-    const Shape& subshape = ShapeUtil::GetSubshape(shape, index);
-
-    if (addresses.empty()) {
-      TF_RET_CHECK(!ShapeUtil::IsTuple(subshape) ||
-                   ShapeUtil::TupleElementCount(subshape) == 0);
-      continue;
-    }
-    TF_RET_CHECK(ShapeUtil::IsTuple(subshape));
-    TF_RETURN_IF_ERROR(transfer_manager->WriteTuplePointersToDevice(
-        executor, addresses, subshape, shaped_buffer->mutable_buffer(index)));
   }
 
   return std::move(shaped_buffer);

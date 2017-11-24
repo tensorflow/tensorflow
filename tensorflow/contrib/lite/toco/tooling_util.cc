@@ -294,6 +294,7 @@ void LogArray(int log_level, const Model& model, const string& name) {
   VLOG(log_level) << "Array: " << name;
   switch (array.data_type) {
     case ArrayDataType::kNone:
+      VLOG(log_level) << "  Data type:";
       break;
     case ArrayDataType::kFloat:
       VLOG(log_level) << "  Data type: kFloat";
@@ -306,6 +307,24 @@ void LogArray(int log_level, const Model& model, const string& name) {
       break;
     default:
       VLOG(log_level) << "  Data type: other (numerical value: "
+                      << static_cast<int>(array.data_type) << ")";
+      break;
+  }
+  switch (array.final_data_type) {
+    case ArrayDataType::kNone:
+      VLOG(log_level) << "  Final type:";
+      break;
+    case ArrayDataType::kFloat:
+      VLOG(log_level) << "  Final type: kFloat";
+      break;
+    case ArrayDataType::kInt32:
+      VLOG(log_level) << "  Final type: kInt32";
+      break;
+    case ArrayDataType::kUint8:
+      VLOG(log_level) << "  Final type: kUint8";
+      break;
+    default:
+      VLOG(log_level) << "  Final type: other (numerical value: "
                       << static_cast<int>(array.data_type) << ")";
       break;
   }
@@ -991,6 +1010,11 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
             specified_input_array.shape());
       }
     }
+
+    if (specified_input_array.has_data_type()) {
+      QCHECK(!dst_input_array->has_data_type());
+      dst_input_array->set_data_type(specified_input_array.data_type());
+    }
   }
 
   if (model_flags.output_arrays_size() > 0) {
@@ -1011,7 +1035,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   }
 
   RESOLVE_MODEL_FLAG(variable_batch)
-  RESOLVE_MODEL_FLAG(drop_control_dependency)
 
 #undef RESOLVE_MODEL_FLAG
 
@@ -1039,18 +1062,34 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
          "--output_arrays flag must be given on the command-line.";
 
   for (const auto& input_array_proto : model->flags.input_arrays()) {
-    QCHECK(!input_array_proto.shape().empty())
-        << "This model does not have shape defined for input array "
-        << input_array_proto.name()
-        << ", so one must be specified by a non-empty --input_shape "
-           "command-line flag.";
-
     auto& input_array = model->GetOrCreateArray(input_array_proto.name());
+    if (input_array_proto.has_data_type()) {
+      const ArrayDataType specified_type =
+          ConvertIODataTypeToArrayDataType(input_array_proto.data_type());
+      QCHECK(specified_type != ArrayDataType::kNone);
+      if (input_array.data_type != ArrayDataType::kNone) {
+        QCHECK(specified_type == input_array.data_type)
+            << "For input array " << input_array_proto.name()
+            << " the specified input data type "
+            << IODataType_Name(input_array_proto.data_type())
+            << " conflicts with the existing type.";
+      }
+      input_array.data_type = specified_type;
+    }
+
     if (input_array.data_type == ArrayDataType::kNone) {
       // We start out with a float input array;
       // that may get replaced by a uint8 array later, by
       // MakeInitialDequantizeOp.
       input_array.data_type = ArrayDataType::kFloat;
+    }
+
+    if (!input_array.has_shape()) {
+      QCHECK(!input_array_proto.shape().empty())
+          << "This model does not have shape defined for input array "
+          << input_array_proto.name()
+          << ", so one must be specified by a non-empty --input_shape "
+             "command-line flag.";
     }
 
     // Compare/merge the model->flags describing the input_shape with
@@ -1544,8 +1583,27 @@ void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.arrays) {
     const auto& array = *array_entry.second;
     if (array.final_data_type != ArrayDataType::kNone) {
-      CHECK(array.final_data_type == array.data_type);
+      CHECK(array.final_data_type == array.data_type)
+          << "Array \"" << array_entry.first
+          << "\" has mis-matching actual and final data types ("
+          << static_cast<int>(array.data_type) << ","
+          << static_cast<int>(array.final_data_type) << ").";
     }
+  }
+}
+
+ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
+  switch (type) {
+    case FLOAT:
+      return ArrayDataType::kFloat;
+    case QUANTIZED_UINT8:
+      return ArrayDataType::kUint8;
+    case INT32:
+      return ArrayDataType::kInt32;
+    case INT64:
+      return ArrayDataType::kInt64;
+    default:
+      return ArrayDataType::kNone;
   }
 }
 

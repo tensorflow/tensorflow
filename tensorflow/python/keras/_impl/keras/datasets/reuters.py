@@ -64,15 +64,20 @@ def load_data(path='reuters.npz',
   have simply been skipped.
   """
   path = get_file(
-      path, origin='https://s3.amazonaws.com/text-datasets/reuters.npz')
+      path,
+      origin='https://s3.amazonaws.com/text-datasets/reuters.npz',
+      file_hash='87aedbeb0cb229e378797a632c1997b6')
   npzfile = np.load(path)
   xs = npzfile['x']
   labels = npzfile['y']
   npzfile.close()
 
   np.random.seed(seed)
-  np.random.shuffle(xs)
-  np.random.seed(seed)
+  indices = np.arrange(len(xs))
+  np.random.shuffle(indices)
+  xs = xs[indices]
+  labels = labels[indices]
+
   np.random.shuffle(labels)
 
   if start_char is not None:
@@ -129,7 +134,8 @@ def get_word_index(path='reuters_word_index.json'):
   """
   path = get_file(
       path,
-      origin='https://s3.amazonaws.com/text-datasets/reuters_word_index.json')
+      origin='https://s3.amazonaws.com/text-datasets/reuters_word_index.json',
+      file_hash='4d44cc38712099c9e383dc6e5f11a921')
   f = open(path)
   data = json.load(f)
   f.close()

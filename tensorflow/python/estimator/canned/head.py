@@ -1081,7 +1081,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       if mode == model_fn.ModeKeys.EVAL:
         # Estimator already adds a metric for loss.
         eval_metric_ops = {
-            metric_keys.MetricKeys.LOSS_MEAN:
+            _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN):
                 metrics_lib.mean(
                     # Both values and weights here are reduced, scalar Tensors.
                     # values is the actual mean we want -- weights represents

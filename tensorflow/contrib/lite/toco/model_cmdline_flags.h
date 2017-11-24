@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/toco/args.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
+#include "tensorflow/contrib/lite/toco/types.pb.h"
 
 namespace toco {
 // Parse and remove arguments for models (in toco). Returns true if parsing
