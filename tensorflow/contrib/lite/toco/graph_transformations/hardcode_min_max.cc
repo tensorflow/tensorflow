@@ -202,6 +202,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       break;
 
     case OperatorType::kSqueeze:
+    case OperatorType::kExpandDims:
     case OperatorType::kTensorFlowReshape:
       changed = HardcodeMinMaxForReshapeOrSqueeze(model, op);
       break;

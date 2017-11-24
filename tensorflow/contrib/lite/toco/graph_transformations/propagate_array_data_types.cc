@@ -68,6 +68,7 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     SetDataTypeForAllOutputs(model, op, ArrayDataType::kFloat);
   } else if (op->type == OperatorType::kTensorFlowLess ||
              op->type == OperatorType::kTensorFlowLessEqual ||
+             op->type == OperatorType::kTensorFlowEqual ||
              op->type == OperatorType::kTensorFlowGreater ||
              op->type == OperatorType::kTensorFlowGreaterEqual) {
     // These operators unconditionally produce bool outputs
@@ -88,6 +89,7 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
              op->type == OperatorType::kTensorFlowReshape ||
              op->type == OperatorType::kSlice ||
              op->type == OperatorType::kSqueeze ||
+             op->type == OperatorType::kExpandDims ||
              op->type == OperatorType::kTensorFlowSum ||
              op->type == OperatorType::kTensorFlowSwitch ||
              op->type == OperatorType::kTensorFlowTile ||
