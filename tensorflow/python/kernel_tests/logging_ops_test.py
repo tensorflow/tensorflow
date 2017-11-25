@@ -85,7 +85,7 @@ class PrintGradientTest(test.TestCase):
     self.assertEqual(p.dtype, v.dtype)
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      self.assertAllEqual(v.eval(), p.eval())
+      self.assertAllEqual(p.eval(), v.eval())
 
 
 if __name__ == "__main__":
