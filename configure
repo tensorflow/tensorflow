@@ -8,7 +8,7 @@ if [ -z "$PYTHON_BIN_PATH" ]; then
 fi
 
 # Set all env variables
-"$PYTHON_BIN_PATH" configure.py
+"$PYTHON_BIN_PATH" configure.py 
 
 echo "Configuration finished"
 
