@@ -1,6 +1,6 @@
 # People who have agreed to one of the CLAs and can contribute patches.
 # The AUTHORS file lists the copyright holders; this file
-# lists people.  For example, Google employees are listed here
+# lists people. For example, Google employees are listed here
 # but not in AUTHORS, because Google holds the copyright.
 #
 # https://developers.google.com/open-source/cla/individual
@@ -11,5 +11,5 @@
 #
 # If you have contributed a few PRs, feel free to send a PR adding yourself here.
 
-Illia Polosukhin illia.polosukhin@gmail.com
-Yuan Tang terrytangyuan@gmail.com
+Illia Polosukhin <illia.polosukhin@gmail.com>
+Yuan Tang <terrytangyuan@gmail.com>
