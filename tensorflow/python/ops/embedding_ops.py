@@ -468,11 +468,19 @@ def embedding_lookup_sparse(params,
       elif combiner == "mean":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weight_sum = math_ops.segment_sum(weights, segment_ids)
+        weight_sum = array_ops.where(
+            math_ops.equal(weight_sum, 0),
+            array_ops.ones_like(weight_sum),
+            weight_sum)
         embeddings = math_ops.div(embeddings, weight_sum, name=name)
       elif combiner == "sqrtn":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weights_squared = math_ops.pow(weights, 2)
         weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
+        weight_sum = array_ops.where(
+            math_ops.equal(weight_sum, 0),
+            array_ops.ones_like(weight_sum),
+            weight_sum)
         weight_sum_sqrt = math_ops.sqrt(weight_sum)
         embeddings = math_ops.div(embeddings, weight_sum_sqrt, name=name)
       else:
