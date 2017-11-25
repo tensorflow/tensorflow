@@ -44,8 +44,15 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<const HloModule> hlo_module)
-      : hlo_module_(std::move(hlo_module)) {}
+  explicit Executable(std::unique_ptr<const HloModule> hlo_module,
+                      std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
+      : hlo_module_(std::move(hlo_module)),
+        hlo_profile_printer_(std::move(hlo_profile_printer)),
+        hlo_profile_index_map_(std::move(hlo_profile_index_map)) {
+    CHECK_EQ(hlo_profile_printer_.get() == nullptr,
+             hlo_profile_index_map_.get() == nullptr);
+  }
   virtual ~Executable() {}
 
   // Enqueues the compilation result on the provided stream, passing the given
@@ -123,12 +130,20 @@ class Executable {
         "Equality test on this executable is not implemented.");
   }
 
+  const HloProfilePrinter& hlo_profile_printer() const {
+    CHECK(hlo_profiling_enabled());
+    return *hlo_profile_printer_;
+  }
+
+  const HloProfileIndexMap& hlo_profile_index_map() const {
+    CHECK(hlo_profiling_enabled());
+    return *hlo_profile_index_map_;
+  }
+
   // Returns whether this executable was compiled with HLO profilings support
   // enabled. If not, the caller should not expect an hlo_execution_profile
   // passed to ExecuteOnStream above to be populated during execution.
-  bool hlo_profiling_enabled() const {
-    return hlo_module_->config().hlo_profiling_enabled();
-  }
+  bool hlo_profiling_enabled() const { return hlo_profile_printer_ != nullptr; }
 
   const HloModule& module() const { return *hlo_module_; }
 
@@ -160,10 +175,6 @@ class Executable {
   static Status DumpToDirectory(const string& directory_path, string filename,
                                 const SessionModule& session_module);
 
-  // Returns a cost analysis object appropriate for the platform on which this
-  // executable can run.
-  virtual std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const = 0;
-
  protected:
   mutable tensorflow::mutex mutex_;
 
@@ -181,6 +192,9 @@ class Executable {
   // Execution count, used to generate a unique filename for each dumped
   // execution.
   int64 execution_count_ = 0;
+
+  std::unique_ptr<HloProfilePrinter> hlo_profile_printer_;
+  std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;
 };
 
 template <typename ReturnT, typename ArgT>
@@ -200,7 +214,8 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
   std::unique_ptr<HloExecutionProfile> profile_ptr =
       module_config().debug_options().xla_hlo_profile() &&
               hlo_profiling_enabled()
-          ? MakeUnique<HloExecutionProfile>(module(), *CreateCostAnalysis())
+          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer(),
+                                            &hlo_profile_index_map())
           : nullptr;
 
   auto return_value =

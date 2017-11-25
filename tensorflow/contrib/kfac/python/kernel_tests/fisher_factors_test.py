@@ -22,6 +22,7 @@ import numpy as np
 import numpy.random as npr
 
 from tensorflow.contrib.kfac.python.ops import fisher_factors as ff
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.framework import random_seed
@@ -30,6 +31,25 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import test
+
+
+class MaybeColocateTest(test.TestCase):
+
+  def testFalse(self):
+    with tf_ops.Graph().as_default():
+      a = constant_op.constant([2.0], name='a')
+      with ff._maybe_colocate_with(a, False):
+        b = constant_op.constant(3.0, name='b')
+      self.assertEqual([b'loc:@a'], a.op.colocation_groups())
+      self.assertEqual([b'loc:@b'], b.op.colocation_groups())
+
+  def testTrue(self):
+    with tf_ops.Graph().as_default():
+      a = constant_op.constant([2.0], name='a')
+      with ff._maybe_colocate_with(a, True):
+        b = constant_op.constant(3.0, name='b')
+      self.assertEqual([b'loc:@a'], a.op.colocation_groups())
+      self.assertEqual([b'loc:@a'], b.op.colocation_groups())
 
 
 class FisherFactorTestingDummy(ff.FisherFactor):

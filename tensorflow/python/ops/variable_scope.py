@@ -1691,7 +1691,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
   v1 = foo()  # Creates v.
   v2 = foo()  # Gets the same, existing v.
   assert v1 == v2
-
+  ```
 
   Basic example of sharing a variable with reuse=True:
 
@@ -1985,8 +1985,10 @@ def variable(initial_value=None,
              validate_shape=True,
              caching_device=None,
              name=None,
-             dtype=None):
-  use_resource = get_variable_scope().use_resource
+             dtype=None,
+             use_resource=None):
+  if use_resource is None:
+    use_resource = get_variable_scope().use_resource
   if use_resource or (use_resource is None and context.in_eager_mode()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,

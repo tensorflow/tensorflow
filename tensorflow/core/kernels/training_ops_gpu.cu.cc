@@ -193,6 +193,71 @@ struct ApplyCenteredRMSProp<GPUDevice, T> {
   }
 };
 
+template <typename T>
+struct ApplyAddSign<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar alpha,
+                  typename TTypes<T>::ConstScalar sign_decay,
+                  typename TTypes<T>::ConstScalar beta,
+                  typename TTypes<T>::ConstFlat grad) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+
+    // The following is the GPU equivalent of the CPU version:
+    // m.device(d) = m * beta() + grad * (static_cast<T>(1) - beta());
+    const auto one = static_cast<T>(1.0);
+    auto beta_bcast = beta.reshape(single).broadcast(bcast);
+    auto one_minus_beta =
+        (beta.constant(one) - beta).reshape(single).broadcast(bcast);
+    m.device(d) =  m * beta_bcast + grad * one_minus_beta;
+
+    // The following is the GPU equivalent of the CPU version:
+    // var.device(d) -= lr() * (alpha() + sign_decay() * sign_gm) * grad;
+    auto sign_gm = grad.sign() * m.sign();
+    auto lr_bcast = lr.reshape(single).broadcast(bcast);
+    auto alpha_bcast = alpha.reshape(single).broadcast(bcast);
+    auto sign_decay_bcast = sign_decay.reshape(single).broadcast(bcast);
+    var.device(d) -=
+        lr_bcast * (alpha_bcast + sign_decay_bcast * sign_gm) * grad;
+  }
+};
+
+template <typename T>
+struct ApplyPowerSign<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar logbase,
+                  typename TTypes<T>::ConstScalar sign_decay,
+                  typename TTypes<T>::ConstScalar beta,
+                  typename TTypes<T>::ConstFlat grad) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+
+    // The following is the GPU equivalent of the CPU version:
+    // m.device(d) = m * beta() + grad * (static_cast<T>(1) - beta());
+    const auto one = static_cast<T>(1.0);
+    auto beta_bcast = beta.reshape(single).broadcast(bcast);
+    auto one_minus_beta =
+        (beta.constant(one) - beta).reshape(single).broadcast(bcast);
+    m.device(d) =  m * beta_bcast + grad * one_minus_beta;
+
+    // The following is the GPU equivalent of the CPU version:
+    // auto grad_scale = (logbase() * sign_decay() * sign_gm).exp();
+    // var.device(d) -= lr() * grad_scale * grad;
+    auto sign_gm = grad.sign() * m.sign();
+    auto lr_bcast = lr.reshape(single).broadcast(bcast);
+    auto logbase_bcast = logbase.reshape(single).broadcast(bcast);
+    auto sign_decay_bcast = sign_decay.reshape(single).broadcast(bcast);
+    auto grad_scale =  (logbase_bcast * sign_decay_bcast * sign_gm).exp();
+    var.device(d) -= lr_bcast * grad_scale * grad;
+  }
+};
+
 }  // namespace functor
 
 template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
@@ -222,6 +287,15 @@ template struct functor::ApplyRMSProp<GPUDevice, double>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, float>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, double>;
+
+template struct functor::ApplyAddSign<GPUDevice, Eigen::half>;
+template struct functor::ApplyAddSign<GPUDevice, float>;
+template struct functor::ApplyAddSign<GPUDevice, double>;
+
+template struct functor::ApplyPowerSign<GPUDevice, Eigen::half>;
+template struct functor::ApplyPowerSign<GPUDevice, float>;
+template struct functor::ApplyPowerSign<GPUDevice, double>;
+
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA

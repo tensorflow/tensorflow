@@ -939,13 +939,17 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
     return;
   }
 
-  std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
-  dim_vec.reserve(num_dims);
-  for (int i = 0; i < num_dims; ++i) {
-    dim_vec.push_back(ic->MakeDim(dims[i]));
+  tensorflow::shape_inference::ShapeHandle new_shape;
+  if (num_dims != -1) {
+    std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
+    dim_vec.reserve(num_dims);
+    for (int i = 0; i < num_dims; ++i) {
+      dim_vec.push_back(ic->MakeDim(dims[i]));
+    }
+    new_shape = ic->MakeShape(dim_vec);
+  } else {
+    new_shape = ic->UnknownShape();
   }
-
-  tensorflow::shape_inference::ShapeHandle new_shape = ic->MakeShape(dim_vec);
   status->status = graph->refiner.SetShape(node, output.index, new_shape);
 }
 

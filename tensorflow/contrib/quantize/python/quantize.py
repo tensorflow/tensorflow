@@ -164,7 +164,10 @@ class _QuantizeContext(object):
 
   def QuantizeAddContexts(self):
     """Quantizes all add ops in self.add_contexts."""
-    for add_context in self.add_contexts:
+    # Loop through sorted self.add_contexts so that op creation is
+    # deterministic. This is needed when using multiple worker replicas so that
+    # the ops can be initialized consistently.
+    for add_context in sorted(self.add_contexts):
       add_op = self.GetOperationByNamesDontThrow([
           add_context + '/Add', add_context + '/add'])
       if add_op is not None:

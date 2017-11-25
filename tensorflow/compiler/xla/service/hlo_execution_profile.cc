@@ -40,7 +40,7 @@ HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
   }
 }
 
-static HloProfilePrinter CreateOwnedHloProfilePrinter(
+std::unique_ptr<HloProfilePrinter> CreateHloProfilePrinter(
     const HloProfileIndexMap& hlo_profile_index_map,
     const HloCostAnalysis& cost_analysis) {
   using HloComputationInfo = HloProfilePrinter::HloComputationInfo;
@@ -83,7 +83,7 @@ static HloProfilePrinter CreateOwnedHloProfilePrinter(
       instruction_info->transcendental_count =
           cost_analysis.transcendental_count(*hlo);
       instruction_info->bytes_accessed = cost_analysis.bytes_accessed(*hlo);
-      instruction_info->seconds = cost_analysis.seconds(*hlo);
+      instruction_info->optimal_seconds = cost_analysis.optimal_seconds(*hlo);
       instruction_info->profile_index =
           hlo_profile_index_map.GetProfileIndexFor(*hlo);
       CHECK_LT(instruction_info->profile_index, max_profile_index);
@@ -108,15 +108,15 @@ static HloProfilePrinter CreateOwnedHloProfilePrinter(
     delete[] computation_infos;
   };
 
-  return HloProfilePrinter(computation_infos,
-                           hlo_profile_index_map.computation_count(), deleter);
+  return MakeUnique<HloProfilePrinter>(
+      computation_infos, hlo_profile_index_map.computation_count(), deleter);
 }
 
-HloExecutionProfile::HloExecutionProfile(const HloModule& module,
-                                         const HloCostAnalysis& cost_analysis)
-    : hlo_profile_index_map_(module),
-      hlo_profile_printer_(
-          CreateOwnedHloProfilePrinter(hlo_profile_index_map_, cost_analysis)),
+HloExecutionProfile::HloExecutionProfile(
+    const HloProfilePrinter* hlo_profile_printer,
+    const HloProfileIndexMap* hlo_profile_index_map)
+    : hlo_profile_printer_(*hlo_profile_printer),
+      hlo_profile_index_map_(*hlo_profile_index_map),
       profile_counters_(
           /*count*/ hlo_profile_index_map_.total_count(),
           /*value*/ 0) {}
@@ -129,12 +129,6 @@ void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
 
 uint64 HloExecutionProfile::GetCyclesTakenBy(const HloInstruction& hlo) const {
   return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(hlo)];
-}
-
-string HloExecutionProfile::ToString(
-    const DeviceDescription& device_description) const {
-  return hlo_profile_printer_.ToString(profile_counters_.data(),
-                                       device_description.clock_rate_ghz());
 }
 
 }  // namespace xla

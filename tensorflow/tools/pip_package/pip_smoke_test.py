@@ -66,9 +66,6 @@ BLACKLIST = [
     "//tensorflow/contrib/timeseries/examples:data/period_trend.csv",  # pylint:disable=line-too-long
     "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
     "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:test_utils",  # pylint:disable=line-too-long
-
-    # TODO(yifeif): Remove when py_library(testonly=1) is ignored.
-    "//tensorflow/contrib/summary:summary_test_internal",
 ]
 
 

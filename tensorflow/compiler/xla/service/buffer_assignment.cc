@@ -1265,7 +1265,6 @@ const LogicalBuffer* AddBufferToColocatedSet(
   // CopyInsertion ensures root points-to set is unambiguous and distinct.
   const auto& points_to = points_to_analysis.GetPointsToSet(instruction);
   DCHECK(!points_to.IsAmbiguous());
-  DCHECK(points_to.IsDistinct());
   colocated_set->push_back(points_to.element(index)[0]);
   return colocated_set->back();
 }

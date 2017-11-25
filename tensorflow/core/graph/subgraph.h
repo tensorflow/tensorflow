@@ -71,7 +71,7 @@ Status RewriteGraphForExecution(
     const DeviceAttributes& device_info, bool use_function_convention,
     RewriteGraphMetadata* out_metadata);
 
-typedef std::unordered_map<StringPiece, Node*, StringPiece::Hasher> NameIndex;
+typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameIndex;
 
 // Augment "*g" by adding special "fetch" nodes that connect to the
 // tensor outputs specified in "fetch_outputs" to retrieve the output

@@ -222,6 +222,7 @@ TF_CALL_complex128(HANDLE_TYPE_NAME_CPU);
 TF_CALL_string(HANDLE_TYPE_NAME_CPU);
 
 #if GOOGLE_CUDA
+TF_CALL_bool(HANDLE_TYPE_NAME_GPU);
 TF_CALL_float(HANDLE_TYPE_NAME_GPU);
 TF_CALL_double(HANDLE_TYPE_NAME_GPU);
 TF_CALL_int16(HANDLE_TYPE_NAME_GPU);
@@ -534,7 +535,7 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
                         TileGradientOp<CPUDevice, int64>);
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU(type)                                         \
+#define REGISTER_GPU_TILE(type)                                    \
   REGISTER_KERNEL_BUILDER(Name("Tile")                             \
                               .Device(DEVICE_GPU)                  \
                               .TypeConstraint<type>("T")           \
@@ -546,7 +547,9 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
                               .TypeConstraint<type>("T")           \
                               .TypeConstraint<int64>("Tmultiples") \
                               .HostMemory("multiples"),            \
-                          TileOp<GPUDevice, int64>);               \
+                          TileOp<GPUDevice, int64>);
+
+#define REGISTER_GPU_TILE_GRAD(type)                               \
   REGISTER_KERNEL_BUILDER(Name("TileGrad")                         \
                               .Device(DEVICE_GPU)                  \
                               .TypeConstraint<type>("T")           \
@@ -560,6 +563,11 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
                               .HostMemory("multiples"),            \
                           TileGradientOp<GPUDevice, int64>);
 
+#define REGISTER_GPU(type) \
+  REGISTER_GPU_TILE(type); \
+  REGISTER_GPU_TILE_GRAD(type);
+
+TF_CALL_bool(REGISTER_GPU_TILE);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_half(REGISTER_GPU);
@@ -568,6 +576,8 @@ TF_CALL_int32(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU)
 
+#undef REGISTER_GPU_TILE
+#undef REGISTER_GPU_TILE_GRAD
 #undef REGISTER_GPU
 #endif  // GOOGLE_CUDA
 

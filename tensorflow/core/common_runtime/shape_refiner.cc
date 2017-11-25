@@ -335,10 +335,14 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
     InferenceContext* c = iter->second->get_context();
     DCHECK_GE(dst_input, 0);
     ShapeHandle existing_input = node_context->input(dst_input);
-    if (!relax && node_context->MergeInput(dst_input, c->output(src_output)) &&
-        !existing_input.SameHandle(node_context->input(dst_input))) {
-      *refined = true;
-    } else if (relax) {
+    if (!relax) {
+      if (node_context->MergeInput(dst_input, c->output(src_output))) {
+        if (!SameDefinedShape(node_context, node_context->input(dst_input),
+                              existing_input)) {
+          *refined = true;
+        }
+      }
+    } else {
       if (node_context->RelaxInput(dst_input, c->output(src_output))) {
         if (!SameDefinedShape(node_context, node_context->input(dst_input),
                               existing_input)) {
@@ -865,15 +869,22 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
 
 bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
                                     ShapeHandle s1) {
-  if (!c->RankKnown(s0)) {
-    return !c->RankKnown(s1);
-  } else if (!c->RankKnown(s1) || c->Rank(s0) != c->Rank(s1)) {
+  if (s0.SameHandle(s1)) {
+    return true;
+  }
+  if (c->Rank(s0) != c->Rank(s1)) {
     return false;
   }
-
+  if (!c->RankKnown(s0) && !c->RankKnown(s1)) {
+    return false;
+  }
   for (int i = 0; i < c->Rank(s0); ++i) {
-    if (c->Value(c->Dim(s0, i)) != c->Value(c->Dim(s1, i))) {
-      return false;
+    if (!c->Dim(s0, i).SameHandle(c->Dim(s1, i))) {
+      int64 val0 = c->Value(c->Dim(s0, i));
+      int64 val1 = c->Value(c->Dim(s1, i));
+      if (val0 < 0 || val1 < 0 || val0 != val1) {
+        return false;
+      }
     }
   }
 

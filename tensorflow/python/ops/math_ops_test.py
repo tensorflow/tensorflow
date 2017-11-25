@@ -62,7 +62,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testReduceInvalidAxis(self):
     if context.in_eager_mode():
-      # The shape check is in run a graph contruction time. In eager mode,
+      # The shape check is in run a graph construction time. In eager mode,
       # it misses the check, magically return result given wrong shape.
       return
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)

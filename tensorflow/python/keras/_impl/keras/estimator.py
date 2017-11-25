@@ -232,6 +232,9 @@ def model_to_estimator(keras_model=None,
                        config=None):
   """Constructs an `Estimator` instance from given keras model.
 
+  For usage example, please see
+  @{$programmers_guide/estimators$creating_estimators_from_keras_models}.
+
   Args:
     keras_model: Keras model in memory.
     keras_model_path: Directory to a keras model on disk.

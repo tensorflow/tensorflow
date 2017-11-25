@@ -48,10 +48,10 @@ void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
     LOG(FATAL) << "Only supporting SAME or VALID padding";
   }
 
-  fixed_padding->height =
-      ((output_height - 1) * stride_height + kheight - input_height) / 2;
-  fixed_padding->width =
-      ((output_width - 1) * stride_width + kwidth - input_width) / 2;
+  fixed_padding->height = std::max(
+      0, ((output_height - 1) * stride_height + kheight - input_height) / 2);
+  fixed_padding->width = std::max(
+      0, ((output_width - 1) * stride_width + kwidth - input_width) / 2);
 
   // Actually had to debug a situation where those were negative due to bad
   // propagation of placeholder -1 sizes in TensorFlowReshape.
@@ -367,23 +367,40 @@ void ProcessSimpleBinaryOperator(Model* model, Operator* op) {
                                   &output_array);
 }
 
+bool KeepDims(const Operator& op) {
+  switch (op.type) {
+    case OperatorType::kTensorFlowMin:
+      return static_cast<const TensorFlowMinOperator&>(op).keep_dims;
+    case OperatorType::kTensorFlowMax:
+      return static_cast<const TensorFlowMaxOperator&>(op).keep_dims;
+    case OperatorType::kTensorFlowSum:
+      return static_cast<const TensorFlowSumOperator&>(op).keep_dims;
+    case OperatorType::kMean:
+      return static_cast<const MeanOperator&>(op).keep_dims;
+    default:
+      LOG(FATAL) << "Not a reduction operator!";
+      return false;
+  }
+}
+
 void ProcessTensorFlowReductionOperator(Model* model, Operator* op) {
   CHECK_LE(op->inputs.size(), 2);
   auto& output_array = *model->arrays[op->outputs[0]];
   if (output_array.has_shape()) {
     return;
   }
+  const auto& input_array = *model->arrays[op->inputs[0]];
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const bool keep_dims = KeepDims(*op);
   if (op->inputs.size() == 2) {
     // There is a reduction_indices input.
-    const auto& input_array = *model->arrays[op->inputs[0]];
     const auto& reduction_array = *model->arrays[op->inputs[1]];
     if (!reduction_array.buffer) {
       return;
     }
-    if (!input_array.has_shape()) {
-      return;
-    }
-    auto& input_shape = input_array.shape();
     CHECK(reduction_array.buffer->type == ArrayDataType::kInt32);
     const auto& reduction_array_vals =
         reduction_array.GetBuffer<ArrayDataType::kInt32>().data;
@@ -398,11 +415,17 @@ void ProcessTensorFlowReductionOperator(Model* model, Operator* op) {
       }
       if (!is_reduction_dim) {
         output_dims.push_back(input_shape.dims(i));
+      } else if (keep_dims) {
+        output_dims.push_back(1);
       }
     }
   } else {
     // No reduction_indices means complete reduction to a single scalar.
-    output_array.copy_shape(Shape({}));
+    if (keep_dims) {
+      output_array.copy_shape(input_shape);
+    } else {
+      output_array.copy_shape(Shape({}));
+    }
   }
 }
 
@@ -827,33 +850,6 @@ void ProcessPadOperator(Model* model, PadOperator* op) {
   output_array.copy_shape(output_shape);
 }
 
-void ProcessMeanOperator(Model* model, MeanOperator* op) {
-  CHECK_EQ(op->inputs.size(), 2);
-  CHECK_EQ(op->outputs.size(), 1);
-
-  const auto& input_array = *model->arrays[op->inputs[0]];
-
-  // Yield until input dims have been resolved.
-  if (!input_array.has_shape()) return;
-  const std::vector<int>& indices = op->reduction_indices;
-  if (indices.empty()) return;
-
-  auto& output_array = *model->arrays[op->outputs[0]];
-  if (output_array.has_shape()) return;
-
-  const std::vector<int>& input_dims = input_array.shape().dims();
-  std::vector<int> output_dims;
-  for (int i = 0; i < input_dims.size(); ++i) {
-    if (std::find(indices.begin(), indices.end(), i) == indices.end()) {
-      output_dims.push_back(input_dims[i]);
-    }
-  }
-  CHECK(!output_dims.empty());
-  CHECK_EQ(output_dims.size(), 2);
-
-  *output_array.mutable_shape()->mutable_dims() = output_dims;
-}
-
 void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
   CHECK_EQ(op->inputs.size(), 4);
   CHECK_EQ(op->outputs.size(), 1);
@@ -1024,6 +1020,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowMin:
     case OperatorType::kTensorFlowMax:
     case OperatorType::kTensorFlowSum:
+    case OperatorType::kMean:
       ProcessTensorFlowReductionOperator(model, op);
       break;
 
@@ -1097,9 +1094,6 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       break;
     case OperatorType::kPad:
       ProcessPadOperator(model, static_cast<PadOperator*>(op));
-      break;
-    case OperatorType::kMean:
-      ProcessMeanOperator(model, static_cast<MeanOperator*>(op));
       break;
     case OperatorType::kStridedSlice:
       ProcessStridedSliceOperator(model,

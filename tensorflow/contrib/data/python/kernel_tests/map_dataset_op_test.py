@@ -23,10 +23,9 @@ import threading
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import error_ops
-from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -44,10 +43,7 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import compat
 
 
@@ -702,19 +698,13 @@ class MapDatasetTest(test.TestCase):
           sess.run(init_op)
 
 
-class MapDatasetSerializationTest(test.TestCase):
+class MapDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def setUp(self):
     self._tensor_slice_len = 7
     self._num_epochs = 14
     self._num_outputs = self._tensor_slice_len * self._num_epochs
-
-  def tearDown(self):
-    # Remove all checkpoint files.
-    prefix = self._ckpt_path()
-    pattern = prefix + "*"
-    files = gfile.Glob(pattern)
-    map(gfile.Remove, files)
 
   def _build_ds(self, multiplier=37.0):
     components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
@@ -727,292 +717,11 @@ class MapDatasetSerializationTest(test.TestCase):
     return (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
             .repeat(self._num_epochs))
 
-  def _build_graph(self, multiplier=37.0, build_saveable=True):
-    ds = self._build_ds(multiplier)
-    iterator = ds.make_initializable_iterator()
-
-    if build_saveable:
-      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
-      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-    self._add_iterator_ops_to_collection(init_op, get_next)
-    saver = saver_lib.Saver(allow_empty=True)
-    return init_op, get_next, saver
-
-  def _build_empty_graph(self, output_types, output_shapes):
-    iterator = iterator_ops.Iterator.from_structure(output_types, output_shapes)
-    saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
-    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
-    saver = saver_lib.Saver()
-    get_next = iterator.get_next()
-    return get_next, saver
-
-  def _add_iterator_ops_to_collection(self, init_op, get_next):
-    ops.add_to_collection("iterator_ops", init_op)
-    ops.add_to_collection("iterator_ops", get_next[0])
-    ops.add_to_collection("iterator_ops", get_next[1])
-    ops.add_to_collection("iterator_ops", get_next[2])
-
-  def _get_iterator_ops_from_collection(self):
-    init_op, get_next_1, get_next_2, get_next_3 = ops.get_collection(
-        "iterator_ops")
-    return init_op, (get_next_1, get_next_2, get_next_3)
-
-  def _ckpt_path(self):
-    return os.path.join(self.get_temp_dir(), "iterator")
-
-  def _latest_ckpt(self):
-    return saver_lib.latest_checkpoint(self.get_temp_dir())
-
-  def _save(self, sess, saver):
-    saver.save(sess, self._ckpt_path())
-
-  def _restore(self, saver, sess):
-    saver.restore(sess, self._latest_ckpt())
-
-  def _import_meta_graph(self):
-    meta_file_path = self._ckpt_path() + ".meta"
-    return saver_lib.import_meta_graph(meta_file_path)
-
-  def _testReadWithBreaks(self, break_points, init_before_restore=False):
-    expected = []
-    actual = []
-    # Generate the ground truth.
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, _ = self._build_graph()
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(self._num_outputs):
-          expected.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-    # Run and checkpoint after first break_point.
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph()
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(break_points[0]):
-          actual.append(sess.run(get_next_op))
-        self._save(sess, saver)
-
-    # Load from checkpoint and continue running while stopping at each
-    # subsequent checkpoint.
-    for i in range(len(break_points)):
-      with ops.Graph().as_default() as g:
-        saver = self._import_meta_graph()
-        init_op, get_next_op = self._get_iterator_ops_from_collection()
-        with self.test_session(graph=g) as sess:
-          if init_before_restore:
-            sess.run(init_op)
-          self._restore(saver, sess)
-          start = break_points[i]
-          end = break_points[
-              i + 1] if i < len(break_points) - 1 else self._num_outputs
-          for _ in range(end - start):
-            actual.append(sess.run(get_next_op))
-          self._save(sess, saver)
-          if end == self._num_outputs:
-            with self.assertRaises(errors.OutOfRangeError):
-              sess.run(get_next_op)
-    self._match(expected, actual)
-
-  def _match(self, expected, actual):
-    self.assertEqual(len(expected), len(actual))
-    for expected_tuple, actual_tuple in zip(expected, actual):
-      self.assertEqual(expected_tuple[0], actual_tuple[0])
-      self.assertSequenceEqual(expected_tuple[1].tolist(),
-                               actual_tuple[1].tolist())
-      self.assertEqual(expected_tuple[2], actual_tuple[2])
-
-  def _does_not_match(self, expected, actual):
-    with self.assertRaises(AssertionError):
-      self._match(expected, actual)
-
-  def testSaveRestore(self):
-    self._testReadWithBreaks([4])
-    self._testReadWithBreaks([13])
-    self._testReadWithBreaks([18])
-    self._testReadWithBreaks([23])
-
-  def testSaveUnusedIterator(self):
-    self._testReadWithBreaks([0])
-
-  def testSaveFullyUsedIterator(self):
-    self._testReadWithBreaks([self._num_outputs])
-
-  def testMultipleBreaks(self):
-    self._testReadWithBreaks([0, 5, 9, 15, 25, 32])
-
-  def testIdempotence(self):
-    # Attempt to save iterator immediately after restoring.
-    self._testReadWithBreaks([1, 1, 5, 5, 5, 25, 32])
-
-  def testInitThenRestore(self):
-    self._testReadWithBreaks([0, 5, 9, 15, 25, 32], init_before_restore=True)
-
-  def testRestoreExhaustedIterator(self):
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph()
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(self._num_outputs):
-          sess.run(get_next_op)
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-        self._save(sess, saver)
-
-      with ops.Graph().as_default() as g:
-        saver = self._import_meta_graph()
-        init_op, get_next_op = self._get_iterator_ops_from_collection()
-        with self.test_session(graph=g) as sess:
-          self._restore(saver, sess)
-          with self.assertRaises(errors.OutOfRangeError):
-            sess.run(get_next_op)
-
-  def testResetRestoredIterator(self):
-    expected = []
-    # Collect ground truth containing all outputs.
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph()
-      break_point = self._num_outputs // 2
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(break_point):
-          expected.append(sess.run(get_next_op))
-        self._save(sess, saver)
-        for _ in range(self._num_outputs - break_point):
-          expected.append(sess.run(get_next_op))
-
-    actual = []
-    # Restore from checkpoint and then run init_op.
-    with ops.Graph().as_default() as g:
-      saver = self._import_meta_graph()
-      init_op, get_next_op = self._get_iterator_ops_from_collection()
-      with self.test_session(graph=g) as sess:
-        self._restore(saver, sess)
-        sess.run(init_op)
-        for _ in range(self._num_outputs):
-          actual.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-    self._match(expected, actual)
-
-  def testRestoreInModifiedGraph(self):
-    expected = []
-    actual_without_restore = []
-    actual = []
-    break_point = 10
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph(multiplier=15.0)
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(break_point):
-          expected.append(sess.run(get_next_op))
-        actual.extend(expected)
-        self._save(sess, saver)
-        for _ in range(self._num_outputs - break_point):
-          expected.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-    # Collect outputs by running modified graph.
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph(multiplier=30.0)
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(self._num_outputs):
-          actual_without_restore.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-    # Restore the checkpoint in the modified graph.
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph(multiplier=30.0)
-      with self.test_session(graph=g) as sess:
-        self._restore(saver, sess)
-        for _ in range(self._num_outputs - break_point):
-          actual.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-    # Ensure the modified graph gets overridden when restoring checkpoint.
-    self._does_not_match(expected, actual_without_restore)
-    # Expect that the outputs are what we would expect if we ran the old
-    # graph.
-    self._match(expected, actual)
-
-  # TODO(srbs): Add this test to dataset_serialization_test_base.py.
-  def testRestoreInEmptyGraph(self):
-    expected = []
-    actual = []
-    break_point = 10
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph(multiplier=15.0)
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(break_point):
-          sess.run(get_next_op)
-        self._save(sess, saver)
-        for _ in range(self._num_outputs - break_point):
-          expected.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-    with ops.Graph().as_default() as g:
-      ds = self._build_ds()
-      output_types = ds.output_types
-      output_shapes = ds.output_shapes
-
-    with ops.Graph().as_default() as g:
-      get_next_op, saver = self._build_empty_graph(output_types, output_shapes)
-      with self.test_session(graph=g) as sess:
-        self._restore(saver, sess)
-        for _ in range(self._num_outputs - break_point):
-          actual.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-    # Expect that the outputs are what we would expect if we ran the old
-    # graph.
-    self._match(expected, actual)
-
-  def testDoNotBuildSaveable(self):
-    break_point = 10
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph(multiplier=15.0)
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(break_point):
-          sess.run(get_next_op)
-        self._save(sess, saver)
-
-    expected = []
-    # Collect ground truth by running modified graph.
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph(multiplier=30.0)
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(self._num_outputs):
-          expected.append(sess.run(get_next_op))
-
-    actual = []
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph(
-          multiplier=30.0, build_saveable=False)
-      with self.test_session(graph=g) as sess:
-        # Since the SaveableObject was not added to Saver's list
-        # of saveables, iterator state is not restored by saver.restore().
-        self._restore(saver, sess)
-        with self.assertRaises(errors.FailedPreconditionError):
-          sess.run(get_next_op)
-        sess.run(init_op)
-        for _ in range(self._num_outputs):
-          actual.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-    self._match(expected, actual)
+  def testSaveRestoreCore(self):
+    self.run_core_tests(
+        self._build_ds,
+        lambda: self._build_ds(multiplier=15.0),
+        self._num_outputs)
 
   def testSaveStatefulFunction(self):
 
@@ -1024,26 +733,7 @@ class MapDatasetSerializationTest(test.TestCase):
 
       return dataset_ops.Dataset.range(100).map(_map_fn)
 
-    def _build_graph():
-      ds = _build_ds()
-      iterator = ds.make_initializable_iterator()
-
-      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
-      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      saver = saver_lib.Saver(allow_empty=True)
-      return init_op, get_next, saver
-
-    break_point = 10
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = _build_graph()
-      with self.test_session(graph=g) as sess:
-        sess.run(init_op)
-        for _ in range(break_point):
-          sess.run(get_next_op)
-        with self.assertRaises(errors.InvalidArgumentError):
-          self._save(sess, saver)
+    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
 
   def testCaptureVariableInMapFn(self):
 
@@ -1053,27 +743,7 @@ class MapDatasetSerializationTest(test.TestCase):
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda _: counter_var.assign_add(1)))
 
-    def _build_graph():
-      ds = _build_ds()
-      iterator = ds.make_initializable_iterator()
-
-      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
-      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      saver = saver_lib.Saver(allow_empty=True)
-      return init_op, get_next, saver
-
-    break_point = 10
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = _build_graph()
-      with self.test_session(graph=g) as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(init_op)
-        for _ in range(break_point):
-          sess.run(get_next_op)
-        with self.assertRaises(errors.InvalidArgumentError):
-          self._save(sess, saver)
+    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
 
   def testCaptureDefunInMapFn(self):
     num_outputs = 100
@@ -1086,46 +756,7 @@ class MapDatasetSerializationTest(test.TestCase):
 
       return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
 
-    def _build_graph():
-      ds = _build_ds()
-      iterator = ds.make_initializable_iterator()
-
-      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
-      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      saver = saver_lib.Saver(allow_empty=True)
-      return init_op, get_next, saver
-
-    break_point = 10
-    expected = []
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = _build_graph()
-      with self.test_session(graph=g) as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(init_op)
-        for _ in range(break_point):
-          sess.run(get_next_op)
-        self._save(sess, saver)
-        for _ in range(num_outputs - break_point):
-          expected.append(sess.run(get_next_op))
-
-    with ops.Graph().as_default() as g:
-      ds = _build_ds()
-      output_types = ds.output_types
-      output_shapes = ds.output_shapes
-
-    actual = []
-    with ops.Graph().as_default() as g:
-      get_next_op, saver = self._build_empty_graph(output_types, output_shapes)
-      with self.test_session(graph=g) as sess:
-        self._restore(saver, sess)
-        for _ in range(num_outputs - break_point):
-          actual.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-    self.assertSequenceEqual(expected, actual)
+    self.run_core_tests(_build_ds, None, num_outputs)
 
   def testBuildDefunInMapFn(self):
     num_outputs = 100
@@ -1143,46 +774,23 @@ class MapDatasetSerializationTest(test.TestCase):
 
       return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
 
-    def _build_graph():
-      ds = _build_ds()
-      iterator = ds.make_initializable_iterator()
+    self.run_core_tests(_build_ds, None, num_outputs)
 
-      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
-      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      saver = saver_lib.Saver(allow_empty=True)
-      return init_op, get_next, saver
 
-    break_point = 10
-    expected = []
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = _build_graph()
-      with self.test_session(graph=g) as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(init_op)
-        for _ in range(break_point):
-          sess.run(get_next_op)
-        self._save(sess, saver)
-        for _ in range(num_outputs - break_point):
-          expected.append(sess.run(get_next_op))
+class IgnoreErrorsSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
 
-    with ops.Graph().as_default() as g:
-      ds = _build_ds()
-      output_types = ds.output_types
-      output_shapes = ds.output_shapes
+  def _build_ds(self, components):
+    return dataset_ops.Dataset.from_tensor_slices(components).map(
+        lambda x: array_ops.check_numerics(x, "message")).apply(
+            error_ops.ignore_errors())
 
-    actual = []
-    with ops.Graph().as_default() as g:
-      get_next_op, saver = self._build_empty_graph(output_types, output_shapes)
-      with self.test_session(graph=g) as sess:
-        self._restore(saver, sess)
-        for _ in range(num_outputs - break_point):
-          actual.append(sess.run(get_next_op))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next_op)
-
-    self.assertSequenceEqual(expected, actual)
+  def testIgnoreErrorsCore(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+    diff_components = np.array([1., 2., 3., np.nan]).astype(np.float32)
+    num_outputs = 4
+    self.run_core_tests(lambda: self._build_ds(components),
+                        lambda: self._build_ds(diff_components), num_outputs)
 
 
 if __name__ == "__main__":

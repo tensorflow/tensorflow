@@ -237,6 +237,7 @@ class OperationTest(test_util.TensorFlowTestCase):
         ops._NodeDef("RefOutputFloatOutput", "op1"), g, [],
         [dtypes.float32_ref, dtypes.float32])
     self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'", op1.node_def)
+    self.assertEquals([], list(op1.inputs))
     ref_t, nonref_t = op1.values()
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
     op2 = ops.Operation(
@@ -246,6 +247,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertProtoEquals(
         "op:'RefInputFloatInput' name:'op2' input:'op1' input:'op1:1'",
         op2.node_def)
+    self.assertEquals([ref_t, nonref_t], list(op2.inputs))
     op3 = ops.Operation(
         ops._NodeDef("TwoFloatInputs", "op3"), g, [ref_t, nonref_t], [])
     self.assertProtoEquals(
@@ -575,6 +577,16 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(z.op.op_def.input_arg), 2)
     self.assertEqual(len(z.op.op_def.output_arg), 1)
 
+  def testInputFromDifferentGraphError(self):
+    g_0 = ops.Graph()
+    g_1 = ops.Graph()
+    with g_0.as_default():
+      x = constant_op.constant(1)
+    with g_1.as_default():
+      y = constant_op.constant(2)
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        y * x  # pylint: disable=pointless-statement
+
 
 @test_util.with_c_api
 class CreateOpTest(test_util.TensorFlowTestCase):
@@ -632,6 +644,164 @@ class CreateOpTest(test_util.TensorFlowTestCase):
     # Test unfinalize.
     g._unsafe_unfinalize()
     g.create_op("FloatOutput", [], [dtypes.float32], None, name="myop1")
+
+
+# NOTE(skyewm): these cases test the private Graph._create_op_from_tf_operation
+# method. Arguably we should only test the public APIs that depend on this
+# method. However, this logic is complex and tricky, and it can be difficult to
+# ascertain if we have adequate coverage (e.g. a graph may run successfully if
+# the control flow context isn't set properly, but a more complicated use case
+# that might not be obvious to test will fail). Thus we instead explicitly test
+# the low-level behavior.
+@test_util.with_c_api
+class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+      if ops._USE_C_API:
+        c_op = ops._create_c_op(
+            g, ops._NodeDef("IntInputIntOutput", "myop"), [x], [])
+        op = g._create_op_from_tf_operation(c_op)
+      else:
+        # Test pure-Python version to make sure C API has same behavior.
+        op = test_ops.int_input_int_output(x, name="myop").op
+
+    self.assertEqual(op.name, "myop")
+    self.assertEqual(op.type, "IntInputIntOutput")
+    self.assertEqual(len(op.outputs), 1)
+    self.assertEqual(list(op.inputs), [x])
+    self.assertEqual(op.control_inputs, [])
+    self.assertEqual(op.graph, g)
+    self.assertEqual(x.consumers(), [op])
+    self.assertIsNotNone(op.traceback)
+    self.assertEqual(g.get_operation_by_name("myop"), op)
+    self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
+
+  def testCond(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+
+      def true_fn():
+        if ops._USE_C_API:
+          c_op = ops._create_c_op(ops.get_default_graph(),
+                                  ops._NodeDef("IntInput", "cond/myop"), [x],
+                                  [])
+          ops.get_default_graph()._create_op_from_tf_operation(c_op)
+        else:
+          # Test pure-Python version to make sure C API has same behavior.
+          test_ops.int_input(x, name="myop")
+        return x
+
+      control_flow_ops.cond(x < 10, true_fn, lambda: x)
+
+    op = g.get_operation_by_name("cond/myop")
+    self.assertIsNotNone(op)
+    self.assertEqual(op.name, "cond/myop")
+    self.assertEqual(op.type, "IntInput")
+    self.assertEqual(op.outputs, [])
+    op_input = op.inputs[0].op
+    self.assertEqual(op_input.type, "Switch")
+    self.assertEqual(op_input.inputs[0], x)
+    self.assertEqual(op.graph, g)
+    # pylint: disable=protected-access
+    self.assertIsNotNone(op._get_control_flow_context())
+    self.assertEqual(op._get_control_flow_context().name,
+                     "cond/cond_text")
+    # pylint: enable=protected-access
+
+  def testWhileLoop(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+
+      def body(i):
+        if ops._USE_C_API:
+          c_op = ops._create_c_op(ops.get_default_graph(),
+                                  ops._NodeDef("IntInput", "myloop/myop"), [x],
+                                  [])
+          ops.get_default_graph()._create_op_from_tf_operation(c_op)
+        else:
+          # Test pure-Python version to make sure C API has same behavior.
+          test_ops.int_input(x, name="myop")
+        return i
+
+      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+
+    op = g.get_operation_by_name("myloop/myop")
+    self.assertIsNotNone(op)
+    self.assertEqual(op.name, "myloop/myop")
+    self.assertEqual(op.type, "IntInput")
+    self.assertEqual(op.outputs, [])
+    op_input = op.inputs[0].op
+    self.assertEqual(op_input.type, "Enter")
+    self.assertEqual(list(op_input.inputs), [x])
+    self.assertEqual(op.graph, g)
+    # pylint: disable=protected-access
+    self.assertIsNotNone(op._get_control_flow_context())
+    self.assertEqual(op._get_control_flow_context().name,
+                     "myloop/while_context")
+    # pylint: enable=protected-access
+
+  def testWhileLoopWithInternalControlDep(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+
+      def body(i):
+        c = constant_op.constant(1.0, name="c")
+        if ops._USE_C_API:
+          c_op = ops._create_c_op(ops.get_default_graph(),
+                                  ops._NodeDef("IntInput", "myloop/myop"), [x],
+                                  [])
+          with ops.control_dependencies([c]):
+            ops.get_default_graph()._create_op_from_tf_operation(c_op)
+        else:
+          with ops.control_dependencies([c]):
+            test_ops.int_input(x, name="myop")
+        return i
+
+      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+
+    op = g.get_operation_by_name("myloop/myop")
+    self.assertIsNotNone(op)
+    c = g.get_operation_by_name("myloop/c")
+    self.assertIsNotNone(c)
+    # Internal control dep is preserved
+    self.assertEqual(op.control_inputs, [c])
+
+  def testWhileLoopWithExternalControlDep(self):
+    # TODO(skyewm): enable once ControlFlowContext._RemoveExternalControlEdges
+    # works with C API enabled
+    if ops._USE_C_API: self.skipTest("Not yet implemented with C API enabled")
+
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+      c = constant_op.constant(1.0)
+
+      def body(i):
+        if ops._USE_C_API:
+          c_op = ops._create_c_op(ops.get_default_graph(),
+                                  ops._NodeDef("IntInput", "myloop/myop"), [x],
+                                  [])
+          with ops.control_dependencies([c]):
+            ops.get_default_graph()._create_op_from_tf_operation(c_op)
+        else:
+          with ops.control_dependencies([c]):
+            test_ops.int_input(x, name="myop")
+        return i
+
+      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+
+    op = g.get_operation_by_name("myloop/myop")
+    self.assertIsNotNone(op)
+    self.assertEqual(len(op.control_inputs), 1)
+    # External control dep is removed and replaced with internal control dep
+    self.assertNotEqual(op.control_inputs[0], c.op)
+    self.assertIsNotNone(op.control_inputs[0]._get_control_flow_context())
 
 
 @test_util.with_c_api
@@ -1571,6 +1741,20 @@ class GraphTest(test_util.TensorFlowTestCase):
       self._AssertDefault(g0)
     self._AssertDefault(orig)
 
+  def testPreventFeeding(self):
+    g = ops.Graph()
+    a = constant_op.constant(2.0)
+    self.assertTrue(g.is_feedable(a))
+    g.prevent_feeding(a)
+    self.assertFalse(g.is_feedable(a))
+
+  def testPreventFetching(self):
+    g = ops.Graph()
+    a = constant_op.constant(2.0)
+    self.assertTrue(g.is_fetchable(a))
+    g.prevent_fetching(a.op)
+    self.assertFalse(g.is_fetchable(a))
+
   def testAsGraphElementConversions(self):
 
     class ConvertibleObj(object):
@@ -1934,7 +2118,7 @@ class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
 
   def testSuccess(self):
     op = ops.Operation(
-        ops._NodeDef("None", "myop"), ops.Graph(), [], [dtypes.float32])
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     self.assertTrue(ops.is_dense_tensor_like(t))
 

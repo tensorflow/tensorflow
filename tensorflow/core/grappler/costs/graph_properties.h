@@ -26,6 +26,9 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+class SymbolicShapeRefiner;
+class TopoQueue;
+
 // A TensorFlow model to optimize.
 // Models are represented by the combination of a graph, one of more fetch
 // nodes, and potentially a set of nodes to feed.
@@ -70,31 +73,43 @@ class GraphProperties {
 
   // Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.
-  Status MergeEnqueueShapesAndTypes(
+  static Status MergeEnqueueShapesAndTypes(
+      SymbolicShapeRefiner* shape_refiner, const Node* qnode,
       const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
-      shape_inference::InferenceContext* qctx,
       std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
   // Relaxes shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.
-  Status RelaxEnqueueShapesAndMergeTypes(
+  static Status RelaxEnqueueShapesAndMergeTypes(
+      SymbolicShapeRefiner* shape_refiner, const Node* qnode,
       const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
-      shape_inference::InferenceContext* qctx,
       std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
 
-  // This gives access to private function of InferenceContext.
-  static void Relax(shape_inference::InferenceContext* c,
-                    shape_inference::ShapeHandle s0,
-                    shape_inference::ShapeHandle s1,
-                    shape_inference::ShapeHandle* out);
+  // Update the shapes for qnode. If output shapes of qnode have changed,
+  // enqueue its fanout in 'new_shapes'.
+  static Status UpdateResource(
+      const Node* qnode, const std::unordered_set<const Node*>& queue_inputs,
+      SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes);
 
-  // These give access to private functions of ShapeRefiner.
-  static bool SameDefinedShape(shape_inference::InferenceContext* c,
-                               shape_inference::ShapeHandle s0,
-                               shape_inference::ShapeHandle s1);
-  static bool IsUpdatedShapesOrTypes(
-      shape_inference::InferenceContext* c,
-      const std::vector<shape_inference::ShapeAndType>& existing,
-      const std::vector<shape_inference::ShapeAndType>& updated);
+  // Update the output shapes of a Merge node, and enqueue its fanout in
+  // new_shapes if needed.
+  static Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
+                                const Node* node, bool relax,
+                                TopoQueue* new_shapes);
+  // Process the Enter node, and enqueue its fanout in new_shapes if needed.
+  static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
+                            const Node* node, bool relax,
+                            TopoQueue* new_shapes);
+  // Update the shapes for node 'n'. If output shapes for n have changed,
+  // enqueue its fanout in 'new_shapes'.
+  static Status UpdateShapes(SymbolicShapeRefiner* shape_refiner, bool relax,
+                             const Node* n, TopoQueue* new_shapes);
+  // Propagate the shapes for the nodes enqueued in new_shapes and their
+  // transitive fanout until a fixed point is reached.
+  Status PropagateShapes(
+      SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
+      const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
+          resources,
+      int num_loops) const;
 };
 
 }  // end namespace grappler

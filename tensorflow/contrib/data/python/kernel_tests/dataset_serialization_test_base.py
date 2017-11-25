@@ -23,9 +23,11 @@ import os
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
@@ -62,6 +64,8 @@ class DatasetSerializationTestBase(test.TestCase):
     self.verify_multiple_breaks(
         ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
     self.verify_reset_restored_iterator(
+        ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
+    self.verify_restore_in_empty_graph(
         ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
     if ds_fn2:
       self.verify_restore_in_modified_graph(
@@ -229,6 +233,7 @@ class DatasetSerializationTestBase(test.TestCase):
           ds_fn, sparse_tensors=sparse_tensors)
       with self.test_session(graph=g) as sess:
         self._restore(saver, sess)
+        sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for _ in range(num_outputs):
           actual.append(sess.run(get_next_op))
@@ -298,6 +303,97 @@ class DatasetSerializationTestBase(test.TestCase):
             sess.run(get_next_op)
 
     self.match(expected, actual)
+
+  def verify_restore_in_empty_graph(self,
+                                    ds_fn,
+                                    num_outputs,
+                                    break_point=None,
+                                    sparse_tensors=False,
+                                    verify_exhausted=True):
+    """Attempts to restore an iterator in an empty graph.
+
+    Builds an input pipeline using ds_fn, runs it for `break_point` steps
+    and saves a checkpoint. Then builds a new empty graph, restores
+    the checkpoint from ds_fn and verifies that the restore is successful.
+
+    Args:
+      ds_fn: See `run_core_tests`.
+      num_outputs: See `run_core_tests`.
+      break_point: Break point. Optional. Defaults to num_outputs/2.
+      sparse_tensors: See `run_core_tests`.
+      verify_exhausted: See `gen_outputs`.
+
+    Raises:
+      AssertionError if any test fails.
+    """
+    break_point = num_outputs // 2 if not break_point else break_point
+
+    # Skip `break_point` items and store the remaining produced from ds_fn
+    # in `expected`.
+    self.gen_outputs(
+        ds_fn, [],
+        break_point,
+        sparse_tensors=sparse_tensors,
+        verify_exhausted=False)
+    expected = self.gen_outputs(
+        ds_fn, [],
+        num_outputs - break_point,
+        ckpt_saved=True,
+        sparse_tensors=sparse_tensors,
+        verify_exhausted=verify_exhausted)
+
+    # Generate `break_point` items from ds_fn and save checkpoint.
+    self.gen_outputs(
+        ds_fn, [],
+        break_point,
+        sparse_tensors=sparse_tensors,
+        verify_exhausted=False)
+
+    actual = []
+    # Build an empty graph but load checkpoint for ds_fn.
+    with ops.Graph().as_default() as g:
+      get_next_op, saver = self._build_empty_graph(
+          ds_fn, sparse_tensors=sparse_tensors)
+      with self.test_session(graph=g) as sess:
+        self._restore(saver, sess)
+        for _ in range(num_outputs - break_point):
+          actual.append(sess.run(get_next_op))
+        if verify_exhausted:
+          with self.assertRaises(errors.OutOfRangeError):
+            sess.run(get_next_op)
+
+    self.match(expected, actual)
+
+  def verify_error_on_save(self,
+                           ds_fn,
+                           num_outputs,
+                           error,
+                           break_point=None,
+                           sparse_tensors=False):
+    """Attempts to save a non-saveable iterator.
+
+    Args:
+      ds_fn: See `run_core_tests`.
+      num_outputs: See `run_core_tests`.
+      error: Declared error when trying to save iterator.
+      break_point: Break point. Optional. Defaults to num_outputs/2.
+      sparse_tensors: See `run_core_tests`.
+
+    Raises:
+      AssertionError if any test fails.
+    """
+
+    break_point = num_outputs // 2 if not break_point else break_point
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, saver = self._build_graph(
+          ds_fn, sparse_tensors=sparse_tensors)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for _ in range(break_point):
+          sess.run(get_next_op)
+        with self.assertRaises(error):
+          self._save(sess, saver)
 
   def verify_run_with_breaks(self,
                              ds_fn,
@@ -395,9 +491,11 @@ class DatasetSerializationTestBase(test.TestCase):
         with self.test_session(graph=g) as sess:
           if ckpt_saved:
             if init_before_restore:
+              sess.run(variables.global_variables_initializer())
               sess.run(init_op)
             self._restore(saver, sess)
           else:
+            sess.run(variables.global_variables_initializer())
             sess.run(init_op)
           start = break_points[i - 1] if i > 0 else 0
           end = break_points[i] if i < len(break_points) else num_outputs
@@ -466,6 +564,18 @@ class DatasetSerializationTestBase(test.TestCase):
     saver = saver_lib.Saver(allow_empty=True)
     return init_op, get_next, saver
 
+  def _build_empty_graph(self, ds_fn, sparse_tensors=False):
+    iterator = iterator_ops.Iterator.from_structure(
+        self._get_output_types(ds_fn), self._get_output_shapes(ds_fn))
+    saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+    if sparse_tensors:
+      get_next = sparse_tensor.SparseTensor(*iterator.get_next())
+    else:
+      get_next = iterator.get_next()
+    saver = saver_lib.Saver(allow_empty=True)
+    return get_next, saver
+
   def _add_iterator_ops_to_collection(self,
                                       init_op,
                                       get_next,
@@ -494,6 +604,10 @@ class DatasetSerializationTestBase(test.TestCase):
   def _get_output_types(self, ds_fn):
     with ops.Graph().as_default():
       return ds_fn().output_types
+
+  def _get_output_shapes(self, ds_fn):
+    with ops.Graph().as_default():
+      return ds_fn().output_shapes
 
   def _ckpt_path(self):
     return os.path.join(self.get_temp_dir(), "iterator")
