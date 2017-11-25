@@ -62,6 +62,7 @@ first_n: Only log `first_n` number of times. -1 disables logging.\n\
 summarize: Only print this many entries of each tensor.\n\
 )doc")
 REGISTER_PRINT_OP("Print", "T");
+REGISTER_PRINT_OP("PrintRef", "Ref(T)");
 #undef REGISTER_PRINT_OP
 
 // ----------------------------------------------------------------------------
