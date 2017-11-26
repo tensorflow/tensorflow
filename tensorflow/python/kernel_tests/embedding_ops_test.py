@@ -736,6 +736,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
             x, sp_ids, sp_weights, combiner="mean")
 
   def testMissingInSparseIds(self):
+    # Github issue, 14851
     with self.test_session():
       x = array_ops.ones((4, 5))
       sp_ids = sparse_tensor.SparseTensor(
