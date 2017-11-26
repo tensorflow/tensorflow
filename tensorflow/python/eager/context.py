@@ -58,6 +58,7 @@ class _EagerContext(threading.local):
     self.mode = _default_mode
     self.scope_name = ""
     self.recording_summaries = False
+    self.summary_writer_resource = None
     self.scalar_cache = {}
 
 
@@ -86,7 +87,6 @@ class Context(object):
     self._eager_context = _EagerContext()
     self._context_handle = None
     self._context_devices = None
-    self._summary_writer_resource = None
     self._post_execution_callbacks = []
     self._config = config
     self._seed = None
@@ -213,12 +213,12 @@ class Context(object):
   @property
   def summary_writer_resource(self):
     """Returns summary writer resource."""
-    return self._summary_writer_resource
+    return self._eager_context.summary_writer_resource
 
   @summary_writer_resource.setter
   def summary_writer_resource(self, resource):
     """Sets summary writer resource."""
-    self._summary_writer_resource = resource
+    self._eager_context.summary_writer_resource = resource
 
   @property
   def device_name(self):

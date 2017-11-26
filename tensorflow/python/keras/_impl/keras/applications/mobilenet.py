@@ -73,6 +73,7 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
+from tensorflow.python.keras._impl.keras.applications import imagenet_utils
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
 from tensorflow.python.keras._impl.keras.engine import InputSpec
@@ -97,10 +98,15 @@ def relu6(x):
 
 
 def preprocess_input(x):
-  x /= 255.
-  x -= 0.5
-  x *= 2.
-  return x
+  """Preprocesses a numpy array encoding a batch of images.
+
+  Arguments:
+      x: a 4D numpy array consists of RGB values within [0, 255].
+
+  Returns:
+      Preprocessed array.
+  """
+  return imagenet_utils.preprocess_input(x, mode='tf')
 
 
 class DepthwiseConv2D(Conv2D):

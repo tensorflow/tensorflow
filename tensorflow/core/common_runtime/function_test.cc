@@ -939,9 +939,8 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
 TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Handle handle;
-  TF_CHECK_OK(Instantiate(
-      flr0_, "FindDevice",
-      {{"_target", "/job:localhost/replica:0/task:0/cpu:1"}}, &handle));
+  TF_CHECK_OK(Instantiate(flr0_, "FindDevice", {{"_target", "/device:CPU:1"}},
+                          &handle));
 
   Tensor y;
   FunctionLibraryRuntime::Options opts;

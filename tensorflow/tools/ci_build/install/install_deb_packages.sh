@@ -28,6 +28,7 @@ if [[ "$1" != "" ]] && [[ "$1" != "--without_cmake" ]]; then
 fi
 
 # Install dependencies from ubuntu deb repository.
+apt-key adv --keyserver keyserver.ubuntu.com --recv 084ECFC5828AB726
 apt-get update
 
 if [[ "$ubuntu_version" == "14" ]]; then
@@ -41,6 +42,7 @@ apt-get install -y --no-install-recommends \
     autoconf \
     automake \
     build-essential \
+    clang-format-3.8 \
     curl \
     ffmpeg \
     git \

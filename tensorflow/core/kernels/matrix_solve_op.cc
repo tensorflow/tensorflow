@@ -44,17 +44,11 @@ static const char kErrMsg[] = "Input matrix is not invertible.";
 template <class Scalar>
 class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar> Base;
+  INHERIT_LINALG_TYPEDEFS(Scalar);
 
   explicit MatrixSolveOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
   }
-
-  using TensorShapes = typename Base::TensorShapes;
-  using Matrix = typename Base::Matrix;
-  using MatrixMaps = typename Base::MatrixMaps;
-  using ConstMatrixMap = typename Base::ConstMatrixMap;
-  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
 
   void ValidateInputMatrixShapes(
       OpKernelContext* context,
@@ -102,7 +96,6 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
     // a result of basic user mistakes such providing integer valued
     // matrices that are exactly singular, or due to underflow if this
     // code is run with denormals being flushed to zero.
-    using RealScalar = typename Base::RealScalar;
     const RealScalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),

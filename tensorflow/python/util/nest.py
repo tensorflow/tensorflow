@@ -116,7 +116,7 @@ def flatten(nest):
   used instead. The same convention is followed in `pack_sequence_as`. This
   correctly repacks dicts and `OrderedDict`s after they have been flattened,
   and also allows flattening an `OrderedDict` and then repacking it back using
-  a correponding plain dict, or vice-versa.
+  a corresponding plain dict, or vice-versa.
   Dictionaries with non-sortable keys cannot be flattened.
 
   Users must not modify any collections used in `nest` while this function is
@@ -293,10 +293,10 @@ def pack_sequence_as(structure, flat_sequence):
   If `structure` is or contains a dict instance, the keys will be sorted to
   pack the flat sequence in deterministic order. This is true also for
   `OrderedDict` instances: their sequence order is ignored, the sorting order of
-  keys is used instead. The same convention is followed in `pack_sequence_as`.
+  keys is used instead. The same convention is followed in `flatten`.
   This correctly repacks dicts and `OrderedDict`s after they have been
   flattened, and also allows flattening an `OrderedDict` and then repacking it
-  back using a correponding plain dict, or vice-versa.
+  back using a corresponding plain dict, or vice-versa.
   Dictionaries with non-sortable keys cannot be flattened.
 
   Args:
@@ -451,6 +451,17 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "The two structures don't have the same sequence length. Input "
           "structure has length %s, while shallow structure has length %s."
           % (len(input_tree), len(shallow_tree)))
+
+    if check_types and isinstance(shallow_tree, dict):
+      if set(input_tree) != set(shallow_tree):
+        raise ValueError(
+            "The two structures don't have the same keys. Input "
+            "structure has keys %s, while shallow structure has keys %s."
+            % (list(_six.iterkeys(input_tree)),
+               list(_six.iterkeys(shallow_tree))))
+
+      input_tree = list(_six.iteritems(input_tree))
+      shallow_tree = list(_six.iteritems(shallow_tree))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,

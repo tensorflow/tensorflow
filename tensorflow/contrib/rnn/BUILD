@@ -62,21 +62,24 @@ tf_custom_op_py_library(
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:embedding_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -185,6 +188,8 @@ tf_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
@@ -224,9 +229,7 @@ tf_custom_op_library(
         "kernels/lstm_ops_gpu.cu.cc",
         "kernels/lstm_ops.h",
     ],
-    deps = [
-        "//tensorflow/core/kernels:eigen_helpers",
-    ],
+    deps = ["//tensorflow/core/kernels:eigen_helpers"],
 )
 
 tf_gen_op_wrapper_py(
@@ -248,9 +251,7 @@ tf_custom_op_library(
         "kernels/gru_ops_gpu.cu.cc",
         "kernels/gru_ops.h",
     ],
-    deps = [
-        "//tensorflow/core/kernels:eigen_helpers",
-    ],
+    deps = ["//tensorflow/core/kernels:eigen_helpers"],
 )
 
 tf_gen_op_wrapper_py(
@@ -382,7 +383,6 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
@@ -412,8 +412,5 @@ py_library(
     name = "benchmarking",
     srcs = ["python/kernel_tests/benchmarking.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:framework_ops",
-        "//third_party/py/numpy",
-    ],
+    deps = ["//tensorflow/python:framework_ops"],
 )

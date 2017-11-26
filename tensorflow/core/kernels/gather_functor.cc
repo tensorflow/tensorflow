@@ -28,7 +28,7 @@ namespace functor {
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                             \
   template <>                                                         \
   int64 GatherFunctor<GPUDevice, T, Index>::operator()(               \
-      const GPUDevice& d, typename TTypes<T, 3>::ConstTensor Tparams, \
+      OpKernelContext* ctx, typename TTypes<T, 3>::ConstTensor Tparams, \
       typename TTypes<Index>::ConstFlat Tindices,                     \
       typename TTypes<T, 3>::Tensor Tout);                            \
   extern template struct GatherFunctor<GPUDevice, T, Index>;

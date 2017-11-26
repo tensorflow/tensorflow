@@ -62,12 +62,50 @@ class FunctionTest(test.TestCase):
     @function.defun
     def step():
       def inner():
-        tape.watch_variable(v)
         return v * v
 
       return backprop.implicit_grad(inner)()[0][0]
 
     self.assertAllEqual(step(), 2.0)
+
+  def testDefunReadVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def f():
+      return v.read_value()
+
+    self.assertEqual(1.0, float(f()))
+
+  def testDefunAssignAddVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def f():
+      v.assign_add(2.0)
+      return v.read_value()
+
+    self.assertEqual(3.0, float(f()))
+
+  def testDefunDifferentiable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def f():
+      return v * v
+
+    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
+
+  def testDefunCanBeDifferentiatedTwice(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def f():
+      return v * v
+
+    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
+    # Ensure that v is watched again.
+    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
   def testGraphModeCaptureVariable(self):
     with context.graph_mode(), self.test_session() as sess:
@@ -85,6 +123,27 @@ class FunctionTest(test.TestCase):
       call = function.defun(o.call)
       op = call()
       self.assertAllEqual(sess.run(op), 2.0)
+
+  def testGraphModeManyFunctions(self):
+    with context.graph_mode(), self.test_session():
+
+      @function.defun
+      def f(x):
+        return x * x
+
+      @function.defun
+      def g(x):
+        return f(x) + 1
+
+      self.assertAllEqual(g(constant_op.constant(2.0)).eval(), 5.0)
+
+  def testDict(self):
+
+    @function.defun
+    def f(x):
+      return {'name': x + 1}
+
+    self.assertAllEqual(f(constant_op.constant(1.0))['name'], 2.0)
 
   def testTensorConversionWithDefun(self):
 
@@ -125,7 +184,7 @@ class FunctionTest(test.TestCase):
             'v', initializer=constant_op.constant(1.0))
         return x * constant_op.constant(2.0)
       with self.assertRaisesRegexp(ValueError,
-                                   'no trainable variables were accessed'):
+                                   'No trainable variables were accessed'):
         backprop.implicit_val_and_grad(f)()
 
   def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):

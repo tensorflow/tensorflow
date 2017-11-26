@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -44,6 +45,11 @@ Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
 
 // Returns node:port for the given <id>.
 string TensorIdToString(const tf2xla::TensorId& id);
+
+// Updates the sharding of <n> based on the sharding of its neighbors.
+// If <out_edges> is true, outgoing edges from <n> are considered; else incoming
+// edges are considered.
+Status SetNodeShardingFromNeighbors(Node* n, bool out_edges);
 
 }  // namespace tensorflow
 

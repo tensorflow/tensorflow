@@ -152,19 +152,36 @@ def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
       # Generate header
       f.write('# Automatically generated file; please do not edit\ntoc:\n')
       for module in modules:
-        f.write('  - title: ' + module + '\n'
-                '    section:\n' + '    - title: Overview\n' +
-                '      path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[module]
-                + '\n')
+        indent_num = module.count('.')
+        # Don't list `tf.submodule` inside `tf`
+        indent_num = max(indent_num, 1)
+        indent = '  '*indent_num
+
+        if indent_num > 1:
+          # tf.contrib.baysflow.entropy will be under
+          #   tf.contrib->baysflow->entropy
+          title = module.split('.')[-1]
+        else:
+          title = module
+
+        header = [
+            '- title: ' + title,
+            '  section:',
+            '  - title: Overview',
+            '    path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[module]]
+        header = ''.join([indent+line+'\n' for line in header])
+        f.write(header)
 
         symbols_in_module = module_children.get(module, [])
         # Sort case-insensitive, if equal sort case sensitive (upper first)
         symbols_in_module.sort(key=lambda a: (a.upper(), a))
 
         for full_name in symbols_in_module:
-          f.write('    - title: ' + full_name[len(module) + 1:] + '\n'
-                  '      path: /TARGET_DOC_ROOT/VERSION/' +
-                  symbol_to_file[full_name] + '\n')
+          item = [
+              '  - title: ' + full_name[len(module) + 1:],
+              '    path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[full_name]]
+          item = ''.join([indent+line+'\n' for line in item])
+          f.write(item)
 
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:

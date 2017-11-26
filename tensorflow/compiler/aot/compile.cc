@@ -100,8 +100,12 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::SessionModule> module,
                         computation.Snapshot());
+    // Serialize the SessionModule deterministically so that all the outputs of
+    // a tf_library genrule are deterministic.
+    string proto;
+    TF_RET_CHECK(SerializeToStringDeterministic(*module, &proto));
     TF_RETURN_IF_ERROR(
-        WriteBinaryProto(Env::Default(), flags.out_session_module, *module));
+        WriteStringToFile(Env::Default(), flags.out_session_module, proto));
   }
   xla::cpu::CpuAotCompilationOptions aot_opts(
       flags.target_triple, flags.target_cpu, flags.target_features,

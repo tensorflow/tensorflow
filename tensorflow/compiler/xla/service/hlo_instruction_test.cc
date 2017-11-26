@@ -59,15 +59,15 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override {
+  Status HandleConstant(HloInstruction* constant) override {
     EXPECT_EQ(0, count_.count(constant));
     count_[constant] = GetCountsForNode(constant);
     return Status::OK();
   }
 
-  Status HandleAdd(HloInstruction* add, HloInstruction* lhs,
-                   HloInstruction* rhs) override {
+  Status HandleAdd(HloInstruction* add) override {
+    auto lhs = add->operand(0);
+    auto rhs = add->operand(1);
     EXPECT_EQ(0, count_.count(add));
     EXPECT_GT(count_.count(lhs), 0);
     EXPECT_GT(count_.count(rhs), 0);
@@ -75,32 +75,26 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleNegate(HloInstruction* negate,
-                      HloInstruction* operand) override {
+  Status HandleNegate(HloInstruction* negate) override {
+    auto operand = negate->operand(0);
     EXPECT_EQ(0, count_.count(negate));
     EXPECT_GT(count_.count(operand), 0);
     count_[negate] = GetCountsForNode(negate);
     return Status::OK();
   }
 
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* /*function*/,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/)
-      override {
+  Status HandleMap(HloInstruction* map) override {
     EXPECT_EQ(0, count_.count(map));
-    for (HloInstruction* arg : operands) {
+    for (HloInstruction* arg : map->operands()) {
       EXPECT_GT(count_.count(arg), 0);
     }
     count_[map] = GetCountsForNode(map);
     return Status::OK();
   }
 
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override {
+  Status HandleReduce(HloInstruction* reduce) override {
+    auto arg = reduce->operand(0);
+    auto init_value = reduce->operand(1);
     EXPECT_EQ(0, count_.count(reduce));
     EXPECT_GT(count_.count(arg), 0);
     EXPECT_GT(count_.count(init_value), 0);
@@ -798,8 +792,8 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
   //   sub = Sub(mul, clamp)
   //   tuple = Tuple({sub, sub, mul, C1})
   //
-  // Notable complexities are repeated operands in a same instruction, different
-  // shapes, use of value in different expressions.
+  // Notable complexities are repeated operands in the same instruction,
+  // different shapes, use of value in different expressions.
   auto c1 = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
   auto c2 = builder.AddInstruction(
@@ -1144,35 +1138,34 @@ TEST_F(HloInstructionTest, CloneSuffixNames) {
   // Test cloning the same instruction multiple times.
   auto foo =
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "foo");
-  EXPECT_EQ(foo->Clone()->name(), "%foo.clone");
-  EXPECT_EQ(foo->Clone()->Clone()->name(), "%foo.clone2");
-  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "%foo.clone3");
+  EXPECT_EQ(foo->Clone()->name(), "foo.clone");
+  EXPECT_EQ(foo->Clone()->Clone()->name(), "foo.clone2");
+  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "foo.clone3");
 
   // Test custom suffixes.
-  EXPECT_EQ(foo->Clone("bar")->name(), "%foo.bar");
-  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "%foo.bar2");
-  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(),
-            "%foo.bar2.clone");
+  EXPECT_EQ(foo->Clone("bar")->name(), "foo.bar");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "foo.bar2");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(), "foo.bar2.clone");
 
   // Test instruction name with a dot.
   auto foo_baz = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.baz");
-  EXPECT_EQ(foo_baz->Clone()->name(), "%foo.baz.clone");
+  EXPECT_EQ(foo_baz->Clone()->name(), "foo.baz.clone");
 
   // Test incrementing a large number after the suffix.
   auto foo_clone234 = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clone234");
-  EXPECT_EQ(foo_clone234->Clone()->name(), "%foo.clone235");
+  EXPECT_EQ(foo_clone234->Clone()->name(), "foo.clone235");
 
   // Test a non-numeric string after the cloning suffix.
   auto foo_clonexyz = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clonexyz");
-  EXPECT_EQ(foo_clonexyz->Clone()->name(), "%foo.clonexyz.clone");
+  EXPECT_EQ(foo_clonexyz->Clone()->name(), "foo.clonexyz.clone");
 
   // Test a name with multiple appearances of the suffix.
   auto foo_clone_clone3 = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clone.clone3");
-  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "%foo.clone.clone4");
+  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "foo.clone.clone4");
 }
 
 TEST_F(HloInstructionTest, Stringification) {
@@ -1201,15 +1194,16 @@ TEST_F(HloInstructionTest, Stringification) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
 
-  EXPECT_EQ(fusion->ToString(false, false),
-            "%fusion = f32[5,20]{1,0} fusion:kTransposeDot(f32[5,10]{1,0} %x, "
-            "f32[20,10]{1,0} %y), calls=fused_computation");
+  EXPECT_EQ(
+      fusion->ToString(false, false),
+      "%fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
+      "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));
   EXPECT_EQ(loop->ToString(false, false),
             "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
-            "condition=TransposeDot, body=TransposeDot");
+            "condition=%TransposeDot, body=%TransposeDot");
 }
 
 }  // namespace

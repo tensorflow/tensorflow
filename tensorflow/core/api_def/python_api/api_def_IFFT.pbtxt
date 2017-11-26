@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "IFFT"
+  endpoint {
+    name: "ifft"
+  }
+  endpoint {
+    name: "spectral.ifft"
+  }
+}

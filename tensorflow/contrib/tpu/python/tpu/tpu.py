@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -30,6 +29,28 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
+
+
+# Operations that indicate some error in the users graph, e.g. a placeholder
+# that's introduced outside of the infeed.
+_BLACKLISTED_OPS = set([
+    "Placeholder",
+])
+
+# These operations will currently fail to compile, but we should be able to
+# support them eventually via CPU offload or extending our operation set.
+_NOT_IMPLEMENTED_OPS = set([
+    "AudioSummary",
+    "AudioSummaryV2",
+    "HistogramSummary",
+    "ImageSummary",
+    "MergeSummary",
+    "Print",
+    "ScalarSummary",
+    "TensorSummary",
+    "TensorSummaryV2",
+    ])
 
 
 def initialize_system(embedding_config=None, job=None):
@@ -81,26 +102,6 @@ def core(num):
   return "device:TPU_REPLICATED_CORE:{}".format(num)
 
 
-# Experimental API to 'break out' of a tpu.rewrite() (or shard(), etc.) context.
-# In
-#
-# XXX
-# with tpu.rewrite(...):
-#   YYY
-#   with tpu.outside_all_rewrites():
-#     ZZZ
-#
-# the Ops in ZZZ are added outside the scope of the rewrite().
-# TODO(phawkins): currently outside_all_rewrites() pops out of all nested
-# control flow scopes, for example loops. It would make more sense if it only
-# popped out of a single scope.
-@contextlib.contextmanager
-def outside_all_rewrites():
-  """Experimental API to 'break out' of a tpu.rewrite() (or shard(), etc.)."""
-  with ops.control_dependencies(None):
-    yield
-
-
 class TPUReplicateContext(control_flow_ops.ControlFlowContext):
   """A ControlFlowContext for nodes inside a TPU computation.
 
@@ -124,6 +125,14 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
+    if op.type in _BLACKLISTED_OPS:
+      raise ValueError("Operation of type %s (%s) is not supported on the TPU" %
+                       (op.type, op.name))
+
+    if op.type in _NOT_IMPLEMENTED_OPS:
+      logging.warning(
+          "Operation %s (%s) is not currently supported", op.type, op.name)
+
     if any(x.dtype._is_ref_dtype for x in op.inputs):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
@@ -145,6 +154,14 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
     self._AddOpInternal(op)
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
+
+  @property
+  def grad_state(self):
+    # Define the gradient loop state associated with the TPUReplicateContext to
+    # be None as the TPUReplicateContext does not get nested nor does the
+    # grad_state outside the TPUReplicateContext affect the graph inside so the
+    # grad_state should be as if this is the top-level gradient state.
+    return None
 
 
 def replicate(computation,
@@ -311,8 +328,11 @@ def replicate(computation,
       # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
       # be rewritten away, leading to a runtime error.
       # TODO(phawkins): extend the rewrite to elide these nodes instead.
-      with ops.device(core(0)):
-        output_tensors = [array_ops.identity(x) for x in output_tensors]
+      new_output_tensors = []
+      for t in output_tensors:
+        with ops.device(t.device if t.device else core(0)):
+          new_output_tensors.append(array_ops.identity(t))
+      output_tensors = new_output_tensors
     finally:
       context.Exit()
 

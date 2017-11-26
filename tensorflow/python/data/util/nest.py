@@ -367,6 +367,16 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "structure has length %s, while shallow structure has length %s."
           % (len(input_tree), len(shallow_tree)))
 
+    if check_types and isinstance(shallow_tree, dict):
+      if set(input_tree) != set(shallow_tree):
+        raise ValueError(
+          "The two structures don't have the same keys. Input "
+          "structure has keys %s, while shallow structure has keys %s."
+          % (list(_six.iterkeys(input_tree)),
+             list(_six.iterkeys(shallow_tree))))
+      input_tree = list(_six.iteritems(input_tree))
+      shallow_tree = list(_six.iteritems(shallow_tree))
+
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
                                check_types=check_types)

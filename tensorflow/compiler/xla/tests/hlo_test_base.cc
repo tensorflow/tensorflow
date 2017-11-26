@@ -53,18 +53,18 @@ StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
 }
 
 se::DeviceMemoryBase HloTestBase::TransferToDevice(const Literal& literal) {
-  return runner_.TransferToDevice(literal);
+  return runner_.TransferToDevice(literal).ValueOrDie();
 }
 
 std::unique_ptr<Literal> HloTestBase::TransferFromDevice(
     const Shape& shape, se::DeviceMemoryBase device_base) {
-  return runner_.TransferFromDevice(shape, device_base);
+  return runner_.TransferFromDevice(shape, device_base).ValueOrDie();
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
     std::unique_ptr<HloModule> module,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
-  return runner_.ExecuteAndTransfer(std::move(module), arguments);
+  return runner_.ExecuteAndTransfer(std::move(module), arguments).ValueOrDie();
 }
 
 Backend& HloTestBase::backend() { return runner_.backend(); }

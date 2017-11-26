@@ -57,7 +57,7 @@ class ServingInputReceiver(collections.namedtuple(
       groups of receiver tensors, each of which may be a `Tensor` or a dict of
       string to `Tensor`.  These named receiver tensor alternatives generate
       additional serving signatures, which may be used to feed inputs at
-      different points within the input reciever subgraph.  A typical usage is
+      different points within the input receiver subgraph.  A typical usage is
       to allow feeding raw feature `Tensor`s *downstream* of the
       tf.parse_example() op.  Defaults to None.
   """

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -43,40 +44,57 @@ class HloRunner {
 
   ~HloRunner();
 
-  // Reads the binary proto file in xla.HloProto format, creates and returns the
-  // HloModule.
+  // Reads the proto file in xla.HloProto format, creates and returns the
+  // HloModule. Will try to parse the filename as binary proto, then try as
+  // text proto if that fails.
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloProtoFile(
-      const char* filename, const DebugOptions& debug_options);
+      const std::string& filename, const DebugOptions& debug_options);
+
+  // Reads the hlo text dump file in HloModule::ToString format, creates and
+  // returns the HloModule.
+  static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextDumpFile(
+      const std::string& filename, const DebugOptions& debug_options);
+
+  // Tries to parse the filename specified first as binary proto format, then
+  // as a textual proto format, then textual IR, then gives up if both fail.
+  // ReadModuleFromHloProtoFile or ReadModuleFromHloTextDumpFile should be used
+  // explicitly when you know the format, this if you don't.
+  static StatusOr<std::unique_ptr<HloModule>> ReadModule(
+      const std::string& filename, const DebugOptions& debug_options);
 
   // Executes the given module with given literals as input and returns the
   // result as a Literal. The LiteralPtr type accepts Literal* or
   // std::unique_ptr<Literal>.
+  // If run_hlo_passes is true, the module will be executed without Hlo
+  // optimization.
   template <typename LiteralPtr>
-  std::unique_ptr<Literal> Execute(
+  StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr>& literals);
+      const tensorflow::gtl::ArraySlice<LiteralPtr> literals,
+      bool run_hlo_passes = true);
 
   // Executes the given module and returns a global data handle.
   StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
-      Shape* result_shape);
+      Shape* result_shape, bool run_hlo_passes = true);
 
   // Transfers the given literal to the device and returns the data handle.
-  perftools::gputools::DeviceMemoryBase TransferToDevice(
+  StatusOr<perftools::gputools::DeviceMemoryBase> TransferToDevice(
       const Literal& literal);
 
   // Transfers the array referred to by the given handle from the device and
   // returns as a Literal.
-  std::unique_ptr<Literal> TransferFromDevice(
+  StatusOr<std::unique_ptr<Literal>> TransferFromDevice(
       const Shape& shape, perftools::gputools::DeviceMemoryBase device_base);
 
   // Executes the given module and return the result as a Literal.
-  std::unique_ptr<Literal> ExecuteAndTransfer(
+  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments);
+          arguments,
+      bool run_hlo_passes = true);
 
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.
@@ -94,6 +112,20 @@ class HloRunner {
 
   std::unique_ptr<Backend> backend_;
 };
+
+template <typename LiteralPtr>
+StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
+    std::unique_ptr<HloModule> module,
+    const tensorflow::gtl::ArraySlice<LiteralPtr> literals,
+    bool run_hlo_passes) {
+  std::vector<perftools::gputools::DeviceMemoryBase> arguments;
+  for (const auto& literal : literals) {
+    TF_ASSIGN_OR_RETURN(perftools::gputools::DeviceMemoryBase argument,
+                        TransferToDevice(*literal));
+    arguments.push_back(argument);
+  }
+  return ExecuteAndTransfer(std::move(module), arguments, run_hlo_passes);
+}
 
 }  // namespace xla
 

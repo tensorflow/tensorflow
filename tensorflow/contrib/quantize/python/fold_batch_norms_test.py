@@ -101,9 +101,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
         scope + '/weights/read',
         self._BatchNormMultiplierName(scope, has_scaling, fused_batch_norm)
     ])
-    self._AssertOutputGoesToOps(folded_mul, g, [scope + '/convolution_Fold'])
+    self._AssertOutputGoesToOps(folded_mul, g, [scope + '/Conv2D_Fold'])
 
-    folded_conv = g.get_operation_by_name(scope + '/convolution_Fold')
+    folded_conv = g.get_operation_by_name(scope + '/Conv2D_Fold')
     self.assertEqual(folded_conv.type, 'Conv2D')
     self._AssertInputOpsAre(folded_conv,
                             [scope + '/mul_fold', inputs.op.name])
@@ -112,7 +112,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     folded_add = g.get_operation_by_name(scope + '/add_fold')
     self.assertEqual(folded_add.type, 'Add')
     self._AssertInputOpsAre(folded_add, [
-        scope + '/convolution_Fold',
+        scope + '/Conv2D_Fold',
         self._BathNormBiasName(scope, fused_batch_norm)
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
@@ -166,9 +166,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
         scope + '/weights/read',
         self._BatchNormMultiplierName(scope, has_scaling, fused_batch_norm)
     ])
-    self._AssertOutputGoesToOps(folded_mul, g, [scope + '/convolution_Fold'])
+    self._AssertOutputGoesToOps(folded_mul, g, [scope + '/Conv2D_Fold'])
 
-    folded_conv = g.get_operation_by_name(scope + '/convolution_Fold')
+    folded_conv = g.get_operation_by_name(scope + '/Conv2D_Fold')
     self.assertEqual(folded_conv.type, 'Conv2D')
     self._AssertInputOpsAre(folded_conv, [scope + '/mul_fold', inputs.op.name])
     self._AssertOutputGoesToOps(folded_conv, g, [scope + '/add_fold'])
@@ -176,7 +176,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     folded_add = g.get_operation_by_name(scope + '/add_fold')
     self.assertEqual(folded_add.type, 'Add')
     self._AssertInputOpsAre(folded_add, [
-        scope + '/convolution_Fold',
+        scope + '/Conv2D_Fold',
         self._BathNormBiasName(scope, fused_batch_norm)
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]

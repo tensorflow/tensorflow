@@ -131,6 +131,9 @@ CurlHttpRequest::~CurlHttpRequest() {
   if (curl_headers_) {
     libcurl_->curl_slist_free_all(curl_headers_);
   }
+  if (resolve_list_) {
+    libcurl_->curl_slist_free_all(resolve_list_);
+  }
   if (put_body_) {
     fclose(put_body_);
   }
@@ -209,6 +212,17 @@ Status CurlHttpRequest::AddHeader(const string& name, const string& value) {
   TF_RETURN_IF_ERROR(CheckNotSent());
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat(name, ": ", value).c_str());
+  return Status::OK();
+}
+
+Status CurlHttpRequest::AddResolveOverride(const string& hostname, int64 port,
+                                           const string& ip_addr) {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  // Resolve values are hostname:port:IP.add.ress
+  resolve_list_ = libcurl_->curl_slist_append(
+      resolve_list_,
+      strings::StrCat(hostname, ":", port, ":", ip_addr).c_str());
   return Status::OK();
 }
 
@@ -376,6 +390,9 @@ Status CurlHttpRequest::Send() {
   if (curl_headers_) {
     libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers_);
   }
+  if (resolve_list_) {
+    libcurl_->curl_easy_setopt(curl_, CURLOPT_RESOLVE, resolve_list_);
+  }
   libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERDATA,
                              reinterpret_cast<void*>(this));
   libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
@@ -512,8 +529,10 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
   }
 
   if (now - that->last_progress_timestamp_ > kInactivityTimeoutSeconds) {
-    LOG(ERROR) << "The transmission has been stuck at " << current_progress
-               << " bytes for " << now - that->last_progress_timestamp_
+    LOG(ERROR) << "The transmission  of request " << this_object
+               << " has been stuck at " << current_progress << " of "
+               << dltotal + ultotal << " bytes for "
+               << now - that->last_progress_timestamp_
                << " seconds and will be aborted.";
     return 1;  // Will abort the request.
   }

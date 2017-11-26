@@ -28,6 +28,8 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -60,7 +62,7 @@ class PrintModelAnalysisTest(test.TestCase):
                          '  ScalarW (1, 1/1 params)\n',
                          f.read())
 
-  def testSelectEverthingDetail(self):
+  def testSelectEverythingDetail(self):
     ops.reset_default_graph()
     dev = '/device:GPU:0' if test.is_gpu_available() else '/device:CPU:0'
     outfile = os.path.join(test.get_temp_dir(), 'dump')
@@ -159,7 +161,7 @@ class PrintModelAnalysisTest(test.TestCase):
       with gfile.Open(outfile, 'r') as f:
         # pylint: disable=line-too-long
         self.assertEqual(
-            'node name | # parameters | # float_ops | assigned devices | op types | op count (run|defined) | input shapes\n_TFProfRoot (--/451 params, --/11.34k flops, _kTFScopeParent, --/8|--/36, )\n  Conv2D (0/0 params, 5.83k/5.83k flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Conv2D, 1/1|1/1, 0:2x6x6x3|1:3x3x3x6)\n  Conv2D_1 (0/0 params, 4.61k/4.61k flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Conv2D, 1/1|1/1, 0:2x3x3x6|1:2x2x6x12)\n  DW (3x3x3x6, 162/162 params, 0/324 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|VariableV2|_trainable_variables, 1/2|1/10, )\n    DW/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:3x3x3x6|1:3x3x3x6)\n    DW/Initializer (0/0 params, 0/324 flops, _kTFScopeParent, 0/0|1/7, )\n      DW/Initializer/random_normal (0/0 params, 162/324 flops, Add, 0/0|1/6, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:4)\n        DW/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW/Initializer/random_normal/mul (0/0 params, 162/162 flops, Mul, 0/0|1/1, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    DW/read (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Identity, 1/1|1/1, 0:3x3x3x6)\n  DW2 (2x2x6x12, 288/288 params, 0/576 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|VariableV2|_trainable_variables, 1/2|1/10, )\n    DW2/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:2x2x6x12|1:2x2x6x12)\n    DW2/Initializer (0/0 params, 0/576 flops, _kTFScopeParent, 0/0|1/7, )\n      DW2/Initializer/random_normal (0/0 params, 288/576 flops, Add, 0/0|1/6, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:4)\n        DW2/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW2/Initializer/random_normal/mul (0/0 params, 288/288 flops, Mul, 0/0|1/1, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW2/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    DW2/read (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Identity, 1/1|1/1, 0:2x2x6x12)\n  ScalarW (1, 1/1 params, 0/2 flops, VariableV2|_trainable_variables, 0/0|1/10, )\n    ScalarW/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:1|1:1)\n    ScalarW/Initializer (0/0 params, 0/2 flops, _kTFScopeParent, 0/0|1/7, )\n      ScalarW/Initializer/random_normal (0/0 params, 1/2 flops, Add, 0/0|1/6, 0:1|1:1)\n        ScalarW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:0)\n        ScalarW/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        ScalarW/Initializer/random_normal/mul (0/0 params, 1/1 flops, Mul, 0/0|1/1, 0:1|1:1)\n        ScalarW/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        ScalarW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    ScalarW/read (0/0 params, 0/0 flops, Identity, 0/0|1/1, 0:1)\n  _retval_Conv2D_1_0_0 (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|RunTimeOp, 1/1|1/1, )\n  init (0/0 params, 0/0 flops, NoOp, 0/0|1/1, 0:1|1:3x3x3x6|2:2x2x6x12)\n  zeros (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Const, 1/1|1/1, )\n',
+            'node name | # parameters | # float_ops | assigned devices | op types | op count (run|defined) | input shapes\n_TFProfRoot (--/451 params, --/11.34k flops, _kTFScopeParent, --/8|--/36, )\n  Conv2D (0/0 params, 5.83k/5.83k flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Conv2D, 1/1|1/1, 0:2x6x6x3|1:3x3x3x6)\n  Conv2D_1 (0/0 params, 4.61k/4.61k flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Conv2D, 1/1|1/1, 0:2x3x3x6|1:2x2x6x12)\n  DW (3x3x3x6, 162/162 params, 0/324 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|VariableV2|_trainable_variables, 1/2|1/10, )\n    DW/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:3x3x3x6|1:3x3x3x6)\n    DW/Initializer (0/0 params, 0/324 flops, _kTFScopeParent, 0/0|1/7, )\n      DW/Initializer/random_normal (0/0 params, 162/324 flops, Add, 0/0|1/6, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:4)\n        DW/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW/Initializer/random_normal/mul (0/0 params, 162/162 flops, Mul, 0/0|1/1, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    DW/read (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Identity, 1/1|1/1, 0:3x3x3x6)\n  DW2 (2x2x6x12, 288/288 params, 0/576 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|VariableV2|_trainable_variables, 1/2|1/10, )\n    DW2/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:2x2x6x12|1:2x2x6x12)\n    DW2/Initializer (0/0 params, 0/576 flops, _kTFScopeParent, 0/0|1/7, )\n      DW2/Initializer/random_normal (0/0 params, 288/576 flops, Add, 0/0|1/6, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:4)\n        DW2/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW2/Initializer/random_normal/mul (0/0 params, 288/288 flops, Mul, 0/0|1/1, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW2/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    DW2/read (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Identity, 1/1|1/1, 0:2x2x6x12)\n  ScalarW (1, 1/1 params, 0/2 flops, VariableV2|_trainable_variables, 0/0|1/10, )\n    ScalarW/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:1|1:1)\n    ScalarW/Initializer (0/0 params, 0/2 flops, _kTFScopeParent, 0/0|1/7, )\n      ScalarW/Initializer/random_normal (0/0 params, 1/2 flops, Add, 0/0|1/6, 0:1|1:1)\n        ScalarW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:0)\n        ScalarW/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        ScalarW/Initializer/random_normal/mul (0/0 params, 1/1 flops, Mul, 0/0|1/1, 0:1|1:1)\n        ScalarW/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        ScalarW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    ScalarW/read (0/0 params, 0/0 flops, Identity, 0/0|1/1, 0:1)\n  _retval_Conv2D_1_0_0 (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|_retval_Conv2D_1_0_0, 1/1|1/1, )\n  init (0/0 params, 0/0 flops, NoOp, 0/0|1/1, 0:1|1:3x3x3x6|2:2x2x6x12)\n  zeros (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Const, 1/1|1/1, )\n',
             f.read())
         # pylint: enable=line-too-long
 
@@ -634,6 +636,63 @@ class PrintModelAnalysisTest(test.TestCase):
 
       self._trainLoop(x, 10, time_dir, time_steps,
                       memory_dir, memory_steps, profile_dir, dump_steps)
+
+  def testOOM(self):
+    if not test.is_gpu_available():
+      return
+    ops.reset_default_graph()
+    with ops.device('/device:GPU:0'):
+      a = random_ops.random_normal([1, 10000, 20000], name='test_random1')
+      b = random_ops.random_normal([30000, 10000, 1], name='test_random2')
+      c = a * b
+
+    try:
+      with session.Session() as sess:
+        sess.run(c, options=config_pb2.RunOptions(
+            report_tensor_allocations_upon_oom=True))
+    except Exception as e:  # pylint: disable=broad-except
+      exception_str = '%s' % e
+      # This trace reports allocations for to random tensor.
+      self.assertTrue(
+          'OOM when allocating tensor with shape[30000,10000,20000]' in
+          exception_str)
+      mat = re.search('(.*)GiB from test_random2/RandomStandardNormal',
+                      exception_str)
+      self.assertGreater(float(mat.group(1)), 0.0)
+      mat = re.search('(.*)MiB from test_random1/RandomStandardNormal',
+                      exception_str)
+      self.assertGreater(float(mat.group(1)), 0.0)
+
+  def testDistributedOOM(self):
+    if not test.is_gpu_available():
+      return
+    ops.reset_default_graph()
+
+    workers, _ = test_util.create_local_cluster(2, 0)
+
+    with ops.device('/job:worker/replica:0/task:0/gpu:0'):
+      a = random_ops.random_normal([1, 10000, 20000], name='test_random1')
+    with ops.device('/job:worker/replica:0/task:1/gpu:0'):
+      b = random_ops.random_normal([30000, 10000, 1], name='test_random2')
+      c = a * b
+
+    try:
+      with session.Session(workers[1].target) as sess:
+        sess.run(c, options=config_pb2.RunOptions(
+            report_tensor_allocations_upon_oom=True))
+    except Exception as e:  # pylint: disable=broad-except
+      exception_str = '%s' % e
+      # test_random2 is reported because it's allocated in worker 1.
+      self.assertTrue('Current usage from device: '
+                      '/job:worker/replica:0/task:1/device:GPU:0, '
+                      'allocator: GPU_0_bfc' in exception_str)
+      mat = re.search('(.*)GiB from test_random2/RandomStandardNormal',
+                      exception_str)
+      self.assertGreater(float(mat.group(1)), 0.0)
+      # test_random1 is not reported because it's allocated in worker 0.
+      mat = re.search('(.*)MiB from test_random1/RandomStandardNormal',
+                      exception_str)
+      self.assertTrue(mat is None)
 
 
 if __name__ == '__main__':

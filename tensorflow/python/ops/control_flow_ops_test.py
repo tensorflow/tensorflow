@@ -114,6 +114,23 @@ class GroupTestCase(test_util.TensorFlowTestCase):
              device: "/task:2" }
     """, self._StripGraph(gd))
 
+  def testPassingList(self):
+    with ops.Graph().as_default() as g:
+      a = constant_op.constant(0, name="a")
+      b = constant_op.constant(0, name="b")
+      control_flow_ops.group([a.op, b.op], name="root")
+    gd = g.as_graph_def()
+    self.assertProtoEquals("""
+      node { name: "a" op: "Const"}
+      node { name: "b" op: "Const"}
+      node { name: "root" op: "NoOp" input: "^a" input: "^b" }
+    """, self._StripGraph(gd))
+
+  def testPassingNonTensors(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(TypeError):
+        control_flow_ops.group(1, 2)
+
 
 class ShapeTestCase(test_util.TensorFlowTestCase):
 

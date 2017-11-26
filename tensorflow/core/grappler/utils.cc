@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -32,7 +33,9 @@ NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
     auto node = graph_->mutable_node(i);
     auto rslt = nodes_.insert(std::make_pair(node->name(), node));
     // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(rslt.second);
+    if (!rslt.second) {
+      LOG(WARNING) << "Duplicated node in the graph: " << node->name();
+    }
     for (const auto& input : node->input()) {
       outputs_[NodeName(input)].insert(nodes_[node->name()]);
     }
@@ -59,7 +62,7 @@ const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
 void NodeMap::AddNode(const string& name, NodeDef* node) {
   auto ret = nodes_.insert(std::make_pair(name, node));
   CHECK(ret.second) << "Pair (" << name << "," << node
-                    << ") is not inserted because a same key already exists.";
+                    << ") is not inserted because the same key already exists.";
 }
 
 void NodeMap::AddOutput(const string& node_name, const string& output_name) {
@@ -219,8 +222,11 @@ string AsControlDependency(const NodeDef& node) {
   return strings::StrCat("^", node.name());
 }
 
-string AsControlDependency(const string& node) {
-  return strings::StrCat("^", node);
+string AsControlDependency(const string& node_name) {
+  CHECK(!node_name.empty());
+  return (!node_name.empty() && node_name[0] == '^')
+             ? node_name
+             : strings::StrCat("^", node_name);
 }
 
 int NumOutputs(const NodeDef& node) {
@@ -240,6 +246,57 @@ int NumOutputs(const NodeDef& node) {
     }
   }
   return num_outputs;
+}
+
+int NumNonControlInputs(const NodeDef& node) {
+  int num_inputs = node.input_size();
+  for (int i = 0; i < node.input_size(); ++i) {
+    if (IsControlInput(node.input(i))) {
+      --num_inputs;
+    }
+  }
+  return num_inputs;
+}
+
+int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (const string& input : output->input()) {
+      if (input == node.name()) {
+        ++num_outputs;
+      }
+    }
+  }
+  return num_outputs;
+}
+
+// Returns the data type in attribute `attr_name` of `node`. If that attribute
+// doesn't exist, returns DT_INVALID.
+DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
+  if (!node.attr().count(attr_name)) {
+    return DT_INVALID;
+  }
+  const auto& attr = node.attr().at(attr_name);
+  if (attr.value_case() != AttrValue::kType) {
+    return DT_INVALID;
+  }
+  return attr.type();
+}
+
+NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
+                        bool follow_control_input,
+                        const std::function<bool(const NodeDef&)>& pred_fn) {
+  const NodeDef* current = &source;
+  const NodeDef* next = current;
+  while (next == &source || pred_fn(*next)) {
+    current = next;
+    if (current->input_size() == 0 ||
+        (!follow_control_input && IsControlInput(current->input(0)))) {
+      break;
+    }
+    next = node_map.GetNode(current->input(0));
+  }
+  return const_cast<NodeDef*>(current);
 }
 
 }  // end namespace grappler

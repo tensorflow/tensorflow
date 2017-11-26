@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "SelfAdjointEig"
+  in_arg {
+    name: "input"
+    description: <<END
+Shape is `[..., M, M]`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Shape is `[..., M+1, M]`.
+END
+  }
+  summary: "Computes the Eigen Decomposition of a batch of square self-adjoint matrices."
+  description: <<END
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices, with the same constraints as the single matrix
+SelfAdjointEig.
+
+The result is a [..., M+1, M] matrix with [..., 0,:] containing the
+eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
+END
+}

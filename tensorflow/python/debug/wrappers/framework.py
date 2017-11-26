@@ -551,6 +551,10 @@ class BaseDebugWrapperSession(session.SessionInterface):
     return (self._thread_name_filter_pattern and
             not self._thread_name_filter_pattern.match(thread_name))
 
+  def run_step_fn(self, step_fn):
+    return step_fn(
+        monitored_session.MonitoredSession.StepContext(self._sess, self.run))
+
   def partial_run_setup(self, fetches, feeds=None):
     """Sets up the feeds and fetches for partial runs in the session."""
     raise NotImplementedError(
@@ -792,7 +796,7 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
 
   def __init__(self, sess, watch_fn=None, thread_name_filter=None,
                pass_through_operrors=False):
-    """Constructor of DumpingDebugWrapperSession.
+    """Constructor of NonInteractiveDebugWrapperSession.
 
     Args:
       sess: The TensorFlow `Session` object being wrapped.

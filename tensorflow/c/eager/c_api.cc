@@ -440,11 +440,19 @@ tensorflow::Status ValidateInputTypeAndPlacement(
     if (expected_device != actual_device) {
       switch (ctx->policy) {
         case TFE_DEVICE_PLACEMENT_EXPLICIT:
+          // TODO(xpan): See if we could bubble python related error up
+          // to python level.
           return tensorflow::errors::InvalidArgument(
-              "cannot compute ", op->name, " as input #", i,
-              " was expected to be on ", expected_device->name(),
-              " but is actually on ", actual_device->name(),
-              " (operation running on ", op_device->name(), ")");
+              "Tensors on conflicting devices:"
+              " cannot compute ",
+              op->name, " as input #", i, " was expected to be on ",
+              expected_device->name(), " but is actually on ",
+              actual_device->name(), " (operation running on ",
+              op_device->name(), ")",
+              " Tensors can be copied explicitly using .gpu() or .cpu(),"
+              " or transparently copied by using tfe.enable_eager_execution("
+              "tfe.DEVICE_PLACEMENT_SILENT). Copying tensors between devices"
+              " may slow down your model");
         case TFE_DEVICE_PLACEMENT_WARN:
           LOG(WARNING) << "before computing " << op->name << " input #" << i
                        << " was expected to be on " << expected_device->name()
@@ -561,6 +569,12 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
   }
   tensorflow::mutex_lock l(ctx->functions_mu);
   status->status = ctx->func_lib_def.AddFunctionDef(function_def);
+}
+
+void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
+                            TF_Status* status) {
+  tensorflow::mutex_lock l(ctx->functions_mu);
+  status->status = ctx->func_lib_def.AddFunctionDef(function->fdef);
 }
 
 }  // extern "C"

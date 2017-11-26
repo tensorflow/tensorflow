@@ -63,6 +63,39 @@ class SequenceDictTest(test.TestCase):
     self.assertItemsEqual(list(zip(keys, values)), seq_dict.items())
 
 
+class SubGraphTest(test.TestCase):
+
+  def testBasicGraph(self):
+    a = array_ops.constant([[1., 2.], [3., 4.]])
+    b = array_ops.constant([[5., 6.], [7., 8.]])
+    c = a + b
+    d = a * b
+    sub_graph = utils.SubGraph((c,))
+    self.assertTrue(sub_graph.is_member(a))
+    self.assertTrue(sub_graph.is_member(b))
+    self.assertTrue(sub_graph.is_member(c))
+    self.assertFalse(sub_graph.is_member(d))
+
+  def testRepeatedAdds(self):
+    a = array_ops.constant([[1., 2.], [3., 4.]])
+    b = array_ops.constant([[5., 6.], [7., 8.]])
+    c = a + b + a  # note that a appears twice in this graph
+    sub_graph = utils.SubGraph((c,))
+    self.assertTrue(sub_graph.is_member(a))
+    self.assertTrue(sub_graph.is_member(b))
+    self.assertTrue(sub_graph.is_member(c))
+
+  def testFilterList(self):
+    a = array_ops.constant([[1., 2.], [3., 4.]])
+    b = array_ops.constant([[5., 6.], [7., 8.]])
+    c = a + b
+    d = a * b
+    sub_graph = utils.SubGraph((c,))
+    input_list = [b, d]
+    filtered_list = sub_graph.filter_list(input_list)
+    self.assertEqual(filtered_list, [b])
+
+
 class UtilsTest(test.TestCase):
 
   def _fully_connected_layer_params(self):

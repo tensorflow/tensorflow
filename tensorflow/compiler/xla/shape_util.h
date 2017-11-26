@@ -68,6 +68,9 @@ class ShapeIndex {
 
   const int64* data() const { return indices_.data(); }
 
+  int64 back() const { return indices_.back(); }
+  int64& back() { return indices_.back(); }
+
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }
 
@@ -290,6 +293,9 @@ class ShapeUtil {
 
   // Returns whether the element type of the shape is floating point.
   static bool ElementIsFloating(const Shape& shape);
+
+  // Returns whether the element type of the shape is complex.
+  static bool ElementIsComplex(const Shape& shape);
 
   // Returns whether the element type has the given bit width.
   static bool ElementHasBitWidth(const Shape& shape, int bits);

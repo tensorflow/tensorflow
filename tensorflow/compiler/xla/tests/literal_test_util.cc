@@ -116,16 +116,18 @@ template <typename FloatT, typename UnsignedT>
 ::testing::AssertionResult CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
   auto ulhs = tensorflow::bit_cast<UnsignedT>(lhs);
   auto urhs = tensorflow::bit_cast<UnsignedT>(rhs);
+  auto lhs_double = static_cast<double>(lhs);
+  auto rhs_double = static_cast<double>(rhs);
   if (ulhs != urhs) {
     return ::testing::AssertionFailure() << tensorflow::strings::Printf(
                "floating values are not bitwise-equal; and equality testing "
                "was requested: %s=%g=%a vs %s=%g=%a",
                tensorflow::strings::StrCat(tensorflow::strings::Hex(ulhs))
                    .c_str(),
-               lhs, lhs,
+               lhs_double, lhs_double,
                tensorflow::strings::StrCat(tensorflow::strings::Hex(urhs))
                    .c_str(),
-               rhs, rhs);
+               rhs_double, rhs_double);
   }
   return ::testing::AssertionSuccess();
 }
@@ -149,12 +151,25 @@ template <typename NativeT>
 // Specializations for floating types that do bitwise comparisons when equality
 // comparison is requested.
 template <>
+::testing::AssertionResult CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs) {
+  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs);
+}
+template <>
 ::testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
   return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
 }
 template <>
 ::testing::AssertionResult CompareEqual<double>(double lhs, double rhs) {
   return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs);
+}
+template <>
+::testing::AssertionResult CompareEqual<complex64>(complex64 lhs,
+                                                   complex64 rhs) {
+  auto res = CompareEqual<float>(lhs.real(), rhs.real());
+  if (!res) {
+    return res;
+  }
+  return CompareEqual<float>(lhs.imag(), rhs.imag());
 }
 
 // A recursive function which iterates through every index of expected and
@@ -229,11 +244,17 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
     case U64:
       match = ExpectLiteralsEqual<uint64>(expected, actual, &multi_index, 0);
       break;
+    case BF16:
+      match = ExpectLiteralsEqual<bfloat16>(expected, actual, &multi_index, 0);
+      break;
     case F32:
       match = ExpectLiteralsEqual<float>(expected, actual, &multi_index, 0);
       break;
     case F64:
       match = ExpectLiteralsEqual<double>(expected, actual, &multi_index, 0);
+      break;
+    case C64:
+      match = ExpectLiteralsEqual<complex64>(expected, actual, &multi_index, 0);
       break;
     case TUPLE: {
       bool tuple_match = true;
@@ -319,11 +340,17 @@ class NearComparator {
     multi_index_.resize(expected.shape().dimensions_size(), 0);
 
     switch (expected.shape().element_type()) {
+      case BF16:
+        ExpectLiteralsNear<bfloat16>(expected, actual, 0);
+        break;
       case F32:
         ExpectLiteralsNear<float>(expected, actual, 0);
         break;
       case F64:
         ExpectLiteralsNear<double>(expected, actual, 0);
+        break;
+      case C64:
+        ExpectLiteralsNear<complex64>(expected, actual, 0);
         break;
       default:
         LOG(FATAL) << "Unsupported primitive type in near comparator: "
@@ -365,6 +392,19 @@ class NearComparator {
   }
 
  private:
+  template <typename NativeT>
+  bool NanMismatch(NativeT lhs, NativeT rhs) {
+    return std::isnan(lhs) != std::isnan(rhs);
+  }
+
+  template <typename NativeT>
+  void ExpectNear(NativeT expected, NativeT actual,
+                  const ::testing::Message& message) {
+    EXPECT_NEAR(expected, actual, error_.abs)
+        << "expected:\n  " << expected << "\n\tvs actual:\n  " << actual << "\n"
+        << message;
+  }
+
   // EXPECTs that the two given scalar values are within the error bound. Keeps
   // track of how many mismatches have occurred to keep the size of the output
   // manageable.
@@ -390,7 +430,7 @@ class NearComparator {
         "index %s abs_diff %f rel_err %f",
         LiteralTestUtil::MultiIndexAsString(multi_index_).c_str(), abs_diff,
         rel_err);
-    bool nan_mismatch = std::isnan(actual) != std::isnan(expected);
+    bool nan_mismatch = NanMismatch<NativeT>(expected, actual);
     bool mismatch =
         (nan_mismatch || (abs_diff >= error_.abs && rel_err >= error_.rel));
     if (mismatch) {
@@ -398,11 +438,12 @@ class NearComparator {
       abs_expected_miscompare_sum_ += std::abs(expected);
       const int64 kMaxFailures = 2;
       if (num_miscompares_ < kMaxFailures) {
-        EXPECT_NEAR(expected, actual, error_.abs)
-            << "mismatch at index "
+        ::testing::Message msg;
+        msg << "mismatch at index "
             << LiteralTestUtil::MultiIndexAsString(multi_index_) << " abs diff "
             << abs_diff << " rel err " << rel_err << " failure #"
             << num_miscompares_;
+        ExpectNear<NativeT>(expected, actual, msg);
       } else if (num_miscompares_ == kMaxFailures) {
         LOG(ERROR)
             << "reached max 'loud' failure count; silently proceeding...";
@@ -469,6 +510,30 @@ class NearComparator {
   std::vector<int64> max_rel_multi_index_;
   std::vector<int64> max_abs_multi_index_;
 };
+
+template <>
+bool NearComparator::NanMismatch<complex64>(complex64 lhs, complex64 rhs) {
+  return std::isnan(lhs.real()) != std::isnan(rhs.real()) ||
+         std::isnan(lhs.imag()) != std::isnan(rhs.imag());
+}
+
+template <>
+void NearComparator::ExpectNear<complex64>(complex64 expected, complex64 actual,
+                                           const ::testing::Message& message) {
+  EXPECT_NEAR(expected.real(), actual.real(), error_.abs)
+      << "expected:\n  " << expected << "\n\tvs actual:\n  " << actual << "\n"
+      << message;
+  EXPECT_NEAR(expected.imag(), actual.imag(), error_.abs)
+      << "expected:\n  " << expected << "\n\tvs actual:\n  " << actual << "\n"
+      << message;
+}
+
+template <>
+bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
+                                                bfloat16 actual) {
+  return ExpectValuesNear(static_cast<float>(expected),
+                          static_cast<float>(actual));
+}
 
 }  // namespace
 

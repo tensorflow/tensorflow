@@ -1,13 +1,6 @@
 # -*- Python -*-
 
 
-# Given a source file, generate a test name.
-# i.e. "common_runtime/direct_session_test.cc" becomes
-#      "common_runtime_direct_session_test"
-def src_to_test_name(src):
-  return src.replace("/", "_").split(".")[0]
-
-
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -16,15 +9,29 @@ load(
     "tf_sycl_tests_tags",
     "tf_additional_xla_deps_py",
     "if_static",)
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "cuda_default_copts")
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "if_cuda",
+    "cuda_default_copts",)
 
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",)
 
+def register_extension_info(**kwargs):
+    pass
+
+
+# Given a source file, generate a test name.
+# i.e. "common_runtime/direct_session_test.cc" becomes
+#      "common_runtime_direct_session_test"
+def src_to_test_name(src):
+  return src.replace("/", "_").split(".")[0]
+
 
 def full_path(relative_paths):
   return [PACKAGE_NAME + "/" + relative for relative in relative_paths]
+
 
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
@@ -161,26 +168,30 @@ WIN_COPTS = [
 
 # LINT.IfChange
 def tf_copts():
-  return (if_not_windows([
-      "-DEIGEN_AVOID_STL_ARRAY",
-      "-Iexternal/gemmlowp",
-      "-Wno-sign-compare",
-      "-fno-exceptions",
-      "-ftemplate-depth=900",
-  ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
-      ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
-          clean_dep("//tensorflow:android"): [
-              "-std=c++11",
-              "-DTF_LEAN_BINARY",
-              "-O2",
-              "-Wno-narrowing",
-              "-fomit-frame-pointer",
-          ],
-          clean_dep("//tensorflow:darwin"): [],
-          clean_dep("//tensorflow:windows"): WIN_COPTS,
-          clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,
-          clean_dep("//tensorflow:ios"): ["-std=c++11"],
-          "//conditions:default": ["-pthread"]
+  return (
+      if_not_windows([
+          "-DEIGEN_AVOID_STL_ARRAY",
+          "-Iexternal/gemmlowp",
+          "-Wno-sign-compare",
+          "-fno-exceptions",
+          "-ftemplate-depth=900"])
+      + if_cuda(["-DGOOGLE_CUDA=1"])
+      + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML", "-fopenmp",])
+      + if_android_arm(["-mfpu=neon"])
+      + if_linux_x86_64(["-msse3"])
+      + select({
+            clean_dep("//tensorflow:android"): [
+                "-std=c++11",
+                "-DTF_LEAN_BINARY",
+                "-O2",
+                "-Wno-narrowing",
+                "-fomit-frame-pointer",
+            ],
+            clean_dep("//tensorflow:darwin"): [],
+            clean_dep("//tensorflow:windows"): WIN_COPTS,
+            clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,
+            clean_dep("//tensorflow:ios"): ["-std=c++11"],
+            "//conditions:default": ["-pthread"]
       }))
 
 
@@ -269,6 +280,10 @@ def tf_cc_shared_object(
       }),
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_cc_shared_object",
+    label_regex_for_dep="{extension_name}")
+
 
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
@@ -290,13 +305,20 @@ def tf_cc_binary(name,
       linkopts=linkopts + _rpath_linkopts(name),
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_cc_binary",
+    label_regex_for_dep="{extension_name}.*")
+
+
 def tf_gen_op_wrapper_cc(name,
                          out_ops_file,
                          pkg="",
                          op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
                          deps=None,
                          override_file=None,
-                         include_internal_ops=0):
+                         include_internal_ops=0,
+                         # ApiDefs will be loaded in the order specified in this list.
+                         api_def_srcs=[]):
   # Construct an op generator binary for these ops.
   tool = out_ops_file + "_gen_cc"
   if deps == None:
@@ -308,12 +330,26 @@ def tf_gen_op_wrapper_cc(name,
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
       deps=[op_gen] + deps)
 
+  srcs = api_def_srcs[:]
+
   if override_file == None:
-    srcs = []
     override_arg = ","
   else:
-    srcs = [override_file]
+    srcs += [override_file]
     override_arg = "$(location " + override_file + ")"
+
+  if not api_def_srcs:
+    api_def_args_str = ","
+  else:
+    api_def_args = []
+    for api_def_src in api_def_srcs:
+      # Add directory of the first ApiDef source to args.
+      # We are assuming all ApiDefs in a single api_def_src are in the
+      # same directory.
+      api_def_args.append(
+          " $$(dirname $$(echo $(locations " + api_def_src +
+          ") | cut -d\" \" -f1))")
+    api_def_args_str = ",".join(api_def_args)
   native.genrule(
       name=name + "_genrule",
       outs=[
@@ -324,7 +360,7 @@ def tf_gen_op_wrapper_cc(name,
       tools=[":" + tool] + tf_binary_additional_srcs(),
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
            "$(location :" + out_ops_file + ".cc) " + override_arg + " " +
-           str(include_internal_ops)))
+           str(include_internal_ops) + " " + api_def_args_str))
 
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -367,7 +403,9 @@ def tf_gen_op_wrappers_cc(name,
                           op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
                           override_file=None,
                           include_internal_ops=0,
-                          visibility=None):
+                          visibility=None,
+                          # ApiDefs will be loaded in the order apecified in this list.
+                          api_def_srcs=[]):
   subsrcs = other_srcs[:]
   subhdrs = other_hdrs[:]
   internalsrcs = []
@@ -379,7 +417,8 @@ def tf_gen_op_wrappers_cc(name,
         pkg=pkg,
         op_gen=op_gen,
         override_file=override_file,
-        include_internal_ops=include_internal_ops)
+        include_internal_ops=include_internal_ops,
+        api_def_srcs=api_def_srcs)
     subsrcs += ["ops/" + n + ".cc"]
     subhdrs += ["ops/" + n + ".h"]
     internalsrcs += ["ops/" + n + "_internal.cc"]
@@ -551,6 +590,10 @@ def tf_cc_test(name,
       nocopts=nocopts,
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_cc_test",
+    label_regex_for_dep="{extension_name}.*")
+
 
 # Part of the testing workflow requires a distinguishable name for the build
 # rules that involve a GPU, even if otherwise identical to the base rule.
@@ -573,6 +616,10 @@ def tf_cc_test_gpu(name,
       size=size,
       suffix=suffix,
       args=args)
+
+register_extension_info(
+    extension_name="tf_cc_test_gpu",
+    label_regex_for_dep="{extension_name}")
 
 
 def tf_cuda_cc_test(name,
@@ -614,6 +661,11 @@ def tf_cuda_cc_test(name,
       linkopts=linkopts,
       args=args)
 
+register_extension_info(
+    extension_name="tf_cuda_cc_test",
+    label_regex_for_dep="{extension_name}")
+
+
 def tf_cuda_only_cc_test(name,
                     srcs=[],
                     deps=[],
@@ -642,6 +694,11 @@ def tf_cuda_only_cc_test(name,
           "//conditions:default": 0,
       }),
       tags=tags + tf_cuda_tests_tags())
+
+register_extension_info(
+    extension_name="tf_cuda_only_cc_test",
+    label_regex_for_dep="{extension_name}_gpu")
+
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
@@ -717,6 +774,11 @@ def tf_java_test(name,
       *args,
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_java_test",
+    label_regex_for_dep="{extension_name}")
+
+
 def _cuda_copts():
   """Gets the appropriate set of copts for (maybe) CUDA compilation.
 
@@ -761,6 +823,10 @@ def tf_gpu_kernel_library(srcs,
       alwayslink=1,
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_gpu_kernel_library",
+    label_regex_for_dep="{extension_name}")
+
 
 def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
   """Generate a cc_library with a conditional set of CUDA dependencies.
@@ -792,6 +858,11 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
       ]),
       copts=copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
       **kwargs)
+
+register_extension_info(
+    extension_name="tf_cuda_library",
+    label_regex_for_dep="{extension_name}")
+
 
 
 def tf_kernel_library(name,
@@ -862,6 +933,10 @@ def tf_kernel_library(name,
       deps=deps,
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_kernel_library",
+    label_regex_for_dep="{extension_name}(_gpu)?")
+
 
 def tf_mkl_kernel_library(name,
                           prefix=None,
@@ -898,6 +973,10 @@ def tf_mkl_kernel_library(name,
           copts=copts,
           nocopts=nocopts
       ))
+
+register_extension_info(
+    extension_name="tf_mkl_kernel_library",
+    label_regex_for_dep="{extension_name}")
 
 
 # Bazel rules for building swig files.
@@ -1148,6 +1227,10 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
           clean_dep("//tensorflow:darwin"): [],
       }),)
 
+register_extension_info(
+    extension_name="tf_custom_op_library",
+    label_regex_for_dep="{extension_name}")
+
 
 def tf_custom_op_py_library(name,
                             srcs=[],
@@ -1164,6 +1247,10 @@ def tf_custom_op_py_library(name,
       srcs_version=srcs_version,
       visibility=visibility,
       deps=deps,)
+
+register_extension_info(
+    extension_name="tf_custom_op_py_library",
+    label_regex_for_dep="{extension_name}")
 
 
 def tf_extension_linkopts():
@@ -1250,6 +1337,10 @@ def py_test(deps=[], **kwargs):
       }),
       **kwargs)
 
+register_extension_info(
+    extension_name="py_test",
+    label_regex_for_dep="{extension_name}")
+
 
 def tf_py_test(name,
                srcs,
@@ -1284,6 +1375,10 @@ def tf_py_test(name,
       flaky=flaky,
       srcs_version="PY2AND3")
 
+register_extension_info(
+    extension_name="tf_py_test",
+    label_regex_map={"additional_deps": "deps:{extension_name}"})
+
 
 def cuda_py_test(name,
                  srcs,
@@ -1310,6 +1405,10 @@ def cuda_py_test(name,
       flaky=flaky,
       xla_enabled=xla_enabled)
 
+register_extension_info(
+    extension_name="cuda_py_test",
+    label_regex_map={"additional_deps": "additional_deps:{extension_name}"})
+
 
 def sycl_py_test(name,
                  srcs,
@@ -1335,6 +1434,10 @@ def sycl_py_test(name,
       additional_deps=additional_deps,
       flaky=flaky,
       xla_enabled=xla_enabled)
+
+register_extension_info(
+    extension_name="sycl_py_test",
+    label_regex_map={"additional_deps": "additional_deps:{extension_name}"})
 
 
 def py_tests(name,
@@ -1443,3 +1546,7 @@ def cc_library_with_android_deps(deps,
                                  **kwargs):
   deps = if_not_android(deps) + if_android(android_deps) + common_deps
   native.cc_library(deps=deps, **kwargs)
+
+register_extension_info(
+    extension_name="cc_library_with_android_deps",
+    label_regex_for_dep="{extension_name}")

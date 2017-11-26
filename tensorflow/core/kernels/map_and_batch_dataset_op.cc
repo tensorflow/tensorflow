@@ -258,7 +258,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 EnsureOutputAllocated(batch_result, result->return_values);
                 const size_t num_components = result->return_values.size();
                 for (size_t i = 0; i < num_components; ++i) {
-                  Tensor tensor = result->return_values[i];
+                  const Tensor& tensor = result->return_values[i];
                   Tensor* batch = &(batch_result->output)[i];
                   if (tensor.NumElements() !=
                       (batch->NumElements() / batch->dim_size(0))) {
@@ -271,6 +271,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                         ", [batch]: ", batch_shape.DebugString()));
                     break;
                   }
+                  // TODO(mrry): Add a version of DoParallelConcat that allows
+                  // us to move `tensor` where possible, to speed up string
+                  // tensor batching.
                   Status copy_status = ::tensorflow::functor::DoParallelConcat(
                       *dataset()->device_, tensor, offset, batch);
                   if (!copy_status.ok()) {
@@ -279,6 +282,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                   }
                 }
               }
+              // NOTE(mrry): We clear the return values here to release any
+              // memory associated with them and to paralellize the destruction
+              // of the tensors (which can be surprisingly expensive for
+              // map functions with large numbers of return values).
+              result->return_values.clear();
               batch_result->counter->DecrementCount();
             });
       }
@@ -287,15 +295,20 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         port::Tracing::TraceMe activity(strings::StrCat(prefix(), "::Start"));
         // Initialize batch result.
-        mutex_lock l(batch_results_[batch_index].mu);
-        batch_results_[batch_index].output_allocated = false;
-        batch_results_[batch_index].counter.reset(
-            new BlockingCounter(dataset()->batch_size_));
+        {
+          mutex_lock l(batch_results_[batch_index].mu);
+          batch_results_[batch_index].output_allocated = false;
+          batch_results_[batch_index].counter.reset(
+              new BlockingCounter(dataset()->batch_size_));
+        }
         // Initialize invocation results.
         for (size_t i = 0; i < dataset()->batch_size_; ++i) {
           size_t index = ComputeInvocationIndex(batch_index, i);
           InvocationResult* result = &invocation_results_[index];
-          *result = InvocationResult();
+          // Reset the state of `result`.
+          // NOTE(mrry): `result->return_values` were cleared when the previous
+          // invocation completed.
+          result->status = Status::OK();
         }
         // Start individual invocations.
         for (size_t i = 0; i < dataset()->batch_size_; ++i) {
@@ -334,7 +347,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const std::unique_ptr<CapturedFunction> captured_func_;
-    const Eigen::ThreadPoolDevice* device_; // not owned
+    const Eigen::ThreadPoolDevice* device_;  // not owned
   };
 
   const int graph_def_version_;

@@ -55,10 +55,10 @@ from tensorflow.python.framework import tensor_util
 
 def _eager_reshape(tensor, shape, ctx):
   """Eager-only version of Reshape op; requires tensor is an eager Tensor."""
-  attr_t = tensor.dtype.as_datatype_enum
+  attr_t = tensor._datatype_enum()  # pylint: disable=protected-access
   attr_tshape, (shape,) = execute.args_to_matching_eager(
       [shape], ctx, dtypes.int32)
-  attr_tshape = attr_tshape.as_datatype_enum
+  attr_tshape = attr_tshape
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
   result, = execute.execute(
@@ -108,7 +108,10 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
           dtype, value.dtype))
     return value
   if dtype is not None:
-    dtype = dtype.as_datatype_enum
+    try:
+      dtype = dtype.as_datatype_enum
+    except AttributeError:
+      dtype = dtypes.as_dtype(dtype).as_datatype_enum
   device = ctx.device_name
   handle = ctx._handle  # pylint: disable=protected-access
   if isinstance(value, (float,) + six.integer_types):

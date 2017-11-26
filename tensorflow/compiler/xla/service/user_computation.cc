@@ -55,6 +55,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kExp;
     case UNOP_FLOOR:
       return HloOpcode::kFloor;
+    case UNOP_IMAG:
+      return HloOpcode::kImag;
     case UNOP_IS_FINITE:
       return HloOpcode::kIsFinite;
     case UNOP_LOG:
@@ -63,6 +65,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kNot;
     case UNOP_NEGATE:
       return HloOpcode::kNegate;
+    case UNOP_REAL:
+      return HloOpcode::kReal;
     case UNOP_ROUND_NEAREST_AFZ:
       return HloOpcode::kRoundNearestAfz;
     case UNOP_SIGN:
@@ -80,6 +84,10 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
 
 HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
   switch (binop) {
+    case BINOP_ATAN2:
+      return HloOpcode::kAtan2;
+    case BINOP_COMPLEX:
+      return HloOpcode::kComplex;
     case BINOP_DOT:
       return HloOpcode::kDot;
     case BINOP_MUL:
@@ -88,8 +96,6 @@ HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
       return HloOpcode::kAdd;
     case BINOP_SUB:
       return HloOpcode::kSubtract;
-    case BINOP_INDEX:
-      return HloOpcode::kIndex;
     case BINOP_DIV:
       return HloOpcode::kDivide;
     case BINOP_EQ:
@@ -133,8 +139,6 @@ HloOpcode TernaryOperationToHloOpcode(TernaryOperation triop) {
       return HloOpcode::kClamp;
     case TRIOP_SELECT:
       return HloOpcode::kSelect;
-    case TRIOP_UPDATE:
-      return HloOpcode::kUpdate;
     default:
       LOG(FATAL) << "unhandled operation " << triop;
   }
@@ -990,6 +994,32 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvertInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddBitcastConvertInstruction(
+    const ConvertRequest& convert_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(convert_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(Shape new_shape, ShapeInference::InferConvertShape(
+                                           operand->output_shape(),
+                                           convert_request.new_element_type()));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = new_shape;
+  *request.mutable_request()->mutable_bitcast_convert_request() =
+      convert_request;
+
+  VLOG(1) << "AddBitcastConvertInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << convert_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddReducePrecisionInstruction(
     const ReducePrecisionRequest& reduce_precision_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1309,20 +1339,19 @@ Status UserComputation::SetOpMetadata(const ComputationDataHandle& handle,
   return Status::OK();
 }
 
-Status UserComputation::SetOpDeviceAssignment(
-    const ComputationDataHandle& handle,
-    const OpDeviceAssignment& device_assignment) {
+Status UserComputation::SetOpSharding(const ComputationDataHandle& handle,
+                                      const OpSharding& sharding) {
   tensorflow::mutex_lock lock(mutex_);
 
   int64 handle_value = handle.handle();
   if (session_computation_.requests().count(handle_value) == 0) {
-    return InvalidArgument("Invalid handle in SetOpDeviceAssignment (%lld)",
+    return InvalidArgument("Invalid handle in SetOpSharding (%lld)",
                            handle_value);
   }
   *session_computation_.mutable_requests()
        ->at(handle_value)
        .mutable_request()
-       ->mutable_device_assignment() = device_assignment;
+       ->mutable_sharding() = sharding;
   return Status::OK();
 }
 
@@ -1479,14 +1508,15 @@ UserComputation::ComputeProgramShape(
 
 namespace {
 
-// A visitor which checks whether an operation is a compile-time constant. That
-// is, the operation does not depend on any parameter instructions. The visitor
-// walks the computation starting at a given operation and sets is_constant to
-// false iff a parameter or RNG operation is encountered.
-void ConstantVisitor(const SessionComputation& session_computation,
-                     const ComputationDataHandle& handle,
-                     std::set<int64>* visited, bool* is_constant) {
-  if (visited->count(handle.handle()) != 0 || !*is_constant) {
+// A visitor which checks whether an operation is pure functional meaning that
+// it doesn't depend on any parameter with an index higher then num_parameters.
+// The visitor walks the computation starting at a given operation and sets
+// is_functional to false iff a parameter or RNG operation is encountered.
+void PureFunctionalVisitor(const SessionComputation& session_computation,
+                           const ComputationDataHandle& handle,
+                           int64 num_parameters, std::set<int64>* visited,
+                           bool* is_functional) {
+  if (visited->count(handle.handle()) != 0 || !*is_functional) {
     return;
   }
 
@@ -1494,7 +1524,7 @@ void ConstantVisitor(const SessionComputation& session_computation,
       session_computation.requests().at(handle.handle());
   switch (request.request().op_case()) {
     case OpRequest::kRngRequest:
-      *is_constant = false;
+      *is_functional = false;
       break;
 
     case OpRequest::kConstantRequest:
@@ -1503,41 +1533,43 @@ void ConstantVisitor(const SessionComputation& session_computation,
     case OpRequest::kGetTupleElementRequest: {
       const GetTupleElementRequest& get_tuple_element_request =
           request.request().get_tuple_element_request();
-      ConstantVisitor(session_computation, get_tuple_element_request.operand(),
-                      visited, is_constant);
+      PureFunctionalVisitor(session_computation,
+                            get_tuple_element_request.operand(), num_parameters,
+                            visited, is_functional);
       break;
     }
 
     case OpRequest::kSliceRequest: {
       const SliceRequest& slice_request = request.request().slice_request();
-      ConstantVisitor(session_computation, slice_request.operand(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, slice_request.operand(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kDynamicSliceRequest: {
       const DynamicSliceRequest& dynamic_slice_request =
           request.request().dynamic_slice_request();
-      ConstantVisitor(session_computation, dynamic_slice_request.operand(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation,
-                      dynamic_slice_request.start_indices(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation,
+                            dynamic_slice_request.operand(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            dynamic_slice_request.start_indices(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kDynamicUpdateSliceRequest: {
       const DynamicUpdateSliceRequest& dynamic_update_slice_request =
           request.request().dynamic_update_slice_request();
-      ConstantVisitor(session_computation,
-                      dynamic_update_slice_request.operand(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation,
-                      dynamic_update_slice_request.update(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation,
-                      dynamic_update_slice_request.start_indices(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation,
+                            dynamic_update_slice_request.operand(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            dynamic_update_slice_request.update(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            dynamic_update_slice_request.start_indices(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
@@ -1546,7 +1578,8 @@ void ConstantVisitor(const SessionComputation& session_computation,
           request.request().concatenate_request();
       for (const ComputationDataHandle& handle :
            concatenate_request.operands()) {
-        ConstantVisitor(session_computation, handle, visited, is_constant);
+        PureFunctionalVisitor(session_computation, handle, num_parameters,
+                              visited, is_functional);
       }
       break;
     }
@@ -1554,61 +1587,63 @@ void ConstantVisitor(const SessionComputation& session_computation,
     case OpRequest::kConvolveRequest: {
       const ConvolveRequest& convolve_request =
           request.request().convolve_request();
-      ConstantVisitor(session_computation, convolve_request.lhs(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, convolve_request.rhs(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, convolve_request.lhs(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation, convolve_request.rhs(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kCrossReplicaSumRequest: {
       // TODO(b/33009255): Implmement constant folding for cross replica sum.
-      *is_constant = false;
+      *is_functional = false;
       break;
     }
 
     case OpRequest::kInfeedRequest: {
-      *is_constant = false;
+      *is_functional = false;
       break;
     }
 
     case OpRequest::kOutfeedRequest: {
-      *is_constant = false;
+      *is_functional = false;
       break;
     }
 
     case OpRequest::kCallRequest: {
       const CallRequest& call_request = request.request().call_request();
       for (const ComputationDataHandle& handle : call_request.operands()) {
-        ConstantVisitor(session_computation, handle, visited, is_constant);
+        PureFunctionalVisitor(session_computation, handle, num_parameters,
+                              visited, is_functional);
       }
       // TODO(b/32495713): We aren't checking the to_apply computation itself,
       // so we conservatively say that computations containing the Call op
-      // cannot be constant.  We cannot set is_constant=false in other similar
+      // cannot be constant.  We cannot set is_functional=false in other similar
       // cases since we're already relying on IsConstant to return true.
-      *is_constant = false;
+      *is_functional = false;
       break;
     }
 
     case OpRequest::kCustomCallRequest: {
-      *is_constant = false;
+      *is_functional = false;
       break;
     }
 
     case OpRequest::kSendRequest: {
-      *is_constant = false;
+      *is_functional = false;
       break;
     }
 
     case OpRequest::kRecvRequest: {
-      *is_constant = false;
+      *is_functional = false;
       break;
     }
 
     case OpRequest::kMapRequest: {
       const MapRequest& map_request = request.request().map_request();
       for (const ComputationDataHandle& handle : map_request.operands()) {
-        ConstantVisitor(session_computation, handle, visited, is_constant);
+        PureFunctionalVisitor(session_computation, handle, num_parameters,
+                              visited, is_functional);
       }
       // TODO(b/32495713): We aren't checking the to_apply computation itself.
       break;
@@ -1616,10 +1651,10 @@ void ConstantVisitor(const SessionComputation& session_computation,
 
     case OpRequest::kReduceRequest: {
       const ReduceRequest& reduce_request = request.request().reduce_request();
-      ConstantVisitor(session_computation, reduce_request.operand(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, reduce_request.init_value(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, reduce_request.operand(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation, reduce_request.init_value(),
+                            num_parameters, visited, is_functional);
       // TODO(b/32495713): We aren't checking the to_apply computation itself.
       break;
     }
@@ -1627,10 +1662,12 @@ void ConstantVisitor(const SessionComputation& session_computation,
     case OpRequest::kReduceWindowRequest: {
       const ReduceWindowRequest& reduce_window_request =
           request.request().reduce_window_request();
-      ConstantVisitor(session_computation, reduce_window_request.operand(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation, reduce_window_request.init_value(),
-                      visited, is_constant);
+      PureFunctionalVisitor(session_computation,
+                            reduce_window_request.operand(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            reduce_window_request.init_value(), num_parameters,
+                            visited, is_functional);
       // TODO(b/32495713): We aren't checking the to_apply computation itself.
       break;
     }
@@ -1638,13 +1675,15 @@ void ConstantVisitor(const SessionComputation& session_computation,
     case OpRequest::kSelectAndScatterRequest: {
       const SelectAndScatterRequest& select_and_scatter_request =
           request.request().select_and_scatter_request();
-      ConstantVisitor(session_computation, select_and_scatter_request.operand(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation, select_and_scatter_request.source(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation,
-                      select_and_scatter_request.init_value(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation,
+                            select_and_scatter_request.operand(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            select_and_scatter_request.source(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            select_and_scatter_request.init_value(),
+                            num_parameters, visited, is_functional);
       // TODO(b/32495713): We aren't checking the select and scatter
       // computations themselves.
       break;
@@ -1653,76 +1692,80 @@ void ConstantVisitor(const SessionComputation& session_computation,
     case OpRequest::kBroadcastRequest: {
       const BroadcastRequest& broadcast_request =
           request.request().broadcast_request();
-      ConstantVisitor(session_computation, broadcast_request.operand(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, broadcast_request.operand(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kReshapeRequest: {
       const ReshapeRequest& reshape_request =
           request.request().reshape_request();
-      ConstantVisitor(session_computation, reshape_request.operand(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, reshape_request.operand(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kReverseRequest: {
       const ReverseRequest& reverse_request =
           request.request().reverse_request();
-      ConstantVisitor(session_computation, reverse_request.operand(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, reverse_request.operand(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kPadRequest: {
       const PadRequest& pad_request = request.request().pad_request();
-      ConstantVisitor(session_computation, pad_request.operand(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, pad_request.padding_value(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, pad_request.operand(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation, pad_request.padding_value(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kParameterRequest: {
-      *is_constant = false;
+      const ParameterRequest& parameter_request =
+          request.request().parameter_request();
+      if (parameter_request.parameter() >= num_parameters) {
+        *is_functional = false;
+      }
       break;
     }
 
     case OpRequest::kConvertRequest: {
       const ConvertRequest& convert_request =
           request.request().convert_request();
-      ConstantVisitor(session_computation, convert_request.operand(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, convert_request.operand(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kWhileRequest: {
       const WhileRequest& while_request = request.request().while_request();
-      ConstantVisitor(session_computation, while_request.init(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, while_request.init(),
+                            num_parameters, visited, is_functional);
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
-      *is_constant = false;
+      *is_functional = false;
       break;
     }
 
     case OpRequest::kTernaryOpRequest: {
       const TernaryOpRequest& ternary_op_request =
           request.request().ternary_op_request();
-      ConstantVisitor(session_computation, ternary_op_request.lhs(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, ternary_op_request.rhs(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, ternary_op_request.ehs(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, ternary_op_request.lhs(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation, ternary_op_request.rhs(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation, ternary_op_request.ehs(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kTransposeRequest: {
       const TransposeRequest& transpose_request =
           request.request().transpose_request();
-      ConstantVisitor(session_computation, transpose_request.operand(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, transpose_request.operand(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
@@ -1731,7 +1774,8 @@ void ConstantVisitor(const SessionComputation& session_computation,
           request.request().variadic_op_request();
       for (const ComputationDataHandle& handle :
            variadic_op_request.operands()) {
-        ConstantVisitor(session_computation, handle, visited, is_constant);
+        PureFunctionalVisitor(session_computation, handle, num_parameters,
+                              visited, is_functional);
       }
       break;
     }
@@ -1739,67 +1783,74 @@ void ConstantVisitor(const SessionComputation& session_computation,
     case OpRequest::kUnaryOpRequest: {
       const UnaryOpRequest& unary_op_request =
           request.request().unary_op_request();
-      ConstantVisitor(session_computation, unary_op_request.operand(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, unary_op_request.operand(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kBatchNormTrainingRequest: {
       const BatchNormTrainingRequest& batch_norm_training_request =
           request.request().batch_norm_training_request();
-      ConstantVisitor(session_computation,
-                      batch_norm_training_request.operand(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, batch_norm_training_request.scale(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation, batch_norm_training_request.offset(),
-                      visited, is_constant);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_training_request.operand(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_training_request.scale(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_training_request.offset(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kBatchNormInferenceRequest: {
       const BatchNormInferenceRequest& batch_norm_inference_request =
           request.request().batch_norm_inference_request();
-      ConstantVisitor(session_computation,
-                      batch_norm_inference_request.operand(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, batch_norm_inference_request.scale(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation,
-                      batch_norm_inference_request.offset(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, batch_norm_inference_request.mean(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation,
-                      batch_norm_inference_request.variance(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_inference_request.operand(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_inference_request.scale(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_inference_request.offset(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_inference_request.mean(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_inference_request.variance(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kBatchNormGradRequest: {
       const BatchNormGradRequest& batch_norm_grad_request =
           request.request().batch_norm_grad_request();
-      ConstantVisitor(session_computation, batch_norm_grad_request.operand(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation, batch_norm_grad_request.scale(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation, batch_norm_grad_request.mean(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation, batch_norm_grad_request.variance(),
-                      visited, is_constant);
-      ConstantVisitor(session_computation,
-                      batch_norm_grad_request.grad_output(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_grad_request.operand(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_grad_request.scale(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation, batch_norm_grad_request.mean(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_grad_request.variance(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            batch_norm_grad_request.grad_output(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
     case OpRequest::kBinaryOpRequest: {
       const BinaryOpRequest& binary_op_request =
           request.request().binary_op_request();
-      ConstantVisitor(session_computation, binary_op_request.lhs(), visited,
-                      is_constant);
-      ConstantVisitor(session_computation, binary_op_request.rhs(), visited,
-                      is_constant);
+      PureFunctionalVisitor(session_computation, binary_op_request.lhs(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation, binary_op_request.rhs(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
@@ -1814,8 +1865,8 @@ void ConstantVisitor(const SessionComputation& session_computation,
 
 }  // namespace
 
-StatusOr<bool> UserComputation::IsConstant(
-    const ComputationDataHandle& handle) {
+StatusOr<bool> UserComputation::IsConstant(const ComputationDataHandle& handle,
+                                           int64 num_parameters) {
   tensorflow::mutex_lock lock(mutex_);
 
   // Verify that the handle is valid.
@@ -1826,7 +1877,8 @@ StatusOr<bool> UserComputation::IsConstant(
 
   bool is_constant = true;
   std::set<int64> visited;
-  ConstantVisitor(session_computation_, handle, &visited, &is_constant);
+  PureFunctionalVisitor(session_computation_, handle, num_parameters, &visited,
+                        &is_constant);
 
   return is_constant;
 }
@@ -2344,6 +2396,13 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kBitcastConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().bitcast_convert_request();
+      apply(convert_request.operand());
+      break;
+    }
+
     case OpRequest::kWhileRequest: {
       const WhileRequest& while_request = request.request().while_request();
       apply(while_request.init());
@@ -2512,7 +2571,10 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
   if (ShapeUtil::IsScalar(operand->shape())) {
     HloInstruction* broadcast = hlo_builder_.AddInstruction(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
-    broadcast->set_device_assignment(operand->device_assignment());
+    broadcast->set_metadata(operand->metadata());
+    if (operand->has_sharding()) {
+      broadcast->set_sharding(operand->sharding());
+    }
     return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
@@ -2530,12 +2592,18 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
           ShapeUtil::MakeShape(operand->shape().element_type(),
                                reshaped_dimensions),
           operand));
-  reshaped_operand->set_device_assignment(operand->device_assignment());
+  reshaped_operand->set_metadata(operand->metadata());
+  if (operand->has_sharding()) {
+    reshaped_operand->set_sharding(operand->sharding());
+  }
   // Broadcast 'reshape' up to the larger size.
   HloInstruction* broadcast =
       hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
           broadcast_shape, reshaped_operand, broadcast_dimensions));
-  broadcast->set_device_assignment(operand->device_assignment());
+  broadcast->set_metadata(operand->metadata());
+  if (operand->has_sharding()) {
+    broadcast->set_sharding(operand->sharding());
+  }
   return broadcast;
 }
 
@@ -2550,8 +2618,11 @@ void ComputationLowerer::Visit(
     HloInstruction* hlo_instruction =
         hlo_builder_.AddInstruction(std::move(instruction));
     hlo_instruction->set_metadata(request.request().metadata());
-    hlo_instruction->set_device_assignment(
-        request.request().device_assignment());
+    if (request.request().has_sharding()) {
+      OpSharding op_sharding = request.request().sharding();
+      hlo_instruction->set_sharding(
+          HloSharding::FromProto(op_sharding).ValueOrDie());
+    }
     return hlo_instruction;
   };
   auto lookup_instruction = [&](const ComputationDataHandle& handle) {
@@ -2892,8 +2963,9 @@ void ComputationLowerer::Visit(
 
     case OpRequest::kRecvRequest: {
       const RecvRequest& recv_request = request.request().recv_request();
-      hlo_instruction = add_instruction(HloInstruction::CreateRecv(
+      HloInstruction* recv = add_instruction(HloInstruction::CreateRecv(
           request.output_shape(), recv_request.channel_handle().handle()));
+      hlo_instruction = add_instruction(HloInstruction::CreateRecvDone(recv));
       break;
     }
 
@@ -2912,6 +2984,15 @@ void ComputationLowerer::Visit(
       HloInstruction* operand = lookup_instruction(convert_request.operand());
       hlo_instruction = add_instruction(
           HloInstruction::CreateConvert(request.output_shape(), operand));
+      break;
+    }
+
+    case OpRequest::kBitcastConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().bitcast_convert_request();
+      HloInstruction* operand = lookup_instruction(convert_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateBitcastConvert(
+          request.output_shape(), operand));
       break;
     }
 
@@ -2939,6 +3020,25 @@ void ComputationLowerer::Visit(
       HloInstruction* rhs = lookup_instruction(ternary_op_request.rhs());
       HloInstruction* ehs = lookup_instruction(ternary_op_request.ehs());
       auto hlo_opcode = TernaryOperationToHloOpcode(ternary_op_request.triop());
+
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
+        if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
+          // lhs side is being implicitly broadcast. Change to explicit.
+          lhs =
+              ImplicitBroadcastToExplicitBroadcast(lhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
+          rhs =
+              ImplicitBroadcastToExplicitBroadcast(rhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), ehs->shape())) {
+          ehs =
+              ImplicitBroadcastToExplicitBroadcast(ehs, request.output_shape());
+        }
+      }
+
       hlo_instruction = add_instruction(HloInstruction::CreateTernary(
           request.output_shape(), hlo_opcode, lhs, rhs, ehs));
       break;
@@ -3085,8 +3185,9 @@ void ComputationLowerer::Visit(
     case OpRequest::kSendRequest: {
       const SendRequest& send_request = request.request().send_request();
       HloInstruction* operand = lookup_instruction(send_request.operand());
-      hlo_instruction = add_instruction(HloInstruction::CreateSend(
+      HloInstruction* send = add_instruction(HloInstruction::CreateSend(
           operand, send_request.channel_handle().handle()));
+      hlo_instruction = add_instruction(HloInstruction::CreateSendDone(send));
       break;
     }
 
@@ -3097,7 +3198,7 @@ void ComputationLowerer::Visit(
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
   (*instructions)[handle.handle()] = hlo_instruction;
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace
 

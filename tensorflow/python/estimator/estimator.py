@@ -26,9 +26,11 @@ import tempfile
 import numpy as np
 import six
 
+from google.protobuf import message
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util
@@ -52,7 +54,6 @@ from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 
 
 _VALID_MODEL_FN_ARGS = set(
@@ -88,6 +89,10 @@ class Estimator(object):
   None of `Estimator`'s methods can be overridden in subclasses (its
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None):
@@ -130,10 +135,15 @@ class Estimator(object):
               Keys are names of parameters, values are basic python types.
 
     Raises:
+      RuntimeError: If eager execution is enabled.
       ValueError: parameters of `model_fn` don't match `params`.
       ValueError: if this is called via a subclass and if that class overrides
         a member of `Estimator`.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          'Estimators are not supported when eager execution is enabled.')
+
     Estimator._assert_members_are_not_overridden(self)
 
     if config is None:
@@ -451,7 +461,11 @@ class Estimator(object):
       assets_extra=None,
       as_text=False,
       checkpoint_path=None):
+    # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
+
+    For a detailed guide, see
+    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
 
     This method builds a new graph by first calling the
     serving_input_receiver_fn to obtain feature `Tensor`s, and then calling
@@ -496,6 +510,7 @@ class Estimator(object):
       ValueError: if no serving_input_receiver_fn is provided, no export_outputs
           are provided, or no checkpoint can be found.
     """
+    # pylint: enable=line-too-long
     if serving_input_receiver_fn is None:
       raise ValueError('serving_input_receiver_fn must be defined.')
 
@@ -527,7 +542,7 @@ class Estimator(object):
       temp_export_dir = get_temp_export_dir(export_dir)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
-      with tf_session.Session() as session:
+      with tf_session.Session(config=self._session_config) as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
             sharded=True)
@@ -925,9 +940,6 @@ def _verify_model_fn_args(model_fn, params):
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  if tf_inspect.ismethod(model_fn):
-    if 'self' in args:
-      args.remove('self')
   non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
@@ -992,20 +1004,27 @@ def _write_dict_to_summary(output_dir,
       continue
     if key == 'global_step':
       continue
-    value = summary_proto.value.add()
-    value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
-      value.simple_value = float(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=float(dictionary[key]))
     elif (isinstance(dictionary[key], np.int64) or
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
-      value.simple_value = int(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
+    elif isinstance(dictionary[key], six.string_types):
+      try:
+        summ = summary_pb2.Summary.FromString(dictionary[key])
+        for i, _ in enumerate(summ.value):
+          summ.value[i].tag = key
+        summary_proto.value.extend(summ.value)
+      except message.DecodeError:
+        logging.warn('Skipping summary for %s, cannot parse string to Summary.',
+                     key)
+        continue
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
-          'np.int32 or int.',
-          key)
+          'np.int32 or int or a serialized string of Summary.', key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
@@ -1020,4 +1039,3 @@ def _has_dataset_or_queue_runner(maybe_tensor):
 
   # Now, check queue.
   return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
-

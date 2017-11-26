@@ -714,6 +714,8 @@ class SaverTest(test.TestCase):
 
 class SaveRestoreShardedTest(test.TestCase):
 
+  _WRITE_VERSION = saver_pb2.SaverDef.V1
+
   def _get_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
@@ -739,6 +741,7 @@ class SaveRestoreShardedTest(test.TestCase):
               "t0": t0.saveable,
               "t1": t1.saveable
           },
+          write_version=self._WRITE_VERSION,
           sharded=True)
       variables.global_variables_initializer().run()
       t0.insert("k1", 30.0).run()
@@ -759,7 +762,9 @@ class SaveRestoreShardedTest(test.TestCase):
         with sess.graph.device("/cpu:0"):
           v0 = variables.Variable(111, name="v0")
           t0 = saver_test_utils.CheckpointedOp(name="t0")
-        save = saver_module.Saver({"v0": v0, "t0": t0.saveable}, sharded=True)
+        save = saver_module.Saver({"v0": v0, "t0": t0.saveable},
+                                  write_version=self._WRITE_VERSION,
+                                  sharded=True)
         variables.global_variables_initializer().run()
         t0.insert("k11", 33.0).run()
         self.assertEqual(111, v0.eval())
@@ -777,7 +782,9 @@ class SaveRestoreShardedTest(test.TestCase):
         with sess.graph.device("/cpu:0"):
           v1 = variables.Variable(222)
           t1 = saver_test_utils.CheckpointedOp(name="t1")
-        save = saver_module.Saver({"v1": v1, "t1": t1.saveable}, sharded=True)
+        save = saver_module.Saver({"v1": v1, "t1": t1.saveable},
+                                  write_version=self._WRITE_VERSION,
+                                  sharded=True)
         variables.global_variables_initializer().run()
         t1.insert("k22", 44.0).run()
         self.assertEqual(222, v1.eval())
@@ -805,6 +812,7 @@ class SaveRestoreShardedTest(test.TestCase):
               "t0": t0.saveable,
               "t1": t1.saveable
           },
+          write_version=self._WRITE_VERSION,
           sharded=True)
       variables.global_variables_initializer().run()
       t0.insert("k11", 33.0).run()
@@ -968,6 +976,10 @@ class SaveRestoreShardedTest(test.TestCase):
 
   def testPartitionedResourceVariable(self):
     self._testPartitionedVariables(use_resource=True)
+
+
+class SaveRestoreShardedTestV2(SaveRestoreShardedTest):
+  _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
 class MaxToKeepTest(test.TestCase):
@@ -1299,20 +1311,20 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
 
 class SaveRestoreWithVariableNameMap(test.TestCase):
 
-  def testNonReshape(self):
+  def _testNonReshape(self, variable_op):
     save_path = os.path.join(self.get_temp_dir(), "non_reshape")
 
-    with self.test_session() as sess:
+    with self.test_session(graph=ops_lib.Graph()) as sess:
       # Build a graph with 2 parameter nodes, and Save and
       # Restore nodes for them.
-      v0 = variables.Variable(10.0, name="v0")
-      v1 = variables.Variable(20.0, name="v1")
+      v0 = variable_op(10.0, name="v0")
+      v1 = variable_op(20.0, name="v1")
       save = saver_module.Saver({"save_prefix/v0": v0, "save_prefix/v1": v1})
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Check that the parameter nodes have been initialized.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
+      self.assertEqual(10.0, self.evaluate(v0))
+      self.assertEqual(20.0, self.evaluate(v1))
 
       # Save the initialized values in the file at "save_path"
       # Use a variable name map to set the saved tensor names
@@ -1327,40 +1339,50 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
 
     # Verify that the mapped names are present in the Saved file and can be
     # Restored using remapped names.
-    with self.test_session() as sess:
-      v0 = variables.Variable(-1.0, name="v0")
-      v1 = variables.Variable(-1.0, name="v1")
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      v0 = variable_op(-1.0, name="v0")
+      v1 = variable_op(-1.0, name="v1")
 
-      with self.assertRaisesOpError("uninitialized value v0"):
-        sess.run(v0)
-      with self.assertRaisesOpError("uninitialized value v1"):
-        sess.run(v1)
+      if context.in_graph_mode():
+        with self.assertRaisesOpError("uninitialized"):
+          self.evaluate(v0)
+        with self.assertRaisesOpError("uninitialized"):
+          self.evaluate(v1)
 
       save = saver_module.Saver({"save_prefix/v0": v0, "save_prefix/v1": v1})
       save.restore(sess, save_path)
 
       # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
+      if context.in_graph_mode():
+        self.assertEqual(10.0, self.evaluate(v0))
+        self.assertEqual(20.0, self.evaluate(v1))
 
     # Add a prefix to the node names in the current graph and Restore using
     # remapped names.
-    with self.test_session() as sess:
-      v0 = variables.Variable(-1.0, name="restore_prefix/v0")
-      v1 = variables.Variable(-1.0, name="restore_prefix/v1")
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      v0 = variable_op(-1.0, name="restore_prefix/v0")
+      v1 = variable_op(-1.0, name="restore_prefix/v1")
 
-      with self.assertRaisesOpError("uninitialized value restore_prefix/v0"):
-        sess.run(v0)
-      with self.assertRaisesOpError("uninitialized value restore_prefix/v1"):
-        sess.run(v1)
+      if context.in_graph_mode():
+        with self.assertRaisesOpError("uninitialized"):
+          self.evaluate(v0)
+        with self.assertRaisesOpError("uninitialized"):
+          self.evaluate(v1)
 
       # Restore the saved values in the parameter nodes.
       save = saver_module.Saver({"save_prefix/v0": v0, "save_prefix/v1": v1})
       save.restore(sess, save_path)
 
       # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
+      self.assertEqual(10.0, self.evaluate(v0))
+      self.assertEqual(20.0, self.evaluate(v1))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNonReshapeResourceVariable(self):
+    self._testNonReshape(resource_variable_ops.ResourceVariable)
+
+  def testNonReshapeVariable(self):
+    self._testNonReshape(variables.Variable)
 
 
 class LatestCheckpointWithRelativePaths(test.TestCase):

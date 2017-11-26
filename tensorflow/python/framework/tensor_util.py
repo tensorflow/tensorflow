@@ -286,6 +286,7 @@ _TF_TO_IS_OK = {
     dtypes.bool: [_FilterBool],
     dtypes.complex128: [_FilterComplex],
     dtypes.complex64: [_FilterComplex],
+    dtypes.float16: [_FilterFloat],
     dtypes.float32: [_FilterFloat],
     dtypes.float64: [_FilterFloat],
     dtypes.int16: [_FilterInt],
