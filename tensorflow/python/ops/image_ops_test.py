@@ -739,7 +739,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testIdempotentLeftRightWithBatch(self):
     x_np = np.array([[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
@@ -758,9 +758,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testLeftRightWithBatch(self):
     x_np = np.array([[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
     y_np = np.array([[[3, 2, 1], [3, 2, 1]], [[3, 2, 1], [3, 2, 1]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -791,9 +791,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testRandomFlipLeftRightWithBatch(self):
     x_np = np.array([[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
     y_np = np.array([[[3, 2, 1], [3, 2, 1]], [[3, 2, 1], [3, 2, 1]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape).eval()
@@ -803,16 +803,16 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       for _ in range(50):
         y_tf = y.eval()
         for index in range(0, x_tf.shape[0]):
-            current_x_tf = x_tf[index]
-            current_y_tf = y_tf[index]
-            current_y_np = y_np[index]
+          current_x_tf = x_tf[index]
+          current_y_tf = y_tf[index]
+          current_y_np = y_np[index]
 
-            if current_y_tf[0][0] == 1:
-              self.assertAllEqual(current_y_tf, current_x_tf)
-              count_unflipped += 1
-            else:
-              self.assertAllEqual(current_y_tf, current_y_np)
-              count_flipped += 1
+          if current_y_tf[0][0] == 1:
+            self.assertAllEqual(current_y_tf, current_x_tf)
+            count_unflipped += 1
+          else:
+            self.assertAllEqual(current_y_tf, current_y_np)
+            count_flipped += 1
       self.assertGreaterEqual(count_flipped, 1)
       self.assertGreaterEqual(count_unflipped, 1)
 
@@ -827,7 +827,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testIdempotentUpDownWithBatch(self):
     x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -847,9 +847,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testUpDownWithBatch(self):
     x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
     y_np = np.array([[[4, 5, 6], [1, 2, 3]], [[10, 11, 12], [7, 8, 9]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -879,9 +879,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testRandomFlipUpDownWithBatch(self):
     x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
     y_np = np.array([[[4, 5, 6], [1, 2, 3]], [[4, 5, 6], [1, 2, 3]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape).eval()
@@ -891,9 +891,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       for _ in range(50):
         y_tf = y.eval()
         for index in range(0, x_tf.shape[0]):
-            current_x_tf = x_tf[index]
-            current_y_tf = y_tf[index]
-            current_y_np = y_np[index]
+          current_x_tf = x_tf[index]
+          current_y_tf = y_tf[index]
+          current_y_np = y_np[index]
         if current_y_tf[0][0] == 1:
           self.assertAllEqual(current_y_tf, current_x_tf)
           count_unflipped += 1
@@ -914,7 +914,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testIdempotentTransposeWithBatch(self):
     x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -934,10 +934,10 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testTransposeWithBatch(self):
     x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
-            dtype=np.uint8).reshape([2, 2, 3, 1])
+                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     y_np = np.array([[[1, 4], [2, 5], [3, 6]], [[7, 10], [8, 11], [9, 12]]],
-        dtype=np.uint8).reshape([2, 3, 2, 1])
+                    dtype=np.uint8).reshape([2, 3, 2, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -952,7 +952,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     p_unknown_dims_4 = array_ops.placeholder(
         dtypes.uint8, shape=[None, None, None, None])
     p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
-    p_unknown_batch = array_ops.placeholder(dtypes.uint8, shape=[None, 64, 64, 3])
+    p_unknown_batch = array_ops.placeholder(dtypes.uint8,
+                                            shape=[None, 64, 64, 3])
 
     p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
     p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
@@ -973,7 +974,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       transformed_unknown_batch = op(p_unknown_batch)
       self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
 
-      with self.assertRaisesRegexp(ValueError, "must have either 3 or 4 dimensions."):
+      with self.assertRaisesRegexp(ValueError,
+                                   "must have either 3 or 4 dimensions."):
         op(p_wrong_rank)
       with self.assertRaisesRegexp(ValueError, "must be > 0"):
         op(p_zero_dim)
@@ -1009,7 +1011,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       k_placeholder = array_ops.placeholder(dtypes.int32, shape=[])
       y_tf = image_ops.rot90(image, k_placeholder)
       for k in xrange(4):
-        y_np = np.rot90(image, k=k, axes=(1,2))
+        y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
 
 class RandomFlipTest(test_util.TensorFlowTestCase):
