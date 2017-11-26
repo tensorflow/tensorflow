@@ -528,5 +528,5 @@ def crf_decode(potentials, transition_params, sequence_length):
   return utils.smart_cond(
       pred=math_ops.equal(
           potentials.shape[1].value or array_ops.shape(potentials)[1], 1),
-      fn1=_single_seq_fn,
-      fn2=_multi_seq_fn)
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
