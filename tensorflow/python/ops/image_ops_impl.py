@@ -183,19 +183,33 @@ def _CheckAtLeast3DImage(image, require_static=True):
 
 
 def _EnsureTensorIs4D(image):
-    original_shape = image.get_shape()
-    is_batch = True
-    if original_shape.ndims == 3:
-      is_batch = False
-      image = array_ops.expand_dims(image, 0)
-    elif original_shape.ndims is None:
-      is_batch = False
-      image = array_ops.expand_dims(image, 0)
-      image.set_shape([None] * 4)
-    elif original_shape.ndims != 4:
-        raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+  """Converts `image` to a 4-D Tensor if it is not already one
 
-    return (image, is_batch)
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
+  Raises:
+    ValueError: if image is not a 3-D or 4-D Tensor.
+
+  Returns:
+    If `image` was 4-D, a 4-D float Tensor of shape
+    `[batch, width, height, channels]`
+    If `image` was 3-D, a 4-D float Tensor of shape
+    `[1, width, height, channels]`
+  """
+  original_shape = image.get_shape()
+  is_batch = True
+  if original_shape.ndims == 3:
+    is_batch = False
+    image = array_ops.expand_dims(image, 0)
+  elif original_shape.ndims is None:
+    is_batch = False
+    image = array_ops.expand_dims(image, 0)
+    image.set_shape([None] * 4)
+  elif original_shape.ndims != 4:
+    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+  return (image, is_batch)
 
 
 def fix_image_flip_shape(image, result, rank=3):
@@ -242,17 +256,18 @@ def random_flip_up_down(image, seed=None):
   image = control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
 
-  batch, height, width, depth = _ImageDimensions(image, rank=4)
+  batch, _, _, _ = _ImageDimensions(image, rank=4)
 
   uniform_random = random_ops.random_uniform([batch], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
-  result = array_ops.where(mirror_cond, x=image, y=array_ops.reverse(image, [1]))
+  result = array_ops.where(mirror_cond, x=image,
+                           y=array_ops.reverse(image, [1]))
 
   if is_batch:
     return fix_image_flip_shape(original_image, result, rank=4)
-  else:
-    result = array_ops.squeeze(result, squeeze_dims=[0])
-    return fix_image_flip_shape(original_image, result, rank=3)
+
+  result = array_ops.squeeze(result, squeeze_dims=[0])
+  return fix_image_flip_shape(original_image, result, rank=3)
 
 
 def random_flip_left_right(image, seed=None):
@@ -280,17 +295,18 @@ def random_flip_left_right(image, seed=None):
   image = control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
 
-  batch, height, width, depth = _ImageDimensions(image, rank=4)
+  batch, _, _, _ = _ImageDimensions(image, rank=4)
 
   uniform_random = random_ops.random_uniform([batch], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
 
-  result = array_ops.where(mirror_cond, x=image, y=array_ops.reverse(image, [2]))
+  result = array_ops.where(mirror_cond, x=image,
+                           y=array_ops.reverse(image, [2]))
   if is_batch:
     return fix_image_flip_shape(original_image, result, rank=4)
-  else:
-    result = array_ops.squeeze(result, squeeze_dims=[0])
-    return fix_image_flip_shape(original_image, result, rank=3)
+
+  result = array_ops.squeeze(result, squeeze_dims=[0])
+  return fix_image_flip_shape(original_image, result, rank=3)
 
 
 def flip_left_right(image):
@@ -320,9 +336,9 @@ def flip_left_right(image):
 
   if is_batch:
     return fix_image_flip_shape(original_image, result, rank=4)
-  else:
-    result = array_ops.squeeze(result, squeeze_dims=[0])
-    return fix_image_flip_shape(original_image, result, rank=3)
+
+  result = array_ops.squeeze(result, squeeze_dims=[0])
+  return fix_image_flip_shape(original_image, result, rank=3)
 
 
 def flip_up_down(image):
@@ -352,9 +368,9 @@ def flip_up_down(image):
 
   if is_batch:
     return fix_image_flip_shape(original_image, result, rank=4)
-  else:
-    result = array_ops.squeeze(result, squeeze_dims=[0])
-    return fix_image_flip_shape(original_image, result, rank=3)
+
+  result = array_ops.squeeze(result, squeeze_dims=[0])
+  return fix_image_flip_shape(original_image, result, rank=3)
 
 
 def rot90(image, k=1, name=None):
@@ -432,9 +448,9 @@ def transpose_image(image):
 
   if is_batch:
     return result
-  else:
-    result = array_ops.squeeze(result, squeeze_dims=[0])
-    return result
+
+  result = array_ops.squeeze(result, squeeze_dims=[0])
+  return result
 
 
 def central_crop(image, central_fraction):
