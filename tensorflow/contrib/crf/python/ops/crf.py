@@ -124,8 +124,8 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
   return utils.smart_cond(
       pred=math_ops.equal(inputs.shape[1].value or array_ops.shape(inputs)[1],
                           1),
-      fn1=_single_seq_fn,
-      fn2=_multi_seq_fn)
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
 
 
 def crf_log_norm(inputs, sequence_lengths, transition_params):
