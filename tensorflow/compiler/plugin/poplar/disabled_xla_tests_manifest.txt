@@ -11,6 +11,7 @@ SliceR1Test.DoIt_F64 POPLAR // F64
 MultiOutputFusionTest.DiffentTypesNoFusion POPLAR // F64
 MultiOutputFusionTest.DiffentTypesFusion POPLAR // F64
 
+Bfloat16Test POPLAR // No bfloat16
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
@@ -109,10 +110,6 @@ ArrayElementwiseOpTest.CompareEqC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareEqZeroElementC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareNeC64s POPLAR // Complex<double>
 
-ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3D conv
-ConvolutionVariantsTest.BackwardFilterEvenPadding3D POPLAR // 3D conv
-ConvolutionVariantsTest.BackwardInputEvenPadding3D POPLAR // 3D conv
-
 ConvolutionTest.Convolve1D_1x2x5_1x2x2_Valid POPLAR // 1D conv
 ConvolutionTest.Convolve1D_Valid  POPLAR // 1D conv
 ConvolutionVariantsTest.BackwardInputEvenPadding1D POPLAR // 1D conv
@@ -122,6 +119,7 @@ ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation POPLAR // 1D conv
 ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithRHSDilation POPLAR // 1D conv
 ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithLHSDilation POPLAR // 1D conv
 Convolve1D1WindowTest POPLAR // 1D conv
+ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
 
 DotOperationTest POPLAR // Test hangs
 
@@ -149,3 +147,5 @@ LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
 DynamicUpdateSliceTest.Int32R1 POPLAR // Tests for invalid wrapping behaviour
 DynamicUpdateSliceTest.Int32R2 POPLAR // Tests for invalid wrapping behaviour
 DynamicUpdateSliceTest.Int32R3 POPLAR // Tests for invalid wrapping behaviour
+
+ClientTest.ExecuteParallel POPLAR // Don't support parallel execution

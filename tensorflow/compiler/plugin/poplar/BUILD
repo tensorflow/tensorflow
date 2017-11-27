@@ -121,8 +121,10 @@ cc_library(
     deps = [
         ":driver",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/kernels:constant_op",
     ],
     linkopts = [
         "$(locations @local_config_poplar//poplar:poplar_lib)",
