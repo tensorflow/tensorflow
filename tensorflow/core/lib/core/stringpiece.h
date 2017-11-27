@@ -105,8 +105,6 @@ class StringPiece {
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 
-  using Hasher = ::tensorflow::StringPieceHasher;
-
   // Return a string that contains the copy of the referenced data.
   std::string ToString() const { return std::string(data_, size_); }
 

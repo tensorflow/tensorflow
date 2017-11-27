@@ -272,7 +272,7 @@ class OptimizeForInferenceTest(test.TestCase):
     for node in optimized_graph_def.node:
       self.assertNotEqual("Conv2D", node.op)
       self.assertNotEqual("MirrorPad", node.op)
-      
+
 
   def testFusePadAndConv(self):
     with self.test_session() as sess:

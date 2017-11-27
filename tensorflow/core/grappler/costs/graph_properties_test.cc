@@ -825,6 +825,32 @@ TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {
   TF_EXPECT_OK(properties.InferStatically());
 }
 
+TEST_F(GraphPropertiesTest, ShapeTracking) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a =
+      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
+  Output b =
+      ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1})));
+  Output zero = ops::Const(s.WithOpName("zero"), 0.0f, {});
+  auto shp = ops::ShapeN(s.WithOpName("shapes"), {a, b});
+  Output o1 = ops::Fill(s.WithOpName("o1"), shp[0], zero);
+  Output o2 = ops::Fill(s.WithOpName("o2"), shp[1], zero);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
+  const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
+  const auto shape_o1 = properties.GetOutputProperties("o1").at(0).shape();
+  const auto shape_o2 = properties.GetOutputProperties("o2").at(0).shape();
+  EXPECT_EQ(shape_a.DebugString(), shape_o1.DebugString());
+  EXPECT_EQ(shape_b.DebugString(), shape_o2.DebugString());
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

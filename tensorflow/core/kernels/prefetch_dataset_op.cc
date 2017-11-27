@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <deque>
 
-#include "tensorflow/core/kernels/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/dataset.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -39,14 +40,14 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, buffer_size > 0,
                 errors::InvalidArgument("buffer_size must be > 0"));
 
-    *output = new Dataset(input, buffer_size);
+    *output = new Dataset(ctx, input, buffer_size);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(const DatasetBase* input, int64 buffer_size)
-        : input_(input), buffer_size_(buffer_size) {
+    Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size)
+        : GraphDatasetBase(ctx), input_(input), buffer_size_(buffer_size) {
       input_->Ref();
     }
 
@@ -66,6 +67,18 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() override { return "PrefetchDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      Node* buffer_size = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, buffer_size}, output));
+      return Status::OK();
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -121,13 +134,79 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
             // Wake the prefetch thread, in case it has been waiting
             // for space in the buffer.
-            cond_var_.notify_one();
+            // Also wake up threads from other calls to GetNext.
+            // TODO(mrry): Consider using different condition variables
+            // for GetNext and Prefetch.
+            cond_var_.notify_all();
             return s;
           } else if (prefetch_thread_finished_) {
             *end_of_sequence = true;
             return Status::OK();
           }
         }
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        // Acquire both locks to ensure that the prefetch thread and
+        // all GetNext threads are blocked.
+        mutex_lock parent_l(parent_mu_);
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name("buffer_size"), buffer_.size()));
+        for (size_t i = 0; i < buffer_.size(); i++) {
+          auto& buffer_element = buffer_[i];
+          TF_RETURN_IF_ERROR(WriteStatus(writer, i, buffer_element.status));
+          if (buffer_element.status.ok()) {
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                full_name(strings::StrCat("buffer[", i, "].size")),
+                buffer_element.value.size()));
+            for (size_t j = 0; j < buffer_element.value.size(); j++) {
+              TF_RETURN_IF_ERROR(writer->WriteTensor(
+                  strings::StrCat("buffer[", i, "][", j, "]"),
+                  buffer_element.value[j]));
+            }
+          }
+        }
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock parent_l(parent_mu_);
+        mutex_lock l(mu_);
+        buffer_.clear();
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        size_t buffer_size;
+        {
+          int64 temp;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("buffer_size"), &temp));
+          buffer_size = static_cast<size_t>(temp);
+        }
+        for (size_t i = 0; i < buffer_size; i++) {
+          buffer_.emplace_back();
+          auto& buffer_element = buffer_.back();
+          TF_RETURN_IF_ERROR(ReadStatus(reader, i, &buffer_element.status));
+          if (buffer_element.status.ok()) {
+            size_t value_size;
+            {
+              int64 temp;
+              TF_RETURN_IF_ERROR(reader->ReadScalar(
+                  full_name(strings::StrCat("buffer[", i, "].size")), &temp));
+              value_size = static_cast<size_t>(temp);
+            }
+            buffer_element.value.reserve(value_size);
+            for (size_t j = 0; j < value_size; j++) {
+              buffer_element.value.emplace_back();
+              TF_RETURN_IF_ERROR(reader->ReadTensor(
+                  strings::StrCat("buffer[", i, "][", j, "]"),
+                  &buffer_element.value.back()));
+            }
+          }
+        }
+        return Status::OK();
       }
 
      private:
@@ -173,6 +252,12 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
           }
 
           // 2. Read the next element.
+          // Acquire the parent lock since we will be reading an element
+          // from the input iterator. Note that we do not wish to release
+          // this lock till we have added the fetched element to the
+          // `buffer_` else there will be local state that may be missed
+          // by SaveInternal.
+          mutex_lock parent_l(parent_mu_);
           bool end_of_sequence;
           BufferElement buffer_element;
           buffer_element.status = input_impl_->GetNext(
@@ -193,8 +278,50 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
+      Status WriteStatus(IteratorStateWriter* writer, size_t index,
+                         const Status& status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            CodeKey(index), static_cast<int64>(status.code())));
+        if (!status.ok()) {
+          TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
+                                                 status.error_message()));
+        }
+        return Status::OK();
+      }
+
+      Status ReadStatus(IteratorStateReader* reader, size_t index,
+                        Status* status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        int64 code_int;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
+        error::Code code = static_cast<error::Code>(code_int);
+
+        if (code != error::Code::OK) {
+          string error_message;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(ErrorMessageKey(index), &error_message));
+          *status = Status(code, error_message);
+        } else {
+          *status = Status::OK();
+        }
+        return Status::OK();
+      }
+
+      string CodeKey(size_t index) {
+        return full_name(strings::StrCat("status[", index, "].code"));
+      }
+
+      string ErrorMessageKey(size_t index) {
+        return full_name(strings::StrCat("status[", index, "].error_message"));
+      }
+
+      // This mutex is used to ensure exclusivity between multiple threads
+      // reading/writing this iterator's local state.
       mutex mu_;
-      const std::unique_ptr<IteratorBase> input_impl_;
+      // This mutex is used to ensure exclusivity between multiple threads
+      // accessing the parent iterator. We keep this separate from `mu_` to
+      // allow prefetching to run in parallel with GetNext calls.
+      mutex parent_mu_ ACQUIRED_BEFORE(mu_);
+      const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(parent_mu_);
       condition_variable cond_var_;
       std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
       std::unique_ptr<Thread> prefetch_thread_ GUARDED_BY(mu_);

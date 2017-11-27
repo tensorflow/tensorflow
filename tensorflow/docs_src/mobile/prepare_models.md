@@ -131,9 +131,9 @@ needs to understand which parts of the graph are actually needed, and which are
 artifacts of the training process, like summarization ops. Only ops that
 contribute to calculating the given output nodes will be kept. If you know how
 your graph is going to be used, these should just be the names of the nodes you
-pass into `Session::Run()` as your fetch targets. The easiest way to find the 
+pass into `Session::Run()` as your fetch targets. The easiest way to find the
 node names is to inspect the Node objects while building your graph in python.
-Inspecting your graph in TensorBoard is another simple way.  You can get some 
+Inspecting your graph in TensorBoard is another simple way.  You can get some
 suggestions on likely outputs by running the [`summarize_graph` tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/graph_transforms/README.md#inspecting-graphs).
 
 Because the output format for TensorFlow has changed over time, there are a
@@ -164,7 +164,7 @@ The trickiest part of this process is figuring out the names of the nodes you
 want to use as inputs and outputs during inference.  You'll need these anyway
 once you start to run inference, but you also need them here so that the
 transform can calculate which nodes are not needed on the inference-only
-path. These may not be obvious from the training code. The easiest way to 
+path. These may not be obvious from the training code. The easiest way to
 determine the node name is to explore the graph with TensorBoard.
 
 Remember that mobile applications typically gather their data from sensors and
@@ -187,9 +187,9 @@ output nodes.
 If you’ve just been given a frozen `GraphDef` file, and are not sure about the
 contents, try using the `summarize_graph` tool to print out information
 about the inputs and outputs it finds from the graph structure. Here’s an
-example with the original Inception v3 file: 
+example with the original Inception v3 file:
 
-    bazel run tensorflow/tools/graph_transforms:summarize_graph -- 
+    bazel run tensorflow/tools/graph_transforms:summarize_graph --
     --in_graph=tensorflow_inception_graph.pb
 
 Once you have an idea of what the input and output nodes are, you can feed them
@@ -259,7 +259,7 @@ on how to do this, and also see @{$mobile/optimizing#binary_size$Optimizing} for
 more on reducing your binary size.
 
 ### Locate the implementation
-   
+
 Operations are broken into two parts. The first is the op definition, which
 declares the signature of the operation, which inputs, outputs, and attributes
 it has. These take up very little space, and so all are included by default. The
@@ -267,7 +267,7 @@ implementations of the op computations are done in kernels, which live in the
 `tensorflow/core/kernels` folder. You need to compile the C++ file containing
 the kernel implementation of the op you need into the library. To figure out
 which file that is, you can search for the operation name in the source
-files. 
+files.
 
 [Here’s an example search in github](https://github.com/search?utf8=%E2%9C%93&q=repo%3Atensorflow%2Ftensorflow+extension%3Acc+path%3Atensorflow%2Fcore%2Fkernels+REGISTER+Mul&type=Code&ref=searchresults).
 

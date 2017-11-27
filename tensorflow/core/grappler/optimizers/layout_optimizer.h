@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 
 namespace tensorflow {
@@ -47,10 +48,10 @@ class LayoutOptimizer : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  std::unique_ptr<VirtualPlacer> virtual_placer_;
   std::unordered_set<string> nodes_to_preserve_;
   Status Tune(const GrapplerItem& item, const GraphProperties& graph_properties,
-              const string& default_device, const TuningConfig& config,
-              GraphDef* output);
+              const TuningConfig& config, GraphDef* output);
 };
 
 }  // end namespace grappler

@@ -40,7 +40,7 @@ TensorFlow Lite provides an interface to leverage hardware acceleration, if
 available on the device. It does so via the Android Neural Networks library,
 released as part of Android O-MR1.
 
-## Why do we need a new mobile-specific library? 
+## Why do we need a new mobile-specific library?
 
 Machine Learning is changing the computing paradigm, and we see an emerging
 trend of new use cases on mobile and embedded devices. Consumer expectations are
@@ -67,7 +67,7 @@ There are several factors which are fueling interest in this domain:
   connected to a network.
 
 We believe the next wave of machine learning applications will have significant
-processing on mobile and embedded devices. 
+processing on mobile and embedded devices.
 
 ## TensorFlow Lite developer preview highlights
 
