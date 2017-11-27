@@ -120,6 +120,8 @@ ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithRHSDilation POPLAR // 1D conv
 ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithLHSDilation POPLAR // 1D conv
 Convolve1D1WindowTest POPLAR // 1D conv
 ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
+ConvolutionVariantsTest.Filter1x1stride1x2in1x5 POPLAR // ??
+ConvolutionVariantsTest.Filter1x1stride1x2in1x4 POPLAR // ??
 
 DotOperationTest POPLAR // Test hangs
 
@@ -149,3 +151,5 @@ DynamicUpdateSliceTest.Int32R2 POPLAR // Tests for invalid wrapping behaviour
 DynamicUpdateSliceTest.Int32R3 POPLAR // Tests for invalid wrapping behaviour
 
 ClientTest.ExecuteParallel POPLAR // Don't support parallel execution
+
+SelectAndScatterTest.R4Randomized POPLAR // Timeout
