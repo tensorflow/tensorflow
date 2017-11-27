@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 %include "tensorflow/python/platform/base.i"
+%include <std_shared_ptr.i>
+%include "item.i"
+
+// Wrap the cluster into an object that swig can manipulate. This ensures it will call the object
+// destructor upon garbage collection instead of leaking memory.
+struct GCluster {
+  std::shared_ptr<tensorflow::grappler::Cluster> cluster_;
+};
 
 %{
 #include "tensorflow/core/protobuf/device_properties.pb.h"
@@ -72,6 +80,7 @@ bool _PyObjAs(PyObject *input, tensorflow::NamedDevice *out) {
 }
 
 %{
+#include <memory>
 #include <vector>
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
@@ -82,39 +91,56 @@ bool _PyObjAs(PyObject *input, tensorflow::NamedDevice *out) {
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 
-static tensorflow::grappler::Cluster* TF_NewCluster(
-    bool allow_soft_placement,
-    bool disable_detailed_stats, TF_Status* out_status) {
-  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
-  int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();;
+// Provide the implementation of the GCluster struct here.
+struct GCluster {
+  GCluster() {}
+  GCluster(tensorflow::grappler::Cluster* cluster) : cluster_(cluster) {}
+
+  tensorflow::grappler::Cluster* operator->() const {
+    return cluster_.get();
+  }
+  tensorflow::grappler::Cluster* get() const {
+    return cluster_.get();
+  }
+  bool is_none() const {
+    return cluster_.get() == nullptr;
+  }
+
+  std::shared_ptr<tensorflow::grappler::Cluster> cluster_;
+};
+
+
+static GCluster TF_NewCluster(bool allow_soft_placement,
+                   bool disable_detailed_stats, TF_Status* out_status) {
+    int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+  int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
   int timeout_s = 60 * 10;
-  tensorflow::grappler::Cluster* cluster =
+  tensorflow::grappler::Cluster* cluster_ =
       new tensorflow::grappler::SingleMachine(
           timeout_s, num_cpu_cores, num_gpus);
-  cluster->DisableDetailedStats(disable_detailed_stats);
-  cluster->AllowSoftPlacement(allow_soft_placement);
-  tensorflow::Status status = cluster->Provision();
+  cluster_->DisableDetailedStats(disable_detailed_stats);
+  cluster_->AllowSoftPlacement(allow_soft_placement);
+  tensorflow::Status status = cluster_->Provision();
   tensorflow::Set_TF_Status_from_Status(out_status, status);
-  return cluster;
+  return GCluster(cluster_);
 }
 
-static tensorflow::grappler::Cluster* TF_NewVirtualCluster(
+static GCluster TF_NewVirtualCluster(
     const std::vector<tensorflow::NamedDevice>& named_devices,
     TF_Status* out_status) {
   std::unordered_map<string, tensorflow::DeviceProperties> devices;
   for (const auto& named_device : named_devices) {
     devices[named_device.name()]= named_device.properties();
   }
-  tensorflow::grappler::Cluster* cluster =
+  tensorflow::grappler::Cluster*cluster_ =
       new tensorflow::grappler::VirtualCluster(devices);
-  tensorflow::Status status = cluster->Provision();
+  tensorflow::Status status = cluster_->Provision();
   tensorflow::Set_TF_Status_from_Status(out_status, status);
-  return cluster;
+  return GCluster(cluster_);
 }
 
-static void TF_DeleteCluster(tensorflow::grappler::Cluster* cluster) {
+static void TF_ShutdownCluster(GCluster cluster) {
   cluster->Shutdown();
-  delete cluster;
 }
 
 tensorflow::Status _GetOpPerformanceDataAndRunTime(
@@ -136,8 +162,9 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(
   return tensorflow::Status::OK();
 }
 
-static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster) {
+static PyObject* TF_ListDevices(GCluster cluster) {
   const std::unordered_map<string, tensorflow::DeviceProperties>& devices = cluster->GetDevices();
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PyObject* result = PyList_New(devices.size());
   int i = 0;
   for (auto& dev : devices) {
@@ -150,17 +177,18 @@ static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster) {
     PyList_SetItem(result, i, dev_obj);
     ++i;
   }
+  PyGILState_Release(gstate);
   return result;
 }
 
 static PyObject* TF_MeasureCosts(
-    const tensorflow::grappler::GrapplerItem* item,
-    tensorflow::grappler::Cluster* cluster,
+    GItem item,
+    GCluster cluster,
     bool generate_timeline, TF_Status* out_status) {
   tensorflow::OpPerformanceList op_performance_data;
   tensorflow::StepStats step_stats;
 
-  tensorflow::grappler::MeasuringCostEstimator cost_measure(cluster, 10, 0);
+  tensorflow::grappler::MeasuringCostEstimator cost_measure(cluster.get(), 10, 0);
 
   tensorflow::grappler::Costs costs;
   tensorflow::Status status = _GetOpPerformanceDataAndRunTime(
@@ -184,6 +212,7 @@ static PyObject* TF_MeasureCosts(
   if (!status.ok()) {
     Py_RETURN_NONE;
   }
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PyObject* op_perf_objs = PyList_New(
       op_performance_data.op_performance_size());
   for (int i = 0; i < op_performance_data.op_performance_size(); i++) {
@@ -211,17 +240,19 @@ static PyObject* TF_MeasureCosts(
     status = tensorflow::Status(tensorflow::error::Code::INTERNAL,
                                 "Error setting return tuples.");
     tensorflow::Set_TF_Status_from_Status(out_status, status);
-    Py_RETURN_NONE;
+    Py_INCREF(Py_None);
+    ret = Py_None;
   }
+  PyGILState_Release(gstate);
   return ret;
 }
 
 
 static PyObject* TF_DeterminePeakMemoryUsage(
-    const tensorflow::grappler::GrapplerItem* item,
-    tensorflow::grappler::Cluster* cluster,
+    GItem item,
+    GCluster cluster,
     TF_Status* out_status) {
-  if (!item || !cluster) {
+  if (item.is_none() || cluster.is_none()) {
     tensorflow::Status status(tensorflow::error::Code::INTERNAL,
                               "You need both a cluster and an item to determine peak memory usage");
     tensorflow::Set_TF_Status_from_Status(out_status, status);
@@ -231,7 +262,7 @@ static PyObject* TF_DeterminePeakMemoryUsage(
 
   tensorflow::Status status;
   if (cluster->DetailedStatsEnabled()) {
-    status = memory.InferDynamically(cluster);
+    status = memory.InferDynamically(cluster.get());
   } else {
     status = memory.InferStatically(cluster->GetDevices());
   }
@@ -240,6 +271,7 @@ static PyObject* TF_DeterminePeakMemoryUsage(
     Py_RETURN_NONE;
   }
 
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PyObject* result = PyDict_New();
   for (const auto& device : cluster->GetDevices()) {
     const tensorflow::grappler::GraphMemory::MemoryUsage& usage =
@@ -261,24 +293,24 @@ static PyObject* TF_DeterminePeakMemoryUsage(
     PyTuple_SetItem(ret, 1, per_device);
     PyDict_SetItem(result, PyString_FromString(device.first.c_str()), ret);
   }
+  PyGILState_Release(gstate);
   return result;
 }
 
 %}
 
 // Wrap these functions.
-
-static tensorflow::grappler::Cluster* TF_NewCluster(
+static GCluster TF_NewCluster(
     bool allow_soft_placement, bool disable_detailed_stats, TF_Status* out_status);
-static tensorflow::grappler::Cluster* TF_NewVirtualCluster(
+static GCluster TF_NewVirtualCluster(
     const std::vector<tensorflow::NamedDevice>& named_devices,
     TF_Status* out_status);
-static void TF_DeleteCluster(tensorflow::grappler::Cluster* cluster);
-static PyObject* TF_ListDevices(tensorflow::grappler::Cluster* cluster);
+static void TF_ShutdownCluster(GCluster cluster);
+static PyObject* TF_ListDevices(GCluster cluster);
 static PyObject* TF_MeasureCosts(
-    const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
+    GItem item, GCluster cluster,
     bool generate_timeline, TF_Status* out_status);
 static PyObject* TF_DeterminePeakMemoryUsage(
-    const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
+    GItem item, GCluster cluster,
     TF_Status* out_status);
 

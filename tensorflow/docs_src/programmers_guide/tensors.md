@@ -43,8 +43,8 @@ generating a random number.
 
 The **rank** of a `tf.Tensor` object is its number of dimensions. Synonyms for
 rank include **order** or **degree** or **n-dimension**.
-Note that rank in TensorFlow is not the same as matrix rank in mathematics. 
-As the following table shows, each rank in TensorFlow corresponds to a 
+Note that rank in TensorFlow is not the same as matrix rank in mathematics.
+As the following table shows, each rank in TensorFlow corresponds to a
 different mathematical entity:
 
 Rank | Math entity
@@ -56,7 +56,7 @@ Rank | Math entity
 n | n-Tensor (you get the idea)
 
 
-### Rank 0 
+### Rank 0
 
 The following snippet demonstrates creating a few rank 0 variables:
 
@@ -108,7 +108,7 @@ my_image = tf.zeros([10, 299, 299, 3])  # batch x height x width x color
 ### Getting a `tf.Tensor` object's rank
 
 To determine the rank of a `tf.Tensor` object, call the `tf.rank` method.
-For example, the following method programmatically determines the rank 
+For example, the following method programmatically determines the rank
 of the `tf.Tensor` defined in the previous section:
 
 ```python

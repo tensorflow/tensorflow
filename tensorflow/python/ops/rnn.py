@@ -565,33 +565,34 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
 
-  # By default, time_major==False and inputs are batch-major: shaped
-  #   [batch, time, depth]
-  # For internal calculations, we transpose to [time, batch, depth]
-  flat_input = nest.flatten(inputs)
-
-  if not time_major:
-    # (B,T,D) => (T,B,D)
-    flat_input = [ops.convert_to_tensor(input_) for input_ in flat_input]
-    flat_input = tuple(_transpose_batch_time(input_) for input_ in flat_input)
-
-  parallel_iterations = parallel_iterations or 32
-  if sequence_length is not None:
-    sequence_length = math_ops.to_int32(sequence_length)
-    if sequence_length.get_shape().ndims not in (None, 1):
-      raise ValueError(
-          "sequence_length must be a vector of length batch_size, "
-          "but saw shape: %s" % sequence_length.get_shape())
-    sequence_length = array_ops.identity(  # Just to find it in the graph.
-        sequence_length, name="sequence_length")
-
-  # Create a new scope in which the caching device is either
-  # determined by the parent scope, or is set to place the cached
-  # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
+    # Create a new scope in which the caching device is either
+    # determined by the parent scope, or is set to place the cached
+    # Variable using the same placement as for the rest of the RNN.
     if context.in_graph_mode():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
+
+    # By default, time_major==False and inputs are batch-major: shaped
+    #   [batch, time, depth]
+    # For internal calculations, we transpose to [time, batch, depth]
+    flat_input = nest.flatten(inputs)
+
+    if not time_major:
+      # (B,T,D) => (T,B,D)
+      flat_input = [ops.convert_to_tensor(input_) for input_ in flat_input]
+      flat_input = tuple(_transpose_batch_time(input_) for input_ in flat_input)
+
+    parallel_iterations = parallel_iterations or 32
+    if sequence_length is not None:
+      sequence_length = math_ops.to_int32(sequence_length)
+      if sequence_length.get_shape().ndims not in (None, 1):
+        raise ValueError(
+            "sequence_length must be a vector of length batch_size, "
+            "but saw shape: %s" % sequence_length.get_shape())
+      sequence_length = array_ops.identity(  # Just to find it in the graph.
+          sequence_length, name="sequence_length")
+
     batch_size = _best_effort_input_batch_size(flat_input)
 
     if initial_state is not None:

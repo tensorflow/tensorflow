@@ -167,7 +167,8 @@ class GraphDefBuilderWrapper {
           opts->WithAttr(attr.first, attr.second)));
     }
     if (opts->HaveError()) {
-      return errors::Internal("AddDataset: Error building Options.");
+      return errors::Internal("AddDataset: Failed to build Options with error ",
+                              opts->StatusToString());
     }
     NodeBuilder node_builder(opts->GetNameForOp(op_type_name), op_type_name,
                              opts->op_registry());
@@ -191,7 +192,7 @@ class GraphDefBuilderWrapper {
     *output = opts->FinalizeBuilder(&node_builder);
     if (*output == nullptr) {
       return errors::Internal("AddDataset: Failed to build ", op_type_name,
-                              " op.");
+                              " op with error ", opts->StatusToString());
     }
     return Status::OK();
   }
