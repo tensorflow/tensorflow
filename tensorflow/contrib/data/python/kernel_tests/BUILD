@@ -187,6 +187,7 @@ py_test(
         "manual",  # b/67958761
     ],
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:array_ops",

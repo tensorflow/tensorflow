@@ -197,28 +197,35 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
 class CollectProfileCandidates : public DfsHloVisitorWithDefault {
  public:
   static StatusOr<std::unordered_map<const HloInstruction*, size_t>>
-  GetCandidatesForComputation(HloComputation* computation) {
+  GetCandidatesForComputation(
+      HloComputation* computation,
+      const std::unordered_map<const HloInstruction*, int64>&
+          assigned_indices) {
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
-        &hlo_to_profile_idx);
+        &hlo_to_profile_idx, assigned_indices);
     TF_RETURN_IF_ERROR(
         computation->Accept(&profile_candidates_for_computation));
     return hlo_to_profile_idx;
   }
 
  private:
-  explicit CollectProfileCandidates(
-      std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx)
-      : hlo_to_profile_idx_(hlo_to_profile_idx) {}
+  CollectProfileCandidates(
+      std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx,
+      const std::unordered_map<const HloInstruction*, int64>& assigned_indices)
+      : hlo_to_profile_idx_(hlo_to_profile_idx),
+        assigned_indices_(assigned_indices) {}
 
   Status DefaultAction(HloInstruction* hlo_instruction) override {
-    hlo_to_profile_idx_->insert({hlo_instruction, hlo_to_profile_idx_->size()});
+    hlo_to_profile_idx_->insert(
+        {hlo_instruction, FindOrDie(assigned_indices_, hlo_instruction)});
     return Status::OK();
   }
 
   Status HandleCall(HloInstruction* call) override {
     TF_RETURN_IF_ERROR(DefaultAction(call));
-    CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
+    CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_,
+                                                 assigned_indices_);
     TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
     return Status::OK();
   }
@@ -232,17 +239,20 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* xla_while) override {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
-    CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
+    CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_,
+                                                      assigned_indices_);
     TF_RETURN_IF_ERROR(
         xla_while->while_condition()->Accept(&candidates_for_condition));
 
-    CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
+    CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_,
+                                                 assigned_indices_);
     TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
     return Status::OK();
   }
 
   std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx_;
+  const std::unordered_map<const HloInstruction*, int64>& assigned_indices_;
 };
 }  // namespace
 
@@ -475,10 +485,27 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
+  std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
+  std::unique_ptr<HloProfilePrinter> hlo_profile_printer;
   if (module->config().hlo_profiling_enabled()) {
+    hlo_profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
+
     TF_ASSIGN_OR_RETURN(
         hlo_to_profile_idx,
-        CollectProfileCandidates::GetCandidatesForComputation(computation));
+        CollectProfileCandidates::GetCandidatesForComputation(
+            computation, hlo_profile_index_map->instruction_to_profile_idx()));
+
+    auto shape_size_bytes = [](const Shape& shape) {
+      // On the cpu, opaques are pointers.
+      if (ShapeUtil::IsOpaque(shape)) {
+        return static_cast<int64>(sizeof(void*));
+      }
+      return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+    };
+
+    HloCostAnalysis cost_analysis(shape_size_bytes);
+    hlo_profile_printer =
+        CreateHloProfilePrinter(*hlo_profile_index_map, cost_analysis);
   }
 
   std::unique_ptr<Executable> cpu_executable;
@@ -544,8 +571,16 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       parallel_computations.emplace(to_apply, instruction);
     }
 
+    // We always profile the entire computation as a whole, even if hlo
+    // profiling is disabled.  When hlo profiling is diabled, we pass in a
+    // profile counter array of just one element, which corresponds to the whole
+    // computation.
+    size_t entry_computation_profile_idx =
+        hlo_profile_index_map ? hlo_profile_index_map->GetProfileIndexFor(
+                                    *module->entry_computation())
+                              : 0;
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         hlo_to_profile_idx, hlo_to_profile_idx.size(),
+                         hlo_to_profile_idx, entry_computation_profile_idx,
                          jit->target_machine(), jit->external_constant_pool());
 
     std::unique_ptr<HloInstructionMap<string>> function_names(
@@ -586,8 +621,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     jit->AddModule(std::move(llvm_module));
     cpu_executable.reset(new ParallelCpuExecutable(
         std::move(jit), std::move(assignment), std::move(module),
-        std::move(function_names), std::move(hlo_to_profile_idx),
-        std::move(aligned_constants)));
+        std::move(function_names), std::move(aligned_constants),
+        std::move(hlo_profile_printer), std::move(hlo_profile_index_map)));
 
     if (embed_ir_in_executable) {
       static_cast<CpuExecutable&>(*cpu_executable)
@@ -620,12 +655,22 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
           proto, xla_dump_hlo_proto_to, module->name()));
     }
+    // We always profile the entire computation as a whole, even if hlo
+    // profiling is disabled.  When hlo profiling is diabled, we pass in a
+    // profile counter array of just one element, which corresponds to the whole
+    // computation.
+    size_t entry_computation_profile_idx =
+        hlo_profile_index_map ? hlo_profile_index_map->GetProfileIndexFor(
+                                    *module->entry_computation())
+                              : 0;
+
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
+
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         hlo_to_profile_idx, hlo_to_profile_idx.size(),
+                         hlo_to_profile_idx, entry_computation_profile_idx,
                          jit->target_machine(), jit->external_constant_pool());
 
     for (auto embedded_computation :
@@ -659,7 +704,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     jit->AddModule(std::move(llvm_module));
     cpu_executable.reset(new CpuExecutable(
         std::move(jit), std::move(assignment), std::move(module), function_name,
-        std::move(hlo_to_profile_idx)));
+        std::move(hlo_profile_printer), std::move(hlo_profile_index_map)));
 
     if (embed_ir_in_executable) {
       static_cast<CpuExecutable&>(*cpu_executable)

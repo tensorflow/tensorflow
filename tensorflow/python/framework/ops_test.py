@@ -691,7 +691,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
                                   [])
           ops.get_default_graph()._create_op_from_tf_operation(c_op)
         else:
-        # Test pure-Python version to make sure C API has same behavior.
+          # Test pure-Python version to make sure C API has same behavior.
           test_ops.int_input(x, name="myop")
         return x
 
@@ -1740,6 +1740,20 @@ class GraphTest(test_util.TensorFlowTestCase):
         self._AssertDefault(g1)
       self._AssertDefault(g0)
     self._AssertDefault(orig)
+
+  def testPreventFeeding(self):
+    g = ops.Graph()
+    a = constant_op.constant(2.0)
+    self.assertTrue(g.is_feedable(a))
+    g.prevent_feeding(a)
+    self.assertFalse(g.is_feedable(a))
+
+  def testPreventFetching(self):
+    g = ops.Graph()
+    a = constant_op.constant(2.0)
+    self.assertTrue(g.is_fetchable(a))
+    g.prevent_fetching(a.op)
+    self.assertFalse(g.is_fetchable(a))
 
   def testAsGraphElementConversions(self):
 

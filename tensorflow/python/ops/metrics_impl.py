@@ -792,9 +792,10 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
   radial_diffs = math_ops.multiply(predictions, labels)
-  radial_diffs = math_ops.reduce_sum(radial_diffs,
-                                     reduction_indices=[dim,],
-                                     keepdims=True)
+  radial_diffs = math_ops.reduce_sum(
+      radial_diffs, reduction_indices=[
+          dim,
+      ], keepdims=True)
   mean_distance, update_op = mean(radial_diffs, weights,
                                   None,
                                   None,

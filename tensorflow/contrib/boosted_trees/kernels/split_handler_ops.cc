@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-#include "tensorflow/contrib/boosted_trees/lib/learner/stochastic/stats/node-stats.h"
+#include "tensorflow/contrib/boosted_trees/lib/learner/common/stats/node-stats.h"
 #include "tensorflow/contrib/boosted_trees/proto/split_info.pb.h"
 #include "tensorflow/contrib/boosted_trees/proto/tree_config.pb.h"
 #include "tensorflow/core/framework/device_base.h"

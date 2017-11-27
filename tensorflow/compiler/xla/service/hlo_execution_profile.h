@@ -77,6 +77,11 @@ class HloProfileIndexMap {
   std::unordered_map<const HloComputation*, int64> computation_to_profile_idx_;
 };
 
+// Create an instance of `HloProfilePrinter` that owns its memory.
+std::unique_ptr<HloProfilePrinter> CreateHloProfilePrinter(
+    const HloProfileIndexMap& hlo_profile_index_map,
+    const HloCostAnalysis& cost_analysis);
+
 // Describes how much time each HLO operation took.
 //
 // Each HloComputation takes a certain number of cycles.  This class helps break
@@ -85,8 +90,8 @@ class HloExecutionProfile {
  public:
   using DeviceDescription = perftools::gputools::DeviceDescription;
 
-  HloExecutionProfile(const HloModule& module,
-                      const HloCostAnalysis& cost_analysis);
+  HloExecutionProfile(const HloProfilePrinter* hlo_profile_printer,
+                      const HloProfileIndexMap* hlo_profile_index_map);
 
   // Record how many cycles this HLO took to execute.
   void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
@@ -114,15 +119,16 @@ class HloExecutionProfile {
   // for the operations in a given computation. Returns an empty string if it
   // wasn't possible to generate a printable version. cost_analysis should be a
   // clean analysis that can be used to visit the computation.
-  string ToString(const DeviceDescription& device_description) const;
+  string ToString(const DeviceDescription& device_description) const {
+    return hlo_profile_printer_.ToString(profile_counters_.data(),
+                                         device_description.clock_rate_ghz());
+  }
+
+  std::vector<int64>* mutable_profile_counters() { return &profile_counters_; }
 
  private:
-  // hlo_profile_index_map_ maps an Hlo entity (computation or instruction) to
-  // an index in profile_counters_.
-  HloProfileIndexMap hlo_profile_index_map_;
-
-  // Used to print profile_counters_ in a human readable form.
-  HloProfilePrinter hlo_profile_printer_;
+  const HloProfilePrinter& hlo_profile_printer_;
+  const HloProfileIndexMap& hlo_profile_index_map_;
 
   // Stores per-Hlo profile counters.  This is the only thing that changes when
   // we execute an XLA computation.

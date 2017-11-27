@@ -380,7 +380,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
           # Replace np_ans[8] with 0 for the value
           np_ans[8:] = 0
           # Replace 8 with -1 in indices
-          np.place(indices, indices==8, [-1])
+          np.place(indices, indices == 8, [-1])
           s = math_ops.unsorted_segment_sum(
               data=tf_x, segment_ids=indices, num_segments=num_segments)
           tf_ans = s.eval()
