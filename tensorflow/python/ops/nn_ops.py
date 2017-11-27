@@ -1698,6 +1698,10 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   # If dim is not the last dimension, we have to do a transpose so that we can
   # still perform softmax on its last dimension.
 
+  # In case dim is negative (and is not last dimension -1), add shape.ndims
+  if dim < 0:
+    dim += shape.ndims
+
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
   dim_axis = dim % shape.ndims
