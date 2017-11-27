@@ -345,7 +345,7 @@ do_clean_virtualenv_smoke_test() {
   then
     echo "Smoke test of tensorflow install in clean virtualenv PASSED."
   else
-    echo "Smoke test of tensroflow install in clean virtualenv FAILED."
+    echo "Smoke test of tensorflow install in clean virtualenv FAILED."
     return 1
   fi
 
