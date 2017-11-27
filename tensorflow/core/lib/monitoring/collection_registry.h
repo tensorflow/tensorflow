@@ -321,13 +321,13 @@ void MetricCollector<metric_kind, Value, NumLabels>::CollectValue(
     const std::array<string, NumLabels>& labels, const Value& value) {
   point_set_->points.emplace_back(new Point());
   auto* const point = point_set_->points.back().get();
-  const std::vector<StringPiece> label_descriptions =
+  const std::vector<string> label_descriptions =
       metric_def_->label_descriptions();
   point->labels.reserve(NumLabels);
   for (int i = 0; i < NumLabels; ++i) {
     point->labels.push_back({});
     auto* const label = &point->labels.back();
-    label->name = label_descriptions[i].ToString();
+    label->name = label_descriptions[i];
     label->value = labels[i];
   }
   internal::CollectValue(value, point);
