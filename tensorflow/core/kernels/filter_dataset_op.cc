@@ -51,17 +51,21 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
                                                  std::move(other_arguments),
                                                  &captured_func));
 
-    *output = new Dataset(input, std::move(captured_func));
+    *output = new Dataset(ctx, input, func_, std::move(captured_func));
   }
 
  private:
   const int graph_def_version_;
 
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(const DatasetBase* input,
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func)
-        : input_(input), captured_func_(std::move(captured_func)) {
+        : GraphDatasetBase(ctx),
+          input_(input),
+          func_(func),
+          captured_func_(std::move(captured_func)) {
       input_->Ref();
     }
 
@@ -82,6 +86,35 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() override { return "FilterDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      Node* input_graph_node;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      std::vector<NodeBuilder::NodeOut> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
+      for (const Tensor& t : captured_func_->captured_inputs()) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        other_arguments.emplace_back(node);
+        other_arguments_types.emplace_back(t.dtype());
+      }
+      AttrValue f;
+      b->BuildAttrValue(func_, &f);
+      AttrValue other_arguments_types_attr;
+      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {{0, input_graph_node}}, {{1, other_arguments}},
+          {{"predicate", f}, {"Targuments", other_arguments_types_attr}},
+          output));
+      return Status::OK();
+    }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -98,9 +131,18 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
         // non-deterministic order.
         bool matched;
         do {
-          TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+          {
+            tf_shared_lock l(mu_);
+            if (!input_impl_) {
+              *end_of_sequence = true;
+              return Status::OK();
+            }
+            TF_RETURN_IF_ERROR(
+                input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+          }
           if (*end_of_sequence) {
+            mutex_lock l(mu_);
+            input_impl_.reset();
             return Status::OK();
           }
 
@@ -139,11 +181,34 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (input_impl_)
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        else
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("input_impls_empty"), ""));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        if (reader->Contains(full_name("input_impls_empty")))
+          input_impl_.reset();
+        else
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        return Status::OK();
+      }
+
      private:
-      const std::unique_ptr<IteratorBase> input_impl_;
+      mutex mu_;
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;
+    const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
   };
 

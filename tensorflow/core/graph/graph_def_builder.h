@@ -99,6 +99,10 @@ class GraphDefBuilder {
     // Use this to skip processing that may depend on prior results.
     bool HaveError() const { return status_ != nullptr && !status_->ok(); }
 
+    // Returns a string representation of the status associated with *this.
+    // Returns the string `"OK"` if the status doesn't have any error.
+    string StatusToString() const { return status_->ToString(); }
+
     // Given the Op type name, return a name for a node of that type.
     // Uses the value set in WithName() if that has been called.  Otherwise,
     // returns a name built out of the Op type name.
