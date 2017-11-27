@@ -48,7 +48,7 @@ bazel-bin/tensorflow/python/profiler/profiler_ui \
 # Create options to profile the time and memory information.
 builder = tf.profiler.ProfileOptionBuilder
 opts = builder(builder.time_and_memory()).order_by('micros').build()
-# Create a profiling context, set constructor argument `trace_steps`, 
+# Create a profiling context, set constructor argument `trace_steps`,
 # `dump_steps` to empty for explicit control.
 with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
                                       trace_steps=[],
