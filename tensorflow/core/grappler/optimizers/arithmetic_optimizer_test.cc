@@ -58,7 +58,7 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output c1 = ops::Const(s.WithOpName("c1"), {3.14, 2.7}, {1, 2});
   Output c2 = ops::Const(s.WithOpName("c2"), {3.14, 2.7}, {1, 2});
-  Output mul = ops::Mul(s.WithOpName("mul"), c1, c2);
+  Output div = ops::Div(s.WithOpName("div"), c1, c2);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
@@ -74,11 +74,11 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ(2, output.node_size());
   const NodeDef& new_c1 = output.node(0);
   EXPECT_EQ("c1", new_c1.name());
-  const NodeDef& new_mul = output.node(1);
-  EXPECT_EQ("mul", new_mul.name());
-  EXPECT_EQ(2, new_mul.input_size());
-  EXPECT_EQ("c1", new_mul.input(0));
-  EXPECT_EQ("c1", new_mul.input(1));
+  const NodeDef& new_div = output.node(1);
+  EXPECT_EQ("div", new_div.name());
+  EXPECT_EQ(2, new_div.input_size());
+  EXPECT_EQ("c1", new_div.input(0));
+  EXPECT_EQ("c1", new_div.input(1));
 }
 
 TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
@@ -89,9 +89,9 @@ TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
   auto check2 = ops::CheckNumerics(s.WithOpName("check2"), c, "foo");
   auto assert1 = ops::Assert(s.WithOpName("assert1"), p, {c});
   auto assert2 = ops::Assert(s.WithOpName("assert2"), p, {c});
-  Output mul = ops::Multiply(s.WithOpName("mul").WithControlDependencies(
-                                 {assert1.operation, assert2.operation}),
-                             check1, check2);
+  Output div = ops::Div(s.WithOpName("div").WithControlDependencies(
+                            {assert1.operation, assert2.operation}),
+                        check1, check2);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
@@ -105,12 +105,12 @@ TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(5, output.node_size());
-  const NodeDef& new_mul = output.node(3);
-  EXPECT_EQ(4, new_mul.input_size());
-  EXPECT_EQ("check1", new_mul.input(0));
-  EXPECT_EQ("check1", new_mul.input(1));
-  EXPECT_EQ("^assert1", new_mul.input(2));
-  EXPECT_EQ("^assert1", new_mul.input(3));
+  const NodeDef& new_div = output.node(3);
+  EXPECT_EQ(4, new_div.input_size());
+  EXPECT_EQ("check1", new_div.input(0));
+  EXPECT_EQ("check1", new_div.input(1));
+  EXPECT_EQ("^assert1", new_div.input(2));
+  EXPECT_EQ("^assert1", new_div.input(3));
 }
 
 TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
@@ -119,7 +119,7 @@ TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
   Output c2 = ops::Const(s.WithOpName("c2"), {3.0f, 4.0f}, {1, 2});
   Output mul1 = ops::Mul(s.WithOpName("mul1"), c1, c2);
   Output mul2 = ops::Mul(s.WithOpName("mul2"), c2, c1);
-  Output mul3 = ops::Mul(s.WithOpName("mul3"), mul1, mul2);
+  Output div1 = ops::Div(s.WithOpName("div1"), mul1, mul2);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
@@ -142,11 +142,35 @@ TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
   EXPECT_EQ(2, new_mul1.input_size());
   EXPECT_EQ("c1", new_mul1.input(0));
   EXPECT_EQ("c2", new_mul1.input(1));
-  const NodeDef& new_mul3 = output.node(3);
-  EXPECT_EQ("mul3", new_mul3.name());
-  EXPECT_EQ(2, new_mul3.input_size());
-  EXPECT_EQ("mul1", new_mul3.input(0));
-  EXPECT_EQ("mul1", new_mul3.input(1));
+  const NodeDef& new_div1 = output.node(3);
+  EXPECT_EQ("div1", new_div1.name());
+  EXPECT_EQ(2, new_div1.input_size());
+  EXPECT_EQ("mul1", new_div1.input(0));
+  EXPECT_EQ("mul1", new_div1.input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, MulToSquare) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  Output d = ops::Const(s.WithOpName("d"), {3.0f, 4.0f}, {1, 2});
+  Output mul = ops::Mul(s.WithControlDependencies(d).WithOpName("mul"), c, c);
+  Output id = ops::Identity(s.WithOpName("id"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(5, output.node_size());
+  EXPECT_EQ("Square", output.node(4).op());
+  EXPECT_EQ("mul_square", output.node(4).name());
+  EXPECT_EQ(2, output.node(4).input_size());
+  EXPECT_EQ("c", output.node(4).input(0));
+  EXPECT_EQ("^d", output.node(4).input(1));
+  EXPECT_EQ("id", output.node(3).name());
+  EXPECT_EQ("mul_square", output.node(3).input(0));
 }
 
 TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsReal) {

@@ -81,7 +81,6 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
   return Status::OK();
 }
 
-
 template <typename T>
 bool AreInversePermutations(const std::vector<T>& a, const std::vector<T>& b) {
   if (a.size() != b.size()) {
@@ -169,7 +168,6 @@ bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
   }
   return false;
 }
-
 
 bool MaybeAddControlInput(const string& new_input, NodeDef* node,
                           GraphDef* graph, NodeMap* node_map) {
@@ -782,6 +780,25 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           }
         }
       }
+    }
+  }
+
+  if (node->op() == "Mul" && node->input(0) == node->input(1) &&
+      node_map->GetNode(node->name() + "_square") == nullptr) {
+    NodeDef* factor = node_map->GetNode(node->input(0));
+    VLOG(2) << "Found square : " << node->DebugString();
+    if (factor != nullptr) {
+      NodeDef* new_mul_node = graph_def->add_node();
+      *new_mul_node = *node;
+      new_mul_node->set_op("Square");
+      new_mul_node->set_name(strings::StrCat(node->name(), "_square"));
+      new_nodes->push_back(new_mul_node);
+      node_map->AddNode(new_mul_node->name(), new_mul_node);
+      for (int i = 1; i < new_mul_node->input_size(); ++i) {
+        new_mul_node->set_input(i - 1, new_mul_node->input(i));
+      }
+      new_mul_node->mutable_input()->RemoveLast();
+      return new_mul_node->name();
     }
   }
 
