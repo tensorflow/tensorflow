@@ -66,7 +66,7 @@ namespace parsed {
 class Feature {
  public:
   Feature() {}
-  Feature(StringPiece serialized) : serialized_(serialized) {}
+  explicit Feature(StringPiece serialized) : serialized_(serialized) {}
 
   Status ParseDataType(DataType* dtype) {
     DCHECK(dtype != nullptr);
@@ -89,7 +89,7 @@ class Feature {
       default:
         // Initialize variable to avoid compiler warning
         *dtype = DT_INVALID;
-        return errors::InvalidArgument("Unsuported datatype.");
+        return errors::InvalidArgument("Unsupported datatype.");
     }
     return Status::OK();
   }
@@ -371,7 +371,7 @@ bool TestFastParse(const string& serialized, Example* example) {
         break;
       }
       default:
-        CHECK(false) << "Should not happen.";
+        LOG(FATAL) << "Should not happen.";
     }
   }
   return true;
@@ -572,7 +572,7 @@ Status FastParseSerializedExample(
             break;
           }
           default:
-            CHECK(false) << "Should not happen.";
+            LOG(FATAL) << "Should not happen.";
         }
       } else {  // if variable length
         SparseBuffer& out = (*output_varlen_dense)[d];
@@ -632,7 +632,7 @@ Status FastParseSerializedExample(
             break;
           }
           default:
-            CHECK(false) << "Should not happen.";
+            LOG(FATAL) << "Should not happen.";
         }
       }
     } else {
@@ -657,7 +657,8 @@ Status FastParseSerializedExample(
           example_dtype != config.sparse[d].dtype) {
         return example_error(strings::StrCat(
             "Data types don't match. ",
-            "Expected type: ", DataTypeString(config.sparse[d].dtype)));
+            "Expected type: ", DataTypeString(config.sparse[d].dtype),
+            ", Actual type: ", DataTypeString(example_dtype)));
       }
 
       switch (config.sparse[d].dtype) {
@@ -689,7 +690,7 @@ Status FastParseSerializedExample(
           break;
         }
         default:
-          CHECK(false) << "Should not happen.";
+          LOG(FATAL) << "Should not happen.";
       }
     }
   }
@@ -726,7 +727,7 @@ Status FastParseSerializedExample(
         break;
       }
       default:
-        CHECK(false) << "Should not happen.";
+        LOG(FATAL) << "Should not happen.";
     }
   }
 
@@ -935,8 +936,8 @@ Status FastParseExample(const Config& config,
     for (size_t e = start; e < end; ++e) {
       status_of_minibatch[minibatch] = FastParseSerializedExample(
           serialized[e],
-          (example_names.size() > 0 ? example_names[e] : "<unknown>"), e,
-          config, config_index, hasher, &fixed_dense_values,
+          (!example_names.empty() ? example_names[e] : "<unknown>"), e, config,
+          config_index, hasher, &fixed_dense_values,
           &varlen_dense_buffers[minibatch], &sparse_buffers[minibatch]);
       if (!status_of_minibatch[minibatch].ok()) break;
     }
@@ -1023,7 +1024,7 @@ Status FastParseExample(const Config& config,
           break;
         }
         default:
-          CHECK(false) << "Should not happen.";
+          LOG(FATAL) << "Should not happen.";
       }
 
       offset += delta;
@@ -1083,7 +1084,7 @@ Status FastParseExample(const Config& config,
         break;
       }
       default:
-        CHECK(false) << "Should not happen.";
+        LOG(FATAL) << "Should not happen.";
     }
   };
 

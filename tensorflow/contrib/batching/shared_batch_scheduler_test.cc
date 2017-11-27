@@ -139,6 +139,7 @@ TEST(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {
                    &callback_data](std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());
     std::vector<size_t> batch_data;
+    batch_data.reserve(batch->num_tasks());
     for (int i = 0; i < batch->num_tasks(); ++i) {
       batch_data.push_back(batch->mutable_task(i)->size());
     }

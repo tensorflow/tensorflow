@@ -54,15 +54,18 @@ class TestGatherTree(test.TestCase):
          [[0, 0, 0], [1, 2, 0], [2, 1, 1]]],
         dtype=np.int32).transpose([1, 0, 2])
 
-    # sequence_lengths is shaped (batch_size = 2, beam_width = 3)
-    sequence_lengths = [[3, 3, 3], [3, 3, 3]]
+    # sequence_lengths is shaped (batch_size = 3)
+    max_sequence_lengths = [3, 3]
 
     expected_result = np.array(
         [[[2, 2, 2], [6, 5, 6], [7, 8, 9]],
          [[2, 4, 4], [7, 6, 6], [8, 9, 10]]]).transpose([1, 0, 2])
 
     res = beam_search_ops.gather_tree(
-        predicted_ids, parent_ids, sequence_lengths)
+        predicted_ids,
+        parent_ids,
+        max_sequence_lengths=max_sequence_lengths,
+        end_token=11)
 
     with self.test_session() as sess:
       res_ = sess.run(res)
@@ -80,8 +83,7 @@ class TestEosMasking(test.TestCase):
     ])
 
     eos_token = 0
-    previously_finished = constant_op.constant(
-        [[0, 1, 0], [0, 1, 1]], dtype=dtypes.float32)
+    previously_finished = np.array([[0, 1, 0], [0, 1, 1]], dtype=bool)
     masked = beam_search_decoder._mask_probs(probs, eos_token,
                                              previously_finished)
 
@@ -121,7 +123,7 @@ class TestBeamStep(test.TestCase):
         log_probs=nn_ops.log_softmax(
             array_ops.ones([self.batch_size, self.beam_width])),
         lengths=constant_op.constant(
-            2, shape=[self.batch_size, self.beam_width], dtype=dtypes.int32),
+            2, shape=[self.batch_size, self.beam_width], dtype=dtypes.int64),
         finished=array_ops.zeros(
             [self.batch_size, self.beam_width], dtype=dtypes.bool))
 
@@ -141,6 +143,7 @@ class TestBeamStep(test.TestCase):
     outputs, next_beam_state = beam_search_decoder._beam_search_step(
         time=2,
         logits=logits,
+        next_cell_state=dummy_cell_state,
         beam_state=beam_state,
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
@@ -175,7 +178,7 @@ class TestBeamStep(test.TestCase):
         log_probs=nn_ops.log_softmax(
             array_ops.ones([self.batch_size, self.beam_width])),
         lengths=ops.convert_to_tensor(
-            [[2, 1, 2], [2, 2, 1]], dtype=dtypes.int32),
+            [[2, 1, 2], [2, 2, 1]], dtype=dtypes.int64),
         finished=ops.convert_to_tensor(
             [[False, True, False], [False, False, True]], dtype=dtypes.bool))
 
@@ -195,6 +198,7 @@ class TestBeamStep(test.TestCase):
     outputs, next_beam_state = beam_search_decoder._beam_search_step(
         time=2,
         logits=logits,
+        next_cell_state=dummy_cell_state,
         beam_state=beam_state,
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
@@ -224,8 +228,8 @@ class TestBeamStep(test.TestCase):
 class BeamSearchDecoderTest(test.TestCase):
 
   def _testDynamicDecodeRNN(self, time_major, has_attention):
-    encoder_sequence_length = [3, 2, 3, 1, 1]
-    decoder_sequence_length = [2, 0, 1, 2, 3]
+    encoder_sequence_length = np.array([3, 2, 3, 1, 1])
+    decoder_sequence_length = np.array([2, 0, 1, 2, 3])
     batch_size = 5
     decoder_max_time = 4
     input_depth = 7
@@ -240,11 +244,15 @@ class BeamSearchDecoderTest(test.TestCase):
     beam_width = 3
 
     with self.test_session() as sess:
+      batch_size_tensor = constant_op.constant(batch_size)
       embedding = np.random.randn(vocab_size, embedding_dim).astype(np.float32)
       cell = rnn_cell.LSTMCell(cell_depth)
+      initial_state = cell.zero_state(batch_size, dtypes.float32)
       if has_attention:
-        inputs = np.random.randn(batch_size, decoder_max_time,
-                                 input_depth).astype(np.float32)
+        inputs = array_ops.placeholder_with_default(
+            np.random.randn(batch_size, decoder_max_time,
+                            input_depth).astype(np.float32),
+            shape=(None, None, input_depth))
         tiled_inputs = beam_search_decoder.tile_batch(
             inputs, multiplier=beam_width)
         tiled_sequence_length = beam_search_decoder.tile_batch(
@@ -253,17 +261,22 @@ class BeamSearchDecoderTest(test.TestCase):
             num_units=attention_depth,
             memory=tiled_inputs,
             memory_sequence_length=tiled_sequence_length)
+        initial_state = beam_search_decoder.tile_batch(
+            initial_state, multiplier=beam_width)
         cell = attention_wrapper.AttentionWrapper(
             cell=cell,
             attention_mechanism=attention_mechanism,
             attention_layer_size=attention_depth,
             alignment_history=False)
       cell_state = cell.zero_state(
-          dtype=dtypes.float32, batch_size=batch_size * beam_width)
+          dtype=dtypes.float32, batch_size=batch_size_tensor * beam_width)
+      if has_attention:
+        cell_state = cell_state.clone(
+            cell_state=initial_state)
       bsd = beam_search_decoder.BeamSearchDecoder(
           cell=cell,
           embedding=embedding,
-          start_tokens=batch_size * [start_token],
+          start_tokens=array_ops.fill([batch_size_tensor], start_token),
           end_token=end_token,
           initial_state=cell_state,
           beam_width=beam_width,

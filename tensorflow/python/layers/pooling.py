@@ -20,21 +20,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
-
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
-from tensorflow.python import framework
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
 
 
 class _Pooling1D(base.Layer):
@@ -154,6 +145,9 @@ def average_pooling1d(inputs, pool_size, strides,
 
   Returns:
     The output tensor, of rank 3.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling1D(pool_size=pool_size,
                            strides=strides,
@@ -216,6 +210,9 @@ def max_pooling1d(inputs, pool_size, strides,
 
   Returns:
     The output tensor, of rank 3.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling1D(pool_size=pool_size,
                        strides=strides,
@@ -262,16 +259,7 @@ class _Pooling2D(base.Layer):
     self.input_spec = base.InputSpec(ndim=4)
 
   def call(self, inputs):
-    if (self.data_format == 'channels_first' and
-        not framework.test_util.gpu_device_name()):
-      # `nn.convolution` is not implemented on CPU for `channels_first` format.
-      # TODO(chollet): remove this when `nn.convolution` is feature-complete.
-      data_format = 'channels_last'
-      inputs = array_ops.transpose(inputs, (0, 2, 3, 1))
-    else:
-      data_format = self.data_format
-
-    if data_format == 'channels_last':
+    if self.data_format == 'channels_last':
       pool_shape = (1,) + self.pool_size + (1,)
       strides = (1,) + self.strides + (1,)
     else:
@@ -282,11 +270,7 @@ class _Pooling2D(base.Layer):
         ksize=pool_shape,
         strides=strides,
         padding=self.padding.upper(),
-        data_format=utils.convert_data_format(data_format, 4))
-
-    if (self.data_format == 'channels_first' and
-        not framework.test_util.gpu_device_name()):
-      outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
+        data_format=utils.convert_data_format(self.data_format, 4))
     return outputs
 
   def _compute_output_shape(self, input_shape):
@@ -367,6 +351,9 @@ def average_pooling2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling2D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
@@ -432,6 +419,9 @@ def max_pooling2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling2D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,
@@ -583,6 +573,9 @@ def average_pooling3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling3D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
@@ -652,6 +645,9 @@ def max_pooling3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling3D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,

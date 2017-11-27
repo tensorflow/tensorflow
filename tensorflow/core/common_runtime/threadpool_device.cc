@@ -48,7 +48,8 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   // When TraceMe profiling is off (which is the default), the
   // following TraceMe constructor is simply a conditional test of
   // false value. Measurements show that its overhead is negligible.
-  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string());
+  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string(),
+                                  op_kernel->IsExpensive());
   if (port::Tracing::IsActive()) {
     // TODO(pbar) We really need a useful identifier of the graph node.
     const uint64 id = Hash64(op_kernel->name());
@@ -70,7 +71,7 @@ Status ThreadPoolDevice::MakeTensorFromProto(
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
     Tensor parsed(tensor_proto.dtype());
     if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      *tensor = parsed;
+      *tensor = std::move(parsed);
       return Status::OK();
     }
   }

@@ -89,6 +89,18 @@ TEST_F(TopologicalSortTest, WithIllegalLoop) {
   }
 }
 
+TEST_F(TopologicalSortTest, DuplicatedInputs) {
+  GraphDef graph;
+  *graph.add_node() = CreateNode("2", {"1", "1"});
+  *graph.add_node() = CreateNode("1", {});
+
+  TopologicalSort(&graph);
+  std::vector<string> order = {"1", "2"};
+  for (int i = 0; i < order.size(); i++) {
+    EXPECT_EQ(graph.node(i).name(), order[i]);
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

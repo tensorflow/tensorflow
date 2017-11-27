@@ -23,6 +23,10 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "METADATA_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "NODE_NAME_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }

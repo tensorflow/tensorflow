@@ -19,14 +19,14 @@ namespace tensorflow {
 namespace table {
 
 Iterator::Iterator() {
-  cleanup_.function = NULL;
-  cleanup_.next = NULL;
+  cleanup_.function = nullptr;
+  cleanup_.next = nullptr;
 }
 
 Iterator::~Iterator() {
-  if (cleanup_.function != NULL) {
+  if (cleanup_.function != nullptr) {
     (*cleanup_.function)(cleanup_.arg1, cleanup_.arg2);
-    for (Cleanup* c = cleanup_.next; c != NULL;) {
+    for (Cleanup* c = cleanup_.next; c != nullptr;) {
       (*c->function)(c->arg1, c->arg2);
       Cleanup* next = c->next;
       delete c;
@@ -36,9 +36,9 @@ Iterator::~Iterator() {
 }
 
 void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
-  assert(func != NULL);
+  assert(func != nullptr);
   Cleanup* c;
-  if (cleanup_.function == NULL) {
+  if (cleanup_.function == nullptr) {
     c = &cleanup_;
   } else {
     c = new Cleanup;
@@ -53,7 +53,7 @@ void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
 namespace {
 class EmptyIterator : public Iterator {
  public:
-  EmptyIterator(const Status& s) : status_(s) {}
+  explicit EmptyIterator(const Status& s) : status_(s) {}
   bool Valid() const override { return false; }
   void Seek(const StringPiece& target) override {}
   void SeekToFirst() override {}

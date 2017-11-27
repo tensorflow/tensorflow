@@ -18,21 +18,10 @@ py_binary(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
-    ],
-)
-
-py_binary(
-    name = "label_image",
-    srcs = [
-        "label_image.py",
-    ],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -40,7 +29,6 @@ py_test(
     name = "retrain_test",
     size = "small",
     srcs = [
-        "label_image.py",
         "retrain.py",
         "retrain_test.py",
     ],
@@ -53,7 +41,12 @@ py_test(
         ":retrain",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 

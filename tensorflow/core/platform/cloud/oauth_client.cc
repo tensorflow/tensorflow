@@ -21,9 +21,10 @@ limitations under the License.
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -100,14 +101,14 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
       EVP_PKEY_new(), [](EVP_PKEY* ptr) { EVP_PKEY_free(ptr); });
   EVP_PKEY_set1_RSA(key.get(), private_key);
 
-  if (EVP_DigestSignInit(md_ctx.get(), NULL, md, NULL, key.get()) != 1) {
+  if (EVP_DigestSignInit(md_ctx.get(), nullptr, md, nullptr, key.get()) != 1) {
     return errors::Internal("DigestInit failed.");
   }
   if (EVP_DigestSignUpdate(md_ctx.get(), to_sign.data(), to_sign.size()) != 1) {
     return errors::Internal("DigestUpdate failed.");
   }
   size_t sig_len = 0;
-  if (EVP_DigestSignFinal(md_ctx.get(), NULL, &sig_len) != 1) {
+  if (EVP_DigestSignFinal(md_ctx.get(), nullptr, &sig_len) != 1) {
     return errors::Internal("DigestFinal (get signature length) failed.");
   }
   std::unique_ptr<unsigned char[]> sig(new unsigned char[sig_len]);
@@ -161,7 +162,7 @@ Status EncodeJwtHeader(StringPiece key_id, string* encoded) {
 
 OAuthClient::OAuthClient()
     : OAuthClient(
-          std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory()),
+          std::unique_ptr<HttpRequest::Factory>(new CurlHttpRequest::Factory()),
           Env::Default()) {}
 
 OAuthClient::OAuthClient(

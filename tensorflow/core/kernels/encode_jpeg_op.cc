@@ -55,8 +55,6 @@ class EncodeJpegOp : public OpKernel {
         context, context->GetAttr("optimize_size", &flags_.optimize_jpeg_size));
     OP_REQUIRES_OK(context, context->GetAttr("chroma_downsampling",
                                              &flags_.chroma_downsampling));
-    OP_REQUIRES_OK(context, context->GetAttr("chroma_downsampling",
-                                             &flags_.chroma_downsampling));
 
     string density_unit;
     OP_REQUIRES_OK(context, context->GetAttr("density_unit", &density_unit));
@@ -119,7 +117,7 @@ class EncodeJpegOp : public OpKernel {
     }
 
     // Encode image to jpeg string
-    Tensor* output = NULL;
+    Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES(context,

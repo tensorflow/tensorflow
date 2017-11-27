@@ -29,10 +29,9 @@ from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
-from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -44,117 +43,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-def _UnknownShape(op):
-  return [tensor_shape.unknown_shape() for _ in op.outputs]
-
-
-# NOTE(cwhipkey): Dummy shape registration for ops used in the tests, since they
-# don't have C++ op registrations on which to attach C++ shape fns.
-ops.RegisterShape("If")(_UnknownShape)
-ops.RegisterShape("Iff")(_UnknownShape)
-ops.RegisterShape("Ii")(_UnknownShape)
-ops.RegisterShape("Iif")(_UnknownShape)
-ops.RegisterShape("Iii")(_UnknownShape)
-ops.RegisterShape("In")(_UnknownShape)
-ops.RegisterShape("Iri")(_UnknownShape)
-ops.RegisterShape("None")(_UnknownShape)
-ops.RegisterShape("Of")(_UnknownShape)
-ops.RegisterShape("Oi")(_UnknownShape)
-ops.RegisterShape("Oif")(_UnknownShape)
-ops.RegisterShape("Oii")(_UnknownShape)
-ops.RegisterShape("OpWithDefaultAttr")(_UnknownShape)
-ops.RegisterShape("OpWithFutureDefaultAttr")(_UnknownShape)
-ops.RegisterShape("Or")(_UnknownShape)
-ops.RegisterShape("Otl")(_UnknownShape)
-ops.RegisterShape("Unary")(_UnknownShape)
-
-_op_list = op_def_pb2.OpList()
-text_format.Merge("""
-  op {
-    name: 'None'
-  }
-  op {
-    name: 'Oi'
-    output_arg { name: 'a' type: DT_INT32 }
-  }
-  op {
-    name: 'Or'
-    output_arg { name: 'a' type: DT_INT32 is_ref: true }
-  }
-  op {
-    name: 'Of'
-    output_arg { name: 'a' type: DT_FLOAT }
-  }
-  op {
-    name: 'Ii'
-    input_arg { name: 'a' type: DT_INT32 }
-  }
-  op {
-    name: 'If'
-    input_arg { name: 'a' type: DT_FLOAT }
-  }
-  op {
-    name: 'Oii'
-    output_arg { name: 'a' type: DT_INT32 }
-    output_arg { name: 'b' type: DT_INT32 }
-  }
-  op {
-    name: 'Oif'
-    output_arg { name: 'a' type: DT_INT32 }
-    output_arg { name: 'b' type: DT_FLOAT }
-  }
-  op {
-    name: 'Iii'
-    input_arg { name: 'a' type: DT_INT32 }
-    input_arg { name: 'b' type: DT_INT32 }
-  }
-  op {
-    name: 'Iff'
-    input_arg { name: 'a' type: DT_FLOAT }
-    input_arg { name: 'b' type: DT_FLOAT }
-  }
-  op {
-    name: 'Iif'
-    input_arg { name: 'a' type: DT_INT32 }
-    input_arg { name: 'b' type: DT_FLOAT }
-  }
-  op {
-    name: 'Iri'
-    input_arg { name: 'a' type: DT_INT32 is_ref: true }
-    input_arg { name: 'b' type: DT_INT32 }
-  }
-  op {
-    name: 'In'
-    input_arg { name: 'a' number_attr: 'N' type_attr: 'T' }
-    attr { name: 'N' type: 'int' minimum: 1 }
-    attr { name: 'T' type: 'type' }
-  }
-  op {
-    name: 'Otl'
-    output_arg { name: 'a' type_list_attr: 't' }
-    attr { name: 'T' type: 'list(type)' minimum: 1 }
-  }
-  op {
-    name: 'Unary'
-    input_arg { name: 'a' type_attr: 'T' }
-    output_arg { name: 'b' type_attr: 'T' }
-    attr { name: 'T' type: 'type' }
-  }
-  op {
-    name: 'OpWithDefaultAttr'
-    output_arg { name: 'a' type: DT_INT32 }
-    attr { name: 'default_float' type: 'float' default_value { f: 123.0 } }
-  }
-  op {
-    name: 'OpWithFutureDefaultAttr'
-  }
-""", _op_list)
-op_def_registry.register_op_list(_op_list)
-# NOTE(mrry): Dummy shape registrations for ops used in the tests.
-for op_def in _op_list.op:
-  ops.RegisterShape(op_def.name)(None)
-
-
+@test_util.with_c_api
 class ImportGraphDefTest(test.TestCase):
 
   def _MakeGraphDef(self,
@@ -172,15 +61,15 @@ class ImportGraphDefTest(test.TestCase):
     with ops.Graph().as_default():
       a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
-          node { name: 'A' op: 'Oif' }
-          node { name: 'B' op: 'Otl'
-                 attr { key: 't'
+          node { name: 'A' op: 'IntOutputFloatOutput' }
+          node { name: 'B' op: 'ListOutput'
+                 attr { key: 'T'
                         value { list { type: DT_INT32 type: DT_FLOAT } } } }
-          node { name: 'C' op: 'In'
+          node { name: 'C' op: 'ListInput'
                  attr { key: 'N' value { i: 2 } }
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:0' input: 'B:0' }
-          node { name: 'D' op: 'In'
+          node { name: 'D' op: 'ListInput'
                  attr { key: 'N' value { i: 2 } }
                  attr { key: 'T' value { type: DT_FLOAT } }
                  input: 'A:1' input: 'B:1' }
@@ -203,10 +92,10 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], b.outputs[1])
 
       # Check the types of the returned ops and tensors.
-      self.assertEqual(a.type, "Oif")
-      self.assertEqual(b.type, "Otl")
-      self.assertEqual(c.type, "In")
-      self.assertEqual(d.type, "In")
+      self.assertEqual(a.type, "IntOutputFloatOutput")
+      self.assertEqual(b.type, "ListOutput")
+      self.assertEqual(c.type, "ListInput")
+      self.assertEqual(d.type, "ListInput")
       self.assertEqual(a.outputs[0].dtype, dtypes.int32)
       self.assertEqual(a.outputs[1].dtype, dtypes.float32)
       self.assertEqual(b.outputs[0].dtype, dtypes.int32)
@@ -221,20 +110,112 @@ class ImportGraphDefTest(test.TestCase):
       # Check that the op_def is still available.
       self.assertNotEqual(None, a.op_def)
 
+  def testMultipleImport(self):
+    if ops._USE_C_API: return  # TODO(skyewm): set uniquify_names
+
+    graph_def = self._MakeGraphDef("""
+    node { name: 'A' op: 'IntOutput' }
+    node { name: 'B' op: 'IntInput' input: 'A:0' }
+    """)
+
+    with ops.Graph().as_default():
+      # Initial import
+      a, b = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="")
+      self.assertEqual(a.name, "A")
+      self.assertEqual(b.name, "B")
+      self.assertEqual(list(b.inputs), [a.outputs[0]])
+
+      # Repeat the same import
+      a1, b1 = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="")
+      self.assertEqual(a1.name, "A_1")
+      self.assertEqual(b1.name, "B_1")
+      self.assertEqual(list(b1.inputs), [a1.outputs[0]])
+
+      # Repeat the same import again
+      a2, b2 = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="")
+      self.assertEqual(a2.name, "A_2")
+      self.assertEqual(b2.name, "B_2")
+      self.assertEqual(list(b2.inputs), [a2.outputs[0]])
+
+      # Import with an already-used name
+      a3, b3 = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="A")
+      self.assertEqual(a3.name, "A_3/A")
+      self.assertEqual(b3.name, "A_3/B")
+      self.assertEqual(list(b3.inputs), [a3.outputs[0]])
+
+      # Import with existing de-duped node names
+      a4, b4 = importer.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A_1' op: 'IntOutput' }
+          node { name: 'B_1' op: 'IntInput' input: 'A_1:0' }
+          """),
+          return_elements=["A_1", "B_1"],
+          name="")
+      self.assertEqual(a4.name, "A_1_1")
+      self.assertEqual(b4.name, "B_1_1")
+      self.assertEqual(list(b4.inputs), [a4.outputs[0]])
+
+      # Create a name scope and then import node with same name
+      with ops.name_scope("foo"):
+        constant_op.constant(1)
+      foo, = importer.import_graph_def(
+          self._MakeGraphDef("node { name: 'foo' op: 'IntOutput' }"),
+          return_elements=["foo"],
+          name="")
+      self.assertEqual(foo.name, "foo_1")
+
+      # Imported node name can't conflict with intermediate name scope (but can
+      # conflict with outer scope and full name scope)
+      with ops.name_scope("outer"):
+        with ops.name_scope("inner"):
+          c = constant_op.constant(1, name="c")
+          self.assertEqual(c.op.name, "outer/inner/c")
+
+      outer, inner, new_c, outer_inner, outer_inner_c = (
+          importer.import_graph_def(
+              self._MakeGraphDef(
+                  "node { name: 'outer' op: 'IntOutput' }"
+                  "node { name: 'inner' op: 'IntOutput' }"
+                  "node { name: 'c' op: 'IntOutput' }"
+                  "node { name: 'outer/inner' op: 'IntOutput' }"
+                  "node { name: 'outer/inner/c' op: 'IntOutput' }"),
+              return_elements=["outer", "inner", "c", "outer/inner",
+                               "outer/inner/c"],
+              name=""))
+      self.assertEqual(outer.name, "outer_1")
+      self.assertEqual(inner.name, "inner")
+      self.assertEqual(new_c.name, "c")
+      self.assertEqual(outer_inner.name, "outer/inner_1")
+      self.assertEqual(outer_inner_c.name, "outer/inner/c_1")
+
   def testInputMap(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
       feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
 
       a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
-          node { name: 'A' op: 'Oii' }
-          node { name: 'B' op: 'Oii' }
-          node { name: 'C' op: 'In'
+          node { name: 'A' op: 'TwoIntOutputs' }
+          node { name: 'B' op: 'TwoIntOutputs' }
+          node { name: 'C' op: 'ListInput'
                  attr { key: 'N' value { i: 2 } }
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:0' input: 'B:0' }
-          node { name: 'D' op: 'In'
+          node { name: 'D' op: 'ListInput'
                  attr { key: 'N' value { i: 2 } }
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:1' input: 'B:1' }
@@ -249,19 +230,21 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], feed_b_1)
 
   def testInputMapBytes(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
       feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
 
       a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
-          node { name: 'A' op: 'Oii' }
-          node { name: 'B' op: 'Oii' }
-          node { name: 'C' op: 'In'
+          node { name: 'A' op: 'TwoIntOutputs' }
+          node { name: 'B' op: 'TwoIntOutputs' }
+          node { name: 'C' op: 'ListInput'
                  attr { key: 'N' value { i: 2 } }
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:0' input: 'B:0' }
-          node { name: 'D' op: 'In'
+          node { name: 'D' op: 'ListInput'
                  attr { key: 'N' value { i: 2 } }
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:1' input: 'B:1' }
@@ -276,19 +259,21 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], feed_b_1)
 
   def testInputMapUnicode(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
       feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
 
       a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
-          node { name: 'A' op: 'Oii' }
-          node { name: 'B' op: 'Oii' }
-          node { name: 'C' op: 'In'
+          node { name: 'A' op: 'TwoIntOutputs' }
+          node { name: 'B' op: 'TwoIntOutputs' }
+          node { name: 'C' op: 'ListInput'
                  attr { key: 'N' value { i: 2 } }
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:0' input: 'B:0' }
-          node { name: 'D' op: 'In'
+          node { name: 'D' op: 'ListInput'
                  attr { key: 'N' value { i: 2 } }
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:1' input: 'B:1' }
@@ -306,20 +291,22 @@ class ImportGraphDefTest(test.TestCase):
     with ops.Graph().as_default():
       a, b = importer.import_graph_def(
           self._MakeGraphDef("""
-          node { name: 'A' op: 'Oii' }
-          node { name: 'B' op: 'Ii' input: 'A' }
+          node { name: 'A' op: 'TwoIntOutputs' }
+          node { name: 'B' op: 'IntInput' input: 'A' }
           """),
           return_elements=["A", "B"])
 
       self.assertEqual(b.inputs[0], a.outputs[0])
 
   def testInputMapImplicitZerothOutput(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
       b, = importer.import_graph_def(
           self._MakeGraphDef("""
-          node { name: 'A' op: 'Oii' }
-          node { name: 'B' op: 'Ii' input: 'A:0' }
+          node { name: 'A' op: 'TwoIntOutputs' }
+          node { name: 'B' op: 'IntInput' input: 'A:0' }
           """),
           input_map={"A": feed_a_0},
           return_elements=["B"])
@@ -341,10 +328,10 @@ class ImportGraphDefTest(test.TestCase):
     with ops.Graph().as_default():
       a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
-          node { name: 'A' op: 'Or' }
-          node { name: 'B' op: 'Oi' }
-          node { name: 'C' op: 'Iii' input: 'A:0' input: 'B:0' }
-          node { name: 'D' op: 'Iri' input: 'A:0' input: 'B:0' }
+          node { name: 'A' op: 'RefOutput' }
+          node { name: 'B' op: 'IntOutput' }
+          node { name: 'C' op: 'TwoIntInputs' input: 'A:0' input: 'B:0' }
+          node { name: 'D' op: 'RefInputIntInput' input: 'A:0' input: 'B:0' }
           """),
           return_elements=["A", "B", "C", "D"])
 
@@ -360,6 +347,11 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.outputs, [])
 
   def testCyclic(self):
+    # Importing cycles not supported with C API enabled (this test will
+    # eventually be deleted).
+    # TODO(skyewm): write while loop test
+    if ops._USE_C_API: return
+
     with ops.Graph().as_default():
       a, b = importer.import_graph_def(
           self._MakeGraphDef("""
@@ -374,18 +366,22 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(b.inputs[0], a.outputs[0])
 
   def testTypeMismatchInGraphDef(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Oi' }
-            node { name: 'B' op: 'If' input: 'A:0' }
+            node { name: 'A' op: 'IntOutput' }
+            node { name: 'B' op: 'FloatInput' input: 'A:0' }
             """))
       self.assertTrue(
           "Cannot convert a tensor of type int32 to an input of type float" in
           str(e.exception))
 
   def testShapeWhitelist(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     # Barrier's shape is an output vector of 2, but the
     # graph says it's a scalar.  This is currently whitelisted.
     with ops.Graph().as_default():
@@ -399,13 +395,15 @@ class ImportGraphDefTest(test.TestCase):
           name="import")
 
   def testShapeWhitelistViolation(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     # L2 loss produces a scalar shape, but the graph
     # has the wrong shape, so raise an error.
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         _ = importer.import_graph_def(
             self._MakeGraphDef("""
-              node { name: 'A' op: 'Of' }
+              node { name: 'A' op: 'FloatOutput' }
               node { name: 'B' op: 'L2Loss'
                      input: 'A:0'
                      attr { key: 'T' value { type: DT_FLOAT } }
@@ -418,58 +416,70 @@ class ImportGraphDefTest(test.TestCase):
             "Shapes () and (43,) are not compatible" in str(e.exception))
 
   def testInvalidSignatureTooManyInputsInGraphDef(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Oi' }
+            node { name: 'A' op: 'IntOutput' }
             node { name: 'B' op: 'None' input: 'A:0' }
             """))
       self.assertTrue("More inputs specified ('A:0') than the op expects" in
                       str(e.exception))
 
   def testInvalidSignatureNotEnoughInputsInGraphDef(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Oi' }
-            node { name: 'B' op: 'Iif' input: 'A:0' }
+            node { name: 'A' op: 'IntOutput' }
+            node { name: 'B' op: 'IntInputFloatInput' input: 'A:0' }
             """))
       self.assertTrue("Input types mismatch (expected 'int32, float32' but "
                       "got 'int32')" in str(e.exception))
 
   def testMissingInputOpInGraphDef(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'B' op: 'If' input: 'A:0' }
+            node { name: 'B' op: 'FloatInput' input: 'A:0' }
             """))
       self.assertTrue("Input tensor 'A:0' not found" in str(e.exception))
 
   def testMissingInputOpInGraphDefButAppearsInInputMap(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(5.0)
       b, = importer.import_graph_def(
           self._MakeGraphDef("""
-          node { name: 'B' op: 'If' input: 'A:0' }
+          node { name: 'B' op: 'FloatInput' input: 'A:0' }
           """),
           input_map={"A:0": feed_a_0},
           return_elements=["B"])
       self.assertEqual(b.inputs[0], feed_a_0)
 
   def testMissingInputTensorInGraphDef(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Of' }
-            node { name: 'B' op: 'If' input: 'A:1' }
+            node { name: 'A' op: 'FloatOutput' }
+            node { name: 'B' op: 'FloatInput' input: 'A:1' }
             """))
       self.assertTrue("Input tensor 'A:1' not found" in str(e.exception))
 
   def testMissingControlInputInGraphDef(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
@@ -479,6 +489,8 @@ class ImportGraphDefTest(test.TestCase):
       self.assertTrue("Control input '^A' not found" in str(e.exception))
 
   def testInvalidTensorNameOutputIndexInGraphDef(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
@@ -489,6 +501,8 @@ class ImportGraphDefTest(test.TestCase):
                        str(e.exception))
 
   def testInvalidTensorNameInGraphDef(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
@@ -499,6 +513,8 @@ class ImportGraphDefTest(test.TestCase):
                        str(e.exception))
 
   def testMissingReturnOperation(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
@@ -510,11 +526,13 @@ class ImportGraphDefTest(test.TestCase):
           "return_element 'B' not found in graph_def." in str(e.exception))
 
   def testMissingReturnTensor(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Oi' }
+            node { name: 'A' op: 'IntOutput' }
             """),
             return_elements=["A:1"])
       self.assertTrue(
@@ -523,7 +541,7 @@ class ImportGraphDefTest(test.TestCase):
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Oi' }
+            node { name: 'A' op: 'IntOutput' }
             """),
             return_elements=["B:0"])
       self.assertTrue(
@@ -532,13 +550,15 @@ class ImportGraphDefTest(test.TestCase):
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Oi' }
+            node { name: 'A' op: 'IntOutput' }
             """),
             return_elements=["A:B:0"])
       self.assertTrue(
           "return_element 'A:B:0' not found in graph_def." in str(e.exception))
 
   def testMissingInputMap(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
@@ -548,13 +568,35 @@ class ImportGraphDefTest(test.TestCase):
             input_map={"B:0": constant_op.constant(5.0)})
       self.assertTrue("not found in graph_def: [B:0]" in str(e.exception))
 
+  def testInputMapUnusedAsInput(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
+    with ops.Graph().as_default():
+      # Mapping an unused node output should succeed.
+      importer.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'IntOutput' }
+          """),
+          input_map={"A:0": constant_op.constant(5.0)})
+
+      # Mapping a non-existent output of an existing node should fail.
+      with self.assertRaises(ValueError) as e:
+        importer.import_graph_def(
+            self._MakeGraphDef("""
+            node { name: 'A' op: 'IntOutput' }
+            """),
+            input_map={"A:2": constant_op.constant(5.0)})
+      self.assertTrue("not found in graph_def: [A:2]" in str(e.exception))
+
   def testInputMapTypeMismatch(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Oi' }
-            node { name: 'B' op: 'Ii' input: 'A:0' }
+            node { name: 'A' op: 'IntOutput' }
+            node { name: 'B' op: 'IntInput' input: 'A:0' }
             """),
             input_map={"A:0": constant_op.constant(5.0)})
       self.assertTrue(
@@ -582,6 +624,16 @@ class ImportGraphDefTest(test.TestCase):
           name="imported_graph")
       self.assertEqual(a.name, "imported_graph/A")
 
+  def testDefaultNamePrefix(self):
+    with ops.Graph().as_default():
+      a, = importer.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'None' }
+          """),
+          return_elements=["A"],
+          name=None)
+      self.assertEqual(a.name, "import/A")
+
   def testNamePrefixColocationAttrs(self):
     original_graph_def = self._MakeGraphDef("""
           node { name: 'A' op: 'None' }
@@ -593,14 +645,136 @@ class ImportGraphDefTest(test.TestCase):
     with ops.Graph().as_default():
       b, = importer.import_graph_def(
           original_graph_def, return_elements=["B"], name="imported_graph")
-      self.assertProtoEqualsVersion("""
-          node { name: 'imported_graph/A' op: 'None' }
-          node { name: 'imported_graph/B' op: 'None'  attr {
+      self.assertTrue("_class" in b.node_def.attr)
+      self.assertProtoEquals(
+          "list { s: 'loc:@imported_graph/A' }",
+          b.node_def.attr["_class"])
+
+  def testColocationWithDeviceFn(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' attr {
             key: '_class'
-            value { list { s: 'loc:@imported_graph/A' } }
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    # A device function that places "A" on one device and "B" on
+    # another device.  Because B is colocated with A, we test that B's
+    # device function is overridden by A.
+    def CustomDeviceFn(op):
+      if "A" in op.name:
+        return "/device:A:0"
+      else:
+        return "/device:B:0"
+
+    with ops.Graph().as_default():
+      with ops.device(CustomDeviceFn):
+        b, = importer.import_graph_def(
+            original_graph_def, return_elements=["B"], name="imported_graph")
+
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None' device: "/device:A:0"
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+                }
+          }
+          node { name: 'imported_graph/B' op: 'None' device: "/device:A:0"
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
           } }""", b.graph.as_graph_def())
 
+    # Test a scenario where 'A' doesn't get a device; 'A' should
+    # not have a device, but during runtime will get colocated with
+    # 'B' because of the colocation attribute.
+    def BDeviceFn(op):
+      if "B" in op.name:
+        return "/device:B:0"
+      return ""
+
+    with ops.Graph().as_default():
+      with ops.device(BDeviceFn):
+        b, = importer.import_graph_def(
+            original_graph_def, return_elements=["B"], name="imported_graph")
+
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None'
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+                }
+          }
+          node { name: 'imported_graph/B' op: 'None'
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+          } }""", b.graph.as_graph_def())
+
+    # Only A gets a device, so B inherits it implicitly.
+    def ADeviceFn(op):
+      if "A" in op.name:
+        return "/device:A:0"
+      return ""
+
+    with ops.Graph().as_default():
+      with ops.device(ADeviceFn):
+        b, = importer.import_graph_def(
+            original_graph_def, return_elements=["B"], name="imported_graph")
+
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None' device: "/device:A:0"
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+                }
+          }
+          node { name: 'imported_graph/B' op: 'None' device: "/device:A:0"
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+          } }""", b.graph.as_graph_def())
+
+  def testMultipleColocationWithDeviceFn(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None'}
+          node { name: 'B' op: 'None'}
+          node { name: 'C' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' s: 'loc:@B' } }
+          } }""")
+
+    # A device function that places "B" on a device, and "A" is empty.
+    #
+    # B and C should contain "/device:B".  A will not right now.  But
+    # because of the colocation property, at runtime it would be
+    # placed with B and C.
+    def CustomDeviceFn(op):
+      if "B" in op.name:
+        return "/device:B:0"
+      return ""
+
+    with ops.Graph().as_default():
+      with ops.device(CustomDeviceFn):
+        c, = importer.import_graph_def(
+            original_graph_def, return_elements=["C"], name="imported_graph")
+
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None' }
+          node { name: 'imported_graph/B' op: 'None' device: "/device:B:0" }
+          node { name: 'imported_graph/C' op: 'None' device: "/device:B:0"
+                 attr {
+                   key: '_class' value {
+                     list { s: 'loc:@imported_graph/A'
+                            s: 'loc:@imported_graph/B' }
+                   }
+                 }
+               }""", c.graph.as_graph_def())
+
   def testNamePrefixColocationAttrsMultipleImport(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     original_graph_def = self._MakeGraphDef("""
           node { name: 'A' op: 'None' }
           node { name: 'B' op: 'None'  attr {
@@ -626,6 +800,8 @@ class ImportGraphDefTest(test.TestCase):
           } }""", b.graph.as_graph_def())
 
   def testNamePrefixColocationAttrsNotFound(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     original_graph_def = self._MakeGraphDef("""
           node { name: 'B' op: 'None'  attr {
             key: '_class'
@@ -649,6 +825,8 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual("graph_def must be a GraphDef proto.", str(e.exception))
 
   def testInvalidInputForInputMap(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(TypeError) as e:
         importer.import_graph_def(
@@ -685,14 +863,24 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual("return_elements must be a list of strings.",
                        str(e.exception))
 
+      if ops._USE_C_API:
+        error_msg = "Cannot convert 'a:b:c' to a tensor name."
+      else:
+        error_msg = "Requested return_element 'a:b:c' not found in graph_def."
+      with self.assertRaisesRegexp(ValueError, error_msg):
+        importer.import_graph_def(self._MakeGraphDef(""),
+                                  return_elements=["a:b:c"])
+
   def testDuplicateOperationNames(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
             self._MakeGraphDef("""
-            node { name: 'A' op: 'Oi' }
-            node { name: 'B' op: 'Oi' }
-            node { name: 'A' op: 'Oi' }
+            node { name: 'A' op: 'IntOutput' }
+            node { name: 'B' op: 'IntOutput' }
+            node { name: 'A' op: 'IntOutput' }
             """))
       self.assertEqual("Duplicate name 'A' in GraphDef.", str(e.exception))
 
@@ -707,6 +895,8 @@ class ImportGraphDefTest(test.TestCase):
       self.assertAllEqual(pack.outputs[0].eval(), [5.0, 5.0])
 
   def testWithDevice(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default() as g:
       # No device.
       a = constant_op.constant(3.0, name="a")
@@ -742,7 +932,7 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(c.device, c4.device)  # worker overrides ps.
 
     with ops.Graph().as_default():
-      with ops.device(device.merge_device("/gpu:0")):
+      with ops.device(device.merge_device("/device:GPU:0")):
         a5, b5, c5 = importer.import_graph_def(
             gdef, return_elements=["a", "b", "c"])
         self.assertEqual("/device:GPU:0", a5.device)
@@ -750,19 +940,22 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(c.device + "/device:GPU:0", c5.device)
 
   def testWithDeviceFunctionDependingOnInputs(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default() as g:
       with ops.device("/job:ps"):
-        v = variables.Variable(1.0)
-      unused_assign_op = v.assign(2.0)
-      unused_assign_2_op = v.assign(3.0)
-      unused_add_t = v + v
+        v1 = constant_op.constant(1.0)
+        v2 = constant_op.constant(1.0)
+      _ = v1 + v2
+      _ = v1 - v2
+      _ = array_ops.identity(v1)
     gdef = g.as_graph_def()
 
     # We'll use the following device function to observe ops with two inputs.
     ops_with_two_inputs = []
 
     def InputCounter(op):
-      if any(in_t.dtype._is_ref_dtype for in_t in op.inputs):  # pylint: disable=protected-access
+      if len(op.inputs) == 2:
         ops_with_two_inputs.append(op)
       return ""
 
@@ -770,10 +963,12 @@ class ImportGraphDefTest(test.TestCase):
       with ops.device(InputCounter):
         importer.import_graph_def(gdef)
 
-    # We expect to see the initializer, two assign operations, and the add op.
-    self.assertEqual(4, len(ops_with_two_inputs))
+    # We expect to see the add and subtract, but not identity.
+    self.assertEqual(2, len(ops_with_two_inputs))
 
   def testGradient(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default() as g:
       inputs = array_ops.placeholder(
           dtypes.float32, shape=[None, 100], name="input")
@@ -825,7 +1020,7 @@ class ImportGraphDefTest(test.TestCase):
         with ops.Graph().as_default():
           a, = importer.import_graph_def(
               self._MakeGraphDef(
-                  "node { name: 'A' op: 'Oii' }",
+                  "node { name: 'A' op: 'TwoIntOutputs' }",
                   producer=producer,
                   min_consumer=min_consumer),
               return_elements=["A"])
@@ -838,14 +1033,21 @@ class ImportGraphDefTest(test.TestCase):
       pat = (r"GraphDef producer version -1 below min producer %d supported "
              r"by TensorFlow \S+\.  Please regenerate your graph.$" %
              versions.GRAPH_DEF_VERSION_MIN_PRODUCER)
-      importer.import_graph_def(self._MakeGraphDef("", producer=-1))
-      x = constant_op.constant(
-          7)  # Need at least one op to get a C++ graph generated
-      with self.test_session(graph=g) as sess:
+      # C API throws error during import, Python-only throws error during run
+      if ops._USE_C_API:
         with self.assertRaisesRegexp(Exception, pat):
-          sess.run(x)
+          importer.import_graph_def(self._MakeGraphDef("", producer=-1))
+      else:
+        importer.import_graph_def(self._MakeGraphDef("", producer=-1))
+        x = constant_op.constant(
+            7)  # Need at least one op to get a C++ graph generated
+        with self.test_session(graph=g) as sess:
+          with self.assertRaisesRegexp(Exception, pat):
+            sess.run(x)
 
   def testVersionHigh(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default() as g:
       pat = (r"GraphDef min consumer version %d above current version %d "
              r"for TensorFlow \S+\.  Please upgrade TensorFlow\.$" %
@@ -859,6 +1061,8 @@ class ImportGraphDefTest(test.TestCase):
 
   def testVersionAppliesToOpConstruction(self):
     """These tests rely on shape fns in test_ops.cc."""
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     with ops.Graph().as_default():
       importer.import_graph_def(
           self._MakeGraphDef(
@@ -885,6 +1089,8 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(123.0, a[0].get_attr("default_float"))
 
   def testDefaultAttrsRemoved(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     producer_op_list = op_def_pb2.OpList()
     text_format.Merge("""
       op {
@@ -916,6 +1122,8 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(987, a[0].get_attr("default_int"))
 
   def testFunctions(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     dtype = dtypes.float32
     @function.Defun(dtype, dtype, dtype, dtype)
     def Grad(x, y, dout1, dout2):  # pylint: disable=unused-argument
@@ -993,6 +1201,8 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(sess.run("outer:0"), 21)
 
   def testImportInsideDefun(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     g = ops.Graph()
     with g.as_default():
       @function.Defun()
@@ -1016,6 +1226,8 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(z_val, -2.0)
 
   def testImportGraphWithFunctionTwice(self):
+    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+
     g = ops.Graph()
     with g.as_default():
       @function.Defun()

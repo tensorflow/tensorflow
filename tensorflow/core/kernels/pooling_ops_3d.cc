@@ -37,10 +37,18 @@ limitations under the License.
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/pooling_ops_3d_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 Pool3dParameters::Pool3dParameters(OpKernelContext* context,
                                    const std::vector<int32>& ksize,
@@ -88,11 +96,6 @@ TensorShape Pool3dParameters::forward_output_shape() {
   return ShapeFromFormat(data_format, tensor_in_batch,
                          {{out_plane, out_height, out_width}}, depth);
 }
-
-enum PoolingType { MAX, AVG };
-
-template <typename Device, typename T, PoolingType Type>
-struct LaunchPoolingOp;
 
 template <typename T>
 struct LaunchPoolingOp<CPUDevice, T, AVG> {
@@ -199,9 +202,6 @@ class Pooling3DOp : public UnaryOp<T> {
   Padding padding_;
   TensorFormat data_format_;
 };
-
-template <typename Device, typename T>
-struct LaunchMaxPooling3dGradOp;
 
 template <typename T>
 struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
@@ -377,9 +377,6 @@ class MaxPooling3dGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-template <typename Device, typename T>
-struct LaunchAvgPooling3dGradOp;
-
 template <typename T>
 struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
   static void launch(OpKernelContext* context,
@@ -540,9 +537,6 @@ class AvgPooling3dGradOp : public OpKernel {
   Padding padding_;
   TensorFormat data_format_;
 };
-
-template <typename Device, typename T>
-struct LaunchMaxPooling3dGradGradOp;
 
 template <typename T>
 struct LaunchMaxPooling3dGradGradOp<CPUDevice, T> {
@@ -836,6 +830,12 @@ TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_KERNELS
 

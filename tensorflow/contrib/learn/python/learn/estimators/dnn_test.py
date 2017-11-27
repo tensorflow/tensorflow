@@ -126,6 +126,38 @@ class EmbeddingMultiplierTest(test.TestCase):
       self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
 
+class ActivationFunctionTest(test.TestCase):
+
+  def _getModelForActivation(self, activation_fn):
+    embedding_language = feature_column.embedding_column(
+        feature_column.sparse_column_with_hash_bucket('language', 10),
+        dimension=1,
+        initializer=init_ops.constant_initializer(0.1))
+    params = {
+        'feature_columns': [embedding_language],
+        'head': head_lib.multi_class_head(2),
+        'hidden_units': [1],
+        'activation_fn': activation_fn,
+    }
+    features = {
+        'language':
+            sparse_tensor.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+    }
+    labels = constant_op.constant([[0], [0], [0]], dtype=dtypes.int32)
+    return dnn._dnn_model_fn(features, labels, model_fn.ModeKeys.TRAIN, params)
+
+  def testValidActivation(self):
+    _ = self._getModelForActivation('relu')
+
+  def testRaisesOnBadActivationName(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Activation name should be one of'):
+      self._getModelForActivation('max_pool')
+
+
 class DNNEstimatorTest(test.TestCase):
 
   def _assertInRange(self, expected_min, expected_max, actual):
@@ -157,8 +189,7 @@ class DNNEstimatorTest(test.TestCase):
       # than (y=Not(x)) due to the relative higher weight of the first row.
       labels = constant_op.constant([[1], [0], [0], [0]])
       features = {
-          'x': array_ops.ones(
-              shape=[4, 1], dtype=dtypes.float32),
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
           'w': constant_op.constant([[100.], [3.], [2.], [2.]])
       }
       return features, labels
@@ -167,8 +198,7 @@ class DNNEstimatorTest(test.TestCase):
       # Create 4 rows (y = x)
       labels = constant_op.constant([[1], [1], [1], [1]])
       features = {
-          'x': array_ops.ones(
-              shape=[4, 1], dtype=dtypes.float32),
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
           'w': constant_op.constant([[1.], [1.], [1.], [1.]])
       }
       return features, labels
@@ -317,6 +347,12 @@ class DNNClassifierTest(test.TestCase):
     self.assertEqual(expected_len, len(predictions))
     for prediction in predictions:
       self.assertIn(prediction, (0, 1))
+
+  def _assertClassificationPredictions(
+      self, expected_len, n_classes, predictions):
+    self.assertEqual(expected_len, len(predictions))
+    for prediction in predictions:
+      self.assertIn(prediction, range(n_classes))
 
   def _assertProbabilities(self, expected_batch_size, expected_n_classes,
                            probabilities):
@@ -702,7 +738,7 @@ class DNNClassifierTest(test.TestCase):
     self.assertIn('loss', scores)
     predicted_classes = classifier.predict_classes(
         input_fn=_input_fn, as_iterable=False)
-    self._assertBinaryPredictions(3, predicted_classes)
+    self._assertClassificationPredictions(3, n_classes, predicted_classes)
     predictions = classifier.predict(input_fn=_input_fn, as_iterable=False)
     self.assertAllEqual(predicted_classes, predictions)
     probabilities = classifier.predict_proba(
@@ -735,13 +771,14 @@ class DNNClassifierTest(test.TestCase):
         feature_column.real_valued_column('age')
     ]
 
+    n_classes = 3
     classifier = dnn.DNNClassifier(
-        n_classes=3,
+        n_classes=n_classes,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn, steps=200)
+    classifier.fit(input_fn=_input_fn, steps=300)
 
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
@@ -750,7 +787,7 @@ class DNNClassifierTest(test.TestCase):
     predicted_classes = list(
         classifier.predict_classes(
             input_fn=predict_input_fn, as_iterable=True))
-    self.assertListEqual(predicted_classes, [1, 0, 0])
+    self._assertClassificationPredictions(3, n_classes, predicted_classes)
     predictions = list(
         classifier.predict(
             input_fn=predict_input_fn, as_iterable=True))
@@ -758,8 +795,7 @@ class DNNClassifierTest(test.TestCase):
     predicted_proba = list(
         classifier.predict_proba(
             input_fn=predict_input_fn, as_iterable=True))
-    self.assertAllClose(
-        predicted_proba, [[0., 1., 0.], [1., 0., 0.], [1., 0., 0.]], atol=0.3)
+    self._assertProbabilities(3, n_classes, predicted_proba)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
@@ -1184,6 +1220,12 @@ class DNNRegressorTest(test.TestCase):
     scores = regressor.evaluate(input_fn=_input_fn_eval, steps=1)
     self.assertIn('loss', scores)
 
+  def _assertRegressionOutputs(
+      self, predictions, expected_shape):
+    predictions_nparray = np.array(predictions)
+    self.assertAllEqual(expected_shape, predictions_nparray.shape)
+    self.assertTrue(np.issubdtype(predictions_nparray.dtype, np.float))
+
   def testPredict_AsIterableFalse(self):
     """Tests predict method with as_iterable=False."""
     labels = [1., 0., 0.2]
@@ -1222,7 +1264,7 @@ class DNNRegressorTest(test.TestCase):
     self.assertIn('loss', scores)
     predicted_scores = regressor.predict_scores(
         input_fn=_input_fn, as_iterable=False)
-    self.assertAllClose(labels, predicted_scores, atol=0.2)
+    self._assertRegressionOutputs(predicted_scores, [3])
     predictions = regressor.predict(input_fn=_input_fn, as_iterable=False)
     self.assertAllClose(predicted_scores, predictions)
 
@@ -1266,7 +1308,7 @@ class DNNRegressorTest(test.TestCase):
     predicted_scores = list(
         regressor.predict_scores(
             input_fn=predict_input_fn, as_iterable=True))
-    self.assertAllClose(labels, predicted_scores, atol=0.2)
+    self._assertRegressionOutputs(predicted_scores, [3])
     predictions = list(
         regressor.predict(input_fn=predict_input_fn, as_iterable=True))
     self.assertAllClose(predicted_scores, predictions)

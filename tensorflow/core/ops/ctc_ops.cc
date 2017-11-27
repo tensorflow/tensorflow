@@ -77,8 +77,8 @@ ctc_merge_repeated: Scalar.  If set to false, *during* CTC calculation
   repeated non-blank labels will not be merged and are interpreted as
   individual labels.  This is a simplified version of CTC.
 ignore_longer_outputs_than_inputs: Scalar. If set to true, during CTC
-  calculation items have longer input sequences than output sequences
-  are ignored by returning zero-gradient for those items.
+  calculation, items that have longer output sequences than input sequences
+  are skipped: they don't contribute to the loss term and have zero-gradient.
 loss: A vector (batch) containing log-probabilities.
 gradient: The gradient of `loss`.  3-D, shape:
   `(max_time x batch_size x num_classes)`.

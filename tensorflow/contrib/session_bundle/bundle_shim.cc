@@ -341,7 +341,7 @@ Status ConvertSessionBundleToSavedModelBundle(
   saved_model_bundle->session = std::move(session_bundle.session);
 
   // Copy the meta graph def from the SessionBundle to the SavedModelBundle.
-  saved_model_bundle->meta_graph_def.CopyFrom(session_bundle.meta_graph_def);
+  saved_model_bundle->meta_graph_def = session_bundle.meta_graph_def;
 
   // Convert signatures from session-bundle to signature-defs in
   // saved-model-bundle.

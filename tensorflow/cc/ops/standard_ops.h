@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/io_ops.h"
 #include "tensorflow/cc/ops/linalg_ops.h"
 #include "tensorflow/cc/ops/logging_ops.h"
+#include "tensorflow/cc/ops/lookup_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/no_op.h"

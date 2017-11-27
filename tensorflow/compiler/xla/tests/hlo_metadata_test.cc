@@ -46,7 +46,7 @@ TEST_F(HloMetadataTest, MetadataPropagation) {
   builder.ClearOpMetadata();
 
   Shape argument_layout = ShapeUtil::MakeShape(F32, {});
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> executable,
       local_client_->Compile(builder.Build().ValueOrDie(),
                              {&argument_layout, &argument_layout},

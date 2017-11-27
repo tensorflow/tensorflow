@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Usage: ci_sanity.sh [options]
+# Usage: ci_sanity.sh [--pep8] [--incremental] [bazel flags]
 #
 # Options:
 #           run sanity checks: python 2&3 pylint checks and bazel nobuild
@@ -24,6 +24,7 @@
 
 # Current script directory
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+source "${SCRIPT_DIR}/builds/builds_common.sh"
 
 # Helper functions
 die() {
@@ -47,7 +48,7 @@ num_cpus() {
 # Get the hash of the last non-merge git commit on the current branch.
 # Usage: get_last_non_merge_git_commit
 get_last_non_merge_git_commit() {
-  echo $(git rev-list --no-merges -n 1 HEAD)
+  git rev-list --no-merges -n 1 HEAD
 }
 
 # List files changed (i.e., added, removed or revised) in the last non-merge
@@ -75,7 +76,7 @@ get_py_files_to_check() {
 
     echo "${PY_FILES}"
   else
-    echo $(find tensorflow -name '*.py')
+    find tensorflow -name '*.py'
   fi
 }
 
@@ -94,7 +95,11 @@ do_pylint() {
 "^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
 "^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
 "^tensorflow/contrib/layers/python/layers/feature_column\.py.*\[E0110.*abstract-class-instantiated "\
-"^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator"
+"^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden "\
+"^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
+"^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
+"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
+"^tensorflow/python/keras/_impl/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
@@ -157,25 +162,25 @@ do_pylint() {
   NONWL_ERRORS_FILE="$(mktemp)_pylint_nonwl_errors.log"
 
   rm -rf ${OUTPUT_FILE}
-  rm -rf ${ERRORS_FLIE}
+  rm -rf ${ERRORS_FILE}
   rm -rf ${NONWL_ERRORS_FILE}
   touch ${NONWL_ERRORS_FILE}
 
   ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
-      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} 2>&1 > ${OUTPUT_FILE}
+      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} > ${OUTPUT_FILE} 2>&1
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
-  echo "pylint took $((${PYLINT_END_TIME} - ${PYLINT_START_TIME})) s"
+  echo "pylint took $((PYLINT_END_TIME - PYLINT_START_TIME)) s"
   echo ""
 
   grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
-  while read LINE; do
+  while read -r LINE; do
     IS_WHITELISTED=0
     for WL_REGEX in ${ERROR_WHITELIST}; do
-      if [[ ! -z $(echo ${LINE} | grep "${WL_REGEX}") ]]; then
+      if echo ${LINE} | grep -q "${WL_REGEX}"; then
         echo "Found a whitelisted error:"
         echo "  ${LINE}"
         IS_WHITELISTED=1
@@ -248,7 +253,7 @@ do_pep8() {
   PEP8_END_TIME=$(date +'%s')
 
   echo ""
-  echo "pep8 took $((${PEP8_END_TIME} - ${PEP8_START_TIME})) s"
+  echo "pep8 took $((PEP8_END_TIME - PEP8_START_TIME)) s"
   echo ""
 
   if [[ -s ${PEP8_OUTPUT_FILE} ]]; then
@@ -278,7 +283,7 @@ do_buildifier(){
   BUILDIFIER_END_TIME=$(date +'%s')
 
   echo ""
-  echo "buildifier took $((${BUILDIFIER_END_TIME} - ${BUILDIFIER_START_TIME})) s"
+  echo "buildifier took $((BUILDIFIER_END_TIME - BUILDIFIER_START_TIME)) s"
   echo ""
 
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
@@ -306,7 +311,7 @@ do_external_licenses_check(){
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
  bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --no_implicit_deps --no_host_deps --keep_going \
-  | egrep -v "^//tensorflow" \
+  | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
   | uniq 2>&1 \
@@ -315,7 +320,7 @@ do_external_licenses_check(){
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
   bazel query "deps(${LICENSES_TARGET})" --no_implicit_deps --no_host_deps --keep_going \
-  | egrep -v "^//tensorflow" \
+  | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
   | uniq 2>&1 \
@@ -329,7 +334,7 @@ do_external_licenses_check(){
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
   echo
-  echo "do_external_licenses_check took $((${EXTERNAL_LICENSES_CHECK_END_TIME} - ${EXTERNAL_LICENSES_CHECK_START_TIME})) s"
+  echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"
   echo
 
   if [[ -s ${MISSING_LICENSES_FILE} ]] || [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
@@ -396,9 +401,14 @@ cmd_status(){
 }
 
 # Run bazel build --nobuild to test the validity of the BUILD files
+# TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
+# necessary since the @androidsdk WORKSPACE dependency is commented
+# out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_CMD="bazel build --nobuild ${BUILD_TARGET}"
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/java/demo/app/src/main/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/schema/..."
+  BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
 
@@ -407,7 +417,7 @@ do_bazel_nobuild() {
 }
 
 do_pip_smoke_test() {
-  BUILD_CMD="bazel build //tensorflow/tools/pip_package:pip_smoke_test"
+  BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:pip_smoke_test"
   ${BUILD_CMD}
   cmd_status \
     "Pip smoke test has failed. Please make sure any new TensorFlow are added to the tensorflow/tools/pip_package:build_pip_package dependencies."
@@ -418,13 +428,97 @@ do_pip_smoke_test() {
     "The pip smoke test failed."
 }
 
+do_code_link_check() {
+  tensorflow/tools/ci_build/code_link_check.sh
+}
+
+# List .h|.cc files changed in the last non-merge git commit that still exist,
+# i.e., not removed.
+# Usage: get_clang_files_to_check [--incremental]
+get_clang_files_to_check() {
+  if [[ "$1" == "--incremental" ]]; then
+    CHANGED_CLANG_FILES=$(get_changed_files_in_last_non_merge_git_commit | \
+                       grep '.*\.h$\|.*\.cc$')
+
+    # Do not include files removed in the last non-merge commit.
+    CLANG_FILES=""
+    for CLANG_FILE in ${CHANGED_CLANG_FILES}; do
+      if [[ -f "${CLANG_FILE}" ]]; then
+        CLANG_FILES="${CLANG_FILES} ${CLANG_FILE}"
+      fi
+    done
+
+    echo "${CLANG_FILES}"
+  else
+    find tensorflow -name '*.h' -o -name '*.cc'
+  fi
+}
+
+do_clang_format_check() {
+  if [[ $# != "0" ]] && [[ $# != "1" ]]; then
+    echo "Invalid syntax when invoking do_clang_format_check"
+    echo "Usage: do_clang_format_check [--incremental]"
+    return 1
+  fi
+
+  if [[ "$1" == "--incremental" ]]; then
+    CLANG_SRC_FILES=$(get_clang_files_to_check --incremental)
+
+    if [[ -z "${CLANG_SRC_FILES}" ]]; then
+      echo "do_clang_format_check will NOT run due to --incremental flag and "\
+"due to the absence of .h or .cc code changes in the last commit."
+      return 0
+    fi
+  elif [[ -z "$1" ]]; then
+    # TODO (yongtang): Always pass --incremental until all files have
+    # been sanitized gradually. Then this --incremental could be removed.
+    CLANG_SRC_FILES=$(get_clang_files_to_check --incremental)
+  else
+    echo "Invalid syntax for invoking do_clang_format_check"
+    echo "Usage: do_clang_format_check [--incremental]"
+    return 1
+  fi
+
+  CLANG_FORMAT=${CLANG_FORMAT:-clang-format-3.8}
+
+  success=1
+  for filename in $CLANG_SRC_FILES; do
+    $CLANG_FORMAT --style=google $filename | diff $filename - > /dev/null
+    if [ ! $? -eq 0 ]; then
+      success=0
+      echo File $filename is not properly formatted with "clang-format "\
+"--style=google"
+    fi
+  done
+
+  if [ $success == 0 ]; then
+    echo Clang format check fails.
+    exit 1
+  fi
+  echo Clang format check success.
+}
+
+do_check_load_py_test() {
+  BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:check_load_py_test"
+  ${BUILD_CMD}
+  cmd_status \
+    "check_load_py_test failed to build."
+
+  BUILD_CMD="bazel-bin/tensorflow/tools/pip_package/check_load_py_test"
+  ${BUILD_CMD}
+  cmd_status \
+    "check_load_py_test failed."
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links")
 
 INCREMENTAL_FLAG=""
+DEFAULT_BAZEL_CONFIGS="--config=hdfs --config=gcp"
 
 # Parse command-line arguments
+BAZEL_FLAGS=${DEFAULT_BAZEL_CONFIGS}
 for arg in "$@"; do
   if [[ "${arg}" == "--pep8" ]]; then
     # Only run pep8 test if "--pep8" option supplied
@@ -433,8 +527,7 @@ for arg in "$@"; do
   elif [[ "${arg}" == "--incremental" ]]; then
     INCREMENTAL_FLAG="--incremental"
   else
-    echo "ERROR: Unrecognized command-line flag: $1"
-    exit 1
+    BAZEL_FLAGS="${BAZEL_FLAGS} ${arg}"
   fi
 done
 
@@ -478,20 +571,21 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
-    echo "  PASS"
+    printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
   else
-    echo "  FAIL"
+    printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
   fi
 
   ((COUNTER++))
 done
 
-echo ""
+echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
 
-echo ""
+echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then
-  echo "Sanity checks PASSED"
+  printf "Sanity checks ${COLOR_GREEN}PASSED${COLOR_NC}\n"
 else
-  die "Sanity checks FAILED"
+  printf "Sanity checks ${COLOR_RED}FAILED${COLOR_NC}\n"
+  exit 1
 fi

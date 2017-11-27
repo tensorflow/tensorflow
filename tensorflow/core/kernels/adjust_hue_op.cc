@@ -39,7 +39,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 class AdjustHueOpBase : public OpKernel {
  protected:
-  AdjustHueOpBase(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit AdjustHueOpBase(OpKernelConstruction* context) : OpKernel(context) {}
 
   struct ComputeOptions {
     const Tensor* input;

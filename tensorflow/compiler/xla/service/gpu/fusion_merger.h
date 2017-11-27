@@ -25,7 +25,7 @@ namespace gpu {
 // An HLO pass that attempts to merge fusion instructions to reduce kernel
 // launch overhead and improve data locality.
 //
-// Fusion instructions are merged into their users if two conditons are met:
+// Fusion instructions are merged into their users if two conditions are met:
 //
 // 1) The flops_to_bytes ratio of the fusion instruction is below the threshold
 //    value of 1.0.

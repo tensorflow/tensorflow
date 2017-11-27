@@ -94,12 +94,7 @@ class CopyOp : public OpKernel {
                             !context->input_alloc_attr(0).on_host();
 
       if (off_host_input) {
-        auto size = src_tensor.NumElements() * sizeof(src_tensor.dtype());
-        auto dst_ptr = GetBase(copied_tensor);
-        auto src_ptr = GetBase(&src_tensor);
-        typedef decltype(src_tensor.dtype()) ttype;
-        context->eigen_sycl_device().memcpy(
-            dst_ptr, static_cast<const ttype*>(src_ptr), size);
+        SYCLmemcpy(context->eigen_sycl_device(), src_tensor, copied_tensor);
       } else {
         *copied_tensor = tensor::DeepCopy(src_tensor);
       }
@@ -190,7 +185,7 @@ class BaseDebugOp : public OpKernel {
       if (!status.ok()) {
         LOG(ERROR) << "Debug node of watch key "
                    << debug_watch_key_->debug_node_name
-                   << "failed to publish debug tensor data to all URLs "
+                   << " failed to publish debug tensor data to all URLs "
                    << str_util::Join(debug_urls_, ", ")
                    << ", due to: " << status.error_message();
       }

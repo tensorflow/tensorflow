@@ -40,7 +40,7 @@ enum class MirrorPadMode {
 // used as an Attr() in REGISTER_OP.
 string GetMirrorPadModeAttrString();
 
-// Forward declaration to avoid including core/framework/graph.pb.h.
+// Forward declaration to avoid including core/framework/graph.proto.
 class NodeDef;
 
 // Specialization to parse an attribute directly into a MirrorPadMode enum.

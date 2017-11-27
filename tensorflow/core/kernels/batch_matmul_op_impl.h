@@ -205,37 +205,25 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
     bool conjugate_result = false;
 
     // Number of matrix multiplies i.e. size of the batch.
-    const int64 num_units = in_x.dim_size(0);
+    const int64 batch_size = in_x.dim_size(0);
     const int64 cost_per_unit =
         in_x.dim_size(1) * in_x.dim_size(2) * out->dim_size(2);
-    const int64 min_dim = std::min(std::min(in_x.dim_size(1), in_x.dim_size(2)),
-                                   out->dim_size(2));
-    const int64 kMaxCostOuterParallelism = 128 * 256 * 256;  // heuristic.
+    const int64 small_dim = std::min(
+        std::min(in_x.dim_size(1), in_x.dim_size(2)), out->dim_size(2));
+    const int64 kMaxCostOuterParallelism = 128 * 128 * 256;  // heuristic.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-    if (min_dim > 1 &&
-        (num_units == 1 || cost_per_unit > kMaxCostOuterParallelism)) {
+    if (small_dim > 1 &&
+        (batch_size == 1 || cost_per_unit > kMaxCostOuterParallelism)) {
       // Parallelize over inner dims.
       // For large matrix products it is counter-productive to parallelize
       // over the batch dimension.
       ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, out, 0,
-                                num_units);
-      conjugate_result = adj_x;
-    } else if (min_dim > 1 && worker_threads.num_threads > num_units) {
-      // Parallelize over both outer and inner dims.
-      // TODO(rmlarsen): The parallelized contraction in Eigen can deadlock
-      // when running num_threads or more contractions in parallel. Launch on
-      // all worker_threads.num_threads threads here once that is fixed.
-      Shard(std::max(1, worker_threads.num_threads - 1), worker_threads.workers,
-            num_units, cost_per_unit,
-            [context, &in_x, &in_y, adj_x, adj_y, out](int start, int limit) {
-              ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, out,
-                                        start, limit);
-            });
+                                batch_size);
       conjugate_result = adj_x;
     } else {
       // Parallelize over outer dims. For small matrices and large batches, it
       // is counter-productive to parallelize the inner matrix multiplies.
-      Shard(worker_threads.num_threads, worker_threads.workers, num_units,
+      Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
             cost_per_unit,
             [&in_x, &in_y, adj_x, adj_y, out](int start, int limit) {
               SequentialMatMulKernel<Scalar>::Run(in_x, in_y, adj_x, adj_y, out,
@@ -443,9 +431,9 @@ struct LaunchBatchMatMul<SYCLDevice, Scalar> {
                      const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
 
   // Number of matrix multiplies i.e. size of the batch.
-  const int64 num_units = in_x.dim_size(0);
+  const int64 batch_size = in_x.dim_size(0);
   ParallelMatMulKernelSYCL<Scalar>::Run(context, in_x, in_y, adj_x, adj_y, out,
-                           0, num_units);
+                                        0, batch_size);
   }
 };
 #endif // TENSORFLOW_USE_SYCL

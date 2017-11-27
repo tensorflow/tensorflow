@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import os
+import sys
 
 import six
 
@@ -49,7 +50,7 @@ def _is_free_function(py_object, full_name, index):
   return True
 
 
-def write_docs(output_dir, parser_config, yaml_toc):
+def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -64,15 +65,15 @@ def write_docs(output_dir, parser_config, yaml_toc):
     parser_config: A `parser.ParserConfig` object, containing all the necessary
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
+    root_title: The title name for the root level index.md.
 
   Raises:
     ValueError: if `output_dir` is not an absolute path
   """
   # Make output_dir.
   if not os.path.isabs(output_dir):
-    raise ValueError(
-        "'output_dir' must be an absolute path.\n"
-        "    output_dir='%s'" % output_dir)
+    raise ValueError("'output_dir' must be an absolute path.\n"
+                     "    output_dir='%s'" % output_dir)
 
   try:
     if not os.path.exists(output_dir):
@@ -90,6 +91,7 @@ def write_docs(output_dir, parser_config, yaml_toc):
 
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
   for full_name, py_object in six.iteritems(parser_config.index):
+    parser_config.reference_resolver.current_doc_full_name = full_name
 
     if full_name in parser_config.duplicate_of:
       continue
@@ -150,24 +152,41 @@ def write_docs(output_dir, parser_config, yaml_toc):
       # Generate header
       f.write('# Automatically generated file; please do not edit\ntoc:\n')
       for module in modules:
-        f.write('  - title: ' + module + '\n'
-                '    section:\n' + '    - title: Overview\n' +
-                '      path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[module]
-                + '\n')
+        indent_num = module.count('.')
+        # Don't list `tf.submodule` inside `tf`
+        indent_num = max(indent_num, 1)
+        indent = '  '*indent_num
+
+        if indent_num > 1:
+          # tf.contrib.baysflow.entropy will be under
+          #   tf.contrib->baysflow->entropy
+          title = module.split('.')[-1]
+        else:
+          title = module
+
+        header = [
+            '- title: ' + title,
+            '  section:',
+            '  - title: Overview',
+            '    path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[module]]
+        header = ''.join([indent+line+'\n' for line in header])
+        f.write(header)
 
         symbols_in_module = module_children.get(module, [])
         # Sort case-insensitive, if equal sort case sensitive (upper first)
         symbols_in_module.sort(key=lambda a: (a.upper(), a))
 
         for full_name in symbols_in_module:
-          f.write('    - title: ' + full_name[len(module) + 1:] + '\n'
-                  '      path: /TARGET_DOC_ROOT/VERSION/' +
-                  symbol_to_file[full_name] + '\n')
+          item = [
+              '  - title: ' + full_name[len(module) + 1:],
+              '    path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[full_name]]
+          item = ''.join([indent+line+'\n' for line in item])
+          f.write(item)
 
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
     f.write(
-        parser.generate_global_index('TensorFlow', parser_config.index,
+        parser.generate_global_index(root_title, parser_config.index,
                                      parser_config.reference_resolver))
 
 
@@ -180,14 +199,20 @@ def add_dict_to_dict(add_from, add_to):
 
 
 # Exclude some libaries in contrib from the documentation altogether.
+def _get_default_private_map():
+  return {'tf.test': ['mock']}
+
+
+# Exclude members of some libaries.
 def _get_default_do_not_descend_map():
-  # TODO(wicke): Shrink this list.
+  # TODO(wicke): Shrink this list once the modules get sealed.
   return {
-      '': ['cli', 'lib', 'wrappers'],
-      'contrib': [
+      'tf': ['cli', 'lib', 'wrappers'],
+      'tf.contrib': [
           'compiler',
-          'factorization',
           'grid_rnn',
+          # Block contrib.keras to de-clutter the docs
+          'keras',
           'labeled_tensor',
           'ndlstm',
           'quantization',
@@ -200,17 +225,17 @@ def _get_default_do_not_descend_map():
           'testing',
           'tfprof',
       ],
-      'contrib.bayesflow': [
+      'tf.contrib.bayesflow': [
           'special_math', 'stochastic_gradient_estimators',
           'stochastic_variables'
       ],
-      'contrib.ffmpeg': ['ffmpeg_ops'],
-      'contrib.graph_editor': [
+      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
+      'tf.contrib.graph_editor': [
           'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
       ],
-      'contrib.keras': ['api', 'python'],
-      'contrib.layers': ['feature_column', 'summaries'],
-      'contrib.learn': [
+      'tf.contrib.keras': ['api', 'python'],
+      'tf.contrib.layers': ['feature_column', 'summaries'],
+      'tf.contrib.learn': [
           'datasets',
           'head',
           'graph_actions',
@@ -221,15 +246,17 @@ def _get_default_do_not_descend_map():
           'preprocessing',
           'utils',
       ],
-      'contrib.util': ['loader'],
+      'tf.contrib.util': ['loader'],
   }
 
 
-def extract(py_modules, do_not_descend_map):
+def extract(py_modules, private_map, do_not_descend_map):
   """Extract docs from tf namespace and write them to disk."""
   # Traverse the first module.
   visitor = doc_generator_visitor.DocGeneratorVisitor(py_modules[0][0])
   api_visitor = public_api.PublicAPIVisitor(visitor)
+  api_visitor.set_root_name(py_modules[0][0])
+  add_dict_to_dict(private_map, api_visitor.private_map)
   add_dict_to_dict(do_not_descend_map, api_visitor.do_not_descend_map)
 
   traverse.traverse(py_modules[0][1], api_visitor)
@@ -237,6 +264,7 @@ def extract(py_modules, do_not_descend_map):
   # Traverse all py_modules after the first:
   for module_name, module in py_modules[1:]:
     visitor.set_root_name(module_name)
+    api_visitor.set_root_name(module_name)
     traverse.traverse(module, api_visitor)
 
   return visitor
@@ -382,6 +410,9 @@ def _other_docs(src_dir, output_dir, reference_resolver):
         print('Skipping excluded file %s...' % base_name)
         continue
       full_in_path = os.path.join(dirpath, base_name)
+
+      reference_resolver.current_doc_full_name = full_in_path
+
       suffix = os.path.relpath(path=full_in_path, start=src_dir)
       full_out_path = os.path.join(output_dir, suffix)
       if not base_name.endswith('.md'):
@@ -407,8 +438,11 @@ class DocGenerator(object):
   """Main entry point for generating docs."""
 
   def __init__(self):
+    if sys.version_info >= (3, 0):
+      sys.exit('Doc generation is not supported from python3.')
     self.argument_parser = argparse.ArgumentParser()
     self._py_modules = None
+    self._private_map = _get_default_private_map()
     self._do_not_descend_map = _get_default_do_not_descend_map()
     self.yaml_toc = True
 
@@ -433,14 +467,20 @@ class DocGenerator(object):
         '--base_dir',
         type=str,
         default=default_base_dir,
-        help='Base directory to to strip from file names referenced in docs.')
+        help='Base directory to strip from file names referenced in docs.')
 
   def parse_known_args(self):
     flags, _ = self.argument_parser.parse_known_args()
     return flags
 
+  def add_to_private_map(self, d):
+    add_dict_to_dict(d, self._private_map)
+
   def add_to_do_not_descend_map(self, d):
     add_dict_to_dict(d, self._do_not_descend_map)
+
+  def set_private_map(self, d):
+    self._private_map = d
 
   def set_do_not_descend_map(self, d):
     self._do_not_descend_map = d
@@ -471,7 +511,8 @@ class DocGenerator(object):
         base_dir=base_dir)
 
   def run_extraction(self):
-    return extract(self._py_modules, self._do_not_descend_map)
+    return extract(self._py_modules, self._private_map,
+                   self._do_not_descend_map)
 
   def build(self, flags):
     """Actually build the docs."""
@@ -479,6 +520,7 @@ class DocGenerator(object):
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
 
+    root_title = getattr(flags, 'root_title', 'TensorFlow')
     guide_index = _build_guide_index(
         os.path.join(flags.src_dir, 'api_guides/python'))
 
@@ -486,10 +528,13 @@ class DocGenerator(object):
                                             guide_index, flags.base_dir)
     output_dir = os.path.join(flags.output_dir, 'api_docs/python')
 
-    write_docs(output_dir, parser_config, yaml_toc=self.yaml_toc)
+    write_docs(
+        output_dir,
+        parser_config,
+        yaml_toc=self.yaml_toc,
+        root_title=root_title)
     _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
 
-    if parser.all_errors:
-      print('Errors during processing:\n  ' + '\n  '.join(parser.all_errors))
-      return 1
-    return 0
+    parser_config.reference_resolver.log_errors()
+
+    return parser_config.reference_resolver.num_errors()

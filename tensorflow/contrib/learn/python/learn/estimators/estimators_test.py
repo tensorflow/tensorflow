@@ -30,6 +30,7 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator as estima
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test_split
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
@@ -73,6 +74,44 @@ class FeatureEngineeringFunctionTest(test.TestCase):
     metrics = estimator.evaluate(
         input_fn=input_fn, steps=1,
         metrics={"label":
+                 metric_spec.MetricSpec(lambda predictions, labels: labels)})
+    # labels = transformed_y (99)
+    self.assertEqual(99., metrics["label"])
+
+  def testFeatureEngineeringFnWithSameName(self):
+
+    def input_fn():
+      return {
+               "x": constant_op.constant(["9."])
+             }, {
+               "y": constant_op.constant(["99."])
+             }
+
+    def feature_engineering_fn(features, labels):
+      # Github #12205: raise a TypeError if called twice.
+      _ = string_ops.string_split(features["x"])
+      features["x"] = constant_op.constant([9.])
+      labels["y"] = constant_op.constant([99.])
+      return features, labels
+
+    def model_fn(features, labels):
+      # dummy variable:
+      _ = variables_lib.Variable([0.])
+      _ = labels
+      predictions = features["x"]
+      loss = constant_op.constant([2.])
+      update_global_step = variables.get_global_step().assign_add(1)
+      return predictions, loss, update_global_step
+
+    estimator = estimator_lib.Estimator(
+      model_fn=model_fn, feature_engineering_fn=feature_engineering_fn)
+    estimator.fit(input_fn=input_fn, steps=1)
+    prediction = next(estimator.predict(input_fn=input_fn, as_iterable=True))
+    # predictions = transformed_x (9)
+    self.assertEqual(9., prediction)
+    metrics = estimator.evaluate(
+      input_fn=input_fn, steps=1,
+      metrics={"label":
                  metric_spec.MetricSpec(lambda predictions, labels: labels)})
     # labels = transformed_y (99)
     self.assertEqual(99., metrics["label"])

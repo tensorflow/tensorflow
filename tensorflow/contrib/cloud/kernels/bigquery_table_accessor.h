@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/contrib/cloud/kernels/bigquery_table_partition.pb.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
 
 namespace tensorflow {
 

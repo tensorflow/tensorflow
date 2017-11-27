@@ -14,7 +14,7 @@
 # ==============================================================================
 FROM ubuntu:16.04
 
-MAINTAINER Shanqing Cai <cais@google.com>
+LABEL maintainer="Shanqing Cai <cais@google.com>"
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/

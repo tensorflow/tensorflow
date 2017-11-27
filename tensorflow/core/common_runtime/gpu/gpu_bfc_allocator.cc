@@ -18,8 +18,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
 
 GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)

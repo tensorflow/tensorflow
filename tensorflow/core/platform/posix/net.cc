@@ -57,15 +57,16 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   // Try binding to port.
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = htons((uint16_t)*port);
-  if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+  addr.sin_port = htons(static_cast<uint16_t>(*port));
+  if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
     LOG(WARNING) << "bind(port=" << *port << ") failed: " << strerror(errno);
     close(fd);
     return false;
   }
 
   // Get the bound port number.
-  if (getsockname(fd, (struct sockaddr*)&addr, &addr_len) < 0) {
+  if (getsockname(fd, reinterpret_cast<struct sockaddr*>(&addr), &addr_len) <
+      0) {
     LOG(WARNING) << "getsockname() failed: " << strerror(errno);
     close(fd);
     return false;

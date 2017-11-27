@@ -55,7 +55,7 @@ the gradients using a few arguments:
   train_op = tf.contrib.training.create_train_op(
       total_loss,
       optimizer,
-      clip_gradient_norm=4)
+      transform_grads_fn=clip_gradient_norms_fn(3))
 
   # Create the train_op and scale the gradients by providing a map from variable
   # name (or variable) to a scaling coefficient:
@@ -244,7 +244,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -255,12 +254,14 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer as tf_optimizer
+from tensorflow.python.training import training_util
 
 # TODO(nsilberman): move add_gradients_summaries, clip_gradient_norms and
 # multiply_gradients into contrib/summaries and contrib/optimizers.py
 __all__ = [
     'add_gradients_summaries',
     'clip_gradient_norms',
+    'clip_gradient_norms_fn',
     'create_train_op',
     'multiply_gradients',
     'train',
@@ -314,6 +315,13 @@ def clip_gradient_norms(gradients_to_variables, max_norm):
         grad = clip_ops.clip_by_norm(grad, max_norm)
     clipped_grads_and_vars.append((grad, var))
   return clipped_grads_and_vars
+
+
+def clip_gradient_norms_fn(max_norm):
+  """Returns a `transform_grads_fn` function for gradient clipping."""
+  def clip_norms(gradients_to_variables):
+    return clip_gradient_norms(gradients_to_variables, max_norm)
+  return clip_norms
 
 
 def multiply_gradients(grads_and_vars, gradient_multipliers):
@@ -401,7 +409,7 @@ def create_train_op(total_loss,
       loss value.
   """
   if global_step is _USE_GLOBAL_STEP:
-    global_step = variables.get_or_create_global_step()
+    global_step = training_util.get_or_create_global_step()
 
   # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
   global_update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
@@ -475,7 +483,8 @@ def train(train_op,
           chief_only_hooks=None,
           save_checkpoint_secs=600,
           save_summaries_steps=100,
-          config=None):
+          config=None,
+          max_wait_secs=7200):
   """Runs the training loop.
 
   Args:
@@ -498,6 +507,10 @@ def train(train_op,
       `save_summaries_steps` is set to `None`, then the default summary saver
       isn't used.
     config: An instance of `tf.ConfigProto`.
+    max_wait_secs: Maximum time workers should wait for the session to
+      become available. This should be kept relatively short to help detect
+      incorrect code, but sometimes may need to be increased if the chief takes
+      a while to start up.
 
   Returns:
     the value of the loss function after training.
@@ -524,7 +537,8 @@ def train(train_op,
       chief_only_hooks=chief_only_hooks,
       save_checkpoint_secs=save_checkpoint_secs,
       save_summaries_steps=save_summaries_steps,
-      config=config) as session:
+      config=config,
+      max_wait_secs=max_wait_secs) as session:
     loss = None
     while not session.should_stop():
       loss = session.run(train_op)

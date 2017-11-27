@@ -54,17 +54,28 @@ class XLATestCase(test.TestCase):
     self.device = FLAGS.test_device
     self.has_custom_call = (self.device == 'XLA_CPU')
     self.all_tf_types = [
-        dtypes.DType(types_pb2.DataType.Value(name))
+        dtypes.as_dtype(types_pb2.DataType.Value(name))
         for name in FLAGS.types.split(',')
     ]
+    self.int_tf_types = [
+        dtype for dtype in self.all_tf_types if dtype.is_integer
+    ]
+    self.float_tf_types = [
+        dtype for dtype in self.all_tf_types if dtype.is_floating
+    ]
+    self.complex_tf_types = [
+        dtype for dtype in self.all_tf_types if dtype.is_complex
+    ]
+    self.numeric_tf_types = (
+        self.int_tf_types + self.float_tf_types + self.complex_tf_types)
+
     self.all_types = [dtype.as_numpy_dtype for dtype in self.all_tf_types]
-    self.int_types = [
-        dtype.as_numpy_dtype for dtype in self.all_tf_types if dtype.is_integer
+    self.int_types = [dtype.as_numpy_dtype for dtype in self.int_tf_types]
+    self.float_types = [dtype.as_numpy_dtype for dtype in self.float_tf_types]
+    self.complex_types = [
+        dtype.as_numpy_dtype for dtype in self.complex_tf_types
     ]
-    self.float_types = [
-        dtype.as_numpy_dtype for dtype in self.all_tf_types if dtype.is_floating
-    ]
-    self.numeric_types = self.int_types + self.float_types
+    self.numeric_types = self.int_types + self.float_types + self.complex_types
 
     # Parse the manifest file, if any, into a regex identifying tests to
     # disable
@@ -78,6 +89,7 @@ class XLATestCase(test.TestCase):
       manifest_file.close()
 
   def setUp(self):
+    super(XLATestCase, self).setUp()
     name = '{}.{}'.format(type(self).__name__, self._testMethodName)
     if self.disabled_regex is not None and self.disabled_regex.match(name):
       logging.info('Disabled test case: %s', name)
@@ -89,6 +101,7 @@ class XLATestCase(test.TestCase):
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
 
   def tearDown(self):
+    super(XLATestCase, self).tearDown()
     logging.info('End test case: %s', self._testMethodName)
 
   @contextlib.contextmanager

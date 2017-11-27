@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Script Language Operators. See the @{python/script_ops} guide.
+"""Script Language Operators. See the @{$python/script_ops} guide.
 
 @@py_func
 """
@@ -26,6 +26,7 @@ from __future__ import print_function
 import threading
 
 import numpy as np
+import six
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import function
@@ -56,24 +57,33 @@ class FuncRegistry(object):
     self._funcs.pop(token, None)
 
   @staticmethod
-  def _convert(value):
+  def _convert(value, dtype=None):
     """Converts an arg to numpy, avoiding dangerous string and unicode dtypes.
 
     Numpy pads with zeros when using string and unicode dtypes if different
     components of a tensor have different lengths.  This is bad: ignoring the
     padding is wrong for text data, and removing the padding is wrong for binary
     data.  To avoid this bug, we redo the conversion using an object dtype.
+    Additionally, we convert unicode strings to (byte-)strings for Python3
+    compatibility.
 
     Args:
       value: Value to convert to a numpy array.
+      dtype: (Optional.) Desired NumPy type for the returned value.
 
     Returns:
       A numpy array.
     """
-    result = np.asarray(value, order="C")
-    if result.dtype.char in "SU" and result is not value:
+    result = np.asarray(value, dtype=dtype, order="C")
+    if result.dtype.char == "S" and result is not value:
       return np.asarray(value, order="C", dtype=object)
-    return result
+    elif result.dtype.char == "U" and result is not value:
+      value = np.vectorize(lambda x: x.encode())(value)
+      return np.asarray(value, order="C", dtype=object)
+    elif result.dtype.char == "U":
+      return result.astype(np.bytes_)
+    else:
+      return result
 
   def __call__(self, token, args):
     """Calls the registered function for `token` with args."""
@@ -81,6 +91,10 @@ class FuncRegistry(object):
     if func is None:
       raise ValueError("callback %s is not found" % token)
     ret = func(*args)
+    # Strings seem to lead to a memory leak here if they're not wrapped in a
+    # list.
+    if isinstance(ret, six.binary_type):
+      ret = [ret]
     # Ensures that we return either a single numpy array or a list of numpy
     # arrays.
     if isinstance(ret, (tuple, list)):
@@ -149,6 +163,12 @@ def py_func(func, inp, Tout, stateful=True, name=None):
       having element types that match the corresponding `tf.Tensor` objects
       in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
       having element types that match the corresponding values in `Tout`.
+      Important Note: Input and output numpy `ndarray`s of `func` are not
+      guaranteed to be copies. In some cases their underlying memory will be
+      shared with the corresponding TensorFlow tensors.
+      In-place modification or storing `func` input or return values in
+      python datastructures without explicit (np.)copy
+      can have non-deterministic consequences.
     inp: A list of `Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.

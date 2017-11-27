@@ -18,11 +18,13 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/queue_op.h"
 #include "tensorflow/core/kernels/typed_queue.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -358,7 +360,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       }
                     }
                   }
-                  if (allow_small_batch && queues_[0].size() > 0) {
+                  if (allow_small_batch && !queues_[0].empty()) {
                     // Request all remaining elements in the queue.
                     queue_size = queues_[0].size();
                     attempt->tuple.clear();
@@ -406,8 +408,8 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   const int index = attempt->tuple[0].dim_size(0) -
                                     attempt->elements_requested;
                   for (int i = 0; i < num_components(); ++i) {
-                    attempt->context->SetStatus(CopyElementToSlice(
-                        tuple[i], &attempt->tuple[i], index));
+                    attempt->context->SetStatus(batch_util::CopyElementToSlice(
+                        std::move(tuple[i]), &attempt->tuple[i], index));
                     if (!attempt->context->status().ok()) return kComplete;
                   }
                   tuple.clear();

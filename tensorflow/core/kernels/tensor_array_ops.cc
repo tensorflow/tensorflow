@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -101,7 +102,7 @@ Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
 class TensorArrayCreationOp : public OpKernel {
  public:
   explicit TensorArrayCreationOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context), device_type_(context->device_type()) {}
 
   void Compute(OpKernelContext* ctx) override {
     Tensor tensor_array_output_handle;
@@ -133,6 +134,12 @@ class TensorArrayCreationOp : public OpKernel {
       // Create the flow output.
       Tensor* flow;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &flow));
+      if (device_type_ == DEVICE_CPU) {
+        // Value doesn't matter, but this makes msan not complaint about
+        // copying an uninitialized value. To do this on GPU would require
+        // a kernel launch or a host->device memcpy, so we avoid that.
+        flow->flat<float>()(0) = 0;
+      }
     }
   }
 
@@ -140,6 +147,9 @@ class TensorArrayCreationOp : public OpKernel {
   virtual Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
                                    Tensor* tensor_array_output_handle,
                                    TensorArray** output_tensor_array) = 0;
+
+ private:
+  const DeviceType device_type_;
 };
 
 // A per-run local tensor array. The tensor array uses a "per-step" resource
@@ -152,11 +162,19 @@ class TensorArrayOp : public TensorArrayCreationOp {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
     OP_REQUIRES_OK(context, context->GetAttr("element_shape", &element_shape_));
     OP_REQUIRES_OK(context, context->GetAttr("dynamic_size", &dynamic_size_));
+    // The HasAttr check is for backwards compatibility with older op
+    // versions which do not have this attribute.
+    if (context->HasAttr("identical_element_shapes")) {
+      OP_REQUIRES_OK(context, context->GetAttr("identical_element_shapes",
+                                               &identical_element_shapes_));
+    } else {
+      identical_element_shapes_ = false;
+    }
     OP_REQUIRES_OK(context,
                    context->GetAttr("clear_after_read", &clear_after_read_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("tensor_array_name", &tensor_array_name_));
-    if (tensor_array_name_ == "") tensor_array_name_ = name();
+    if (tensor_array_name_.empty()) tensor_array_name_ = name();
   }
 
   Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
@@ -186,8 +204,9 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
     TensorArray* tensor_array = new TensorArray(
         key, dtype_, *tensor_array_output_handle, size, element_shape_,
-        dynamic_size_, false /* multiple_writes_aggregate */,
-        false /* is_grad */, -1 /* marked_size */, clear_after_read_);
+        identical_element_shapes_, dynamic_size_,
+        false /* multiple_writes_aggregate */, false /* is_grad */,
+        -1 /* marked_size */, clear_after_read_);
 
     TF_RETURN_IF_ERROR(
         rm->Create(ctx->step_container()->name(), key, tensor_array));
@@ -200,6 +219,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
  private:
   DataType dtype_;
   PartialTensorShape element_shape_;
+  bool identical_element_shapes_;
   bool dynamic_size_;
   bool clear_after_read_;
   string tensor_array_name_;  // The name used to create the TensorArray.
@@ -312,7 +332,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
                     output_handle](TensorArray** ret) -> Status {
       *ret = new TensorArray(
           key, tensor_array->ElemType(), *tensor_array_output_handle,
-          array_size, tensor_array->ElemShape(), false /* dynamic_size */,
+          array_size, tensor_array->ElemShape(),
+          tensor_array->HasIdenticalElementShapes(), false /* dynamic_size */,
           true /* multiple_writes_aggregate */, true /* is_grad */,
           marked_size /* marked_size */, true /* close_after_read */);
       TF_RETURN_IF_ERROR((*ret)->CopyShapesFrom(tensor_array));
@@ -993,8 +1014,9 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
     TensorShape element_shape(tensor_value->shape());
 
-    OP_REQUIRES(ctx, FastBoundsCheck(element_shape.dim_size(0),
-                                     std::numeric_limits<int32>::max()),
+    OP_REQUIRES(ctx,
+                FastBoundsCheck(element_shape.dim_size(0),
+                                std::numeric_limits<int32>::max()),
                 errors::InvalidArgument("tensor dim0 too large to unpack"));
 
     OP_REQUIRES(
@@ -1059,7 +1081,7 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
     } else {
       OP_REQUIRES(
           ctx, max_index < array_size,
-          errors::InvalidArgument("Max scatter index must be <= array size (",
+          errors::InvalidArgument("Max scatter index must be < array size (",
                                   max_index, " vs. ", array_size, ")"));
     }
     element_shape.RemoveDim(0);
@@ -1194,8 +1216,9 @@ class TensorArraySplitOp : public OpKernel {
                 errors::InvalidArgument(
                     "Expected lengths to be a vector, received shape: ",
                     tensor_lengths->shape().DebugString()));
-    OP_REQUIRES(ctx, FastBoundsCheck(tensor_lengths->NumElements(),
-                                     std::numeric_limits<int32>::max()),
+    OP_REQUIRES(ctx,
+                FastBoundsCheck(tensor_lengths->NumElements(),
+                                std::numeric_limits<int32>::max()),
                 errors::InvalidArgument(
                     "Expected lengths to have < max int32 entries"));
 

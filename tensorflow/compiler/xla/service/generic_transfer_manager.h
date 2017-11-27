@@ -36,8 +36,8 @@ namespace xla {
 // infeed.
 class GenericTransferManager : public TransferManager {
  public:
-  explicit GenericTransferManager(
-      perftools::gputools::Platform::Id platform_id);
+  GenericTransferManager(perftools::gputools::Platform::Id platform_id,
+                         size_t pointer_size);
   ~GenericTransferManager() override {}
 
   perftools::gputools::Platform::Id PlatformId() const override;
@@ -52,8 +52,18 @@ class GenericTransferManager : public TransferManager {
       perftools::gputools::StreamExecutor* executor, const Literal& literal,
       perftools::gputools::DeviceMemoryBase* destination) override;
 
+  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+      perftools::gputools::StreamExecutor* executor,
+      const ShapedBuffer& device_buffer) override;
+
+  Status TransferLiteralToDevice(perftools::gputools::StreamExecutor* executor,
+                                 const Literal& literal,
+                                 const ShapedBuffer& device_buffer) override;
+
   Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
                                  const Literal& literal) override;
+  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
+                                int64 size, const void* source) override;
 
   Status TransferLiteralFromOutfeed(
       perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
@@ -69,11 +79,22 @@ class GenericTransferManager : public TransferManager {
       const perftools::gputools::DeviceMemoryBase& source,
       const Shape& shape) override;
 
-  int64 GetByteSizeRequirement(const Shape& shape) override;
+  int64 GetByteSizeRequirement(const Shape& shape) const override;
+
+ protected:
+  Status WriteTuplePointersToDevice(
+      perftools::gputools::StreamExecutor* executor,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          elements,
+      const Shape& shape,
+      perftools::gputools::DeviceMemoryBase* region) override;
 
  private:
   // The platform this transfer manager targets.
-  perftools::gputools::Platform::Id platform_id_;
+  const perftools::gputools::Platform::Id platform_id_;
+
+  // The size in bytes of pointers on this platform.
+  const size_t pointer_size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GenericTransferManager);
 };

@@ -38,13 +38,12 @@ int main(int argc, char** argv) {
 
   // Transfer parameters.
   std::unique_ptr<xla::Literal> param0_literal =
-      xla::LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
+      xla::Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
   std::unique_ptr<xla::GlobalData> param0_data =
       client->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> param1_literal =
-      xla::LiteralUtil::CreateR2<float>(
-          {{3.1f, 4.2f, 7.3f, 9.5f}, {1.1f, 2.2f, 3.3f, 4.4f}});
+  std::unique_ptr<xla::Literal> param1_literal = xla::Literal::CreateR2<float>(
+      {{3.1f, 4.2f, 7.3f, 9.5f}, {1.1f, 2.2f, 3.3f, 4.4f}});
   std::unique_ptr<xla::GlobalData> param1_data =
       client->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -69,7 +68,7 @@ int main(int argc, char** argv) {
 
   LOG(INFO) << tensorflow::strings::Printf("computation took %lldns",
                                            profile.compute_time_ns());
-  LOG(INFO) << xla::LiteralUtil::ToString(*actual);
+  LOG(INFO) << actual->ToString();
 
   return 0;
 }

@@ -171,7 +171,8 @@ void BasicTest(const string& export_path) {
 // SessionBundles. Concurrent with adding this test, we had a leak where the
 // TensorFlow Session was not being closed, which leaked memory.
 // TODO(b/31711147): Increase the SessionBundle ResourceLeakTest iterations and
-// move outside of the test suite.
+// move outside of the test suite; decrease test size back to small at the same
+// time.
 TEST(LoadSessionBundleFromPath, ResourceLeakTest) {
   const string export_path = test_util::TestSrcDirPath(kExportPath);
   for (int i = 0; i < 100; i++) {
@@ -270,7 +271,7 @@ class SessionBundleTest : public ::testing::Test {
   // MetaGraphDef.
   // Returns the path of the export.
   // ** Should only be called once per test **
-  string SetupExport(MetaGraphDefTwiddler twiddler) {
+  string SetupExport(const MetaGraphDefTwiddler& twiddler) {
     return SetupExport(twiddler, kVariablesFilename, kMetaGraphDefFilename);
   }
   // SetupExport that allows for the variables and meta_graph_def filenames

@@ -52,7 +52,7 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   the RelaxedBernoulli can suffer from underflow issues. In many case loss
   functions such as these are invariant under invertible transformations of
   the random variables. The KL divergence, found in the variational autoencoder
-  loss, is an example. Because RelaxedBernoullis are sampled by by a Logistic
+  loss, is an example. Because RelaxedBernoullis are sampled by a Logistic
   random variable followed by a `tf.sigmoid` op, one solution is to treat
   the Logistic as the random variable and `tf.sigmoid` as downstream. The
   KL divergences of two Logistics, which are always followed by a `tf.sigmoid`

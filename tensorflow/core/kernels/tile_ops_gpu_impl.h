@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/tile_ops_impl.h"
 
 #define DEFINE_DIM(T, NDIM)                            \
-  template struct Tile<Eigen::GpuDevice, T, NDIM>;     \
   template struct TileGrad<Eigen::GpuDevice, T, NDIM>; \
   template struct ReduceAndReshape<Eigen::GpuDevice, T, NDIM, 1>;
 

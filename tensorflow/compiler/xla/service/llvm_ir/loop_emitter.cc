@@ -51,8 +51,42 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
       shape_(target_array.GetShape()),
       ir_builder_(ir_builder) {}
 
-IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock() {
-  CHECK(!ShapeUtil::IsTuple(shape_));
+LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
+                         tensorflow::gtl::ArraySlice<IrArray> target_arrays,
+                         llvm::IRBuilder<>* ir_builder)
+    : body_emitter_([=](const llvm_ir::IrArray::Index array_index)
+                        -> ::tensorflow::Status {
+        // Convert target_element_generator to a BodyEmitter.
+        TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
+                            target_element_generator(array_index));
+        if (target_arrays.size() == 1) {
+          target_arrays[0].EmitWriteArrayElement(array_index, target_element,
+                                                 ir_builder);
+          return tensorflow::Status::OK();
+        }
+
+        for (int64 i = 0; i < target_arrays.size(); ++i) {
+          target_arrays[i].EmitWriteArrayElement(
+              array_index, ir_builder_->CreateExtractValue(target_element, i),
+              ir_builder);
+        }
+        return tensorflow::Status::OK();
+      }),
+      ir_builder_(ir_builder) {
+  if (target_arrays.size() > 1) {
+    // The sanity check for multiple outputs.
+    shape_ = target_arrays[0].GetShape();
+    for (int64 i = 1; i < target_arrays.size(); ++i) {
+      const Shape& element_shape = target_arrays[i].GetShape();
+      CHECK(ShapeUtil::SameDimensions(shape_, element_shape));
+    }
+  } else {
+    shape_ = target_arrays[0].GetShape();
+  }
+}
+
+IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock(
+    tensorflow::StringPiece loop_name) {
   if (ShapeUtil::IsScalar(shape_)) {
     // No loop needed, so set exit_bb_ to nullptr.
     exit_bb_ = nullptr;
@@ -63,7 +97,7 @@ IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock() {
   // Loops are added from outermost to innermost order with the ForLoopNest
   // class so emit loops in order from most-major dimension down to most-minor
   // dimension (of the target shape).
-  ForLoopNest loop_nest(ir_builder_);
+  ForLoopNest loop_nest(loop_name, ir_builder_);
   IrArray::Index array_index(shape_.dimensions_size());
   for (int i = shape_.layout().minor_to_major_size() - 1; i >= 0; --i) {
     int64 dimension = shape_.layout().minor_to_major(i);
@@ -87,8 +121,8 @@ IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock() {
   return array_index;
 }
 
-tensorflow::Status LoopEmitter::EmitLoop() {
-  IrArray::Index array_index = EmitIndexAndSetExitBasicBlock();
+tensorflow::Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name) {
+  IrArray::Index array_index = EmitIndexAndSetExitBasicBlock(loop_name);
   TF_RETURN_IF_ERROR(body_emitter_(array_index));
 
   // Set the insertion point of ir_builder_ to the loop exit, so that

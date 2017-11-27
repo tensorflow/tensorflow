@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Paramterized build and test for TensorFlow Docker images.
+# Parameterized build and test for TensorFlow Docker images.
 #
 # Usage:
 #   parameterized_docker_build.sh
@@ -57,6 +57,23 @@
 #     If set to a valid binary/script path, will call the script with the final
 #     tagged image name with an argument, to push the image to a central repo
 #     such as gcr.io or Docker Hub.
+#
+#   TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS
+#     (Optional)
+#     Do not set this along with TF_DOCKER_BUILD_PUSH_CMD. We will push with the
+#     direct commands as opposed to a script.
+#
+#   TF_DOCKER_USERNAME
+#     (Optional)
+#     Dockerhub username for pushing a package.
+#
+#   TF_DOCKER_EMAIL
+#     (Optional)
+#     Dockerhub email for pushing a package.
+#
+#   TF_DOCKER_PASSWORD
+#     (Optional)
+#     Dockerhub password for pushing a package.
 #
 #   TF_DOCKER_BUILD_PYTHON_VERSION
 #     (Optional)
@@ -154,7 +171,7 @@ fi
 # Verify that the original Dockerfile exists
 ORIG_DOCKERFILE="${SCRIPT_DIR}/${ORIG_DOCKERFILE}"
 if [[ ! -f "${ORIG_DOCKERFILE}" ]]; then
-  die "ERROR: Cannot find Dockerilfe at: ${ORIG_DOCKERFILE}"
+  die "ERROR: Cannot find Dockerfile at: ${ORIG_DOCKERFILE}"
 fi
 
 echo ""
@@ -233,13 +250,16 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
 
   # Modify python/pip version if necessary.
   if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
-    sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
+    if sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
         sed -i -e 's/python-dev/python3-dev/g' "${DOCKERFILE}" && \
         sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
-        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}" && \
-        echo "Modified Dockerfile for python version "\
-"${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}" || \
-        die "FAILED to modify ${DOCKERFILE} for python3"
+        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
+    then
+      echo "Modified Dockerfile for python version "\
+"${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}"
+    else
+      die "FAILED to modify ${DOCKERFILE} for python3"
+    fi
   fi
 else
   DOCKERFILE="${TMP_DIR}/Dockerfile"
@@ -250,14 +270,17 @@ else
 
   # Modify python/pip version if necessary.
   if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
-    sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \
+    if sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \
         sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
         sed -i -e 's^/tmp/pip^/tmp/pip3^g' "${DOCKERFILE}" && \
         sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
         sed -i -e 's/ENV CI_BUILD_PYTHON python/ENV CI_BUILD_PYTHON python3/g' "${DOCKERFILE}" && \
-        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}" && \
-        echo "Modified Dockerfile further for python version ${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}" || \
-        die "FAILED to modify ${DOCKERFILE} for python3"
+        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
+    then
+      echo "Modified Dockerfile further for python version ${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}"
+    else
+      die "FAILED to modify ${DOCKERFILE} for python3"
+    fi
   fi
 fi
 
@@ -277,7 +300,7 @@ fi
 
 # Make sure that there is no other containers of the same image running
 # TODO(cais): Move to an earlier place.
-if [[ ! -z $("${DOCKER_BINARY}" ps | grep "${IMG}") ]]; then
+if "${DOCKER_BINARY}" ps | grep -q "${IMG}"; then
   die "ERROR: It appears that there are docker containers of the image "\
 "${IMG} running. Please stop them before proceeding"
 fi
@@ -310,16 +333,22 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
     # on the running docker container
     echo ""
     echo "Performing basic sanity checks on the running container..."
-    wget -qO- "http://127.0.0.1:${CONTAINER_PORT}/tree" &> /dev/null && \
-        echo "  PASS: wget tree" || \
-        mark_check_failed "  FAIL: wget tree"
+    if wget -qO- "http://127.0.0.1:${CONTAINER_PORT}/tree" &> /dev/null
+    then
+      echo "  PASS: wget tree"
+    else
+      mark_check_failed "  FAIL: wget tree"
+    fi
 
     for NB in ${TMP_DIR}/notebooks/*.ipynb; do
       NB_BASENAME=$(basename "${NB}")
       NB_URL="http://127.0.0.1:${CONTAINER_PORT}/notebooks/${NB_BASENAME}"
-      wget -qO- "${NB_URL}" -o "${TMP_DIR}/${NB_BASENAME}" &> /dev/null && \
-          echo "  PASS: wget ${NB_URL}" || \
-          mark_check_failed  "  FAIL: wget ${NB_URL}"
+      if wget -qO- "${NB_URL}" -o "${TMP_DIR}/${NB_BASENAME}" &> /dev/null
+      then
+        echo "  PASS: wget ${NB_URL}"
+      else
+        mark_check_failed  "  FAIL: wget ${NB_URL}"
+      fi
     done
   fi
 
@@ -366,13 +395,32 @@ fi
 echo ""
 echo "Successfully tagged docker image: ${FINAL_IMG}"
 
-
 # Optional: call command specified by TF_DOCKER_BUILD_PUSH_CMD to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_CMD}" ]]; then
   ${TF_DOCKER_BUILD_PUSH_CMD} ${FINAL_IMG}
   if [[ $? == "0" ]]; then
     echo "Successfully pushed Docker image ${FINAL_IMG}"
   else
+    die "FAIL: Failed to push Docker image ${FINAL_IMG}"
+  fi
+fi
+
+# Optional: set TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS to push image
+if [[ ! -z "${TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS}" ]]; then
+
+  docker login --username "${TF_DOCKER_USERNAME}" \
+  --email "${TF_DOCKER_EMAIL}" \
+  --password "${TF_DOCKER_PASSWORD}"
+
+  if [[ $? != "0" ]]; then
+    die "FAIL: Unable to login. Invalid credentials."
+  fi
+  docker push $1
+  if [[ $? == "0" ]]; then
+    docker logout
+    echo "Successfully pushed Docker image ${FINAL_IMG}"
+  else
+    docker logout
     die "FAIL: Failed to push Docker image ${FINAL_IMG}"
   fi
 fi

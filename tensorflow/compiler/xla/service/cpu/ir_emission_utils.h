@@ -23,9 +23,6 @@ namespace cpu {
 
 bool PotentiallyImplementedAsEigenConvolution(
     const HloInstruction& convolution);
-
-bool PotentiallyImplementedAsEigenDot(const HloInstruction& dot);
-
 }  // namespace cpu
 }  // namespace xla
 

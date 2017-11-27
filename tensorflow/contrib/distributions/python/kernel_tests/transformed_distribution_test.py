@@ -41,6 +41,11 @@ class TransformedDistributionTest(test.TestCase):
   def _cls(self):
     return ds.TransformedDistribution
 
+  def _make_unimplemented(self, name):
+    def _unimplemented(self, *args):  # pylint: disable=unused-argument
+      raise NotImplementedError("{} not implemented".format(name))
+    return _unimplemented
+
   def testTransformedDistribution(self):
     g = ops.Graph()
     with g.as_default():
@@ -75,20 +80,105 @@ class TransformedDistributionTest(test.TestCase):
         with self.test_session(graph=g):
           self.assertAllClose(expected, actual.eval(), atol=0, rtol=0.01)
 
-  def testCachedSamplesWithoutInverse(self):
+  def testNonInjectiveTransformedDistribution(self):
+    g = ops.Graph()
+    with g.as_default():
+      mu = 1.
+      sigma = 2.0
+      abs_normal = self._cls()(
+          distribution=ds.Normal(loc=mu, scale=sigma),
+          bijector=bs.AbsoluteValue(event_ndims=0))
+      sp_normal = stats.norm(mu, sigma)
+
+      # sample
+      sample = abs_normal.sample(100000, seed=235)
+      self.assertAllEqual([], abs_normal.event_shape)
+      with self.test_session(graph=g):
+        sample_ = sample.eval()
+        self.assertAllEqual([], abs_normal.event_shape_tensor().eval())
+
+        # Abs > 0, duh!
+        np.testing.assert_array_less(0, sample_)
+
+        # Let X ~ Normal(mu, sigma), Y := |X|, then
+        # P[Y < 0.77] = P[-0.77 < X < 0.77]
+        self.assertAllClose(
+            sp_normal.cdf(0.77) - sp_normal.cdf(-0.77),
+            (sample_ < 0.77).mean(), rtol=0.01)
+
+        # p_Y(y) = p_X(-y) + p_X(y),
+        self.assertAllClose(
+            sp_normal.pdf(1.13) + sp_normal.pdf(-1.13),
+            abs_normal.prob(1.13).eval())
+
+        # Log[p_Y(y)] = Log[p_X(-y) + p_X(y)]
+        self.assertAllClose(
+            np.log(sp_normal.pdf(2.13) + sp_normal.pdf(-2.13)),
+            abs_normal.log_prob(2.13).eval())
+
+  def testQuantile(self):
+    with self.test_session() as sess:
+      logit_normal = self._cls()(
+          distribution=ds.Normal(loc=0., scale=1.),
+          bijector=bs.Sigmoid(),
+          validate_args=True)
+      grid = [0., 0.25, 0.5, 0.75, 1.]
+      q = logit_normal.quantile(grid)
+      cdf = logit_normal.cdf(q)
+      cdf_ = sess.run(cdf)
+      self.assertAllClose(grid, cdf_, rtol=1e-6, atol=0.)
+
+  def testCachedSamples(self):
+    exp_forward_only = bs.Exp(event_ndims=0)
+    exp_forward_only._inverse = self._make_unimplemented(
+        "inverse")
+    exp_forward_only._inverse_event_shape_tensor = self._make_unimplemented(
+        "inverse_event_shape_tensor ")
+    exp_forward_only._inverse_event_shape = self._make_unimplemented(
+        "inverse_event_shape ")
+    exp_forward_only._inverse_log_det_jacobian = self._make_unimplemented(
+        "inverse_log_det_jacobian ")
+
     with self.test_session() as sess:
       mu = 3.0
       sigma = 0.02
       log_normal = self._cls()(
           distribution=ds.Normal(loc=mu, scale=sigma),
-          bijector=bs.Exp(event_ndims=0))
+          bijector=exp_forward_only)
 
-      sample = log_normal.sample(1)
+      sample = log_normal.sample([2, 3], seed=42)
       sample_val, log_pdf_val = sess.run([sample, log_normal.log_prob(sample)])
-      self.assertAllClose(
-          stats.lognorm.logpdf(sample_val, s=sigma, scale=np.exp(mu)),
-          log_pdf_val,
-          atol=1e-2)
+      expected_log_pdf = stats.lognorm.logpdf(
+          sample_val, s=sigma, scale=np.exp(mu))
+      self.assertAllClose(expected_log_pdf, log_pdf_val, rtol=1e-4, atol=0.)
+
+  def testCachedSamplesInvert(self):
+    exp_inverse_only = bs.Exp(event_ndims=0)
+    exp_inverse_only._forward = self._make_unimplemented(
+        "forward")
+    exp_inverse_only._forward_event_shape_tensor = self._make_unimplemented(
+        "forward_event_shape_tensor ")
+    exp_inverse_only._forward_event_shape = self._make_unimplemented(
+        "forward_event_shape ")
+    exp_inverse_only._forward_log_det_jacobian = self._make_unimplemented(
+        "forward_log_det_jacobian ")
+
+    log_forward_only = bs.Invert(exp_inverse_only)
+
+    with self.test_session() as sess:
+      # The log bijector isn't defined over the whole real line, so we make
+      # sigma sufficiently small so that the draws are positive.
+      mu = 2.
+      sigma = 1e-2
+      exp_normal = self._cls()(
+          distribution=ds.Normal(loc=mu, scale=sigma),
+          bijector=log_forward_only)
+
+      sample = exp_normal.sample([2, 3], seed=42)
+      sample_val, log_pdf_val = sess.run([sample, exp_normal.log_prob(sample)])
+      expected_log_pdf = sample_val + stats.norm.logpdf(
+          np.exp(sample_val), loc=mu, scale=sigma)
+      self.assertAllClose(expected_log_pdf, log_pdf_val, atol=0.)
 
   def testShapeChangingBijector(self):
     with self.test_session():
@@ -129,6 +219,19 @@ class TransformedDistributionTest(test.TestCase):
           validate_args=True)
       self.assertAllClose(actual_mvn_entropy,
                           fake_mvn.entropy().eval())
+
+  def testScalarBatchScalarEventIdentityScale(self):
+    with self.test_session() as sess:
+      exp2 = self._cls()(
+          ds.Exponential(rate=0.25),
+          bijector=ds.bijectors.Affine(
+              scale_identity_multiplier=2.,
+              event_ndims=0))
+      log_prob = exp2.log_prob(1.)
+      log_prob_ = sess.run(log_prob)
+      base_log_prob = -0.5 * 0.25 + np.log(0.25)
+      ildj = np.log(2.)
+      self.assertAllClose(base_log_prob - ildj, log_prob_, rtol=1e-6, atol=0.)
 
 
 class ScalarToMultiTest(test.TestCase):

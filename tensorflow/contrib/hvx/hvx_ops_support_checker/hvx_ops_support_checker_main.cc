@@ -24,19 +24,25 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/tools/graph_transforms/transform_utils.h"
+#include "tensorflow/tools/graph_transforms/file_utils.h"
 
 namespace tensorflow {
+
 namespace {
-static int ParseFlags(int argc, char* argv[], string* in_graph) {
+static int ParseFlags(int argc, char* argv[], string* in_graph,
+                      bool* dump_all_nodes, bool* dump_shape_and_type) {
   std::vector<Flag> flag_list = {
-      Flag("in_graph", in_graph, "input graph file name"),
+      Flag("in_graph", in_graph, "Input graph file name to check hvx support."),
+      Flag("dump_all_nodes", dump_all_nodes, "Dump all nodes in the model."),
+      Flag("dump_shape_and_type", dump_shape_and_type,
+           "Dump shape and type of nodes"),
   };
   CHECK(Flags::Parse(&argc, argv, flag_list));
   // We need to call this to set up global state for TensorFlow.
@@ -48,11 +54,24 @@ static int ParseFlags(int argc, char* argv[], string* in_graph) {
   return 0;
 }
 
-static void SummarizeNode(const NodeDef& node_def) {
+static void SummarizeNode(const NodeDef& node_def,
+                          const bool dump_shape_and_type) {
   LOG(INFO) << "Node(" << node_def.name() << ")";
   LOG(INFO) << "  op: " << node_def.op();
   for (const string& input : node_def.input()) {
     LOG(INFO) << " Input: " << input;
+  }
+  std::vector<DataType> data_types;
+  std::vector<TensorShape> shapes;
+  const Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
+      node_def, &data_types, &shapes);
+  if (data_types.empty() || shapes.empty()) {
+    return;
+  }
+  CHECK_EQ(data_types.size(), shapes.size());
+  for (int i = 0; i < data_types.size(); ++i) {
+    LOG(INFO) << " Output(" << i << "): " << DataType_Name(data_types.at(i))
+              << ", " << shapes.at(i).DebugString();
   }
 }
 
@@ -89,10 +108,14 @@ static void DumpRemoteFusedGraph(const NodeDef& node_def) {
   }
 }
 
-static void CheckOpsSupport(const GraphDef& graph_def) {
-  const IGraphTransferOpsDefinitions& ops_definition =
+static void CheckOpsSupport(const GraphDef& graph_def,
+                            const bool dump_all_nodes,
+                            const bool dump_shape_and_type) {
+  const IRemoteFusedGraphOpsDefinitions& ops_definition =
       HexagonOpsDefinitions::getInstance();
   LOG(INFO) << "Checking " << graph_def.node_size() << " nodes";
+  LOG(INFO) << "dump_all_nodes = " << dump_all_nodes
+            << ", dump_shape_and_tpye = " << dump_shape_and_type;
 
   std::unordered_set<string> unsupported_ops;
   bool all_supported = true;
@@ -105,7 +128,7 @@ static void CheckOpsSupport(const GraphDef& graph_def) {
     }
     // TODO(satok): Set correct data type if it's given.
     const int op_id = ops_definition.GetOpIdFor(node.op(), {});
-    if (op_id == IGraphTransferOpsDefinitions::INVALID_OP_ID) {
+    if (op_id == IRemoteFusedGraphOpsDefinitions::INVALID_OP_ID) {
       all_supported = false;
       LOG(ERROR) << "OP type: " << node.op() << " is not supported on hvx. "
                  << "Name = " << node.name();
@@ -125,9 +148,9 @@ static void CheckOpsSupport(const GraphDef& graph_def) {
     LOG(INFO) << count << " ops are not supported.";
   }
 
-  if (contains_remote_graph) {
+  if (contains_remote_graph || dump_all_nodes) {
     for (const NodeDef& node : graph_def.node()) {
-      SummarizeNode(node);
+      SummarizeNode(node, dump_shape_and_type);
     }
   }
 }
@@ -137,7 +160,10 @@ static void CheckOpsSupport(const GraphDef& graph_def) {
 
 int main(int argc, char** argv) {
   tensorflow::string in_graph;
-  const int ret = tensorflow::ParseFlags(argc, argv, &in_graph);
+  bool dump_all_nodes;
+  bool dump_shape_and_type;
+  const int ret = tensorflow::ParseFlags(argc, argv, &in_graph, &dump_all_nodes,
+                                         &dump_shape_and_type);
   if (ret != 0) {
     return ret;
   }
@@ -146,6 +172,6 @@ int main(int argc, char** argv) {
   TF_CHECK_OK(tensorflow::graph_transforms::LoadTextOrBinaryGraphFile(
       in_graph, &graph_def));
 
-  tensorflow::CheckOpsSupport(graph_def);
+  tensorflow::CheckOpsSupport(graph_def, dump_all_nodes, dump_shape_and_type);
   return 0;
 }

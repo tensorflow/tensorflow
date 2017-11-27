@@ -123,7 +123,7 @@ class ModelFnopsTest(test.TestCase):
       self.assertAllEqual(predictions["probabilities"].eval(),
                           regression_output.value.eval())
 
-  def testEstimatorSpec_export_classsification(self):
+  def testEstimatorSpec_export_classification(self):
     predictions = self.create_predictions()
     output_alternatives = {"classification_head": (
         constants.ProblemType.CLASSIFICATION, predictions)}
@@ -143,7 +143,7 @@ class ModelFnopsTest(test.TestCase):
       self.assertAllEqual(predictions["classes"].eval(),
                           classification_output.classes.eval())
 
-  def testEstimatorSpec_export_classsification_with_missing_scores(self):
+  def testEstimatorSpec_export_classification_with_missing_scores(self):
     predictions = self.create_predictions()
     output_alternatives_predictions = predictions.copy()
     del output_alternatives_predictions["scores"]
@@ -165,7 +165,7 @@ class ModelFnopsTest(test.TestCase):
       self.assertAllEqual(predictions["classes"].eval(),
                           classification_output.classes.eval())
 
-  def testEstimatorSpec_export_classsification_with_missing_scores_proba(self):
+  def testEstimatorSpec_export_classification_with_missing_scores_proba(self):
     predictions = self.create_predictions()
     output_alternatives_predictions = predictions.copy()
     del output_alternatives_predictions["scores"]
@@ -187,7 +187,7 @@ class ModelFnopsTest(test.TestCase):
       self.assertAllEqual(predictions["classes"].eval(),
                           classification_output.classes.eval())
 
-  def testEstimatorSpec_export_classsification_with_missing_classes(self):
+  def testEstimatorSpec_export_classification_with_missing_classes(self):
     predictions = self.create_predictions()
     output_alternatives_predictions = predictions.copy()
     del output_alternatives_predictions["classes"]
@@ -208,7 +208,7 @@ class ModelFnopsTest(test.TestCase):
                           classification_output.scores.eval())
       self.assertIsNone(classification_output.classes)
 
-  def testEstimatorSpec_export_classsification_with_nonstring_classes(self):
+  def testEstimatorSpec_export_classification_with_nonstring_classes(self):
     predictions = self.create_predictions()
     output_alternatives_predictions = predictions.copy()
     output_alternatives_predictions["classes"] = constant_op.constant(

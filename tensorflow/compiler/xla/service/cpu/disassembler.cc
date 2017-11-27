@@ -21,9 +21,9 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "external/llvm/include/llvm/MC/MCInst.h"
-#include "external/llvm/include/llvm/Support/TargetRegistry.h"
-#include "external/llvm/include/llvm/Support/raw_ostream.h"
+#include "llvm/MC/MCInst.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -44,7 +44,7 @@ Disassembler::Disassembler(const llvm::TargetMachine& target_machine)
       subtarget_info_, *mc_context_));
   inst_printer_.reset(target_machine.getTarget().createMCInstPrinter(
       target_machine.getTargetTriple(),
-      /*SyntaxVariant=*/0,  // Use AT&T syntax.
+      /*SyntaxVariant=*/1,  // Use Intel syntax.
       *target_machine.getMCAsmInfo(), *target_machine.getMCInstrInfo(),
       *target_machine.getMCRegisterInfo()));
   inst_analysis_.reset(target_machine.getTarget().createMCInstrAnalysis(
@@ -52,7 +52,7 @@ Disassembler::Disassembler(const llvm::TargetMachine& target_machine)
 }
 
 // This code is based on llvm-objdump in llvm/tools.
-StatusOr<string> Disassembler::DisassembleObjectFile(
+StatusOr<DisassemblerResult> Disassembler::DisassembleObjectFile(
     const llvm::object::ObjectFile& object_file) const {
   if (disassembler_ == nullptr) {
     return NotFound("could not find a disassembler for this platform");
@@ -60,6 +60,7 @@ StatusOr<string> Disassembler::DisassembleObjectFile(
 
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
+  uint64_t code_size_bytes = 0;
 
   // Iterate through sections. Disassemble symbols of the text section(s).
   for (auto& section : object_file.sections()) {
@@ -131,6 +132,9 @@ StatusOr<string> Disassembler::DisassembleObjectFile(
       TF_RET_CHECK(name_or_error);
       ostream << name_or_error.get().str() << ":\n";
 
+      // Update the code size statistic.
+      code_size_bytes += end_index - start_index;
+
       // Disassemble symbol instruction-by-instruction.
       uint64_t index = start_index;
       while (index < end_index) {
@@ -175,7 +179,8 @@ StatusOr<string> Disassembler::DisassembleObjectFile(
   }
 
   ostream.flush();
-  return string(buffer_string.data(), buffer_string.length());
+  return DisassemblerResult{
+      string(buffer_string.data(), buffer_string.length()), code_size_bytes};
 }
 
 }  // namespace cpu

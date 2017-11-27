@@ -171,8 +171,8 @@ Node* Select(Graph* g, Node* c, Node* inx, Node* iny);
 // Casts "in" into data type "dst".
 Node* Cast(Graph* g, Node* in, DataType dst);
 
-// Perform gather op on params "in0" with indices "in1".
-Node* Gather(Graph* g, Node* in0, Node* in1);
+// Perform gather op on params "in0" with indices "in1" and axis "axis".
+Node* Gather(Graph* g, Node* in0, Node* in1, Node* axis);
 
 // Gets a tensor stored in the session state.
 Node* GetSessionTensor(Graph* g, Node* in);
@@ -198,6 +198,12 @@ Node* BiasAdd(Graph* g, Node* value, Node* bias);
 
 // Add a Conv2D node in "g".
 Node* Conv2D(Graph* g, Node* in0, Node* in1);
+
+// Add a Diag node in "g".
+Node* Diag(Graph* g, Node* in, DataType type);
+
+// Add a DiagPart node in "g".
+Node* DiagPart(Graph* g, Node* in, DataType type);
 
 }  // end namespace graph
 }  // end namespace test

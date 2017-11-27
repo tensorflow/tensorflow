@@ -33,6 +33,9 @@ static inline bool IsLogOn(int log_level) { return log_level >= s_log_level; }
 
 static inline void SetLogLevel(int log_level) { s_log_level = log_level; }
 
+// Do nothing
+static inline void SetExperimentalDebug() {}
+
 #define TFMLOGV(fmt, ...)                       \
   do {                                          \
     if (!IsLogOn(TFM_LOG_LEVEL_VERBOSE)) break; \
@@ -69,6 +72,11 @@ static inline void LogDHexagon(const char* fmt, ...) {
   va_start(ap, fmt);
   PrintLogHexagon(fmt, ap);
   va_end(ap);
+}
+
+static inline void DumpNNId(uint32_t nn_id) {
+  // TODO(satok): Dump more information
+  TFMLOGI("NN Id = %d", nn_id);
 }
 
 #endif

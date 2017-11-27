@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -30,7 +31,7 @@ class SequenceDatasetTest(test.TestCase):
 
   def testRepeatTensorDataset(self):
     """Test a dataset that repeats its input multiple times."""
-    components = [np.array(1), np.array([1, 2, 3]), np.array(37.0)]
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
     # This placeholder can be fed when dataset-definition subgraph
     # runs (i.e. `init_op` below) to configure the number of
     # repetitions used in a particular iterator.
@@ -79,7 +80,7 @@ class SequenceDatasetTest(test.TestCase):
           self.assertAllEqual(component, result_component)
 
   def testTakeTensorDataset(self):
-    components = [np.arange(10)]
+    components = (np.arange(10),)
     count_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components)
@@ -125,7 +126,7 @@ class SequenceDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testSkipTensorDataset(self):
-    components = [np.arange(10)]
+    components = (np.arange(10),)
     count_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components)
@@ -171,7 +172,7 @@ class SequenceDatasetTest(test.TestCase):
 
   def testRepeatRepeatTensorDataset(self):
     """Test the composition of repeat datasets."""
-    components = [np.array(1), np.array([1, 2, 3]), np.array(37.0)]
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
     inner_count = array_ops.placeholder(dtypes.int64, shape=[])
     outer_count = array_ops.placeholder(dtypes.int64, shape=[])
 
@@ -205,6 +206,83 @@ class SequenceDatasetTest(test.TestCase):
           errors.OutOfRangeError,
           "Attempted to repeat an empty dataset infinitely."):
         sess.run(get_next)
+
+
+class SequenceDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_skip_dataset(self, count):
+    components = (np.arange(10),)
+    return dataset_ops.Dataset.from_tensor_slices(components).skip(count)
+
+  def testSkipFewerThanInputs(self):
+    count = 4
+    num_outputs = 10 - count
+    self.run_core_tests(lambda: self._build_skip_dataset(count),
+                        lambda: self._build_skip_dataset(count + 2),
+                        num_outputs)
+
+  def testSkipVarious(self):
+    # Skip more than inputs
+    self.run_core_tests(lambda: self._build_skip_dataset(20), None, 0)
+    # Skip exactly the input size
+    self.run_core_tests(lambda: self._build_skip_dataset(10), None, 0)
+    self.run_core_tests(lambda: self._build_skip_dataset(-1), None, 0)
+    # Skip nothing
+    self.run_core_tests(lambda: self._build_skip_dataset(0), None, 10)
+
+  def _build_take_dataset(self, count):
+    components = (np.arange(10),)
+    return dataset_ops.Dataset.from_tensor_slices(components).take(count)
+
+  def testTakeFewerThanInputs(self):
+    count = 4
+    self.run_core_tests(
+        lambda: self._build_take_dataset(count),
+        lambda: self._build_take_dataset(count + 2),
+        count,
+    )
+
+  def testTakeVarious(self):
+    # Take more than inputs
+    self.run_core_tests(lambda: self._build_take_dataset(20), None, 10)
+    # Take exactly the input size
+    self.run_core_tests(lambda: self._build_take_dataset(10), None, 10)
+    # Take all
+    self.run_core_tests(lambda: self._build_take_dataset(-1), None, 10)
+    # Take nothing
+    self.run_core_tests(lambda: self._build_take_dataset(0), None, 0)
+
+  def _build_repeat_dataset(self, count, take_count=3):
+    components = (np.arange(10),)
+    return dataset_ops.Dataset.from_tensor_slices(components).take(
+        take_count).repeat(count)
+
+  def testFiniteRepeat(self):
+    count = 10
+    self.run_core_tests(lambda: self._build_repeat_dataset(count),
+                        lambda: self._build_repeat_dataset(count + 2),
+                        3 * count)
+
+  def testEmptyRepeat(self):
+    self.run_core_tests(lambda: self._build_repeat_dataset(0), None, 0)
+
+  def testInfiniteRepeat(self):
+    self.verify_unused_iterator(
+        lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
+    self.verify_init_before_restore(
+        lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
+    self.verify_multiple_breaks(
+        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
+    self.verify_reset_restored_iterator(
+        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
+    self.verify_restore_in_modified_graph(
+        lambda: self._build_repeat_dataset(-1),
+        lambda: self._build_repeat_dataset(2),
+        20,
+        verify_exhausted=False)
+    # Test repeat empty dataset
+    self.run_core_tests(lambda: self._build_repeat_dataset(-1, 0), None, 0)
 
 
 if __name__ == "__main__":

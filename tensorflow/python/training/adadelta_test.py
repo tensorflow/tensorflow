@@ -61,6 +61,13 @@ class AdadeltaOptimizerTest(test.TestCase):
             adadelta_update = adadelta_opt.apply_gradients(
                 zip([grads, grads], [var0, var1]))
 
+            opt_vars = adadelta_opt.variables()
+            self.assertStartsWith(opt_vars[0].name, var0._shared_name)
+            self.assertStartsWith(opt_vars[1].name, var0._shared_name)
+            self.assertStartsWith(opt_vars[2].name, var1._shared_name)
+            self.assertStartsWith(opt_vars[3].name, var1._shared_name)
+            self.assertEqual(4, len(opt_vars))
+
             variables.global_variables_initializer().run()
 
             # Assign slots

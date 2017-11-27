@@ -47,20 +47,13 @@ perftools::gputools::DeviceMemory<Scalar> AsDeviceMemory(
 template <class Scalar>
 class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar> Base;
+  INHERIT_LINALG_TYPEDEFS(Scalar);
 
   explicit MatrixTriangularSolveOp(OpKernelConstruction* context)
       : Base(context), lower_(true), adjoint_(false) {
     OP_REQUIRES_OK(context, context->GetAttr("lower", &lower_));
     OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
   }
-
-  using TensorShapes = typename Base::TensorShapes;
-  using Matrix = typename Base::Matrix;
-  using MatrixMap = typename Base::MatrixMap;
-  using MatrixMaps = typename Base::MatrixMaps;
-  using ConstMatrixMap = typename Base::ConstMatrixMap;
-  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
 
   void ValidateInputMatrixShapes(
       OpKernelContext* context,
@@ -97,8 +90,8 @@ class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
       // an empty set of equation as the empty matrix.
       return;
     }
-    const Scalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
-    OP_REQUIRES(context, min_abs_pivot > Scalar(0),
+    const RealScalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
+    OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
                 errors::InvalidArgument("Input matrix is not invertible."));
     if (lower_) {
       auto triangle = matrix.template triangularView<Eigen::Lower>();
@@ -128,6 +121,10 @@ REGISTER_LINALG_OP_CPU("MatrixTriangularSolve",
                        (MatrixTriangularSolveOp<float>), float);
 REGISTER_LINALG_OP_CPU("MatrixTriangularSolve",
                        (MatrixTriangularSolveOp<double>), double);
+REGISTER_LINALG_OP_CPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOp<complex64>), complex64);
+REGISTER_LINALG_OP_CPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOp<complex128>), complex128);
 REGISTER_LINALG_OP_CPU("BatchMatrixTriangularSolve",
                        (MatrixTriangularSolveOp<float>), float);
 REGISTER_LINALG_OP_CPU("BatchMatrixTriangularSolve",
@@ -215,7 +212,8 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
       upper_lower_matrix = perftools::gputools::blas::UpperLower::kLower;
     }
     if (adjoint_) {
-      transpose_matrix = perftools::gputools::blas::Transpose::kTranspose;
+      transpose_matrix =
+          perftools::gputools::blas::Transpose::kConjugateTranspose;
     } else {
       transpose_matrix = perftools::gputools::blas::Transpose::kNoTranspose;
     }
@@ -249,6 +247,10 @@ REGISTER_LINALG_OP_GPU("MatrixTriangularSolve",
                        (MatrixTriangularSolveOpGPU<float>), float);
 REGISTER_LINALG_OP_GPU("MatrixTriangularSolve",
                        (MatrixTriangularSolveOpGPU<double>), double);
+REGISTER_LINALG_OP_GPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOpGPU<complex64>), complex64);
+REGISTER_LINALG_OP_GPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOpGPU<complex128>), complex128);
 REGISTER_LINALG_OP_GPU("BatchMatrixTriangularSolve",
                        (MatrixTriangularSolveOpGPU<float>), float);
 REGISTER_LINALG_OP_GPU("BatchMatrixTriangularSolve",

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -353,7 +354,7 @@ Status GPUUtil::Sync(Device* gpu_device) {
   }
   dev_info->stream->BlockHostUntilDone();
   if (!dev_info->stream->ok()) {
-    LOG(FATAL) << "GPU sync failed";
+    return errors::Internal("GPU sync failed");
   }
   return Status::OK();
 }
@@ -366,7 +367,7 @@ Status GPUUtil::SyncAll(Device* gpu_device) {
   }
   if (!dev_info->stream->parent()->SynchronizeAllActivity() ||
       !dev_info->stream->ok()) {
-    LOG(FATAL) << "GPU sync failed";
+    return errors::Internal("GPU sync failed");
   }
   return Status::OK();
 }

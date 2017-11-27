@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -121,6 +122,12 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
                                                    .TypeConstraint<int32>("T"),
                                                ArgOp);
 #undef REGISTER
+
+REGISTER_KERNEL_BUILDER(Name("_Arg")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("output")
+                            .TypeConstraint<ResourceHandle>("T"),
+                        ArgOp);
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
@@ -231,7 +238,11 @@ class SymbolicGradientOp : public AsyncOpKernel {
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.rendezvous = ctx->rendezvous();
+    opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
+    opts.stats_collector = ctx->stats_collector();
+    opts.step_container = ctx->step_container();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -267,6 +278,79 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
 #if TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_SYCL),
                         SymbolicGradientOp);
+
+#endif  // TENSORFLOW_USE_SYCL
+
+class RemoteCallOp : public AsyncOpKernel {
+ public:
+  explicit RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+  }
+
+  ~RemoteCallOp() override {}
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    const Tensor* target;
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
+    AttrValueMap attr_values = func_.attr();
+    AttrValue v;
+    const string& target_device =
+        DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()());
+    v.set_s(target_device);
+    AddAttr("_target", v, &attr_values);
+
+    FunctionLibraryRuntime* lib = ctx->function_library();
+    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
+                      errors::Internal("No function library is provided."),
+                      done);
+    FunctionLibraryRuntime::Handle handle;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, lib->Instantiate(func_.name(), AttrSlice(&attr_values), &handle),
+        done);
+
+    OpInputList arguments;
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
+
+    FunctionLibraryRuntime::Options opts;
+    opts.step_id = ctx->step_id();
+    opts.runner = ctx->runner();
+    opts.source_device = lib->device()->name();
+    if (opts.source_device != target_device) {
+      opts.remote_execution = true;
+    }
+    opts.rendezvous = ctx->rendezvous();
+    std::vector<Tensor> args;
+    args.reserve(arguments.size());
+    for (const Tensor& argument : arguments) {
+      args.push_back(argument);
+    }
+    auto* rets = new std::vector<Tensor>;
+    lib->Run(opts, handle, args, rets, [rets, done, ctx](const Status& status) {
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+      } else {
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
+      }
+      delete rets;
+      done();
+    });
+  }
+
+ private:
+  string target_;
+  NameAttrList func_;
+  TF_DISALLOW_COPY_AND_ASSIGN(RemoteCallOp);
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_CPU).HostMemory("target"), RemoteCallOp);
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_GPU).HostMemory("target"), RemoteCallOp);
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_SYCL).HostMemory("target"), RemoteCallOp);
 
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

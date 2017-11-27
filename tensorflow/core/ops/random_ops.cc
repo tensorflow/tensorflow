@@ -281,6 +281,28 @@ REGISTER_OP("RandomPoisson")
       c->set_output(0, out);
       return Status::OK();
     })
+    .Deprecated(25, "Replaced by RandomPoissonV2")
+    .Doc(R"doc(
+Use RandomPoissonV2 instead.
+)doc");
+
+REGISTER_OP("RandomPoissonV2")
+    .SetIsStateful()
+    .Input("shape: S")
+    .Input("rate: R")
+    .Output("output: dtype")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("S: {int32, int64}")
+    .Attr("R: {half, float, double, int32, int64} = DT_DOUBLE")
+    .Attr("dtype: {half, float, double, int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      TF_RETURN_IF_ERROR(c->Concatenate(out, c->input(1), &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Outputs random values from the Poisson distribution(s) described by rate.
 
@@ -305,8 +327,7 @@ seed2: A second seed to avoid seed collision.
 
 output: A tensor with shape `shape + shape(rate)`. Each slice
   `[:, ..., :, i0, i1, ...iN]` contains the samples drawn for
-  `rate[i0, i1, ...iN]`. The dtype of the output matches the dtype of
-  rate.
+  `rate[i0, i1, ...iN]`.
 )doc");
 
 }  // namespace tensorflow

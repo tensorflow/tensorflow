@@ -18,15 +18,21 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import traceback
 import types
 
-from tensorflow.python.platform import tf_logging
+import six  # pylint: disable=unused-import
+
+from tensorflow.python.eager import context
 from tensorflow.python.util import tf_decorator
+# pylint: enable=g-bad-import-order,g-import-not-at-top
 
 
+# TODO(b/65412899): Re-implement to avoid leaking python objects.
+# This function / class remains since the API is public (mark_used()).
 def _add_should_use_warning(x, fatal_error=False):
   """Wraps object x so that if it is never used, a warning is logged.
+
+  Does nothing when executing eagerly.
 
   Args:
     x: Python object.
@@ -37,16 +43,18 @@ def _add_should_use_warning(x, fatal_error=False):
     An instance of `TFShouldUseWarningWrapper` which subclasses `type(x)`
     and is a very shallow wrapper for `x` which logs access into `x`.
   """
-  if x is None:  # special corner case where x is None
+  del fatal_error
+  if x is None or x == []:  # pylint: disable=g-explicit-bool-comparison
     return x
-  has_been_used = getattr(x, '_tf_object_has_been_used', None)
-  if has_been_used is not None:
-    x._tf_object_has_been_used = has_been_used  # pylint: disable=protected-access
+
+  if context.in_eager_mode():
+    # Typically not needed when executing eagerly (the main use case is for ops
+    # which need to be incorporated into the graph), and even the no-op wrapper
+    # creates reference cycles which require garbage collection.
     return x
 
   def override_method(method):
     def fn(self, *args, **kwargs):
-      self._tf_object_has_been_used = True  # pylint: disable=protected-access
       return method(self, *args, **kwargs)
     return fn
 
@@ -55,40 +63,16 @@ def _add_should_use_warning(x, fatal_error=False):
 
     def __init__(self, true_self):
       self.__dict__ = true_self.__dict__
-      stack = [x.strip() for x in traceback.format_stack()]
-      # Remove top three stack entries from adding the wrapper
-      self._tf_object_creation_stack = '\n'.join(stack[:-3])
-      self._tf_object_has_been_used = False
 
     # Not sure why this pylint warning is being used; this is not an
     # old class form.
     # pylint: disable=super-on-old-class
     def __getattribute__(self, name):
-      if name != '_tf_object_has_been_used':
-        self._tf_object_has_been_used = True
       return super(TFShouldUseWarningWrapper, self).__getattribute__(name)
 
-    def __del__(self):
-      if not self._tf_object_has_been_used:
-        if fatal_error:
-          logger = tf_logging.fatal
-        else:
-          logger = tf_logging.error
-        logger(
-            '==================================\n'
-            'Object was never used (type %s):\n%s\nIf you want to mark it as '
-            'used call its "mark_used()" method.\nIt was originally created '
-            'here:\n%s\n'
-            '==================================' %
-            (type(x), x, self._tf_object_creation_stack))
-
-      if hasattr(super(TFShouldUseWarningWrapper, self), '__del__'):
-        return super(TFShouldUseWarningWrapper, self).__del__()
-
     def mark_used(self, *args, **kwargs):
-      self._tf_object_has_been_used = True
-      if hasattr(super(TFShouldUseWarningWrapper, self), 'mark_used'):
-        return super(TFShouldUseWarningWrapper, self).mark_used(*args, **kwargs)
+      return
+
     # pylint: enable=super-on-old-class
 
   for name in dir(TFShouldUseWarningWrapper):
@@ -102,7 +86,6 @@ def _add_should_use_warning(x, fatal_error=False):
 
   wrapped = TFShouldUseWarningWrapper(x)
   wrapped.__doc__ = x.__doc__  # functools.wraps fails on some objects.
-  wrapped._tf_object_has_been_used = False   # pylint: disable=protected-access
   return wrapped
 
 
@@ -122,6 +105,8 @@ def should_use_result(fn):
 
   - `t != 0`.  In this case, comparison is done on types / ids.
   - `isinstance(t, tf.Tensor)`.  Similar to above.
+
+  Does nothing when executing eagerly.
 
   Args:
     fn: The function to wrap.
@@ -156,6 +141,8 @@ def must_use_result_or_fatal(fn):
 
   - `t != 0`.  In this case, comparison is done on types / ids.
   - `isinstance(t, tf.Tensor)`.  Similar to above.
+
+  Does nothing when executing eagerly.
 
   Args:
     fn: The function to wrap.

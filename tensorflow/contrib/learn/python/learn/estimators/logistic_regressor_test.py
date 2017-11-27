@@ -26,12 +26,12 @@ from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import logistic_regressor
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
-from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 
 
@@ -55,7 +55,7 @@ def _logistic_regression_model_fn(features, labels, mode):
       # AUC/precision/recall/etc will change meaningfully even on a toy dataset.
       biases_initializer=init_ops.constant_initializer(-10.0))
   predictions = math_ops.sigmoid(logits)
-  loss = loss_ops.sigmoid_cross_entropy(logits, labels)
+  loss = losses.sigmoid_cross_entropy(labels, logits)
   train_op = optimizers.optimize_loss(
       loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
   return predictions, loss, train_op

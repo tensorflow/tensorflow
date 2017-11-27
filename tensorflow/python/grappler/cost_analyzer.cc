@@ -30,11 +30,11 @@ CostAnalyzer::CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
       analytical_estimator_(cluster, false),
       suffix_(suffix) {}
 
-Status CostAnalyzer::GenerateReport(std::ostream& os) {
+Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report) {
   GatherCosts();
   PreprocessCosts();
   AnalyzeCosts();
-  PrintAnalysis(os);
+  PrintAnalysis(os, per_node_report);
   return Status::OK();
 }
 
@@ -56,8 +56,8 @@ void CostAnalyzer::GatherCosts() {
   CostGraphDef cost_graph_measured;
   PredictCosts(&measure_estimator_, &cost_graph_measured,
                &total_time_measured_);
+  VLOG(1) << "Graph size: " << item_->graph.node_size();
   VLOG(1) << "cost_graph_measured size: " << cost_graph_measured.node_size();
-  op_perf_ = CostGraphToOpPerformanceData(cost_graph_measured, item_->graph);
 
   CostGraphDef cost_graph_analytical;
   PredictCosts(&analytical_estimator_, &cost_graph_analytical,
@@ -66,25 +66,32 @@ void CostAnalyzer::GatherCosts() {
           << cost_graph_analytical.node_size();
 
   CostGraphDef cost_graph_analytical_filtered;
-  std::set<string> cost_nodes;
-  for (auto& node : cost_graph_measured.node()) {
-    cost_nodes.insert(node.name());
+  CostGraphDef cost_graph_measured_filtered;
+  std::map<string, const CostGraphDef_Node*> measured_nodes;
+  for (const auto& node : cost_graph_measured.node()) {
+    measured_nodes[node.name()] = &node;
   }
   for (const auto& node : cost_graph_analytical.node()) {
-    auto it = cost_nodes.find(node.name());
+    auto it = measured_nodes.find(node.name());
     // Filter the nodes that are not the cost nodes returned by
     // MeasuringCostEstimator.
-    if (it == cost_nodes.end()) {
+    if (it == measured_nodes.end()) {
       continue;
     }
-    auto added_node = cost_graph_analytical_filtered.add_node();
-    *added_node = node;
+    auto added_node_analytical = cost_graph_analytical_filtered.add_node();
+    auto added_node_measured = cost_graph_measured_filtered.add_node();
+    *added_node_analytical = node;
+    *added_node_measured = *(it->second);
   }
   VLOG(1) << "cost_graph_analytical_filtered size: "
           << cost_graph_analytical_filtered.node_size();
 
+  // TODO(yaozhang): add a test to make sure that op_perf_analytical_ and
+  // op_perf_ cover the same set of nodes.
   op_perf_analytical_ = CostGraphToOpPerformanceData(
       cost_graph_analytical_filtered, item_->graph);
+  op_perf_ =
+      CostGraphToOpPerformanceData(cost_graph_measured_filtered, item_->graph);
 }
 
 void CostAnalyzer::PreprocessCosts() {
@@ -151,7 +158,7 @@ void CostAnalyzer::AnalyzeCosts() {
   }
 }
 
-void CostAnalyzer::PrintAnalysis(std::ostream& os) const {
+void CostAnalyzer::PrintAnalysis(std::ostream& os, bool per_node_report) const {
   os << std::endl;
   os << std::left << std::setw(50)
      << "Total time measured in ns (serialized): " << std::right
@@ -218,6 +225,11 @@ void CostAnalyzer::PrintAnalysis(std::ostream& os) const {
     os << std::endl;
   }
   os << std::endl;
+
+  if (per_node_report) {
+    os << "Below is the per-node report:" << std::endl;
+    os << op_perf_.DebugString();
+  }
 }
 
 }  // end namespace grappler
