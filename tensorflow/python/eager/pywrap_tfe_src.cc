@@ -469,7 +469,8 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
 class GradientTape
     : public tensorflow::eager::GradientTape<PyObject, PyObject> {
  public:
-  GradientTape() {}
+  explicit GradientTape(bool persistent)
+      : tensorflow::eager::GradientTape<PyObject, PyObject>(persistent) {}
 
   void WatchVariable(PyObject* v) {
     watched_variables_.insert(v);
@@ -557,11 +558,11 @@ std::vector<TFE_Py_Tape*>* GetTapeStack() {
 }
 #endif
 
-void TFE_Py_TapeStackPushNew() {
+void TFE_Py_TapeStackPushNew(PyObject* persistent) {
   TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
   if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return;
   TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
-  tape->tape = new GradientTape();
+  tape->tape = new GradientTape(persistent == Py_True);
   GetTapeStack()->push_back(tape);
 }
 
@@ -704,6 +705,7 @@ std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
     PyObject* tensor = PySequence_Fast_GET_ITEM(seq, i);
     list.push_back(FastTensorId(tensor));
     if (PyErr_Occurred()) {
+      Py_DECREF(seq);
       return list;
     }
   }
@@ -889,7 +891,6 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     PyObject* py_result = PyEval_CallObject(
         reinterpret_cast<PyObject*>(backward_function), grads);
     Py_DECREF(grads);
-    Py_DECREF(backward_function);
     if (py_result == nullptr) {
       return tensorflow::errors::Internal("gradient function threw exceptions");
     }
@@ -915,6 +916,10 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     Py_DECREF(seq);
     Py_DECREF(py_result);
     return tensorflow::Status::OK();
+  }
+
+  void ReleaseBackwardFunction(PyObject* backward_function) const final {
+    Py_DECREF(backward_function);
   }
 
   void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }
