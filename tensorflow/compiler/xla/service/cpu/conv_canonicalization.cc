@@ -47,10 +47,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       // A canonical convolution's dimension numbers need to satisfy the
       // following conditions (see cs/PotentiallyImplementedAsEigenConvolution).
       //
-      // - the input is in NHWC or NWHC order.
-      // - the kernel is in HWIO or WHIO order.
-      // - the spatial dimensions are in the same relative order in the input,
-      //   kernel and output.
+      // - the input is in NHWC order.
+      // - the kernel is in HWIO order.
       //
       // For simplicity, as a first step, we reshape the input and filter to
       // NHWC and HWIO order, respectively. This may lose precision but won't
