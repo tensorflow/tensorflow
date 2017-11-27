@@ -2120,7 +2120,7 @@ class Conv3DLSTMCell(ConvLSTMCell):
 def _conv(args, filter_size, num_features, bias, bias_start=0.0):
   """convolution:
   Args:
-    args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D, 
+    args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D,
     batch x n, Tensors.
     filter_size: int tuple of filter height and width.
     num_features: int, number of features.
@@ -2214,7 +2214,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
         has the given variables, an error is raised.
 
     Raises:
-      ValueError: If `num_units` or `num_proj` is not divisible by 
+      ValueError: If `num_units` or `num_proj` is not divisible by
         `number_of_groups`.
     """
     super(GLSTMCell, self).__init__(_reuse=reuse)
