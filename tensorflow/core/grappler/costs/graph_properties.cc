@@ -977,6 +977,9 @@ Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
 }
 
 Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
+  if (cost_graph.node_size() == 0) {
+    LOG(WARNING) << "cost_graph is empty: nothing can be inferred!";
+  }
   std::unordered_map<string, const CostGraphDef::Node*> name_to_cost;
   std::unordered_map<string, const NodeDef*> name_to_node;  // Empty
   for (auto& node : cost_graph.node()) {

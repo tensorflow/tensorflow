@@ -94,6 +94,28 @@ PlatformUtil::GetSupportedPlatforms() {
       platforms_string.c_str());
 }
 
+/*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
+    const string& platform_name) {
+  using tensorflow::str_util::Lowercase;
+  string platform_str = Lowercase(platform_name);
+  // "cpu" and "host" mean the same thing.
+  if (platform_str == "cpu") {
+    platform_str = "host";
+  }
+  // "gpu" and "cuda" mean the same thing.
+  if (platform_str == "gpu") {
+    platform_str = "cuda";
+  }
+
+  TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
+  for (se::Platform* platform : platforms) {
+    if (Lowercase(platform->Name()) == platform_str) {
+      return platform;
+    }
+  }
+  return InvalidArgument("platform %s not found", platform_name.c_str());
+}
+
 // Returns whether the device underlying the given StreamExecutor is supported
 // by XLA.
 static bool IsDeviceSupported(se::StreamExecutor* executor) {

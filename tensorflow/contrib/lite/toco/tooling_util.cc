@@ -792,14 +792,18 @@ void FixOperatorOrdering(Model* model) {
 }
 
 // Checks that the --input_arrays of the Model are actually used by at least
-// one of the --output_arrays i.e. that the graph contains a path from each one
-// of the inputs to at least one of the outputs. This catches cases where the
-// user passed the wrong --input_arrays or --output_arrays, which otherwise may
-// result in cryptic error messages.
-void CheckInputUsedByOutputs(const Model& model) {
+// one of the --output_arrays or --rnn_states i.e. that the graph contains a
+// path from each one of the inputs to at least one of the outputs or RNN
+// states. This catches cases where the user passed the wrong --input_arrays or
+// --output_arrays or --rnn_states, which otherwise may result in cryptic error
+// messages.
+void CheckInputsActuallyUsed(const Model& model) {
   std::set<string> used_arrays;
   for (const string& output : model.flags.output_arrays()) {
     used_arrays.insert(output);
+  }
+  for (const auto& rnn_state : model.flags.rnn_states()) {
+    used_arrays.insert(rnn_state.back_edge_source_array());
   }
   for (int i = model.operators.size() - 1; i >= 0; i--) {
     bool is_op_used = false;
@@ -832,7 +836,7 @@ void CheckInvariants(const Model& model) {
   CheckNoOrphanedArray(model);
   CheckArrayFieldsConsistent(model);
   CheckOperatorOrdering(model);
-  CheckInputUsedByOutputs(model);
+  CheckInputsActuallyUsed(model);
 }
 
 void CheckCountInRange(const ::toco::ModelFlags::ModelCheck& model_check,
@@ -1087,9 +1091,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     if (!input_array.has_shape()) {
       QCHECK(!input_array_proto.shape().empty())
           << "This model does not have shape defined for input array "
-          << input_array_proto.name()
-          << ", so one must be specified by a non-empty --input_shape "
-             "command-line flag.";
+          << input_array_proto.name();
     }
 
     // Compare/merge the model->flags describing the input_shape with
