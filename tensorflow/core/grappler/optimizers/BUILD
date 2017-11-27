@@ -312,6 +312,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
@@ -320,6 +321,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/costs:virtual_placer",
         "//tensorflow/core/grappler/utils:frame",
     ],
 )
