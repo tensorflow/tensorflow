@@ -171,6 +171,7 @@ py_library(
     deps = [
         ":utils",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:util",
         "//third_party/py/numpy",

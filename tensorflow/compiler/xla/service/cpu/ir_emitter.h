@@ -105,15 +105,18 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // llvm_module: the LLVM module to emit IR into.
   // hlo_to_profile_idx: the mapping from HLO to its index in the profiling
   //                     array.
+  // entry_computation_profile_idx: the index in the profiling array
+  //                                for the entry computation.
   // external_constant_pool: if non-null, points to an ExternalConstantPool
   //                         instance into which the Ir emitter can spill
   //                         constants.
-  IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
-            llvm::Module* llvm_module,
-            const std::unordered_map<const HloInstruction*, size_t>*
-                hlo_to_profile_idx,
-            llvm::TargetMachine* target_machine,
-            ExternalConstantPool* external_constant_pool);
+  IrEmitter(
+      const HloModule& hlo_module, const BufferAssignment& assignment,
+      llvm::Module* llvm_module,
+      std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
+      tensorflow::gtl::optional<size_t> entry_computation_profile_idx,
+      llvm::TargetMachine* target_machine,
+      ExternalConstantPool* external_constant_pool);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -154,62 +157,38 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo) override;
 
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override;
+  Status HandleConstant(HloInstruction* constant) override;
   Status HandleCopy(HloInstruction* copy) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
-                   HloInstruction* rhs) override;
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
-                           HloInstruction* rhs, const Window& window) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleSelect(HloInstruction* select) override;
+  Status HandleDot(HloInstruction* dot) override;
+  Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
+  Status HandleSort(HloInstruction* sort) override;
   Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override;
-  Status HandleReduceWindow(HloInstruction* reduce_window,
-                            HloInstruction* operand, const Window& window,
-                            HloComputation* function) override;
+  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleReduceWindow(HloInstruction* reduce_window) override;
   Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override;
   Status HandleSend(HloInstruction* send) override;
-  Status HandleSlice(HloInstruction* slice,
-                     HloInstruction* /*operand*/) override;
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* /*operand*/,
-                            HloInstruction* /*start_indices*/) override;
-  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
-                                  HloInstruction* /*operand*/,
-                                  HloInstruction* /*update*/,
-                                  HloInstruction* /*start_indices*/) override;
+  Status HandleSendDone(HloInstruction* send_done) override;
+  Status HandleSlice(HloInstruction* slice) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
+  Status HandleDynamicUpdateSlice(
+      HloInstruction* dynamic_update_slice) override;
   Status HandleRecv(HloInstruction* recv) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandlePad(HloInstruction* pad) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* function,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleMap(HloInstruction* map) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction* custom_call,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleWhile(HloInstruction* xla_while) override;
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleConcatenate(HloInstruction* concatenate) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -221,7 +200,12 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Convenience function to generate a GEP into the profile counter parameter
   // which would correspond to the index for a given HLO.
-  llvm::Value* GetProfileCounterFor(const HloInstruction* hlo);
+  llvm::Value* GetProfileCounterFor(const HloInstruction& hlo);
+
+  // Convenience function to generate a GEP into the profile counter parameter
+  // corresponding to the index for the entry computation.  Returns nullptr if
+  // profiling the entry computation is disabled.
+  llvm::Value* GetProfileCounterForEntryComputation();
 
   // Gets the IR Value emitted previously for the given hlo.
   //
@@ -497,7 +481,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::IRBuilder<> ir_builder_;
 
   // Maps HLOs to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx_;
+  std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;
+  const tensorflow::gtl::optional<size_t> entry_computation_profile_idx_;
 
   // Maps HLOs to Values emitted for them.
   std::unordered_map<const HloInstruction*, llvm::Value*> emitted_value_;

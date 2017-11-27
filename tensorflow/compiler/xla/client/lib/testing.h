@@ -26,10 +26,6 @@ limitations under the License.
 
 namespace xla {
 
-// Generates fake data in a literal of the given shape, or returns an error
-// status if the element type is currently unhandled for fake data generation.
-StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape);
-
 // Generates fake data of the given shape on the device or dies. The fake data
 // is created by performing a computation on the device rather than transferring
 // data from the host to the device.

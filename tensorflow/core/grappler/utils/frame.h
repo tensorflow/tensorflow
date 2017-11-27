@@ -18,16 +18,24 @@ limitations under the License.
 
 #include <unordered_map>
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
+using FrameMap = std::unordered_map<const NodeDef*, std::vector<int>>;
+
 // Returns the number of frames present in the graph, and populates
 // the 'frames' argument with the collection of frames (denoted by their
 // frame ids) in the outermost-to-innermost order. Frame ids are arbitrary.
-int IdentifyFrames(
-    const GraphDef& graph,
-    std::unordered_map<const NodeDef*, std::vector<int>>* frames);
+Status IdentifyFrames(const GraphDef& graph, FrameMap* frame_map,
+                      int* num_frames);
+
+// As above, but use an existing NodeMap for graph instead of building it
+// from scratch.
+Status IdentifyFramesWithNodeMap(const GraphDef& graph, const NodeMap& node_map,
+                                 FrameMap* frame_map, int* num_frames);
 
 }  // namespace grappler
 }  // namespace tensorflow

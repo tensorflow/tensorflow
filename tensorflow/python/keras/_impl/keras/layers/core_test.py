@@ -111,6 +111,12 @@ class CoreLayersTest(test.TestCase):
           kwargs={'target_shape': (1, -1)},
           input_shape=(3, 2, 4))
 
+    with self.test_session():
+      testing_utils.layer_test(
+          keras.layers.Reshape,
+          kwargs={'target_shape': (-1, 1)},
+          input_shape=(None, None, 2))
+
   def test_permute(self):
     with self.test_session():
       testing_utils.layer_test(

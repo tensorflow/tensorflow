@@ -20,7 +20,9 @@ from __future__ import print_function
 import traceback
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -46,6 +48,13 @@ def internally_variable_scoped_function(scope_name):
 def function_with_create(trainable):
   """Creates a variable as a side effect using tf.Variable."""
   variables.Variable(0, trainable=trainable)
+  return variable_scope.get_variable(
+      "dummy", shape=[1], initializer=init_ops.zeros_initializer())
+
+
+def function_with_side_create(trainable, name="side"):
+  """Creates a variable as a side effect using tf.get_variable."""
+  variable_scope.get_variable(name, shape=[1], trainable=trainable)
   return variable_scope.get_variable(
       "dummy", shape=[1], initializer=init_ops.zeros_initializer())
 
@@ -99,6 +108,46 @@ class TemplateTest(test.TestCase):
     # Parameters are tied, so the loss should have gone down when we trained it.
     self.assertLess(final_test_loss, initial_test_loss)
 
+  def test_end_to_end_eager(self):
+    """This test shows a very simple line model with test_loss in eager mode.
+
+    The template is used to share parameters between a training and test model.
+    """
+    with context.eager_mode():
+      # y = 2x + 1
+      training_input, training_output = ([1., 2., 3., 4.], [2.8, 5.1, 7.2, 8.7])
+      test_input, test_output = ([5., 6., 7., 8.], [11, 13, 15, 17])
+
+      random_seed.set_random_seed(1234)
+
+      def test_line(x):
+        m = variable_scope.get_variable(
+            "w", shape=[], initializer=init_ops.truncated_normal_initializer())
+        b = variable_scope.get_variable(
+            "b", shape=[], initializer=init_ops.truncated_normal_initializer())
+        return x * m + b
+
+      line_template = template.make_template("line", test_line)
+
+      def train_loss():
+        train_prediction = line_template(training_input)
+        return math_ops.reduce_mean(
+            math_ops.square(train_prediction - training_output))
+
+      def test_loss():
+        test_prediction = line_template(test_input)
+        return math_ops.reduce_mean(
+            math_ops.square(test_prediction - test_output))
+
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+      initial_test_loss = test_loss()
+      optimizer.minimize(train_loss)
+      final_test_loss = test_loss()
+
+      # Parameters are tied, so the loss should have gone down after training.
+      self.assertLess(final_test_loss.numpy(), initial_test_loss.numpy())
+
+  @test_util.run_in_graph_and_eager_modes()
   def test_skip_stack_frames(self):
     first = traceback.format_stack()
     second = traceback.format_stack()
@@ -106,6 +155,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(1, len(result))
     self.assertNotEqual(len(first), len(result))
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_template_with_name(self):
     tmpl1 = template.make_template("s1", variable_scoped_function)
     tmpl2 = template.make_template("s1", variable_scoped_function)
@@ -118,14 +168,22 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/dummy:0", v1.name)
     self.assertEqual("s1_1/dummy:0", v3.name)
 
-  def test_unique_name_raise_error(self):
+  def test_same_unique_name_raise_error(self):
     tmpl1 = template.make_template(
         "_", variable_scoped_function, unique_name_="s1")
     tmpl1()
     tmpl2 = template.make_template(
         "_", variable_scoped_function, unique_name_="s1")
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        ValueError, "Variable s1/dummy already exists, disallowed.*"):
       tmpl2()
+
+  def test_unique_name_raise_error_in_eager(self):
+    with context.eager_mode():
+      with self.assertRaisesRegexp(
+          ValueError, "unique_name cannot be used in eager mode."):
+        template.make_template(
+            "_", variable_scoped_function, unique_name_="s1")
 
   def test_unique_name_and_reuse(self):
     tmpl1 = template.make_template(
@@ -142,6 +200,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(v1, v3)
     self.assertEqual("s1/dummy:0", v1.name)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_template_in_scope(self):
     tmpl1 = template.make_template("s1", variable_scoped_function)
     tmpl2 = template.make_template("s1", variable_scoped_function)
@@ -158,6 +217,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("scope/s1/dummy:0", v1.name)
     self.assertEqual("scope/s1_1/dummy:0", v3.name)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_template_with_internal_reuse(self):
     tmpl1 = template.make_template("s1", internally_variable_scoped_function)
     tmpl2 = template.make_template("s1", internally_variable_scoped_function)
@@ -173,10 +233,13 @@ class TemplateTest(test.TestCase):
     with self.assertRaises(ValueError):
       tmpl1("not_test")
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_template_without_name(self):
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        ValueError, "name cannot be None."):
       template.make_template(None, variable_scoped_function)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_make_template(self):
     # Test both that we can call it with positional and keywords.
     tmpl1 = template.make_template(
@@ -199,10 +262,28 @@ class TemplateTest(test.TestCase):
     with self.assertRaises(ValueError):
       tmpl()
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_enforces_no_extra_trainable_variables_eager(self):
+    tmpl = template.make_template("s",
+                                  function_with_side_create,
+                                  trainable=True)
+
+    tmpl(name="1")
+    with self.assertRaises(ValueError):
+      tmpl(name="2")
+
   def test_permits_extra_non_trainable_variables(self):
     tmpl = template.make_template("s", function_with_create, trainable=False)
     self.assertEqual(tmpl(), tmpl())
 
+  def test_permits_extra_non_trainable_variables_eager(self):
+    with context.eager_mode():
+      tmpl = template.make_template("s",
+                                    function_with_side_create,
+                                    trainable=False)
+      self.assertEqual(tmpl(name="1"), tmpl(name="2"))
+
+  @test_util.run_in_graph_and_eager_modes()
   def test_internal_variable_reuse(self):
 
     def nested():
@@ -241,11 +322,28 @@ class TemplateTest(test.TestCase):
     v1 = tmpl1()
     v2 = tmpl1()
     v3 = tmpl2()
-    self.assertEqual(v1, v2)
+    self.assertTrue(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/nested_1/dummy:0", v1.name)
     self.assertEqual("s1_1/nested_1/dummy:0", v3.name)
 
+  def test_nested_eager_templates_raises_error(self):
+
+    def nested_template():
+      nested1 = template.make_template("nested", variable_scoped_function)
+      nested2 = template.make_template("nested", variable_scoped_function)
+      v1 = nested1()
+      v2 = nested2()
+      self.assertNotEqual(v1, v2)
+      return v2
+
+    with context.eager_mode():
+      tmpl1 = template.make_template("s1", nested_template)
+      with self.assertRaisesRegexp(
+          ValueError, "Nested EagerTemaplates are not currently supported."):
+        tmpl1()
+
+  @test_util.run_in_graph_and_eager_modes()
   def test_immediate_scope_creation(self):
     # Create templates in scope a then call in scope b. make_template should
     # capture the scope the first time it is called, and make_immediate_template
@@ -270,6 +368,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("ctor_scope/a/dummy:0", inner_imm_var.name)
     self.assertEqual("call_scope/b/dummy:0", inner_defer_var.name)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_scope_access(self):
     # Ensure that we can access the scope inside the template, because the name
     # of that scope may be different from the name we pass to make_template, due
@@ -294,6 +393,7 @@ class TemplateTest(test.TestCase):
     # Template is called at the top level, so there is no preceding "foo_2".
     self.assertEqual(tc.variable_scope.name, "blah")
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_custom_getter(self):
     # Custom getter that maintains call count and forwards to true getter
     custom_getter_count = [0]
@@ -326,6 +426,7 @@ class TemplateTest(test.TestCase):
     tmpl2()
     self.assertEqual(custom_getter_count[0], 2)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_fails_gracefully(self):
     for create_scope_now in [True, False]:
       def module_function_with_one_arg(inputs):
@@ -336,7 +437,7 @@ class TemplateTest(test.TestCase):
       templatized_function = template.make_template(
           "f1", module_function_with_one_arg,
           create_scope_now_=create_scope_now)
-      data = array_ops.zeros(1)
+      data = array_ops.zeros([1])
       try:
         # Try to connect with a kwarg which is unsupported.
         templatized_function(data, is_training=True)
@@ -348,6 +449,7 @@ class TemplateTest(test.TestCase):
       templatized_function(data)
       self.assertTrue(templatized_function._variables_created)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_name_scopes_for_variable_scopes(self):
     # Test that name scopes are not unnecessarily uniquified (but are
     # still uniquified when necessary).
@@ -374,12 +476,13 @@ class TemplateTest(test.TestCase):
     outputs_b, _ = linear1(inputs)
     self.assertEquals("foo", linear1.variable_scope.name)
     self.assertEquals("foo/w:0", w1.name)
-    self.assertEquals("foo/add:0", outputs_a.name,
-                      "First application of template should get "
-                      "same name scope as variables.")
-    self.assertEquals("foo_1/add:0", outputs_b.name,
-                      "Second application of template should get "
-                      "a freshly uniquified name scope.")
+    if context.in_graph_mode():
+      self.assertEquals("foo/add:0", outputs_a.name,
+                        "First application of template should get "
+                        "same name scope as variables.")
+      self.assertEquals("foo_1/add:0", outputs_b.name,
+                        "Second application of template should get "
+                        "a freshly uniquified name scope.")
 
     linear2 = make_linear_module(output_size=2, name="foo")
     outputs_c, w2 = linear2(inputs)
@@ -388,24 +491,30 @@ class TemplateTest(test.TestCase):
                       "New template gets a freshly uniquified variable scope "
                       "because 'foo' is already taken.")
     self.assertEquals("foo_1/w:0", w2.name)
-    self.assertEquals("foo_1_1/add:0", outputs_c.name,
-                      "First application of template would get "
-                      "same name scope as variables, but 'foo_1' is already "
-                      "a name scope.")
-    self.assertEquals("foo_1_2/add:0", outputs_d.name,
-                      "Second application of template should also get "
-                      "a freshly uniquified name scope.")
+    if context.in_graph_mode():
+      self.assertEquals("foo_1_1/add:0", outputs_c.name,
+                        "First application of template would get "
+                        "same name scope as variables, but 'foo_1' is already "
+                        "a name scope.")
+      self.assertEquals("foo_1_2/add:0", outputs_d.name,
+                        "Second application of template should also get "
+                        "a freshly uniquified name scope.")
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_global_variables(self):
     # Make sure global_variables are created.
     with variable_scope.variable_scope("foo"):
       # Create two templates with the same name, ensure scopes are made unique.
       ta = template.make_template("bar", variable_scoped_function, True)
-      tb = template.make_template("s", function_with_create, trainable=False)
+      if context.in_eager_mode():
+        tb = template.make_template("s", function_with_side_create,
+                                    trainable=False)
+      else:
+        tb = template.make_template("s", function_with_create, trainable=False)
 
     # Initially there are not variables created.
-    self.assertEqual([], ta.global_variables)
-    self.assertEqual([], tb.global_variables)
+    self.assertEqual([], list(ta.global_variables))
+    self.assertEqual([], list(tb.global_variables))
     # After calling there are variables created.
     ta()
     tb()
@@ -413,6 +522,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(1, len(ta.global_variables))
     self.assertEqual(2, len(tb.global_variables))
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_trainable_variables(self):
     # Make sure trainable_variables are created.
     with variable_scope.variable_scope("foo2"):
@@ -421,8 +531,8 @@ class TemplateTest(test.TestCase):
       tb = template.make_template("bar", variable_scoped_function, True)
 
     # Initially there are not variables created.
-    self.assertEqual([], ta.trainable_variables)
-    self.assertEqual([], tb.trainable_variables)
+    self.assertEqual([], list(ta.trainable_variables))
+    self.assertEqual([], list(tb.trainable_variables))
     # After calling there are variables created.
     ta()
     tb()
@@ -430,6 +540,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(1, len(ta.trainable_variables))
     self.assertEqual(1, len(tb.trainable_variables))
 
+  # TODO(apassos) handle local variables in Eager
   def test_local_variables(self):
     # Make sure trainable_variables are created.
     with variable_scope.variable_scope("foo3"):
@@ -439,8 +550,8 @@ class TemplateTest(test.TestCase):
                                   variable_scoped_function_with_local_variable)
 
     # Initially there are not variables created.
-    self.assertEqual([], ta.local_variables)
-    self.assertEqual([], tb.local_variables)
+    self.assertEqual([], list(ta.local_variables))
+    self.assertEqual([], list(tb.local_variables))
     # After calling there are variables created.
     ta()
     tb()

@@ -112,6 +112,9 @@ class AdamOptimizer(optimizer.Optimizer):
   def _get_beta_accumulators(self):
     return self._beta1_power, self._beta2_power
 
+  def _non_slot_variables(self):
+    return self._get_beta_accumulators()
+
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first
     # variable. Sort the var_list to make sure this device is consistent across

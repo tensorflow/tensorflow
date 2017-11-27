@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/summary_interface.h"
+#include "tensorflow/core/lib/db/sqlite.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -45,6 +49,32 @@ class CreateSummaryFileWriterOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryFileWriter").Device(DEVICE_CPU),
                         CreateSummaryFileWriterOp);
+
+class CreateSummaryDbWriterOp : public OpKernel {
+ public:
+  explicit CreateSummaryDbWriterOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* tmp;
+    OP_REQUIRES_OK(ctx, ctx->input("db_uri", &tmp));
+    const string db_uri = tmp->scalar<string>()();
+    OP_REQUIRES_OK(ctx, ctx->input("experiment_name", &tmp));
+    const string experiment_name = tmp->scalar<string>()();
+    OP_REQUIRES_OK(ctx, ctx->input("run_name", &tmp));
+    const string run_name = tmp->scalar<string>()();
+    OP_REQUIRES_OK(ctx, ctx->input("user_name", &tmp));
+    const string user_name = tmp->scalar<string>()();
+    SummaryWriterInterface* s;
+    auto db = Sqlite::Open(db_uri);
+    OP_REQUIRES_OK(ctx, db.status());
+    OP_REQUIRES_OK(
+        ctx, CreateSummaryDbWriter(std::move(db.ValueOrDie()), experiment_name,
+                                   run_name, user_name, ctx->env(), &s));
+    OP_REQUIRES_OK(ctx, CreateResource(ctx, HandleFromInput(ctx, 0), s));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("CreateSummaryDbWriter").Device(DEVICE_CPU),
+                        CreateSummaryDbWriterOp);
 
 class FlushSummaryWriterOp : public OpKernel {
  public:
@@ -81,8 +111,8 @@ class WriteSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
     OP_REQUIRES_OK(ctx, ctx->input("summary_metadata", &tmp));
@@ -91,12 +121,32 @@ class WriteSummaryOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
 
-    OP_REQUIRES_OK(ctx,
-                   s->WriteTensor(global_step, *t, tag, serialized_metadata));
+    OP_REQUIRES_OK(ctx, s->WriteTensor(step, *t, tag, serialized_metadata));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("WriteSummary").Device(DEVICE_CPU),
                         WriteSummaryOp);
+
+class ImportEventOp : public OpKernel {
+ public:
+  explicit ImportEventOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    SummaryWriterInterface* s;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
+    core::ScopedUnref unref(s);
+    const Tensor* t;
+    OP_REQUIRES_OK(ctx, ctx->input("event", &t));
+    std::unique_ptr<Event> event{new Event};
+    if (!ParseProtoUnlimited(event.get(), t->scalar<string>()())) {
+      ctx->CtxFailureWithWarning(
+          errors::DataLoss("Bad tf.Event binary proto tensor string"));
+      return;
+    }
+    OP_REQUIRES_OK(ctx, s->WriteEvent(std::move(event)));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("ImportEvent").Device(DEVICE_CPU), ImportEventOp);
 
 class WriteScalarSummaryOp : public OpKernel {
  public:
@@ -107,15 +157,15 @@ class WriteScalarSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("value", &t));
 
-    OP_REQUIRES_OK(ctx, s->WriteScalar(global_step, *t, tag));
+    OP_REQUIRES_OK(ctx, s->WriteScalar(step, *t, tag));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("WriteScalarSummary").Device(DEVICE_CPU),
@@ -130,15 +180,15 @@ class WriteHistogramSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("values", &t));
 
-    OP_REQUIRES_OK(ctx, s->WriteHistogram(global_step, *t, tag));
+    OP_REQUIRES_OK(ctx, s->WriteHistogram(step, *t, tag));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("WriteHistogramSummary").Device(DEVICE_CPU),
@@ -159,8 +209,8 @@ class WriteImageSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
     const Tensor* bad_color;
@@ -173,8 +223,7 @@ class WriteImageSummaryOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
 
-    OP_REQUIRES_OK(
-        ctx, s->WriteImage(global_step, *t, tag, max_images_, *bad_color));
+    OP_REQUIRES_OK(ctx, s->WriteImage(step, *t, tag, max_images_, *bad_color));
   }
 
  private:
@@ -196,8 +245,8 @@ class WriteAudioSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
     core::ScopedUnref unref(s);
     const Tensor* tmp;
-    OP_REQUIRES_OK(ctx, ctx->input("global_step", &tmp));
-    const int64 global_step = tmp->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     const string& tag = tmp->scalar<string>()();
     OP_REQUIRES_OK(ctx, ctx->input("sample_rate", &tmp));
@@ -206,8 +255,8 @@ class WriteAudioSummaryOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
 
-    OP_REQUIRES_OK(
-        ctx, s->WriteAudio(global_step, *t, tag, max_outputs_, sample_rate));
+    OP_REQUIRES_OK(ctx,
+                   s->WriteAudio(step, *t, tag, max_outputs_, sample_rate));
   }
 
  private:
@@ -217,5 +266,29 @@ class WriteAudioSummaryOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("WriteAudioSummary").Device(DEVICE_CPU),
                         WriteAudioSummaryOp);
+
+class WriteGraphSummaryOp : public OpKernel {
+ public:
+  explicit WriteGraphSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    SummaryWriterInterface* s;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
+    core::ScopedUnref unref(s);
+    const Tensor* t;
+    OP_REQUIRES_OK(ctx, ctx->input("step", &t));
+    const int64 step = t->scalar<int64>()();
+    OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
+    std::unique_ptr<GraphDef> graph{new GraphDef};
+    if (!ParseProtoUnlimited(graph.get(), t->scalar<string>()())) {
+      ctx->CtxFailureWithWarning(
+          errors::DataLoss("Bad tf.GraphDef binary proto tensor string"));
+      return;
+    }
+    OP_REQUIRES_OK(ctx, s->WriteGraph(step, std::move(graph)));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("WriteGraphSummary").Device(DEVICE_CPU),
+                        WriteGraphSummaryOp);
 
 }  // namespace tensorflow

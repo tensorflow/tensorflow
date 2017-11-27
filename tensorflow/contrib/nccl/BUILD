@@ -48,8 +48,8 @@ tf_cuda_cc_test(
     # Disabled on jenkins until errors finding nvmlShutdown are found.
     tags = [
         "manual",
+        "multi_gpu",
         "no_oss",
-        "noguitar",  # note: is run manually there
         "notap",
     ],
     deps = if_cuda(
@@ -79,6 +79,7 @@ tf_kernel_library(
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:proto_text",
+        "//tensorflow/core:stream_executor",
         "@nccl_archive//:nccl",
     ],
     alwayslink = 1,
@@ -114,7 +115,11 @@ tf_custom_op_py_library(
     deps = [
         ":nccl_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:device",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -133,8 +138,8 @@ cuda_py_test(
     # Disabled on jenkins until errors finding nvmlShutdown are found.
     tags = [
         "manual",
+        "multi_gpu",
         "no_oss",
-        "noguitar",  # note: is run manually there
         "notap",
     ],
 )

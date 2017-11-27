@@ -208,6 +208,7 @@ class _VariableStore(object):
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
     self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
     self.variable_scopes_count = {}  # Count re-used variable scopes.
+    self._store_eager_variables = False
 
   def open_variable_scope(self, scope_name):
     if scope_name in self.variable_scopes_count:
@@ -309,13 +310,21 @@ class _VariableStore(object):
       ValueError: when creating a new variable and shape is not declared,
         when reusing a variable and specifying a conflicting shape,
         or when violating reuse during variable creation.
+      RuntimeError: when eager execution is enabled and not called from an
+        EagerVariableStore.
     """
     if custom_getter is not None and not callable(custom_getter):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
     if context.in_eager_mode():
-      reuse = False
+      if not self._store_eager_variables and reuse:
+        raise RuntimeError(
+            "When eager execution is enabled variable reuse is only supported"
+            " when an EagerVariableStore is active. See the documentation on"
+            " EagerVariableStore for example usage.")
+      if self._store_eager_variables:
+        reuse = AUTO_REUSE
       use_resource = True
 
     # If a *_ref type is passed in an error would be triggered further down the
@@ -795,7 +804,7 @@ class _VariableStore(object):
           dtype=variable_dtype,
           validate_shape=validate_shape,
           constraint=constraint)
-    if context.in_graph_mode():
+    if context.in_graph_mode() or self._store_eager_variables:
       # In eager mode we do not want to keep default references to Variable
       # objects as this will prevent their memory from being released.
       self._vars[name] = v
@@ -1175,6 +1184,54 @@ def _get_default_variable_store():
   store = _VariableStore()
   ops.add_to_collection(_VARSTORE_KEY, store)
   return store
+
+
+@tf_contextlib.contextmanager
+def with_variable_store(store):
+  store_collection = ops.get_collection_ref(_VARSTORE_KEY)
+  old = list(store_collection)
+  store_collection[:] = [store]
+  try:
+    yield
+  finally:
+    store_collection[:] = old
+
+
+class EagerVariableStore(object):
+  """Wrapper allowing functional layers to be used with eager execution.
+
+  When eager execution is enabled Variables get deleted when they go out of
+  scope, and are not stored in global collections by default. A lot of code
+  (mostly the functional layers in tf.layers) assumes that variables are kept in
+  a global list.
+
+  EagerVariableStore can be used in conjunction with this code to make it
+  eager-friendly. For example, to create a dense layer, use:
+
+  ```
+    container = tfe.EagerVariableStore()
+    for input in dataset_iterator:
+      with container.as_default():
+        x = tf.layers.dense(input, name="l1")
+    print(container.variables)  # Should print the variables used in the layer.
+  ```
+  """
+
+  def __init__(self):
+    self._store = _VariableStore()
+    self._store._store_eager_variables = True  # pylint: disable=protected-access
+
+  def as_default(self):
+    return with_variable_store(self._store)
+
+  def variables(self):
+    return sorted(self._store._vars.values(), key=lambda x: x.name)  # pylint: disable=protected-access
+
+  def trainable_variables(self):
+    # pylint: disable=protected-access
+    return sorted([x for x in self._store._vars.values() if x._trainable],
+                  key=lambda x: x.name)
+    # pylint: enable=protected-access
 
 
 def get_variable(name,
@@ -1634,7 +1691,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
   v1 = foo()  # Creates v.
   v2 = foo()  # Gets the same, existing v.
   assert v1 == v2
-
+  ```
 
   Basic example of sharing a variable with reuse=True:
 
@@ -1771,7 +1828,13 @@ class variable_scope(object):  # pylint: disable=invalid-name
     self._current_name_scope = None
 
   def __enter__(self):
-    if self._in_graph_mode:
+    # If the default graph is building a function, then we should not replace it
+    # with the cached graph.
+    if ops.get_default_graph().building_function:
+      self._building_function = True
+    else:
+      self._building_function = False
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager = self._graph.as_default()
       self._graph_context_manager.__enter__()
     if self._cached_pure_variable_scope is not None:
@@ -1850,7 +1913,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
         type_arg, value_arg, traceback_arg)
     if self._current_name_scope:
       self._current_name_scope.__exit__(type_arg, value_arg, traceback_arg)
-    if self._in_graph_mode:
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager.__exit__(type_arg, value_arg, traceback_arg)
 
 
@@ -1922,8 +1985,10 @@ def variable(initial_value=None,
              validate_shape=True,
              caching_device=None,
              name=None,
-             dtype=None):
-  use_resource = get_variable_scope().use_resource
+             dtype=None,
+             use_resource=None):
+  if use_resource is None:
+    use_resource = get_variable_scope().use_resource
   if use_resource or (use_resource is None and context.in_eager_mode()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,

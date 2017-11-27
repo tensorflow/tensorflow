@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import variables
@@ -185,6 +186,9 @@ class GatherNdTest(test.TestCase):
     self.assertAllEqual(expected.reshape([10, 10, 20]), gather_nd_val)
     self.assertEqual([10, 10, 20], gather_nd_t.get_shape())
 
+  def assertIndexedSlices(self, t):
+    self.assertIsInstance(t, ops.IndexedSlices)
+
   def testUnknownIndices(self):
     params = constant_op.constant([[0, 1, 2]])
     indices = array_ops.placeholder(dtypes.int32)
@@ -233,7 +237,8 @@ class GatherNdTest(test.TestCase):
     grads = gradients_impl.gradients([outputs], [inputs], [grad_vals])[0]
     expected_grads = np.array([[3, 4], [1, 2]], dtype=np.float64)
     with self.test_session(use_gpu=True):
-      self.assertAllEqual(expected_grads, grads.eval())
+      self.assertIndexedSlices(grads)
+      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads).eval())
 
   def testGradientsRank3Elements(self):
     indices = constant_op.constant(
@@ -284,7 +289,8 @@ class GatherNdTest(test.TestCase):
          [0, 0, 0, 0, 0, 0, 0, 0, 0], [3, 3, 3, 3, 3, 3, 3, 3, 3]],
         dtype=np.float64)
     with self.test_session(use_gpu=True):
-      self.assertAllEqual(expected_grads, grads.eval())
+      self.assertIndexedSlices(grads)
+      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads).eval())
 
 
 class GatherNdOpBenchmark(test.Benchmark):

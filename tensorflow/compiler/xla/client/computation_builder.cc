@@ -153,6 +153,7 @@ bool ComputationBuilder::MakeWindow(
     } else {
       dim->set_window_dilation(1);
     }
+    dim->set_window_reversal(false);
   }
   return true;
 }
@@ -1163,6 +1164,34 @@ ComputationDataHandle ComputationBuilder::ConvertElementType(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::BitcastConvertType(
+    const ComputationDataHandle& operand, PrimitiveType new_element_type) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  StatusOr<std::unique_ptr<Shape>> shape_status = GetShape(operand);
+  if (!shape_status.ok()) {
+    first_error_ = shape_status.status();
+    return ComputationDataHandle();
+  }
+  std::unique_ptr<Shape> original = shape_status.ConsumeValueOrDie();
+
+  ConvertRequest request;
+  *request.mutable_operand() = operand;
+  request.set_new_element_type(new_element_type);
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_bitcast_convert_request() = request;
+  AddCommonFieldsToOpRequest(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making bitcast convert request";
+  Status s = client_->stub()->Op(&op_request, &response);
+
+  return ParseOpResponse(s, &response);
+}
+
 ComputationDataHandle ComputationBuilder::SquareF32(
     const ComputationDataHandle& operand) {
   return BinaryOp(BINOP_POW, operand, ConstantR0<float>(2.0),
@@ -1309,7 +1338,7 @@ Status ComputationBuilder::SetReturnValue(
 }
 
 StatusOr<bool> ComputationBuilder::IsConstant(
-    const ComputationDataHandle& operand) {
+    const ComputationDataHandle& operand, int64 num_parameters) {
   if (!first_error_.ok()) {
     return first_error_;
   }
@@ -1317,6 +1346,7 @@ StatusOr<bool> ComputationBuilder::IsConstant(
   IsConstantRequest request;
   *request.mutable_computation() = computation_.handle();
   *request.mutable_operand() = operand;
+  request.set_num_parameters(num_parameters);
   IsConstantResponse response;
 
   VLOG(2) << "making IsConstant request";
@@ -1330,7 +1360,8 @@ StatusOr<bool> ComputationBuilder::IsConstant(
 }
 
 StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
-    const ComputationDataHandle& operand, const Layout* output_layout) {
+    const ComputationDataHandle& operand, const Layout* output_layout,
+    tensorflow::gtl::ArraySlice<Literal> parameters) {
   if (!first_error_.ok()) {
     return first_error_;
   }
@@ -1340,6 +1371,9 @@ StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
   *request.mutable_operand() = operand;
   if (output_layout != nullptr) {
     *request.mutable_output_layout() = *output_layout;
+  }
+  for (const auto& param : parameters) {
+    *request.add_parameters() = param.ToProto();
   }
 
   ComputeConstantResponse response;
@@ -1794,14 +1828,9 @@ StatusOr<Computation> ComputationBuilder::Build() {
 
 void ComputationBuilder::AddCommonFieldsToOpRequest(OpRequest* request) const {
   *request->mutable_metadata() = metadata_;
-  *request->mutable_device_assignment() = device_assignment_;
-}
-
-void ComputationBuilder::ClearDeviceAssignment() { device_assignment_.Clear(); }
-
-void ComputationBuilder::SetDeviceAssignment(
-    const OpDeviceAssignment& assignment) {
-  device_assignment_ = assignment;
+  if (sharding_) {
+    *request->mutable_sharding() = *sharding_;
+  }
 }
 
 /* static */ ConvolutionDimensionNumbers

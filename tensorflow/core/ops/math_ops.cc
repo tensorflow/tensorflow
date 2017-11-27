@@ -578,7 +578,6 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
   Input("x: T").Input("y: T").Output("z: T").Attr( \
       "T: {half, float, double, int32, int64, complex64, complex128}")
 
-// TODO(mrry): Restore `SetIsCommutative()` for non-string types.
 REGISTER_OP("Add")
     .Input("x: T")
     .Input("y: T")
@@ -587,6 +586,25 @@ REGISTER_OP("Add")
         "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
         "complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Returns x + y element-wise.
+
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+)doc");
+
+// TODO(rmlarsen): Add a Python wrapper that swiches non-string instances to
+// use AddV2 (b/68646025).
+REGISTER_OP("AddV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr(
+        "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
+        "complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetIsAggregate()
+    .SetIsCommutative()
     .Doc(R"doc(
 Returns x + y element-wise.
 
@@ -1811,6 +1829,8 @@ need not be sorted and need not cover all values in the full
 range of valid values.
 
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+If the given segment ID `i` is negative, the value is dropped and will not be
+added to the sum of the segment.
 
 `num_segments` should equal the number of distinct segment IDs.
 
@@ -2311,11 +2331,25 @@ REGISTER_OP("Cross")
     .Input("b: T")
     .Output("product: T")
     .Attr("T: realnumbertype")
-    // TODO(cwhipkey): implement these shape inference constraints here:
-    // * Both inputs have the same shape.
-    // * Input rank >= 1.
-    // * input_shape[-1] == 3.
-    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle a_shape;
+      ShapeHandle b_shape;
+      // * Input rank >= 1.
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &a_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &b_shape));
+
+      // * Both inputs have the same shape.
+      TF_RETURN_IF_ERROR(c->Merge(a_shape, b_shape, &a_shape));
+
+      // * input_shape[-1] == 3.
+      if (c->RankKnown(a_shape)) {
+        int rank = c->Rank(a_shape);
+        auto dim = c->Dim(a_shape, rank - 1);
+        TF_RETURN_IF_ERROR(c->WithValue(dim, 3, &dim));
+      }
+      c->set_output(0, a_shape);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Compute the pairwise cross product.
 

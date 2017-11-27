@@ -26,6 +26,28 @@ from tensorflow.python.training import server_lib
 mock = test.mock
 
 
+class MockRequestClass(object):
+
+  def __init__(self, name, tpu_map):
+    self._name = name
+    self._tpu_map = tpu_map
+
+  def execute(self):
+    if self._name in self._tpu_map:
+      return self._tpu_map[self._name]
+    else:
+      raise KeyError('Resource %s was not found' % self._name)
+
+
+class MockNodeClass(object):
+
+  def __init__(self, tpu_map):
+    self._tpu_map = tpu_map
+
+  def get(self, name):
+    return MockRequestClass(name, self._tpu_map)
+
+
 class TPUClusterResolverTest(test.TestCase):
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
@@ -56,11 +78,15 @@ class TPUClusterResolverTest(test.TestCase):
     if tpu_map is None:
       tpu_map = {}
 
-    def get_side_effect(name):
-      return tpu_map[name]
+    mock_locations = mock.MagicMock()
+    mock_locations.nodes.return_value = MockNodeClass(tpu_map)
+
+    mock_project = mock.MagicMock()
+    mock_project.locations.return_value = mock_locations
 
     mock_client = mock.MagicMock()
-    mock_client.projects.locations.nodes.get.side_effect = get_side_effect
+    mock_client.projects.return_value = mock_project
+
     return mock_client
 
   def testSimpleSuccessfulRetrieval(self):
@@ -109,3 +135,38 @@ class TPUClusterResolverTest(test.TestCase):
                              tasks { key: 1 value: '10.1.2.3:8470' } }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+
+  def testGetMasterMultipleEntries(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470'
+        },
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-2': {
+            'ipAddress': '10.4.5.6',
+            'port': '8470'
+        }
+    }
+
+    tpu_cluster_resolver = TPUClusterResolver(
+        project='test-project',
+        zone='us-central1-c',
+        tpu_names=['test-tpu-2', 'test-tpu-1'],
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertEqual('grpc://10.4.5.6:8470', tpu_cluster_resolver.get_master())
+
+  def testGetMasterNoEntries(self):
+    tpu_map = {}
+
+    tpu_cluster_resolver = TPUClusterResolver(
+        project='test-project',
+        zone='us-central1-c',
+        tpu_names=[],
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+    with self.assertRaises(ValueError):
+      tpu_cluster_resolver.get_master()
+
+if __name__ == '__main__':
+  test.main()

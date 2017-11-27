@@ -11,6 +11,7 @@
 # NEED OWNER: tensorflow/contrib/avro/*
 #tensorflow/contrib/batching/* @alextp @chrisolston
 #tensorflow/contrib/bayesflow/* @ebrevdo @rsepassi @jvdillon
+#tensorflow/contrib/boosted_trees/* @sshrdp @yk5 @nataliaponomareva
 #tensorflow/contrib/cmake/* @mrry @benoitsteiner
 #tensorflow/contrib/copy_graph/* @tucker @poxvoculi
 #tensorflow/contrib/crf/* @kentonl

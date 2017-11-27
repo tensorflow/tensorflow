@@ -24,6 +24,7 @@ from tensorflow.contrib.kfac.python.ops import loss_functions
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -95,6 +96,22 @@ class CategoricalLogitsNegativeLogProbLossTest(test.TestCase):
       # Simply ensure this doesn't crash. As the output is random, it's
       # difficult to say if the output is correct or not...
       neg_log_prob = sess.run(neg_log_prob)
+
+  def testMultiMinibatchRegistration(self):
+    """Ensure this loss function supports registering multiple minibatches."""
+    with ops.Graph().as_default():
+      tower_logits = []
+      loss = None
+      num_towers = 5
+      for _ in range(num_towers):
+        logits = random_ops.random_uniform(shape=[2, 3])
+        tower_logits.append(logits)
+        if loss is None:
+          loss = loss_functions.CategoricalLogitsNegativeLogProbLoss(logits)
+        else:
+          loss.register_additional_minibatch(logits)
+      self.assertListEqual(loss.input_minibatches, tower_logits)
+      self.assertEqual(loss.num_registered_minibatches, num_towers)
 
 
 if __name__ == "__main__":

@@ -25,21 +25,33 @@ namespace {
 class ExampleTest : public ::testing::Test {};
 
 TEST_F(ExampleTest, TestSparseMatrix) {
-  // Create the following matrix:
-  // row id |   | 0.4 |  0.3
-  // 0      | 1 |     |   2
-  // 1      | 3 |  1  |   5
-  // 2      |   |     |  -4
-  // 3      |   |     |
-  SparseMatrix<float> matrix;
-  matrix.addElement(0, 1, 0.4f);
-  matrix.addElement(0, 2, 0.3f);
-  matrix.addElement(1, 0, 1.f);
-  matrix.addElement(1, 2, 2.f);
-  matrix.addElement(2, 0, 3.f);
-  matrix.addElement(2, 1, 1.f);
-  matrix.addElement(2, 2, 5.f);
-  matrix.addElement(3, 2, -4.f);
+  // Create the following matrix (FC is feature column):
+  // FC | f0 | f1  | f2
+  // multidimensional
+  // 0  |    | 0.4 |  0.3
+  // 1  | 1  |     |   2
+  // 2  | 3  |  1  |   5
+  // 3  |    |     |
+  // one dimensional columns
+  // 4  |     -4
+  // 5  |
+  std::vector<SparseFloatFeatureColumn<float>> matrix;
+  matrix.resize(6);
+  matrix[0].SetDimension(3);
+  matrix[1].SetDimension(3);
+  matrix[2].SetDimension(3);
+  matrix[3].SetDimension(3);
+  matrix[4].SetDimension(1);
+  matrix[5].SetDimension(1);
+
+  matrix[0].Add(1, 0.4f);
+  matrix[0].Add(2, 0.3f);
+  matrix[1].Add(0, 1.f);
+  matrix[1].Add(2, 2.f);
+  matrix[2].Add(0, 3.f);
+  matrix[2].Add(1, 1.f);
+  matrix[2].Add(2, 5.f);
+  matrix[4].Add(0, -4.f);
 
   // Row 0.
   EXPECT_FALSE(matrix[0][0].has_value());
@@ -66,13 +78,14 @@ TEST_F(ExampleTest, TestSparseMatrix) {
   // Row 3.
   EXPECT_FALSE(matrix[3][0].has_value());
   EXPECT_FALSE(matrix[3][1].has_value());
-  EXPECT_TRUE(matrix[3][2].has_value());
-  EXPECT_EQ(-4.f, matrix[3][2].get_value());
+  EXPECT_FALSE(matrix[3][2].has_value());
 
   // Row 4.
-  EXPECT_FALSE(matrix[4][0].has_value());
-  EXPECT_FALSE(matrix[4][1].has_value());
-  EXPECT_FALSE(matrix[4][2].has_value());
+  EXPECT_TRUE(matrix[4][0].has_value());
+  EXPECT_EQ(-4.f, matrix[4][0].get_value());
+
+  // Row 5.
+  EXPECT_FALSE(matrix[5][0].has_value());
 }
 
 }  // namespace

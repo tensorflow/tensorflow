@@ -173,6 +173,13 @@ class AdamOptimizerTest(test.TestCase):
 
         opt = adam.AdamOptimizer()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        opt_variables = opt.variables()
+        self.assertIn(opt._beta1_power, opt_variables)
+        self.assertIn(opt._beta2_power, opt_variables)
+
+        with ops.Graph().as_default():
+          # Shouldn't return non-slot variables from other graphs.
+          self.assertEqual(0, len(opt.variables()))
 
         if context.in_graph_mode():
           self.evaluate(variables.global_variables_initializer())

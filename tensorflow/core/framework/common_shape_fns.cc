@@ -1232,6 +1232,8 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
         dims.push_back(dim_y);
       } else if (c->Value(dim_y) == 1) {
         dims.push_back(dim_x);
+      } else if (dim_y.SameHandle(dim_x)) {
+        dims.push_back(dim_x);
       } else {
         dims.push_back(c->UnknownDim());
       }

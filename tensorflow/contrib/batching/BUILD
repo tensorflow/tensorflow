@@ -82,6 +82,7 @@ cc_library(
 tf_cc_test(
     name = "adaptive_shared_batch_scheduler_test",
     srcs = ["adaptive_shared_batch_scheduler_test.cc"],
+    tags = ["manual"],  # b/69013768
     deps = [
         ":adaptive_shared_batch_scheduler",
         "//tensorflow/contrib/batching/test_util:fake_clock_env",
@@ -177,14 +178,13 @@ tf_custom_op_py_library(
     deps = [
         ":batch_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:util",
     ],
 )
 

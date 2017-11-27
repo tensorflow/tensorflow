@@ -262,6 +262,7 @@ _allowed_symbols.extend([
     'VERSION',
     'GIT_VERSION',
     'COMPILER_VERSION',
+    'CXX11_ABI_FLAG',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
@@ -280,6 +281,7 @@ _exported_dunders = set([
     '__version__',
     '__git_version__',
     '__compiler_version__',
+    '__cxx11_abi_flag__',
 ])
 
 # Expose symbols minus dunders, unless they are whitelisted above.

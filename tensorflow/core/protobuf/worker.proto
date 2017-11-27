@@ -66,6 +66,22 @@ message CreateWorkerSessionResponse {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+// DeleteSession method request/response messages
+//
+// Deletes all worker-side state associated with the given session handle.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message DeleteWorkerSessionRequest {
+  // Sessions are identified by a given handle.
+  string session_handle = 1;
+}
+
+message DeleteWorkerSessionResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // RegisterGraph method request/response messages
 //
 // For each session, after the master placed every node on a device,
@@ -169,6 +185,7 @@ message ExecutorOpts {
   bool record_costs = 1;
   bool record_timeline = 3;
   bool record_partition_graphs = 4;
+  bool report_tensor_allocations_upon_oom = 5;
 };
 
 message RunGraphRequest {

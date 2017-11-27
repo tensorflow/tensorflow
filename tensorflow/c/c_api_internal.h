@@ -18,7 +18,9 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
+#include <list>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -124,6 +126,20 @@ struct TF_Session {
 
 struct TF_ImportGraphDefOptions {
   tensorflow::ImportGraphDefOptions opts;
+
+  // Backing memory for TensorId fields in opts.
+  // TODO(skyewm): it'd be better if ImportGraphDefOptions owned this.
+  std::list<tensorflow::string> tensor_id_data;
+};
+
+struct TF_ImportGraphDefResults {
+  std::vector<TF_Output> return_tensors;
+  std::vector<TF_Operation*> return_nodes;
+  std::vector<const char*> unused_key_names;
+  std::vector<int> unused_key_indexes;
+
+  // Backing memory for unused_key_names values.
+  std::list<tensorflow::string> unused_key_names_data;
 };
 
 struct TF_DeviceList {

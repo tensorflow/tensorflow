@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.tfprof;
 
 import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/step_stats.proto";
 
 // It specifies the Python callstack that creates an op.
 message CodeDef {
@@ -89,6 +90,10 @@ message ProfileNode {
   map<int64, ExecProfile> execs = 12;
 }
 
+message Allocation {
+  repeated AllocationRecord allocation_records = 1;
+}
+
 message ExecProfile {
   // Can be larger than 1 if run multiple times in loop.
   int64 run_count = 1;
@@ -106,6 +111,8 @@ message ExecProfile {
   map<string, ExecTime> cpu_execs = 5;
 
   map<int32, Memory> output_memory = 17;
+
+  repeated Allocation allocations = 18;
 
   repeated string devices = 6;
 

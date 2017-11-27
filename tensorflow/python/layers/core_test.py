@@ -23,6 +23,7 @@ import collections
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -258,6 +259,23 @@ class DenseTest(test.TestCase):
       self.assertAllClose(weights['scope/dense/bias'].read_value().eval(),
                           np.zeros((2)))
 
+  def testEagerExecution(self):
+    with context.eager_mode():
+      container = variable_scope.EagerVariableStore()
+      x = constant_op.constant([[2.0]])
+      with container.as_default():
+        y = core_layers.dense(
+            x, 1, name='my_dense',
+            kernel_initializer=init_ops.ones_initializer())
+      self.assertAllEqual(y, [[2.0]])
+      self.assertEqual(len(container.variables()), 2)
+      # Recreate the layer to test reuse.
+      with container.as_default():
+        core_layers.dense(
+            x, 1, name='my_dense',
+            kernel_initializer=init_ops.ones_initializer())
+      self.assertEqual(len(container.variables()), 2)
+
   def testFunctionalDenseWithCustomGetter(self):
     called = [0]
 
@@ -369,6 +387,16 @@ class DropoutTest(test.TestCase):
       self.assertAllClose(np.ones((5, 5)), np_output)
 
   @test_util.run_in_graph_and_eager_modes()
+  def testDynamicNoiseShape(self):
+    inputs = array_ops.ones((5, 3, 2))
+    noise_shape = [None, 1, None]
+    dp = core_layers.Dropout(0.5, noise_shape=noise_shape, seed=1)
+    dropped = dp.apply(inputs, training=True)
+    self.evaluate(variables.global_variables_initializer())
+    np_output = self.evaluate(dropped)
+    self.assertAlmostEqual(0., np_output.min())
+    self.assertAllClose(np_output[:, 0, :], np_output[:, 1, :])
+
   def testCustomNoiseShape(self):
     inputs = array_ops.ones((5, 3, 2))
     noise_shape = [5, 1, 2]

@@ -33,9 +33,10 @@ class DecodeBmpOp : public OpKernel {
  public:
   explicit DecodeBmpOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
-    OP_REQUIRES(
-        context, channels_ == 0 || channels_ == 3 || channels_ == 4,
-        errors::InvalidArgument("channels must be 0, 3 or 4, got ", channels_));
+    OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3 ||
+                             channels_ == 4,
+                errors::InvalidArgument("channels must be 0, 1, 3 or 4, got ",
+                                        channels_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -66,11 +67,11 @@ class DecodeBmpOp : public OpKernel {
       channels_ = bpp / 8;
     }
 
-    // Current implementation only supports 3 or 4 channel
+    // Current implementation only supports 1, 3 or 4 channel
     // bitmaps.
-    OP_REQUIRES(context, (channels_ == 3 || channels_ == 4),
+    OP_REQUIRES(context, (channels_ == 1 || channels_ == 3 || channels_ == 4),
                 errors::InvalidArgument(
-                    "Number of channels must be 3 or 4, was ", channels_));
+                    "Number of channels must be 1, 3 or 4, was ", channels_));
 
     // if height is negative, data layout is top down
     // otherwise, it's bottom up
@@ -117,6 +118,9 @@ uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
       dst_pos = (i * width + j) * channels;
 
       switch (channels) {
+        case 1:
+          output[dst_pos] = input[src_pos];
+          break;
         case 3:
           // BGR -> RGB
           output[dst_pos] = input[src_pos + 2];
