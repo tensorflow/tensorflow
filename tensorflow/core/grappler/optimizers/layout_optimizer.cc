@@ -62,7 +62,9 @@ std::set<string> GetOpsFormatSupported() {
       "FusedBatchNormGrad",
       "FusedConv2DBiasActivation",
       "MaxPool",
-      "MaxPoolGrad"};
+      "MaxPoolGrad",
+      "SpaceToDepth",
+      "DepthToSpace"};
   return ops_format_supported;
 }
 
