@@ -94,21 +94,27 @@ def inputs(train, batch_size, num_epochs):
       in the range [-0.5, 0.5].
     * labels is an int32 tensor with shape [batch_size] with the true label,
       a number in the range [0, mnist.NUM_CLASSES).
-    Note that an tf.train.QueueRunner is added to the graph, which
-    must be run using e.g. tf.train.start_queue_runners().
+
+    This function creates a one_shot_iterator, meaning that it will only iterate
+    over the dataset once. On the other hand there is no special initialization
+    required.
   """
   if not num_epochs: num_epochs = None
   filename = os.path.join(FLAGS.train_dir,
                           TRAIN_FILE if train else VALIDATION_FILE)
 
   with tf.name_scope('input'):
-    # create the dataset
+    # TFRecordDataset opens a protobuf and reads entries line by line
+    # could also be [list, of, filenames]
     dataset = tf.data.TFRecordDataset(filename)
-    # iterate this dataset num_epoch times
     dataset = dataset.repeat(num_epochs)
+
+    # map takes a python function and applies it to every sample
     dataset = dataset.map(decode)
     dataset = dataset.map(augment)
     dataset = dataset.map(normalize)
+
+    #the parameter is the queue size
     dataset = dataset.shuffle(1000 + 3 * batch_size)
     dataset = dataset.batch(batch_size)
 
