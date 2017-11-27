@@ -7,6 +7,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/aot/...",
         "//tensorflow/compiler/jit/...",
+        "//tensorflow/compiler/plugin/...",
         "//tensorflow/compiler/tests/...",
         "//tensorflow/compiler/tf2xla/...",
     ],
