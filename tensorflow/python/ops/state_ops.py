@@ -36,6 +36,7 @@
 @@global_variables_initializer
 @@glorot_normal_initializer
 @@glorot_uniform_initializer
+@@identity_initializer
 @@import_meta_graph
 @@initialize_all_tables
 @@initialize_all_variables
