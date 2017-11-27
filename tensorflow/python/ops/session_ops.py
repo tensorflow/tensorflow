@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor Handle Operations. See the @{python/session_ops} guide.
+"""Tensor Handle Operations. See the @{$python/session_ops} guide.
 
 @@get_session_handle
 @@get_session_handle_v2
@@ -74,7 +74,7 @@ class TensorHandle(object):
   def _get_resource_handle(self):
     """The ResourceHandle representation of this handle."""
     if not self._resource_handle:
-      self._resource_handle = resource_handle_pb2.ResourceHandle()
+      self._resource_handle = resource_handle_pb2.ResourceHandleProto()
       self._resource_handle.device = self._handle.split(";")[-1]
       self._resource_handle.container = (
           pywrap_tensorflow_internal.TENSOR_HANDLE_KEY)

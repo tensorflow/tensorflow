@@ -43,14 +43,12 @@ namespace tensorflow {
 
 class XlaDevice : public LocalDevice {
  public:
-  // Wrapper class to store metadata about the XlaDevice in the
-  // resource manager, where it can be looked up e.g., when lazily
-  // creating the XlaCompilationCache device.
-  class Metadata : public ResourceBase {
+  // Wrapper class to store metadata about the XlaDevice, where it can be
+  // retrieved e.g., when lazily creating the XlaCompilationCache device.
+  class Metadata {
    public:
     Metadata(int device_ordinal, perftools::gputools::Platform* platform,
              const DeviceType& device_type);
-    ~Metadata() override;
 
     // The index of the device on this host.
     int device_ordinal() const;
@@ -59,17 +57,16 @@ class XlaDevice : public LocalDevice {
     xla::LocalClient* client() const;
     const DeviceType& jit_device_type() const;
 
-    string DebugString() override;
-
    private:
     const int device_ordinal_;
     const DeviceType device_type_;
     perftools::gputools::Platform* platform_;  // Not owned.
+
+    TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
   };
 
-  // Sets `*metadata` to the XlaDevice Metadata in the resource manager of
-  // `ctx`.
-  static Status GetMetadata(OpKernelContext* ctx, Metadata** metadata);
+  // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
+  static Status GetMetadata(OpKernelContext* ctx, const Metadata** metadata);
 
   // Factory function. 'platform_name' is the name of the XLA platform.
   // 'device_name' is the name of the Tensorflow device to create.
@@ -77,12 +74,12 @@ class XlaDevice : public LocalDevice {
   static Status Create(const string& platform_name, const string& device_name,
                        int device_ordinal, const string& jit_device_name,
                        const SessionOptions& options, const string& name_prefix,
+                       bool register_device_for_compilation,
                        std::unique_ptr<XlaDevice>* device);
 
   XlaDevice(const SessionOptions& options, const DeviceAttributes& attrs,
             int device_ordinal, const DeviceType& jit_device_name,
-            ::perftools::gputools::Platform* platform,
-            Allocator* xla_allocator);
+            ::perftools::gputools::Platform* platform);
   ~XlaDevice() override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
@@ -99,14 +96,23 @@ class XlaDevice : public LocalDevice {
                              Tensor* tensor) override;
 
   xla::LocalClient* client() const;
+  xla::StatusOr<::perftools::gputools::Stream*> GetStream();
 
  private:
+  // The metadata of this XlaDevice.
+  const Metadata xla_metadata_;
   // Which hardware device in the client's platform this XlaDevice controls.
   const int device_ordinal_;
   // The name of the device that is used to compile Ops for this XlaDevice.
   const DeviceType& jit_device_name_;
+  // Memory allocator associated with this device.
   Allocator* xla_allocator_;                   // Not owned.
   ::perftools::gputools::Platform* platform_;  // Not owned.
+  // Stream associated with this device. Operations enqueued on this
+  // stream are executed on the device. Operations include data
+  // copying back and forth between CPU and the device, and
+  // computations enqueued by XLA.
+  xla::Backend::StreamPtr stream_;
 };
 
 // Builds dummy OpKernel registrations on 'device' for the JIT operators

@@ -1,0 +1,93 @@
+path: "tensorflow.profiler.ProfileOptionBuilder"
+tf_class {
+  is_instance: "<class \'tensorflow.python.profiler.option_builder.ProfileOptionBuilder\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "account_displayed_op_only"
+    argspec: "args=[\'self\', \'is_true\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "float_operation"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "order_by"
+    argspec: "args=[\'self\', \'attribute\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "select"
+    argspec: "args=[\'self\', \'attributes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "time_and_memory"
+    argspec: "args=[\'min_micros\', \'min_bytes\', \'min_accelerator_micros\', \'min_cpu_micros\', \'min_peak_bytes\', \'min_residual_bytes\', \'min_output_bytes\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'0\', \'0\', \'0\', \'0\', \'0\'], "
+  }
+  member_method {
+    name: "trainable_variables_parameter"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_accounted_types"
+    argspec: "args=[\'self\', \'account_type_regexes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_empty_output"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_file_output"
+    argspec: "args=[\'self\', \'outfile\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_max_depth"
+    argspec: "args=[\'self\', \'max_depth\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_min_execution_time"
+    argspec: "args=[\'self\', \'min_micros\', \'min_accelerator_micros\', \'min_cpu_micros\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\'], "
+  }
+  member_method {
+    name: "with_min_float_operations"
+    argspec: "args=[\'self\', \'min_float_ops\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_min_memory"
+    argspec: "args=[\'self\', \'min_bytes\', \'min_peak_bytes\', \'min_residual_bytes\', \'min_output_bytes\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'0\'], "
+  }
+  member_method {
+    name: "with_min_occurrence"
+    argspec: "args=[\'self\', \'min_occurrence\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_min_parameters"
+    argspec: "args=[\'self\', \'min_params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_node_names"
+    argspec: "args=[\'self\', \'start_name_regexes\', \'show_name_regexes\', \'hide_name_regexes\', \'trim_name_regexes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "with_pprof_output"
+    argspec: "args=[\'self\', \'pprof_file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_stdout_output"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_step"
+    argspec: "args=[\'self\', \'step\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_timeline_output"
+    argspec: "args=[\'self\', \'timeline_file\'], varargs=None, keywords=None, defaults=None"
+  }
+}

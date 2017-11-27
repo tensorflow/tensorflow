@@ -109,7 +109,8 @@ def run_and_gather_logs(name, test_name, test_args,
   Returns:
     A tuple (test_results, mangled_test_name), where
     test_results: A test_log_pb2.TestResults proto
-    mangled_test_name: A string, the mangled test name.
+    test_adjusted_name: Unique benchmark name that consists of
+      benchmark name optionally followed by GPU type.
 
   Raises:
     ValueError: If the test_name is not a valid target.
@@ -131,8 +132,18 @@ def run_and_gather_logs(name, test_name, test_args,
     # Hopefully running in sandboxed mode
     test_executable = os.path.join(".", test_executable)
 
+  test_adjusted_name = name
+  gpu_config = gpu_info_lib.gather_gpu_devices()
+  if gpu_config:
+    gpu_name = gpu_config[0].model
+    gpu_short_name_match = re.search(r"Tesla (K40|K80|P100)", gpu_name)
+    if gpu_short_name_match:
+      gpu_short_name = gpu_short_name_match.group(0)
+      test_adjusted_name = name + "|" + gpu_short_name.replace(" ", "_")
+
   temp_directory = tempfile.mkdtemp(prefix="run_and_gather_logs")
-  mangled_test_name = name.strip("/").replace("/", "_").replace(":", "_")
+  mangled_test_name = (test_adjusted_name.strip("/")
+                       .replace("|", "_").replace("/", "_").replace(":", "_"))
   test_file_prefix = os.path.join(temp_directory, mangled_test_name)
   test_file_prefix = "%s." % test_file_prefix
 
@@ -151,15 +162,6 @@ def run_and_gather_logs(name, test_name, test_args,
     if not log_files:
       raise MissingLogsError("No log files found at %s." % test_file_prefix)
 
-    test_adjusted_name = name
-    gpu_config = gpu_info_lib.gather_gpu_devices()
-    if gpu_config:
-      gpu_name = gpu_config[0].model
-      gpu_short_name_match = re.search(r"Tesla [KP][4,8]0", gpu_name)
-      if gpu_short_name_match:
-        gpu_short_name = gpu_short_name_match.group(0)
-        test_adjusted_name = name + "|" + gpu_short_name.replace(" ", "_")
-
     return (process_test_logs(
         test_adjusted_name,
         test_name=test_name,
@@ -167,7 +169,7 @@ def run_and_gather_logs(name, test_name, test_args,
         benchmark_type=benchmark_type,
         start_time=int(start_time),
         run_time=run_time,
-        log_files=log_files), mangled_test_name)
+        log_files=log_files), test_adjusted_name)
 
   finally:
     try:

@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -176,16 +179,6 @@ TEST(TFCompileTest, Gather) {
       EXPECT_EQ(gather_const.result0_data()[i], results[i]);
     }
     EXPECT_EQ(gather_const.result0_data(), gather.results()[0]);
-  }
-
-  // Bad indices returns an error.
-  {
-    const float params[4] = {1, 2, 3, 4};
-    std::copy(params + 0, params + 4, gather.arg0_data());
-    const int32 indices[2] = {1, 4};
-    std::copy(indices + 0, indices + 2, gather.arg1_data());
-    EXPECT_FALSE(gather.Run());
-    EXPECT_EQ(gather.error_msg(), "Invalid index for gather");
   }
 }
 
@@ -390,6 +383,87 @@ TEST(TFCompileTest, Function) {
   EXPECT_EQ(add_fn.result0(), 3);
   EXPECT_EQ(add_fn.result0_data()[0], 3);
   EXPECT_EQ(add_fn.result0_data(), add_fn.results()[0]);
+}
+
+TEST(TFCompileTest, Splits) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  SplitsComp fn;
+
+  fn.set_thread_pool(&device);
+  // x = [[1, 2], [3, 4]]
+  fn.arg0(0, 0) = 1;
+  fn.arg0(0, 1) = 2;
+  fn.arg0(1, 0) = 3;
+  fn.arg0(1, 1) = 4;
+
+  // y = [[10, 20], [30, 40]]
+  fn.arg1(0, 0) = 10;
+  fn.arg1(0, 1) = 20;
+  fn.arg1(1, 0) = 30;
+  fn.arg1(1, 1) = 40;
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
+  const float expected[] = {7.86375557e+10, 1.34274679e+11, 1.92741717e+12,
+                            3.29964742e+12};
+  EXPECT_NEAR(expected[0], fn.result0(0, 0), 1e4);
+  EXPECT_NEAR(expected[1], fn.result0(0, 1), 1e4);
+  EXPECT_NEAR(expected[2], fn.result0(1, 0), 1e4);
+  EXPECT_NEAR(expected[3], fn.result0(1, 1), 1e4);
+}
+
+TEST(TFCompileTest, LookupNameIndex) {
+  // add doesn't have any names defined in its config.
+  AddComp add;
+  EXPECT_FALSE(add.HasNameIndices());
+
+  // muladd has names defined for all feeds and fetches.
+  MatMulAndAddComp muladd;
+  EXPECT_TRUE(muladd.HasNameIndices());
+
+  EXPECT_EQ(muladd.LookupArgIndex("x"), 0);
+  EXPECT_EQ(muladd.LookupArgIndex("y"), 1);
+  EXPECT_EQ(muladd.LookupArgIndex(""), -1);
+  EXPECT_EQ(muladd.LookupArgIndex("x_hold"), -1);
+  EXPECT_EQ(muladd.LookupArgIndex("y_hold"), -1);
+  EXPECT_EQ(muladd.LookupArgIndex("x_y_prod"), -1);
+  EXPECT_EQ(muladd.LookupArgIndex("x_y_sum"), -1);
+
+  EXPECT_EQ(muladd.LookupResultIndex("x_y_prod"), 0);
+  EXPECT_EQ(muladd.LookupResultIndex("x_y_sum"), 1);
+  EXPECT_EQ(muladd.LookupResultIndex(""), -1);
+  EXPECT_EQ(muladd.LookupResultIndex("x"), -1);
+  EXPECT_EQ(muladd.LookupResultIndex("y"), -1);
+  EXPECT_EQ(muladd.LookupResultIndex("x_hold"), -1);
+  EXPECT_EQ(muladd.LookupResultIndex("y_hold"), -1);
+}
+
+TEST(TFCompileTest, ProgramShape) {
+  using xla::ShapeUtil;
+  const xla::Shape f32_2x2 = ShapeUtil::MakeShape(xla::F32, {2, 2});
+
+  // add doesn't have the program shape defined.
+  AddComp add;
+  ASSERT_TRUE(add.ProgramShape() == nullptr);
+
+  // muladd has the program shape defined.
+  MatMulAndAddComp muladd;
+  const xla::ProgramShape* muladd_shape = muladd.ProgramShape();
+  ASSERT_TRUE(muladd_shape != nullptr);
+  ASSERT_EQ(muladd_shape->parameters_size(), 2);
+  EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(0), f32_2x2));
+  EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(1), f32_2x2));
+
+  const xla::Shape& muladd_result = muladd_shape->result();
+  ASSERT_EQ(muladd_result.element_type(), xla::TUPLE);
+  ASSERT_EQ(ShapeUtil::TupleElementCount(muladd_result), 2);
+  const xla::Shape& muladd_result0 =
+      ShapeUtil::GetTupleElementShape(muladd_result, 0);
+  EXPECT_TRUE(ShapeUtil::Compatible(muladd_result0, f32_2x2));
+  const xla::Shape& muladd_result1 =
+      ShapeUtil::GetTupleElementShape(muladd_result, 1);
+  EXPECT_TRUE(ShapeUtil::Compatible(muladd_result1, f32_2x2));
 }
 
 }  // namespace

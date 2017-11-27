@@ -13,6 +13,28 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## BitcastConvertType
+
+See also
+[`ComputationBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
+operation from a data shape to a target shape. The dimensions must match, and
+the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
+via bitcast routine. Bitcast is implemented as a low-level cast, so machines
+with different floating point representations will give different results.
+
+<b> `BitcastConvertType(operand, new_element_type)` </b>
+
+Arguments          | Type                    | Semantics
+------------------ | ----------------------- | ---------------------------
+`operand`          | `ComputationDataHandle` | array of type T with dims D
+`new_element_type` | `PrimitiveType`         | type U
+
+The dimensions of the operand and the target shape must match. The bit-width of
+the source and destination element types must be equal. The source
+and destination element types must not be tuples.
+
 ## Broadcast
 
 See also
@@ -60,6 +82,42 @@ Invokes a computation with the given arguments.
 
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
+
+## Clamp
+
+See also
+[`ComputationBuilder::Clamp`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Clamps an operand to within the range between a minimum and maximum value.
+
+<b> `Clamp(computation, args...)` </b>
+
+| Arguments     | Type                    | Semantics                        |
+| ------------- | ----------------------- | -------------------------------- |
+| `computation` | `Computation`           | computation of type `T_0, T_1,   |
+:               :                         : ..., T_N -> S` with N parameters :
+:               :                         : of arbitrary type                :
+| `min`         | `ComputationDataHandle` | array of type T                  |
+| `operand`     | `ComputationDataHandle` | array of type T                  |
+| `max`         | `ComputationDataHandle` | array of type T                  |
+
+Given an operand and minimum and maximum values, returns the operand if it is in
+the range between the minimum and maximum, else returns the minimum value if the
+operand is below this range or the maximum value if the operand is above this
+range.  That is, `clamp(a, x, b) =  max(min(a, x), b)`.
+
+All three arrays must be the same shape. Alternately, as a restricted form of
+[broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
+
+Example with scalar `min` and `max`:
+
+```
+let operand: s32[3] = {-1, 5, 9};
+let min: s32 = 0;
+let max: s32 = 6;
+==>
+Clamp(min, operand, max) = s32[3]{0, 5, 6};
+```
 
 ## Collapse
 
@@ -198,9 +256,8 @@ Arguments          | Type                    | Semantics
 `operand`          | `ComputationDataHandle` | array of type T with dims D
 `new_element_type` | `PrimitiveType`         | type U
 
-If the dimensions of the operand and the target shape do not match, or an
-invalid conversion is requested (e.g. to/from a tuple) an error will be
-produced.
+The dimensions of the operand and the target shape must match. The source and
+destination element types must not be tuples.
 
 A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
 conversion routine such as round-to-nearest-even.
@@ -292,9 +349,9 @@ placed between each of the entries in that dimension, increasing the size of the
 array. The holes are filled with a no-op value, which for convolution means
 zeroes.
 
-Dilation of the rhs is also called atrous convolution. For more details, see the
-@{tf.nn.atrous_conv2d}. Dilation of the lhs is
-also called deconvolution.
+Dilation of the rhs is also called atrous convolution. For more details, see
+@{tf.nn.atrous_conv2d}. Dilation of the lhs is also called transposed
+convolution. For more details, see @{tf.nn.conv2d_transpose}.
 
 The output shape has these dimensions, in this order:
 
@@ -511,7 +568,7 @@ floating-point types.
 <b> `Op(lhs, rhs)` </b>
 
 Where `Op` is one of `Eq` (equal-to), `Ne` (not equal-to), `Ge`
-(greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Le`
+(greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Lt`
 (less-than).
 
 Arguments | Type                    | Semantics
@@ -547,6 +604,8 @@ ComputationBuilder supports these element-wise unary functions:
 
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
 
+<b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
+
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
@@ -577,6 +636,158 @@ Arguments | Type                    | Semantics
 
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
+
+
+## BatchNormTraining
+
+See also
+[`ComputationBuilder::BatchNormTraining`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h) and
+[`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
+for a detailed description of the algorithm.
+
+<b> Warning: Not implemented on GPU backend yet. </b>
+
+Normalizes an array across batch and spatial dimensions.
+
+<b> `BatchNormTraining(operand, scale, offset, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------- | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
+:                 :                         : normalized                       :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\gamma\\))                   :
+| `offset`        | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\beta\\ )                    :
+| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
+| `feature_index` | `int64`                 | Index to feature dimension       |
+:                 :                         : in `operand`                     :
+
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the mean and variance
+across all the other dimensions and use the mean and variance to normalize each
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
+
+The algorithm goes as follows for each batch in `operand` \\(x\\) that
+contains `m` elements with `w` and `h` as the size of spatial dimensions (
+assuming `operand` is an 4 dimensional array):
+
+- Calculates batch mean \\(\mu_l\\) for each feature `l` in feature dimension:
+\\(\mu_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h x_{ijkl}\\)
+
+- Calculates batch variance \\(\sigma^2_l\\):
+\\(\sigma^2_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (x_{ijkl} - \mu_l)^2\\)
+
+- Normalizes, scales and shifts:
+\\(y_{ijkl}=\frac{\gamma_l(x_{ijkl}-\mu_l)}{\sqrt[2]{\sigma^2_l+\epsilon}}+\beta_l\\)
+
+The epsilon value, usually a small number, is added to avoid divide-by-zero errors.
+
+The output type is a tuple of three ComputationDataHandles:
+
+| Outputs      | Type                    | Semantics                            |
+| ------------ | ----------------------- | -------------------------------------|
+| `output`     | `ComputationDataHandle` | n dimensional array with the same    |
+:              :                         : shape as input `operand` (y)         :
+| `batch_mean` | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))      |
+| `batch_var`  | `ComputationDataHandle` | 1 dimensional array (\\(\sigma^2\\)) |
+
+The `batch_mean` and `batch_var` are moments calculated across the batch and
+spatial dimensions using the formulas above.
+
+## BatchNormInference
+
+See also
+[`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> Warning: Not implemented yet. </b>
+
+Normalizes an array across batch and spatial dimensions.
+
+<b> `BatchNormInference(operand, scale, offset, mean, variance, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                       |
+| --------------  | ----------------------- | ------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be       |
+:                 :                         : normalized                      :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array             |
+| `offset`        | `ComputationDataHandle` | 1 dimensional array             |
+| `mean`          | `ComputationDataHandle` | 1 dimensional array             |
+| `variance`      | `ComputationDataHandle` | 1 dimensional array             |
+| `epsilon`       | `float`                 | Epsilon value                   |
+| `feature_index` | `int64`                 | Index to feature dimension in   |
+:                 :                         : `operand`                       :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the mean and variance
+across all the other dimensions and use the mean and variance to normalize each
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
+
+`BatchNormInference`  is equivalent to calling `BatchNormTraining` without
+computing `mean` and `variance` for each batch. It uses the input `mean` and
+`variance` instead as estimated values. The purpose of this op is to reduce
+latency in inference, hence the name `BatchNormInference`.
+
+The output is a n dimensional, normalized array with the same shape as input
+`operand`.
+
+## BatchNormGrad
+
+See also
+[`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> Warning: Not implemented yet. </b>
+
+Calculates gradients of batch norm.
+
+<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------  | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
+:                 :                         : normalized (x)                   :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\gamma\\))                   :
+| `mean`          | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))  |
+| `variance`      | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\sigma^2\\))                 :
+| `grad_output`   | `ComputationDataHandle` | Gradients passed to              |
+:                 :                         : `BatchNormTraining`              :
+:                 :                         : (\\( \nabla y\\))                :
+| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
+| `feature_index` | `int64`                 | Index to feature dimension in    |
+:                 :                         : `operand`                        :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the gradients with
+respect to `operand`, `offset` and `scale` across all the other dimensions. The
+`feature_index` must be a valid index for the feature dimension in `operand`.
+
+The three gradients are defined by the following formulas:
+
+\\( \nabla x = \nabla y * \gamma * \sqrt{\sigma^2+\epsilon} \\)
+
+\\( \nabla \gamma = sum(\nabla y * (x - \mu) * \sqrt{\sigma^2 + \epsilon}) \\)
+
+\\( \nabla \beta = sum(\nabla y) \\)
+
+The inputs `mean` and `variance` represents moments value
+across batch and spatial dimensions.
+
+The output type is a tuple of three ComputationDataHandles:
+
+|Outputs       | Type                    | Semantics                           |
+|------------- | ----------------------- | ------------------------------------|
+|`grad_operand`| `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `operand`                           :
+|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `offset`                            :
+|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `scale`                             :
+
 
 ## GetTupleElement
 
@@ -618,8 +829,7 @@ device, interpreting the data as the given shape and its layout, and returns a
 `ComputationDataHandle` of the data. Multiple Infeed operations are allowed in a
 computation, but there must be a total order among the Infeed operations. For
 example, two Infeeds in the code below have a total order since there is a
-dependency between the while loops. The compiler issues an error if there isn't
-a total order.
+dependency between the while loops.
 
 ```
 result1 = while (condition, init = init_value) {
@@ -654,6 +864,7 @@ See also
 :                   :                          : T_1, ..., T_{N + M -1} -> S`  :
 :                   :                          : with N parameters of type T   :
 :                   :                          : and M of arbitrary type       :
+| `dimensions`       | `int64` array           | array of map dimensions    |
 | `static_operands` | sequence of M            | M arrays of arbitrary type    |
 :                   : `ComputationDataHandle`s :                               :
 
@@ -708,6 +919,95 @@ are all 0. Figure below shows examples of different `edge_padding` and
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">
+</div>
+
+## Recv
+
+See also
+[`ComputationBuilder::Recv`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Recv(shape, channel_handle)` </b>
+
+| Arguments        | Type            | Semantics                            |
+| ---------------- | --------------- | ------------------------------------ |
+| `shape`          | `Shape`         | shape of the data to receive         |
+| `channel_handle` | `ChannelHandle` | unique identifier for each send/recv pair |
+
+Receives data of the given shape from a `Send` instruction in another
+computation that shares the same channel handle. Returns a
+ComputationDataHandle for the received data.
+
+The client API of `Recv` operation represents synchronous communication.
+However, the instruction is internally decomposed into 2 HLO instructions
+(`Recv` and `RecvDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+
+<b>`Recv(const Shape& shape, int64 channel_id)`</b>
+
+Allocates resources required to receive data from a `Send` instruction with the
+same channel_id. Returns a context for the allocated resources, which is used
+by a following `RecvDone` instruction to wait for the completion of the data
+transfer. The context is a tuple of {receive buffer (shape), request identifier
+(U32)} and it can only be used by a `RecvDone` instruction.
+
+<b> `RecvDone(HloInstruction context)` </b>
+
+Given a context created by a `Recv` instruction, waits for the data transfer to
+complete and returns the received data.
+
+## Send
+
+See also
+[`ComputationBuilder::Send`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Send(operand, channel_handle)` </b>
+
+| Arguments        | Type                    | Semantics                        |
+| ---------------- | ----------------------- | -------------------------------- |
+| `operand`        | `ComputationDataHandle` | data to send (array of type T)   |
+| `channel_handle` | `ChannelHandle`         | unique identifier for each send/recv pair |
+
+Sends the given operand data to a `Recv` instruction in another computation
+that shares the same channel handle. Does not return any data.
+
+Similar to the `Recv` operation, the client API of `Send` operation represents
+synchronous communication, and is internally decomposed into 2 HLO instructions
+(`Send` and `SendDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+
+<b>`Send(HloInstruction operand, int64 channel_id)`</b>
+
+Initiates an asynchronous transfer of the operand to the resources allocated by
+the `Recv` instruction with the same channel id. Returns a context, which is
+used by a following `SendDone` instruction to wait for the completion of the
+data transfer. The context is a tuple of {operand (shape), request identifier
+(U32)} and it can only be used by a `SendDone` instruction.
+
+<b> `SendDone(HloInstruction context)` </b>
+
+Given a context created by a `Send` instruction, waits for the data transfer to
+complete.  The instruction does not return any data.
+
+<b> Scheduling of channel instructions </b>
+
+The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
+`Send`, `SendDone`) is as below.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:70%" src="../../images/send_recv_order.png">
+</div>
+
+* `Recv` happens before `Send`
+* `Send` happens before `RecvDone`
+* `Recv` happens before `RecvDone`
+* `Send` happens before `SendDone`
+
+When the backend compilers generate a linear schedule for each computation that
+communicates via channel instructions, there must not be cycles across the
+computations. For example, below schedules lead to deadlocks.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/send_recv_schedule.png">
 </div>
 
 ## Reduce
@@ -828,6 +1128,41 @@ We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
 the 1D array `| 20 28 36 |`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
+
+## ReducePrecision
+
+See also
+[`ComputationBuilder::ReducePrecision`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Models the effect of converting floating-point values to a lower-precision
+format (such as IEEE-FP16) and back to the original format.  The number of
+exponent and mantissa bits in the lower-precision format can be specified
+arbitrarily, although all bit sizes may not be supported on all hardware
+implementations.
+
+<b> `ReducePrecision(operand, mantissa_bits, exponent_bits)` </b>
+
+| Arguments           | Type                    | Semantics                    |
+| ------------------- | ----------------------- | ---------------------------- |
+| `operand`           | `ComputationDataHandle` | array of floating-point type |
+:                     :                         : `T`.                         :
+| `exponent_bits`     | `int32`                 | number of exponent bits in   |
+:                     :                         : lower-precision format       :
+| `mantissa_bits`     | `int32`                 | number of mantissa bits in   |
+:                     :                         : lower-precision format       :
+
+The result is an array of type `T`.  The input values are rounded to the nearest
+value representable with the given number of mantissa bits (using "ties to even"
+semantics), and any values that exceed the range specified by the number of
+exponent bits are clamped to positive or negative infinity.  `NaN` values are
+retained, although they may be converted to canonical `NaN` values.
+
+The lower-precision format must have at least one exponent bit (in order to
+distinguish a zero value from an infinity, since both have a zero mantissa), and
+must have a non-negative number of mantissa bits.  The number of exponent or
+mantissa bits may exceed the corresponding value for type `T`; the corresponding
+portion of the conversion is then simply a no-op.
+
 
 ## ReduceWindow
 

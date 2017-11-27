@@ -20,7 +20,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include <vector>
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -70,13 +69,14 @@ class OpRegistry : public OpRegistryInterface {
   OpRegistry();
   ~OpRegistry() override;
 
-  void Register(OpRegistrationDataFactory op_data_factory);
+  void Register(const OpRegistrationDataFactory& op_data_factory);
 
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
 
   // Fills *ops with all registered OpDefs (except those with names
-  // starting with '_' if include_internal == false).
+  // starting with '_' if include_internal == false) sorted in
+  // ascending alphabetical order.
   void Export(bool include_internal, OpList* ops) const;
 
   // Returns ASCII-format OpList for all registered OpDefs (except
@@ -138,8 +138,8 @@ class OpRegistry : public OpRegistryInterface {
   // Add 'def' to the registry with additional data 'data'. On failure, or if
   // there is already an OpDef with that name registered, returns a non-okay
   // status.
-  Status RegisterAlreadyLocked(OpRegistrationDataFactory op_data_factory) const
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status RegisterAlreadyLocked(const OpRegistrationDataFactory& op_data_factory)
+      const EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
@@ -205,7 +205,6 @@ class OpDefBuilderWrapper;
 template <>
 class OpDefBuilderWrapper<true> {
  public:
-  typedef OpDefBuilderWrapper<true> WrapperType;
   OpDefBuilderWrapper(const char name[]) : builder_(name) {}
   OpDefBuilderWrapper<true>& Attr(StringPiece spec) {
     builder_.Attr(spec);

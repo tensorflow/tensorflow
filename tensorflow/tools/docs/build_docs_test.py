@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
+import textwrap
 
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
@@ -29,19 +31,40 @@ from tensorflow.tools.docs import generate_lib
 
 class Flags(object):
   resource_root = resource_loader.get_root_dir_with_all_resources()
-  src_dir = os.path.join(resource_root, 'third_party/tensorflow/docs_src')
-  base_dir = os.path.join(resource_root, 'third_party/tensorflow/')
+  src_dir = os.path.join(resource_root, 'tensorflow/docs_src')
+  base_dir = os.path.join(resource_root, 'tensorflow/')
   output_dir = googletest.GetTempDir()
 
 
 class BuildDocsTest(googletest.TestCase):
 
   def testBuildDocs(self):
+    if sys.version_info >= (3, 0):
+      print('Warning: Doc generation is not supported from python3.')
+      return
+
     doc_generator = generate_lib.DocGenerator()
 
     doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])
 
-    status = doc_generator.build(Flags())
+    try:
+      status = doc_generator.build(Flags())
+    except RuntimeError as e:
+      if not e.args[0].startswith('Modules nested too deep'):
+        raise
+
+      msg = textwrap.dedent("""\
+          %s
+
+          ****************************************************************
+          If this test fails here, you have most likely introduced an
+          unsealed module. Make sure to use `remove_undocumented` or similar
+          utilities to avoid leaking symbols. See above for more information
+          on the exact point of failure.
+          ****************************************************************
+          """ % e.args[0])
+
+      raise RuntimeError(msg)
 
     if status:
       self.fail('Found %s Errors!' % status)

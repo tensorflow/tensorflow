@@ -21,7 +21,10 @@ See the @{$python/nn} guide.
 @@relu
 @@relu6
 @@crelu
+@@swish
 @@elu
+@@leaky_relu
+@@selu
 @@softplus
 @@softsign
 @@dropout
@@ -71,6 +74,7 @@ See the @{$python/nn} guide.
 @@softmax
 @@log_softmax
 @@softmax_cross_entropy_with_logits
+@@softmax_cross_entropy_with_logits_v2
 @@sparse_softmax_cross_entropy_with_logits
 @@weighted_cross_entropy_with_logits
 @@embedding_lookup

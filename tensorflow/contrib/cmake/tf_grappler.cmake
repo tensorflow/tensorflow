@@ -20,6 +20,8 @@ file(GLOB tf_grappler_srcs
    "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.h"
    "${tensorflow_source_dir}/tensorflow/python/grappler/cost_analyzer.cc"
    "${tensorflow_source_dir}/tensorflow/python/grappler/cost_analyzer.h"
+   "${tensorflow_source_dir}/tensorflow/python/grappler/model_analyzer.cc"
+   "${tensorflow_source_dir}/tensorflow/python/grappler/model_analyzer.h"
  )
  
 add_library(tf_grappler OBJECT ${tf_grappler_srcs})

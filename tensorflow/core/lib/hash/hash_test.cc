@@ -65,6 +65,11 @@ TEST(Hash, SignedUnsignedIssue) {
   }
 }
 
+TEST(Hash, HashPtrIsNotIdentityFunction) {
+  int* ptr = reinterpret_cast<int*>(0xcafe0000);
+  EXPECT_NE(hash<int*>()(ptr), size_t{0xcafe0000});
+}
+
 static void BM_Hash32(int iters, int len) {
   std::string input(len, 'x');
   uint32 h = 0;

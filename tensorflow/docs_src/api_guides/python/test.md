@@ -31,6 +31,9 @@ methods.  See @{tf.test.TestCase} for details.
 
 ## Utilities
 
+Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
+depending on the python version.
+
 *   @{tf.test.assert_equal_graph_def}
 *   @{tf.test.get_temp_dir}
 *   @{tf.test.is_built_with_cuda}

@@ -24,81 +24,104 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class TakeDatasetOp : public OpKernel {
+class TakeDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit TakeDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit TakeDatasetOp(OpKernelConstruction* ctx)
+      : UnaryDatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    // Create a new RepeatDatasetOp::Dataset, insert it in the step-local
-    // container, and return it as the output.
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
-    const Tensor* count_t;
-    OP_REQUIRES_OK(ctx, ctx->input("count", &count_t));
-    const int64 count = count_t->flat<int64>()(0);
-
-    DatasetBase* dataset = new Dataset(count, input);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
+    // Create a new TakeDatasetOp::Dataset, and return it as the output.
+    int64 count;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "count", &count));
+    *output = new Dataset(ctx, count, input);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 count, const DatasetBase* input)
-        : count_(count), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
+        : GraphDatasetBase(ctx), count_(count), input_(input) {
       input_->Ref();
     }
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
       if (count_ < 0) {
-        return input_->MakeIterator();
+        // Pass through
+        return input_->MakeIterator(prefix);
       } else if (count_ == 0) {
-        return std::unique_ptr<IteratorBase>(new EmptyIterator(this));
+        return std::unique_ptr<IteratorBase>(
+            new EmptyIterator({this, strings::StrCat(prefix, "::EmptyTake")}));
       } else {
-        return std::unique_ptr<IteratorBase>(new FiniteIterator(this));
+        return std::unique_ptr<IteratorBase>(new FiniteIterator(
+            {this, strings::StrCat(prefix, "::FiniteTake")}));
       }
     }
 
     const DataTypeVector& output_dtypes() const override {
       return input_->output_dtypes();
     }
+
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return input_->output_shapes();
     }
 
     string DebugString() override { return "TakeDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      Node* count = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, count}, output));
+      return Status::OK();
+    }
+
    private:
     class EmptyIterator : public DatasetIterator<Dataset> {
      public:
-      explicit EmptyIterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      explicit EmptyIterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         *end_of_sequence = true;
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
         return Status::OK();
       }
     };
 
     class FiniteIterator : public DatasetIterator<Dataset> {
      public:
-      explicit FiniteIterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
+      explicit FiniteIterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
             i_(0),
-            input_impl_(dataset->input_->MakeIterator()) {}
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
+        if (!input_impl_) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
         while (i_ < dataset()->count_) {
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -113,6 +136,31 @@ class TakeDatasetOp : public OpKernel {
         return Status::OK();
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+        if (input_impl_) {
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        } else {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("input_impl_empty"), ""));
+        }
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
+        if (!reader->Contains(full_name("input_impl_empty"))) {
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        } else {
+          input_impl_.reset();
+        }
+        return Status::OK();
+      }
+
      private:
       mutex mu_;
       int64 i_ GUARDED_BY(mu_);
@@ -124,8 +172,7 @@ class TakeDatasetOp : public OpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(Name("TakeDataset").Device(DEVICE_CPU),
-                        TakeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("TakeDataset").Device(DEVICE_CPU), TakeDatasetOp);
 
 }  // namespace
 

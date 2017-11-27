@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_AUTO_PARALLEL_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {

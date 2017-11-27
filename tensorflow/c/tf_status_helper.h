@@ -24,6 +24,9 @@ namespace tensorflow {
 // Set the attribute of "tf_status" from the attributes of "status".
 void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status);
 
+// Returns a "status" from "tf_status".
+Status StatusFromTF_Status(const TF_Status* tf_status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TF_STATUS_HELPER_H

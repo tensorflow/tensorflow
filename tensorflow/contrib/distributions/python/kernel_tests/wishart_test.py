@@ -351,6 +351,13 @@ class WishartCholeskyTest(test.TestCase):
                          (3, 3), dtype=np.float32)
                  })
 
+      with self.assertRaisesOpError("scale must be square"):
+        chol_w = distributions.WishartCholesky(
+            df=4.,
+            scale=np.array([[2., 3., 4.], [1., 2., 3.]], dtype=np.float32),
+            validate_args=True)
+        sess.run(chol_w.scale().eval())
+
       # Ensure no assertions.
       chol_w = distributions.WishartCholesky(
           df=df_deferred,
@@ -366,13 +373,18 @@ class WishartCholeskyTest(test.TestCase):
                feed_dict={df_deferred: 4,
                           chol_scale_deferred: np.ones((3, 3))})
 
+  def testStaticAsserts(self):
+    with self.test_session():
+      x = make_pd(1., 3)
+      chol_scale = chol(x)
+
       # Still has these assertions because they're resolveable at graph
       # construction
       with self.assertRaisesRegexp(ValueError, "cannot be less than"):
-        chol_w = distributions.WishartCholesky(
+        distributions.WishartCholesky(
             df=2, scale=chol_scale, validate_args=False)
-      with self.assertRaisesRegexp(TypeError, "not a floating-point type"):
-        chol_w = distributions.WishartCholesky(
+      with self.assertRaisesRegexp(TypeError, "Argument tril must have dtype"):
+        distributions.WishartCholesky(
             df=4.,
             scale=np.asarray(
                 chol_scale, dtype=np.int32),

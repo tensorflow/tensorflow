@@ -1,0 +1,31 @@
+package org.tensorflow;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+import org.tensorflow.Tensor;
+@IMPORTS@
+
+/**
+ * Type-safe factory methods for creating {@link Tensor} objects.
+ */
+public final class Tensors {
+  private Tensors() {}
+
+  /** Creates a scalar String tensor using the default, UTF-8 encoding.
+   * 
+   *  @param data  The string to put into the new scalar tensor.
+   */
+  public static Tensor<String> create(String data) {
+    return Tensor.create(data.getBytes(UTF_8), String.class);
+  }
+
+  /** Creates a scalar String tensor using a specified encoding.
+   * 
+   *  @param charset The encoding from String to bytes.
+   *  @param data    The string to put into the new scalar tensor.
+   */
+  public static Tensor<String> create(String data, java.nio.charset.Charset charset) {
+    return Tensor.create(data.getBytes(charset), String.class);
+  }
+
+@TYPEINFO@}
+

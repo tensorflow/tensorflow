@@ -219,6 +219,12 @@ inline void CollectValue(const int64& value, Point* const point) {
 }
 
 template <>
+inline void CollectValue(const string& value, Point* const point) {
+  point->value_type = ValueType::kString;
+  point->string_value = value;
+}
+
+template <>
 inline void CollectValue(const HistogramProto& value, Point* const point) {
   point->value_type = ValueType::kHistogram;
   // This is inefficient. If and when we hit snags, we can change the API to do

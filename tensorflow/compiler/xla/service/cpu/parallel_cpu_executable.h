@@ -49,13 +49,14 @@ class ParallelCpuExecutable : public Executable {
  public:
   ParallelCpuExecutable(
       std::unique_ptr<SimpleOrcJIT> jit,
-      std::unique_ptr<BufferAssignment> assignment,
-      std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<std::map<HloInstruction*, string>> instruction_functions,
-      std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
+      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<const HloModule> hlo_module,
+      std::unique_ptr<const HloInstructionMap<string>> function_names,
       std::unordered_map<const HloInstruction*,
                          std::unique_ptr<unsigned char[]>>
-          aligned_constants);
+          aligned_constants,
+      std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~ParallelCpuExecutable() override {}
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
@@ -87,6 +88,12 @@ class ParallelCpuExecutable : public Executable {
       return sizeof(void*);
     }
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  }
+
+  const Status EqualOrFail(const Executable& executable) {
+    // TODO(b/62952745) Implement equality test on CPU parallel executable.
+    return Unimplemented(
+        "Equality test on CPU parallel executable is not implemented.");
   }
 
  private:
@@ -121,10 +128,10 @@ class ParallelCpuExecutable : public Executable {
 
   // The JIT containing compiled modules.
   tensorflow::mutex jit_mutex_;
-  std::unique_ptr<SimpleOrcJIT> jit_ GUARDED_BY(jit_mutex_);
+  const std::unique_ptr<SimpleOrcJIT> jit_ GUARDED_BY(jit_mutex_);
 
   // Buffer assignment for the buffers we need to allocate.
-  std::unique_ptr<BufferAssignment> assignment_;
+  const std::unique_ptr<const BufferAssignment> assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // ParallelCpuExecutable. We save a string instead of an llvm::Module* because
@@ -133,15 +140,13 @@ class ParallelCpuExecutable : public Executable {
   string ir_module_string_;
 
   // Map containing the JITted function names for each HLO instruction.
-  std::unique_ptr<std::map<HloInstruction*, string>> functions_names_;
-
-  // Maps HLOs to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;
+  const std::unique_ptr<const HloInstructionMap<string>> function_names_;
 
   // Map from HLO Constant instructions to a pointer to their literal data.
   // The data stored in the protocol buffer might be insufficiently aligned,
   // we create a sufficiently aligned copy and store it in this map.
-  std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
+  const std::unordered_map<const HloInstruction*,
+                           std::unique_ptr<unsigned char[]>>
       aligned_constants_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ParallelCpuExecutable);

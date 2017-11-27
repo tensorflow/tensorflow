@@ -66,6 +66,9 @@ def QueueRunners(session):
     yield
   finally:
     coord.request_stop()
-    coord.join(threads, stop_grace_period_secs=120)
+    try:
+      coord.join(threads, stop_grace_period_secs=120)
+    except RuntimeError:
+      session.close()
 
     _queue_runner_lock.release()

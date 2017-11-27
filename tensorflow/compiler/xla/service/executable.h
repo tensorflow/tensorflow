@@ -19,11 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
@@ -43,15 +44,16 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<HloModule> hlo_module,
-                      HloCostAnalysis::ShapeSizeFunction shape_size_function)
+  explicit Executable(std::unique_ptr<const HloModule> hlo_module,
+                      std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
       : hlo_module_(std::move(hlo_module)),
-        shape_size_function_(std::move(shape_size_function)) {}
+        hlo_profile_printer_(std::move(hlo_profile_printer)),
+        hlo_profile_index_map_(std::move(hlo_profile_index_map)) {
+    CHECK_EQ(hlo_profile_printer_.get() == nullptr,
+             hlo_profile_index_map_.get() == nullptr);
+  }
   virtual ~Executable() {}
-
-  // Dumps the executed HLO according to service-associated flags.
-  static void DumpExecutedHlo(const HloModule& module, const string& label,
-                              const HloExecutionProfile* profile);
 
   // Enqueues the compilation result on the provided stream, passing the given
   // arguments. This call is blocking and returns after the execution is done.
@@ -93,19 +95,25 @@ class Executable {
           tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
           arguments);
 
+  // Populates `hlo_execution_profile` from `executor`. This is implicit in any
+  // Execute* API call that takes a hlo_execution_profile argument, but must be
+  // called explicitly for other (async, for example) variants after the stream
+  // has completed.
+  virtual Status PopulateExecutionProfile(
+      HloExecutionProfile* hlo_execution_profile,
+      perftools::gputools::StreamExecutor* executor) {
+    return Status::OK();
+  }
+
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
-  // given ExecutionProfile if non-null. The given execute_func should be a
-  // function which calls the desired ExecuteOnStream overload with the supplied
-  // arguments. The ExecuteOnStream overloads return different types so this
-  // method is templated on return-type of the execute function.
-  template <typename ReturnT>
-  ReturnT ExecuteOnStreamWrapper(
+  // given ExecutionProfile if non-null.  The ExecuteOnStream overloads have
+  // different argument types and return types, so this method is templated on
+  // argument type and return type of the execute function.
+  template <typename ReturnT, typename ArgT>
+  StatusOr<ReturnT> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-      std::function<ReturnT(Executable* executable,
-                            const ServiceExecutableRunOptions* run_options,
-                            HloExecutionProfile* hlo_execution_profile)>
-          execute_func);
+      const ArgT& arguments);
 
   // Returns the ExecutionProfile from executing on the device. This includes
   // the number of cycles taken for the computation or the compilation time.
@@ -114,12 +122,28 @@ class Executable {
     return execution_profile_;
   }
 
+  // Returns Status::ok() if the two executables are equal to each other.
+  //
+  // An error status is returned otherwise.
+  virtual const Status EqualOrFail(const Executable& executable) {
+    return Unimplemented(
+        "Equality test on this executable is not implemented.");
+  }
+
+  const HloProfilePrinter& hlo_profile_printer() const {
+    CHECK(hlo_profiling_enabled());
+    return *hlo_profile_printer_;
+  }
+
+  const HloProfileIndexMap& hlo_profile_index_map() const {
+    CHECK(hlo_profiling_enabled());
+    return *hlo_profile_index_map_;
+  }
+
   // Returns whether this executable was compiled with HLO profilings support
   // enabled. If not, the caller should not expect an hlo_execution_profile
   // passed to ExecuteOnStream above to be populated during execution.
-  bool hlo_profiling_enabled() const {
-    return hlo_module_->config().hlo_profiling_enabled();
-  }
+  bool hlo_profiling_enabled() const { return hlo_profile_printer_ != nullptr; }
 
   const HloModule& module() const { return *hlo_module_; }
 
@@ -151,11 +175,6 @@ class Executable {
   static Status DumpToDirectory(const string& directory_path, string filename,
                                 const SessionModule& session_module);
 
-  // Return a reference to a function that computes the size of a given Shape.
-  const HloCostAnalysis::ShapeSizeFunction& shape_size_function() const {
-    return shape_size_function_;
-  }
-
  protected:
   mutable tensorflow::mutex mutex_;
 
@@ -165,12 +184,7 @@ class Executable {
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
-  std::unique_ptr<HloModule> hlo_module_;
-
-  // Function to compute the size of a given Shape, in bytes.  This is
-  // provided to the Executable when it is constructed, and used to produce
-  // data for profiling the execution.
-  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
+  const std::unique_ptr<const HloModule> hlo_module_;
 
   // SessionModule this was compiled from. Null if not dumping executions.
   std::unique_ptr<SessionModule> session_module_;
@@ -178,15 +192,15 @@ class Executable {
   // Execution count, used to generate a unique filename for each dumped
   // execution.
   int64 execution_count_ = 0;
+
+  std::unique_ptr<HloProfilePrinter> hlo_profile_printer_;
+  std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;
 };
 
-template <typename ReturnT>
-ReturnT Executable::ExecuteOnStreamWrapper(
+template <typename ReturnT, typename ArgT>
+StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-    std::function<ReturnT(Executable* executable,
-                          const ServiceExecutableRunOptions* run_options,
-                          HloExecutionProfile* hlo_execution_profile)>
-        execute_func) {
+    const ArgT& arguments) {
   perftools::gputools::Stream* stream = run_options->stream();
   std::unique_ptr<perftools::gputools::Timer> timer;
   if (profile != nullptr) {
@@ -197,13 +211,15 @@ ReturnT Executable::ExecuteOnStreamWrapper(
   VLOG(1) << "enqueueing executable on stream...";
   // If the profiling flag isn't enabled, we pass nullptr as the profile to
   // indicate profiling is not requested.
-  HloExecutionProfile hlo_execution_profile;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  HloExecutionProfile* profile_ptr =
-      flags->xla_hlo_profile && hlo_profiling_enabled() ? &hlo_execution_profile
-                                                        : nullptr;
+  std::unique_ptr<HloExecutionProfile> profile_ptr =
+      module_config().debug_options().xla_hlo_profile() &&
+              hlo_profiling_enabled()
+          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer(),
+                                            &hlo_profile_index_map())
+          : nullptr;
 
-  auto return_value = execute_func(this, run_options, profile_ptr);
+  auto return_value =
+      ExecuteOnStream(run_options, arguments, profile_ptr.get());
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
@@ -231,23 +247,11 @@ ReturnT Executable::ExecuteOnStreamWrapper(
   }
 
   if (profile_ptr != nullptr) {
-    std::unordered_set<const xla::HloComputation*> profiled_computations =
-        profile_ptr->profiled_computations();
-    // To ensure we have print the profiles in a stable order, iterate over the
-    // computations in post order.
-    std::list<xla::HloComputation*> all_computations =
-        module().MakeComputationPostOrder();
-    for (xla::HloComputation* computation : all_computations) {
-      if (profiled_computations.count(computation) > 0) {
-        string profile_string = profile_ptr->ToString(
-            *computation, stream->parent()->GetDeviceDescription(),
-            shape_size_function_);
-        if (!profile_string.empty()) {
-          XLA_LOG_LINES(tensorflow::INFO, profile_string);
-        }
-      }
-    }
-    DumpExecutedHlo(module(), "Service::Execute", profile_ptr);
+    XLA_LOG_LINES(
+        tensorflow::INFO,
+        profile_ptr->ToString(stream->parent()->GetDeviceDescription()));
+    hlo_graph_dumper::MaybeDumpHloModule(module(), "Service::Execute",
+                                         profile_ptr.get());
   }
 
   return return_value;

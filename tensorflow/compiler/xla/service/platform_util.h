@@ -36,12 +36,7 @@ class PlatformUtil {
 
   // Convenience function which returns the default supported platform. If
   // exactly one supported platform is present, then this platform is the
-  // default platform. If exactly two supported platforms are present and one
-  // platform is CPU (host) then the non-CPU platform is default. This logic is
-  // used because the XLA service always links in the CPU backend to run
-  // ComputeConstant, so if exactly one other platform is linked in, we assume
-  // the intent is to execute on that non-CPU platform. If none of these
-  // conditions are met the function returns an error.
+  // default platform. Otherwise returns an error.
   static StatusOr<perftools::gputools::Platform*> GetDefaultPlatform();
 
   // Returns a vector of StreamExecutors for the given platform. The vector is

@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
+#include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
@@ -128,7 +128,7 @@ class MasterSession : public core::RefCounted {
   std::atomic<int64> partial_run_handle_counter_ = {0};
 
   mutex mu_;
-  std::unique_ptr<SimpleGraphExecutionState> execution_state_ GUARDED_BY(mu_);
+  std::unique_ptr<GraphExecutionState> execution_state_ GUARDED_BY(mu_);
   int64 graph_version_;
 
   // We keep a map from a signature of a run request to the
@@ -145,6 +145,8 @@ class MasterSession : public core::RefCounted {
     bool collect_costs = false;
     bool collect_timeline = false;
     bool collect_rpcs = false;
+    bool collect_partition_graphs = false;
+    bool report_tensor_allocations_upon_oom = false;
     Microseconds start_micros = Microseconds(0);
     Microseconds end_micros = Microseconds(0);
     std::vector<StepStats> step_stats;  // per partition
@@ -198,6 +200,10 @@ class MasterSession : public core::RefCounted {
   // call this method in order to propagate the cluster membership to all
   // workers.
   Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
+
+  // TODO(b/36574172): Always use Create/DeleteWorkerSession.
+  bool should_delete_worker_sessions_ = false;
+  Status DeleteWorkerSessions();
 
   Status StartStep(const BuildGraphOptions& opts, int64* count,
                    ReffedClientGraph** graph, bool is_partial);

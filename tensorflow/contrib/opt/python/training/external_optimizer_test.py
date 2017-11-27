@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
 from tensorflow.contrib.opt.python.training import external_optimizer
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -54,7 +55,7 @@ class MockOptimizerInterface(external_optimizer.ExternalOptimizerInterface):
 
 class TestCase(test.TestCase):
 
-  def assertAllClose(self, array1, array2):
+  def assertAllClose(self, array1, array2, rtol=1e-5, atol=1e-5):
     array1 = np.asarray(array1)
     array2 = np.asarray(array2)
     if not array1.shape:
@@ -62,7 +63,7 @@ class TestCase(test.TestCase):
     if not array2.shape:
       array2 = np.array([array2])
 
-    super(TestCase, self).assertAllClose(array1, array2, rtol=1e-5, atol=1e-5)
+    super(TestCase, self).assertAllClose(array1, array2, rtol=rtol, atol=atol)
 
 
 class ExternalOptimizerInterfaceTest(TestCase):
@@ -74,13 +75,13 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
     minimum_location = constant_op.constant(np.arange(9), dtype=dtypes.float32)
 
-    loss = math_ops.reduce_sum(math_ops.square(vector -
-                                               minimum_location[:2])) / 2.
-    loss += math_ops.reduce_sum(math_ops.square(scalar - minimum_location[
-        2])) / 2.
+    loss = math_ops.reduce_sum(
+        math_ops.square(vector - minimum_location[:2])) / 2.
     loss += math_ops.reduce_sum(
-        math_ops.square(matrix - array_ops.reshape(minimum_location[3:],
-                                                   [2, 3]))) / 2.
+        math_ops.square(scalar - minimum_location[2])) / 2.
+    loss += math_ops.reduce_sum(
+        math_ops.square(
+            matrix - array_ops.reshape(minimum_location[3:], [2, 3]))) / 2.
 
     optimizer = MockOptimizerInterface(loss)
 
@@ -132,38 +133,100 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
 class ScipyOptimizerInterfaceTest(TestCase):
 
+  def _objective(self, x):
+    """Rosenbrock function. (Carl Edward Rasmussen, 2001-07-21).
+
+    f(x) = sum_{i=1:D-1} 100*(x(i+1) - x(i)^2)^2 + (1-x(i))^2
+
+    Args:
+      x: a Variable
+    Returns:
+      f: a tensor (objective value)
+    """
+
+    d = array_ops.size(x)
+    s = math_ops.add(
+        100 * math_ops.square(
+            math_ops.subtract(
+                array_ops.strided_slice(x, [1], [d]),
+                math_ops.square(array_ops.strided_slice(x, [0], [d - 1])))),
+        math_ops.square(
+            math_ops.subtract(1.0, array_ops.strided_slice(x, [0], [d - 1]))))
+    return math_ops.reduce_sum(s)
+
+  def _test_optimization_method(self,
+                                method,
+                                options,
+                                rtol=1e-5,
+                                atol=1e-5,
+                                dimension=5):
+    x = variables.Variable(array_ops.zeros(dimension))
+    optimizer = external_optimizer.ScipyOptimizerInterface(
+        self._objective(x), method=method, options=options)
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      optimizer.minimize(sess)
+
+      self.assertAllClose(np.ones(dimension), sess.run(x), rtol=rtol, atol=atol)
+
   def test_unconstrained(self):
-
-    def objective(x):
-      """Rosenbrock function. (Carl Edward Rasmussen, 2001-07-21).
-
-      f(x) = sum_{i=1:D-1} 100*(x(i+1) - x(i)^2)^2 + (1-x(i))^2
-
-      Args:
-        x: a Variable
-      Returns:
-        f: a tensor (objective value)
-      """
-
-      d = array_ops.size(x)
-      s = math_ops.add(
-          100 * math_ops.square(
-              math_ops.subtract(
-                  array_ops.strided_slice(x, [1], [d]),
-                  math_ops.square(array_ops.strided_slice(x, [0], [d - 1])))),
-          math_ops.square(
-              math_ops.subtract(1.0, array_ops.strided_slice(x, [0], [d - 1]))))
-      return math_ops.reduce_sum(s)
 
     dimension = 5
     x = variables.Variable(array_ops.zeros(dimension))
-    optimizer = external_optimizer.ScipyOptimizerInterface(objective(x))
+    optimizer = external_optimizer.ScipyOptimizerInterface(self._objective(x))
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
 
       self.assertAllClose(np.ones(dimension), sess.run(x))
+
+  def test_nelder_mead_method2(self):
+    self._test_optimization_method(
+        method='Nelder-Mead', options={}, rtol=1e-4, atol=1e-4)
+
+  def test_newton_cg_method(self):
+    self._test_optimization_method(
+        method='Newton-CG',
+        options={'eps': 1e-03,
+                 'xtol': 1e-05},
+        rtol=1e-3,
+        atol=1e-3)
+
+  def test_newton_tnc_method(self):
+    self._test_optimization_method(
+        method='TNC',
+        options={'gtol': -5,
+                 'maxiter': 1000},
+        rtol=1e-1,
+        atol=1e-1)
+
+  def test_cobyla_method(self):
+    # COBYLA does not reach the global optima
+    self._test_optimization_method(
+        method='COBYLA',
+        options={
+            'maxiter': 9000,
+        },
+        rtol=1e-1,
+        atol=1e-1,
+        dimension=2)
+
+  def test_slsqp_method(self):
+    self._test_optimization_method(
+        method='SLSQP', options={}, rtol=1e-3, atol=1e-3)
+
+  def test_cg_method(self):
+    self._test_optimization_method(
+        method='CG', options={'gtol': 1e-03}, rtol=1e-3, atol=1e-3)
+
+  def test_other_optimization_methods(self):
+    # These methods do not require special options to converge on rosenbrock
+    methods = ['Powell', 'BFGS', 'L-BFGS-B']
+
+    for method in methods:
+      self._test_optimization_method(method=method, options={})
 
   def test_nonlinear_programming(self):
     vector_initial_value = [7., 7.]
@@ -183,6 +246,58 @@ class ScipyOptimizerInterfaceTest(TestCase):
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose(np.ones(2), sess.run(vector))
+
+  def test_scalar_bounds(self):
+    vector_initial_value = [7., 7.]
+    vector = variables.Variable(vector_initial_value, 'vector')
+
+    # Make norm as small as possible.
+    loss = math_ops.reduce_sum(math_ops.square(vector))
+
+    # Make the minimum value of each component be 1.
+    var_to_bounds = {vector: (1., np.infty)}
+
+    optimizer = external_optimizer.ScipyOptimizerInterface(
+        loss, var_to_bounds=var_to_bounds)
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      optimizer.minimize(sess)
+      self.assertAllClose(np.ones(2), sess.run(vector))
+
+  def test_vector_bounds(self):
+    vector_initial_value = [7., 7.]
+    vector = variables.Variable(vector_initial_value, 'vector')
+
+    # Make norm as small as possible.
+    loss = math_ops.reduce_sum(math_ops.square(vector))
+
+    var_to_bounds = {vector: ([None, 2.], None)}
+
+    optimizer = external_optimizer.ScipyOptimizerInterface(
+        loss, var_to_bounds=var_to_bounds)
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      optimizer.minimize(sess)
+      self.assertAllClose([0., 2.], sess.run(vector))
+
+  def test_optimizer_kwargs(self):
+    # Checks that the 'method' argument is stil present
+    # after running optimizer.minimize().
+    # Bug reference: b/64065260
+    vector_initial_value = [7., 7.]
+    vector = variables.Variable(vector_initial_value, 'vector')
+    loss = math_ops.reduce_sum(math_ops.square(vector))
+
+    optimizer = external_optimizer.ScipyOptimizerInterface(
+        loss, method='SLSQP')
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      optimizer.minimize(sess)
+      method = optimizer.optimizer_kwargs.get('method')
+      self.assertEqual('SLSQP', method)
 
 
 if __name__ == '__main__':

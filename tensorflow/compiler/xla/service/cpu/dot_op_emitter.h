@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
+#include "llvm/IR/IRBuilder.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -27,6 +29,26 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+
+bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo);
+
+enum class DotInLlvmIrProfitable { kYes, kNo, kWithColumnMajorRhs };
+
+// Returns a value to indicate if (and under what conditions) will lowering
+// |dot| as a untiled LLVM IR dot operation be profitable over calling into
+// Eigen or emitting a tiled LLVM IR implementation.  Possible return values
+// are:
+//
+//  * DotInLlvmIrProfitable::kYes - always profitable.
+//  * DotInLlvmIrProfitable::kNo - never profitable.
+//  * DotInLlvmIrProfitable::kWithColumnMajorRhs - only if we can manage to make
+//    the Rhs layout column major.
+DotInLlvmIrProfitable ProfitableToImplementDotInUntiledLlvmIr(
+    const HloInstruction& dot);
+
+// Returns true to indicate that we can generate a tiled LLVM IR implementation
+// for |dot|.
+bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot);
 
 // Helper class for emitting LLVM IR to perform the dot operation.
 class DotOpEmitter {
@@ -39,7 +61,8 @@ class DotOpEmitter {
       const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
       const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
       const llvm_ir::IrArray& rhs_array,
-      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder);
+      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
+      const HloModuleConfig& hlo_module_config);
 
  private:
   DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
@@ -47,7 +70,8 @@ class DotOpEmitter {
                const llvm_ir::IrArray& lhs_array,
                const llvm_ir::IrArray& rhs_array,
                llvm::Value* executable_run_options_value,
-               llvm::IRBuilder<>* ir_builder);
+               llvm::IRBuilder<>* ir_builder,
+               const HloModuleConfig& hlo_module_config);
 
   // Emits the IR to perform the dot operation.
   tensorflow::Status Emit();
@@ -55,6 +79,10 @@ class DotOpEmitter {
   // Emits instructions to perform a scalar dot product (a multiply of the
   // LHS and RHS) and store the results in the target.
   tensorflow::Status EmitScalarDot();
+
+  // Emit an LLVM IR implementation of the dot operation if we can.  Returns
+  // true if an LLVM IR implementation was emitted.
+  bool EmitLlvmIrDotIfProfitable();
 
   // Emits a call to the CPU runtime to perform the matrix multiply.
   tensorflow::Status EmitCallToRuntime();
@@ -74,6 +102,38 @@ class DotOpEmitter {
   // no padding, and a rank of two.
   bool ShapesAreLegalForRuntimeDot() const;
 
+  // Represents the dimensions of a matrix-matrix multiply operation.
+  struct MatMultDims {
+    // The number of rows in the LHS.
+    int64 m;
+
+    // The number of columns in the LHS, which is also must be equal to the
+    // number of rows in the RHS.
+    int64 k;
+
+    // The number of columns on the RHS.
+    int64 n;
+
+    // True if the LHS matrix column major.
+    bool lhs_column_major;
+
+    // True if the RHS matrix column major.
+    bool rhs_column_major;
+  };
+
+  // Get the MatMultDims instance for the dot product this DotOpEmitter
+  // represents.  Precondition: the dot is of rank 2 (and thus its operands are
+  // of rank 2 as well).
+  MatMultDims GetMatMultDims() const;
+
+  // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
+  // registers.
+  int64 GetGemvTilingFactor() const {
+    const int64 kDefaultTilingFactor = 8;
+    return options::LlvmIrGemvTilingFactor(hlo_module_config_)
+        .value_or(kDefaultTilingFactor);
+  }
+
   const HloInstruction& dot_;
   const bool transpose_lhs_;
   const bool transpose_rhs_;
@@ -82,6 +142,7 @@ class DotOpEmitter {
   const llvm_ir::IrArray& rhs_array_;
   llvm::Value* executable_run_options_value_;
   llvm::IRBuilder<>* ir_builder_;
+  const HloModuleConfig& hlo_module_config_;
 };
 
 }  // namespace cpu

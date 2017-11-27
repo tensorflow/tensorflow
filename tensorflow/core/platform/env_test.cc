@@ -18,6 +18,7 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -225,14 +226,28 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
   // Test filename with file:// syntax.
+  int expected_num_files = 0;
+  std::vector<string> matching_paths;
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
-    string filename = io::JoinPath(BaseDir(), strings::StrCat("file", length));
+    string filename = io::JoinPath(BaseDir(), strings::StrCat("len", length));
 
     filename = strings::StrCat("file://", filename);
 
     // Write a file with the given length
     const string input = CreateTestFile(env_, filename, length);
+    ++expected_num_files;
+
+    // Ensure that GetMatchingPaths works as intended.
+    TF_EXPECT_OK(env_->GetMatchingPaths(
+        // Try it with the "file://" URI scheme.
+        strings::StrCat("file://", io::JoinPath(BaseDir(), "l*")),
+        &matching_paths));
+    EXPECT_EQ(expected_num_files, matching_paths.size());
+    TF_EXPECT_OK(env_->GetMatchingPaths(
+        // Try it without any URI scheme.
+        io::JoinPath(BaseDir(), "l*"), &matching_paths));
+    EXPECT_EQ(expected_num_files, matching_paths.size());
 
     // Read the file back and check equality
     string output;
@@ -295,6 +310,34 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
 TEST_F(DefaultEnvTest, GetExecutablePath) {
   Env* env = Env::Default();
   TF_EXPECT_OK(env->FileExists(env->GetExecutablePath()));
+}
+
+TEST_F(DefaultEnvTest, LocalTempFilename) {
+  Env* env = Env::Default();
+  string filename;
+  EXPECT_TRUE(env->LocalTempFilename(&filename));
+  EXPECT_FALSE(env->FileExists(filename).ok());
+
+  // Write something to the temporary file.
+  std::unique_ptr<WritableFile> file_to_write;
+  TF_CHECK_OK(env->NewWritableFile(filename, &file_to_write));
+  TF_CHECK_OK(file_to_write->Append("Null"));
+  TF_CHECK_OK(file_to_write->Close());
+  TF_CHECK_OK(env->FileExists(filename));
+
+  // Read from the temporary file and check content.
+  std::unique_ptr<RandomAccessFile> file_to_read;
+  TF_CHECK_OK(env->NewRandomAccessFile(filename, &file_to_read));
+  StringPiece content;
+  char scratch[1024];
+  CHECK_EQ(error::OUT_OF_RANGE,
+           file_to_read->Read(0 /* offset */, 1024 /* n */, &content, scratch)
+               .code());
+  EXPECT_EQ("Null", content.ToString());
+
+  // Delete the temporary file.
+  TF_CHECK_OK(env->DeleteFile(filename));
+  EXPECT_FALSE(env->FileExists(filename).ok());
 }
 
 }  // namespace tensorflow

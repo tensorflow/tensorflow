@@ -66,6 +66,22 @@ message CreateWorkerSessionResponse {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+// DeleteSession method request/response messages
+//
+// Deletes all worker-side state associated with the given session handle.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message DeleteWorkerSessionRequest {
+  // Sessions are identified by a given handle.
+  string session_handle = 1;
+}
+
+message DeleteWorkerSessionResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // RegisterGraph method request/response messages
 //
 // For each session, after the master placed every node on a device,
@@ -141,7 +157,7 @@ message DeregisterGraphResponse {
 message CleanupAllRequest {
   // A list of container names.
   //
-  // If 'container' is not empty, releases resoures in the given
+  // If 'container' is not empty, releases resources in the given
   // containers in all devices.
   //
   // If 'container' is empty, releases resources in the default
@@ -168,10 +184,12 @@ message CleanupAllResponse {
 message ExecutorOpts {
   bool record_costs = 1;
   bool record_timeline = 3;
+  bool record_partition_graphs = 4;
+  bool report_tensor_allocations_upon_oom = 5;
 };
 
 message RunGraphRequest {
-  // session_handle is the the master-generated unique id for this session.
+  // session_handle is the master-generated unique id for this session.
   // If session_handle is non-empty, it must be the same as used when
   // registering the graph. If it is empty, a single global namespace is used to
   // search for the graph_handle.
@@ -212,10 +230,12 @@ message RunGraphResponse {
   // `RunGraphRequest.recv_key`.
   repeated NamedTensorProto recv = 1;
 
-  // If the request asked for execution stats or cost graph, these are returned
-  // here.
+  // If the request asked for execution stats, the cost graph, or the partition
+  // graphs, these are returned here.
+  // TODO(suharshs): Package these in a RunMetadata instead.
   StepStats step_stats = 2;
   CostGraphDef cost_graph = 3;
+  repeated GraphDef partition_graph = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

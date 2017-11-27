@@ -36,7 +36,7 @@ EventsWriter::EventsWriter(const string& file_prefix)
       num_outstanding_events_(0) {}
 
 bool EventsWriter::InitIfNeeded() {
-  if (recordio_writer_.get() != nullptr) {
+  if (recordio_writer_ != nullptr) {
     CHECK(!filename_.empty());
     if (FileHasDisappeared()) {
       // Warn user of data loss and let .reset() below do basic cleanup.
@@ -63,7 +63,7 @@ bool EventsWriter::InitIfNeeded() {
     return false;
   }
   recordio_writer_.reset(new io::RecordWriter(recordio_file_.get()));
-  if (recordio_writer_.get() == NULL) {
+  if (recordio_writer_ == nullptr) {
     LOG(ERROR) << "Could not create record writer";
     return false;
   }
@@ -90,7 +90,7 @@ string EventsWriter::FileName() {
 }
 
 void EventsWriter::WriteSerializedEvent(StringPiece event_str) {
-  if (recordio_writer_.get() == NULL) {
+  if (recordio_writer_ == nullptr) {
     if (!InitIfNeeded()) {
       LOG(ERROR) << "Write failed because file could not be opened.";
       return;
@@ -110,7 +110,7 @@ void EventsWriter::WriteEvent(const Event& event) {
 
 bool EventsWriter::Flush() {
   if (num_outstanding_events_ == 0) return true;
-  CHECK(recordio_file_.get() != NULL) << "Unexpected NULL file";
+  CHECK(recordio_file_ != nullptr) << "Unexpected NULL file";
 
   if (!recordio_writer_->Flush().ok()) {
     LOG(ERROR) << "Failed to flush " << num_outstanding_events_ << " events to "
@@ -139,15 +139,15 @@ bool EventsWriter::Flush() {
 
 bool EventsWriter::Close() {
   bool return_value = Flush();
-  if (recordio_file_.get() != NULL) {
+  if (recordio_file_ != nullptr) {
     Status s = recordio_file_->Close();
     if (!s.ok()) {
       LOG(ERROR) << "Error when closing previous event file: " << filename_
                  << ": " << s;
       return_value = false;
     }
-    recordio_writer_.reset(NULL);
-    recordio_file_.reset(NULL);
+    recordio_writer_.reset(nullptr);
+    recordio_file_.reset(nullptr);
   }
   num_outstanding_events_ = 0;
   return return_value;

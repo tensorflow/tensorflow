@@ -56,6 +56,10 @@ tf_class {
     argspec: "args=[\'index\', \'queues\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "is_closed"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "size"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

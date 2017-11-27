@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "QueueClose"
+  visibility: SKIP
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a queue.
+END
+  }
+  attr {
+    name: "cancel_pending_enqueues"
+    description: <<END
+If true, all pending enqueue requests that are
+blocked on the given queue will be canceled.
+END
+  }
+  summary: "Closes the given queue."
+  description: <<END
+This operation signals that no more elements will be enqueued in the
+given queue. Subsequent Enqueue(Many) operations will fail.
+Subsequent Dequeue(Many) operations will continue to succeed if
+sufficient elements remain in the queue. Subsequent Dequeue(Many)
+operations that would block will fail immediately.
+END
+}

@@ -61,7 +61,7 @@ class VerbsService GRPC_FINAL {
 
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
-    const ::grpc::RpcMethod rpcmethod_GetRemoteAddress_;
+    const ::grpc::internal::RpcMethod rpcmethod_GetRemoteAddress_;
   };
   static std::unique_ptr<Stub> NewStub(
       const std::shared_ptr< ::grpc::ChannelInterface>& channel,

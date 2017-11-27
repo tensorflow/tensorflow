@@ -15,13 +15,13 @@
 """This API defines FeatureColumn abstraction.
 
 FeatureColumns provide a high level abstraction for ingesting and representing
-features in tf.learn Estimator models.
+features in `Estimator` models.
 
 FeatureColumns are the primary way of encoding features for pre-canned
-tf.learn Estimators.
+`Estimator` models.
 
-When using FeatureColumns with tf.learn models, the type of feature column you
-should choose depends on (1) the feature type and (2) the model type.
+When using FeatureColumns with `Estimator` models, the type of feature column
+you should choose depends on (1) the feature type and (2) the model type.
 
 (1) Feature type:
 
@@ -74,7 +74,7 @@ should choose depends on (1) the feature type and (2) the model type.
       columns=[department_column, bucketized_age_column],
       hash_bucket_size=1000)
 
-Example of building tf.learn model using FeatureColumns:
+Example of building an `Estimator` model using FeatureColumns:
 
   # Define features and transformations
   deep_feature_columns = [age_column, embedded_dept_column]
@@ -104,7 +104,7 @@ FeatureColumns can also be transformed into a generic input layer for
 custom models using `input_from_feature_columns` within
 `feature_column_ops.py`.
 
-Example of building non-tf.learn model using FeatureColumns:
+Example of building a non-`Estimator` model using FeatureColumns:
 
   # Building model via layers
 
@@ -165,7 +165,7 @@ class _LinearEmbeddingLookupArguments(
                             "combiner"])):
   """Represents the information needed from a column for embedding lookup.
 
-  Used to to compute DNN inputs and weighted sum.
+  Used to compute DNN inputs and weighted sum.
   """
   pass
 
@@ -184,7 +184,7 @@ class _DeepEmbeddingLookupArguments(
                             "trainable"])):
   """Represents the information needed from a column for embedding lookup.
 
-  Used to to compute DNN inputs and weighted sum.
+  Used to compute DNN inputs and weighted sum.
   """
   pass
 
@@ -817,6 +817,12 @@ class _WeightedSparseColumn(
     return fc_core._CategoricalColumn.IdWeightPair(  # pylint: disable=protected-access
         self.id_tensor(input_tensor), self.weight_tensor(input_tensor))
 
+  def is_compatible(self, other_column):
+    """Check compatibility with other sparse column."""
+    if isinstance(other_column, _WeightedSparseColumn):
+      return self.sparse_id_column.is_compatible(other_column.sparse_id_column)
+    return self.sparse_id_column.is_compatible(other_column)
+
 
 def weighted_sparse_column(sparse_id_column,
                            weight_column_name,
@@ -933,6 +939,11 @@ class _OneHotColumn(
       weighted_column = sparse_ops.sparse_merge(sp_ids=sparse_id_column,
                                                 sp_values=weight_tensor,
                                                 vocab_size=self.length)
+      # Remove (?, -1) index
+      weighted_column = sparse_ops.sparse_slice(
+          weighted_column,
+          [0, 0],
+          weighted_column.dense_shape)
       return sparse_ops.sparse_tensor_to_dense(weighted_column)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
@@ -1184,7 +1195,7 @@ def _embeddings_from_arguments(column,
           raise ValueError(
               "The embedding variable with name {} already "
               "exists, but its shape does not match required "
-              "embedding shape  here. Please make sure to use "
+              "embedding shape here. Please make sure to use "
               "different shared_embedding_name for different "
               "shared embeddings.".format(args.shared_embedding_name))
     else:
@@ -1340,7 +1351,8 @@ def shared_embedding_columns(sparse_id_columns,
     ValueError: if sparse_id_columns is empty, or its elements are not
       compatible with each other.
     TypeError: if `sparse_id_columns` is not a sequence or is a string. If at
-      least one element of `sparse_id_columns` is not a `SparseTensor`.
+      least one element of `sparse_id_columns` is not a `SparseColumn` or a
+      `WeightedSparseColumn`.
   """
   if (not isinstance(sparse_id_columns, collections.Sequence) or
       isinstance(sparse_id_columns, six.string_types)):
@@ -1351,9 +1363,11 @@ def shared_embedding_columns(sparse_id_columns,
     raise ValueError("The input sparse_id_columns should have at least one "
                      "element.")
   for sparse_id_column in sparse_id_columns:
-    if not isinstance(sparse_id_column, _SparseColumn):
-      raise TypeError("Elements of sparse_id_columns must be _SparseColumn, but"
-                      "{} is not.".format(sparse_id_column))
+    if not (isinstance(sparse_id_column, _SparseColumn) or
+            isinstance(sparse_id_column, _WeightedSparseColumn)):
+      raise TypeError("Elements of sparse_id_columns must be _SparseColumn or "
+                      "_WeightedSparseColumn, but {} is not."
+                      .format(sparse_id_column))
 
   if len(sparse_id_columns) == 1:
     return [
@@ -1362,17 +1376,30 @@ def shared_embedding_columns(sparse_id_columns,
                          shared_embedding_name, max_norm=max_norm,
                          trainable=trainable)]
   else:
-    # check compatibility of sparse_id_columns
+    # Check compatibility of sparse_id_columns
     compatible = True
     for column in sparse_id_columns[1:]:
-      compatible = compatible and column.is_compatible(sparse_id_columns[0])
+      if isinstance(sparse_id_columns[0], _WeightedSparseColumn):
+        compatible = compatible and sparse_id_columns[0].is_compatible(column)
+      else:
+        compatible = compatible and column.is_compatible(sparse_id_columns[0])
     if not compatible:
       raise ValueError("The input sparse id columns are not compatible.")
     # Construct the shared name and size for shared embedding space.
     if not shared_embedding_name:
       # Sort the columns so that shared_embedding_name will be deterministic
       # even if users pass in unsorted columns from a dict or something.
-      sorted_columns = sorted(sparse_id_columns)
+      # Since they are different classes, ordering is SparseColumns first,
+      # then WeightedSparseColumns.
+      sparse_columns = []
+      weighted_sparse_columns = []
+      for column in sparse_id_columns:
+        if isinstance(column, _SparseColumn):
+          sparse_columns.append(column)
+        else:
+          weighted_sparse_columns.append(column)
+      sorted_columns = sorted(sparse_columns) + sorted(
+          weighted_sparse_columns, key=lambda x: x.name)
       if len(sorted_columns) <= 3:
         shared_embedding_name = "_".join([column.name
                                           for column in sorted_columns])
@@ -2537,10 +2564,10 @@ def _create_sequence_feature_spec_for_parsing(sequence_feature_columns,
   feature_spec = create_feature_spec_for_parsing(sequence_feature_columns)
   sequence_feature_spec = {}
   for key, feature in feature_spec.items():
-    if (isinstance(feature, parsing_ops.VarLenFeature) or
-        isinstance(feature, parsing_ops.FixedLenSequenceFeature)):
+    if isinstance(feature, parsing_ops.VarLenFeature):
       sequence_feature = feature
-    elif isinstance(feature, parsing_ops.FixedLenFeature):
+    elif (isinstance(feature, parsing_ops.FixedLenFeature) or
+          isinstance(feature, parsing_ops.FixedLenSequenceFeature)):
       default_is_set = feature.default_value is not None
       if default_is_set:
         logging.warning(

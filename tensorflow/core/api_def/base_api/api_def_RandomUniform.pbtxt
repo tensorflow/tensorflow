@@ -1,0 +1,40 @@
+op {
+  graph_op_name: "RandomUniform"
+  in_arg {
+    name: "shape"
+    description: <<END
+The shape of the output tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A tensor of the specified shape filled with uniform random values.
+END
+  }
+  attr {
+    name: "seed"
+    description: <<END
+If either `seed` or `seed2` are set to be non-zero, the random number
+generator is seeded by the given seed.  Otherwise, it is seeded by a
+random seed.
+END
+  }
+  attr {
+    name: "seed2"
+    description: <<END
+A second seed to avoid seed collision.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the output.
+END
+  }
+  summary: "Outputs random values from a uniform distribution."
+  description: <<END
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
+END
+}

@@ -113,8 +113,8 @@ class PyOpTest(test.TestCase):
     # returns a tuple, Tout and inp a tuple
     with self.test_session():
       x = constant_op.constant(0.0, dtypes.float64)
-      y, z = script_ops.py_func(tuple_func, (x,),
-                                (dtypes.float64, dtypes.float64))
+      y, z = script_ops.py_func(tuple_func, (x,), (dtypes.float64,
+                                                   dtypes.float64))
       self.assertAllClose(y.eval(), 0.0)
       self.assertAllClose(z.eval(), 1.0)
 
@@ -133,10 +133,47 @@ class PyOpTest(test.TestCase):
       z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
       self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
 
+  def testStringsAreConvertedToBytes(self):
+
+    def read_fixed_length_numpy_strings():
+      return np.array([" there"])
+
+    def read_and_return_strings(x, y):
+      return x + y
+
+    with self.test_session():
+      x = constant_op.constant(["hello", "hi"], dtypes.string)
+      y, = script_ops.py_func(read_fixed_length_numpy_strings, [],
+                              [dtypes.string])
+      z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
+      self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
+
+  def testObjectArraysAreConvertedToBytes(self):
+
+    def read_object_array():
+      return np.array([b" there", u" ya"], dtype=np.object)
+
+    def read_and_return_strings(x, y):
+      return x + y
+
+    with self.test_session():
+      x = constant_op.constant(["hello", "hi"], dtypes.string)
+      y, = script_ops.py_func(read_object_array, [],
+                              [dtypes.string])
+      z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
+      self.assertListEqual(list(z.eval()), [b"hello there", b"hi ya"])
+
   def testStringPadding(self):
     correct = [b"this", b"is", b"a", b"test"]
     with self.test_session():
       s, = script_ops.py_func(lambda: [correct], [], [dtypes.string])
+      self.assertAllEqual(s.eval(), correct)
+
+  def testStringPaddingAreConvertedToBytes(self):
+    inp = ["this", "is", "a", "test"]
+    correct = [b"this", b"is", b"a", b"test"]
+    with self.test_session():
+      s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
       self.assertAllEqual(s.eval(), correct)
 
   def testLarge(self):
@@ -194,6 +231,21 @@ class PyOpTest(test.TestCase):
                                    "Unsupported object type"):
         z.eval()
 
+  def testReturnInput(self):
+    with self.test_session():
+
+      def ident(x):
+        return x[0]
+
+      p = array_ops.placeholder(dtypes.float32)
+
+      # Create a numpy array aliasing a tensor and a tensor aliasing this array
+      z, = script_ops.py_func(ident, [p], [dtypes.float32])
+      z += 0.0  # Makes sure we release the tensor aliasing the numpy array x[0]
+                # above instead of using its memory as the return value of
+                # session.run
+      self.assertEqual(0.0, z.eval(feed_dict={p: [0.0]}))
+
   def testStateful(self):
     # Not using self.test_session(), which disables optimization.
     with session_lib.Session() as sess:
@@ -225,7 +277,8 @@ class PyOpTest(test.TestCase):
   def testCOrder(self):
     with self.test_session():
       val = [[1, 2], [3, 4]]
-      x, = script_ops.py_func(lambda: np.array(val, order="F"), [], [dtypes.int64])
+      x, = script_ops.py_func(lambda: np.array(val, order="F"), [],
+                              [dtypes.int64])
       self.assertAllEqual(val, x.eval())
 
   def testParallel(self):

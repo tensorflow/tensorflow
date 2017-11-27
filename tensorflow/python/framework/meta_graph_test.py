@@ -34,9 +34,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -549,7 +552,7 @@ class ScopedMetaGraphTest(test.TestCase):
         a = variables.Variable(
             constant_op.constant(
                 1.0, shape=[2, 2]), name="a")
-      with ops.device("/job:ps/replica:0/task:0/gpu:0"):
+      with ops.device("/job:ps/replica:0/task:0/device:GPU:0"):
         b = variables.Variable(
             constant_op.constant(
                 2.0, shape=[2, 2]), name="b")
@@ -597,6 +600,100 @@ class ScopedMetaGraphTest(test.TestCase):
     self.assertEqual("", str(graph2.as_graph_element("a").device))
     self.assertEqual("", str(graph2.as_graph_element("b").device))
     self.assertEqual("", str(graph2.as_graph_element("matmul").device))
+
+
+class MetaGraphWithVariableScopeTest(test.TestCase):
+
+  def testMetricsCollection(self):
+
+    def _enqueue_vector(sess, queue, values, shape=None):
+      if not shape:
+        shape = (1, len(values))
+      dtype = queue.dtypes[0]
+      sess.run(
+          queue.enqueue(constant_op.constant(
+              values, dtype=dtype, shape=shape)))
+
+    meta_graph_filename = os.path.join(
+        _TestDir("metrics_export"), "meta_graph.pb")
+
+    graph = ops.Graph()
+    with self.test_session(graph=graph) as sess:
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      _, update_op = metrics.mean(values)
+
+      initializer = variables.local_variables_initializer()
+      sess.run(initializer)
+      sess.run(update_op)
+
+    meta_graph.export_scoped_meta_graph(
+        filename=meta_graph_filename, graph=graph)
+
+    # Verifies that importing a meta_graph with LOCAL_VARIABLES collection
+    # works correctly.
+    graph = ops.Graph()
+    with self.test_session(graph=graph) as sess:
+      meta_graph.import_scoped_meta_graph(meta_graph_filename)
+      initializer = variables.local_variables_initializer()
+      sess.run(initializer)
+
+    # Verifies that importing an old meta_graph where "local_variables"
+    # collection is of node_list type works, but cannot build initializer
+    # with the collection.
+    graph = ops.Graph()
+    with self.test_session(graph=graph) as sess:
+      meta_graph.import_scoped_meta_graph(
+          test.test_src_dir_path(
+              "python/framework/testdata/metrics_export_meta_graph.pb"))
+      self.assertEqual(len(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)),
+                       2)
+      with self.assertRaisesRegexp(
+          AttributeError, "'Tensor' object has no attribute 'initializer'"):
+        initializer = variables.local_variables_initializer()
+
+
+class ExportImportAcrossScopesTest(test.TestCase):
+
+  def testPartionedVariables(self):
+    def make_graph_with_partitioned_variables():
+      variable_scope.get_variable(
+          name="weights",
+          partitioner=partitioned_variables.fixed_size_partitioner(3, axis=0),
+          initializer=random_ops.truncated_normal([100, 10]))
+    self._testExportImportAcrossScopes(make_graph_with_partitioned_variables)
+
+  def _testExportImportAcrossScopes(self, graph_fn):
+    """Tests export and importing a graph across scopes.
+
+    Args:
+      graph_fn: A closure that creates a graph on the current scope.
+    """
+    with ops.Graph().as_default() as original_graph:
+      with variable_scope.variable_scope("dropA/dropB/keepA"):
+        graph_fn()
+    exported_meta_graph_def = meta_graph.export_scoped_meta_graph(
+        graph=original_graph,
+        export_scope="dropA/dropB")[0]
+
+    with ops.Graph().as_default() as imported_graph:
+      meta_graph.import_scoped_meta_graph(
+          exported_meta_graph_def,
+          import_scope="importA")
+
+    with ops.Graph().as_default() as expected_graph:
+      with variable_scope.variable_scope("importA/keepA"):
+        graph_fn()
+
+    result = meta_graph.export_scoped_meta_graph(graph=imported_graph)[0]
+    expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]
+    self.assertProtoEquals(expected, result)
 
 
 if __name__ == "__main__":

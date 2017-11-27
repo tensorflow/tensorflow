@@ -28,6 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated_args
 
 __all__ = ["absolute_difference",
            "add_loss",
@@ -301,7 +302,7 @@ def absolute_difference(predictions, labels=None, weights=1.0, scope=None):
 
 @deprecated("2016-12-30",
             "Use tf.losses.sigmoid_cross_entropy instead. Note that the order "
-            "of the predictions and labels arguments was changed.")
+            "of the predictions and labels arguments has been changed.")
 def sigmoid_cross_entropy(
     logits, multi_class_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits.
@@ -436,7 +437,7 @@ def sparse_softmax_cross_entropy(logits, labels, weights=1.0, scope=None):
 
 @deprecated("2016-12-30",
             "Use tf.losses.log_loss instead. Note that the order of the "
-            "predictions and labels arguments was changed.")
+            "predictions and labels arguments has been changed.")
 def log_loss(predictions, labels=None, weights=1.0, epsilon=1e-7, scope=None):
   """Adds a Log Loss term to the training procedure.
 
@@ -477,7 +478,8 @@ def log_loss(predictions, labels=None, weights=1.0, epsilon=1e-7, scope=None):
 
 @deprecated("2016-12-30",
             "Use tf.losses.hinge_loss instead. Note that the order of the "
-            "predictions and labels arguments were changed.")
+            "logits and labels arguments has been changed, and to stay "
+            "unweighted, reduction=Reduction.NONE")
 def hinge_loss(logits, labels=None, scope=None):
   """Method that returns the loss tensor for hinge loss.
 
@@ -488,8 +490,8 @@ def hinge_loss(logits, labels=None, scope=None):
     scope: The scope for the operations performed in computing the loss.
 
   Returns:
-    A `Tensor` of same shape as `logits` and `labels` representing the loss
-      values across the batch.
+    An unweighted `Tensor` of same shape as `logits` and `labels` representing the
+      loss values across the batch.
 
   Raises:
     ValueError: If the shapes of `logits` and `labels` don't match.
@@ -541,7 +543,7 @@ def mean_squared_error(predictions, labels=None, weights=1.0, scope=None):
 
 @deprecated("2016-12-30",
             "Use tf.losses.mean_pairwise_squared_error instead. Note that the "
-            "order of the predictions and labels arguments was changed.")
+            "order of the predictions and labels arguments has been changed.")
 def mean_pairwise_squared_error(
     predictions, labels=None, weights=1.0, scope=None):
   """Adds a pairwise-errors-squared loss to the training procedure.
@@ -622,8 +624,9 @@ def mean_pairwise_squared_error(
 
 
 @deprecated("2016-12-30", "Use tf.losses.cosine_distance instead.")
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def cosine_distance(
-    predictions, labels=None, dim=None, weights=1.0, scope=None):
+    predictions, labels=None, axis=None, weights=1.0, scope=None, dim=None):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
@@ -632,10 +635,11 @@ def cosine_distance(
   Args:
     predictions: An arbitrary matrix.
     labels: A `Tensor` whose shape matches 'predictions'
-    dim: The dimension along which the cosine distance is computed.
+    axis: The dimension along which the cosine distance is computed.
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
     scope: The scope for the operations performed in computing the loss.
+    dim: The old (deprecated) name for `axis`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
@@ -644,8 +648,12 @@ def cosine_distance(
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `weights` is `None`.
   """
-  if dim is None:
-    raise ValueError("`dim` cannot be None.")
+  if dim is not None:
+    if axis is not None:
+      raise ValueError("Cannot specify both 'axis' and 'dim'")
+    axis = dim
+  if axis is None and dim is None:
+    raise ValueError("You must specify 'axis'.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -654,5 +662,5 @@ def cosine_distance(
     labels = math_ops.to_float(labels)
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
+    losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[axis,])
     return compute_weighted_loss(losses, weights, scope=scope)

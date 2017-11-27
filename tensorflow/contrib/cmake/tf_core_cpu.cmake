@@ -46,6 +46,12 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.h"
     "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -53,16 +59,11 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
 )
 list(REMOVE_ITEM tf_core_cpu_srcs ${tf_core_cpu_exclude_srcs})
 
-# We need to include stubs for the GPU tracer, which are in the exclude glob.
-list(APPEND tf_core_cpu_srcs
-     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_tracer.cc"
-     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_tracer.h"
-)
-
 if (tensorflow_ENABLE_GPU)
   file(GLOB_RECURSE tf_core_gpu_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu/cupti_wrapper.cc"
+    "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu_tracer.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu_device_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/devices.h"
     "${tensorflow_source_dir}/tensorflow/core/grappler/devices.cc"

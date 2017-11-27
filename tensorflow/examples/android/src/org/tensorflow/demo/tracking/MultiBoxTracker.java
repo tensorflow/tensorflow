@@ -59,7 +59,10 @@ public class MultiBoxTracker {
   private static final float MIN_CORRELATION = 0.3f;
 
   private static final int[] COLORS = {
-    Color.BLUE, Color.RED, Color.GREEN, Color.YELLOW, Color.CYAN, Color.MAGENTA
+    Color.BLUE, Color.RED, Color.GREEN, Color.YELLOW, Color.CYAN, Color.MAGENTA, Color.WHITE,
+    Color.parseColor("#55FF55"), Color.parseColor("#FFA500"), Color.parseColor("#FF8888"),
+    Color.parseColor("#AAAAFF"), Color.parseColor("#FFFFAA"), Color.parseColor("#55AAAA"),
+    Color.parseColor("#AA33AA"), Color.parseColor("#0D0068")
   };
 
   private final Queue<Integer> availableColors = new LinkedList<Integer>();
@@ -158,15 +161,16 @@ public class MultiBoxTracker {
   }
 
   public synchronized void draw(final Canvas canvas) {
-    // TODO(andrewharp): This may not work for non-90 deg rotations.
+    final boolean rotated = sensorOrientation % 180 == 90;
     final float multiplier =
-        Math.min(canvas.getWidth() / (float) frameHeight, canvas.getHeight() / (float) frameWidth);
+        Math.min(canvas.getHeight() / (float) (rotated ? frameWidth : frameHeight),
+                 canvas.getWidth() / (float) (rotated ? frameHeight : frameWidth));
     frameToCanvasMatrix =
         ImageUtils.getTransformationMatrix(
             frameWidth,
             frameHeight,
-            (int) (multiplier * frameHeight),
-            (int) (multiplier * frameWidth),
+            (int) (multiplier * (rotated ? frameHeight : frameWidth)),
+            (int) (multiplier * (rotated ? frameWidth : frameHeight)),
             sensorOrientation,
             false);
     for (final TrackedRecognition recognition : trackedObjects) {

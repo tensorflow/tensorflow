@@ -39,7 +39,7 @@ const char kTestMp3Filename[] =
 
 // Set to true via a command line flag iff the test is expected to have FFmpeg
 // installed.
-mutex mu;
+mutex mu(LINKER_INITIALIZED);
 bool should_ffmpeg_be_installed GUARDED_BY(mu) = false;
 
 string ParseTestFlags(int* argc, char** argv) {
@@ -94,6 +94,7 @@ TEST(FfmpegLibTest, TestRoundTripGeneratedWav) {
   }
 
   std::vector<float> sine_wave;
+  sine_wave.reserve(20000);
   for (int i = 0; i < 20000; ++i) {
     sine_wave.push_back(std::sin(6.28 * 440.0 * i / 20000.0));
   }

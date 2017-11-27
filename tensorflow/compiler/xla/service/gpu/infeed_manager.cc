@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
+
+#include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace se = ::perftools::gputools;
@@ -22,23 +24,23 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
-InfeedManager::InfeedManager()
-    : current_buffer_(nullptr),
-      host_to_device_executor_(nullptr) {}
+InfeedManager::InfeedManager() : host_to_device_executor_(nullptr) {}
 
 void InfeedManager::Reset() {
   tensorflow::mutex_lock l(mu_);
-  CHECK(!current_buffer_);
+  CHECK(dequeued_buffer_.empty());
   for (auto buffer : enqueued_buffer_) {
     buffer->Done();
   }
   enqueued_buffer_.clear();
 }
 
-void InfeedManager::EnqueueBuffer(InfeedBuffer* buffer) {
+void InfeedManager::EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers) {
   tensorflow::mutex_lock l(mu_);
   bool was_empty = enqueued_buffer_.empty();
-  enqueued_buffer_.push_back(buffer);
+  for (gpu::InfeedBuffer* b : buffers) {
+    enqueued_buffer_.push_back(b);
+  }
   if (was_empty) {
     // This has the potential to suffer from the notified thread
     // immediately trying and failing to acquire mu_, but seems
@@ -53,18 +55,23 @@ InfeedBuffer* InfeedManager::BlockingDequeueBuffer() {
   while (enqueued_buffer_.empty()) {
     cv_.wait(l);
   }
-  CHECK(!current_buffer_);
-  current_buffer_ = enqueued_buffer_.front();
+  InfeedBuffer* current_buffer = enqueued_buffer_.front();
   enqueued_buffer_.pop_front();
-  return current_buffer_;
+  dequeued_buffer_.insert(current_buffer);
+  return current_buffer;
 }
 
-void InfeedManager::ReleaseCurrentBuffer(se::DeviceMemoryBase* device_memory) {
-  tensorflow::mutex_lock l(mu_);
-  CHECK(current_buffer_);
-  CHECK(device_memory->IsSameAs(*current_buffer_->device_memory()));
-  current_buffer_->Done();
-  current_buffer_ = nullptr;
+void InfeedManager::ReleaseBuffers(const std::vector<InfeedBuffer*>& buffers) {
+  {
+    tensorflow::mutex_lock l(mu_);
+    for (gpu::InfeedBuffer* b : buffers) {
+      CHECK(ContainsKey(dequeued_buffer_, b));
+      dequeued_buffer_.erase(b);
+    }
+  }
+  for (gpu::InfeedBuffer* b : buffers) {
+    b->Done();
+  }
 }
 
 se::Stream* InfeedManager::GetStream(se::StreamExecutor* executor) {

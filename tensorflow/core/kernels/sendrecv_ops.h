@@ -28,6 +28,8 @@ class SendOp : public OpKernel {
 
  private:
   string key_prefix_;
+  Rendezvous::ParsedKey parsed_key_;
+  bool hostmem_sendrecv_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SendOp);
 };
@@ -39,6 +41,8 @@ class RecvOp : public AsyncOpKernel {
 
  private:
   string key_prefix_;
+  Rendezvous::ParsedKey parsed_key_;
+  bool hostmem_sendrecv_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecvOp);
 };

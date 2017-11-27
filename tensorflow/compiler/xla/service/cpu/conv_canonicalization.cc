@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -30,11 +29,6 @@ namespace xla {
 namespace cpu {
 
 StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (!flags->xla_cpu_use_eigen) {
-    return false;
-  }
-
   bool changed = false;
   for (HloInstruction* hlo :
        module->entry_computation()->MakeInstructionPostOrder()) {
@@ -42,8 +36,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
         !PotentiallyImplementedAsEigenConvolution(*hlo)) {
       const ConvolutionDimensionNumbers& dnums =
           hlo->convolution_dimension_numbers();
-      auto batch_dim = dnums.batch_dimension();
-      auto feature_dim = dnums.feature_dimension();
+      auto input_batch_dim = dnums.input_batch_dimension();
+      auto input_feature_dim = dnums.input_feature_dimension();
       auto kernel_input_feature_dim = dnums.kernel_input_feature_dimension();
       auto kernel_output_feature_dim = dnums.kernel_output_feature_dimension();
 
@@ -59,21 +53,22 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       //   kernel and output.
       //
       // For simplicity, as a first step, we reshape the input and filter to
-      // NHWC and HWIO order, respectively. This may lose precision but not
+      // NHWC and HWIO order, respectively. This may lose precision but won't
       // break the soundness.
       HloInstruction* input = hlo->mutable_operand(0);
 
       std::vector<int64> new_input_dim_order(num_dims);
       std::vector<int64> new_input_dims(num_dims);
-      new_input_dim_order[0] = batch_dim;
-      new_input_dims[0] = input->shape().dimensions(batch_dim);
+      new_input_dim_order[0] = input_batch_dim;
+      new_input_dims[0] = input->shape().dimensions(input_batch_dim);
       for (int i = 0; i < num_spatial_dims; ++i) {
         new_input_dim_order[i + 1] = dnums.spatial_dimensions(i);
         new_input_dims[i + 1] =
             input->shape().dimensions(dnums.spatial_dimensions(i));
       }
-      new_input_dim_order[num_dims - 1] = feature_dim;
-      new_input_dims[num_dims - 1] = input->shape().dimensions(feature_dim);
+      new_input_dim_order[num_dims - 1] = input_feature_dim;
+      new_input_dims[num_dims - 1] =
+          input->shape().dimensions(input_feature_dim);
 
       Shape new_input_shape =
           ShapeUtil::MakeShape(input->shape().element_type(), new_input_dims);
@@ -103,23 +98,31 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
           HloInstruction::CreateTranspose(new_kernel_shape, kernel,
                                           new_kernel_dim_order));
 
+      std::vector<int64> new_output_dim_order(num_dims);
       std::vector<int64> new_conv_dims(num_dims);
-      new_conv_dims[0] = hlo->shape().dimensions(batch_dim);
+      auto output_batch_dim = dnums.output_batch_dimension();
+      auto output_feature_dim = dnums.output_feature_dimension();
+      new_output_dim_order[0] = output_batch_dim;
+      new_conv_dims[0] = hlo->shape().dimensions(output_batch_dim);
       for (int i = 0; i < num_spatial_dims; ++i) {
+        new_output_dim_order[i + 1] = dnums.spatial_dimensions(i);
         new_conv_dims[i + 1] =
             hlo->shape().dimensions(dnums.spatial_dimensions(i));
       }
-      new_conv_dims[num_dims - 1] = hlo->shape().dimensions(feature_dim);
+      new_output_dim_order[num_dims - 1] = output_feature_dim;
+      new_conv_dims[num_dims - 1] = hlo->shape().dimensions(output_feature_dim);
       Shape new_conv_shape =
           ShapeUtil::MakeShape(hlo->shape().element_type(), new_conv_dims);
 
       ConvolutionDimensionNumbers new_dnums;
-      new_dnums.set_batch_dimension(0);
+      new_dnums.set_input_batch_dimension(0);
+      new_dnums.set_output_batch_dimension(0);
       for (int i = 0; i < num_spatial_dims; ++i) {
         new_dnums.add_spatial_dimensions(i + 1);
         new_dnums.add_kernel_spatial_dimensions(i);
       }
-      new_dnums.set_feature_dimension(num_dims - 1);
+      new_dnums.set_input_feature_dimension(num_dims - 1);
+      new_dnums.set_output_feature_dimension(num_dims - 1);
       new_dnums.set_kernel_input_feature_dimension(num_dims - 2);
       new_dnums.set_kernel_output_feature_dimension(num_dims - 1);
 
@@ -130,14 +133,11 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
           HloInstruction::CreateConvolve(new_conv_shape, new_input, new_kernel,
                                          hlo->window(), new_dnums));
 
-      // kConvolution inherits the dimension mapping of its input, so we need to
-      // reshape the output back to the shape of the original convolution. This
-      // is done by apply the inverse permutation of the collapsing order of the
-      // input reshape.
+      // Reshape the output back to the shape of the original convolution.
       TF_RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
           hlo, HloInstruction::CreateTranspose(
                    hlo->shape(), new_conv,
-                   InversePermutation(new_input_dim_order))));
+                   InversePermutation(new_output_dim_order))));
       changed = true;
     }
   }

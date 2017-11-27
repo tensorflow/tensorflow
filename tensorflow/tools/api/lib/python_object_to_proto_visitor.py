@@ -13,7 +13,7 @@
 # limitations under the License.
 #
 # ==============================================================================
-"""A visitor class that generates protobufs for each pyton object."""
+"""A visitor class that generates protobufs for each python object."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -90,6 +90,12 @@ def _SanitizedMRO(obj):
     str_repr = str(cls)
     return_list.append(str_repr)
     if 'tensorflow' not in str_repr:
+      break
+
+    # Hack - tensorflow.test.StubOutForTesting may or may not be type <object>
+    # depending on the environment. To avoid inconsistency, break after we add
+    # StubOutForTesting to the return_list.
+    if 'StubOutForTesting' in str_repr:
       break
 
   return return_list

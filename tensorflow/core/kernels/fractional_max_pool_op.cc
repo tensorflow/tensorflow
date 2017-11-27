@@ -245,9 +245,11 @@ class FractionalMaxPoolGradOp : public OpKernel {
     constexpr int tensor_in_and_out_dims = 4;
     std::vector<int64> input_size;
     std::vector<int64> output_size;
+    input_size.reserve(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size.push_back(tensor_in.dim_size(i));
     }
+    output_size.reserve(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       output_size.push_back(tensor_out.dim_size(i));
     }

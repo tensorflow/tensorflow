@@ -14,6 +14,7 @@
 # ==============================================================================
 """Bijector Ops.
 
+@@AbsoluteValue
 @@Affine
 @@AffineLinearOperator
 @@Bijector
@@ -21,14 +22,23 @@
 @@CholeskyOuterProduct
 @@ConditionalBijector
 @@Exp
+@@Gumbel
 @@Identity
 @@Inline
 @@Invert
+@@MaskedAutoregressiveFlow
+@@Permute
 @@PowerTransform
+@@Reshape
 @@Sigmoid
 @@SigmoidCentered
+@@SinhArcsinh
 @@SoftmaxCentered
 @@Softplus
+@@Weibull
+
+@@masked_autoregressive_default_template
+@@masked_dense
 """
 
 from __future__ import absolute_import
@@ -37,17 +47,23 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+from tensorflow.contrib.distributions.python.ops.bijectors.absolute_value import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import *
 from tensorflow.contrib.distributions.python.ops.bijectors.chain import *
 from tensorflow.contrib.distributions.python.ops.bijectors.cholesky_outer_product import *
 from tensorflow.contrib.distributions.python.ops.bijectors.conditional_bijector import *
 from tensorflow.contrib.distributions.python.ops.bijectors.exp import *
+from tensorflow.contrib.distributions.python.ops.bijectors.gumbel import *
 from tensorflow.contrib.distributions.python.ops.bijectors.inline import *
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
+from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import *
+from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *
+from tensorflow.contrib.distributions.python.ops.bijectors.reshape import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid_centered import *
+from tensorflow.contrib.distributions.python.ops.bijectors.sinh_arcsinh import *
 from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import *
 from tensorflow.contrib.distributions.python.ops.bijectors.softplus import *
 from tensorflow.python.ops.distributions.bijector import *

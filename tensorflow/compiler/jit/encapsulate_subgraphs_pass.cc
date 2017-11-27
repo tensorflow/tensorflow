@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -112,8 +111,8 @@ class Encapsulator {
     // returned by _Retval nodes.
     std::unique_ptr<Graph> graph;
 
-    // Which device are these nodes on? Used both to check that all nodes
-    // are assigned to the same device, and to assign a device to the call node.
+    // Which device are these nodes on? Used to assign a device to the call
+    // node.
     string device;
 
     // NodeDef for the function call node.
@@ -191,16 +190,10 @@ Status Encapsulator::SplitIntoSubgraphs() {
     image->ClearAttr(group_attribute_);
     node_images[node] = image;
 
-    // Check the device matches any existing device.
-    string device = node->assigned_device_name().empty()
-                        ? node->requested_device()
-                        : node->assigned_device_name();
-
     if (subgraph.device.empty()) {
-      subgraph.device = device;
-    } else if (subgraph.device != device) {
-      s.Update(errors::InvalidArgument(
-          "Mismatched devices for nodes to be grouped by Encapsulator"));
+      subgraph.device = node->assigned_device_name().empty()
+                            ? node->requested_device()
+                            : node->assigned_device_name();
     }
   }
 
@@ -631,15 +624,18 @@ Status EncapsulateSubgraphsPass::Run(
   FunctionLibraryDefinition* const library = options.flib_def;
 
   OptimizerOptions opts;
-  std::unique_ptr<FunctionLibraryRuntime> flr(
-      NewFunctionLibraryRuntime(nullptr, options.session_options->env, nullptr,
-                                TF_GRAPH_DEF_VERSION, library, opts));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(nullptr, options.session_options->env,
+                                        TF_GRAPH_DEF_VERSION, library, opts));
+  FunctionLibraryRuntime* flr =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
-  auto rewrite_subgraph = [&flr](
-      std::unique_ptr<Graph>* subgraph, std::vector<int>* input_permutation,
-      std::vector<int>* output_permutation, NodeDef* node) {
+  auto rewrite_subgraph = [flr](std::unique_ptr<Graph>* subgraph,
+                                std::vector<int>* input_permutation,
+                                std::vector<int>* output_permutation,
+                                NodeDef* node) {
     // Optimize the subgraph.
-    OptimizeGraph(flr.get(), subgraph);
+    OptimizeGraph(flr, subgraph);
 
     const int num_args = input_permutation->size();
     std::vector<bool> const_args(num_args);

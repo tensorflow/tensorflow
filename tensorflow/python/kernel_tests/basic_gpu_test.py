@@ -107,12 +107,16 @@ class MathBuiltinUnaryTest(test.TestCase):
 
   def _testDtype(self, dtype, use_gpu):
     data = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(dtype)
+    data_gt_1 = data + 2 # for x > 1
     self._compare(data, np.abs, math_ops.abs, use_gpu)
     self._compare(data, np.arccos, math_ops.acos, use_gpu)
     self._compare(data, np.arcsin, math_ops.asin, use_gpu)
+    self._compare(data, np.arcsinh, math_ops.asinh, use_gpu)
+    self._compare(data_gt_1, np.arccosh, math_ops.acosh, use_gpu)
     self._compare(data, np.arctan, math_ops.atan, use_gpu)
     self._compare(data, np.ceil, math_ops.ceil, use_gpu)
     self._compare(data, np.cos, math_ops.cos, use_gpu)
+    self._compare(data, np.cosh, math_ops.cosh, use_gpu)
     self._compare(data, np.exp, math_ops.exp, use_gpu)
     self._compare(data, np.floor, math_ops.floor, use_gpu)
     self._compare(data, np.log, math_ops.log, use_gpu)
@@ -120,16 +124,18 @@ class MathBuiltinUnaryTest(test.TestCase):
     self._compare(data, np.negative, math_ops.negative, use_gpu)
     self._compare(data, self._rsqrt, math_ops.rsqrt, use_gpu)
     self._compare(data, np.sin, math_ops.sin, use_gpu)
+    self._compare(data, np.sinh, math_ops.sinh, use_gpu)
     self._compare(data, np.sqrt, math_ops.sqrt, use_gpu)
     self._compare(data, np.square, math_ops.square, use_gpu)
     self._compare(data, np.tan, math_ops.tan, use_gpu)
     self._compare(data, np.tanh, math_ops.tanh, use_gpu)
+    self._compare(data, np.arctanh, math_ops.atanh, use_gpu)
 
   def testTypes(self):
     for dtype in [np.float32]:
       self._testDtype(dtype, use_gpu=True)
 
-  def testFloorDevide(self):
+  def testFloorDivide(self):
     x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
         [1, 3, 2])
     y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
@@ -228,11 +234,11 @@ class BroadcastSimpleTest(test.TestCase):
 class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
   """Tests concurrent sessions executing on the same GPU."""
 
-  def _run_session(self, results):
+  def _run_session(self, session, results):
     n_iterations = 500
-    with self.test_session(use_gpu=True) as s:
+    with session as s:
       data = variables.Variable(1.0)
-      with ops.device('/gpu:0'):
+      with ops.device('/device:GPU:0'):
         random_seed.set_random_seed(1)
         matrix1 = variables.Variable(
             random_ops.truncated_normal([1024, 1]), name='matrix1')
@@ -245,29 +251,29 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
 
         for _ in xrange(n_iterations):
           value = s.run(x4)
-          results.append(value)
-          if value != results[0]:
+          results.add(value.flat[0])
+          if len(results) != 1:
             break
 
   def testConcurrentSessions(self):
-    if not test.is_gpu_available():
-      return
-
     n_threads = 4
-    results = [[]] * n_threads
-    threads = [
-        threading.Thread(target=self._run_session, args=(results[i],))
-        for i in xrange(n_threads)
-    ]
+    threads = []
+    results = []
+    for _ in xrange(n_threads):
+      session = self.test_session(graph=ops.Graph(), use_gpu=True)
+      results.append(set())
+      args = (session, results[-1])
+      threads.append(threading.Thread(target=self._run_session, args=args))
+
     for thread in threads:
       thread.start()
     for thread in threads:
       thread.join()
 
-    flat_results = [x for x in itertools.chain(*results)]
-    self.assertNotEqual(0, len(flat_results))
-    for result in flat_results:
-      self.assertEqual(result, flat_results[0])
+    flat_results = set([x for x in itertools.chain(*results)])
+    self.assertEqual(1,
+                     len(flat_results),
+                     'Expected single value, got %r' % flat_results)
 
 
 if __name__ == '__main__':

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/version.h"
@@ -107,8 +106,8 @@ REGISTER_KERNEL_BUILDER(Name("KernelLabel")
 
 class GraphDefVersionOp : public OpKernel {
  public:
-  GraphDefVersionOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {}
+  explicit GraphDefVersionOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {}
 
   void Compute(OpKernelContext* ctx) override {
     Tensor* output = nullptr;
@@ -125,7 +124,7 @@ REGISTER_KERNEL_BUILDER(Name("GraphDefVersion").Device(DEVICE_CPU),
 
 class OldOp : public OpKernel {
  public:
-  OldOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit OldOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {}
 };
@@ -145,7 +144,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceInitializedOp").Device(DEVICE_CPU),
 
 class ResourceCreateOp : public OpKernel {
  public:
-  ResourceCreateOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ResourceCreateOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
     OP_REQUIRES_OK(c,
@@ -170,5 +169,204 @@ class ResourceUsingOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ResourceUsingOp").Device(DEVICE_CPU),
                         ResourceUsingOp);
+
+// Various test ops without kernels. These are used to test graph construction.
+
+REGISTER_OP("A")
+    .Output("out: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("B")
+    .Output("out: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Foo1")
+    .Input("a: float32")
+    .Input("b: int32")
+    .Input("c: int32")
+    .Output("d: float32")
+    .Output("e: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Foo2")
+    .Input("a: float32")
+    .Input("b: string")
+    .Input("c: string")
+    .Output("d: float32")
+    .Output("e: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Foo3")
+    .Input("a: float32")
+    .Input("b: string")
+    .Input("c: float32")
+    .Output("d: float32")
+    .Output("e: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("CopyOp").Input("a: T").Output("b: T").Attr("T: type").SetShapeFn(
+    shape_inference::UnknownShape);
+
+REGISTER_OP("None").SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("IntOutput")
+    .Output("a: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Int64Output")
+    .Output("out: int64")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("RefOutput")
+    .Output("a: Ref(int32)")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("FloatOutput")
+    .Output("a: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TwoFloatOutputs")
+    .Output("a: float32")
+    .Output("b: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("FiveFloatOutputs")
+    .Output("a: float32")
+    .Output("b: float32")
+    .Output("c: float32")
+    .Output("d: float32")
+    .Output("e: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("RefOutputFloatOutput")
+    .Output("a: Ref(float32)")
+    .Output("b: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("RefInputFloatInput")
+    .Input("a: Ref(float)")
+    .Input("b: float")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("IntInput")
+    .Input("a: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("IntInputIntOutput")
+    .Input("a: int32")
+    .Output("b: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("FloatInput")
+    .Input("a: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TwoIntOutputs")
+    .Output("a: int32")
+    .Output("b: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("IntOutputFloatOutput")
+    .Output("a: int32")
+    .Output("b: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("FloatOutputStringOutput")
+    .Output("a: float32")
+    .Output("b: string")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TwoIntInputs")
+    .Input("a: int32")
+    .Input("b: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TwoFloatInputs")
+    .Input("a: float32")
+    .Input("b: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("IntInputFloatInput")
+    .Input("a: int32")
+    .Input("b: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("RefInputIntInput")
+    .Input("a: Ref(int32)")
+    .Input("b: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TwoFloatInputsFloatOutput")
+    .Input("a: float32")
+    .Input("b: float32")
+    .Output("c: float32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TwoFloatInputsIntOutput")
+    .Input("a: float32")
+    .Input("b: float32")
+    .Output("c: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("RefInputFloatInputIntOutput")
+    .Input("a: Ref(float32)")
+    .Input("b: float32")
+    .Output("c: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("ListInput")
+    .Input("a: N * T")
+    .Attr("N: int >= 1")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("ListOutput")
+    .Output("a: T")
+    .Attr("T: list(type) >= 1")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Unary").Input("a: T").Output("b: T").Attr("T: type").SetShapeFn(
+    shape_inference::UnknownShape);
+
+REGISTER_OP("OpWithDefaultAttr")
+    .Output("a: int32")
+    .Attr("default_float: float = 123.0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("OpWithFutureDefaultAttr")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("IntAttr")
+    .Output("out: int64")
+    .Attr("foo: int = 1")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("StringListAttr")
+    .Attr("a: list(string)")
+    .Attr("b: string")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("DefaultAttrs")
+    .Attr("string_val: string = 'abc'")
+    .Attr("string_list_val: list(string) = ['abc', '']")
+    .Attr("int_val: int = 123")
+    .Attr("int_list_val: list(int) = [1, 2, 3]")
+    .Attr("float_val: float = 10.0")
+    .Attr("float_list_val: list(float) = [10.0]")
+    .Attr("bool_val: bool = true")
+    .Attr("bool_list_val: list(bool) = [true, false]")
+    .Attr("type_val: type = DT_INT32")
+    .Attr("type_list_val: list(type) = [DT_INT32, DT_FLOAT]")
+    .Attr("shape_val: shape = { dim { size: 2 } dim { size: 1 } }")
+    .Attr("shape_list_val: list(shape) = [{}, { dim { size: 1} }]")
+    .Attr("tensor_val: tensor = { dtype: DT_INT32 tensor_shape: {} int_val: 1}")
+    .Attr(
+        "tensor_list_val: list(tensor) = "
+        "[{ dtype: DT_INT32 tensor_shape: {} int_val: 1}]")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("FuncAttr")
+    .Attr("f: func")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 }  // end namespace tensorflow

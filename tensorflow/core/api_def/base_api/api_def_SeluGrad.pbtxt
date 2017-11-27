@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "SeluGrad"
+  visibility: HIDDEN
+  in_arg {
+    name: "gradients"
+    description: <<END
+The backpropagated gradients to the corresponding Selu operation.
+END
+  }
+  in_arg {
+    name: "outputs"
+    description: <<END
+The outputs of the corresponding Selu operation.
+END
+  }
+  out_arg {
+    name: "backprops"
+    description: <<END
+The gradients: `gradients * (outputs + scale * alpha)`
+if outputs < 0, `scale * gradients` otherwise.
+END
+  }
+  summary: "Computes gradients for the scaled exponential linear (Selu) operation."
+}

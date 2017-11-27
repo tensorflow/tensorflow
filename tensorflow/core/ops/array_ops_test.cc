@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -31,6 +32,7 @@ TEST(ArrayOpsTest, Pack_ShapeFn) {
   auto set_axis = [&op](int axis) {
     int n = 3;
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
                      .Input(src_list)
@@ -174,27 +176,30 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
-  EXPECT_TRUE(c.output_handle_dtype(0) == DT_BOOL);
+
+  const auto* shapes_and_types = c.output_handle_shapes_and_types(0);
+  ASSERT_TRUE(shapes_and_types != nullptr);
+  ASSERT_EQ(1, shapes_and_types->size());
+  EXPECT_EQ((*shapes_and_types)[0].dtype, DT_BOOL);
 }
 
 TEST(ArrayOpsTest, Diag_ShapeFn) {
   ShapeInferenceTestOp op("Diag");
   INFER_OK(op, "?", "?");
-  INFER_OK(op, "[]", "[]");
   INFER_OK(op, "[1,?,3]", "[d0_0,d0_1,d0_2,d0_0,d0_1,d0_2]");
-  INFER_ERROR("Shape must be at most rank 3 but is rank 4", op, "[?,1,2,3]");
+  INFER_OK(op, "[?,1,2,3]", "[d0_0,d0_1,d0_2,d0_3,d0_0,d0_1,d0_2,d0_3]");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
 }
 
 TEST(ArrayOpsTest, DiagPart_ShapeFn) {
   ShapeInferenceTestOp op("DiagPart");
   INFER_OK(op, "?", "?");
-  INFER_OK(op, "[]", "[]");
   INFER_OK(op, "[1,?,?,4]", "[d0_0,d0_3]");
   INFER_OK(op, "[1,?,3,?,4,3]", "[d0_0,d0_4,d0_2|d0_5]");
-  INFER_ERROR("Input must have even rank <= 6, input rank is 1", op, "[?]");
-  INFER_ERROR("Input must have even rank <= 6, input rank is 3", op, "[1,2,3]");
-  INFER_ERROR("Input must have even rank <= 6, input rank is 8", op,
-              "[1,2,3,?,?,?,?,?]");
+  INFER_OK(op, "[1,2,3,?,?,?,?,4]", "[d0_0,d0_1,d0_2,d0_7]");
+  INFER_ERROR("Input must have even and non-zero rank", op, "[]");
+  INFER_ERROR("Input must have even and non-zero rank", op, "[?]");
+  INFER_ERROR("Input must have even and non-zero rank", op, "[1,2,3]");
   INFER_ERROR("Dimensions must be equal, but are 2 and 10", op, "[1,2,?,10]");
 }
 
@@ -258,6 +263,61 @@ TEST(ArrayOpsTest, Gather_ShapeFn) {
   INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[1,2,3]");
 }
 
+TEST(ArrayOpsTest, GatherV2_ShapeFn) {
+  ShapeInferenceTestOp op("GatherV2");
+
+  // Tests when axis is unknown.
+  INFER_OK(op, "?;?;?", "?");
+  INFER_OK(op, "[1,2,3];[3];[]", "[?,?,?]");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op,
+              "[];[1,2,3];[]");
+
+  // Non-scalar axis.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1];[1,2,3];[1]");
+
+  // Test when axis dim is known.
+  Tensor axis_dim_t;
+  op.input_tensors.resize(3);
+  op.input_tensors[2] = &axis_dim_t;
+
+  // Out of range axis.
+  axis_dim_t = test::AsScalar(1);
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+              "[1];[1,2];[]");
+
+  // Rank 0 indices.
+  axis_dim_t = test::AsScalar(0);
+  INFER_OK(op, "[1,2,3];[];[]", "[d0_1,d0_2]");
+  axis_dim_t = test::AsScalar(1);
+  INFER_OK(op, "[1,2,3];[];[]", "[d0_0,d0_2]");
+  axis_dim_t = test::AsScalar(2);
+  INFER_OK(op, "[1,2,3];[];[]", "[d0_0,d0_1]");
+
+  // Rank 1 indices.
+  axis_dim_t = test::AsScalar(0);
+  INFER_OK(op, "[1,2,3];[5];[]", "[d1_0,d0_1,d0_2]");
+  axis_dim_t = test::AsScalar(1);
+  INFER_OK(op, "[1,2,3];[5];[]", "[d0_0,d1_0,d0_2]");
+  axis_dim_t = test::AsScalar(2);
+  INFER_OK(op, "[1,2,3];[5];[]", "[d0_0,d0_1,d1_0]");
+
+  // Rank 2 indices.
+  axis_dim_t = test::AsScalar(0);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d1_0,d1_1,d0_1,d0_2]");
+  axis_dim_t = test::AsScalar(1);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d1_0,d1_1,d0_2]");
+  axis_dim_t = test::AsScalar(2);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d0_1,d1_0,d1_1]");
+
+  // Negative axis.
+  axis_dim_t = test::AsScalar(-3);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d1_0,d1_1,d0_1,d0_2]");
+  axis_dim_t = test::AsScalar(-2);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d1_0,d1_1,d0_2]");
+  axis_dim_t = test::AsScalar(-1);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d0_1,d1_0,d1_1]");
+}
+
 TEST(ArrayOpsTest, GatherNd_ShapeFn) {
   ShapeInferenceTestOp op("GatherNd");
 
@@ -281,6 +341,7 @@ TEST(ArrayOpsTest, ShapeN_ShapeFn) {
   ShapeInferenceTestOp op("ShapeN");
   int n = 3;
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
   TF_ASSERT_OK(NodeDefBuilder("test", "ShapeN")
                    .Input(src_list)
@@ -340,6 +401,36 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     INFER_OK(op, "?;[3,2]", "[?,?,?]");
     INFER_OK(op, "?;?", "[?,?,?]");
   }
+}
+
+TEST(ArrayOpsTest, PadV2_ShapeFn) {
+  ShapeInferenceTestOp op("PadV2");
+  op.input_tensors.resize(3);
+
+  // Inputs are input, paddings and constant_values.
+
+  INFER_OK(op, "?;?;?", "?");
+
+  // Check shape of paddings.
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;[1,2,3];?");
+  INFER_ERROR("Dimension must be 2 but is 4", op, "?;[1,4];?");
+
+  // input.rank and paddings.dim(0) are equal. This is the number of dims in
+  // output.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];[4,2];[]");
+  INFER_OK(op, "[1,2,3];?;[]", "[?,?,?]");
+  INFER_OK(op, "?;[3,2];[]", "[?,?,?]");
+
+  // Make the paddings tensor known and verify padding values get added.
+  // E.g., if padding is ((1,10),(2,20),(3,30)) then values 11,22,23 are added
+  // to input dims to get output.
+  Tensor paddings_t(DT_INT64, TensorShape{3, 2});
+  test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
+  op.input_tensors[1] = &paddings_t;
+  INFER_OK(op, "[100,200,300];[3,2];[]", "[111,222,333]");
+  INFER_OK(op, "[100,?,300];[3,2];[]", "[111,?,333]");
+  INFER_OK(op, "?;[3,2];[]", "[?,?,?]");
+  INFER_OK(op, "?;?;[]", "[?,?,?]");
 }
 
 TEST(ArrayOpsTest, MirrorPadGrad_ShapeFn) {
@@ -546,6 +637,7 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   ShapeInferenceTestOp op("Concat");
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "Concat")
                      .Input({"concat_dim", 0, DT_INT32})
@@ -619,6 +711,7 @@ TEST(ArrayOpsTest, ConcatV2_ShapeFn) {
   ShapeInferenceTestOp op("ConcatV2");
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "ConcatV2")
                      .Input(src_list)
@@ -695,6 +788,7 @@ TEST(ArrayOpsTest, ConcatOffset_ShapeFn) {
 
   const int n = 4;
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_INT32);
   TF_ASSERT_OK(NodeDefBuilder("test", "ConcatOffset")
                    .Input({"concat_dim", 0, DT_INT32})
@@ -993,6 +1087,9 @@ TEST(ArrayOpsTest, Split_ShapeFn) {
   // If the rank is known, we know the rank of each output.
   INFER_OK(op, "?;[?,?]", "[?,?];[?,?]");
 
+  // split_dim is unknown but other inputs are known.
+  INFER_OK(op, "?;[1,4]", "[?,?];[?,?]");
+
   // split_dim is known.
   Tensor split_dim = test::AsTensor<int32>({1, 2});
   op.input_tensors[0] = &split_dim;
@@ -1004,6 +1101,26 @@ TEST(ArrayOpsTest, Split_ShapeFn) {
   INFER_OK(op, "?;[1,?]", "[d1_0,?];[d1_0,?]");
   INFER_ERROR("Dimension size must be evenly divisible by 2 but is 5", op,
               "?;[1,5]");
+
+  // split_dim too large.
+  split_dim = test::AsScalar<int32>(3);
+  INFER_ERROR(
+      "Dimension size, given by scalar input 3 must be in range [-3, 3)", op,
+      "?;[1,4,8]");
+
+  // Negative split_dim.
+  split_dim = test::AsScalar<int32>(-1);
+  INFER_OK(op, "?;?", "?;?");
+  INFER_OK(op, "?;[?,?]", "[d1_0,?];[d1_0,?]");
+  INFER_OK(op, "?;[1,?]", "[d1_0,?];[d1_0,?]");
+  INFER_OK(op, "?;[1,4]", "[d1_0,2];[d1_0,2]");
+  INFER_OK(op, "?;[1,4,8]", "[d1_0,d1_1,4];[d1_0,d1_1,4]");
+  split_dim = test::AsScalar<int32>(-2);
+  INFER_OK(op, "?;[1,4,8]", "[d1_0,2,d1_2];[d1_0,2,d1_2]");
+  split_dim = test::AsScalar<int32>(-4);
+  INFER_ERROR(
+      "Dimension size, given by scalar input -4 must be in range [-3, 3)", op,
+      "?;[1,4,8]");
 }
 
 TEST(ArrayOpsTest, Tile_ShapeFn) {

@@ -31,6 +31,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
@@ -43,6 +44,11 @@ from tensorflow.python.util import compat
 
 # Prefix to be added to unbound input names so they are easily identifiable.
 _UNBOUND_INPUT_PREFIX = "$unbound_inputs_"
+
+# List of collections that didn't register proto functions, as a result in
+# a previously exported meta_graph the items are of a different data type.
+_COMPAT_COLLECTION_LIST = [ops.GraphKeys.LOCAL_VARIABLES,
+                           ops.GraphKeys.MODEL_VARIABLES]
 
 
 def _node_def(from_node_def, export_scope, unbound_inputs, clear_devices=False):
@@ -510,7 +516,7 @@ def create_meta_graph_def(meta_info_def=None,
     meta_graph_def.saver_def.MergeFrom(saver_def)
 
   # Adds collection_list.
-  if collection_list:
+  if collection_list is not None:
     clist = collection_list
   else:
     clist = graph.get_all_collection_keys()
@@ -577,8 +583,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
   the argument is a file containing a `MetaGraphDef` protocol buffer ,
   it constructs a protocol buffer from the file content. The function
   then adds all the nodes from the `graph_def` field to the
-  current graph, recreates the desired collections, and returns a saver
-  constructed from the `saver_def` field.
+  current graph, recreates the desired collections, and returns a dictionary of
+  all the Variables imported into the name scope.
 
   In combination with `export_scoped_meta_graph()`, this function can be used to
 
@@ -612,6 +618,9 @@ def import_scoped_meta_graph(meta_graph_or_file,
   Raises:
     ValueError: If the graph_def contains unbound inputs.
   """
+  if context.in_eager_mode():
+    raise ValueError("Exporting/importing meta graphs is not supported when "
+                     "eager execution is enabled.")
   if isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
     meta_graph_def = meta_graph_or_file
   else:
@@ -667,8 +676,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
                       key)
         continue
       from_proto = ops.get_from_proto_function(key)
-      if from_proto:
-        assert kind == "bytes_list"
+      if from_proto and kind == "bytes_list":
         proto_type = ops.get_collection_proto_type(key)
         for value in col_def.bytes_list.value:
           proto = proto_type()
@@ -677,6 +685,11 @@ def import_scoped_meta_graph(meta_graph_or_file,
               key, from_proto(proto, import_scope=scope_to_prepend_to_names))
       else:
         field = getattr(col_def, kind)
+        if key in _COMPAT_COLLECTION_LIST:
+          logging.warning(
+              "The saved meta_graph is possibly from an older release:\n"
+              "'%s' collection should be of type 'byte_list', but instead "
+              "is of type '%s'.", key, kind)
         if kind == "node_list":
           for value in field.value:
             col_op = graph.as_graph_element(
@@ -749,6 +762,9 @@ def export_scoped_meta_graph(filename=None,
   Raises:
     ValueError: When the `GraphDef` is larger than 2GB.
   """
+  if context.in_eager_mode():
+    raise ValueError("Exporting/importing meta graphs is not supported when "
+                     "Eager Execution is enabled.")
   graph = graph or ops.get_default_graph()
 
   exclude_nodes = None

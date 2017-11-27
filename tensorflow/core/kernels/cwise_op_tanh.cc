@@ -20,21 +20,13 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Tanh", functor::tanh, float, Eigen::half, double,
           complex64, complex128);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Tanh")                                \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          UnaryOp<SYCLDevice, functor::tanh<TYPE>>);
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-#undef REGISTER_SYCL_KERNEL
-#endif // TENSORFLOW_USE_SYC
-
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Tanh", functor::tanh, float, Eigen::half, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER2(UnaryOp, SYCL, "Tanh", functor::tanh, float, double);
+#endif // TENSORFLOW_USE_SYCL
 
 REGISTER5(SimpleBinaryOp, CPU, "TanhGrad", functor::tanh_grad, float,
           Eigen::half, double, complex64, complex128);

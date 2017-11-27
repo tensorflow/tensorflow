@@ -63,7 +63,7 @@ class MinOp : public XlaReductionOp {
       xla::ComputationBuilder* builder) override {
     xla::PrimitiveType type;
     TF_CHECK_OK(DataTypeToPrimitiveType(input_type(0), &type));
-    return builder->ConstantLiteral(xla::LiteralUtil::MaxValue(type));
+    return builder->ConstantLiteral(xla::Literal::MaxValue(type));
   }
 
   void BuildReducer(xla::ComputationBuilder* builder,
@@ -83,7 +83,7 @@ class MaxOp : public XlaReductionOp {
       xla::ComputationBuilder* builder) override {
     xla::PrimitiveType type;
     TF_CHECK_OK(DataTypeToPrimitiveType(input_type(0), &type));
-    return builder->ConstantLiteral(xla::LiteralUtil::MinValue(type));
+    return builder->ConstantLiteral(xla::Literal::MinValue(type));
   }
 
   void BuildReducer(xla::ComputationBuilder* builder,
@@ -129,7 +129,7 @@ class AllOp : public XlaReductionOp {
   void BuildReducer(xla::ComputationBuilder* builder,
                     const xla::ComputationDataHandle& scalar_lhs,
                     const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->LogicalAnd(scalar_lhs, scalar_rhs);
+    builder->And(scalar_lhs, scalar_rhs);
   }
 };
 
@@ -147,7 +147,7 @@ class AnyOp : public XlaReductionOp {
   void BuildReducer(xla::ComputationBuilder* builder,
                     const xla::ComputationDataHandle& scalar_lhs,
                     const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->LogicalOr(scalar_lhs, scalar_rhs);
+    builder->Or(scalar_lhs, scalar_rhs);
   }
 };
 
