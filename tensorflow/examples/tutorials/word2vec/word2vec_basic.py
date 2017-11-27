@@ -218,10 +218,9 @@ with graph.as_default():
   saver = tf.train.Saver()
 
 # Step 5: Begin training.
-#num_steps = 100001
-num_steps = 10
+num_steps = 100001
 
-log_path = 'log'
+log_path = 'your_full_path/log'
 # Create the directory for TensorBoard variables if there is not.
 if not os.path.exists(log_path):
   os.makedirs(log_path)
@@ -278,14 +277,14 @@ with tf.Session(graph=graph) as session:
     for i in xrange(vocabulary_size):
       f.write(reverse_dictionary[i] + '\n')
 
-  # Save the model.
+  # Save the model for checkpoints.
   saver.save(session, os.path.join(log_path, "model.ckpt"))
 
   # Create a configuration for visualizing embeddings with the labels in TensorBoard.
   config = projector.ProjectorConfig()
   embedding_conf = config.embeddings.add()
   embedding_conf.tensor_name = embeddings.name
-  embedding_conf.metadata_path = log_path + '/metadata.tsv'
+  embedding_conf.metadata_path = os.path.join(log_path, 'metadata.tsv')
   projector.visualize_embeddings(writer, config)
 
 writer.close()
