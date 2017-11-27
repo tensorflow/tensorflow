@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
 import numpy as np
 
 from tensorflow.contrib.boosted_trees.python.utils import losses
@@ -60,34 +58,26 @@ class LossesTest(test_util.TensorFlowTestCase):
       neg_loss = loss_for_negatives.eval()
       # For positive labels, points <= 0.3 get max loss of e.
       # For negative labels, these points have minimum loss of 1/e.
-      for i in range(2):
-        self.assertAlmostEqual(math.exp(1), pos_loss[i], places=4)
-        self.assertAlmostEqual(math.exp(-1), neg_loss[i], places=4)
+      self.assertAllClose(np.exp(np.ones([2, 1])), pos_loss[:2], atol=1e-4)
+      self.assertAllClose(np.exp(-np.ones([2, 1])), neg_loss[:2], atol=1e-4)
 
       # For positive lables, p oints with predictions 0.7 and larger get minimum
       # loss value of 1/e. For negative labels, these points are wrongly
       # classified and get loss e.
-      for i in range(6, 10):
-        self.assertAlmostEqual(math.exp(-1), pos_loss[i], places=4)
-        self.assertAlmostEqual(math.exp(1), neg_loss[i], places=4)
+      self.assertAllClose(np.exp(-np.ones([4, 1])), pos_loss[6:10], atol=1e-4)
+      self.assertAllClose(np.exp(np.ones([4, 1])), neg_loss[6:10], atol=1e-4)
 
       # Points in between 0.5-eps, 0..5+eps get loss exp(-label_m*y), where
       # y = 1/eps *x -1/(2eps), where x is the probability and label_m is either
       # 1 or -1 (for label of 0).
-      for i in range(2, 6):
-        self.assertAlmostEqual(
-            math.exp(-1.0 * (predictions_probs[i] * 1.0 / eps - 0.5 / eps)),
-            pos_loss[i],
-            places=4)
-        self.assertAlmostEqual(
-            math.exp(1.0 * (predictions_probs[i] * 1.0 / eps - 0.5 / eps)),
-            neg_loss[i],
-            places=4)
+      self.assertAllClose(
+          np.exp(-(predictions_probs[2:6] * 1.0 / eps - 0.5 / eps)),
+          pos_loss[2:6], atol=1e-4)
+      self.assertAllClose(
+          np.exp(predictions_probs[2:6] * 1.0 / eps - 0.5 / eps),
+          neg_loss[2:6], atol=1e-4)
 
   def test_per_example_squared_loss(self):
-
-    def _squared_loss(p, y):
-      return np.mean(1.0 * (p - y) * (p - y))
 
     labels = np.array([[0.123], [224.2], [-3], [2], [.3]], dtype=np.float32)
     weights = array_ops.ones([5, 1], dtypes.float32)
@@ -99,9 +89,8 @@ class LossesTest(test_util.TensorFlowTestCase):
                                                        predictions)
 
       loss = loss_tensor.eval()
-      for i in range(5):
-        self.assertAlmostEqual(
-            _squared_loss(labels[i], predictions[i]), loss[i], places=4)
+      self.assertAllClose(
+          np.square(labels[:5] - predictions[:5]), loss[:5], atol=1e-4)
 
 
 if __name__ == "__main__":
