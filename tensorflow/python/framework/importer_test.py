@@ -201,8 +201,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(outer_inner_c.name, "outer/inner/c_1")
 
   def testInputMap(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
       feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
@@ -230,8 +228,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], feed_b_1)
 
   def testInputMapBytes(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
       feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
@@ -259,8 +255,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], feed_b_1)
 
   def testInputMapUnicode(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
       feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
@@ -299,8 +293,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(b.inputs[0], a.outputs[0])
 
   def testInputMapImplicitZerothOutput(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
       b, = importer.import_graph_def(
@@ -453,8 +445,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertTrue("Input tensor 'A:0' not found" in str(e.exception))
 
   def testMissingInputOpInGraphDefButAppearsInInputMap(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(5.0)
       b, = importer.import_graph_def(
@@ -589,19 +579,20 @@ class ImportGraphDefTest(test.TestCase):
       self.assertTrue("not found in graph_def: [A:2]" in str(e.exception))
 
   def testInputMapTypeMismatch(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
+    if ops._USE_C_API:
+      error_msg = ("Input 0 of node import/B was passed float from Const:0 "
+                   "incompatible with expected int32.")
+    else:
+      error_msg = ("Cannot convert a tensor of type float32 to an input of "
+                   "type int32.")
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             node { name: 'B' op: 'IntInput' input: 'A:0' }
             """),
             input_map={"A:0": constant_op.constant(5.0)})
-      self.assertTrue(
-          "Cannot convert a tensor of type float32 to an input of type int32."
-          in str(e.exception))
 
   def testNoReturns(self):
     with ops.Graph().as_default() as g:
@@ -825,8 +816,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual("graph_def must be a GraphDef proto.", str(e.exception))
 
   def testInvalidInputForInputMap(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       with self.assertRaises(TypeError) as e:
         importer.import_graph_def(
@@ -967,7 +956,7 @@ class ImportGraphDefTest(test.TestCase):
     self.assertEqual(2, len(ops_with_two_inputs))
 
   def testGradient(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API: return  # TODO(skyewm): get_shape() doesn't work
 
     with ops.Graph().as_default() as g:
       inputs = array_ops.placeholder(
@@ -1226,8 +1215,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(z_val, -2.0)
 
   def testImportGraphWithFunctionTwice(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     g = ops.Graph()
     with g.as_default():
       @function.Defun()
