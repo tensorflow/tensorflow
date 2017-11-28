@@ -76,9 +76,9 @@ struct ApplyAdadelta<CPUDevice, T> {
         accum * rho() + grad.square() * (static_cast<T>(1) - rho());
     const auto update =
         (accum_update + epsilon()).sqrt() * (accum + epsilon()).rsqrt() * grad;
+    var.device(d) -= update * lr();
     accum_update.device(d) =
         accum_update * rho() + update.square() * (static_cast<T>(1) - rho());
-    var.device(d) -= update * lr();
   }
 };
 
@@ -784,11 +784,11 @@ class SparseApplyAdadeltaOp : public OpKernel {
         const auto update =
             (accum_update_ + accum_update_.constant(epsilon_scalar)).sqrt() *
             (accum_ + accum_.constant(epsilon_scalar)).rsqrt() * grad_;
+        auto v = var_flat.template chip<0>(index);
+        v -= update * update.constant(lr_scalar);
         accum_update_ =
             accum_update_ * accum_update_.constant(rho_scalar) +
             update.square() * update.constant(static_cast<T>(1) - rho_scalar);
-        auto v = var_flat.template chip<0>(index);
-        v -= update * update.constant(lr_scalar);
       }
     }
     if (use_exclusive_lock_) {
