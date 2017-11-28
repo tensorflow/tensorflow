@@ -1049,7 +1049,10 @@ Status MasterSession::Create(GraphDef* graph_def,
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
         graph_def, execution_options, &execution_state_));
   }
-  if (options.cluster_def != nullptr) {
+  // TODO(b/36574172): Remove these conditions when ClusterSpec
+  // propagation is supported in all servers.
+  if (options.cluster_def != nullptr ||
+      session_opts_.config.isolate_session_state()) {
     should_delete_worker_sessions_ = true;
     return CreateWorkerSessions(options);
   }
@@ -1058,10 +1061,9 @@ Status MasterSession::Create(GraphDef* graph_def,
 
 Status MasterSession::CreateWorkerSessions(
     const WorkerCacheFactoryOptions& options) {
-  CHECK(worker_cache_) << "CreateWorkerSessions should be called only with "
-                       << "dynamic cluster membership.";
   std::vector<string> worker_names;
-  worker_cache_->ListWorkers(&worker_names);
+  WorkerCacheInterface* worker_cache = get_worker_cache();
+  worker_cache->ListWorkers(&worker_names);
 
   struct WorkerGroup {
     // The worker name. (Not owned.)
@@ -1079,10 +1081,10 @@ Status MasterSession::CreateWorkerSessions(
   std::vector<WorkerGroup> workers(worker_names.size());
 
   // Release the workers.
-  auto cleanup = gtl::MakeCleanup([this, &workers] {
+  auto cleanup = gtl::MakeCleanup([this, &workers, worker_cache] {
     for (auto&& worker_group : workers) {
       if (worker_group.worker != nullptr) {
-        worker_cache_->ReleaseWorker(*worker_group.name, worker_group.worker);
+        worker_cache->ReleaseWorker(*worker_group.name, worker_group.worker);
       }
     }
   });
@@ -1091,11 +1093,19 @@ Status MasterSession::CreateWorkerSessions(
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
-    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
+    workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
-    *workers[i].request.mutable_server_def()->mutable_cluster() =
-        *options.cluster_def;
-    workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+    if (options.cluster_def) {
+      *workers[i].request.mutable_server_def()->mutable_cluster() =
+          *options.cluster_def;
+      workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+      // Session state is always isolated when ClusterSpec propagation
+      // is in use.
+      workers[i].request.set_isolate_session_state(true);
+    } else {
+      workers[i].request.set_isolate_session_state(
+          session_opts_.config.isolate_session_state());
+    }
 
     DeviceNameUtils::ParsedName name;
     if (!DeviceNameUtils::ParseFullName(worker_names[i], &name)) {
@@ -1162,7 +1172,7 @@ Status MasterSession::DeleteWorkerSessions() {
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
-    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
+    workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
   }
 
