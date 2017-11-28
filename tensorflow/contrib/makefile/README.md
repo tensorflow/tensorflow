@@ -16,17 +16,17 @@ This static library will not contain:
 
  - Python or other language bindings
  - GPU support
- 
+
 You can target:
 - iOS
 - OS X (macOS)
 - Android
 - Raspberry-PI
- 
+
 You will compile tensorflow and protobuf libraries that you can link into other
 applications.  You will also compile the [benchmark](../../tools/benchmark/)
 application that will let you check your application.
- 
+
 ## Before you start (all platforms)
 
 First, clone this TensorFlow repository.
@@ -58,9 +58,9 @@ You should then be able to run the `build_all_linux.sh` script to compile:
 tensorflow/contrib/makefile/build_all_linux.sh
 ```
 
-This should compile a static library in 
-`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`, 
-and create an example executable at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
+This should compile a static library in
+`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`,
+and create an example executable at `tensorflow/contrib/makefile/gen/bin/benchmark`.
 
 Get the graph file, if you have not already:
 
@@ -201,7 +201,7 @@ library in a simple app.
 ### Building by hand
 
 This section covers each step of building.  For all the code in one place, see
-[build_all_ios.sh](build_all_ios.sh). 
+[build_all_ios.sh](build_all_ios.sh).
 
 If you have not already, you will need to download dependencies:
 
@@ -232,7 +232,7 @@ make -f tensorflow/contrib/makefile/Makefile \
 
 This creates a library in
 `tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a` that you can link any
-xcode project against. 
+xcode project against.
 
 To see TensorFlow running on iOS, the example Xcode project in
 [tensorflow/examples/ios](../../examples/ios/) shows how to use the static
@@ -258,15 +258,15 @@ tensorflow/contrib/makefile/compile_ios_tensorflow.sh -f "-O3" -h tensorflow/con
 
 In XCode, you will need to use -force_load in the linker flags
 section of the build settings to pull in the global constructors that are used
-to register ops and kernels. 
+to register ops and kernels.
 
 #### Optimization
- 
+
 The `compile_ios_tensorflow.sh` script can take optional command-line arguments.
 The first argument will be passed as a C++ optimization flag and defaults to
 debug mode. If you are concerned about performance or are working on a release
 build, you would likely want a higher optimization setting, like so:
- 
+
 ```bash
 compile_ios_tensorflow.sh -f "-Os"
 ```
@@ -330,7 +330,7 @@ what you need for your desired system.
 ## Dependency Management
 
 The Makefile loads in a list of dependencies stored in text files. These files
-are generated from the main Bazel build by running 
+are generated from the main Bazel build by running
 `tensorflow/contrib/makefile/gen_file_lists.sh`. You'll need to re-run this i
 you make changes to the files that are included in the build.
 
@@ -361,10 +361,10 @@ codebase can sometimes break the makefile build process. If you find that tests
 relying on this makefile are failing with a change you're involved in, here are
 some trouble-shooting steps:
 
- - Try to reproduce the issue on your platform. If you're on Linux, running 
+ - Try to reproduce the issue on your platform. If you're on Linux, running
  `make -f tensorflow/contrib/makefile/Makefile` should be enough to recreate
   most issues. For other platforms, see the sections earlier in this document.
-  
+
  - The most common cause of breakages are files that have been added to the
   Bazel build scripts, but that the makefile isn't aware of. Typical symptoms
   of this include linker errors mentioning missing symbols or protobuf headers
@@ -377,11 +377,11 @@ some trouble-shooting steps:
   `tensorflow/core/BUILD`, so if you change the wildcards there to include new
   files you'll need to also update `CORE_CC_ALL_SRCS` and `CORE_CC_EXCLUDE_SRCS`
   in the makefile.
-  
+
  - Some of the supported platforms use clang instead of gcc as their compiler,
   so if you're hitting compile errors you may need to tweak your code to be more
   friendly to different compilers by avoiding gcc extensions or idioms.
-  
+
 These are the most common reasons for makefile breakages, but it's also
 possible you may hit something unusual, like a platform incompatibility. For
 those, you'll need to see if you can reproduce the issue on that particular

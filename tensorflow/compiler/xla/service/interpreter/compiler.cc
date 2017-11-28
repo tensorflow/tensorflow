@@ -83,8 +83,6 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
   VLOG(1) << "Run backend " << hlo_module->name();
 
-  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
-
   // Typically you would visit the HLO graph, building up a compiled equivalent
   // In this case we are using an HloEvaluator at execution time, so we don't
   // need to compile anything

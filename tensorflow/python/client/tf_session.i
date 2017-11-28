@@ -497,6 +497,41 @@ def TF_Reset(target, containers=None, config=None):
   }
 }
 
+// Typemaps for TF_GraphGetTensorShapeHelper.
+
+// Convert from C++ integer vector to Python list of ints.
+%typemap(out) tensorflow::gtl::InlinedVector<int64_t, 6>
+     tensorflow::TF_GraphGetTensorShapeHelper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyInt_FromLong($1[i]));
+  }
+}
+
+%typemap(in, numinputs=0) bool* unknown_shape (bool temp) {
+  $1=&temp;
+}
+
+// Returns a (list(int), bool) tuple.
+%typemap(argout) bool* unknown_shape {
+  PyObject* new_result = PyTuple_New(2);
+  if (!new_result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create tuple");
+  }
+  // Steals $result reference
+  PyTuple_SET_ITEM(new_result, 0, $result);
+  PyTuple_SET_ITEM(new_result, 1, PyBool_FromLong(*$1));
+  $result = new_result;
+}
+
+%unignore tensorflow;
+%unignore TF_GraphGetTensorShapeHelper;
+%ignore TF_GraphGetTensorShape;
+
 %include "tensorflow/python/client/tf_session_helper.h"
 
 %unignoreall

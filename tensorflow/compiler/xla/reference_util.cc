@@ -102,7 +102,9 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
     const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
     Padding padding, int64 lhs_dilation, int64 rhs_dilation,
     const ConvolutionDimensionNumbers& dnums) {
-  CHECK_EQ(dnums.spatial_dimensions_size(), 1);
+  CHECK_EQ(dnums.input_spatial_dimensions_size(), 1);
+  CHECK_EQ(dnums.kernel_spatial_dimensions_size(), 1);
+  CHECK_EQ(dnums.output_spatial_dimensions_size(), 1);
   // Reuse the code for Array4D-convolution by extending the 3D input into a 4D
   // array by adding a fourth dummy dimension of size 1 without stride, padding
   // and dilation.
@@ -120,8 +122,9 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
       });
   // Add a second dummy spatial dimensions.
   ConvolutionDimensionNumbers dnums2d = dnums;
-  dnums2d.add_spatial_dimensions(3);
+  dnums2d.add_input_spatial_dimensions(3);
   dnums2d.add_kernel_spatial_dimensions(3);
+  dnums2d.add_output_spatial_dimensions(3);
   std::unique_ptr<Array4D<float>> convr4 = ConvArray4DGeneralDimensionsDilated(
       a4dlhs, a4drhs, {kernel_stride, 1}, padding, {lhs_dilation, 1},
       {rhs_dilation, 1}, dnums2d);
@@ -465,9 +468,9 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   }
 
   ordered_input_dimensions[0] =
-      lhs_literal->shape().dimensions(dnums.spatial_dimensions(0));
+      lhs_literal->shape().dimensions(dnums.input_spatial_dimensions(0));
   ordered_input_dimensions[1] =
-      lhs_literal->shape().dimensions(dnums.spatial_dimensions(1));
+      lhs_literal->shape().dimensions(dnums.input_spatial_dimensions(1));
   ordered_kernel_dimensions[0] =
       rhs_literal->shape().dimensions(dnums.kernel_spatial_dimensions(0));
   ordered_kernel_dimensions[1] =
@@ -700,139 +703,6 @@ ReferenceUtil::ReduceToRowArray2D(
       (*result)(i, j) = map_function(matrix(i, j), i, j);
     }
   }
-  return result;
-}
-
-/* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::PadArray2D(
-    const Array2D<float>& operand, const PaddingConfig& padding,
-    const float pad) {
-  int64 in0 = operand.n1();
-  int64 high_padding0 = padding.dimensions(0).edge_padding_high();
-  int64 low_padding0 = padding.dimensions(0).edge_padding_low();
-  int64 interior_padding0 = padding.dimensions(0).interior_padding();
-  int64 out0 =
-      in0 + low_padding0 + high_padding0 + (in0 - 1) * interior_padding0;
-
-  int64 in1 = operand.n2();
-  int64 high_padding1 = padding.dimensions(1).edge_padding_high();
-  int64 low_padding1 = padding.dimensions(1).edge_padding_low();
-  int64 interior_padding1 = padding.dimensions(1).interior_padding();
-  int64 out1 =
-      in1 + low_padding1 + high_padding1 + (in1 - 1) * interior_padding1;
-
-  auto result = MakeUnique<Array2D<float>>(out0, out1);
-  result->Fill(pad);
-  int64 o0 = low_padding0;
-  for (int64 i0 = 0; i0 < in0; ++i0) {
-    int64 o1 = low_padding1;
-    for (int64 i1 = 0; i1 < in1; ++i1) {
-      if (o0 >= 0 && o1 >= 0 && o0 < out0 && o1 < out1) {
-        (*result)(o0, o1) = operand(i0, i1);
-      }
-      o1 += interior_padding1 + 1;
-    }
-    o0 += interior_padding0 + 1;
-  }
-  return result;
-}
-
-/* static */ Array3D<float> ReferenceUtil::PadArray3D(
-    const Array3D<float>& operand, const PaddingConfig& padding,
-    const float pad) {
-  CHECK_EQ(padding.dimensions_size(), 3);
-
-  const std::vector<int64> input_bounds = {operand.n1(), operand.n2(),
-                                           operand.n3()};
-  std::vector<int64> pad_low(3);
-  std::vector<int64> pad_high(3);
-  std::vector<int64> pad_interior(3);
-  std::vector<int64> output_bounds(3);
-  for (int64 i = 0; i < 3; ++i) {
-    pad_low[i] = padding.dimensions(i).edge_padding_low();
-    pad_high[i] = padding.dimensions(i).edge_padding_high();
-    CHECK_LE(0, pad_low[i]);
-    CHECK_LE(0, pad_high[i]);
-    CHECK_LE(0, padding.dimensions(i).interior_padding()) << "not implemented";
-    pad_interior[i] = padding.dimensions(i).interior_padding();
-
-    output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
-                       (input_bounds[i] - 1) * pad_interior[i];
-  }
-
-  Array3D<float> result(output_bounds[0], output_bounds[1], output_bounds[2]);
-  std::vector<int> indices = {0, 0, 0};
-  for (indices[0] = 0; indices[0] < output_bounds[0]; ++indices[0]) {
-    for (indices[1] = 0; indices[1] < output_bounds[1]; ++indices[1]) {
-      for (indices[2] = 0; indices[2] < output_bounds[2]; ++indices[2]) {
-        float* value = &result(indices[0], indices[1], indices[2]);
-        bool value_padded = false;
-        for (int i = 0; i < 3; ++i) {
-          bool in_low_padding = indices[i] < pad_low[i];
-          bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
-          if (in_low_padding || in_high_padding) {
-            *value = pad;
-            value_padded = true;
-          }
-          if (pad_interior[i] &&
-              (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
-            *value = pad;
-            value_padded = true;
-          }
-        }
-        if (value_padded) {
-          continue;
-        }
-        *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
-                         (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
-                         (indices[2] - pad_low[2]) / (pad_interior[2] + 1));
-      }
-    }
-  }
-  return result;
-}
-
-/* static */ Array4D<float> ReferenceUtil::PadArray4D(
-    const Array4D<float>& operand, const PaddingConfig& padding,
-    const float pad) {
-  CHECK_EQ(padding.dimensions_size(), 4);
-
-  const std::vector<int64> input_bounds = {operand.n1(), operand.n2(),
-                                           operand.n3(), operand.n4()};
-  std::vector<int64> pad_low(4);
-  std::vector<int64> pad_high(4);
-  std::vector<int64> pad_interior(4);
-  std::vector<int64> output_bounds(4);
-  for (int64 i = 0; i < 4; ++i) {
-    pad_low[i] = padding.dimensions(i).edge_padding_low();
-    pad_high[i] = padding.dimensions(i).edge_padding_high();
-    CHECK_LE(0, padding.dimensions(i).interior_padding()) << "not implemented";
-    pad_interior[i] = padding.dimensions(i).interior_padding();
-
-    output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
-                       (input_bounds[i] - 1) * pad_interior[i];
-  }
-
-  Array4D<float> result(output_bounds[0], output_bounds[1], output_bounds[2],
-                        output_bounds[3]);
-  result.Each([&](tensorflow::gtl::ArraySlice<int64> indices, float* value) {
-    for (int i = 0; i < 4; ++i) {
-      bool in_low_padding = indices[i] < pad_low[i];
-      bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
-      if (in_low_padding || in_high_padding) {
-        *value = pad;
-        return;
-      }
-      if (pad_interior[i] &&
-          (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
-        *value = pad;
-        return;
-      }
-    }
-    *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
-                     (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
-                     (indices[2] - pad_low[2]) / (pad_interior[2] + 1),
-                     (indices[3] - pad_low[3]) / (pad_interior[3] + 1));
-  });
   return result;
 }
 

@@ -160,7 +160,7 @@ Notes:
 
 ### Inspect variables in a checkpoint
 
-We can quickly inspect variables in a checkpoint with the 
+We can quickly inspect variables in a checkpoint with the
 [`inspect_checkpoint`](https://www.tensorflow.org/code/tensorflow/python/tools/inspect_checkpoint.py) library.
 
 Continuing from the save/restore examples shown earlier:

@@ -128,6 +128,8 @@ class VariableScopeTest(test.TestCase):
       self.assertTrue(w in store.variables())
       self.assertTrue(v in store.trainable_variables())
       self.assertFalse(w in store.trainable_variables())
+      self.assertFalse(v in store.non_trainable_variables())
+      self.assertTrue(w in store.non_trainable_variables())
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonTensorValue(self):

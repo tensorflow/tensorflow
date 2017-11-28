@@ -751,7 +751,8 @@ TEST_F(HloEvaluatorTest, SimpleConv1D) {
   dnums.set_output_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
   dnums.set_output_feature_dimension(1);
-  dnums.add_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
 
   dnums.set_kernel_output_feature_dimension(0);
   dnums.set_kernel_input_feature_dimension(1);
@@ -886,8 +887,10 @@ TEST_F(HloEvaluatorTest, Conv2DGeneralDimensionsReversed) {
   dnums.set_output_batch_dimension(2);
   dnums.set_input_feature_dimension(0);
   dnums.set_output_feature_dimension(0);
-  dnums.add_spatial_dimensions(1);
-  dnums.add_spatial_dimensions(3);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.add_output_spatial_dimensions(3);
 
   dnums.set_kernel_output_feature_dimension(0);
   dnums.set_kernel_input_feature_dimension(2);
@@ -960,8 +963,10 @@ TEST_F(HloEvaluatorTest, Conv2DGeneralDimensions) {
   dnums.set_output_batch_dimension(2);
   dnums.set_input_feature_dimension(0);
   dnums.set_output_feature_dimension(0);
-  dnums.add_spatial_dimensions(1);
-  dnums.add_spatial_dimensions(3);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.add_output_spatial_dimensions(3);
 
   dnums.set_kernel_output_feature_dimension(0);
   dnums.set_kernel_input_feature_dimension(2);
