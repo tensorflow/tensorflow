@@ -1537,7 +1537,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
       self.assertEqual(future.calls, 1)
     else:
       a = constant_op.constant(1.0)
-      b = future
+      b = future()
       with ops.control_dependencies([a, b]):
         c = constant_op.constant(3.0)
       self.assertEqual(future.calls, 1)
