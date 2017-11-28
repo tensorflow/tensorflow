@@ -868,7 +868,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   // multiplication over addition to hoist common factors out of aggregate nodes
   // where all the inputs are Mul nodes. This pattern occurs frequently in
   // regularization terms for the gradients during training.
-  if (IsAggregate(*node) && NumNonControlInputs(*node) > 1 &&
+  // TODO(rmlarsen): Check shapes and enable for AddN.
+  if (IsAdd(*node) && NumNonControlInputs(*node) > 1 &&
       !OptimizedNodeExists(StrCat(node->name(), "_hoist_add"))) {
     // Determine the set of common factors if the input nodes are all Mul nodes.
     std::set<string> common_factors;
