@@ -241,6 +241,9 @@ ScalarSummary
 TensorSummary
 TensorSummaryV2
 
+# manip_ops
+# (None)
+
 # math_ops
 Abs
 AccumulateNV2

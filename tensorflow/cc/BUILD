@@ -433,6 +433,7 @@ tf_gen_op_wrappers_cc(
         "linalg_ops",
         "logging_ops",
         "lookup_ops",
+        "manip_ops",
         "math_ops",
         "nn_ops",
         "no_op",

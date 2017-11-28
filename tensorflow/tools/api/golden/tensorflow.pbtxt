@@ -385,6 +385,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "manip"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "logging"
     mtype: "<type \'module\'>"
   }

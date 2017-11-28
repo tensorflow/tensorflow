@@ -604,6 +604,7 @@ cc_library(
         ":reshape_op",
         ":reverse_op",
         ":reverse_sequence_op",
+        ":roll_op",
         ":shape_ops",
         ":slice_op",
         ":split_op",
@@ -2501,6 +2502,45 @@ tf_cc_tests(
         ":logging",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "manip",
+    deps = [
+        ":roll_op",
+    ],
+)
+
+MANIP_DEPS = [
+    "//tensorflow/core:framework",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:manip_ops_op_lib",
+    "//third_party/eigen3",
+]
+
+tf_kernel_library(
+    name = "roll_op",
+    prefix = "roll_op",
+    deps = MANIP_DEPS,
+)
+
+tf_cc_test(
+    name = "roll_op_test",
+    size = "small",
+    srcs = ["roll_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":roll_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
