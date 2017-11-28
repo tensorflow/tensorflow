@@ -110,18 +110,7 @@ ArrayElementwiseOpTest.CompareEqC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareEqZeroElementC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareNeC64s POPLAR // Complex<double>
 
-ConvolutionTest.Convolve1D_1x2x5_1x2x2_Valid POPLAR // 1D conv
-ConvolutionTest.Convolve1D_Valid  POPLAR // 1D conv
-ConvolutionVariantsTest.BackwardInputEvenPadding1D POPLAR // 1D conv
-ConvolutionVariantsTest.BackwardFilterEvenPadding1D POPLAR // 1D conv
-ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithPadding POPLAR // 1D conv
-ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation POPLAR // 1D conv
-ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithRHSDilation POPLAR // 1D conv
-ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithLHSDilation POPLAR // 1D conv
-Convolve1D1WindowTest POPLAR // 1D conv
 ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
-ConvolutionVariantsTest.Filter1x1stride1x2in1x5 POPLAR // ??
-ConvolutionVariantsTest.Filter1x1stride1x2in1x4 POPLAR // ??
 
 DotOperationTest POPLAR // Test hangs
 
