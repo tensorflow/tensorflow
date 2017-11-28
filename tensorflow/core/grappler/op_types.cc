@@ -133,6 +133,8 @@ bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
 
 bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
 
+bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
+
 bool IsSquaredDifference(const NodeDef& node) {
   return node.op() == "SquaredDifference";
 }
