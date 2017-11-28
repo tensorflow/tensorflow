@@ -102,7 +102,9 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
     const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
     Padding padding, int64 lhs_dilation, int64 rhs_dilation,
     const ConvolutionDimensionNumbers& dnums) {
-  CHECK_EQ(dnums.spatial_dimensions_size(), 1);
+  CHECK_EQ(dnums.input_spatial_dimensions_size(), 1);
+  CHECK_EQ(dnums.kernel_spatial_dimensions_size(), 1);
+  CHECK_EQ(dnums.output_spatial_dimensions_size(), 1);
   // Reuse the code for Array4D-convolution by extending the 3D input into a 4D
   // array by adding a fourth dummy dimension of size 1 without stride, padding
   // and dilation.
@@ -120,8 +122,9 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
       });
   // Add a second dummy spatial dimensions.
   ConvolutionDimensionNumbers dnums2d = dnums;
-  dnums2d.add_spatial_dimensions(3);
+  dnums2d.add_input_spatial_dimensions(3);
   dnums2d.add_kernel_spatial_dimensions(3);
+  dnums2d.add_output_spatial_dimensions(3);
   std::unique_ptr<Array4D<float>> convr4 = ConvArray4DGeneralDimensionsDilated(
       a4dlhs, a4drhs, {kernel_stride, 1}, padding, {lhs_dilation, 1},
       {rhs_dilation, 1}, dnums2d);
@@ -465,9 +468,9 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   }
 
   ordered_input_dimensions[0] =
-      lhs_literal->shape().dimensions(dnums.spatial_dimensions(0));
+      lhs_literal->shape().dimensions(dnums.input_spatial_dimensions(0));
   ordered_input_dimensions[1] =
-      lhs_literal->shape().dimensions(dnums.spatial_dimensions(1));
+      lhs_literal->shape().dimensions(dnums.input_spatial_dimensions(1));
   ordered_kernel_dimensions[0] =
       rhs_literal->shape().dimensions(dnums.kernel_spatial_dimensions(0));
   ordered_kernel_dimensions[1] =

@@ -49,16 +49,19 @@ bool PotentiallyImplementedAsEigenConvolution(
       convolution.convolution_dimension_numbers();
   // Only 1D and 2D convolutions are supported at the moment.
   // TODO(b/32897908): add an optimized implementation for 3D convolution.
-  const int64 num_spatial_dims = dnums.spatial_dimensions_size();
+  const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
   if (num_spatial_dims > 2) {
     return false;
   }
 
   for (int64 i = 0; i < num_spatial_dims; ++i) {
-    if (dnums.spatial_dimensions(i) != i + 1) {
+    if (dnums.input_spatial_dimensions(i) != i + 1) {
       return false;
     }
     if (dnums.kernel_spatial_dimensions(i) != i) {
+      return false;
+    }
+    if (dnums.output_spatial_dimensions(i) != i + 1) {
       return false;
     }
   }

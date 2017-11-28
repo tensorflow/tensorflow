@@ -822,14 +822,16 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // If the initialized_flag is false, initialize the selected value and index
   // with the currently visiting operand.
   SetToFirstInsertPoint(if_initialized.false_block, &ir_builder_);
-  const auto save_operand_index = [&](
-      const llvm_ir::IrArray::Index& operand_index) {
-    for (int64 i = 0; i < rank; ++i) {
-      llvm::Value* selected_index_address_slot = ir_builder_.CreateInBoundsGEP(
-          selected_index_address, {ir_builder_.getInt32(i)});
-      ir_builder_.CreateStore(operand_index[i], selected_index_address_slot);
-    }
-  };
+  const auto save_operand_index =
+      [&](const llvm_ir::IrArray::Index& operand_index) {
+        for (int64 i = 0; i < rank; ++i) {
+          llvm::Value* selected_index_address_slot =
+              ir_builder_.CreateInBoundsGEP(selected_index_address,
+                                            {ir_builder_.getInt32(i)});
+          ir_builder_.CreateStore(operand_index[i],
+                                  selected_index_address_slot);
+        }
+      };
   llvm_ir::IrArray operand_array(GetIrArrayFor(operand));
   llvm::Value* operand_data =
       operand_array.EmitReadArrayElement(operand_index, &ir_builder_);
@@ -952,11 +954,12 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       // Input tensor.
       const Shape& input_shape = convolution->operand(0)->shape();
       int64 input_batch = input_shape.dimensions(dnums.input_batch_dimension());
-      int64 input_rows = input_shape.dimensions(dnums.spatial_dimensions(0));
+      int64 input_rows =
+          input_shape.dimensions(dnums.input_spatial_dimensions(0));
       int64 input_cols =
           one_dim_convolution
               ? 1
-              : input_shape.dimensions(dnums.spatial_dimensions(1));
+              : input_shape.dimensions(dnums.input_spatial_dimensions(1));
       int64 input_channels =
           input_shape.dimensions(dnums.input_feature_dimension());
 
@@ -976,11 +979,11 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       // Output tensor.
       const Shape& convolution_shape = convolution->shape();
       int64 output_rows =
-          convolution_shape.dimensions(dnums.spatial_dimensions(0));
-      int64 output_cols =
-          one_dim_convolution
-              ? 1
-              : convolution_shape.dimensions(dnums.spatial_dimensions(1));
+          convolution_shape.dimensions(dnums.output_spatial_dimensions(0));
+      int64 output_cols = one_dim_convolution
+                              ? 1
+                              : convolution_shape.dimensions(
+                                    dnums.output_spatial_dimensions(1));
 
       // Extract the window stride for the convolution.
       const Window& window = convolution->window();
@@ -1068,10 +1071,10 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   return EmitTargetElementLoop(
       convolution, [this, convolution, lhs, rhs, window,
                     dnums](const llvm_ir::IrArray::Index& index) {
-        int num_spatial_dims = dnums.spatial_dimensions_size();
+        int num_spatial_dims = dnums.output_spatial_dimensions_size();
         std::vector<llvm::Value*> output_spatial(num_spatial_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
-          output_spatial[i] = index[dnums.spatial_dimensions(i)];
+          output_spatial[i] = index[dnums.output_spatial_dimensions(i)];
         }
         llvm::Value* output_feature = index[dnums.output_feature_dimension()];
         llvm::Value* batch = index[dnums.output_batch_dimension()];
@@ -1091,8 +1094,9 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         for (int i = 0; i < num_spatial_dims; ++i) {
           kernel_spatial[i] =
               loops
-                  .AddLoop(0, rhs->shape().dimensions(
-                                  dnums.kernel_spatial_dimensions(i)),
+                  .AddLoop(0,
+                           rhs->shape().dimensions(
+                               dnums.kernel_spatial_dimensions(i)),
                            tensorflow::strings::StrCat("k", i))
                   ->GetIndVarValue();
         }
@@ -1108,17 +1112,18 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         // Calculate the spatial index in the input array, taking striding,
         // dilation and padding into account. An index in the padding will be
         // out of the bounds of the array.
-        const auto calculate_input_index = [this](
-            llvm::Value* output_index, llvm::Value* kernel_index,
-            const WindowDimension& window_dim) {
-          llvm::Value* strided_index = ir_builder_.CreateNSWMul(
-              output_index, ir_builder_.getInt64(window_dim.stride()));
-          llvm::Value* dilated_kernel_index = ir_builder_.CreateNSWMul(
-              kernel_index, ir_builder_.getInt64(window_dim.window_dilation()));
-          return ir_builder_.CreateNSWSub(
-              ir_builder_.CreateNSWAdd(strided_index, dilated_kernel_index),
-              ir_builder_.getInt64(window_dim.padding_low()));
-        };
+        const auto calculate_input_index =
+            [this](llvm::Value* output_index, llvm::Value* kernel_index,
+                   const WindowDimension& window_dim) {
+              llvm::Value* strided_index = ir_builder_.CreateNSWMul(
+                  output_index, ir_builder_.getInt64(window_dim.stride()));
+              llvm::Value* dilated_kernel_index = ir_builder_.CreateNSWMul(
+                  kernel_index,
+                  ir_builder_.getInt64(window_dim.window_dilation()));
+              return ir_builder_.CreateNSWSub(
+                  ir_builder_.CreateNSWAdd(strided_index, dilated_kernel_index),
+                  ir_builder_.getInt64(window_dim.padding_low()));
+            };
         std::vector<llvm::Value*> input_spatial(num_spatial_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
           input_spatial[i] = calculate_input_index(
@@ -1144,7 +1149,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         for (int i = 0; i < num_spatial_dims; ++i) {
           llvm::ConstantInt* input_bound =
               ir_builder_.getInt64(window_util::DilatedBound(
-                  lhs->shape().dimensions(dnums.spatial_dimensions(i)),
+                  lhs->shape().dimensions(dnums.input_spatial_dimensions(i)),
                   window.dimensions(i).base_dilation()));
           llvm::Value* dim_in_bound =
               ir_builder_.CreateICmpULT(input_spatial[i], input_bound);
@@ -1176,7 +1181,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         int num_dims = num_spatial_dims + 2;
         llvm_ir::IrArray::Index input_index(num_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
-          input_index[dnums.spatial_dimensions(i)] = input_spatial[i];
+          input_index[dnums.input_spatial_dimensions(i)] = input_spatial[i];
         }
         input_index[dnums.input_feature_dimension()] = input_feature;
         input_index[dnums.input_batch_dimension()] = batch;
