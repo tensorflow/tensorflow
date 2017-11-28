@@ -1,0 +1,11 @@
+tensorflow/core
+tensorflow/core/profiler
+tensorflow/python
+tensorflow/contrib/boosted_trees/proto
+tensorflow/contrib/decision_trees/proto
+tensorflow/contrib/session_bundle
+tensorflow/contrib/tensor_forest/proto
+tensorflow/contrib/tensorboard
+tensorflow/contrib/tpu/proto
+tensorflow/contrib/tpu/profiler
+tensorflow/contrib/training

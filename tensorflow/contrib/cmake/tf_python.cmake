@@ -120,33 +120,34 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS HDRS ROOT_DIR)
   set(${HDRS} ${${HDRS}} PARENT_SCOPE)
 endfunction()
 
-file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
-    "${tensorflow_source_dir}/tensorflow/core/*.proto"
-    "${tensorflow_source_dir}/tensorflow/core/profiler/*.proto"
-    "${tensorflow_source_dir}/tensorflow/python/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/decision_trees/proto/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/proto/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/tpu/proto/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/tpu/profiler/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
-)
+FILE(READ python_protos.txt python_protos)
+# Convert file contents into a CMake list (where each element in the list is one line of the file)
+STRING(REGEX REPLACE ";" "\\\\;" python_protos "${python_protos}")
+STRING(REGEX REPLACE "\n" ";" python_protos "${python_protos}")
+
+foreach(python_proto ${python_protos})
+  file(GLOB_RECURSE tf_python_protos_src RELATIVE ${tensorflow_source_dir}
+      "${tensorflow_source_dir}/${python_proto}/*.proto"
+  )
+  list(APPEND tf_python_protos_srcs ${tf_python_protos_src})
+endforeach(python_proto)
+
 RELATIVE_PROTOBUF_GENERATE_PYTHON(
-    ${tensorflow_source_dir} PYTHON_PROTO_GENFILES ${tf_protos_python_srcs}
+    ${tensorflow_source_dir} PYTHON_PROTO_GENFILES ${tf_python_protos_srcs}
 )
 
-# NOTE(mrry): Avoid regenerating the tensorflow/core protos because this
-# can cause benign-but-failing-on-Windows-due-to-file-locking conflicts
-# when two rules attempt to generate the same file.
-file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
-    "${tensorflow_source_dir}/tensorflow/core/profiler/*.proto"
-    "${tensorflow_source_dir}/tensorflow/python/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
-)
+FILE(READ python_protos_cc.txt python_protos_cc)
+# Convert file contents into a CMake list (where each element in the list is one line of the file)
+STRING(REGEX REPLACE ";" "\\\\;" python_protos_cc "${python_protos_cc}")
+STRING(REGEX REPLACE "\n" ";" python_protos_cc "${python_protos_cc}")
+
+foreach(python_proto_cc ${python_protos_cc})
+  file(GLOB_RECURSE tf_python_protos_cc_src RELATIVE ${tensorflow_source_dir}
+      "${tensorflow_source_dir}/${python_proto_cc}/*.proto"
+  )
+  list(APPEND tf_python_protos_cc_srcs ${tf_python_protos_cc_src})
+endforeach(python_proto_cc)
+
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_python_protos_cc_srcs}
 )
