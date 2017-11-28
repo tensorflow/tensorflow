@@ -41,6 +41,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util import deprecation
 
 
 class Dataset(object):
@@ -219,6 +220,7 @@ class Dataset(object):
     return TensorSliceDataset(tensors)
 
   @staticmethod
+  @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
   def from_sparse_tensor_slices(sparse_tensor):
     """Splits each rank-N `tf.SparseTensor` in this dataset row-wise.
 
