@@ -1091,6 +1091,9 @@ def _safe_div(numerator, denominator, mode="zero", name=None):
 
   Returns:
     The element-wise value of the numerator divided by the denominator.
+
+  Raises:
+    ValueError: If `mode` is invalid argument.
   """
   if mode == "zero":
     # created for broadcast
