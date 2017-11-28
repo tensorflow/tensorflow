@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/costs/utils.h"
+#include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -316,7 +317,11 @@ class SymbolicShapeRefiner {
                   shape_inference::ShapeHandle shape) {
     return shape_refiner_->SetShape(node, output_port, shape);
   }
-
+  Status SetUnknownShape(const Node* node, int output_port) {
+    shape_inference::ShapeHandle shape =
+        GetUnknownOutputShape(node, output_port);
+    return shape_refiner_->SetShape(node, output_port, shape);
+  }
   struct ShapeId {
     const Node* node;
     int port_id;
@@ -646,6 +651,23 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
   return Status::OK();
 }
 
+Status GraphProperties::OverwriteFedPorts(
+    SymbolicShapeRefiner* shape_refiner,
+    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+    const Node* node, TopoQueue* new_shapes) const {
+  auto it = fed_ports.find(node->name());
+  Status status;
+  if (it != fed_ports.end()) {
+    // It is possible to feed node output ports with tensors of any shape: as a
+    // result, the shape of a fed port is completely unknown.
+    for (const int output_port : it->second) {
+      status.Update(shape_refiner->SetUnknownShape(node, output_port));
+    }
+    new_shapes->push(node);
+  }
+  return status;
+}
+
 // Manually propagate the input shape for Enter nodes and update any Merge node
 // outputs.
 Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
@@ -673,9 +695,10 @@ Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
   return Status::OK();
 }
 
-Status GraphProperties::UpdateShapes(SymbolicShapeRefiner* shape_refiner,
-                                     bool relax, const Node* n,
-                                     TopoQueue* new_shapes) {
+Status GraphProperties::UpdateShapes(
+    SymbolicShapeRefiner* shape_refiner, bool relax,
+    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+    const Node* n, TopoQueue* new_shapes) const {
   if (n->IsEnter()) {
     // The Enter shape function always forwards an UnknownShape, so do the right
     // thing here.
@@ -695,7 +718,9 @@ Status GraphProperties::UpdateShapes(SymbolicShapeRefiner* shape_refiner,
       }
     }
   }
-  return Status::OK();
+  // Nodes can be fed with any shape. The TensorFlow shape inference code can't
+  // handle this properly, so overwrite its behavior here.
+  return OverwriteFedPorts(shape_refiner, fed_ports, n, new_shapes);
 }
 
 // Propagates the shapes in the transitive fan-out of <new_shapes>.
@@ -703,6 +728,7 @@ Status GraphProperties::PropagateShapes(
     SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
     const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
         resources,
+    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
     int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
   // incorrect shape functions. The algoritm should converge in at most
@@ -728,8 +754,8 @@ Status GraphProperties::PropagateShapes(
       for (const Edge* e : n->out_edges()) {
         if (!e->IsControlEdge()) {
           const Node* fanout = e->dst();
-          TF_RETURN_IF_ERROR(
-              UpdateShapes(shape_refiner, relax, fanout, new_shapes));
+          TF_RETURN_IF_ERROR(UpdateShapes(shape_refiner, relax, fed_ports,
+                                          fanout, new_shapes));
         }
       }
     }
@@ -803,7 +829,7 @@ Status GraphProperties::UpdateResource(
   return Status::OK();
 }
 
-Status GraphProperties::InferStatically() {
+Status GraphProperties::InferStatically(bool assume_valid_feeds) {
   Graph graph(OpRegistry::Global());
   FunctionLibraryDefinition function_library(graph.op_registry(),
                                              item_.graph.library());
@@ -820,11 +846,21 @@ Status GraphProperties::InferStatically() {
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
 
+  std::unordered_map<string, std::unordered_set<int>> fed_ports;
+  if (!assume_valid_feeds) {
+    for (const auto& feed : item_.feed) {
+      int port_index = 0;
+      string node_name = ParseNodeName(feed.first, &port_index);
+      fed_ports[node_name].insert(port_index);
+    }
+  }
+
   // List the resources and the nodes using them. Also collect the Enter and
   // Merge nodes.
   std::unordered_map<const Node*, std::unordered_set<const Node*>> resources;
   std::unordered_set<const Node*> enter_nodes;
   std::unordered_set<const Node*> merge_nodes;
+  std::unordered_set<const Node*> fed_nodes;
   int num_loops = 0;
   for (const Node* const node : graph.nodes()) {
     for (int i = 0; i < node->num_inputs(); ++i) {
@@ -841,6 +877,9 @@ Status GraphProperties::InferStatically() {
     } else if (node->IsNextIteration()) {
       ++num_loops;
     }
+    if (fed_ports.find(node->name()) != fed_ports.end()) {
+      fed_nodes.insert(node);
+    }
   }
 
   SymbolicShapeRefiner refiner(&shape_refiner);
@@ -855,15 +894,22 @@ Status GraphProperties::InferStatically() {
     // Force the propagation of shapes of Enter nodes manually (the Enter shape
     // function always forwards an UnknownShape).
     for (const Node* node : enter_nodes) {
-      TF_RETURN_IF_ERROR(UpdateShapes(&refiner, relax, node, &new_shapes));
+      TF_RETURN_IF_ERROR(
+          UpdateShapes(&refiner, relax, fed_ports, node, &new_shapes));
     }
     // Seed the propagation of shapes through merge nodes.
     for (const Node* node : merge_nodes) {
-      TF_RETURN_IF_ERROR(UpdateShapes(&refiner, relax, node, &new_shapes));
+      TF_RETURN_IF_ERROR(
+          UpdateShapes(&refiner, relax, fed_ports, node, &new_shapes));
+    }
+    // Also seed the propagation of shapes in the fanout of fed nodes.
+    for (const Node* node : fed_nodes) {
+      TF_RETURN_IF_ERROR(
+          OverwriteFedPorts(&refiner, fed_ports, node, &new_shapes));
     }
     // Propagate shapes normally.
-    TF_RETURN_IF_ERROR(
-        PropagateShapes(&refiner, relax, &new_shapes, resources, num_loops));
+    TF_RETURN_IF_ERROR(PropagateShapes(&refiner, relax, &new_shapes, resources,
+                                       fed_ports, num_loops));
   }
 
   // Track shapes globally across the graph.
@@ -872,6 +918,10 @@ Status GraphProperties::InferStatically() {
   for (const Node* const node : graph.nodes()) {
     auto node_ctx = shape_refiner.GetContext(node);
     if (!node_ctx) {
+      continue;
+    }
+    // Skip any information that comes from fed nodes.
+    if (fed_ports.find(node->name()) != fed_ports.end()) {
       continue;
     }
     for (const auto& merged_shapes : node_ctx->MergedShapes()) {
