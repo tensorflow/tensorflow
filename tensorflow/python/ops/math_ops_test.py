@@ -203,7 +203,9 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testSquaredDifference(self):
-    for dtype in [np.int32, np.float16]:
+    for dtype in [np.float16, np.float32, np.float64,
+                  np.int32, np.int64,
+                  np.complex64, np.complex128]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
