@@ -3923,7 +3923,11 @@ tf_kernel_library(
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
     ],
-    deps = STATE_DEPS + [":dense_update_functor"],
+    deps = STATE_DEPS + [
+        ":dense_update_functor",
+        ":training_op_helpers",
+        ":variable_ops",
+    ],
 )
 
 tf_kernel_library(

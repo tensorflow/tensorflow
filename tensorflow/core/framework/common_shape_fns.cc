@@ -1307,6 +1307,9 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 
 Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
+  if (c->input_handle_shapes_and_types(0) != nullptr) {
+    input_shape = (*c->input_handle_shapes_and_types(0))[0].shape;
+  }
   ShapeHandle indices_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
   ShapeHandle updates_shape;
@@ -1361,7 +1364,9 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
     }
   }
 
-  c->set_output(0, input_shape);
+  if (c->input_handle_shapes_and_types(0) == nullptr) {
+    c->set_output(0, input_shape);
+  }
   return Status::OK();
 }
 
