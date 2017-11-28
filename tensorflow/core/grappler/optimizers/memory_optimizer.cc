@@ -716,7 +716,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   {
     // Estimate the size of the data to swap for each node.
     GraphProperties properties(item);
-    TF_RETURN_IF_ERROR(properties.InferStatically());
+    TF_RETURN_IF_ERROR(properties.InferStatically(true));
     for (auto& swap : nodes_to_swap) {
       const NodeDef* node = swap.first;
       std::vector<OpInfo::TensorProperties> props =
