@@ -36,6 +36,7 @@ namespace grappler {
 namespace {
 
 const char kConcatConst[] = "LayoutOptimizerConcatConst";
+const char kSplitConst[] = "LayoutOptimizerSplitConst";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
 const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
@@ -62,17 +63,32 @@ std::set<string> GetOpsFormatSupported() {
       "FusedBatchNormGrad",
       "FusedConv2DBiasActivation",
       "MaxPool",
-      "MaxPoolGrad"};
+      "MaxPoolGrad",
+      "SpaceToDepth",
+      "DepthToSpace"};
   return ops_format_supported;
 }
 
 std::set<string> GetOpsFormatAgnostic() {
-  std::set<string> ops_format_agnostic = {
-      "Add",      "AddN",     "Concat", "ConcatV2",
-      "Floor",    "Identity", "Mul",    "Neg",
-      "Pad",      "RealDiv",  "Relu",   "Relu6",
-      "ReluGrad", "Sigmoid",  "Slice",  "SquaredDifference",
-      "Squeeze",  "Sub"};
+  std::set<string> ops_format_agnostic = {"Add",
+                                          "AddN",
+                                          "Concat",
+                                          "ConcatV2",
+                                          "Floor",
+                                          "Identity",
+                                          "Mul",
+                                          "Neg",
+                                          "Pad",
+                                          "RealDiv",
+                                          "Relu",
+                                          "Relu6",
+                                          "ReluGrad",
+                                          "Sigmoid",
+                                          "Slice",
+                                          "Split",
+                                          "SquaredDifference",
+                                          "Squeeze",
+                                          "Sub"};
   return ops_format_agnostic;
 }
 
@@ -762,7 +778,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
     auto node = node_map_->GetNode(node_->name());
     while (node->input_size() > 0) {
       int data_input_pos = 0;
-      if (IsConcatV1(*node)) {
+      if (IsConcatV1(*node) || IsSplit(*node)) {
         data_input_pos = 1;
       }
       node = node_map_->GetNode(node->input(data_input_pos));
@@ -1002,6 +1018,68 @@ class PadProcessor : public AgnosticNodeProcessor {
       }
     }
     return is_const && is_4D;
+  }
+};
+
+class SplitProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit SplitProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    return AgnosticNodeProcessor::ShouldProcess() && SplitSupported();
+  }
+
+  std::vector<int> GetInputPos() const override {
+    std::vector<int> input_pos = {1};
+    return input_pos;
+  }
+
+  Status CustomizedProcessing() override {
+    string split_const_name = AddNodeSplitConst()->name();
+    node_map_->AddOutput(split_const_name, node_->name());
+    *node_->mutable_input(0) = split_const_name;
+    return Status::OK();
+  }
+
+ private:
+  bool SplitSupported() const {
+    auto dim_node = node_map_->GetNode(node_->input(0));
+    if (!IsConstant(*dim_node)) {
+      return false;
+    }
+    if (HasAttribute(*dim_node, "value").ok()) {
+      auto tensor = dim_node->attr().at({"value"}).tensor();
+      if (tensor.tensor_shape().dim_size() == 0 && tensor.int_val_size() == 1) {
+        if (tensor.int_val(0) < 4 && tensor.int_val(0) >= -4) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  NodeDef* AddNodeSplitConst() {
+    auto dim_node = node_map_->GetNode(node_->input(0));
+    auto tensor = dim_node->attr().at({"value"}).tensor();
+    int value = tensor.int_val(0);
+    value = (value >= 0) ? value : value + 4;
+    if (value == 1 || value == 2) {
+      value = value + 1;
+    } else if (value == 3) {
+      value = 1;
+    }
+    // We created a copy of the node, so that we don't modify the original node,
+    // which might be used elsewhere. Note that this copy also copies the
+    // control dependency input in the case this node is inside a loop,
+    // to ensure added_node is in the same frame with the Split node.
+    NodeDef* added_node = graph_->add_node();
+    *added_node = *dim_node;
+    added_node->set_name(strings::StrCat(kSplitConst, "-", node_->name()));
+    added_node->mutable_attr()->at({"value"}).mutable_tensor()->set_int_val(
+        0, value);
+    return added_node;
   }
 };
 
@@ -1429,6 +1507,8 @@ class DataLayoutOptimizer : GraphProcessor {
             } else {
               node_processor.reset(new SliceProcessor(opt_cxt));
             }
+          } else if (IsSplit(*node)) {
+            node_processor.reset(new SplitProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
           } else if (IsSum(*node)) {

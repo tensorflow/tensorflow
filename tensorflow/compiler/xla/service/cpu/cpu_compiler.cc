@@ -287,7 +287,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
-        /*enable_dot_simplification=*/false);
+        /*enable_dot_strength_reduction=*/false);
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopSimplifier>();
     pass.AddPass<HloDCE>();
@@ -316,7 +316,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
       /*is_layout_sensitive=*/true,
       [](const Shape&, const Shape&) { return true; },
-      /*enable_dot_simplification=*/false);
+      /*enable_dot_strength_reduction=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =

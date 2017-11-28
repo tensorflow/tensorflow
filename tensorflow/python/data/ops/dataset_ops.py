@@ -40,6 +40,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
 
 
 class Dataset(object):
@@ -892,10 +893,19 @@ class TensorDataset(Dataset):
     """See `Dataset.from_tensors()` for details."""
     super(TensorDataset, self).__init__()
     with ops.name_scope("tensors"):
-      self._tensors = nest.pack_sequence_as(tensors, [
-          ops.convert_to_tensor(t, name="component_%d" % i)
+      tensors = nest.pack_sequence_as(tensors, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
+              t, name="component_%d" % i)
           for i, t in enumerate(nest.flatten(tensors))
       ])
+
+    self._tensors = sparse.serialize_sparse_tensors(tensors)
+    self._output_classes = sparse.get_classes(tensors)
+    self._output_shapes = nest.pack_sequence_as(
+        tensors, [t.get_shape() for t in nest.flatten(tensors)])
+    self._output_types = nest.pack_sequence_as(
+        tensors, [t.dtype for t in nest.flatten(tensors)])
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.tensor_dataset(
@@ -905,18 +915,15 @@ class TensorDataset(Dataset):
 
   @property
   def output_classes(self):
-    return nest.pack_sequence_as(
-        self._tensors, [ops.Tensor for _ in nest.flatten(self._tensors)])
+    return self._output_classes
 
   @property
   def output_shapes(self):
-    return nest.pack_sequence_as(self._tensors,
-                                 [t.shape for t in nest.flatten(self._tensors)])
+    return self._output_shapes
 
   @property
   def output_types(self):
-    return nest.pack_sequence_as(self._tensors,
-                                 [t.dtype for t in nest.flatten(self._tensors)])
+    return self._output_types
 
 
 class TensorSliceDataset(Dataset):
@@ -926,15 +933,27 @@ class TensorSliceDataset(Dataset):
     """See `Dataset.from_tensor_slices()` for details."""
     super(TensorSliceDataset, self).__init__()
     with ops.name_scope("tensors"):
-      flat_tensors = [
-          ops.convert_to_tensor(t, name="component_%d" % i)
+      tensors = nest.pack_sequence_as(tensors, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
+              t, name="component_%d" % i)
           for i, t in enumerate(nest.flatten(tensors))
-      ]
+      ])
+      flat_tensors = nest.flatten(tensors)
 
-    self._tensors = nest.pack_sequence_as(tensors, flat_tensors)
     batch_dim = flat_tensors[0].get_shape()[0]
     for t in flat_tensors[1:]:
       batch_dim.assert_is_compatible_with(t.get_shape()[0])
+    self._tensors = nest.pack_sequence_as(tensors, [
+        sparse_ops.serialize_many_sparse(tensor)
+        if sparse_tensor_lib.is_sparse(tensor) else tensor
+        for tensor in nest.flatten(tensors)
+    ])
+    self._output_classes = sparse.get_classes(tensors)
+    self._output_shapes = nest.pack_sequence_as(
+        tensors, [t.get_shape()[1:] for t in nest.flatten(tensors)])
+    self._output_types = nest.pack_sequence_as(
+        tensors, [t.dtype for t in nest.flatten(tensors)])
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.tensor_slice_dataset(
@@ -944,20 +963,15 @@ class TensorSliceDataset(Dataset):
 
   @property
   def output_classes(self):
-    return nest.pack_sequence_as(
-        self._tensors, [ops.Tensor for _ in nest.flatten(self._tensors)])
+    return self._output_classes
 
   @property
   def output_shapes(self):
-    return nest.pack_sequence_as(self._tensors, [
-        tensor_shape.TensorShape(t.shape[1:])
-        for t in nest.flatten(self._tensors)
-    ])
+    return self._output_shapes
 
   @property
   def output_types(self):
-    return nest.pack_sequence_as(self._tensors,
-                                 [t.dtype for t in nest.flatten(self._tensors)])
+    return self._output_types
 
 
 class SparseTensorSliceDataset(Dataset):
@@ -1512,6 +1526,12 @@ class MapDataset(Dataset):
       # `tf.stack()` before returning.
       if isinstance(ret, list):
         ret = tuple(ret)
+
+      # Convert any `SparseTensorValue`s to `SparseTensor`s.
+      ret = nest.pack_sequence_as(ret, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else t for t in nest.flatten(ret)
+      ])
 
       self._output_classes = sparse.get_classes(ret)
       self._output_shapes = nest.pack_sequence_as(

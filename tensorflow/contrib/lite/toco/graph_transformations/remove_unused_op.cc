@@ -88,7 +88,8 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
   // Remove any input array that is not used by anything else,
   // and that is not the output of some other operator.
   for (const auto& input : op->inputs) {
-    if (CountOpsWithInput(*model, input) == 1 &&
+    if (IsDiscardableArray(*model, input) &&
+        CountOpsWithInput(*model, input) == 1 &&
         !GetOpWithOutput(*model, input)) {
       model->arrays.erase(input);
     }
@@ -98,7 +99,7 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
   for (const auto& output : op->outputs) {
     // If the output array is the model's input array, don't remove that.
     // That's the case when cropping a model at a given --input_array.
-    if (IsInputArray(*model, output)) {
+    if (!IsDiscardableArray(*model, output)) {
       continue;
     }
     // Likewise, if the output array is a RNN state array, don't remove that.

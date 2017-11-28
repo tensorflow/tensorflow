@@ -28,27 +28,39 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
-  for (int i = 0; i < graph_->node_size(); i++) {
-    auto node = graph_->mutable_node(i);
-    auto rslt = nodes_.insert(std::make_pair(node->name(), node));
+NodeMap::NodeMap(GraphDef* graph) {
+  CHECK(graph != nullptr);
+  for (int i = 0; i < graph->node_size(); i++) {
+    NodeDef* node = graph->mutable_node(i);
+    const string& node_name = node->name();
+    auto rslt = nodes_.emplace(node_name, node);
     // Check that the graph doesn't contain multiple nodes with the same name.
     if (!rslt.second) {
-      LOG(WARNING) << "Duplicated node in the graph: " << node->name();
+      LOG(WARNING) << "Duplicated node in the graph: " << node_name;
     }
     for (const auto& input : node->input()) {
-      outputs_[NodeName(input)].insert(nodes_[node->name()]);
+      outputs_[NodeName(input)].insert(nodes_[node_name]);
     }
   }
 }
 
+void NodeMap::RemoveNode(const string& name) {
+  nodes_.erase(NodeName(name));
+  outputs_.erase(NodeName(name));
+}
+
 NodeDef* NodeMap::GetNode(const string& name) const {
-  string node_name = NodeName(name);
+  const string node_name = NodeName(name);
   auto it = nodes_.find(node_name);
   if (it == nodes_.end()) {
     return nullptr;
   }
   return it->second;
+}
+
+bool NodeMap::NodeExists(const string& name) const {
+  const string node_name = NodeName(name);
+  return nodes_.find(node_name) != nodes_.end();
 }
 
 const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
@@ -59,27 +71,27 @@ const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
   return it->second;
 }
 
-void NodeMap::AddNode(const string& name, NodeDef* node) {
-  auto ret = nodes_.insert(std::make_pair(name, node));
-  CHECK(ret.second) << "Pair (" << name << "," << node
+void NodeMap::AddNode(const string& node_name, NodeDef* node) {
+  auto ret = nodes_.emplace(node_name, CHECK_NOTNULL(node));
+  CHECK(ret.second) << "Pair (" << node_name << "," << node
                     << ") is not inserted because the same key already exists.";
 }
 
 void NodeMap::AddOutput(const string& node_name, const string& output_name) {
-  auto output_node = nodes_[output_name];
+  auto output_node = nodes_[NodeName(output_name)];
   CHECK(output_node) << "Output node " << output_name
                      << " is missing in NodeMap.";
   outputs_[node_name].insert(output_node);
 }
 
 void NodeMap::RemoveOutput(const string& node_name, const string& output_name) {
-  outputs_[node_name].erase(nodes_[output_name]);
+  outputs_[node_name].erase(nodes_[NodeName(output_name)]);
 }
 
 void NodeMap::UpdateInput(const string& node_name, const string& old_input_name,
                           const string& new_input_name) {
-  RemoveOutput(old_input_name, node_name);
-  AddOutput(new_input_name, node_name);
+  RemoveOutput(NodeName(old_input_name), node_name);
+  AddOutput(NodeName(new_input_name), node_name);
 }
 
 void NodeMap::RemoveInputs(const string& node_name) {
@@ -97,14 +109,14 @@ void NodeMap::UpdateOutput(const string& node_name,
                            const string& old_output_name,
                            const string& new_output_name) {
   std::set<NodeDef*>& outputs = outputs_[node_name];
-  outputs.erase(nodes_[old_output_name]);
-  outputs.insert(nodes_[new_output_name]);
+  outputs.erase(nodes_[NodeName(old_output_name)]);
+  outputs.insert(nodes_[NodeName(new_output_name)]);
 }
 
 OutputMap::OutputMap(GraphDef* graph) : graph_(graph) {
   for (int i = 0; i < graph_->node_size(); i++) {
     auto node = graph_->mutable_node(i);
-    auto rslt = nodes_.insert(std::make_pair(node->name(), node));
+    auto rslt = nodes_.emplace(node->name(), node);
     // Check that the graph doesn't contain multiple nodes with the same name.
     CHECK(rslt.second);
     for (const auto& input : node->input()) {
@@ -250,8 +262,8 @@ int NumOutputs(const NodeDef& node) {
 
 int NumNonControlInputs(const NodeDef& node) {
   int num_inputs = node.input_size();
-  for (int i = 0; i < node.input_size(); ++i) {
-    if (IsControlInput(node.input(i))) {
+  for (const string& input : node.input()) {
+    if (IsControlInput(input)) {
       --num_inputs;
     }
   }
@@ -261,8 +273,11 @@ int NumNonControlInputs(const NodeDef& node) {
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   int num_outputs = 0;
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
-    for (const string& input : output->input()) {
-      if (input == node.name()) {
+    for (const string& node_as_input : output->input()) {
+      if (IsControlInput(node_as_input)) {
+        break;
+      }
+      if (NodeName(node_as_input) == node.name()) {
         ++num_outputs;
       }
     }
@@ -288,13 +303,16 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
                         const std::function<bool(const NodeDef&)>& pred_fn) {
   const NodeDef* current = &source;
   const NodeDef* next = current;
-  while (next == &source || pred_fn(*next)) {
+  while (next == &source || (next != nullptr && pred_fn(*next))) {
     current = next;
     if (current->input_size() == 0 ||
         (!follow_control_input && IsControlInput(current->input(0)))) {
       break;
     }
     next = node_map.GetNode(current->input(0));
+    if (next == nullptr) {
+      LOG(ERROR) << "Node not found: " << current->input(0);
+    }
   }
   return const_cast<NodeDef*>(current);
 }
