@@ -30,8 +30,8 @@ TEST(CandidateSamplerOpsTest, CandidateSampler_ShapeFn) {
     ShapeInferenceTestOp op(op_name);
     TF_ASSERT_OK(NodeDefBuilder("test", op.name)
                      .Input({"a", 0, DT_INT64})
+                     .Input({"num_true", 10, DT_INT32})
                      .Attr("num_sampled", 5)
-                     .Attr("num_true", 10)
                      .Finalize(&op.node_def));
 
     // num_sampled = 5, num_true = 10.
@@ -51,7 +51,7 @@ TEST(CandidateSamplerOpsTest, ComputeAccidentalHits_ShapeFn) {
   TF_ASSERT_OK(NodeDefBuilder("test", op.name)
                    .Input({"a", 0, DT_INT64})
                    .Input({"b", 0, DT_INT64})
-                   .Attr("num_true", 10)
+                   .Input({"num_true", 10, DT_INT32})
                    .Finalize(&op.node_def));
 
   // output is always 3 [?] vectors.
@@ -67,3 +67,4 @@ TEST(CandidateSamplerOpsTest, ComputeAccidentalHits_ShapeFn) {
 }
 
 }  // end namespace tensorflow
+
