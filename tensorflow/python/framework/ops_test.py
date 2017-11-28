@@ -2395,6 +2395,13 @@ class InputTypesTest(test_util.TensorFlowTestCase):
       self.assertEqual([dtypes.double, dtypes.double], z.op._input_dtypes)
       # pylint: enable=protected-access
 
+  def testBadArgumentsToEnableEagerExecution(self):
+    with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):
+      ops.enable_eager_execution(context.DEVICE_PLACEMENT_SILENT)
+    with self.assertRaisesRegexp(ValueError, "device_policy must be one of"):
+      c = config_pb2.ConfigProto()
+      ops.enable_eager_execution(c, c)
+
 
 if __name__ == "__main__":
   googletest.main()
