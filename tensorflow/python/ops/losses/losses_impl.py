@@ -72,7 +72,7 @@ def _safe_mean(losses, num_present):
   """
   total_loss = math_ops.reduce_sum(losses)
   return math_ops._safe_div(total_loss, num_present,  # pylint: disable=protected-access
-                            name="value")
+                            nonnegative=True, name="value")
 
 
 def _num_present(losses, weights, per_batch=False):
@@ -488,13 +488,13 @@ def mean_pairwise_squared_error(
 
       term1 = 2.0 * math_ops._safe_div(sum_squares_diff_per_batch,  # pylint: disable=protected-access
                                        num_present_per_batch,
-                                       name="value")
+                                       nonnegative=True, name="value")
 
       sum_diff = math_ops.reduce_sum(
           diffs, reduction_indices=reduction_indices, keep_dims=True)
       term2 = 2.0 * math_ops._safe_div(math_ops.square(sum_diff),  # pylint: disable=protected-access
                                        math_ops.square(num_present_per_batch),
-                                       name="value")
+                                       nonnegative=True, name="value")
 
       weighted_losses = math_ops.multiply(term1 - term2, weights)
       loss = math_ops.reduce_sum(weighted_losses)

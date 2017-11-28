@@ -1079,7 +1079,7 @@ def div(x, y, name=None):
   return _div_python2(x, y, name)
 
 
-def _safe_div(numerator, denominator, mode="zero", name=None):
+def _safe_div(numerator, denominator, mode="zero", nonnegative=False, name=None):
   """Computes a safe divide if the denominator is zero.
 
   Args:
@@ -1087,6 +1087,7 @@ def _safe_div(numerator, denominator, mode="zero", name=None):
     denominator: `Tensor` whose shape matches `numerator`.
     mode: When the denominator is zero, return 0 if `zero`;
       or return original numerator if `numerator`.
+    nonnegative: If `True`, negative is treated as zero in denominator.
     name: An optional name for the returned op.
 
   Returns:
@@ -1095,18 +1096,23 @@ def _safe_div(numerator, denominator, mode="zero", name=None):
   Raises:
     ValueError: If `mode` is invalid argument.
   """
+  if nonnegative:
+    comp_with_zero_op = greater
+  else:
+    comp_with_zero_op = not_equal
+
   if mode == "zero":
     # created for broadcast
     zeros = array_ops.zeros_like(numerator, dtype=denominator.dtype)
-    condition = not_equal(denominator, zeros)
+    condition = comp_with_zero_op(denominator, zeros)
     t = div(numerator, denominator)
     e = cast(zeros, dtype=t.dtype)
     return array_ops.where(condition, t, e, name=name)
   elif mode == "numerator":
     return div(numerator,
-               array_ops.where(equal(denominator, 0),
-                               array_ops.ones_like(denominator),
-                               denominator),
+               array_ops.where(comp_with_zero_op(denominator, 0),
+                               denominator,
+                               array_ops.ones_like(denominator)),
                name=name)
   else:
     raise ValueError("mode must be `zero` or `numerator`, "

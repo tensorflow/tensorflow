@@ -469,14 +469,14 @@ def embedding_lookup_sparse(params,
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weight_sum = math_ops.segment_sum(weights, segment_ids)
         embeddings = math_ops._safe_div(  # pylint: disable=protected-access
-          embeddings, weight_sum, mode="zero", name=name)
+          embeddings, weight_sum, nonnegative=True, name=name)
       elif combiner == "sqrtn":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weights_squared = math_ops.pow(weights, 2)
         weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
         weight_sum_sqrt = math_ops.sqrt(weight_sum)
         embeddings = math_ops._safe_div(  # pylint: disable=protected-access
-          embeddings, weight_sum_sqrt, mode="zero", name=name)
+          embeddings, weight_sum_sqrt, nonnegative=True, name=name)
       else:
         assert False, "Unrecognized combiner"
     else:
