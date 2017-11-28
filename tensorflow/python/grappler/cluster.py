@@ -46,6 +46,7 @@ class Cluster(object):
         the local machine.
     """
     self._tf_cluster = None
+    self._generate_timeline = not disable_timeline
     with errors.raise_exception_on_not_ok_status() as status:
       if devices is None:
         self._tf_cluster = tf_cluster.TF_NewCluster(
@@ -54,11 +55,10 @@ class Cluster(object):
         devices_serialized = [device.SerializeToString() for device in devices]
         self._tf_cluster = tf_cluster.TF_NewVirtualCluster(
             devices_serialized, status)
-    self._generate_timeline = not disable_timeline
 
   def __del__(self):
     if self._tf_cluster is not None:
-      tf_cluster.TF_DeleteCluster(self._tf_cluster)
+      tf_cluster.TF_ShutdownCluster(self._tf_cluster)
 
   @property
   def tf_cluster(self):

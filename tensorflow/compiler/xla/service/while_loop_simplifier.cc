@@ -342,7 +342,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       //
       // Careful: HloInstruction::operand_index returns the first index the
       // operand appears in, but it may appear more than once!
-      if (user->user_count() == 1 && user->users()[0] == while_body_root &&
+      if (user->user_count() == 1 && user->users().front() == while_body_root &&
           while_body_root->operand_index(user) == user->tuple_index() &&
           std::count(while_body_root->operands().begin(),
                      while_body_root->operands().end(), user) == 1) {
@@ -444,7 +444,8 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         // This is a GTE of an index that we've removed.  Remove it from the
         // cloned computation.
         CHECK(user->user_count() == 0 ||
-              user->user_count() == 1 && user->users()[0] == while_body_root)
+              user->user_count() == 1 &&
+                  user->users().front() == while_body_root)
             << "Instruction " << user->ToStringNoMetadata()
             << " should be unused (except by root of while body), but has "
                "users: {"
