@@ -110,6 +110,7 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
