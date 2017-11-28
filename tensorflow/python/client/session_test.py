@@ -1458,6 +1458,8 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertTrue(run_metadata.HasField('step_stats'))
         self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
+  # TODO(nolivia): C API doesn't yet handle marking nodes as not feedable.
+  @test_util.disable_c_api
   def testFeedShapeCompatibility(self):
     with session.Session() as sess:
       some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])

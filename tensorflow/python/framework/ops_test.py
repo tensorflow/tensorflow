@@ -80,7 +80,7 @@ class ResourceTest(test_util.TensorFlowTestCase):
 
 
 @test_util.with_c_api
-class TensorTest(test_util.TensorFlowTestCase):
+class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
   def testShape(self):
     op = ops.Operation(
@@ -98,6 +98,44 @@ class TensorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "iter"):
       for _ in t:
         pass
+
+  def testAddShape(self):
+    with self.test_session():
+      a = array_ops.zeros([2, 3])
+      b = array_ops.ones([1, 3])
+      c = a + b
+      self.assertEqual([2, 3], c.shape)
+
+  def testUnknownDim(self):
+    with self.test_session():
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=[2, None, 3])
+      b = array_ops.placeholder(dtype=dtypes.float32, shape=[2, None, 3])
+      c = a + b
+      self.assertEqual([2, None, 3], c.shape.as_list())
+
+  def testUnknownShape(self):
+    with self.test_session():
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=None)
+      b = array_ops.ones([1, 3])
+      c = a + b
+      self.assertEqual(tensor_shape.unknown_shape(), c.shape)
+
+  def testScalarShape(self):
+    with self.test_session():
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=[])
+      b = array_ops.ones([])
+      c = a + b
+      self.assertEqual(tensor_shape.scalar(), c.shape)
+
+  def testShapeFunctionError(self):
+    with self.test_session():
+      a = array_ops.ones([1, 2, 3])
+      b = array_ops.ones([4, 5, 6])
+      with self.assertRaisesRegexp(
+          ValueError,
+          r"Dimensions must be equal, but are 2 and 5 for 'add' \(op: 'Add'\) "
+          r"with input shapes: \[1,2,3\], \[4,5,6\]."):
+        _ = a + b
 
 
 @test_util.with_c_api
@@ -671,6 +709,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.name, "myop")
     self.assertEqual(op.type, "IntInputIntOutput")
     self.assertEqual(len(op.outputs), 1)
+    self.assertEqual(op.outputs[0].shape, tensor_shape.unknown_shape())
     self.assertEqual(list(op.inputs), [x])
     self.assertEqual(op.control_inputs, [])
     self.assertEqual(op.graph, g)
@@ -678,6 +717,22 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertIsNotNone(op.traceback)
     self.assertEqual(g.get_operation_by_name("myop"), op)
     self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
+
+  def testShape(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
+      if ops._USE_C_API:
+        c_op = ops._create_c_op(g, ops._NodeDef("Identity", "myop"), [x], [])
+        op = g._create_op_from_tf_operation(c_op)
+      else:
+        # Test pure-Python version to make sure C API has same behavior.
+        op = array_ops.identity(x, name="myop").op
+
+    self.assertEqual(op.name, "myop")
+    self.assertEqual(op.type, "Identity")
+    self.assertEqual(len(op.outputs), 1)
+    self.assertEqual(op.outputs[0].shape, tensor_shape.matrix(2, 3))
 
   def testCond(self):
     g = ops.Graph()
