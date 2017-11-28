@@ -32,7 +32,7 @@ Note that TensorFlow already includes many filesystem implementations, such as:
 
     Note: NFS filesystems often mount as a POSIX interface, and so standard
     TensorFlow can work on top of NFS-mounted remote filesystems.
-    
+
 *   HDFS - the Hadoop File System
 *   GCS - Google Cloud Storage filesystem
 *   A "memory-mapped-file" filesystem

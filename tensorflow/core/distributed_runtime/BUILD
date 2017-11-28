@@ -140,6 +140,7 @@ cc_library(
     hdrs = ["session_mgr.h"],
     deps = [
         ":graph_mgr",
+        ":worker_cache_wrapper",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
@@ -257,6 +258,17 @@ cc_library(
     name = "worker_cache",
     hdrs = ["worker_cache.h"],
     deps = [
+        ":worker_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "worker_cache_wrapper",
+    hdrs = ["worker_cache_wrapper.h"],
+    deps = [
+        ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

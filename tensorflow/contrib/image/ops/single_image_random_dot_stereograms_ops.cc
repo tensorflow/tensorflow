@@ -40,7 +40,7 @@ REGISTER_OP("SingleImageRandomDotStereograms")
     .Doc(R"doc(
 Outputs a single image random dot stereogram for export via encode_PNG/JPG OP.
 
-Given the 2-D tensor 'depth_values' with encoded Z values, this operation will 
+Given the 2-D tensor 'depth_values' with encoded Z values, this operation will
 encode 3-D data into a 2-D image.  The output of this Op is suitable for the
 encode_PNG/JPG ops.  Be careful with image compression as this may corrupt the
 encode 3-D data witin the image.
@@ -68,14 +68,14 @@ with open('picture_out.png', 'wb') as f:
     f.write(png)
 ```
 
-depth_values: Z values of data to encode into 'output_data_window' window, 
+depth_values: Z values of data to encode into 'output_data_window' window,
   lower values are further away {0.0 floor(far), 1.0 ceiling(near) after normalization}, must be 2-D tensor
 hidden_surface_removal: Activate hidden surface removal
 convergence_dots_size: Black dot size in pixels to help view converge image, drawn on bottom of image
 dots_per_inch: Output device in dots/inch
 eye_separation: Separation between eyes in inches
 mu: Depth of field, Fraction of viewing distance (eg. 1/3 = .3333)
-normalize: Normalize input data to [0.0, 1.0] 
+normalize: Normalize input data to [0.0, 1.0]
 normalize_max: Fix MAX value for Normalization - if < MIN, autoscale
 normalize_min: Fix MIN value for Normalization - if > MAX, autoscale
 border_level: Value of border depth 0.0 {far} to 1.0 {near}

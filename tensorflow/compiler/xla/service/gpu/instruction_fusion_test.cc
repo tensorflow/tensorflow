@@ -156,8 +156,10 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfConvolutionUnfused) {
   conv_dnums.set_output_batch_dimension(0);
   conv_dnums.set_input_feature_dimension(1);
   conv_dnums.set_output_feature_dimension(1);
-  conv_dnums.add_spatial_dimensions(2);
-  conv_dnums.add_spatial_dimensions(3);
+  conv_dnums.add_input_spatial_dimensions(2);
+  conv_dnums.add_output_spatial_dimensions(2);
+  conv_dnums.add_input_spatial_dimensions(3);
+  conv_dnums.add_output_spatial_dimensions(3);
   conv_dnums.set_kernel_output_feature_dimension(0);
   conv_dnums.set_kernel_input_feature_dimension(1);
   conv_dnums.add_kernel_spatial_dimensions(2);

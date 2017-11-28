@@ -752,8 +752,7 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
   if (metadata != nullptr) {
     StepStats* stepstats = metadata->mutable_step_stats();
     for (const auto& device : device_) {
-      GraphDef* device_partition_graph =
-          metadata->mutable_partition_graphs()->Add();
+      GraphDef* device_partition_graph = metadata->add_partition_graphs();
       DeviceStepStats* device_stepstats = stepstats->add_dev_stats();
       device_stepstats->set_device(device.first);
       for (const auto& node_def : device.second.nodes_executed) {
@@ -804,7 +803,7 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
         mem_stats->set_host_persistent_memory_size(host_persistent_memory_size);
         mem_stats->set_device_persistent_memory_size(
             device_persistent_memory_size);
-        *device_partition_graph->mutable_node()->Add() = *node_def;
+        *device_partition_graph->add_node() = *node_def;
       }
     }
   }
