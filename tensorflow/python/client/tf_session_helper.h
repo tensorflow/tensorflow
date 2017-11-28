@@ -97,6 +97,16 @@ void TF_Reset_wrapper(const TF_SessionOptions* opt,
 // for no difference.
 string EqualGraphDefWrapper(const string& actual, const string& expected);
 
+// Gets shape from C API Graph object.
+//
+// If shape is known, returns shape vector where -1 means "unknown
+// dimension".  Sets unknown_shape to false.
+//
+// If shape is unknown, sets unknown_shape to true.
+tensorflow::gtl::InlinedVector<int64_t, 6> TF_GraphGetTensorShapeHelper(
+    TF_Graph* graph, TF_Output output, TF_Status* out_status,
+    bool* unknown_shape);
+
 // Runs the graph associated with the session starting with the supplied inputs.
 // On success, `py_outputs` is populated with a numpy ndarray for each output
 // (the caller must decref these ndarrays, although this will likely be handled

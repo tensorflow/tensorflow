@@ -80,9 +80,9 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       const ConvolutionDimensionNumbers& dimension_numbers =
           instruction->convolution_dimension_numbers();
       std::vector<int64> input_layout;
-      for (int i = dimension_numbers.spatial_dimensions_size() - 1; i >= 0;
-           --i) {
-        input_layout.push_back(dimension_numbers.spatial_dimensions(i));
+      for (int i = dimension_numbers.input_spatial_dimensions_size() - 1;
+           i >= 0; --i) {
+        input_layout.push_back(dimension_numbers.input_spatial_dimensions(i));
       }
       input_layout.push_back(dimension_numbers.input_feature_dimension());
       input_layout.push_back(dimension_numbers.input_batch_dimension());
@@ -102,9 +102,9 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       *filter_shape.mutable_layout() = LayoutUtil::MakeLayout(filter_layout);
 
       std::vector<int64> output_layout;
-      for (int i = dimension_numbers.spatial_dimensions_size() - 1; i >= 0;
-           --i) {
-        output_layout.push_back(dimension_numbers.spatial_dimensions(i));
+      for (int i = dimension_numbers.output_spatial_dimensions_size() - 1;
+           i >= 0; --i) {
+        output_layout.push_back(dimension_numbers.output_spatial_dimensions(i));
       }
       output_layout.push_back(dimension_numbers.output_feature_dimension());
       output_layout.push_back(dimension_numbers.output_batch_dimension());

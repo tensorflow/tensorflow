@@ -13,7 +13,7 @@ through estimator [2]. Note that during back propagation, the parameters are
 updated at high precision as this is needed to ensure sufficient precision in
 accumulating tiny adjustments to the parameters. However, for the forward pass,
 the parameters and activations are quantized to the desired lower precision.
- 
+
 ![drawing](g3doc/drawings/Fake_Quantization.jpg)
 
 ###Forward pass

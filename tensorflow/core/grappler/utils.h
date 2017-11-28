@@ -33,12 +33,16 @@ namespace grappler {
 // A utility class to lookup a node and its outputs by node name.
 class NodeMap {
  public:
+  // Note: The NodeMap will store pointers to nodes in graph, which may become
+  // invalid if graph is changed.
   explicit NodeMap(GraphDef* graph);
   NodeDef* GetNode(const string& name) const;
+  bool NodeExists(const string& name) const;
   const std::set<NodeDef*>& GetOutputs(const string& node_name) const;
   // This method doesn't record the outputs of the added node; the outputs need
   // to be explicitly added by the AddOutput method.
   void AddNode(const string& name, NodeDef* node);
+  void RemoveNode(const string& name);
   void UpdateInput(const string& node_name, const string& old_input_name,
                    const string& new_input_name);
   void AddOutput(const string& node_name, const string& output_name);
@@ -49,8 +53,7 @@ class NodeMap {
                     const string& new_output_name);
 
  private:
-  GraphDef* graph_;
-  std::set<NodeDef*> empty_set_;
+  const std::set<NodeDef*> empty_set_;
   std::unordered_map<string, NodeDef*> nodes_;
   std::unordered_map<string, std::set<NodeDef*>> outputs_;
 };

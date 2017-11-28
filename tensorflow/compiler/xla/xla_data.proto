@@ -417,15 +417,9 @@ message ConvolutionDimensionNumbers {
   // The number of the dimension that represents features in the input.
   int64 input_feature_dimension = 8;
 
-  // The number of the dimension that represents batch in the output.
-  int64 output_batch_dimension = 9;
-
-  // The number of the dimension that represents features in the output.
-  int64 output_feature_dimension = 10;
-
   // The dimension numbers for the spatial dimensions that the window
-  // moves through in the input (lhs) and output.
-  repeated int64 spatial_dimensions = 5;
+  // moves through in the input.
+  repeated int64 input_spatial_dimensions = 11;
 
   // The number of the dimension that represents input features in the
   // convolutional kernel (rhs).
@@ -439,6 +433,18 @@ message ConvolutionDimensionNumbers {
   // moves through in the kernel (rhs). window.strides(0) is the
   // stride in the kernel_spatial_dimensions(0) dimension.
   repeated int64 kernel_spatial_dimensions = 6;
+
+  // The number of the dimension that represents batch in the output.
+  int64 output_batch_dimension = 9;
+
+  // The number of the dimension that represents features in the output.
+  int64 output_feature_dimension = 10;
+
+  // The dimension numbers for the spatial dimensions that the window
+  // moves through in the output.
+  repeated int64 output_spatial_dimensions = 12;
+
+  // Next = 13
 };
 
 message ConvolveRequest {

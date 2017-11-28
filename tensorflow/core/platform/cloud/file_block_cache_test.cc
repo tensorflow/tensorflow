@@ -461,7 +461,7 @@ TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
         TF_EXPECT_OK(cache.Read("", 0, block_size / 2, &out));
         EXPECT_EQ(out.size(), block_size / 2);
       }));
-  EXPECT_TRUE(WaitForNotificationWithTimeout(&notification, 1000))
+  EXPECT_TRUE(WaitForNotificationWithTimeout(&notification, 10000))
       << "Timeout waiting for concurrent thread to start.";
   std::vector<char> out;
   TF_EXPECT_OK(cache.Read("", block_size / 2, block_size / 2, &out));
