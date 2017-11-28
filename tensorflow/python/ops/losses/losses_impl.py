@@ -77,9 +77,8 @@ def _safe_div(numerator, denominator, name="value"):
   """
   return array_ops.where(
       math_ops.greater(denominator, 0),
-      math_ops.div(numerator, array_ops.where(
-          math_ops.equal(denominator, 0),
-          array_ops.ones_like(denominator), denominator)),
+      math_ops._safe_div(  # pylint: disable=protected-access
+        numerator, denominator, mode="numerator"),
       array_ops.zeros_like(numerator),
       name=name)
 

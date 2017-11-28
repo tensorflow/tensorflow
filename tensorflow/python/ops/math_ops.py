@@ -1079,6 +1079,37 @@ def div(x, y, name=None):
   return _div_python2(x, y, name)
 
 
+def _safe_div(numerator, denominator, mode="zero", name=None):
+  """Computes a safe divide if the denominator is zero.
+
+  Args:
+    numerator: An arbitrary `Tensor`.
+    denominator: `Tensor` whose shape matches `numerator`.
+    mode: When the denominator is zero, return 0 if `zero`;
+      or return original numerator if `numerator`.
+    name: An optional name for the returned op.
+
+  Returns:
+    The element-wise value of the numerator divided by the denominator.
+  """
+  if mode == "zero":
+    # created for broadcast
+    zeros = array_ops.zeros_like(numerator, dtype=denominator.dtype)
+    condition = not_equal(denominator, zeros)
+    t = div(numerator, denominator)
+    e = cast(zeros, dtype=t.dtype)
+    return array_ops.where(condition, t, e, name=name)
+  elif mode == "numerator":
+    return div(numerator,
+               array_ops.where(equal(denominator, 0),
+                               array_ops.ones_like(denominator),
+                               denominator),
+               name=name)
+  else:
+    raise ValueError("mode must be `zero` or `numerator`, "
+                     "while get {}".format(mode))
+
+
 # TODO(aselle): This should be removed
 mod = gen_math_ops._floor_mod
 
