@@ -1359,6 +1359,32 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
 END
 }
 op {
+  graph_op_name: "Roll"
+  endpoint {
+    name: "Roll"
+  }
+  summary: "Rolls the elements of a tensor by the offsets of `shift` along the dimensions"
+  description: <<END
+of `axis`. Elements that roll passed the last position will wrap around
+to the first.
+
+For example:
+
+```
+# 't' is [0, 1, 2, 3, 4]
+roll(t, shift=2, axis=0) ==> [3, 4, 0, 1, 2]
+
+# shifting along multiple dimensions
+# 't' is [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+roll(t, shift=[1, -2], axis=[0, 1]) ==> [[7, 8, 9, 5, 6], [2, 3, 4, 0, 1]]
+
+# shifting along the same axis multiple times
+# 't' is [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+roll(t, shift=[2, -3], axis=[1, 1]) ==> [[1, 2, 3, 4, 0], [6, 7, 8, 9, 5]]
+```
+END
+}
+op {
   graph_op_name: "Round"
   endpoint {
     name: "Round"
