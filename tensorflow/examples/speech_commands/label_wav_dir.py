@@ -57,7 +57,7 @@ def load_labels(filename):
   return [line.rstrip() for line in tf.gfile.GFile(filename)]
 
 
-def run_graph(wav_path, wav_data, labels, input_layer_name, output_layer_name,
+def run_graph(wav_dir, labels, input_layer_name, output_layer_name,
               num_top_predictions):
   """Runs the audio data through the graph and prints predictions."""
   with tf.Session() as sess:
@@ -65,26 +65,29 @@ def run_graph(wav_path, wav_data, labels, input_layer_name, output_layer_name,
     #   predictions  will contain a two-dimensional array, where one
     #   dimension represents the input image count, and the other has
     #   predictions per class
-    softmax_tensor = sess.graph.get_tensor_by_name(output_layer_name)
-    predictions, = sess.run(softmax_tensor, {input_layer_name: wav_data})
+    for wav_path in glob.glob(wav_dir + "/*.wav"):
+      if not wav_path or not tf.gfile.Exists(wav_path):
+        tf.logging.fatal('Audio file does not exist %s', wav_path)
 
-    # Sort to show labels in order of confidence
-    print('\n%s' % (wav_path.split('/')[-1]))
-    top_k = predictions.argsort()[-num_top_predictions:][::-1]
-    for node_id in top_k:
-      human_string = labels[node_id]
-      score = predictions[node_id]
-      print('%s (score = %.5f)' % (human_string, score))
+      with open(wav_path, 'rb') as wav_file:
+        wav_data = wav_file.read()
+
+      softmax_tensor = sess.graph.get_tensor_by_name(output_layer_name)
+      predictions, = sess.run(softmax_tensor, {input_layer_name: wav_data})
+
+      # Sort to show labels in order of confidence
+      print('\n%s' % (wav_path.split('/')[-1]))
+      top_k = predictions.argsort()[-num_top_predictions:][::-1]
+      for node_id in top_k:
+        human_string = labels[node_id]
+        score = predictions[node_id]
+        print('%s (score = %.5f)' % (human_string, score))
 
     return 0
 
 
-def label_wav(wav_path, labels, graph, input_name, output_name,
-              how_many_labels):
+def label_wav(wav_dir, labels, graph, input_name, output_name, how_many_labels):
   """Loads the model and labels, and runs the inference to print predictions."""
-  if not wav_path or not tf.gfile.Exists(wav_path):
-    tf.logging.fatal('Audio file does not exist %s', wav_path)
-
   if not labels or not tf.gfile.Exists(labels):
     tf.logging.fatal('Labels file does not exist %s', labels)
 
@@ -96,18 +99,13 @@ def label_wav(wav_path, labels, graph, input_name, output_name,
   # load graph, which is stored in the default session
   load_graph(graph)
 
-  with open(wav_path, 'rb') as wav_file:
-    wav_data = wav_file.read()
-
-  run_graph(wav_path, wav_data, labels_list, input_name, output_name,
-            how_many_labels)
+  run_graph(wav_dir, labels_list, input_name, output_name, how_many_labels)
 
 
 def main(_):
   """Entry point for script, converts flags to arguments."""
-  for wav_path in glob.glob(FLAGS.wav_dir + "/*.wav"):
-    label_wav(wav_path, FLAGS.labels, FLAGS.graph, FLAGS.input_name,
-              FLAGS.output_name, FLAGS.how_many_labels)
+  label_wav(FLAGS.wav_dir, FLAGS.labels, FLAGS.graph, FLAGS.input_name,
+            FLAGS.output_name, FLAGS.how_many_labels)
 
 
 if __name__ == '__main__':
