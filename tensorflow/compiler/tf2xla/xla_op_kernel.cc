@@ -417,6 +417,11 @@ const xla::Computation* XlaOpKernelContext::GetOrCreateAdd(
   return XlaContext::Get(context_).GetOrCreateAdd(type);
 }
 
+const xla::Computation* XlaOpKernelContext::GetOrCreateMul(
+    const DataType type) {
+  return XlaContext::Get(context_).GetOrCreateMul(type);
+}
+
 XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}
 
 void XlaOpKernel::Compute(OpKernelContext* context) {
