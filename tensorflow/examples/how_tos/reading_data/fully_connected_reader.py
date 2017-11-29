@@ -46,8 +46,8 @@ VALIDATION_FILE = 'validation.tfrecords'
 
 
 def decode(serialized_example):
-  features = tf.parse_example(
-      [serialized_example],
+  features = tf.parse_single_example(
+      serialized_example,
       # Defaults are not specified since both keys are required.
       features={
           'image_raw': tf.FixedLenFeature([], tf.string),
@@ -58,8 +58,7 @@ def decode(serialized_example):
   # length mnist.IMAGE_PIXELS) to a uint8 tensor with shape
   # [mnist.IMAGE_PIXELS].
   image = tf.decode_raw(features['image_raw'], tf.uint8)
-  image.set_shape((1, mnist.IMAGE_PIXELS))
-  image = tf.reshape(image,[-1])
+  image.set_shape((mnist.IMAGE_PIXELS))
 
   # Convert label from a scalar uint8 tensor to an int32 scalar.
   label = tf.cast(features['label'], tf.int32)
@@ -136,8 +135,6 @@ def run_training():
                              FLAGS.hidden1,
                              FLAGS.hidden2)
 
-    #mnist.loss expects a (batch_size,) instead of (batch_size,1)
-    label_batch = tf.reshape(label_batch,[-1])
     # Add to the Graph the loss calculation.
     loss = mnist.loss(logits, label_batch)
 

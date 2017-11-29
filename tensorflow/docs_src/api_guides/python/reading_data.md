@@ -175,8 +175,8 @@ converts MNIST data to this format.
 
 To read a file of TFRecords, use
 @{tf.data.TFRecordDataset} with
-the @{tf.parse_example}
-decoder. The `parse_example` op decodes the example protocol buffers into
+the @{tf.parse_single_example}
+decoder. The `parse_single_example` op decodes the example protocol buffers into
 tensors. An MNIST example using the data produced by `convert_to_records` can be
 found in
 [`tensorflow/examples/how_tos/reading_data/fully_connected_reader.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/fully_connected_reader.py), which you can compare with the `fully_connected_feed` version.
