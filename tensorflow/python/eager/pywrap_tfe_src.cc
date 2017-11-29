@@ -531,12 +531,9 @@ static PyTypeObject TFE_Py_Tape_Type = {
 // xcode 7 doesn't define thread_local, so for compatibility we implement our
 // own. TODO(apassos) remove once we can deprecate xcode 7.
 #ifndef __APPLE__
-thread_local std::vector<TFE_Py_Tape*>* tape_stack = nullptr;
 std::vector<TFE_Py_Tape*>* GetTapeStack() {
-  if (tape_stack == nullptr) {
-    tape_stack = new std::vector<TFE_Py_Tape*>;
-  }
-  return tape_stack;
+  thread_local std::vector<TFE_Py_Tape*> tape_stack;
+  return &tape_stack;
 }
 #else
 static tensorflow::mutex stack_mu(tensorflow::LINKER_INITIALIZED);
