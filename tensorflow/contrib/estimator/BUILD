@@ -346,7 +346,7 @@ py_library(
 
 cuda_py_test(
     name = "replicate_model_fn_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],
     additional_deps = [
         "//tensorflow/python/estimator",
