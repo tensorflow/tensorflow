@@ -268,7 +268,7 @@ def sparse_add(a, b, thresh=0):
   Then,
 
       * `thresh == 0` (the default): all 5 index/value pairs will be returned.
-      * `thresh == 0.11`: only .1 and 0 will vanish, and the remaining three
+      * `thresh == 0.11`: only .1 and 0  will vanish, and the remaining three
           index/value pairs will be returned.
       * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
@@ -296,7 +296,7 @@ def sparse_add(a, b, thresh=0):
     a = _convert_to_sparse_tensor(a)
     b = _convert_to_sparse_tensor(b)
     thresh = ops.convert_to_tensor(
-        thresh, dtype=a.values.dtype.real_dtype.base_dtype, name="thresh")
+        thresh, dtype=a.values.dtype.real_dtype, name="thresh")
     output_ind, output_val, output_shape = (gen_sparse_ops._sparse_add(
         a.indices, a.values, a.dense_shape,
         b.indices, b.values, b.dense_shape,
@@ -1110,7 +1110,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
   Args:
     sp_ids: A single `SparseTensor` with `values` property of type `int32`
       or `int64` or a Python list of such `SparseTensor`s or a list thereof.
-    sp_values: A `SparseTensor` of any type.
+    sp_values: A`SparseTensor` of any type.
     vocab_size: A scalar `int64` Tensor (or Python int) containing the new size
       of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
       Or a list thereof with `all(0 <= sp_ids[i].values < vocab_size[i])` for
@@ -1225,8 +1225,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
   """Resets the shape of a `SparseTensor` with indices and values unchanged.
 
   If `new_shape` is None, returns a copy of `sp_input` with its shape reset
-  to the tight bounding box of `sp_input`. This will be a shape consisting of
-  all zeros if sp_input has no values.
+  to the tight bounding box of `sp_input`.
 
   If `new_shape` is provided, then it must be larger or equal in all dimensions
   compared to the shape of `sp_input`. When this condition is met, the returned
@@ -1264,7 +1263,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
 
   Returns:
     A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
-      `new_shape` if that is set. Otherwise it is the tight bounding box of
+      `new_shape` if that is set. Otherwise it is  the tight bounding box of
        `input_sp`
 
   Raises:
@@ -1285,10 +1284,9 @@ def sparse_reset_shape(sp_input, new_shape=None):
   in_shape = array_ops.identity(sp_input.dense_shape)
 
   if new_shape is None:
-    dim_low_bound = math_ops.reduce_max(in_indices, axis=0)
-    output_shape_tensor = math_ops.maximum(
-        array_ops.constant(0, dtype=dtypes.int64),
-        math_ops.add(dim_low_bound, array_ops.ones_like(in_shape)))
+    dim_low_bound = math_ops.reduce_max(in_indices, 0)
+    output_shape_tensor = math_ops.add(dim_low_bound,
+                                       array_ops.ones_like(in_shape))
   else:
     output_shape_tensor = ops.convert_to_tensor(new_shape)
     output_shape_tensor.get_shape().assert_has_rank(1)
@@ -1432,35 +1430,6 @@ def serialize_many_sparse(sp_input, name=None):
 
   return gen_sparse_ops._serialize_many_sparse(
       sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
-
-
-def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
-  """Deserialize `SparseTensor` objects.
-
-  The input is expected to have shape [d_1, ..., d_m, 3], where the last
-  dimension stores a serialized `SparseTensor`. The method deserializes
-  all input `SparseTensor`s, concatenates them into a single tensor, and
-  reshapes the sparse tensor to preserve the structure of the input.
-
-  Args:
-    serialized_sparse: The serialized `SparseTensor` objects.
-      The last dimension must have 3 columns.
-    dtype: The `dtype` of the serialized `SparseTensor` objects.
-    rank: (optional) Python int, the rank of the `SparseTensor` objects.
-    name: A name prefix for the returned tensors (optional).
-
-  Returns:
-    A `SparseTensor` representing the deserialized `SparseTensor` objects.
-
-  """
-  output_indices, output_values, output_shape = (
-      gen_sparse_ops._deserialize_sparse(serialized_sparse, dtype, name=name))
-
-  # Feed rank data back in, if available
-  output_indices.set_shape([None, rank])
-  output_shape.set_shape([rank])
-
-  return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)
 
 
 def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
@@ -1751,7 +1720,7 @@ def sparse_tensor_dense_matmul(sp_a,
 def sparse_softmax(sp_input, name=None):
   """Applies softmax to a batched N-D `SparseTensor`.
 
-  The inputs represent an N-D SparseTensor with logical shape `[..., B, C]`
+  The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
   (where `N >= 2`), and with indices sorted in the canonical lexicographic
   order.
 

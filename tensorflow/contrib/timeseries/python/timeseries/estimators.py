@@ -20,8 +20,8 @@ from __future__ import print_function
 
 from tensorflow.contrib.timeseries.python.timeseries import ar_model
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
-from tensorflow.contrib.timeseries.python.timeseries import head as ts_head_lib
 from tensorflow.contrib.timeseries.python.timeseries import math_utils
+from tensorflow.contrib.timeseries.python.timeseries import model_utils
 from tensorflow.contrib.timeseries.python.timeseries import state_management
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import state_space_model
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import structural_ensemble
@@ -36,7 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.training import training as train
 
 
-class TimeSeriesRegressor(estimator_lib.Estimator):
+class _TimeSeriesRegressor(estimator_lib.Estimator):
   """An Estimator to fit and evaluate a time series model."""
 
   def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
@@ -59,11 +59,10 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
     if optimizer is None:
       optimizer = train.AdamOptimizer(0.02)
     self._model = model
-    ts_regression_head = ts_head_lib.time_series_regression_head(
+    model_fn = model_utils.make_model_fn(
         model, state_manager, optimizer,
         input_statistics_generator=input_statistics_generator)
-    model_fn = ts_regression_head.create_estimator_spec
-    super(TimeSeriesRegressor, self).__init__(
+    super(_TimeSeriesRegressor, self).__init__(
         model_fn=model_fn,
         model_dir=model_dir,
         config=config)
@@ -133,7 +132,7 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
       with ops.Graph().as_default():
         self._model.initialize_graph()
         model_start_state = self._model.get_start_state()
-      for prefixed_state_name, state_tensor in ts_head_lib.state_to_dictionary(
+      for prefixed_state_name, state_tensor in model_utils.state_to_dictionary(
           model_start_state).items():
         state_shape_with_batch = tensor_shape.TensorShape(
             (default_batch_size,)).concatenate(state_tensor.get_shape())
@@ -146,7 +145,7 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
     return _serving_input_receiver_fn
 
 
-class ARRegressor(TimeSeriesRegressor):
+class ARRegressor(_TimeSeriesRegressor):
   """An Estimator for an (optionally non-linear) autoregressive model.
 
   ARRegressor is a window-based model, inputting fixed windows of length
@@ -237,12 +236,12 @@ class ARRegressor(TimeSeriesRegressor):
         config=config)
 
 
-class StateSpaceRegressor(TimeSeriesRegressor):
+class StateSpaceRegressor(_TimeSeriesRegressor):
   """An Estimator for general state space models."""
 
   def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
                config=None):
-    """See TimeSeriesRegressor. Uses the ChainingStateManager by default."""
+    """See _TimeSeriesRegressor. Uses the ChainingStateManager by default."""
     if not isinstance(model, state_space_model.StateSpaceModel):
       raise ValueError(
           "StateSpaceRegressor only supports state space models (children of "

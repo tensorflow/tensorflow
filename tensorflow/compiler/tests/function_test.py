@@ -24,12 +24,10 @@ from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
-@test_util.with_c_api
 class FunctionTest(XLATestCase):
 
   def testFunction(self):

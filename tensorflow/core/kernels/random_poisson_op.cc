@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <memory>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -58,37 +57,46 @@ static constexpr int kReservedSamplesPerOutput = 256;
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+// We will compute half-precision Poisson samples with float precision
+// intermediate calculations.
 template <typename T>
 struct PoissonComputeType {
-  typedef double ComputeType;
+  typedef T ComputeType;
+};
+
+template <>
+struct PoissonComputeType<Eigen::half> {
+  typedef float ComputeType;
 };
 
 }  // namespace
 
 namespace functor {
 
-template <typename Device, typename T, typename U>
+template <typename Device, typename T>
 struct PoissonFunctor {
   void operator()(OpKernelContext* ctx, const Device& d, const T* rate_flat,
                   int num_rate, int num_samples,
-                  const random::PhiloxRandom& rng, U* samples_flat);
+                  const random::PhiloxRandom& rng, T* samples_flat);
 };
 
-template <typename T, typename U>
-struct PoissonFunctor<CPUDevice, T, U> {
+template <typename T>
+struct PoissonFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d, const T* rate_flat,
                   int num_rate, int num_samples,
-                  const random::PhiloxRandom& rng, U* samples_flat) {
+                  const random::PhiloxRandom& rng, T* samples_flat) {
     // Two different algorithms are employed, depending on the size of
     // rate.
     // If rate < 10, we use an algorithm attributed to Knuth:
     // Seminumerical Algorithms. Art of Computer Programming, Volume 2.
     //
     // This algorithm runs in O(rate) time, and will require O(rate)
-    // uniform variates.
+    // uniform
+    // variates.
     //
     // If rate >= 10 we use a transformation-rejection algorithm from
-    // pairs of uniform random variables due to Hormann.
+    // pairs
+    // of uniform random variables due to Hormann.
     // http://www.sciencedirect.com/science/article/pii/0167668793909974
     //
     // The algorithm has an acceptance rate of ~89% for the smallest rate
@@ -146,9 +154,8 @@ struct PoissonFunctor<CPUDevice, T, U> {
             while (true) {
               UNIFORM(u);
               prod = prod * u;
-              if (prod <= exp_neg_rate &&
-                  x <= CT(Eigen::NumTraits<U>::highest())) {
-                samples_rate_output[sample_idx * num_rate] = U(x);
+              if (prod <= exp_neg_rate) {
+                samples_rate_output[sample_idx * num_rate] = T(x);
                 break;
               }
               x += 1;
@@ -209,18 +216,13 @@ struct PoissonFunctor<CPUDevice, T, U> {
             CT k = Eigen::numext::floor((CT(2) * a / u_shifted + b) * u + rate +
                                         CT(0.43));
 
-            if (k > CT(Eigen::NumTraits<U>::highest())) {
-              // retry in case of overflow.
-              continue;
-            }
-
             // When alpha * f(G(U)) * G'(U) is close to 1, it is possible to
             // find a rectangle (-u_r, u_r) x (0, v_r) under the curve, such
             // that if v <= v_r and |u| <= u_r, then we can accept.
             // Here v_r = 0.9227 - 3.6224 / (b - 2) and u_r = 0.43.
             if (u_shifted >= CT(0.07) &&
                 v <= CT(0.9277) - CT(3.6224) / (b - CT(2))) {
-              samples_rate_output[sample_idx * num_rate] = U(k);
+              samples_rate_output[sample_idx * num_rate] = T(k);
               break;
             }
 
@@ -233,7 +235,7 @@ struct PoissonFunctor<CPUDevice, T, U> {
             CT s = log(v * inv_alpha / (a / (u_shifted * u_shifted) + b));
             CT t = -rate + k * log_rate - Eigen::numext::lgamma(k + 1);
             if (s <= t) {
-              samples_rate_output[sample_idx * num_rate] = U(k);
+              samples_rate_output[sample_idx * num_rate] = T(k);
               break;
             }
           }
@@ -278,7 +280,7 @@ struct PoissonFunctor<CPUDevice, T, U> {
 namespace {
 
 // Samples from one or more Poisson distributions.
-template <typename T, typename U>
+template <typename T>
 class RandomPoissonOp : public OpKernel {
  public:
   explicit RandomPoissonOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -301,13 +303,13 @@ class RandomPoissonOp : public OpKernel {
 
     const auto rate_flat = rate_t.flat<T>().data();
     const int64 num_rate = rate_t.NumElements();
-    auto samples_flat = samples_t->flat<U>().data();
+    auto samples_flat = samples_t->flat<T>().data();
     random::PhiloxRandom rng = generator_.ReserveRandomOutputs(
         num_samples * num_rate, kReservedSamplesPerOutput);
 
-    functor::PoissonFunctor<CPUDevice, T, U>()(
-        ctx, ctx->eigen_device<CPUDevice>(), rate_flat, num_rate, num_samples,
-        rng, samples_flat);
+    functor::PoissonFunctor<CPUDevice, T>()(ctx, ctx->eigen_device<CPUDevice>(),
+                                            rate_flat, num_rate, num_samples,
+                                            rng, samples_flat);
   }
 
  private:
@@ -322,34 +324,12 @@ class RandomPoissonOp : public OpKernel {
 #define REGISTER(TYPE)                                                        \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("RandomPoisson").Device(DEVICE_CPU).TypeConstraint<TYPE>("dtype"), \
-      RandomPoissonOp<TYPE, TYPE>);
+      RandomPoissonOp<TYPE>);
 
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 
-#define REGISTER_V2(RTYPE, OTYPE)                              \
-  REGISTER_KERNEL_BUILDER(Name("RandomPoissonV2")              \
-                              .Device(DEVICE_CPU)              \
-                              .TypeConstraint<RTYPE>("R")      \
-                              .TypeConstraint<OTYPE>("dtype"), \
-                          RandomPoissonOp<RTYPE, OTYPE>);
-
-#define REGISTER_ALL(RTYPE)        \
-  REGISTER_V2(RTYPE, Eigen::half); \
-  REGISTER_V2(RTYPE, float);       \
-  REGISTER_V2(RTYPE, double);      \
-  REGISTER_V2(RTYPE, int32);       \
-  REGISTER_V2(RTYPE, int64);
-
-REGISTER_ALL(Eigen::half);
-REGISTER_ALL(float);
-REGISTER_ALL(double);
-REGISTER_ALL(int32);
-REGISTER_ALL(int64);
-
-#undef REGISTER_ALL
-#undef REGISTER_V2
 #undef REGISTER
 
 }  // end namespace tensorflow

@@ -17,11 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
 
 #include <algorithm>
-#include <memory>
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -60,18 +58,30 @@ struct BeamEntry {
   // create a vector of children.  The object pointed to by p
   // cannot be copied and should not be moved, otherwise parent will
   // become invalid.
-  BeamEntry(BeamEntry* p, int l) : parent(p), label(l) {}
+  BeamEntry(BeamEntry* p, int l, int L, int t) : parent(p), label(l) {
+    PopulateChildren(L);
+  }
   inline bool Active() const { return newp.total != kLogZero; }
-  // Return the child at the given index, or construct a new one in-place if
-  // none was found.
-  BeamEntry& GetChild(int ind) {
-    auto entry = children.emplace(ind, nullptr);
-    auto& child_entry = entry.first->second;
-    // If this is a new child, populate the uniqe_ptr.
-    if (entry.second) {
-      child_entry.reset(new BeamEntry(this, ind));
+  inline bool HasChildren() const { return !children.empty(); }
+  void PopulateChildren(int L) {
+    CHECK(!HasChildren());
+    children = std::vector<BeamEntry>(L);
+    int ci = 0;
+    for (auto& c : children) {
+      // The current object cannot be copied, and should not be moved.
+      // Otherwise the child's parent will become invalid.
+      c.parent = this;
+      c.label = ci;
+      ++ci;
     }
-    return *(child_entry.get());
+  }
+  inline std::vector<BeamEntry>* Children() {
+    CHECK(HasChildren());
+    return &children;
+  }
+  inline const std::vector<BeamEntry>* Children() const {
+    CHECK(HasChildren());
+    return &children;
   }
   std::vector<int> LabelSeq(bool merge_repeated) const {
     std::vector<int> labels;
@@ -90,7 +100,7 @@ struct BeamEntry {
 
   BeamEntry<CTCBeamState>* parent;
   int label;
-  gtl::FlatMap<int, std::unique_ptr<BeamEntry<CTCBeamState>>> children;
+  std::vector<BeamEntry<CTCBeamState>> children;
   BeamProbability oldp;
   BeamProbability newp;
   CTCBeamState state;

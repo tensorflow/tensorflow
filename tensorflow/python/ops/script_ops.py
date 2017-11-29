@@ -57,33 +57,24 @@ class FuncRegistry(object):
     self._funcs.pop(token, None)
 
   @staticmethod
-  def _convert(value, dtype=None):
+  def _convert(value):
     """Converts an arg to numpy, avoiding dangerous string and unicode dtypes.
 
     Numpy pads with zeros when using string and unicode dtypes if different
     components of a tensor have different lengths.  This is bad: ignoring the
     padding is wrong for text data, and removing the padding is wrong for binary
     data.  To avoid this bug, we redo the conversion using an object dtype.
-    Additionally, we convert unicode strings to (byte-)strings for Python3
-    compatibility.
 
     Args:
       value: Value to convert to a numpy array.
-      dtype: (Optional.) Desired NumPy type for the returned value.
 
     Returns:
       A numpy array.
     """
-    result = np.asarray(value, dtype=dtype, order="C")
-    if result.dtype.char == "S" and result is not value:
+    result = np.asarray(value, order="C")
+    if result.dtype.char in "SU" and result is not value:
       return np.asarray(value, order="C", dtype=object)
-    elif result.dtype.char == "U" and result is not value:
-      value = np.vectorize(lambda x: x.encode())(value)
-      return np.asarray(value, order="C", dtype=object)
-    elif result.dtype.char == "U":
-      return result.astype(np.bytes_)
-    else:
-      return result
+    return result
 
   def __call__(self, token, args):
     """Calls the registered function for `token` with args."""
@@ -163,12 +154,6 @@ def py_func(func, inp, Tout, stateful=True, name=None):
       having element types that match the corresponding `tf.Tensor` objects
       in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
       having element types that match the corresponding values in `Tout`.
-      Important Note: Input and output numpy `ndarray`s of `func` are not
-      guaranteed to be copies. In some cases their underlying memory will be
-      shared with the corresponding TensorFlow tensors.
-      In-place modification or storing `func` input or return values in
-      python datastructures without explicit (np.)copy
-      can have non-deterministic consequences.
     inp: A list of `Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.

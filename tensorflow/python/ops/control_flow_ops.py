@@ -18,7 +18,6 @@
 See the @{$python/control_flow_ops} guide.
 
 @@identity
-@@identity_n
 @@tuple
 @@group
 @@no_op
@@ -57,14 +56,11 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import control_flow_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
@@ -87,29 +83,6 @@ from tensorflow.python.util import tf_should_use
 _basetuple = tuple
 
 
-def _summarize_eager(tensor, summarize=None):
-  """Returns a summarized string representation of eager `tensor`.
-
-  Args:
-    tensor: EagerTensor to summarize
-    summarize: Include these many first elements of `array`
-  """
-  # reshape((-1,)) is the fastest way to get a flat array view
-  if tensor._rank():  # pylint: disable=protected-access
-    flat = tensor.numpy().reshape((-1,))
-    lst = [str(x) for x in flat[:summarize]]
-    if len(lst) < flat.size:
-      lst.append("...")
-  else:
-    # tensor.numpy() returns a scalar for zero dimensional arrays
-    if summarize != 0:
-      lst = [str(tensor.numpy())]
-    else:
-      lst = []
-
-  return ", ".join(lst)
-
-
 # pylint: disable=protected-access
 
 
@@ -122,8 +95,7 @@ def Assert(condition, data, summarize=None, name=None):
   If `condition` evaluates to false, print the list of tensors in `data`.
   `summarize` determines how many entries of the tensors to print.
 
-  NOTE: In graph mode, to ensure that Assert executes, one usually attaches
-  a dependency:
+  NOTE: To ensure that Assert executes, one usually attaches a dependency:
 
   ```python
   # Ensure maximum element of x is smaller or equal to 1
@@ -141,22 +113,7 @@ def Assert(condition, data, summarize=None, name=None):
   Returns:
     assert_op: An `Operation` that, when executed, raises a
     `tf.errors.InvalidArgumentError` if `condition` is not true.
-    @compatibility{eager} returns None.
-
-  Raises:
-    @compatibility{eager} `tf.errors.InvalidArgumentError` if `condition`
-    is not true
   """
-  if context.in_eager_mode():
-    if not condition:
-      xs = ops.convert_n_to_tensor(data)
-      data_str = [_summarize_eager(x, summarize) for x in xs]
-      raise errors.InvalidArgumentError(
-          node_def=None, op=None,
-          message="Expected '%s' to be true. Summarized data: %s" % (
-              condition, "\n".join(data_str)))
-    return
-
   with ops.name_scope(name, "Assert", [condition, data]) as name:
     xs = ops.convert_n_to_tensor(data)
     if all([x.dtype in {dtypes.string, dtypes.int32} for x in xs]):
@@ -172,8 +129,6 @@ def Assert(condition, data, summarize=None, name=None):
             condition, data, summarize, name="Assert")
       guarded_assert = cond(
           condition, no_op, true_assert, name="AssertGuard")
-      if context.in_eager_mode():
-        return
       return guarded_assert.op
 
 
@@ -725,7 +680,7 @@ class GradLoopState(object):
     # The while loop context for backprop.
     self._grad_context = None
 
-    # The loop counter added by AddBackpropLoopCounter. It is the value
+    # The loop counter added by AddBackPropLoopCounter. It is the value
     # of the loop counter for the current iteration.
     self._grad_index = None
 
@@ -767,8 +722,8 @@ class GradLoopState(object):
                                         forward_ctxt.swap_memory,
                                         forward_ctxt.name,
                                         self)
-      real_cnt = outer_grad_state.AddBackpropAccumulatedValue(history_cnt, cnt)
-      self._grad_index = self._grad_context.AddBackpropLoopCounter(
+      real_cnt = outer_grad_state.AddBackPropAccumulatedValue(history_cnt, cnt)
+      self._grad_index = self._grad_context.AddBackPropLoopCounter(
           real_cnt, outer_grad_state)
       outer_grad_ctxt.Exit()
     else:
@@ -778,7 +733,7 @@ class GradLoopState(object):
                                         forward_ctxt.swap_memory,
                                         forward_ctxt.name,
                                         self)
-      self._grad_index = self._grad_context.AddBackpropLoopCounter(
+      self._grad_index = self._grad_context.AddBackPropLoopCounter(
           cnt, outer_grad_state)
       if outer_forward_ctxt: outer_forward_ctxt.Exit()
 
@@ -833,8 +788,6 @@ class GradLoopState(object):
         self._grad_sync = control_trigger(name="b_sync")
       self._grad_sync._set_control_flow_context(self._grad_context)
       self._grad_index.op._add_control_input(self._grad_sync)
-      if self._grad_context.outer_context:
-        self._grad_context.outer_context.AddInnerOp(self._grad_sync)
     return self._grad_sync
 
   @property
@@ -908,8 +861,7 @@ class GradLoopState(object):
       if curr_ctxt: curr_ctxt.Enter()
       with ops.colocate_with(value):
         # pylint: disable=protected-access
-        acc = gen_data_flow_ops._stack_v2(-1, value.dtype.base_dtype,
-                                          name="f_acc")
+        acc = gen_data_flow_ops._stack(value.dtype.base_dtype, name="f_acc")
         # pylint: enable=protected-access
       if curr_ctxt: curr_ctxt.Exit()
 
@@ -922,10 +874,8 @@ class GradLoopState(object):
       if value_ctxt == self.forward_context:
         # value is not nested in the forward context.
         self.forward_context.Enter()
-        # pylint: disable=protected-access
-        push = gen_data_flow_ops._stack_push_v2(
+        push = gen_data_flow_ops._stack_push(
             enter_acc, value, swap_memory=swap_enabled)
-        # pylint: enable=protected-access
         self.forward_context.Exit()
         # Protect stack push and order it before forward_index.
         self.forward_index.op._add_control_input(push.op)
@@ -938,18 +888,14 @@ class GradLoopState(object):
           # The special case for creating a zero tensor for a dead
           # branch of a switch. See ControlFlowState.ZerosLike().
           value_ctxt.outer_context.Enter()
-          # pylint: disable=protected-access
-          push = gen_data_flow_ops._stack_push_v2(
+          push = gen_data_flow_ops._stack_push(
               enter_acc, value, swap_memory=swap_enabled)
-          # pylint: enable=protected-access
           value_ctxt.outer_context.Exit()
           push.op._set_control_flow_context(value_ctxt)
         else:
           value_ctxt.Enter()
-          # pylint: disable=protected-access
-          push = gen_data_flow_ops._stack_push_v2(
+          push = gen_data_flow_ops._stack_push(
               enter_acc, value, swap_memory=swap_enabled)
-          # pylint: enable=protected-access
           value_ctxt.Exit()
         # Protect stack push and order it before forward_sync.
         self.forward_sync._add_control_input(push.op)
@@ -958,7 +904,7 @@ class GradLoopState(object):
       push.op._add_control_input(add_op)
       return acc
 
-  def AddBackpropAccumulatedValue(self, history_value, value,
+  def AddBackPropAccumulatedValue(self, history_value, value,
                                   dead_branch=False):
     """Add the getter for an accumulated value in the grad context.
 
@@ -996,10 +942,7 @@ class GradLoopState(object):
           pred = cond_ctxt.pred
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
         history_value = _SwitchRefOrTensor(history_value, pred)[branch]
-      # pylint: disable=protected-access
-      pop = gen_data_flow_ops._stack_pop_v2(history_value,
-                                            value.dtype.base_dtype)
-      # pylint: enable=protected-access
+      pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
       pop.set_shape(value.get_shape())
       self.grad_context.Exit()
     parallel_iterations = self.grad_context.parallel_iterations
@@ -1040,16 +983,9 @@ class GradLoopState(object):
             # the right control flow context.
             real_value = self._grad_context.AddValue(cur_value)
             break
-        elif constant_op.is_constant(cur_value):
-          # If the value to be forwarded is a constant, clone the constant in
-          # the gradient loop rather than using a stack.
-          # TODO(phawkins): consider hoisting the constant out of the loop
-          # instead.
-          real_value = constant_op.constant(
-              tensor_util.constant_value(cur_value), dtype=cur_value.dtype)
-          break
         else:
           # Record the history of this value in forward_ctxt.
+          # TODO(yuanbyu): Avoid recording constants.
           self._grad_context.Exit()
           history_value = cur_grad_state.AddForwardAccumulator(cur_value)
           self._grad_context.Enter()
@@ -1057,7 +993,7 @@ class GradLoopState(object):
 
       if real_value is None:
         # Add the stack pop op in the grad context.
-        real_value = cur_grad_state.AddBackpropAccumulatedValue(history_value,
+        real_value = cur_grad_state.AddBackPropAccumulatedValue(history_value,
                                                                 cur_value)
         if cur_grad_state != self:
           real_value = self._grad_context.AddValue(real_value)
@@ -1101,10 +1037,10 @@ class ControlFlowState(object):
     Otherwise, they will enter the backprop loop with None. As an example,
     people often write:
 
-    ```python
-    v1, _ = tf.while_loop(p, b, [x1, x2])
-    result = gradients(v1, x1)
-    ```
+           ```
+           v1, _ = tf.while_loop(p, b, [x1, x2])
+           result = gradients(v1, x1)
+           ```
 
     The exit node for x2 is not included by the betweenness analysis. But we
     need to backprop x2 if x2 is involved in computing v1.
@@ -1214,7 +1150,7 @@ class ControlFlowState(object):
         # Get the shape back from the stack.
         outer_grad_ctxt = outer_grad_state.grad_context
         outer_grad_ctxt.Enter()
-        real_shape = outer_grad_state.AddBackpropAccumulatedValue(
+        real_shape = outer_grad_state.AddBackPropAccumulatedValue(
             history_shape, shape)
         result = array_ops.zeros(real_shape, val.dtype)
         outer_grad_ctxt.Exit()
@@ -1284,7 +1220,7 @@ class ControlFlowState(object):
       grad_state.grad_context.Enter()
 
       # Create a zero tensor with the right shape.
-      shape = grad_state.AddBackpropAccumulatedValue(
+      shape = grad_state.AddBackPropAccumulatedValue(
           history_zeros_shape, zeros_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
@@ -1436,10 +1372,8 @@ class ControlFlowContext(object):
       k = ops.prepend_name_scope(k, import_scope)
       self._external_values[k] = g.as_graph_element(
           ops.prepend_name_scope(v, import_scope))
-    op_names = set([
-        op.split(":")[0]
-        for op in self._values - set(self._external_values.keys())
-    ])
+    op_names = set([op.split(":")[0]
+                    for op in self._values - set(self._external_values)])
     for op in op_names:
       # pylint: disable=protected-access
       g.as_graph_element(op)._set_control_flow_context(self)
@@ -1540,8 +1474,7 @@ class ControlFlowContext(object):
 
   def AddInnerOp(self, op):
     """Notifies a scope about an operator added to an inner scope."""
-    if self._outer_context:
-      self._outer_context.AddInnerOp(op)
+    pass
 
   def GetControlPivot(self):
     """Returns the pivot node for this context, or None."""
@@ -1678,9 +1611,6 @@ class CondContext(ControlFlowContext):
         self._values.add(result.name)
       with ops.control_dependencies(None):
         result = _SwitchRefOrTensor(result, self._pred)[self._branch]
-        if self._outer_context:
-          self._outer_context.AddInnerOp(result.op)
-
       result.op.graph.prevent_fetching(result.op)
       # pylint: disable=protected-access
       result.op._set_control_flow_context(self)
@@ -1723,9 +1653,6 @@ class CondContext(ControlFlowContext):
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
 
-    if self._outer_context:
-      self._outer_context.AddInnerOp(op)
-
   def _ProcessOutputTensor(self, val):
     """Process an output tensor of a conditional branch."""
     real_val = val
@@ -1764,19 +1691,7 @@ class CondContext(ControlFlowContext):
 
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
-    pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     original_result = fn()
-    post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
-    if len(post_summaries) > len(pre_summaries):
-      new_summaries = post_summaries[len(pre_summaries):]
-      summary_ref = ops.get_collection_ref(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
-      summary_ref[:] = pre_summaries
-      with ops.control_dependencies(new_summaries):
-        if original_result is None:
-          return no_op(), None
-        else:
-          original_result = nest.map_structure(
-              array_ops.identity, original_result)
     if original_result is None:
       return None, None
 
@@ -1853,13 +1768,13 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   Example:
 
   ```python
-  x = tf.constant(2)
-  y = tf.constant(5)
-  def f1(): return tf.multiply(x, 17)
-  def f2(): return tf.add(y, 23)
-  r = tf.cond(tf.less(x, y), f1, f2)
-  # r is set to f1().
-  # Operations in f2 (e.g., tf.add) are not executed.
+    x = tf.constant(2)
+    y = tf.constant(5)
+    def f1(): return tf.multiply(x, 17)
+    def f2(): return tf.add(y, 23)
+    r = tf.cond(tf.less(x, y), f1, f2)
+    # r is set to f1().
+    # Operations in f2 (e.g., tf.add) are not executed.
   ```
 
   """
@@ -1886,12 +1801,7 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   if not callable(false_fn):
     raise TypeError("false_fn must be callable.")
 
-  with ops.name_scope(name, "cond", [pred]):
-    if context.in_eager_mode():
-      if pred:
-        return _UnpackIfSingleton(true_fn())
-      return _UnpackIfSingleton(false_fn())
-
+  with ops.name_scope(name, "cond", [pred]) as name:
     # Add the Switch to the graph.
     if isinstance(pred, bool):
       raise TypeError("pred must not be a Python bool")
@@ -2345,7 +2255,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return total_iterations, next_n
 
-  def AddBackpropLoopCounter(self, count, outer_grad_state):
+  def AddBackPropLoopCounter(self, count, outer_grad_state):
     """Add the backprop loop that controls the iterations.
 
     This is added to the backprop loop. It is used to control the loop
@@ -2399,7 +2309,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return next_count
 
-  def AddBackpropAccumulator(self, op, grad):
+  def AddBackPropAccumulator(self, op, grad):
     """Add an accumulation loop for every loop invariant.
 
     This is added to the backprop loop. It is used to accumulate partial
@@ -2445,7 +2355,7 @@ class WhileContext(ControlFlowContext):
         history_zeros_shape = outer_grad_state.AddForwardAccumulator(
             zeros_shape)
         self.outer_context.Enter()
-        real_shape = outer_grad_state.AddBackpropAccumulatedValue(
+        real_shape = outer_grad_state.AddBackPropAccumulatedValue(
             history_zeros_shape, zeros_shape)
         acc = array_ops.zeros(real_shape, grad.dtype)
         self.outer_context.Exit()
@@ -2475,10 +2385,10 @@ class WhileContext(ControlFlowContext):
     self.ExitResult([result_acc])
     return result_acc
 
-  def AddBackpropIndexedSlicesAccumulator(self, op, grad):
+  def AddBackPropIndexedSlicesAccumulator(self, op, grad):
     """This is used for accumulating gradients that are IndexedSlices.
 
-    This is essentially the equivalent of AddBackpropAccumulator but optimized
+    This is essentially the equavalent of AddBackPropAccumulator but optimized
     for things like updating embeddings from within a while loop.
 
     Args:
@@ -2641,23 +2551,9 @@ class WhileContext(ControlFlowContext):
     packed_vars_for_body = nest.pack_sequence_as(
         structure=original_loop_vars,
         flat_sequence=vars_for_body_with_tensor_arrays)
-    pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     body_result = body(*packed_vars_for_body)
-    post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     if not nest.is_sequence(body_result):
       body_result = [body_result]
-    if len(post_summaries) > len(pre_summaries):
-      new_summaries = post_summaries[len(pre_summaries):]
-      summary_ref = ops.get_collection_ref(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
-      summary_ref[:] = pre_summaries
-      with ops.control_dependencies(new_summaries):
-        def map_fn(x):
-          # TODO(apassos) figure out how to trigger with tensor arrays as well
-          if isinstance(x, tensor_array_ops.TensorArray):
-            return x
-          return array_ops.identity(x)
-        body_result = nest.map_structure(map_fn, body_result)
-
     # Compare the structure types of input and output of body.
     # For backwards compatibility, the first layer is forced to a list
     # during this comparison, because inputs are typically lists and
@@ -2734,7 +2630,7 @@ class WhileContext(ControlFlowContext):
         if shape is not None:
           xs.append(shape)
       for x in xs:
-        inp_op = x.op.inputs[0].op
+        inp_op = x.op.inputs[0]
         control_inputs = graph._control_dependencies_for_inputs([inp_op])
         outer_control_inputs = [op for op in control_inputs
                                 if self._IsInOuterContext(op)]
@@ -2763,8 +2659,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   Note that `while_loop` calls `cond` and `body` *exactly once* (inside the
   call to `while_loop`, and not at all during `Session.run()`). `while_loop`
   stitches together the graph fragments created during the `cond` and `body`
-  calls with some additional graph nodes to create the graph flow that
-  repeats `body` until `cond` returns false.
+  calls with some additional graph nodes to make something the repeats
+  `body` until `cond` returns false.
 
   For correctness, `tf.while_loop()` strictly enforces shape invariants for
   the loop variables. A shape invariant is a (possibly partial) shape that
@@ -2800,11 +2696,11 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   memory consumption and execution order. For correct programs, `while_loop`
   should return the same result for any parallel_iterations > 0.
 
-  For training, TensorFlow stores the tensors that are produced in the
-  forward inference and are needed in back propagation. These tensors are a
-  main source of memory consumption and often cause OOM errors when training
-  on GPUs. When the flag swap_memory is true, we swap out these tensors from
-  GPU to CPU. This for example allows us to train RNN models with very long
+  For training, TensorFlow remembers the tensors that are produced in the
+  forward inference but needed in back propagation. These tensors can be a
+  main source of memory consumption and often cause OOM problems when training
+  on GPUs.  When the flag swap_memory is true, we swap out these tensors from
+  GPU to CPU.  This for example allows us to train RNN models with very long
   sequences and large batches.
 
   Args:
@@ -2861,7 +2757,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   ```
 
   """
-  with ops.name_scope(name, "while", loop_vars):
+  with ops.name_scope(name, "while", loop_vars) as name:
     if not loop_vars:
       raise ValueError("No loop variables provided")
     if not callable(cond):
@@ -2871,17 +2767,12 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     if parallel_iterations < 1:
       raise TypeError("parallel_iterations must be a positive integer.")
 
-    if context.in_eager_mode():
-      while cond(*loop_vars):
-        loop_vars = body(*loop_vars)
-      return loop_vars
-
     if shape_invariants is not None:
       nest.assert_same_structure(loop_vars, shape_invariants)
 
-    loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
-    ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
-    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
+    context = WhileContext(parallel_iterations, back_prop, swap_memory, name)
+    ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, context)
+    result = context.BuildLoop(cond, body, loop_vars, shape_invariants)
     return result
 
 
@@ -2947,8 +2838,6 @@ def with_dependencies(dependencies, output_tensor, name=None):
   Raises:
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
-  if context.in_eager_mode():
-    return output_tensor
   with ops.name_scope(name, "control_dependency",
                       list(dependencies) + [output_tensor]) as name:
     with ops.colocate_with(output_tensor):
@@ -2975,7 +2864,7 @@ def _GroupControlDeps(dev, deps, name=None):
 def group(*inputs, **kwargs):
   """Create an op that groups multiple operations.
 
-  When this op finishes, all ops in `inputs` have finished. This op has no
+  When this op finishes, all ops in `input` have finished. This op has no
   output.
 
   See also @{tf.tuple$tuple} and
@@ -2983,6 +2872,7 @@ def group(*inputs, **kwargs):
 
   Args:
     *inputs: Zero or more tensors to group.
+    **kwargs: Optional parameters to pass when constructing the NodeDef.
     name: A name for this operation (optional).
 
   Returns:
@@ -2991,8 +2881,6 @@ def group(*inputs, **kwargs):
   Raises:
     ValueError: If an unknown keyword argument is provided.
   """
-  if context.in_eager_mode():
-    return None
   name = kwargs.pop("name", None)
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
@@ -3003,16 +2891,7 @@ def group(*inputs, **kwargs):
 
     # Sorts *inputs according to their devices.
     ops_on_device = {}  # device -> operations specified on the device.
-    for inp in nest.flatten(inputs):
-      if not hasattr(inp, "device"):
-        raise TypeError("Expected tf.group() expected Tensor arguments not "
-                        "'%s' with type '%s'" % (inp, type(inp)))
-      if not hasattr(inp, "device"):
-        if isinstance(inp, list):
-          raise TypeError("To call tf.group() with a list, use "
-                          "tf.group(*[...]) not tf.group([...]).")
-        raise TypeError("Expected tf.group() expected Tensor arguments not "
-                        "'%s' with type '%s'" % (inp, type(inp)))
+    for inp in inputs:
       dev = inp.device
       if dev in ops_on_device:
         ops_on_device[dev].append(inp)
@@ -3069,8 +2948,6 @@ def tuple(tensors, name=None, control_inputs=None):
       objects.
 
   """
-  if context.in_eager_mode():
-    return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
     gating_ops = [t.op for t in tensors if t is not None]
     if control_inputs:
@@ -3095,36 +2972,19 @@ def tuple(tensors, name=None, control_inputs=None):
     return tpl
 
 
-def _assert_exclusive(preds):
-  """Returns an Assert op that checks that the predicates are exclusive."""
-  preds_c = array_ops.stack(preds, name="preds_c")
-  num_true_conditions = math_ops.reduce_sum(
-      math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
-  at_most_one_true_condition = math_ops.less(
-      num_true_conditions, constant_op.constant(2, name="two_true_conds"))
-
-  error_msg = [("More than one condition evaluated as True but "
-                "exclusive=True.  Conditions: (%s), Values:"
-                % ", ".join([p.name for p in preds])),
-               preds_c]
-  return Assert(condition=at_most_one_true_condition, data=error_msg,
-                summarize=len(preds))
-
-
-def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
-         name="case"):
+def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
   """Create a case operation.
 
   The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
   Each pair contains a boolean scalar tensor and a python callable that
   creates the tensors to be returned if the boolean evaluates to True.
   `default` is a callable generating a list of tensors. All the callables
-  in `pred_fn_pairs` as well as `default` (if provided) should return the same
-  number and types of tensors.
+  in `pred_fn_pairs` as well as `default` should return the same number
+  and types of tensors.
 
   If `exclusive==True`, all predicates are evaluated, and an exception is
   thrown if more than one of the predicates evaluates to `True`.
-  If `exclusive==False`, execution stops at the first predicate which
+  If `exclusive==False`, execution stops are the first predicate which
   evaluates to True, and the tensors generated by the corresponding function
   are returned immediately. If none of the predicates evaluate to True, this
   operation returns the tensors generated by `default`.
@@ -3141,48 +3001,42 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
   deterministic, so that variables created in conditional branches are created
   in fixed order across runs.
 
-  **Example 1:**
+  Example 1:
+    Pseudocode:
+    ```
+      if (x < y) return 17;
+      else return 23;
+    ```
 
-  Pseudocode:
+    Expressions:
+    ```
+      f1 = lambda: tf.constant(17)
+      f2 = lambda: tf.constant(23)
+      r = case([(tf.less(x, y), f1)], default=f2)
+    ```
 
-  ```
-  if (x < y) return 17;
-  else return 23;
-  ```
+  Example 2:
+    Pseudocode:
+    ```
+      if (x < y && x > z) raise OpError("Only one predicate may evaluate true");
+      if (x < y) return 17;
+      else if (x > z) return 23;
+      else return -1;
+    ```
 
-  Expressions:
-
-  ```python
-  f1 = lambda: tf.constant(17)
-  f2 = lambda: tf.constant(23)
-  r = case([(tf.less(x, y), f1)], default=f2)
-  ```
-
-  **Example 2:**
-
-  Pseudocode:
-
-  ```
-  if (x < y && x > z) raise OpError("Only one predicate may evaluate true");
-  if (x < y) return 17;
-  else if (x > z) return 23;
-  else return -1;
-  ```
-
-  Expressions:
-
-  ```python
-  def f1(): return tf.constant(17)
-  def f2(): return tf.constant(23)
-  def f3(): return tf.constant(-1)
-  r = case({tf.less(x, y): f1, tf.greater(x, z): f2},
-           default=f3, exclusive=True)
-  ```
+    Expressions:
+    ```
+      def f1(): return tf.constant(17)
+      def f2(): return tf.constant(23)
+      def f3(): return tf.constant(-1)
+      r = case({tf.less(x, y): f1, tf.greater(x, z): f2},
+               default=f3, exclusive=True)
+    ```
 
   Args:
     pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor and a
                    callable which returns a list of tensors.
-    default: Optional callable that returns a list of tensors.
+    default: A callable that returns a list of tensors.
     exclusive: True iff at most one predicate is allowed to evaluate to `True`.
     strict: A boolean that enables/disables 'strict' mode; see above.
     name: A name for this operation (optional).
@@ -3196,18 +3050,12 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
     TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
-    ValueError: If in eager mode and all predicates are false and no
-               default is provided.
-    ValueError: If in eager mode and is passed a dictionary.
   """
   pfp = pred_fn_pairs  # For readability
   if not (isinstance(pfp, list) or isinstance(pfp, _basetuple)
           or isinstance(pfp, dict)):
     raise TypeError("fns must be a list, tuple, or dict")
   if isinstance(pfp, dict):
-    if context.in_eager_mode():
-      raise ValueError(
-          "In eager mode the predicates must be a list, not a dictionary.")
     if isinstance(pfp, collections.OrderedDict):
       pfp = pfp.items()
     else:
@@ -3224,41 +3072,11 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
       raise TypeError("pred must be of type bool: %s", pred.name)
     if not callable(fn):
       raise TypeError("fn for pred %s must be callable." % pred.name)
-
-  if default is not None and not callable(default):
+  if not callable(default):
     raise TypeError("default must be callable.")
 
-  if context.in_eager_mode():
-    for pred, fn in pfp:
-      if pred:
-        return fn()
-    if default is None:
-      raise ValueError("tf.case received all false predicates and no default.")
-    return default()
-
   preds, fns = map(list, zip(*pfp))
-  del pfp  # From now on, preds and fns form the source of truth.
-
   with ops.name_scope(name, "case", [preds]):
-    exclusivity_assert = _assert_exclusive(preds) if exclusive else None
-    # If no default is provided, then we remove one of the (predicate, function)
-    # pairs and define the default to be the removed function with an additional
-    # control dependency that asserts that the removed predicate holds.
-    if default is None:
-      all_preds = _basetuple(preds)  # For the error message.
-      last_pred, last_fn = preds.pop(), fns.pop()
-      def new_default():
-        preds_c = array_ops.stack(all_preds, name="preds_c")
-        error_msg = [
-            ("None of the conditions evaluated as True. Conditions: (%s), "
-             "Values:" % ", ".join([p.name for p in all_preds])),
-            preds_c]
-        assertion = Assert(condition=last_pred,
-                           data=error_msg, summarize=len(all_preds))
-        with ops.control_dependencies([assertion]):
-          return last_fn()
-      default = new_default
-
     if not preds:
       return default()
     not_preds = []
@@ -3333,8 +3151,21 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
             strict=strict, name="If_%d" % i)
       return prev_case
 
-    if exclusivity_assert is not None:
-      with ops.control_dependencies([exclusivity_assert]):
+    if exclusive:
+      preds_c = array_ops.stack(preds, name="preds_c")
+      num_true_conditions = math_ops.reduce_sum(
+          math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
+      at_most_one_true_condition = math_ops.less(
+          num_true_conditions, constant_op.constant(2, name="two_true_conds"))
+
+      error_msg = [
+          ("More than one condition evaluated as True but "
+           "exclusive=True.  Conditions: (%s), Values:"
+           % ", ".join([p.name for p in preds])),
+          preds_c]
+      with ops.control_dependencies([
+          Assert(condition=at_most_one_true_condition,
+                 data=error_msg, summarize=len(preds))]):
         case_seq = _build_case()
     else:
       case_seq = _build_case()

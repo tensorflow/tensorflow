@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 #include "tensorflow/core/kernels/captured_function.h"
-#include "tensorflow/core/kernels/dataset_utils.h"
 
 namespace tensorflow {
 
@@ -30,18 +29,20 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class InterleaveDatasetOp : public UnaryDatasetOpKernel {
+class InterleaveDatasetOp : public OpKernel {
  public:
   explicit InterleaveDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
+      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override {
+  void Compute(OpKernelContext* ctx) override {
+    DatasetBase* input;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
+    core::ScopedUnref unref_input(input);
+
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
     std::vector<Tensor> other_arguments;
@@ -73,22 +74,26 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
                                                  std::move(other_arguments),
                                                  &captured_func));
 
-    *output =
-        new Dataset(ctx, input, func_, std::move(captured_func), cycle_length,
-                    block_length, output_types_, output_shapes_);
+    DatasetBase* dataset =
+        new Dataset(input, std::move(captured_func), cycle_length, block_length,
+                    output_types_, output_shapes_);
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
+        ctx, ctx->step_container()->name(), name());
+    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
+    output->flat<ResourceHandle>()(0) = handle;
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
+    Dataset(const DatasetBase* input,
             std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
             int64 block_length, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
-          input_(input),
-          func_(func),
+        : input_(input),
           captured_func_(std::move(captured_func)),
           cycle_length_(cycle_length),
           block_length_(block_length),
@@ -99,10 +104,8 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
-        const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Interleave")}));
+    std::unique_ptr<IteratorBase> MakeIterator() const override {
+      return std::unique_ptr<IteratorBase>(new Iterator(this));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -114,47 +117,13 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() override { return "InterleaveDatasetOp::Dataset"; }
 
-   protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
-                              Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
-      Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
-      Node* cycle_length_node;
-      TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
-      Node* block_length_node;
-      TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
-      std::vector<NodeBuilder::NodeOut> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
-      AttrValue f;
-      b->BuildAttrValue(func_, &f);
-      AttrValue other_arguments_types_attr;
-      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
-
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this,
-          {{0, input_node}, {2, cycle_length_node}, {3, block_length_node}},
-          {{1, other_arguments}},
-          {{"f", f}, {"Targuments", other_arguments_types_attr}}, output));
-      return Status::OK();
-    }
-
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
-            current_elements_(params.dataset->cycle_length_),
-            args_list_(params.dataset->cycle_length_) {}
+      explicit Iterator(const Dataset* dataset)
+          : DatasetIterator<Dataset>(dataset),
+            input_impl_(dataset->input_->MakeIterator()),
+            current_elements_(dataset->cycle_length_) {}
 
       void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         block_index_ = 0;
@@ -168,9 +137,8 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) override {
         mutex_lock l(mu_);
         while (!end_of_input_ || num_open_ > 0) {
           if (current_elements_[cycle_index_]) {
@@ -188,19 +156,17 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
             // We have reached the end of the current element, so move
             // on to the next element in the cycle.
             current_elements_[cycle_index_].reset();
-            args_list_[cycle_index_].clear();
             --num_open_;
             AdvanceToNextInCycle();
           } else if (!end_of_input_) {
             // Get the next element from the input dataset, and create
             // an iterator from it.
-            TF_RETURN_IF_ERROR(input_impl_->GetNext(
-                ctx, &args_list_[cycle_index_], &end_of_input_));
+            std::vector<Tensor> args;
+            TF_RETURN_IF_ERROR(
+                input_impl_->GetNext(ctx, &args, &end_of_input_));
             if (!end_of_input_) {
-              TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
-                  ctx, args_list_[cycle_index_], cycle_index_,
-                  dataset()->captured_func_.get(), prefix(),
-                  &current_elements_[cycle_index_]));
+              TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
+                  ctx, args, &current_elements_[cycle_index_]));
               ++num_open_;
             }
           } else {
@@ -212,92 +178,63 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-     protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("cycle_index"), cycle_index_));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("block_index"), block_index_));
-        if (end_of_input_) {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("end_of_input"), ""));
-        }
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("num_open"), num_open_));
-        TF_RETURN_IF_ERROR(SaveCurrentElements(writer));
-        return Status::OK();
-      }
-
-      Status RestoreInternal(OpKernelContext* ctx,
-                             IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
-        int64 cycle_index;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("cycle_index"), &cycle_index));
-        cycle_index_ = size_t(cycle_index);
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("block_index"), &block_index_));
-        if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
-        int64 num_open;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("num_open"), &num_open));
-        num_open_ = size_t(num_open);
-        TF_RETURN_IF_ERROR(RestoreCurrentElements(ctx, reader));
-        return Status::OK();
-      }
-
      private:
-      Status SaveCurrentElements(IteratorStateWriter* writer)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        for (int idx = 0; idx < current_elements_.size(); idx++) {
-          if (current_elements_[idx]) {
-            TF_RETURN_IF_ERROR(SaveParent(writer, current_elements_[idx]));
-            TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat("args_size[", idx, "]")),
-                args_list_[idx].size()));
-            for (int i = 0; i < args_list_[idx].size(); i++) {
-              TF_RETURN_IF_ERROR(writer->WriteTensor(
-                  full_name(strings::StrCat("args_list_[", idx, "][", i, "]")),
-                  args_list_[idx][i]));
-            }
-          }
-        }
-        return Status::OK();
-      }
+      Status MakeIteratorFromInputElement(
+          IteratorContext* ctx, const std::vector<Tensor>& input_element,
+          std::unique_ptr<IteratorBase>* out_iterator) {
+        FunctionLibraryRuntime::Options opts;
+        opts.runner = ctx->runner();
+        // Choose a step ID that is guaranteed not to clash with any
+        // Session-generated step ID. DirectSession only generates
+        // non-negative step IDs (contiguous, starting from 0), and
+        // MasterSession generates 56-bit random step IDs whose MSB
+        // is always 0, so a negative random step ID should suffice.
+        opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+        ScopedStepContainer step_container(
+            opts.step_id, [this, ctx](const string& name) {
+              dataset()
+                  ->captured_func_->resource_manager()
+                  ->Cleanup(name)
+                  .IgnoreError();
+            });
+        opts.step_container = &step_container;
+        std::vector<Tensor> return_values;
+        TF_RETURN_IF_ERROR(dataset()->captured_func_->Run(opts, input_element,
+                                                          &return_values));
 
-      Status RestoreCurrentElements(OpKernelContext* ctx,
-                                    IteratorStateReader* reader)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
-        IteratorContext iter_ctx(std::move(params));
-        for (int idx = 0; idx < current_elements_.size(); idx++) {
-          if (reader->Contains(
-                  full_name(strings::StrCat("args_size[", idx, "]")))) {
-            int64 args_size;
-            TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("args_size[", idx, "]")),
-                &args_size));
-            args_list_[idx].resize(args_size);
-            for (int i = 0; i < args_size; i++) {
-              TF_RETURN_IF_ERROR(reader->ReadTensor(
-                  full_name(strings::StrCat("args_list_[", idx, "][", i, "]")),
-                  &args_list_[idx][i]));
-            }
-            TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
-                &iter_ctx, args_list_[idx], idx,
-                dataset()->captured_func_.get(), prefix(),
-                &current_elements_[idx]));
-            TF_RETURN_IF_ERROR(
-                RestoreParent(ctx, reader, current_elements_[idx]));
-          } else {
-            current_elements_[idx].reset();
-          }
+        if (!(return_values.size() == 1 &&
+              return_values[0].dtype() == DT_RESOURCE &&
+              TensorShapeUtils::IsScalar(return_values[0].shape()))) {
+          return errors::InvalidArgument(
+              "`f` must return a single scalar of dtype DT_RESOURCE.");
         }
+
+        // Retrieve the dataset that was created in `f`.
+        DatasetBase* returned_dataset;
+        const ResourceHandle& dataset_resource =
+            return_values[0].scalar<ResourceHandle>()();
+
+        // NOTE(mrry): We cannot use the core `LookupResource()` or
+        // `DeleteResource()` functions, because we have an
+        // `IteratorContext*` and not an `OpKernelContext*`, so we
+        // replicate the necessary functionality here.
+        auto type_index = MakeTypeIndex<DatasetBase>();
+        if (type_index.hash_code() != dataset_resource.hash_code()) {
+          return errors::InvalidArgument("`f` must return a Dataset resource.");
+        }
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_func_->resource_manager()->Lookup(
+                dataset_resource.container(), dataset_resource.name(),
+                &returned_dataset));
+        core::ScopedUnref unref_dataset(returned_dataset);
+
+        // Create an iterator for the dataset that was returned by
+        // `f`. This transfers ownership of the dataset to the
+        // iterator, so we can delete it from the resource manager.
+        *out_iterator = returned_dataset->MakeIterator();
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_func_->resource_manager()->Delete<DatasetBase>(
+                dataset_resource.container(), dataset_resource.name()));
         return Status::OK();
       }
 
@@ -305,7 +242,6 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::vector<std::unique_ptr<IteratorBase>> current_elements_
           GUARDED_BY(mu_);
-      std::vector<std::vector<Tensor>> args_list_ GUARDED_BY(mu_);
       size_t cycle_index_ GUARDED_BY(mu_) = 0;
       int64 block_index_ GUARDED_BY(mu_) = 0;
       bool end_of_input_ GUARDED_BY(mu_) = false;
@@ -313,7 +249,6 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const int64 cycle_length_;
     const int64 block_length_;
@@ -324,7 +259,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList func_;
+  const NameAttrList* func_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("InterleaveDataset").Device(DEVICE_CPU),

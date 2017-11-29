@@ -25,7 +25,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "mkl_cblas.h"
+#include "third_party/mkl/include/mkl_cblas.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

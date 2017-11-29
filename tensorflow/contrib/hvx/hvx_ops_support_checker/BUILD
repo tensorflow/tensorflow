@@ -8,8 +8,6 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -21,7 +19,7 @@ filegroup(
     ),
 )
 
-tf_cc_binary(
+cc_binary(
     name = "hvx_ops_support_checker",
     testonly = 1,
     srcs = ["hvx_ops_support_checker_main.cc"],
@@ -32,6 +30,6 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//tensorflow/core/kernels/hexagon:graph_transferer",
-        "//tensorflow/tools/graph_transforms:file_utils",
+        "//tensorflow/tools/graph_transforms:transform_utils",
     ],
 )

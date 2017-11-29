@@ -1,6 +1,6 @@
 FROM jpetazzo/dind
 
-LABEL maintainer="Shanqing Cai <cais@google.com>"
+MAINTAINER Shanqing Cai <cais@google.com>
 
 RUN apt-get update
 

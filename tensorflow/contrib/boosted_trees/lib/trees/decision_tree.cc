@@ -15,8 +15,6 @@
 #include "tensorflow/contrib/boosted_trees/lib/trees/decision_tree.h"
 #include "tensorflow/core/platform/macros.h"
 
-#include <algorithm>
-
 namespace tensorflow {
 namespace boosted_trees {
 namespace trees {
@@ -50,13 +48,8 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
             current_node.sparse_float_binary_split_default_left().split();
         auto sparse_feature =
             example.sparse_float_features[split.feature_column()];
-        // Feature id for the split when multivalent sparse float column, or 0
-        // by default.
-        const int32 dimension_id = split.dimension_id();
-
-        node_id = !sparse_feature[dimension_id].has_value() ||
-                          sparse_feature[dimension_id].get_value() <=
-                              split.threshold()
+        node_id = !sparse_feature.has_value() ||
+                          sparse_feature.get_value() <= split.threshold()
                       ? split.left_id()
                       : split.right_id();
         break;
@@ -66,21 +59,16 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
             current_node.sparse_float_binary_split_default_right().split();
         auto sparse_feature =
             example.sparse_float_features[split.feature_column()];
-        // Feature id for the split when multivalent sparse float column, or 0
-        // by default.
-        const int32 dimension_id = split.dimension_id();
-        node_id = sparse_feature[dimension_id].has_value() &&
-                          sparse_feature[dimension_id].get_value() <=
-                              split.threshold()
+        node_id = sparse_feature.has_value() &&
+                          sparse_feature.get_value() <= split.threshold()
                       ? split.left_id()
                       : split.right_id();
         break;
       }
       case TreeNode::kCategoricalIdBinarySplit: {
         const auto& split = current_node.categorical_id_binary_split();
-        const auto& features =
-            example.sparse_int_features[split.feature_column()];
-        node_id = features.find(split.feature_id()) != features.end()
+        node_id = example.sparse_int_features[split.feature_column()].count(
+                      split.feature_id()) > 0
                       ? split.left_id()
                       : split.right_id();
         break;
@@ -88,20 +76,25 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
       case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
         const auto& split =
             current_node.categorical_id_set_membership_binary_split();
-        // The new node_id = left_id if a feature is found, or right_id.
-        node_id = split.right_id();
+        bool found = false;
         for (const int64 feature_id :
              example.sparse_int_features[split.feature_column()]) {
-          if (std::binary_search(split.feature_ids().begin(),
-                                 split.feature_ids().end(), feature_id)) {
+          const auto iter =
+              std::lower_bound(split.feature_ids().begin(),
+                               split.feature_ids().end(), feature_id);
+          if (iter != split.feature_ids().end() && *iter == feature_id) {
             node_id = split.left_id();
+            found = true;
             break;
           }
+        }
+        if (!found) {
+          node_id = split.right_id();
         }
         break;
       }
       case TreeNode::NODE_NOT_SET: {
-        LOG(QFATAL) << "Invalid node in tree: " << current_node.DebugString();
+        QCHECK(false) << "Invalid node in tree: " << current_node.DebugString();
         break;
       }
     }
@@ -166,7 +159,7 @@ void DecisionTree::LinkChildren(const std::vector<int32>& children,
       break;
     }
     case TreeNode::NODE_NOT_SET: {
-      LOG(QFATAL) << "A non-set node cannot have children.";
+      QCHECK(false) << "A non-set node cannot have children.";
       break;
     }
   }

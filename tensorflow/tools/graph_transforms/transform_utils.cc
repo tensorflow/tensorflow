@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace graph_transforms {
@@ -586,17 +587,26 @@ Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
   return Status::OK();
 }
 
-Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
-  if (shape_string.empty()) {
-    return errors::InvalidArgument("Specificed shape is empty.");
+Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def) {
+  string file_data;
+  Status load_file_status =
+      ReadFileToString(Env::Default(), file_name, &file_data);
+  if (!load_file_status.ok()) {
+    errors::AppendToMessage(&load_file_status, " (for file ", file_name, ")");
+    return load_file_status;
   }
-  std::vector<int64> dims;
-  if (!str_util::SplitAndParseAsInts(shape_string, ',', &dims)) {
-    return errors::InvalidArgument("Could parse as shape: '", shape_string,
-                                   "'");
+  // Try to load in binary format first, and then try ascii if that fails.
+  Status load_status = ReadBinaryProto(Env::Default(), file_name, graph_def);
+  if (!load_status.ok()) {
+    if (protobuf::TextFormat::ParseFromString(file_data, graph_def)) {
+      load_status = Status::OK();
+    } else {
+      errors::AppendToMessage(&load_status,
+                              " (both text and binary parsing failed for file ",
+                              file_name, ")");
+    }
   }
-  *result = TensorShape(dims);
-  return Status::OK();
+  return load_status;
 }
 
 int TransformFuncContext::CountParameters(const string& name) const {

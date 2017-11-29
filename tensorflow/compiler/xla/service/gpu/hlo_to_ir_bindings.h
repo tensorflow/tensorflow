@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Value.h"
+#include "external/llvm/include/llvm/IR/IRBuilder.h"
+#include "external/llvm/include/llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -36,12 +36,10 @@ class HloToIrBindings {
  public:
   HloToIrBindings(const HloModule& module,
                   const BufferAssignment* buffer_assignment,
-                  llvm::IRBuilder<>* ir_builder, llvm::Module* llvm_module,
-                  bool is_nested)
+                  llvm::IRBuilder<>* ir_builder, bool is_nested)
       : buffer_assignment_(buffer_assignment),
         is_nested_(is_nested),
         ir_builder_(ir_builder),
-        module_(llvm_module),
         alias_analysis_(module, *buffer_assignment_,
                         &ir_builder_->getContext()) {}
 
@@ -76,15 +74,8 @@ class HloToIrBindings {
     return it->second.element(shape_index);
   }
 
-  // Returns the IrArray which contains the output of hlo.
-  //
-  // consumer is the HLO in which this IrArray is used -- we use this to (try
-  // to) add metadata indicating that the array is invariant within consumer.
-  //
-  // To get the buffer into which hlo should write its own output, call
-  // GetIrArray(hlo, hlo).
+  // Return the underlying IrArray of the output of the given instruction.
   llvm_ir::IrArray GetIrArray(const HloInstruction& hlo,
-                              const HloInstruction& consumer,
                               const ShapeIndex& shape_index = {});
 
  private:
@@ -102,7 +93,6 @@ class HloToIrBindings {
   const bool is_nested_;
 
   llvm::IRBuilder<>* ir_builder_;
-  llvm::Module* module_;
 
   // Stores the underlying llvm::IrArray for each HloInstruction.
   // For an instruction that generates multiple outputs, the root will be a

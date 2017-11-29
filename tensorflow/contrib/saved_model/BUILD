@@ -37,14 +37,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:util",
-        "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:constants",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python/saved_model:signature_def_utils",
-        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -79,22 +74,6 @@ py_test(
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:utils",
-    ],
-)
-
-py_test(
-    name = "utils_test",
-    size = "small",
-    srcs = ["python/saved_model/utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":saved_model_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/saved_model:loader",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 

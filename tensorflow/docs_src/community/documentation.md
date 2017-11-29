@@ -1,6 +1,6 @@
 # Writing TensorFlow Documentation
 
-We welcome contributions to the TensorFlow documentation from the community.
+We welcome contributions to the Tensorflow documentation from the community.
 This document explains how you can contribute to that documentation. In
 particular, this document explains the following:
 
@@ -8,36 +8,34 @@ particular, this document explains the following:
 * How to make conformant edits.
 * How to build and test your documentation changes before you submit them.
 
-You can view TensorFlow documentation on https://www.tensorflow.org, and you
-can view and edit the raw files on
-[GitHub](https://www.tensorflow.org/code/tensorflow/docs_src/). 
-We're publishing our docs on GitHub so everybody can contribute. Whatever gets
-checked in to `tensorflow/docs_src` will be published soon after on
-https://www.tensorflow.org. 
+You can view Tensorflow documentation on https://www.tensorflow.org, and you
+can view and edit the raw files on Github. We're publishing our docs on Github
+so everybody can contribute. Whatever gets checked in tensorflow/docs_src will
+be published soon after on https://www.tensorflow.org. 
 
 Republishing TensorFlow documentation in different forms is absolutely allowed,
 but we are unlikely to accept other documentation formats (or the tooling to
 generate them) into our repository. If you do choose to republish our
 documentation in another form, please be sure to include:
 
-* The version of the API this represents (for example, r1.0, master, etc.)
+* The version of the API this represents (i.e. r1.0, master, etc.)
 * The commit or version from which the documentation was generated
 * Where to get the latest documentation (that is, https://www.tensorflow.org)
 * The Apache 2.0 license.
 
-## A note on versions
+## A Note on Versions
 
 tensorflow.org, at root, shows documentation for the latest stable binary.  This
 is the documentation you should be reading if you are using `pip` to install
 TensorFlow.
 
-However, most developers will contribute documentation into the master GitHub
+However, most developers will contribute documentation into the master Github
 branch, which is published, occasionally,
 at [tensorflow.org/versions/master](https://www.tensorflow.org/versions/master).
 
 If you want documentation changes to appear at root, you will need to also
 contribute that change to the current stable binary branch (and/or
-[cherrypick](https://stackoverflow.com/questions/9339429/what-does-cherry-picking-a-commit-with-git-mean)).
+[cherrypick](https://www.google.com/url?sa=D&q=http%3A%2F%2Fstackoverflow.com%2Fquestions%2F9339429%2Fwhat-does-cherry-picking-a-commit-with-git-mean)).
 
 ## Reference vs. non-reference documentation
 
@@ -51,9 +49,8 @@ in the code:
 To modify the reference documentation, you edit the appropriate code comments.
 
 Non-reference documentation (for example, the TensorFlow installation guides) is
-authored by humans. This documentation is located in the
-[`tensorflow/docs_src`](https://www.tensorflow.org/code/tensorflow/docs_src/)
-directory.  Each subdirectory of `docs_src` contains a set of related TensorFlow
+authored by humans. This documentation is located in the `tensorflow/docs_src`
+directory.  Each subdirectory of `docs_src` contains a set of related Tensorflow
 documentation. For example, the TensorFlow installation guides are all in the
 `docs_src/install` directory.
 
@@ -186,7 +183,7 @@ documentation in the `/tmp/tfdocs` dir:
 
 Note: You must set `src_dir` and `output_dir` to absolute file paths.
 
-## Generating Python API documentation
+## Generating Python API Documentation
 
 Ops, classes, and utility functions are defined in Python modules, such as
 `image_ops.py`. Python modules contain a module docstring. For example:
@@ -219,7 +216,7 @@ the following:
 Only top level modules (currently just `tf` and `tfdbg`) need to be manually
 added to the generate script.
 
-### Sealing modules
+### Sealing Modules
 
 Because the doc generator walks all visible symbols, and descends into anything
 it finds, it will document any accidentally exposed symbols. If a module only
@@ -245,7 +242,7 @@ following options for dealing with them:
 
 We'll discuss these options in detail below.
 
-#### Private symbols and imports
+#### Private Symbols and Imports
 
 The easiest way to conform to the API sealing expectations is to make non-public
 symbols private (by prepending an underscore _). The doc generator respects
@@ -291,7 +288,7 @@ are public. All `@@`s will eventually be removed. If you see them, however,
 please do not randomly delete them as they are still in use by some of our
 systems.
 
-#### Traversal blacklist
+#### Traversal Blacklist
 
 If all else fails, you may add entries to the traversal blacklist in
 `generate_lib.py.` **Almost all entries in this list are an abuse of its
@@ -314,7 +311,7 @@ flags, ...) included for platform abstraction can be documented without
 documenting their interior. Its use beyond this purpose is a shortcut that may
 be acceptable for contrib, but not for core tensorflow.
 
-## Op documentation style guide
+## Op Documentation Style Guide
 
 Long, descriptive module-level documentation for modules should go in the API
 Guides in `docs_src/api_guides/python`.
@@ -337,7 +334,7 @@ is [here](https://daringfireball.net/projects/markdown/). You are allowed to
 use [MathJax](https://www.mathjax.org) notation for equations (see above for
 restrictions).
 
-### Writing about code
+### Writing About Code
 
 Put backticks around these things when they're used in text:
 
@@ -378,7 +375,7 @@ Two notes about backticks for code samples in Markdown:
    However, do NOT indent four spaces and use backticks simultaneously. Use one
    or the other.
 
-### Tensor dimensions
+### Tensor Dimensions
 
 When you're talking about a tensor in general, don't capitalize the word tensor.
 When you're talking about the specific object that's provided to an op as an
@@ -503,7 +500,7 @@ def foo(x, y, name="bar"):
   """
 ```
 
-## Description of the docstring sections
+## Description of the Docstring Sections
 
 This section details each of the elements in docstrings.
 

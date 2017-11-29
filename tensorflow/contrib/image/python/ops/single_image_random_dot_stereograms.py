@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.image.ops import gen_single_image_random_dot_stereograms_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
@@ -108,7 +107,7 @@ def single_image_random_dot_stereograms(
     'depth_values'
   """
 
-  result = gen_single_image_random_dot_stereograms_ops.single_image_random_dot_stereograms(  # pylint: disable=line-too-long
+  result = _sirds_ops.single_image_random_dot_stereograms(
       depth_values=depth_values,
       hidden_surface_removal=hidden_surface_removal,
       convergence_dots_size=convergence_dots_size,

@@ -40,7 +40,7 @@ limitations under the License.
 // Returns true on success, false on failure.
 bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
   if (obj == Py_None) {
-    *result = tensorflow::StringPiece();
+    result->clear();
   } else {
     char* ptr;
     Py_ssize_t len;
@@ -48,7 +48,7 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
       // Python has raised an error (likely TypeError or UnicodeEncodeError).
       return false;
     }
-    *result = tensorflow::StringPiece(ptr, len);
+    result->set(ptr, len);
   }
   return true;
 }

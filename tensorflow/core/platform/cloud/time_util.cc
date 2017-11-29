@@ -44,8 +44,7 @@ Status ParseRfc3339Time(const string& time, int64* mtime_nsec) {
   parsed.tm_sec = int_seconds;
 
   *mtime_nsec = timegm(&parsed) * kNanosecondsPerSecond +
-                static_cast<int64>(
-                    floor((seconds - int_seconds) * kNanosecondsPerSecond));
+                floor((seconds - int_seconds) * kNanosecondsPerSecond);
 
   return Status::OK();
 }

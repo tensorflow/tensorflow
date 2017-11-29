@@ -1,12 +1,5 @@
 # Adding a New Op
 
-Note: By default [tensorflow.org](http://tensorflow.org) shows docs for the
-most recent stable version. The instructions in this doc require building from
-source. You will probably want to build from the `master` version of tensorflow.
-You should, as a result, be sure you are following the
-[`master` version of this doc](https://www.tensorflow.org/versions/master/extend/adding_an_op),
-in case there have been any changes.
-
 If you'd like to create an op that isn't covered by the existing TensorFlow
 library, we recommend that you first try writing the op in Python as
 a composition of existing Python ops or functions. If that isn't possible, you
@@ -185,10 +178,12 @@ suggested implementation is to:
    file, but the specialization for the GPUDevice is defined in a .cu.cc file,
    since it will be compiled with the CUDA compiler.
 
-Here is an example implementation.
+<!--zippy-->
+
+Expand this to see the example implementation.
 
 ```c++
-// kernel_example.h
+// example.h
 #ifndef KERNEL_EXAMPLE_H_
 #define KERNEL_EXAMPLE_H_
 
@@ -197,19 +192,12 @@ struct ExampleFunctor {
   void operator()(const Device& d, int size, const T* in, T* out);
 };
 
-#if GOOGLE_CUDA
-// Partially specialize functor for GpuDevice.
-template <typename Eigen::GpuDevice, typename T>
-struct ExampleFunctor {
-  void operator()(const Eigen::GpuDevice& d, int size, const T* in, T* out);
-};
-#endif
-
 #endif KERNEL_EXAMPLE_H_
 ```
 
 ```c++
-// kernel_example.cc
+// example.cc
+#define EIGEN_USE_THREADS
 #include "example.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -266,8 +254,6 @@ REGISTER_CPU(int32);
 // Register the GPU kernels.
 #ifdef GOOGLE_CUDA
 #define REGISTER_GPU(T)                                          \
-  /* Declare explicit instantiations in kernel_example.cu.cc. */ \
-  extern template ExampleFunctor<GPUDevice, float>;              \
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Example").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       ExampleOp<GPUDevice, T>);
@@ -277,15 +263,17 @@ REGISTER_GPU(int32);
 ```
 
 ```c++
-// kernel_example.cu.cc
 #ifdef GOOGLE_CUDA
+
 #define EIGEN_USE_GPU
+#define EIGEN_USE_THREADS
+
 #include "example.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 using namespace tensorflow;
 
-using GPUDevice = Eigen::GpuDevice;
+#define EIGEN_USE_GPU
 
 // Define the CUDA kernel.
 template <typename T>
@@ -298,24 +286,28 @@ __global__ void ExampleCudaKernel(const int size, const T* in, T* out) {
 
 // Define the GPU implementation that launches the CUDA kernel.
 template <typename T>
-void ExampleFunctor<GPUDevice, T>::operator()(
-    const GPUDevice& d, int size, const T* in, T* out) {
-  // Launch the cuda kernel.
-  //
-  // See core/util/cuda_kernel_helper.h for example of computing
-  // block count and thread_per_block count.
-  int block_count = 1024;
-  int thread_per_block = 20;
-  ExampleCudaKernel<T>
-      <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
-}
+struct ExampleFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, int size, const T* in, T* out) {
+    // Launch the cuda kernel.
+    //
+    // See core/util/cuda_kernel_helper.h for example of computing
+    // block count and thread_per_block count.
+    int block_count = 1024;
+    int thread_per_block = 20;
+    ExampleCudaKernel<T>
+        <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
+  }
+};
 
-// Explicitly instantiate functors for the types of OpKernels registered.
+// Instantiate functors for the types of OpKernels registered.
+typedef Eigen::GpuDevice GPUDevice;
 template struct ExampleFunctor<GPUDevice, float>;
 template struct ExampleFunctor<GPUDevice, int32>;
 
 #endif  // GOOGLE_CUDA
 ```
+
+<!--endzippy-->
 
 ## Build the op library
 ### Compile the op using your system compiler (TensorFlow binary installation)
@@ -324,26 +316,24 @@ You should be able to compile `zero_out.cc` with a `C++` compiler such as `g++`
 or `clang` available on your system. The binary PIP package installs the header
 files and the library that you need to compile your op in locations that are
 system specific. However, the TensorFlow python library provides the
-`get_include` function to get the header directory, and the `get_lib` directory
-has a shared object to link against.
-Here are the outputs of these functions on an Ubuntu machine.
+`get_include` function to get the header directory.
+Here is the output of this function on an Ubuntu machine.
 
 ```bash
 $ python
 >>> import tensorflow as tf
 >>> tf.sysconfig.get_include()
 '/usr/local/lib/python2.7/site-packages/tensorflow/include'
->>> tf.sysconfig.get_lib()
-'/usr/local/lib/python2.7/site-packages/tensorflow'
+
 ```
 
 Assuming you have `g++` installed, here is the sequence of commands you can use
 to compile your op into a dynamic library.
 
 ```bash
-TF_CFLAGS=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )
-TF_LFLAGS=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]} -O2
+TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC -O2
 ```
 
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
@@ -451,19 +441,19 @@ Now that you know how to build a basic (and somewhat restricted) op and
 implementation, we'll look at some of the more complicated things you will
 typically need to build into your op. This includes:
 
-*   [Conditional checks and validation](#conditional-checks-and-validation)
-*   [Op registration](#op-registration)
+*   [Conditional checks and validation](#validate)
+*   Op registration
     *   [Attrs](#attrs)
     *   [Attr types](#attr-types)
     *   [Polymorphism](#polymorphism)
-    *   [Inputs and outputs](#inputs-and-outputs)
-    *   [Backwards compatibility](#backwards-compatibility)
+    *   [Inputs and outputs](#inputs-outputs)
+    *   [Backwards compatibility](#backward-compat)
 *   [GPU support](#gpu-support)
-    *   [Compiling the kernel for the GPU device](#compiling-the-kernel-for-the-gpu-device)
-*   [Implement the gradient in Python](#implement-the-gradient-in-python)
-*   [Shape functions in C++](#shape-functions-in-c)
+    *   [Compiling the kernel for the GPU device](#compiling-kernel)
+*   [Implement the gradient in Python](#implement-gradient)
+*   [Shape functions in C++](#shape-functions)
 
-### Conditional checks and validation
+### Conditional checks and validation {#validate}
 
 The example above assumed that the op applied to a tensor of any shape.  What
 if it only applied to vectors?  That means adding a check to the above OpKernel
@@ -504,7 +494,7 @@ function on error.
 
 ### Op registration
 
-#### Attrs
+#### Attrs {#attrs}
 
 Ops can have attrs, whose values are set when the op is added to a graph. These
 are used to configure the op, and their values can be accessed both within the
@@ -526,7 +516,7 @@ using the `Attr` method, which expects a spec of the form:
 
 where `<name>` begins with a letter and can be composed of alphanumeric
 characters and underscores, and `<attr-type-expr>` is a type expression of the
-form [described below](#attr_types).
+form [described below](#attr-types).
 
 For example, if you'd like the `ZeroOut` op to preserve a user-specified index,
 instead of only the 0th element, you can register the op like so:
@@ -537,7 +527,7 @@ REGISTER\_OP("ZeroOut")
     .Output("zeroed: int32");
 </code></pre>
 
-(Note that the set of [attribute types](#attr_types) is different from the
+(Note that the set of [attribute types](#attr-types) is different from the
 @{tf.DType$tensor types} used for inputs and outputs.)
 
 Your kernel can then access this attr in its constructor via the `context`
@@ -581,7 +571,7 @@ which can then be used in the `Compute` method:
   }
 </code></pre>
 
-#### Attr types
+#### Attr types {#attr-types}
 
 The following types are supported in an attr:
 
@@ -646,22 +636,6 @@ define an attr with constraints, you can use the following `<attr-type-expr>`s:
     tf.number_type(t=tf.bool)   # Invalid
     ```
 
-    Lists can be combined with other lists and single types.  The following
-    op allows attr `t` to be any of the numberic types, or the bool type:
-
-    ```c++
-    REGISTER_OP("NumberOrBooleanType")
-        .Attr("t: {numbertype, bool}");
-    ```
-
-    For this op:
-
-    ```python
-    tf.number_or_boolean_type(t=tf.int32)  # Valid
-    tf.number_or_boolean_type(t=tf.bool)   # Valid
-    tf.number_or_boolean_type(t=tf.string) # Invalid
-    ```
-
 * `int >= <n>`: The value must be an int whose value is greater than or equal to
   `<n>`, where `<n>` is a natural number.
 
@@ -714,7 +688,7 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
 Note in particular that the values of type `type`
 use @{tf.DType$the `DT_*` names for the types}.
 
-#### Polymorphism
+#### Polymorphism {#polymorphism}
 
 ##### Type Polymorphism
 
@@ -790,7 +764,7 @@ Your op registration now specifies that the input's type must be `float`, or
 >   """
 > ```
 
-<pre class="prettyprint"><code class="lang-cpp">
+<pre><pre class="prettyprint"><code class="lang-cpp">
 \#include "tensorflow/core/framework/op_kernel.h"<br/>
 class ZeroOut<b>Int32</b>Op : public OpKernel {
   // as before
@@ -830,7 +804,7 @@ REGISTER\_KERNEL\_BUILDER(
     .Device(DEVICE\_CPU)
     .TypeConstraint&lt;float&gt;("T"),
     ZeroOutFloatOp);
-</b></code></pre>
+</b></code></pre></pre>
 
 > To preserve [backwards compatibility](#backwards-compatibility), you should
 > specify a [default value](#default-values-constraints) when adding an attr to
@@ -1016,7 +990,7 @@ REGISTER_OP("MinimumLengthPolymorphicListExample")
     .Output("out: T");
 ```
 
-#### Inputs and Outputs
+#### Inputs and Outputs {#inputs-outputs}
 
 To summarize the above, an op registration can have multiple inputs and outputs:
 
@@ -1117,7 +1091,7 @@ expressions:
 For more details, see
 [`tensorflow/core/framework/op_def_builder.h`][op_def_builder].
 
-#### Backwards compatibility
+#### Backwards compatibility {#backward-compat}
 
 Let's assume you have written a nice, custom op and shared it with others, so
 you have happy customers using your operation.  However, you'd like to make
@@ -1179,7 +1153,7 @@ new optional arguments to the end.  Generally incompatible changes may only be
 made when TensorFlow's changes major versions, and must conform to the
 @{$version_compat#compatibility_of_graphs_and_checkpoints$`GraphDef` version semantics}.
 
-### GPU Support
+### GPU Support {#gpu-support}
 
 You can implement different OpKernels and register one for CPU and another for
 GPU, just like you can [register kernels for different types](#polymorphism).
@@ -1211,7 +1185,7 @@ kept on the CPU, add a `HostMemory()` call to the kernel registration, e.g.:
                           PadOp<GPUDevice, T>)
 ```
 
-#### Compiling the kernel for the GPU device
+#### Compiling the kernel for the GPU device {#compiling-kernel}
 
 Look at
 [cuda_op_kernel.cu.cc](https://www.tensorflow.org/code/tensorflow/examples/adding_an_op/cuda_op_kernel.cu.cc)
@@ -1228,10 +1202,10 @@ into a single dynamically loadable library:
 
 ```bash
 nvcc -std=c++11 -c -o cuda_op_kernel.cu.o cuda_op_kernel.cu.cc \
-  ${TF_CFLAGS[@]} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
+-I $TF_INC -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
 
 g++ -std=c++11 -shared -o cuda_op_kernel.so cuda_op_kernel.cc \
-  cuda_op_kernel.cu.o ${TF_CFLAGS[@]} -fPIC -lcudart ${TF_LFLAGS[@]}
+cuda_op_kernel.cu.o -I $TF_INC -fPIC -lcudart
 ```
 
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the
@@ -1244,7 +1218,7 @@ For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 
 >   Note in some linux settings, additional options to `nvcc` compiling step are needed. Add `-D_MWAITXINTRIN_H_INCLUDED` to the `nvcc` command line to avoid errors from `mwaitxintrin.h`.
 
-### Implement the gradient in Python
+### Implement the gradient in Python {#implement-gradient}
 
 Given a graph of ops, TensorFlow uses automatic differentiation
 (backpropagation) to add new ops representing gradients with respect to the
@@ -1324,7 +1298,7 @@ Note that at the time the gradient function is called, only the data flow graph
 of ops is available, not the tensor data itself.  Thus, all computation must be
 performed using other tensorflow ops, to be run at graph execution time.
 
-### Shape functions in C++
+### Shape functions in C++ {#shape-functions}
 
 The TensorFlow API has a feature called "shape inference" that provides
 information about the shapes of tensors without having to execute the

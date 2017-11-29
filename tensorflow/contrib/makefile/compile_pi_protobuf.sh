@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Builds protobuf 3 for Raspberry Pi.
+# Builds protobuf 3 for iOS.
 
 cd tensorflow/contrib/makefile || exit 1
 

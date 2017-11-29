@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -47,26 +48,10 @@ class ReshapeTest : public ClientLibraryTestBase {
 };
 
 // Collapses 2-dimensional pseudo-scalar (single-element array) to 1 dimension.
-XLA_TEST_F(ReshapeTest, CollapseTrivial1x1) {
+XLA_TEST_F(ReshapeTest, Trivial1x1) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR2<float>({{1.0}});
   builder.Collapse(/*operand=*/a, /*dimensions=*/{0, 1});
-
-  ComputeAndCompareR1<float>(&builder, {1.0f}, {}, zero_error_spec_);
-}
-
-XLA_TEST_F(ReshapeTest, CollapseTrivialR1EmptyDims) {
-  ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<float>({1.0});
-  builder.Collapse(/*operand=*/a, /*dimensions=*/{});
-
-  ComputeAndCompareR1<float>(&builder, {1.0f}, {}, zero_error_spec_);
-}
-
-XLA_TEST_F(ReshapeTest, CollapseTrivialR1OnlyDim) {
-  ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<float>({1.0});
-  builder.Collapse(/*operand=*/a, /*dimensions=*/{0});
 
   ComputeAndCompareR1<float>(&builder, {1.0f}, {}, zero_error_spec_);
 }
@@ -431,9 +416,8 @@ XLA_TEST_F(ReshapeTest, ToScalar) {
 XLA_TEST_F(ReshapeTest, BadDimensions) {
   ComputationBuilder b(client_, TestName());
   b.Reshape(b.ConstantR1<int32>({1}), {}, {});
-  EXPECT_THAT(
-      ExecuteToString(&b, {}),
-      ::testing::HasSubstr("not a permutation of the operand dimensions"));
+  EXPECT_THAT(ExecuteToString(&b, {}),
+              ::testing::HasSubstr("dimensions not a permutation"));
 }
 
 XLA_TEST_F(ReshapeTest, BadNewSizes) {
@@ -842,3 +826,20 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    LOG(ERROR) << "\n" << usage;
+    return 2;
+  }
+  testing::InitGoogleTest(&argc, argv);
+  if (argc > 1) {
+    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
+    return 2;
+  }
+  return RUN_ALL_TESTS();
+}

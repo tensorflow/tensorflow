@@ -19,7 +19,7 @@
 
 FROM ubuntu:16.04
 
-LABEL maintainer="Shanqing Cai <cais@google.com>"
+MAINTAINER Shanqing Cai <cais@google.com>
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y \

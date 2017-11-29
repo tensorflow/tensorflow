@@ -3,6 +3,10 @@ package(
         "//engedu/ml/tf_from_scratch:__pkg__",
         "//tensorflow:internal",
     ],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
 )
 
 load("//tensorflow:tensorflow.bzl", "py_test")

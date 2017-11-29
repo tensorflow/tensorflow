@@ -21,13 +21,11 @@ from __future__ import print_function
 import collections
 import functools
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_lookup_ops
@@ -41,7 +39,8 @@ from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
 
-@deprecated(None, "Use `tf.tables_initializer` instead.")
+# TODO(yleon): Remove this function.
+@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -153,13 +152,9 @@ class InitializableLookupTableBase(LookupInterface):
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
-    if context.in_graph_mode():
-      name = table_ref.op.name.split("/")[-1]
-    else:
-      name = context.context().scope_name
     super(InitializableLookupTableBase,
           self).__init__(initializer.key_dtype, initializer.value_dtype,
-                         name)
+                         table_ref.op.name.split("/")[-1])
     self._table_ref = table_ref
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
@@ -241,9 +236,9 @@ class HashTable(InitializableLookupTableBase):
   Example usage:
 
   ```python
-  table = tf.HashTable(
-      tf.KeyValueTensorInitializer(keys, values), -1)
-  out = table.lookup(input_tensor)
+  table = tf.contrib.lookup.HashTable(
+      tf.contrib.lookup.KeyValueTensorInitializer(keys, values), -1)
+  out = table.lookup(input_tensor).
   table.init.run()
   print(out.eval())
   ```
@@ -561,9 +556,9 @@ class TextFileStringTableInitializer(TextFileInitializer):
         The path must be accessible from wherever the graph is initialized
         (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_column_index: The column index from the text file to get the keys
-        from. The default is to use the line number, starting from zero.
+        from. The default is 0 that represents the whole line content.
       value_column_index: The column index from the text file to get the
-        values from. The default is to use the whole line content.
+        values from. The default is to use the line number, starting from zero.
       vocab_size: The number of elements in the file, if known.
       delimiter: The delimiter to separate fields in a line.
       name: Optional name for the op.
@@ -613,9 +608,9 @@ class TextFileIdTableInitializer(TextFileInitializer):
         The path must be accessible from wherever the graph is initialized
         (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_column_index: The column index from the text file to get the `key`
-        values from. The default is to use the whole line content.
-      value_column_index: The column index from the text file to get the `value`
         values from. The default is to use the line number, starting from zero.
+      value_column_index: The column index from the text file ro get the `value`
+        values from. The default is 0 that represents the whole line content.
       vocab_size: The number of elements in the file, if known.
       delimiter: The delimiter to separate fields in a line.
       name: Optional name for the op.
@@ -864,10 +859,7 @@ def index_table_from_file(vocabulary_file=None,
                           default_value=-1,
                           hasher_spec=FastHashSpec,
                           key_dtype=dtypes.string,
-                          name=None,
-                          key_column_index=TextFileIndex.WHOLE_LINE,
-                          value_column_index=TextFileIndex.LINE_NUMBER,
-                          delimiter="\t"):
+                          name=None):
   """Returns a lookup table that converts a string tensor into int64 IDs.
 
   This operation constructs a lookup table to convert tensor of strings into
@@ -883,16 +875,6 @@ def index_table_from_file(vocabulary_file=None,
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
-
-  To specify multi-column vocabulary files, use key_column_index and
-  value_column_index and delimiter.
-
-  - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
-    expects data type int64.
-  - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-    type string.
-  - A value >=0 means use the index (starting at zero) of the split line based
-    on `delimiter`.
 
   Sample Usages:
 
@@ -925,11 +907,6 @@ def index_table_from_file(vocabulary_file=None,
       assignation of out-of-vocabulary buckets.
     key_dtype: The `key` data type.
     name: A name for this op (optional).
-    key_column_index: The column index from the text file to get the `key`
-      values from. The default is to use the whole line content.
-    value_column_index: The column index from the text file to get the `value`
-      values from. The default is to use the line number, starting from zero.
-    delimiter: The delimiter to separate fields in a line.
 
   Returns:
     The lookup table to map a `key_dtype` `Tensor` to index `int64` `Tensor`.
@@ -946,11 +923,7 @@ def index_table_from_file(vocabulary_file=None,
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
                      % num_oov_buckets)
   if vocab_size is not None and vocab_size < 1:
-    vocab_file_value = vocabulary_file
-    if isinstance(vocabulary_file, ops.Tensor):
-      vocab_file_value = tensor_util.constant_value(vocabulary_file) or "?"
-    raise ValueError("vocab_size must be greater than 0, got %d. "
-                     "vocabulary_file: %s" % (vocab_size, vocab_file_value))
+    raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
     raise TypeError("Only integer and string keys are supported.")
 
@@ -962,22 +935,19 @@ def index_table_from_file(vocabulary_file=None,
         # Keep the shared_name:
         # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
         shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
-                                                  key_column_index,
-                                                  value_column_index)
+                                                  TextFileIndex.WHOLE_LINE,
+                                                  TextFileIndex.LINE_NUMBER)
       else:
         # Keep the shared_name
         # <table_type>_<filename>_<key_index>_<value_index>
         shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
-                                               key_column_index,
-                                               value_column_index)
+                                               TextFileIndex.WHOLE_LINE,
+                                               TextFileIndex.LINE_NUMBER)
       init = TextFileIdTableInitializer(
           vocabulary_file,
           vocab_size=vocab_size,
           key_dtype=dtypes.int64 if key_dtype.is_integer else key_dtype,
-          name="table_init",
-          key_column_index=key_column_index,
-          value_column_index=value_column_index,
-          delimiter=delimiter)
+          name="table_init")
 
       table = HashTable(
           init, default_value, shared_name=shared_name, name=hash_table_scope)
@@ -1032,7 +1002,7 @@ def index_table_from_tensor(vocabulary_list,
 
   Args:
     vocabulary_list: A 1-D `Tensor` that specifies the mapping of keys to
-      indices. The type of this object must be castable to `dtype`.
+      indices. Thetype of this object must be castable to `dtype`.
     num_oov_buckets: The number of out-of-vocabulary buckets.
     default_value: The value to use for out-of-vocabulary feature values.
       Defaults to -1.
@@ -1095,10 +1065,7 @@ def index_table_from_tensor(vocabulary_list,
 def index_to_string_table_from_file(vocabulary_file,
                                     vocab_size=None,
                                     default_value="UNK",
-                                    name=None,
-                                    key_column_index=TextFileIndex.LINE_NUMBER,
-                                    value_column_index=TextFileIndex.WHOLE_LINE,
-                                    delimiter="\t"):
+                                    name=None):
   """Returns a lookup table that maps a `Tensor` of indices into strings.
 
   This operation constructs a lookup table to map int64 indices into string
@@ -1111,16 +1078,6 @@ def index_to_string_table_from_file(vocabulary_file,
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
-
-  To specify multi-column vocabulary files, use key_column_index and
-  value_column_index and delimiter.
-
-  - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
-    expects data type int64.
-  - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-    type string.
-  - A value >=0 means use the index (starting at zero) of the split line based
-    on `delimiter`.
 
   Sample Usages:
 
@@ -1148,11 +1105,6 @@ def index_to_string_table_from_file(vocabulary_file,
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary indices.
     name: A name for this op (optional).
-    key_column_index: The column index from the text file to get the `key`
-      values from. The default is to use the line number, starting from zero.
-    value_column_index: The column index from the text file to get the `value`
-      values from. The default is to use the whole line content.
-    delimiter: The delimiter to separate fields in a line.
 
   Returns:
     The lookup table to map a string values associated to a given index `int64`
@@ -1173,19 +1125,15 @@ def index_to_string_table_from_file(vocabulary_file,
       # Keep a shared_name
       # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
       shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
-                                                key_column_index,
-                                                value_column_index)
+                                                TextFileIndex.LINE_NUMBER,
+                                                TextFileIndex.WHOLE_LINE)
     else:
       # Keep a shared_name <table_type>_<filename>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%s_%s" % (vocabulary_file, key_column_index,
-                                             value_column_index)
+      shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
+                                             TextFileIndex.LINE_NUMBER,
+                                             TextFileIndex.WHOLE_LINE)
     init = TextFileStringTableInitializer(
-        vocabulary_file,
-        vocab_size=vocab_size,
-        name="table_init",
-        key_column_index=key_column_index,
-        value_column_index=value_column_index,
-        delimiter=delimiter)
+        vocabulary_file, vocab_size=vocab_size, name="table_init")
 
     # TODO(yleon): Use a more effienct structure.
     return HashTable(init, default_value, shared_name=shared_name, name=scope)

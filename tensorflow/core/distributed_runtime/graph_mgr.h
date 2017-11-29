@@ -21,12 +21,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor.h"
-#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
-#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -34,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
-#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
@@ -71,13 +67,10 @@ class GraphMgr {
   explicit GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr);
   ~GraphMgr();
 
-  // Registers a graph. Fills in "handle". The registered graph retains a
-  // reference to cluster_flr to do cross process function calls.
+  // Registers a graph. Fills in "handle"
   Status Register(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options,
-                  const DebugOptions& debug_options,
-                  DistributedFunctionLibraryRuntime* cluster_flr,
-                  string* handle);
+                  const DebugOptions& debug_options, string* handle);
 
   // Executes one step of a registered graph "handle".
   //
@@ -87,8 +80,7 @@ class GraphMgr {
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64 step_id,
                     WorkerSession* session, const ExecutorOpts& opts,
-                    StepStatsCollector* collector,
-                    MutableRunGraphResponseWrapper* response,
+                    StepStatsCollector* collector, CostGraphDef* cost_graph,
                     CancellationManager* cancellation_manager,
                     const NamedTensors& in, StatusCallback done);
 
@@ -107,10 +99,10 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
-    Graph* graph = nullptr;                 // not owned.
-    Device* device = nullptr;               // not owned.
-    Executor* root = nullptr;               // not owned.
-    FunctionLibraryRuntime* lib = nullptr;  // not owned.
+    Graph* graph = nullptr;
+    Device* device = nullptr;
+    Executor* root = nullptr;
+    FunctionLibraryRuntime* lib = nullptr;
     // Build the cost model if this value is strictly positive.
     int64 build_cost_model = 0;
   };
@@ -127,15 +119,14 @@ class GraphMgr {
     // Graph handle.
     string handle;
 
-    std::unique_ptr<FunctionLibraryDefinition> lib_def;
-    // Owns the FunctionLibraryRuntime objects needed to execute functions, one
-    // per device.
-    std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
+    // The definition of the library is shared by all partitions.
+    FunctionLibraryDefinition* lib_def = nullptr;
+
     // A graph is partitioned over multiple devices.  Each partition
     // has a root executor which may call into the runtime library.
     std::vector<ExecutionUnit> units;
 
-    // Used to deregister a cost model when cost model is required in graph
+    // Used to deresgister a cost model when cost model is required in graph
     // manager.
     GraphMgr* graph_mgr;
   };
@@ -173,10 +164,14 @@ class GraphMgr {
   void BuildCostModel(Item* item, StepStatsCollector* collector,
                       CostGraphDef* cost_graph);
 
+  Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
+  Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);
+  void RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous, NamedTensors* out,
+                                      const StatusCallback& done);
+
   Status InitItem(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options,
-                  const DebugOptions& debug_options,
-                  DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
+                  const DebugOptions& debug_options, Item* item);
 
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,
                                          Graph* graph, Device* device);

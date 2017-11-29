@@ -38,8 +38,7 @@ string MakeUniquePath(string name) {
 
   // Remove illegal characters from `name`.
   for (int i = 0; i < name.size(); ++i) {
-    char ch = name[i];
-    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?') {
+    if (name[i] == '/') {
       name[i] = '_';
     }
   }

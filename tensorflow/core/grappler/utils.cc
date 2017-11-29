@@ -15,10 +15,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -31,11 +27,7 @@ namespace grappler {
 NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
   for (int i = 0; i < graph_->node_size(); i++) {
     auto node = graph_->mutable_node(i);
-    auto rslt = nodes_.insert(std::make_pair(node->name(), node));
-    // Check that the graph doesn't contain multiple nodes with the same name.
-    if (!rslt.second) {
-      LOG(WARNING) << "Duplicated node in the graph: " << node->name();
-    }
+    nodes_.insert(std::make_pair(node->name(), node));
     for (const auto& input : node->input()) {
       outputs_[NodeName(input)].insert(nodes_[node->name()]);
     }
@@ -60,80 +52,17 @@ const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
 }
 
 void NodeMap::AddNode(const string& name, NodeDef* node) {
-  auto ret = nodes_.insert(std::make_pair(name, node));
-  CHECK(ret.second) << "Pair (" << name << "," << node
-                    << ") is not inserted because the same key already exists.";
+  nodes_.insert(std::make_pair(name, node));
 }
 
-void NodeMap::AddOutput(const string& node_name, const string& output_name) {
-  auto output_node = nodes_[output_name];
-  CHECK(output_node) << "Output node " << output_name
-                     << " is missing in NodeMap.";
-  outputs_[node_name].insert(output_node);
+void NodeMap::AddOutput(const string& node, const string& output) {
+  outputs_[node].insert(nodes_[output]);
 }
 
-void NodeMap::RemoveOutput(const string& node_name, const string& output_name) {
-  outputs_[node_name].erase(nodes_[output_name]);
-}
-
-void NodeMap::UpdateInput(const string& node_name, const string& old_input_name,
-                          const string& new_input_name) {
-  RemoveOutput(old_input_name, node_name);
-  AddOutput(new_input_name, node_name);
-}
-
-void NodeMap::RemoveInputs(const string& node_name) {
-  auto node = nodes_[node_name];
-  for (const auto& input : node->input()) {
-    RemoveOutput(NodeName(input), node->name());
-  }
-}
-
-void NodeMap::RemoveOutputs(const string& node_name) {
-  outputs_.erase(node_name);
-}
-
-void NodeMap::UpdateOutput(const string& node_name,
-                           const string& old_output_name,
-                           const string& new_output_name) {
-  std::set<NodeDef*>& outputs = outputs_[node_name];
-  outputs.erase(nodes_[old_output_name]);
-  outputs.insert(nodes_[new_output_name]);
-}
-
-OutputMap::OutputMap(GraphDef* graph) : graph_(graph) {
-  for (int i = 0; i < graph_->node_size(); i++) {
-    auto node = graph_->mutable_node(i);
-    auto rslt = nodes_.insert(std::make_pair(node->name(), node));
-    // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(rslt.second);
-    for (const auto& input : node->input()) {
-      string input_node = NodeName(input);
-      if (outputs_[input_node].count(node) == 0) {
-        outputs_[input_node].insert(std::make_pair(node, 1));
-      } else {
-        outputs_[input_node][node]++;
-      }
-    }
-  }
-}
-
-NodeDef* OutputMap::GetNode(const string& name) const {
-  string node_name = NodeName(name);
-  auto it = nodes_.find(node_name);
-  if (it == nodes_.end()) {
-    return nullptr;
-  }
-  return it->second;
-}
-
-const std::unordered_map<NodeDef*, int>& OutputMap::GetOutputs(
-    const string& node_name) const {
-  auto it = outputs_.find(node_name);
-  if (it == outputs_.end()) {
-    return empty_map_;
-  }
-  return it->second;
+void NodeMap::UpdateOutput(const string& node, const string& old_output,
+                           const string& new_output) {
+  outputs_[node].erase(nodes_[old_output]);
+  outputs_[node].insert(nodes_[new_output]);
 }
 
 bool IsSameInput(const string& name1, const string& name2) {
@@ -216,87 +145,6 @@ bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
   const bool notified =
       WaitForNotificationWithTimeout(done.get(), timeout_in_ms * 1000);
   return notified;
-}
-
-string AsControlDependency(const NodeDef& node) {
-  return strings::StrCat("^", node.name());
-}
-
-string AsControlDependency(const string& node_name) {
-  CHECK(!node_name.empty());
-  return (!node_name.empty() && node_name[0] == '^')
-             ? node_name
-             : strings::StrCat("^", node_name);
-}
-
-int NumOutputs(const NodeDef& node) {
-  int num_outputs = 0;
-  const OpDef* op_def = nullptr;
-  auto status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
-  if (status.ok()) {
-    for (const auto& output : op_def->output_arg()) {
-      if (!output.type_list_attr().empty()) {
-        num_outputs +=
-            node.attr().at(output.type_list_attr()).list().type_size();
-      } else if (!output.number_attr().empty()) {
-        num_outputs += node.attr().at(output.number_attr()).i();
-      } else {
-        num_outputs++;
-      }
-    }
-  }
-  return num_outputs;
-}
-
-int NumNonControlInputs(const NodeDef& node) {
-  int num_inputs = node.input_size();
-  for (int i = 0; i < node.input_size(); ++i) {
-    if (IsControlInput(node.input(i))) {
-      --num_inputs;
-    }
-  }
-  return num_inputs;
-}
-
-int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
-  int num_outputs = 0;
-  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
-    for (const string& input : output->input()) {
-      if (input == node.name()) {
-        ++num_outputs;
-      }
-    }
-  }
-  return num_outputs;
-}
-
-// Returns the data type in attribute `attr_name` of `node`. If that attribute
-// doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
-  if (!node.attr().count(attr_name)) {
-    return DT_INVALID;
-  }
-  const auto& attr = node.attr().at(attr_name);
-  if (attr.value_case() != AttrValue::kType) {
-    return DT_INVALID;
-  }
-  return attr.type();
-}
-
-NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
-                        bool follow_control_input,
-                        const std::function<bool(const NodeDef&)>& pred_fn) {
-  const NodeDef* current = &source;
-  const NodeDef* next = current;
-  while (next == &source || pred_fn(*next)) {
-    current = next;
-    if (current->input_size() == 0 ||
-        (!follow_control_input && IsControlInput(current->input(0)))) {
-      break;
-    }
-    next = node_map.GetNode(current->input(0));
-  }
-  return const_cast<NodeDef*>(current);
 }
 
 }  // end namespace grappler

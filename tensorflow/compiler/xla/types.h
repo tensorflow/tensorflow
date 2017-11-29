@@ -16,10 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_TYPES_H_
 
-#include <complex>
-
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 
 #include <Eigen/Core>
@@ -33,14 +30,10 @@ using ::tensorflow::int16;
 using ::tensorflow::int32;
 using ::tensorflow::int64;
 
-using ::tensorflow::bfloat16;
-
 using ::tensorflow::uint8;
 using ::tensorflow::uint16;
 using ::tensorflow::uint32;
 using ::tensorflow::uint64;
-
-using complex64 = std::complex<float>;
 
 using ::Eigen::half;
 

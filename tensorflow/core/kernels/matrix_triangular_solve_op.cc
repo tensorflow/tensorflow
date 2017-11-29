@@ -47,13 +47,20 @@ perftools::gputools::DeviceMemory<Scalar> AsDeviceMemory(
 template <class Scalar>
 class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
  public:
-  INHERIT_LINALG_TYPEDEFS(Scalar);
+  typedef LinearAlgebraOp<Scalar> Base;
 
   explicit MatrixTriangularSolveOp(OpKernelConstruction* context)
       : Base(context), lower_(true), adjoint_(false) {
     OP_REQUIRES_OK(context, context->GetAttr("lower", &lower_));
     OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
   }
+
+  using TensorShapes = typename Base::TensorShapes;
+  using Matrix = typename Base::Matrix;
+  using MatrixMap = typename Base::MatrixMap;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMap = typename Base::ConstMatrixMap;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
 
   void ValidateInputMatrixShapes(
       OpKernelContext* context,
@@ -90,6 +97,7 @@ class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
       // an empty set of equation as the empty matrix.
       return;
     }
+    using RealScalar = typename Base::RealScalar;
     const RealScalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
                 errors::InvalidArgument("Input matrix is not invertible."));

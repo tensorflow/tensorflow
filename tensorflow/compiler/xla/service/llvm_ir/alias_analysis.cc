@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
-#include "llvm/IR/MDBuilder.h"
+#include "external/llvm/include/llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -56,9 +56,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       alias_scope_md =
           GetAliasScopeMetadataForBuffer(buffer_slice, GetAliasDomain());
     }
-    if (alias_scope_md != nullptr) {
-      array->AddAliasScopeMetadata(alias_scope_md);
-    }
+    array->AddAliasScopeMetadata(alias_scope_md);
   }
 
   if (module_.config().debug_options().xla_llvm_enable_noalias_metadata()) {
@@ -67,9 +65,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
                                                assignment_, hlo);
     }
-    if (noalias_md != nullptr) {
-      array->AddNoaliasMetadata(noalias_md);
-    }
+    array->AddNoaliasMetadata(noalias_md);
   }
 
   if (module_.config()
@@ -83,7 +79,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       if (std::find(parameter_instructions.begin(),
                     parameter_instructions.end(),
                     &hlo) != parameter_instructions.end()) {
-        array->MarkInvariantOverWholeProgram(context_);
+        array->AddInvariantLoad(llvm::MDNode::get(*context_, /*MDs=*/{}));
       }
     }
   }
@@ -92,16 +88,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
 llvm::MDNode* AliasAnalysis::GetAliasDomain() {
   llvm::MDBuilder metadata_builder(*context_);
   if (alias_domain_ == nullptr) {
-    // We use createAliasScopeDomain rather than createAnonymousAliasScopeDomain
-    // so that when functions get inlined, we continue using the one domain,
-    // rather than duplicating it (and thus having two AA domains in one
-    // function).
-    //
-    // A side-effect of this is that if you ever compile two HLO modules in the
-    // same LLVM module, they'll have the same alias scope domain.  This isn't a
-    // problem because the two HLO modules will never interact with one another.
-    alias_domain_ =
-        metadata_builder.createAliasScopeDomain("XLA global AA domain");
+    alias_domain_ = metadata_builder.createAnonymousAliasScopeDomain();
   }
   return alias_domain_;
 }

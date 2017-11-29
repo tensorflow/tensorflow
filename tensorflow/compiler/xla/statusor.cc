@@ -19,20 +19,28 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-namespace internal_statusor {
+namespace internal {
 
-void Helper::HandleInvalidStatusCtorArg(Status* status) {
+Status StatusOrHelper::HandleInvalidStatusCtorArg() {
   const char* kMessage =
-      "An OK status is not a valid constructor argument to StatusOr<T>";
+      "Status::OK is not a valid constructor argument to StatusOr<T>";
   LOG(ERROR) << kMessage;
-  // Fall back to tensorflow::error::INTERNAL.
-  *status = ::tensorflow::errors::Internal(kMessage);
+  // In optimized builds, we will fall back to tensorflow::error::INTERNAL.
+  return Status(tensorflow::error::INTERNAL, kMessage);
 }
 
-void Helper::Crash(const Status& status) {
+Status StatusOrHelper::HandleNullObjectCtorArg() {
+  const char* kMessage =
+      "NULL is not a valid constructor argument to StatusOr<T*>";
+  LOG(ERROR) << kMessage;
+  // In optimized builds, we will fall back to tensorflow::error::INTERNAL.
+  return Status(tensorflow::error::INTERNAL, kMessage);
+}
+
+void StatusOrHelper::Crash(const Status& status) {
   LOG(FATAL) << "Attempting to fetch value instead of handling error "
              << status;
 }
 
-}  // namespace internal_statusor
+}  // namespace internal
 }  // namespace xla

@@ -19,8 +19,4 @@ namespace tensorflow {
 
 REGISTER_LINALG_OP("Qr", (QrOp<complex128>), complex128);
 
-#if GOOGLE_CUDA
-REGISTER_LINALG_OP_GPU("Qr", (QrOpGpu<complex128>), complex128);
-#endif
-
 }  // namespace tensorflow

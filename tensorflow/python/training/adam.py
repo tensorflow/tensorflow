@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -112,9 +111,6 @@ class AdamOptimizer(optimizer.Optimizer):
   def _get_beta_accumulators(self):
     return self._beta1_power, self._beta2_power
 
-  def _non_slot_variables(self):
-    return self._get_beta_accumulators()
-
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first
     # variable. Sort the var_list to make sure this device is consistent across
@@ -122,11 +118,8 @@ class AdamOptimizer(optimizer.Optimizer):
     # silently ignored).
     first_var = min(var_list, key=lambda x: x.name)
 
-    create_new = self._beta1_power is None
-    if not create_new and context.in_graph_mode():
-      create_new = (self._beta1_power.graph is not first_var.graph)
-
-    if create_new:
+    if (self._beta1_power is None or
+        self._beta1_power.graph is not first_var.graph):
       with ops.colocate_with(first_var):
         self._beta1_power = variable_scope.variable(self._beta1,
                                                     name="beta1_power",

@@ -56,18 +56,7 @@ class EqualGraphDefTest : public ::testing::Test {
     TF_EXPECT_OK(e_.ToGraphDef(&expected));
     GraphDef actual;
     TF_EXPECT_OK(a_.ToGraphDef(&actual));
-    bool match = EqualGraphDef(actual, expected, &diff_);
-    if (match) {
-      EXPECT_EQ(GraphDefHash(expected), GraphDefHash(actual));
-    } else {
-      // While, strictly speaking, this does not have to be the case,
-      // we want to check that our hash is more than "return 0;".
-      // If, in the extremely unlikely case, some different graphs
-      // legitimately produce equal hash values in this test, we can always
-      // tweak them a little to produce different hash values.
-      EXPECT_NE(GraphDefHash(expected), GraphDefHash(actual));
-    }
-    return match;
+    return EqualGraphDef(actual, expected, &diff_);
   }
 
   GraphDefBuilder e_;

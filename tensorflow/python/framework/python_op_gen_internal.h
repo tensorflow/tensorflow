@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -39,12 +38,9 @@ string AttrValueToPython(const string& type, const AttrValue& value,
 
 void GenerateLowerCaseOpName(const string& str, string* result);
 
-string DataTypeToPython(DataType dtype, const string& dtype_module);
-
 class GenPythonOp {
  public:
-  GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
-              const string& function_name);
+  GenPythonOp(const OpDef& op_def, const string& function_name);
   virtual ~GenPythonOp();
 
   virtual string Code();
@@ -63,13 +59,10 @@ class GenPythonOp {
   void AddOutputGlobals();
   void AddDocStringOutputs();
   void AddBody(const string& prefix);
-  void AddBodyNoReturn(const string& apply_prefix);
-  void AddExport();
 
   // From constructor arguments
   const OpDef& op_def_;
-  const ApiDef& api_def_;
-  const string function_name_;
+  const string& function_name_;
   const int num_outs_;
 
   // Return value from Code() is prelude_ + result_.

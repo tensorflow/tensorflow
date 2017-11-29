@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 
+#include "tensorflow/compiler/xla/legacy_flags/stream_assignment_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -65,10 +66,9 @@ int ComputeStreamToAssign(
     return -1;
   }
 
-  if (hlo.GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_disable_multi_streaming()) {
+  legacy_flags::StreamAssignmentFlags* flags =
+      legacy_flags::GetStreamAssignmentFlags();
+  if (flags->xla_gpu_disable_multi_streaming) {
     return 0;
   }
 

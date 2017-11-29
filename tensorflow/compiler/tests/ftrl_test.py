@@ -134,9 +134,9 @@ class FtrlOptimizerTest(XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-2.60260963, -4.29698515]), var0.eval(), float_rtol=1e-5)
+            np.array([-2.60260963, -4.29698515]), var0.eval())
         self.assertAllCloseAccordingToType(
-            np.array([-0.28432083, -0.56694895]), var1.eval(), float_rtol=1e-5)
+            np.array([-0.28432083, -0.56694895]), var1.eval())
 
   def testFtrlwithoutRegularization2(self):
     for dtype in self.float_types:
@@ -189,10 +189,8 @@ class FtrlOptimizerTest(XLATestCase):
           ftrl_update.run()
 
         # Validate updated params
-        self.assertAllClose(np.array([-7.66718769, -10.91273689]), var0.eval(),
-                            rtol=1e-4)
-        self.assertAllClose(np.array([-0.93460727, -1.86147261]), var1.eval(),
-                            rtol=1e-4)
+        self.assertAllClose(np.array([-7.66718769, -10.91273689]), var0.eval())
+        self.assertAllClose(np.array([-0.93460727, -1.86147261]), var1.eval())
 
   def testFtrlWithL1_L2(self):
     for dtype in self.float_types:
@@ -217,10 +215,8 @@ class FtrlOptimizerTest(XLATestCase):
           ftrl_update.run()
 
         # Validate updated params
-        self.assertAllClose(np.array([-0.24059935, -0.46829352]), var0.eval(),
-                            rtol=1e-5)
-        self.assertAllClose(np.array([-0.02406147, -0.04830509]), var1.eval(),
-                            rtol=1e-5)
+        self.assertAllClose(np.array([-0.24059935, -0.46829352]), var0.eval())
+        self.assertAllClose(np.array([-0.02406147, -0.04830509]), var1.eval())
 
   def testFtrlWithL1_L2_L2Shrinkage(self):
     """Test the new FTRL op with support for l2 shrinkage.
@@ -252,10 +248,8 @@ class FtrlOptimizerTest(XLATestCase):
           ftrl_update.run()
 
         # Validate updated params
-        self.assertAllClose(np.array([-0.21931979, -0.40642974]), var0.eval(),
-                            rtol=1e-4)
-        self.assertAllClose(np.array([-0.0282721, -0.07188385]), var1.eval(),
-                            rtol=1e-4)
+        self.assertAllClose(np.array([-0.21931979, -0.40642974]), var0.eval())
+        self.assertAllClose(np.array([-0.0282721, -0.07188385]), var1.eval())
 
   # When variables are initialized with Zero, FTRL-Proximal has two properties:
   # 1. Without L1&L2 but with fixed learning rate, FTRL-Proximal is identical
@@ -272,8 +266,8 @@ class FtrlOptimizerTest(XLATestCase):
       with self.test_session(), self.test_scope():
         val2, val3 = self.equivAdagradTest_AdagradPart(steps, dtype)
 
-    self.assertAllClose(val0, val2, rtol=1e-4)
-    self.assertAllClose(val1, val3, rtol=1e-4)
+    self.assertAllClose(val0, val2)
+    self.assertAllClose(val1, val3)
 
   def testEquivGradientDescentwithoutRegularization(self):
     steps = 5
@@ -284,8 +278,8 @@ class FtrlOptimizerTest(XLATestCase):
         val2, val3 = self.equivGradientDescentTest_GradientDescentPart(
             steps, dtype)
 
-    self.assertAllClose(val0, val2, rtol=1e-5)
-    self.assertAllClose(val1, val3, rtol=1e-5)
+    self.assertAllClose(val0, val2)
+    self.assertAllClose(val1, val3)
 
 
 if __name__ == "__main__":

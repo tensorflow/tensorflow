@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace {
@@ -37,14 +36,16 @@ namespace {
 // Partial Ordering Comparator for Tensor keys containing scalar int64's
 struct KeyTensorLess {
   bool operator()(const Tensor& lhs, const Tensor& rhs) const {
-    return std::less<int64>{}(lhs.scalar<int64>()(), rhs.scalar<int64>()());
+    return std::less<int64>{}(lhs.scalar<int64>()(),
+                              rhs.scalar<int64>()());
   }
 };
 
 // Key Equality operator for Tensor keys containing scalar int64's
 struct KeyTensorEqual {
   bool operator()(const Tensor& lhs, const Tensor& rhs) const {
-    return std::equal_to<int64>{}(lhs.scalar<int64>()(), rhs.scalar<int64>()());
+    return std::equal_to<int64>{}(lhs.scalar<int64>()(),
+                                  rhs.scalar<int64>()());
   }
 };
 
@@ -92,55 +93,44 @@ class StagingMap : public ResourceBase {
 
  private:
   // Private variables
-  DataTypeVector dtypes_ GUARDED_BY(mu_);
-  std::size_t capacity_ GUARDED_BY(mu_);
-  std::size_t memory_limit_ GUARDED_BY(mu_);
-  std::size_t current_bytes_ GUARDED_BY(mu_);
-  tensorflow::mutex mu_;
-  tensorflow::condition_variable not_empty_;
-  tensorflow::condition_variable full_;
-  IncompleteType incomplete_ GUARDED_BY(mu_);
-  MapType map_ GUARDED_BY(mu_);
+  DataTypeVector dtypes_;
+  std::size_t capacity_;
+  std::size_t memory_limit_;
+  std::size_t current_bytes_;
+  std::mutex mu_;
+  std::condition_variable not_empty_;
+  std::condition_variable full_;
+  IncompleteType incomplete_;
+  MapType map_;
 
  private:
   // private methods
 
   // If map is configured for bounded capacity, notify
   // waiting inserters that space is now available
-  void notify_inserters_if_bounded() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void notify_inserters_if_bounded(std::unique_lock<std::mutex>* lock) {
     if (has_capacity() || has_memory_limit()) {
-      // Notify all inserters. The removal of an element
-      // may make memory available for many inserters
-      // to insert new elements
-      full_.notify_all();
+      lock->unlock();
+      full_.notify_one();
     }
   }
 
-  // Notify all removers waiting to extract values
+  // Notify any removers waiting to extract values
   // that data is now available
-  void notify_removers() {
-    // Notify all removers. This is because they are
-    // waiting for specific keys to appear in the map
-    // so we don't know which one to wake up.
-    not_empty_.notify_all();
+  void notify_removers(std::unique_lock<std::mutex>* lock) {
+    lock->unlock();
+    not_empty_.notify_one();
   }
 
-  bool has_capacity() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return capacity_ > 0;
+  bool has_capacity() const { return capacity_ > 0; }
+
+  bool has_memory_limit() const { return memory_limit_ > 0; }
+
+  bool would_exceed_memory_limit(std::size_t bytes) const {
+    return bytes + current_bytes_ > memory_limit_;
   }
 
-  bool has_memory_limit() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return memory_limit_ > 0;
-  }
-
-  bool would_exceed_memory_limit(std::size_t bytes) const
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return has_memory_limit() && bytes + current_bytes_ > memory_limit_;
-  }
-
-  bool is_capacity_full() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return has_capacity() && map_.size() >= capacity_;
-  }
+  bool is_capacity_full() const { return map_.size() >= capacity_; }
 
   // Get number of bytes in the tuple
   std::size_t get_tuple_bytes(const Tuple& tuple) {
@@ -161,8 +151,7 @@ class StagingMap : public ResourceBase {
   }
 
   // Check that the index is within bounds
-  Status check_index(const Tensor& key, std::size_t index)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status check_index(const Tensor& key, std::size_t index) {
     if (index >= dtypes_.size()) {
       return Status(errors::InvalidArgument(
           "Index '", index, "' for key '", key.scalar<int64>()(),
@@ -174,7 +163,7 @@ class StagingMap : public ResourceBase {
 
   Status copy_or_move_tensors(OptionalTuple* map_tuple, const Tensor& key,
                               const Tensor& indices, Tuple* output,
-                              bool copy = false) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                              bool copy = false) {
     auto findices = indices.flat<int>();
 
     // Return values at specified indices
@@ -206,12 +195,11 @@ class StagingMap : public ResourceBase {
   // Check that the optional value at the specified index
   // is uninitialized
   Status check_index_uninitialized(const Tensor& key, std::size_t index,
-                                   const OptionalTuple& tuple)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                   const OptionalTuple& tuple) {
     if (tuple[index].has_value()) {
-      return Status(errors::InvalidArgument(
-          "The tensor for index '", index, "' for key '", key.scalar<int64>()(),
-          "' was already initialized '", dtypes_.size(), "'."));
+      return Status(errors::InvalidArgument("The tensor for index '",
+        index, "' for key '", key.scalar<int64>()(),
+        "' was already initialized '", dtypes_.size(), "'."));
     }
 
     return Status::OK();
@@ -234,7 +222,7 @@ class StagingMap : public ResourceBase {
   }
 
   // Check bytes are within memory limits memory limits
-  Status check_memory_limit(std::size_t bytes) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status check_memory_limit(std::size_t bytes) {
     if (has_memory_limit() && bytes > memory_limit_) {
       return Status(errors::ResourceExhausted(
           "Attempted to insert tensors with combined size of '", bytes,
@@ -247,8 +235,8 @@ class StagingMap : public ResourceBase {
 
   // Insert incomplete data into the Barrier
   Status put_incomplete(const KeyType& key, const Tensor& indices,
-                        OptionalTuple* tuple, tensorflow::mutex_lock* lock)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                        OptionalTuple* tuple,
+                        std::unique_lock<std::mutex>* lock) {
     auto findices = indices.flat<int>();
 
     // Search for the key in our incomplete set
@@ -258,9 +246,11 @@ class StagingMap : public ResourceBase {
     std::size_t tuple_bytes = get_tuple_bytes(*tuple);
     TF_RETURN_IF_ERROR(check_memory_limit(tuple_bytes));
 
-    // Wait until we don't exceed the memory limit
-    while (would_exceed_memory_limit(tuple_bytes)) {
-      full_.wait(*lock);
+    if (has_memory_limit()) {
+      full_.wait(*lock, [tuple_bytes, this]() {
+        // Stop waiting if we don't exceed the memory limit
+        return !would_exceed_memory_limit(tuple_bytes);
+      });
     }
 
     // This key isn't present in the incomplete set
@@ -286,7 +276,8 @@ class StagingMap : public ResourceBase {
     // Found an entry in the incomplete index
     // Update with given data and insert complete entries
     // into the main map
-    else {
+    else
+    {
       // Reference existing incomplete tuple
       OptionalTuple& present = it->second;
 
@@ -315,7 +306,7 @@ class StagingMap : public ResourceBase {
         // Remove from incomplete
         incomplete_.erase(it);
 
-        TF_RETURN_IF_ERROR(put_complete(key, &insert_tuple));
+        TF_RETURN_IF_ERROR(put_complete(key, &insert_tuple, lock));
       }
     }
 
@@ -323,12 +314,12 @@ class StagingMap : public ResourceBase {
   }
 
   // Does the insertion into the actual staging area
-  Status put_complete(const KeyType& key, OptionalTuple* tuple)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status put_complete(const KeyType& key, OptionalTuple* tuple,
+                      std::unique_lock<std::mutex>* lock) {
     // Insert key and tuples into the map
     map_.insert({key, std::move(*tuple)});
 
-    notify_removers();
+    notify_removers(lock);
 
     return Status::OK();
   }
@@ -343,7 +334,7 @@ class StagingMap : public ResourceBase {
         current_bytes_(0) {}
 
   Status put(KeyType* key, const Tensor* indices, OptionalTuple* tuple) {
-    tensorflow::mutex_lock lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     // Sanity check the indices
     TF_RETURN_IF_ERROR(check_index_ordering(*indices));
@@ -357,13 +348,22 @@ class StagingMap : public ResourceBase {
     // Check that tuple_bytes fits within the memory limit
     TF_RETURN_IF_ERROR(check_memory_limit(tuple_bytes));
 
-    // Wait until there's space for insertion.
-    while (would_exceed_memory_limit(tuple_bytes) || is_capacity_full()) {
-      full_.wait(lock);
+    // If map capacity is bounded wait until map is not full
+    if (has_capacity() || has_memory_limit()) {
+      full_.wait(lock, [tuple_bytes, this]() {
+        // If there's a memory limit, check if there's space for insertion
+        bool memory_limit_valid =
+            has_memory_limit() ? !would_exceed_memory_limit(tuple_bytes) : true;
+        // If we're configured for capacity check if there's space for insertion
+        bool capacity_valid = has_capacity() ? !is_capacity_full() : true;
+
+        // Stop waiting upon success for both conditions
+        return memory_limit_valid && capacity_valid;
+      });
     }
 
     // Do the put operation
-    TF_RETURN_IF_ERROR(put_complete(*key, tuple));
+    TF_RETURN_IF_ERROR(put_complete(*key, tuple, &lock));
 
     // Update the current size
     current_bytes_ += tuple_bytes;
@@ -372,7 +372,7 @@ class StagingMap : public ResourceBase {
   }
 
   Status get(const KeyType* key, const Tensor* indices, Tuple* tuple) {
-    tensorflow::mutex_lock lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     // Sanity check the indices
     TF_RETURN_IF_ERROR(check_index_ordering(*indices));
@@ -380,9 +380,8 @@ class StagingMap : public ResourceBase {
     typename MapType::iterator it;
 
     // Wait until the element with the requested key is present
-    while ((it = map_.find(*key)) == map_.end()) {
-      not_empty_.wait(lock);
-    }
+    not_empty_.wait(
+        lock, [&, this]() { return (it = map_.find(*key)) != map_.end(); });
 
     TF_RETURN_IF_ERROR(
         copy_or_move_tensors(&it->second, *key, *indices, tuple, true));
@@ -394,7 +393,7 @@ class StagingMap : public ResourceBase {
   }
 
   Status pop(const KeyType* key, const Tensor* indices, Tuple* tuple) {
-    tensorflow::mutex_lock lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     // Sanity check the indices
     TF_RETURN_IF_ERROR(check_index_ordering(*indices));
@@ -402,9 +401,8 @@ class StagingMap : public ResourceBase {
     typename MapType::iterator it;
 
     // Wait until the element with the requested key is present
-    while ((it = map_.find(*key)) == map_.end()) {
-      not_empty_.wait(lock);
-    }
+    not_empty_.wait(
+        lock, [&, this]() { return (it = map_.find(*key)) != map_.end(); });
 
     TF_RETURN_IF_ERROR(
         copy_or_move_tensors(&it->second, *key, *indices, tuple));
@@ -418,21 +416,19 @@ class StagingMap : public ResourceBase {
     // Update bytes in the Staging Area
     current_bytes_ -= get_tuple_bytes(*tuple);
 
-    notify_inserters_if_bounded();
+    notify_inserters_if_bounded(&lock);
 
     return Status::OK();
   }
 
   Status popitem(KeyType* key, const Tensor* indices, Tuple* tuple) {
-    tensorflow::mutex_lock lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     // Sanity check the indices
     TF_RETURN_IF_ERROR(check_index_ordering(*indices));
 
     // Wait until map is not empty
-    while (this->map_.empty()) {
-      not_empty_.wait(lock);
-    }
+    not_empty_.wait(lock, [this]() { return !this->map_.empty(); });
 
     // Move from the first element and erase it
 
@@ -452,29 +448,29 @@ class StagingMap : public ResourceBase {
     // Update bytes in the Staging Area
     current_bytes_ -= get_tuple_bytes(*tuple);
 
-    notify_inserters_if_bounded();
+    notify_inserters_if_bounded(&lock);
 
     return Status::OK();
   }
 
   Status clear() {
-    tensorflow::mutex_lock lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
     map_.clear();
     incomplete_.clear();
     current_bytes_ = 0;
 
-    notify_inserters_if_bounded();
+    notify_inserters_if_bounded(&lock);
 
     return Status::OK();
   }
 
   std::size_t incomplete_size() {
-    tensorflow::mutex_lock lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
     return incomplete_.size();
   }
 
   std::size_t size() {
-    tensorflow::mutex_lock lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
     return map_.size();
   }
 
@@ -537,9 +533,10 @@ class MapStageOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("MapStage").Device(DEVICE_CPU), MapStageOp<false>);
+REGISTER_KERNEL_BUILDER(Name("MapStage").Device(DEVICE_CPU),
+                      MapStageOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapStage").Device(DEVICE_CPU),
-                        MapStageOp<true>);
+                      MapStageOp<true>);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(
@@ -550,7 +547,7 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapStage")
                             .HostMemory("indices")
                             .Device(DEVICE_GPU),
                         MapStageOp<true>);
-#endif  // GOOGLE_CUDA
+#endif // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("MapStage")
@@ -598,34 +595,30 @@ class MapUnstageOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("MapUnstage").Device(DEVICE_CPU),
-                        MapUnstageOp<false>);
+                            MapUnstageOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage").Device(DEVICE_CPU),
-                        MapUnstageOp<true>);
+                            MapUnstageOp<true>);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("MapUnstage")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_GPU),
-                        MapUnstageOp<false>);
+                        .HostMemory("key")
+                        .HostMemory("indices")
+                        .Device(DEVICE_GPU), MapUnstageOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_GPU),
-                        MapUnstageOp<true>);
+                        .HostMemory("key")
+                        .HostMemory("indices")
+                        .Device(DEVICE_GPU), MapUnstageOp<true>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("MapUnstage")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapUnstageOp<false>);
+                        .HostMemory("key")
+                        .HostMemory("indices")
+                        .Device(DEVICE_SYCL), MapUnstageOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage")
-                            .HostMemory("key")
-                            .HostMemory("indices")
-                            .Device(DEVICE_SYCL),
-                        MapUnstageOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
+                        .HostMemory("key")
+                        .HostMemory("indices")
+                        .Device(DEVICE_SYCL), MapUnstageOp<true>);
+#endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapPeekOp : public OpKernel {
@@ -683,7 +676,7 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek")
                             .HostMemory("indices")
                             .Device(DEVICE_SYCL),
                         MapPeekOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
+#endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapUnstageNoKeyOp : public OpKernel {
@@ -716,7 +709,7 @@ class MapUnstageNoKeyOp : public OpKernel {
                                 " vs. ", indices_tensor->NumElements()));
 
     for (std::size_t i = 0; i < tuple.size(); ++i) {
-      ctx->set_output(i + 1, tuple[i]);
+      ctx->set_output(i+1, tuple[i]);
     }
   }
 };
@@ -750,7 +743,7 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey")
                             .HostMemory("indices")
                             .Device(DEVICE_SYCL),
                         MapUnstageNoKeyOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
+#endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapSizeOp : public OpKernel {
@@ -771,24 +764,23 @@ class MapSizeOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_CPU), MapSizeOp<false>);
+REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_CPU),
+                        MapSizeOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapSize").Device(DEVICE_CPU),
                         MapSizeOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_GPU).HostMemory("size"),
-                        MapSizeOp<false>);
-REGISTER_KERNEL_BUILDER(
-    Name("OrderedMapSize").Device(DEVICE_GPU).HostMemory("size"),
-    MapSizeOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_GPU)
+                        .HostMemory("size"), MapSizeOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapSize").Device(DEVICE_GPU)
+                        .HostMemory("size"), MapSizeOp<true>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_SYCL).HostMemory("size"),
-                        MapSizeOp<false>);
-REGISTER_KERNEL_BUILDER(
-    Name("OrderedMapSize").Device(DEVICE_SYCL).HostMemory("size"),
-    MapSizeOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_SYCL)
+                        .HostMemory("size"), MapSizeOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapSize").Device(DEVICE_SYCL)
+                        .HostMemory("size"), MapSizeOp<true>);
+#endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapIncompleteSizeOp : public OpKernel {
@@ -815,21 +807,17 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSize").Device(DEVICE_CPU),
                         MapIncompleteSizeOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(
-    Name("MapIncompleteSize").Device(DEVICE_GPU).HostMemory("size"),
-    MapIncompleteSizeOp<false>);
-REGISTER_KERNEL_BUILDER(
-    Name("OrderedMapIncompleteSize").Device(DEVICE_GPU).HostMemory("size"),
-    MapIncompleteSizeOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapIncompleteSize").Device(DEVICE_GPU)
+                        .HostMemory("size"), MapIncompleteSizeOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSize").Device(DEVICE_GPU)
+                        .HostMemory("size"), MapIncompleteSizeOp<true>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("MapIncompleteSize").Device(DEVICE_SYCL).HostMemory("size"),
-    MapIncompleteSizeOp<false>);
-REGISTER_KERNEL_BUILDER(
-    Name("OrderedMapIncompleteSize").Device(DEVICE_SYCL).HostMemory("size"),
-    MapIncompleteSizeOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("MapIncompleteSize").Device(DEVICE_SYCL)
+                        .HostMemory("size"), MapIncompleteSizeOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSize").Device(DEVICE_SYCL)
+                        .HostMemory("size"), MapIncompleteSizeOp<true>);
+#endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapClearOp : public OpKernel {
@@ -845,12 +833,14 @@ class MapClearOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_CPU), MapClearOp<false>);
+REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_CPU),
+                        MapClearOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapClear").Device(DEVICE_CPU),
                         MapClearOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_GPU), MapClearOp<false>);
+REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_GPU),
+                        MapClearOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapClear").Device(DEVICE_GPU),
                         MapClearOp<true>);
 #endif
@@ -859,7 +849,7 @@ REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_SYCL),
                         MapClearOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapClear").Device(DEVICE_SYCL),
                         MapClearOp<true>);
-#endif  // TENSORFLOW_USE_SYCL
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace
 }  // namespace tensorflow

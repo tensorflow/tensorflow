@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
@@ -104,25 +104,18 @@ class CpuAotCompilationResult : public AotCompilationResult {
 // The compiler translates XLA HLO code into LLVM IR and uses LLVM's JIT
 // infrastructure to create an executable "blob" that can then be returned
 // wrapped in CpuExecutable and actually invoked.
-class CpuCompiler : public LLVMCompiler {
+class CpuCompiler : public Compiler {
  public:
   CpuCompiler();
   ~CpuCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<perftools::gputools::StreamExecutor*>>
-  //        stream_execs)
-  using LLVMCompiler::Compile;
-
-  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+  StatusOr<std::unique_ptr<Executable>> Compile(
       std::unique_ptr<HloModule> module,
       perftools::gputools::StreamExecutor* stream_exec) override;
 
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec) override;
+  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+      std::vector<std::unique_ptr<HloModule>> modules,
+      std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
@@ -138,7 +131,7 @@ class CpuCompiler : public LLVMCompiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* module, bool is_aot_compile);
+  Status RunHloPasses(HloModule* module);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

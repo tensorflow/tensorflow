@@ -18,11 +18,8 @@ limitations under the License.
 
 #include <zlib.h>
 
-#include "tensorflow/core/platform/types.h"
-
 namespace tensorflow {
 namespace io {
-
 class ZlibCompressionOptions {
  public:
   static ZlibCompressionOptions DEFAULT();
@@ -124,8 +121,7 @@ inline ZlibCompressionOptions ZlibCompressionOptions::GZIP() {
   options.window_bits = options.window_bits + 16;
   return options;
 }
-
-}  // namespace io
-}  // namespace tensorflow
+}
+}
 
 #endif  // TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_

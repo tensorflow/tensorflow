@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <functional>
 
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Value.h"
+#include "external/llvm/include/llvm/IR/BasicBlock.h"
+#include "external/llvm/include/llvm/IR/IRBuilder.h"
+#include "external/llvm/include/llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -58,14 +58,10 @@ class LoopEmitter {
   // Emits a loop nest (with a yet-to-be-filled loop body) that iterates through
   // every element in the given shape. Returns the multi-dimensional index that
   // specifies the element.
-  IrArray::Index EmitIndexAndSetExitBasicBlock() {
-    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"");
-  }
-  virtual IrArray::Index EmitIndexAndSetExitBasicBlock(
-      tensorflow::StringPiece loop_name);
+  virtual IrArray::Index EmitIndexAndSetExitBasicBlock();
 
   // Emits a complete loop nest for every element in the given shape.
-  tensorflow::Status EmitLoop(tensorflow::StringPiece loop_name = "");
+  tensorflow::Status EmitLoop();
 
  protected:
   // An IR emitter that generates the loop body.

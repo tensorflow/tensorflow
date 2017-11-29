@@ -19,38 +19,25 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
-namespace {
-template <typename T>
-Output ConstHelper(const Scope& scope, const T& value, DataType dtype) {
+Output Const(const Scope& scope, const Input::Initializer& val) {
   if (!scope.ok()) return Output();
+  if (!val.status.ok()) {
+    scope.UpdateStatus(val.status);
+    return Output();
+  }
 
   Node* ret;
   Graph* graph = scope.graph();
   const string unique_name = scope.GetUniqueNameForOp("Const");
   auto builder = NodeBuilder(unique_name, "Const")
-                     .Attr("value", value)
-                     .Attr("dtype", dtype);
+                     .Attr("value", val.tensor)
+                     .Attr("dtype", val.tensor.dtype());
   scope.UpdateBuilder(&builder);
   scope.UpdateStatus(builder.Finalize(graph, &ret));
-  if (!scope.ok()) return Output();
 
-  scope.UpdateStatus(scope.DoShapeInference(ret));
   if (!scope.ok()) return Output();
 
   return Output(ret);
-}
-}  // namespace
-
-Output Const(const Scope& scope, const Input::Initializer& val) {
-  if (!val.status.ok()) {
-    scope.UpdateStatus(val.status);
-    return Output();
-  }
-  return ConstHelper(scope, val.tensor, val.tensor.dtype());
-}
-
-Output ConstFromProto(const Scope& scope, const TensorProto& proto) {
-  return ConstHelper(scope, proto, proto.dtype());
 }
 
 NodeBuilder::NodeOut AsNodeOut(const Scope& scope, const Input& inp) {

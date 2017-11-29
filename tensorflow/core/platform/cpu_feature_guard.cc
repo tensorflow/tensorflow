@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_feature_guard.h"
 
 #include <mutex>
-#include <string>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -40,12 +39,13 @@ void CheckFeatureOrDie(CPUFeature feature, const string& feature_name) {
   }
 }
 
-// Check if CPU feature is inclued in the TensorFlow binary.
-void CheckIfFeatureUnused(CPUFeature feature, const string& feature_name,
-                          string& missing_instructions) {
+// If the CPU feature is present, log warning.
+void WarnIfFeatureUnused(CPUFeature feature, const string& feature_name) {
   if (TestCPUFeature(feature)) {
-    missing_instructions.append(" ");
-    missing_instructions.append(feature_name);
+    LOG(WARNING) << "The TensorFlow library wasn't compiled to use "
+                 << feature_name
+                 << " instructions, but these are available on your machine "
+                    "and could speed up CPU computations.";
   }
 }
 
@@ -94,49 +94,44 @@ std::once_flag g_cpu_feature_guard_warn_once_flag;
 
 }  // namespace
 
-void InfoAboutUnusedCPUFeatures() {
+void WarnAboutUnusedCPUFeatures() {
   std::call_once(g_cpu_feature_guard_warn_once_flag, [] {
-    string missing_instructions;
 #ifdef PLATFORM_WINDOWS
 #ifndef __AVX__
-    CheckIfFeatureUnused(CPUFeature::AVX, "AVX", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::AVX, "AVX");
 #endif  // __AVX__
 #ifndef __AVX2__
-    CheckIfFeatureUnused(CPUFeature::AVX2, "AVX2", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::AVX2, "AVX2");
 #endif  // __AVX2__
 #else   // ifdef platform windows
 #ifndef __SSE__
-    CheckIfFeatureUnused(CPUFeature::SSE, "SSE", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::SSE, "SSE");
 #endif  // __SSE__
 #ifndef __SSE2__
-    CheckIfFeatureUnused(CPUFeature::SSE2, "SSE2", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::SSE2, "SSE2");
 #endif  // __SSE2__
 #ifndef __SSE3__
-    CheckIfFeatureUnused(CPUFeature::SSE3, "SSE3", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::SSE3, "SSE3");
 #endif  // __SSE3__
 #ifndef __SSE4_1__
-    CheckIfFeatureUnused(CPUFeature::SSE4_1, "SSE4.1", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::SSE4_1, "SSE4.1");
 #endif  // __SSE4_1__
 #ifndef __SSE4_2__
-    CheckIfFeatureUnused(CPUFeature::SSE4_2, "SSE4.2", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::SSE4_2, "SSE4.2");
 #endif  // __SSE4_2__
 #ifndef __AVX__
-    CheckIfFeatureUnused(CPUFeature::AVX, "AVX", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::AVX, "AVX");
 #endif  // __AVX__
 #ifndef __AVX2__
-    CheckIfFeatureUnused(CPUFeature::AVX2, "AVX2", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::AVX2, "AVX2");
 #endif  // __AVX2__
 #ifndef __AVX512F__
-    CheckIfFeatureUnused(CPUFeature::AVX512F, "AVX512F", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::AVX512F, "AVX512F");
 #endif  // __AVX512F__
 #ifndef __FMA__
-    CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
+    WarnIfFeatureUnused(CPUFeature::FMA, "FMA");
 #endif  // __FMA__
 #endif  // else of ifdef platform windows
-    if (!missing_instructions.empty()) {
-      LOG(INFO) << "Your CPU supports instructions that this TensorFlow "
-                << "binary was not compiled to use:" << missing_instructions;
-    }
   });
 }
 

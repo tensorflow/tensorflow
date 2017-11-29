@@ -67,6 +67,8 @@ class SoftmaxTest(test.TestCase):
           np.ones(sum_along_dim.shape), sum_along_dim)
 
   def _testAll(self, features):
+    self._testSoftmax(features, use_gpu=False)
+    self._testSoftmax(features, log=True, use_gpu=False)
     self._testSoftmax(features, use_gpu=True)
     self._testSoftmax(features, log=True, use_gpu=True)
     self._testOverflow(use_gpu=True)

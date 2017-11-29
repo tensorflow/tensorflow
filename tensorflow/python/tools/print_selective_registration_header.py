@@ -28,7 +28,7 @@ When compiling for Android:
     --copt="-DSUPPORT_SELECTIVE_REGISTRATION" \
     //tensorflow/contrib/android:libtensorflow_inference.so \
     --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-    --crosstool_top=//external:android/crosstool --cpu=armeabi-v7a
+    --config=android_arm
 """
 
 from __future__ import absolute_import

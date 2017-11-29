@@ -122,12 +122,5 @@ TEST(UtilTest, CommonFactors) {
   }
 }
 
-TEST(UtilTest, SanitizeFileName) {
-  EXPECT_EQ(SanitizeFileName(""), "");
-  EXPECT_EQ(SanitizeFileName("abc"), "abc");
-  EXPECT_EQ(SanitizeFileName("/\\[]"), "____");
-  EXPECT_EQ(SanitizeFileName("/A\\B[C]"), "_A_B_C_");
-}
-
 }  // namespace
 }  // namespace xla

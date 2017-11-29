@@ -288,13 +288,12 @@ class RandomGammaOp : public OpKernel {
                                                       &samples_shape));
     }
     const int64 num_samples = samples_shape.num_elements();
+    if (num_samples == 0) return;
 
     samples_shape.AppendShape(alpha_t.shape());
     // Allocate output samples.
     Tensor* samples_t = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, samples_shape, &samples_t));
-
-    if (num_samples == 0) return;
 
     using random::PhiloxRandom;
 
@@ -577,7 +576,7 @@ struct FillPhiloxRandomKernel<Distribution, false> {
     const size_t kGroupSize = Distribution::kResultElementCount;
 
     const size_t item_id = item.get_global(0);
-    const size_t total_item_count = item.get_global_range();
+    const size_t total_item_count = item.get_global_range(0);
     size_t offset = item_id * kGroupSize;
     gen_.Skip(item_id);
 
@@ -633,7 +632,7 @@ struct FillPhiloxRandomKernel<Distribution, true> {
                                                 PhiloxRandom::kResultElementCount;
 
     const size_t item_id = item.get_global(0);
-    const size_t total_item_count = item.get_global_range();
+    const size_t total_item_count = item.get_global_range(0);
     size_t group_index = item_id;
     size_t offset = group_index * kGroupSize;
 

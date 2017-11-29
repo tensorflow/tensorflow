@@ -46,6 +46,7 @@ import sys
 import tensorflow as tf
 
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.saved_model import main_op
 
 FLAGS = None
 
@@ -204,8 +205,7 @@ def _generate_saved_model_for_half_plus_two(export_dir,
           sess, [tf.saved_model.tag_constants.SERVING],
           signature_def_map=signature_def_map,
           assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
-          main_op=tf.group(tf.saved_model.main_op.main_op(),
-                           assign_filename_op))
+          main_op=tf.group(main_op.main_op(), assign_filename_op))
     else:
       builder.add_meta_graph_and_variables(
           sess, [tf.saved_model.tag_constants.SERVING],

@@ -27,8 +27,14 @@ namespace se = ::perftools::gputools;
 
 namespace xla {
 
-/* static */ tensorflow::mutex Compiler::platform_compiler_mutex_(
-    tensorflow::LINKER_INITIALIZED);
+/* static */ tensorflow::mutex* Compiler::platform_compiler_mutex_;
+
+/* static */ void Compiler::LazyInitMutex() {
+  static std::once_flag mutex_init_flag;
+  std::call_once(mutex_init_flag, []() {
+    Compiler::platform_compiler_mutex_ = new tensorflow::mutex;
+  });
+}
 
 /* static */ std::map<perftools::gputools::Platform::Id,
                       Compiler::CompilerFactory>*
@@ -49,16 +55,17 @@ Compiler::GetPlatformCompilers() {
 /* static */ void Compiler::RegisterCompilerFactory(
     se::Platform::Id platform_id,
     std::function<std::unique_ptr<Compiler>()> compiler_factory) {
-  tensorflow::mutex_lock lock(platform_compiler_mutex_);
+  LazyInitMutex();
+  tensorflow::mutex_lock lock(*platform_compiler_mutex_);
   auto* factories = GetPlatformCompilerFactories();
-  CHECK(factories->find(platform_id) == factories->end())
-      << "Compiler factory already registered for platform";
+  CHECK(factories->find(platform_id) == factories->end());
   (*factories)[platform_id] = std::move(compiler_factory);
 }
 
 /* static */ StatusOr<Compiler*> Compiler::GetForPlatform(
     const se::Platform* platform) {
-  tensorflow::mutex_lock lock(platform_compiler_mutex_);
+  LazyInitMutex();
+  tensorflow::mutex_lock lock(*platform_compiler_mutex_);
 
   auto* compilers = GetPlatformCompilers();
   // See if we already instantiated a compiler for this platform.

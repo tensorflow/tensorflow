@@ -50,14 +50,14 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
           errors::InvalidArgument(
               "All components must have the same size in the 0th dimension"));
     }
-    *output = new Dataset(ctx, std::move(components));
+    *output = new Dataset(std::move(components));
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
-    explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
-        : GraphDatasetBase(ctx), tensors_(std::move(tensors)) {
+    explicit Dataset(std::vector<Tensor> tensors)
+        : tensors_(std::move(tensors)) {
       for (const Tensor& t : tensors_) {
         dtypes_.push_back(t.dtype());
         gtl::InlinedVector<int64, 4> partial_dim_sizes;
@@ -70,10 +70,8 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
-        const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::TensorSlice")}));
+    std::unique_ptr<IteratorBase> MakeIterator() const override {
+      return std::unique_ptr<IteratorBase>(new Iterator(this));
     }
 
     const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -83,27 +81,11 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
 
     string DebugString() override { return "TensorSliceDatasetOp::Dataset"; }
 
-   protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
-                              Node** output) const override {
-      std::vector<NodeBuilder::NodeOut> components;
-      components.reserve(tensors_.size());
-      for (const Tensor& t : tensors_) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        components.emplace_back(node);
-      }
-      AttrValue dtypes;
-      b->BuildAttrValue(dtypes_, &dtypes);
-      TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, components}},
-                                       {{"Toutput_types", dtypes}}, output));
-      return Status::OK();
-    }
-
    private:
-    template <typename T>
+    template <DataType DT>
     static Status HandleSliceToElement(const Tensor& parent, Tensor* element,
                                        int64 index) {
+      typedef typename EnumToDataType<DT>::Type T;
       DCHECK_NE(parent.dim_size(0), 0);
       DCHECK_GE(index, 0);
       if (element->NumElements() !=
@@ -123,29 +105,42 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
 
     static Status CopySliceToElement(const Tensor& parent, Tensor* element,
                                      int64 index) {
-#define HANDLE_TYPE(T)                                      \
-  case DataTypeToEnum<T>::value: {                          \
-    return HandleSliceToElement<T>(parent, element, index); \
+#define HANDLE_TYPE(DT)                                                   \
+  if (parent.dtype() == DT) {                                             \
+    TF_RETURN_IF_ERROR(HandleSliceToElement<DT>(parent, element, index)); \
+    return Status::OK();                                                  \
   }
-
-      switch (parent.dtype()) {
-        TF_CALL_DATASET_TYPES(HANDLE_TYPE);
-        default:
-          return errors::Unimplemented(
-              "CopySliceToElement Unhandled data type: ", element->dtype());
-      }
+      HANDLE_TYPE(DT_FLOAT);
+      HANDLE_TYPE(DT_HALF);
+      HANDLE_TYPE(DT_DOUBLE);
+      HANDLE_TYPE(DT_INT32);
+      HANDLE_TYPE(DT_UINT8);
+      HANDLE_TYPE(DT_INT16);
+      HANDLE_TYPE(DT_INT8);
+      HANDLE_TYPE(DT_STRING);
+      HANDLE_TYPE(DT_COMPLEX64);
+      HANDLE_TYPE(DT_COMPLEX128);
+      HANDLE_TYPE(DT_INT64);
+      HANDLE_TYPE(DT_BOOL);
+      HANDLE_TYPE(DT_QINT8);
+      HANDLE_TYPE(DT_QUINT8);
+      HANDLE_TYPE(DT_QINT32);
+      HANDLE_TYPE(DT_QINT16);
+      HANDLE_TYPE(DT_QUINT16);
+#undef HANDLE_TYPE
+      return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
+                                   element->dtype());
     }
 
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
+      explicit Iterator(const Dataset* dataset)
+          : DatasetIterator<Dataset>(dataset),
             i_(0),
-            n_(params.dataset->tensors_[0].dim_size(0)) {}
+            n_(dataset->tensors_[0].dim_size(0)) {}
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (i_ < n_) {
           out_tensors->clear();
@@ -165,24 +160,10 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
-     protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
-        return Status::OK();
-      }
-
-      Status RestoreInternal(OpKernelContext* ctx,
-                             IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
-        return Status::OK();
-      }
-
      private:
       mutex mu_;
-      int64 i_ GUARDED_BY(mu_);
-      const int64 n_;
+      int i_ GUARDED_BY(mu_);
+      const int n_;
     };
 
     const std::vector<Tensor> tensors_;

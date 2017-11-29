@@ -14,9 +14,7 @@ filegroup(
     visibility = ["//tensorflow/compiler/xla:internal"],
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-
-tf_cc_binary(
+cc_binary(
     name = "hex_floats_to_packed_literal",
     srcs = ["hex_floats_to_packed_literal.cc"],
     deps = [
@@ -45,15 +43,14 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "dumped_computation_to_graphviz",
     deps = [
         ":dumped_computation_to_graphviz_library",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "show_signature",
     srcs = ["show_signature.cc"],
     deps = [
@@ -65,7 +62,6 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
@@ -88,14 +84,13 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:session_proto",
-        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
     alwayslink = True,
 )
 
-tf_cc_binary(
+cc_binary(
     name = "replay_computation_cpu",
     deps = [
         ":replay_computation_library",
@@ -103,7 +98,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "replay_computation_gpu",
     deps = [
         ":replay_computation_library",
@@ -111,15 +106,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
-    name = "replay_computation_interpreter",
-    deps = [
-        ":replay_computation_library",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
-    ],
-)
-
-tf_cc_binary(
+cc_binary(
     name = "show_literal",
     srcs = ["show_literal.cc"],
     deps = [
@@ -130,7 +117,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "convert_computation",
     srcs = ["convert_computation.cc"],
     deps = [
@@ -141,7 +128,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "show_text_literal",
     srcs = ["show_text_literal.cc"],
     deps = [
@@ -154,7 +141,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "dumped_computation_to_text",
     srcs = ["dumped_computation_to_text.cc"],
     deps = [
@@ -167,13 +154,12 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:computation_tracker",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "dumped_computation_to_operation_list",
     srcs = ["dumped_computation_to_operation_list.cc"],
     deps = [
@@ -186,13 +172,12 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "dumped_computation_to_tf_graphdef",
     srcs = ["dumped_computation_to_tf_graphdef.cc"],
     deps = [
@@ -205,20 +190,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/compiler/xla/service:session_proto",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_binary(
-    name = "hlo_proto_to_json",
-    srcs = ["hlo_proto_to_json.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
 )

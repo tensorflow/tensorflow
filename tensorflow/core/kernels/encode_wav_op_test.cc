@@ -35,7 +35,7 @@ namespace tensorflow {
 using namespace ops;  // NOLINT(build/namespaces)
 
 TEST(EncodeWavOpTest, EncodeWavTest) {
-  Scope root = Scope::DisabledShapeInferenceScope();
+  Scope root = Scope::NewRootScope();
 
   Tensor audio_tensor(DT_FLOAT, {4, 2});
   test::FillValues<float>(

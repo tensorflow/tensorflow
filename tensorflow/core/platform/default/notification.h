@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_NOTIFICATION_H_
 
 #include <assert.h>
-#include <atomic>              // NOLINT
 #include <chrono>              // NOLINT
 #include <condition_variable>  // NOLINT
 
@@ -28,31 +27,25 @@ namespace tensorflow {
 
 class Notification {
  public:
-  Notification() : notified_(0) {}
-  ~Notification() {
-    // In case the notification is being used to synchronize its own deletion,
-    // force any prior notifier to leave its critical section before the object
-    // is destroyed.
-    mutex_lock l(mu_);
-  }
+  Notification() : notified_(false) {}
+  ~Notification() {}
 
   void Notify() {
     mutex_lock l(mu_);
-    assert(!HasBeenNotified());
-    notified_.store(true, std::memory_order_release);
+    assert(!notified_);
+    notified_ = true;
     cv_.notify_all();
   }
 
-  bool HasBeenNotified() const {
-    return notified_.load(std::memory_order_acquire);
+  bool HasBeenNotified() {
+    mutex_lock l(mu_);
+    return notified_;
   }
 
   void WaitForNotification() {
-    if (!HasBeenNotified()) {
-      mutex_lock l(mu_);
-      while (!HasBeenNotified()) {
-        cv_.wait(l);
-      }
+    mutex_lock l(mu_);
+    while (!notified_) {
+      cv_.wait(l);
     }
   }
 
@@ -60,21 +53,14 @@ class Notification {
   friend bool WaitForNotificationWithTimeout(Notification* n,
                                              int64 timeout_in_us);
   bool WaitForNotificationWithTimeout(int64 timeout_in_us) {
-    bool notified = HasBeenNotified();
-    if (!notified) {
-      mutex_lock l(mu_);
-      do {
-        notified = HasBeenNotified();
-      } while (!notified &&
-               cv_.wait_for(l, std::chrono::microseconds(timeout_in_us)) !=
-                   std::cv_status::timeout);
-    }
-    return notified;
+    mutex_lock l(mu_);
+    return cv_.wait_for(l, std::chrono::microseconds(timeout_in_us),
+                        [this]() { return notified_; });
   }
 
-  mutex mu_;                    // protects mutations of notified_
-  condition_variable cv_;       // signaled when notified_ becomes non-zero
-  std::atomic<bool> notified_;  // mutations under mu_
+  mutex mu_;
+  condition_variable cv_;
+  bool notified_;
 };
 
 inline bool WaitForNotificationWithTimeout(Notification* n,

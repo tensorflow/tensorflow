@@ -33,13 +33,8 @@ from tensorflow.python.util import compat
 def _create_parser(base_dir):
   # create a simple parser that pulls the export_version from the directory.
   def parser(path):
-    # Modify the path object for RegEx match for Windows Paths
-    if os.name == 'nt':
-      match = re.match("^" + compat.as_str_any(base_dir).replace('\\','/') + "/(\\d+)$",
-                      compat.as_str_any(path.path).replace('\\','/'))
-    else:
-      match = re.match("^" + compat.as_str_any(base_dir) + "/(\\d+)$",
-                      compat.as_str_any(path.path))
+    match = re.match("^" + compat.as_str_any(base_dir) + "/(\\d+)$",
+                     compat.as_str_any(path.path))
     if not match:
       return None
     return path._replace(export_version=int(match.group(1)))
@@ -53,13 +48,13 @@ class GcTest(test_util.TensorFlowTestCase):
     paths = [gc.Path("/foo", 8), gc.Path("/foo", 9), gc.Path("/foo", 10)]
     newest = gc.largest_export_versions(2)
     n = newest(paths)
-    self.assertEqual(n, [gc.Path("/foo", 9), gc.Path("/foo", 10)])
+    self.assertEquals(n, [gc.Path("/foo", 9), gc.Path("/foo", 10)])
 
   def testLargestExportVersionsDoesNotDeleteZeroFolder(self):
     paths = [gc.Path("/foo", 0), gc.Path("/foo", 3)]
     newest = gc.largest_export_versions(2)
     n = newest(paths)
-    self.assertEqual(n, [gc.Path("/foo", 0), gc.Path("/foo", 3)])
+    self.assertEquals(n, [gc.Path("/foo", 0), gc.Path("/foo", 3)])
 
   def testModExportVersion(self):
     paths = [
@@ -67,9 +62,9 @@ class GcTest(test_util.TensorFlowTestCase):
         gc.Path("/foo", 9)
     ]
     mod = gc.mod_export_version(2)
-    self.assertEqual(mod(paths), [gc.Path("/foo", 4), gc.Path("/foo", 6)])
+    self.assertEquals(mod(paths), [gc.Path("/foo", 4), gc.Path("/foo", 6)])
     mod = gc.mod_export_version(3)
-    self.assertEqual(mod(paths), [gc.Path("/foo", 6), gc.Path("/foo", 9)])
+    self.assertEquals(mod(paths), [gc.Path("/foo", 6), gc.Path("/foo", 9)])
 
   def testOneOfEveryNExportVersions(self):
     paths = [
@@ -78,7 +73,7 @@ class GcTest(test_util.TensorFlowTestCase):
         gc.Path("/foo", 8), gc.Path("/foo", 33)
     ]
     one_of = gc.one_of_every_n_export_versions(3)
-    self.assertEqual(
+    self.assertEquals(
         one_of(paths), [
             gc.Path("/foo", 3), gc.Path("/foo", 6), gc.Path("/foo", 8),
             gc.Path("/foo", 33)
@@ -89,14 +84,14 @@ class GcTest(test_util.TensorFlowTestCase):
     # Test that here.
     paths = [gc.Path("/foo", 0), gc.Path("/foo", 4), gc.Path("/foo", 5)]
     one_of = gc.one_of_every_n_export_versions(3)
-    self.assertEqual(one_of(paths), [gc.Path("/foo", 0), gc.Path("/foo", 5)])
+    self.assertEquals(one_of(paths), [gc.Path("/foo", 0), gc.Path("/foo", 5)])
 
   def testUnion(self):
     paths = []
     for i in xrange(10):
       paths.append(gc.Path("/foo", i))
     f = gc.union(gc.largest_export_versions(3), gc.mod_export_version(3))
-    self.assertEqual(
+    self.assertEquals(
         f(paths), [
             gc.Path("/foo", 0), gc.Path("/foo", 3), gc.Path("/foo", 6),
             gc.Path("/foo", 7), gc.Path("/foo", 8), gc.Path("/foo", 9)
@@ -108,9 +103,9 @@ class GcTest(test_util.TensorFlowTestCase):
         gc.Path("/foo", 9)
     ]
     mod = gc.negation(gc.mod_export_version(2))
-    self.assertEqual(mod(paths), [gc.Path("/foo", 5), gc.Path("/foo", 9)])
+    self.assertEquals(mod(paths), [gc.Path("/foo", 5), gc.Path("/foo", 9)])
     mod = gc.negation(gc.mod_export_version(3))
-    self.assertEqual(mod(paths), [gc.Path("/foo", 4), gc.Path("/foo", 5)])
+    self.assertEquals(mod(paths), [gc.Path("/foo", 4), gc.Path("/foo", 5)])
 
   def testPathsWithParse(self):
     base_dir = os.path.join(test.get_temp_dir(), "paths_parse")
@@ -120,7 +115,7 @@ class GcTest(test_util.TensorFlowTestCase):
     # add a base_directory to ignore
     gfile.MakeDirs(os.path.join(base_dir, "ignore"))
 
-    self.assertEqual(
+    self.assertEquals(
         gc.get_paths(base_dir, _create_parser(base_dir)),
         [
             gc.Path(os.path.join(base_dir, "0"), 0),

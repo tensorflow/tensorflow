@@ -157,24 +157,15 @@ bool PadInsertion::CanonicalizeForwardConvolution(HloInstruction* conv) {
   Window new_conv_window = conv->window();
   for (size_t i = 0; i < new_conv_window.dimensions_size(); ++i) {
     WindowDimension* dim = new_conv_window.mutable_dimensions(i);
-
-    // The size of the kernel may have changed so update the Window to match.
-    dim->set_size(new_kernel->shape().dimensions(
-        conv->convolution_dimension_numbers().kernel_spatial_dimensions(i)));
     dim->set_padding_low(0);
     dim->set_padding_high(0);
     dim->set_base_dilation(1);
     dim->set_window_dilation(1);
   }
-
-  VLOG(1) << "Canonicalizing forward conv";
-  auto new_conv = HloInstruction::CreateConvolve(
-      conv->shape(), new_input, new_kernel, new_conv_window,
-      conv->convolution_dimension_numbers());
-  VLOG(1) << "Replacing:\n  " << conv->ToString() << "\nwith:\n  "
-          << new_conv->ToString();
-  TF_CHECK_OK(
-      conv->parent()->ReplaceWithNewInstruction(conv, std::move(new_conv)));
+  TF_CHECK_OK(conv->parent()->ReplaceWithNewInstruction(
+      conv, HloInstruction::CreateConvolve(
+                conv->shape(), new_input, new_kernel, new_conv_window,
+                conv->convolution_dimension_numbers())));
   return true;
 }
 
@@ -283,11 +274,6 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
           {new_transpose, new_forward_conv},
           HloInstruction::FusionKind::kConvBackwardFilter,
           new_backward_conv_window, backward_conv_dnums);
-
-  VLOG(1) << "Canonicalizing backward filter conv";
-  VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
-          << new_backward_conv->ToString();
-
   TF_CHECK_OK(
       computation->ReplaceInstruction(backward_conv, new_backward_conv));
   return true;
@@ -393,17 +379,10 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
                                       limit_indices, strides)
           .ConsumeValueOrDie(),
       backward_conv->shape()));
-
-  auto slice =
+  TF_CHECK_OK(computation->ReplaceWithNewInstruction(
+      backward_conv,
       HloInstruction::CreateSlice(backward_conv->shape(), new_backward_conv,
-                                  start_indices, limit_indices, strides);
-
-  VLOG(1) << "Canonicalizing backward input conv";
-  VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
-          << slice->ToString();
-
-  TF_CHECK_OK(
-      computation->ReplaceWithNewInstruction(backward_conv, std::move(slice)));
+                                  start_indices, limit_indices, strides)));
   return true;
 }
 

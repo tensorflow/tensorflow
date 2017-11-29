@@ -18,8 +18,6 @@ limitations under the License.
 #include <unordered_set>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -28,23 +26,8 @@ namespace tensorflow {
 namespace grappler {
 
 GraphRewriter::GraphRewriter(const GrapplerItem& item) {
-  OpRegistryInterface* op_registry = OpRegistry::Global();
   for (auto& node : item.graph.node()) {
-    NodeInfo* info = new NodeInfo();
-    info->def = &node;
-
-    const OpRegistrationData* op_reg_data = nullptr;
-    Status s = op_registry->LookUp(node.op(), &op_reg_data);
-    // TODO(bsteiner): make this not a best-effort lookup and evaluation?
-    if (s.ok()) {
-      DataTypeVector inputs;
-      s = InOutTypesForNode(node, op_reg_data->op_def, &inputs, &info->outputs);
-      if (!s.ok()) {
-        info->outputs.clear();
-      }
-    }
-
-    nodes_[node.name()].reset(info);
+    nodes_[node.name()] = &node;
   }
 
   std::unordered_set<string> function_names;
@@ -90,16 +73,11 @@ bool GraphRewriter::IsDrivenByAnotherDevice(const NodeDef& node) const {
   return cross_device_receivers_.find(&node) != cross_device_receivers_.end();
 }
 
-bool GraphRewriter::ReceivesRefValue(const NodeDef& node) const {
-  return ref_receivers_.find(&node) != ref_receivers_.end();
-}
-
 void GraphRewriter::RecordConnectivity(
     const NodeDef& node, const std::unordered_set<string>& function_names) {
   const bool is_function =
       function_names.find(node.op()) != function_names.end();
 
-  bool ref_receiver = false;
   for (const auto& input : node.input()) {
     int position = 0;
     string input_node_name = ParseNodeName(input, &position);
@@ -107,8 +85,7 @@ void GraphRewriter::RecordConnectivity(
     if (itr == nodes_.end()) {
       continue;
     }
-    const NodeInfo* fanin_info = itr->second.get();
-    const NodeDef* fanin = fanin_info->def;
+    const NodeDef* fanin = itr->second;
     if (position < 0) {
       // This is a control edge
       control_dependency_drivers_.insert(fanin);
@@ -120,19 +97,10 @@ void GraphRewriter::RecordConnectivity(
       if (is_function) {
         function_neighbors_.insert(fanin);
       }
-
-      if (position < fanin_info->outputs.size() &&
-          IsRefType(fanin_info->outputs[position])) {
-        ref_receiver = true;
-      }
     }
     if (fanin->device() != node.device()) {
       cross_device_receivers_.insert(&node);
     }
-  }
-
-  if (ref_receiver) {
-    ref_receivers_.insert(&node);
   }
 }
 
@@ -157,7 +125,7 @@ void GraphRewriter::ForwardInputsInternal(
       *new_node->add_input() = input;
       continue;
     }
-    const NodeDef* input_node = itr->second->def;
+    const NodeDef* input_node = itr->second;
     if (nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
       ForwardInputsInternal(*input_node, nodes_to_delete, new_node);
     } else {

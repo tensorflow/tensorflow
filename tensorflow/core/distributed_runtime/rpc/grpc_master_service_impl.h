@@ -53,7 +53,7 @@ namespace grpc {
 // definition in "//tensorflow/core/protobuf/master_service.proto",
 // and the gRPC generated stub and service classes.
 // See that file for the definition of methods and messages.
-class MasterService final {
+class MasterService GRPC_FINAL {
  public:
   class StubInterface {
    public:
@@ -80,40 +80,40 @@ class MasterService final {
                                  const ResetRequest& request,
                                  ResetResponse* response) = 0;
   };
-  class Stub final : public StubInterface {
+  class Stub GRPC_FINAL : public StubInterface {
    public:
     Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel);
     ::grpc::Status CreateSession(::grpc::ClientContext* context,
                                  const CreateSessionRequest& request,
-                                 CreateSessionResponse* response) override;
+                                 CreateSessionResponse* response) GRPC_OVERRIDE;
     ::grpc::Status ExtendSession(::grpc::ClientContext* context,
                                  const ExtendSessionRequest& request,
-                                 ExtendSessionResponse* response) override;
+                                 ExtendSessionResponse* response) GRPC_OVERRIDE;
     ::grpc::Status PartialRunSetup(
         ::grpc::ClientContext* context, const PartialRunSetupRequest& request,
-        PartialRunSetupResponse* response) override;
+        PartialRunSetupResponse* response) GRPC_OVERRIDE;
     ::grpc::Status RunStep(::grpc::ClientContext* context,
                            const RunStepRequest& request,
-                           RunStepResponse* response) override;
+                           RunStepResponse* response) GRPC_OVERRIDE;
     ::grpc::Status CloseSession(::grpc::ClientContext* context,
                                 const CloseSessionRequest& request,
-                                CloseSessionResponse* response) override;
+                                CloseSessionResponse* response) GRPC_OVERRIDE;
     ::grpc::Status ListDevices(::grpc::ClientContext* context,
                                const ListDevicesRequest& request,
-                               ListDevicesResponse* response) override;
+                               ListDevicesResponse* response) GRPC_OVERRIDE;
     ::grpc::Status Reset(::grpc::ClientContext* context,
                          const ResetRequest& request,
-                         ResetResponse* response) override;
+                         ResetResponse* response) GRPC_OVERRIDE;
 
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
-    const ::grpc::internal::RpcMethod rpcmethod_CreateSession_;
-    const ::grpc::internal::RpcMethod rpcmethod_ExtendSession_;
-    const ::grpc::internal::RpcMethod rpcmethod_PartialRunSetup_;
-    const ::grpc::internal::RpcMethod rpcmethod_RunStep_;
-    const ::grpc::internal::RpcMethod rpcmethod_CloseSession_;
-    const ::grpc::internal::RpcMethod rpcmethod_ListDevices_;
-    const ::grpc::internal::RpcMethod rpcmethod_Reset_;
+    const ::grpc::RpcMethod rpcmethod_CreateSession_;
+    const ::grpc::RpcMethod rpcmethod_ExtendSession_;
+    const ::grpc::RpcMethod rpcmethod_PartialRunSetup_;
+    const ::grpc::RpcMethod rpcmethod_RunStep_;
+    const ::grpc::RpcMethod rpcmethod_CloseSession_;
+    const ::grpc::RpcMethod rpcmethod_ListDevices_;
+    const ::grpc::RpcMethod rpcmethod_Reset_;
   };
   static std::unique_ptr<Stub> NewStub(
       const std::shared_ptr< ::grpc::ChannelInterface>& channel,

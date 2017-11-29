@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -49,7 +48,14 @@ REGISTER_OP("OutfeedDequeue")
     .Attr("shape: shape")
     .Attr("device_ordinal: int = -1")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ExplicitShape)
+    .SetShapeFn([](InferenceContext* c) {
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Retrieves a single tensor from the computation outfeed.  This operation will
 block indefinitely until data is available.

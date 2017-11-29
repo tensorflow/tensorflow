@@ -34,8 +34,3 @@ target_link_libraries(tf_label_image_example PUBLIC
     ${tf_core_gpu_kernels_lib}
     ${tensorflow_EXTERNAL_LIBRARIES}
 )
-
-install(TARGETS tf_label_image_example
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib)

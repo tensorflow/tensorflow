@@ -27,7 +27,6 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
-from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -692,17 +691,24 @@ class BaseSession(SessionInterface):
     except Exception:  # pylint: disable=broad-except
       pass
     if self._session is not None:
+      # We create `status` outside the `try` block because at shutdown
+      # `tf_session` may have been garbage collected, and the creation of a
+      # status object may fail. In that case, we prefer to ignore the failure
+      # and silently leak the session object, since the program is about to
+      # terminate.
+      status = None
       try:
-        status = c_api_util.ScopedTFStatus()
+        status = tf_session.TF_NewStatus()
         if self._created_with_new_api:
           tf_session.TF_DeleteSession(self._session, status)
         else:
           tf_session.TF_DeleteDeprecatedSession(self._session, status)
       except AttributeError:
-        # At shutdown, `c_api_util` or `tf_session` may have been garbage
-        # collected, causing the above method calls to fail. In this case,
-        # silently leak since the program is about to terminate anyway.
+        # 'NoneType' object has no attribute 'TF_NewStatus'
         pass
+      finally:
+        if status is not None:
+          tf_session.TF_DeleteStatus(status)
       self._session = None
 
   @property
@@ -980,8 +986,6 @@ class BaseSession(SessionInterface):
       raise RuntimeError('The Session graph is empty.  Add operations to the '
                          'graph before calling run().')
 
-    if feeds is None:
-      feeds = []
     # Create request.
     feed_list = []
 

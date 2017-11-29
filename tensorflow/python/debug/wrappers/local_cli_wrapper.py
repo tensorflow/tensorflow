@@ -23,6 +23,8 @@ import shutil
 import sys
 import tempfile
 
+import six
+
 # Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
@@ -93,8 +95,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     # Registered tensor filters.
     self._tensor_filters = {}
-    # Register frequently-used filter(s).
-    self.add_tensor_filter("has_inf_or_nan", debug_data.has_inf_or_nan)
 
     # Below are the state variables of this wrapper object.
     # _active_tensor_filter: what (if any) tensor filter is in effect. If such
@@ -113,7 +113,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     #   unavailable (i.e., is None), the run-start CLI will be launched to ask
     #   the user. This is the case, e.g., right before the first run starts.
     self._active_tensor_filter = None
-    self._active_tensor_filter_run_start_response = None
     self._run_through_times = 1
     self._skip_debug = False
     self._run_start_response = None
@@ -230,9 +229,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         is_callable_runner=request.is_callable_runner)
 
     if self._active_tensor_filter:
-      # If we are running until a filter passes, we just need to keep running
-      # with the previous `OnRunStartResponse`.
-      return self._active_tensor_filter_run_start_response
+      # If we are running till a filter passes, we just need to keep running
+      # with the DEBUG_RUN option.
+      return framework.OnRunStartResponse(framework.OnRunStartAction.DEBUG_RUN,
+                                          self._get_run_debug_urls())
 
     self._exit_if_requested_by_user()
 
@@ -253,8 +253,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       self._prep_cli_for_run_start()
 
       self._run_start_response = self._launch_cli()
-      if self._active_tensor_filter:
-        self._active_tensor_filter_run_start_response = self._run_start_response
       if self._run_through_times > 1:
         self._run_through_times -= 1
 
@@ -414,8 +412,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def _prep_profile_cli_for_run_end(self, py_graph, run_metadata):
     self._init_command = "lp"
     self._run_cli = profile_analyzer_cli.create_profiler_ui(
-        py_graph, run_metadata, ui_type=self._ui_type,
-        config=self._run_cli.config)
+        py_graph, run_metadata, ui_type=self._ui_type)
     self._title = "run-end (profiler mode): " + self._run_description
 
   def _launch_cli(self):
@@ -464,9 +461,12 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     feed_key = None
     feed_value = None
     for key in self._feed_dict:
-      key_name = cli_shared.get_graph_element_name(key)
-      if key_name == tensor_name:
-        feed_key = key_name
+      if isinstance(key, six.string_types):
+        if key == tensor_name:
+          feed_key = key
+      elif key.name == tensor_name:
+        feed_key = key.name
+      if feed_key is not None:
         feed_value = self._feed_dict[key]
         break
 
@@ -499,6 +499,19 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
           exit_token=framework.OnRunStartResponse(
               framework.OnRunStartAction.PROFILE_RUN, []))
 
+    if parsed.till_filter_pass:
+      # For the run-till-bad-numerical-value-appears mode, use the DEBUG_RUN
+      # option to access the intermediate tensors, and set the corresponding
+      # state flag of the class itself to True.
+      if parsed.till_filter_pass in self._tensor_filters:
+        action = framework.OnRunStartAction.DEBUG_RUN
+        self._active_tensor_filter = parsed.till_filter_pass
+      else:
+        # Handle invalid filter name.
+        return debugger_cli_common.RichTextLines(
+            ["ERROR: tensor filter \"%s\" does not exist." %
+             parsed.till_filter_pass])
+
     self._skip_debug = parsed.no_debug
     self._run_through_times = parsed.times
 
@@ -509,29 +522,15 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     else:
       action = framework.OnRunStartAction.DEBUG_RUN
       debug_urls = self._get_run_debug_urls()
-    run_start_response = framework.OnRunStartResponse(
-        action,
-        debug_urls,
-        node_name_regex_whitelist=parsed.node_name_filter,
-        op_type_regex_whitelist=parsed.op_type_filter,
-        tensor_dtype_regex_whitelist=parsed.tensor_dtype_filter)
-
-    if parsed.till_filter_pass:
-      # For the run-till-filter-pass (run -f) mode, use the DEBUG_RUN
-      # option to access the intermediate tensors, and set the corresponding
-      # state flag of the class itself to True.
-      if parsed.till_filter_pass in self._tensor_filters:
-        action = framework.OnRunStartAction.DEBUG_RUN
-        self._active_tensor_filter = parsed.till_filter_pass
-        self._active_tensor_filter_run_start_response = run_start_response
-      else:
-        # Handle invalid filter name.
-        return debugger_cli_common.RichTextLines(
-            ["ERROR: tensor filter \"%s\" does not exist." %
-             parsed.till_filter_pass])
 
     # Raise CommandLineExit exception to cause the CLI to exit.
-    raise debugger_cli_common.CommandLineExit(exit_token=run_start_response)
+    raise debugger_cli_common.CommandLineExit(
+        exit_token=framework.OnRunStartResponse(
+            action,
+            debug_urls,
+            node_name_regex_whitelist=parsed.node_name_filter,
+            op_type_regex_whitelist=parsed.op_type_filter,
+            tensor_dtype_regex_whitelist=parsed.tensor_dtype_filter))
 
   def _register_this_run_info(self, curses_cli):
     curses_cli.register_command_handler(
@@ -561,7 +560,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
                                            list(self._tensor_filters.keys()))
     if self._feed_dict:
       # Register tab completion for feed_dict keys.
-      feed_keys = [cli_shared.get_graph_element_name(key)
+      feed_keys = [(key if isinstance(key, six.string_types) else key.name)
                    for key in self._feed_dict.keys()]
       curses_cli.register_tab_comp_context(["print_feed", "pf"], feed_keys)
 

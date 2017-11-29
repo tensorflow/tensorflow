@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -138,13 +139,13 @@ XLA_TEST_F(CompilationCacheTest, DifferentParameterLayouts) {
   // layouts. Use these arrays as parameters to a simple computation. If the
   // layout of the array changes then computation should be recompiled (cache
   // miss).
-  auto rowmaj_array = Literal::CreateR2WithLayout(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({1, 0}));
+  auto rowmaj_array = test_utils::CreateR2LiteralWithLayout(
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, /*minor_to_major=*/{1, 0});
   auto rowmaj_handle =
       client_->TransferToServer(*rowmaj_array).ConsumeValueOrDie();
 
-  auto colmaj_array = Literal::CreateR2WithLayout(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1}));
+  auto colmaj_array = test_utils::CreateR2LiteralWithLayout(
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, /*minor_to_major=*/{0, 1});
   auto colmaj_handle =
       client_->TransferToServer(*colmaj_array).ConsumeValueOrDie();
 
@@ -198,3 +199,20 @@ XLA_TEST_F(CompilationCacheTest, MutatedComputation) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    LOG(ERROR) << "\n" << usage;
+    return 2;
+  }
+  testing::InitGoogleTest(&argc, argv);
+  if (argc > 1) {
+    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
+    return 2;
+  }
+  return RUN_ALL_TESTS();
+}

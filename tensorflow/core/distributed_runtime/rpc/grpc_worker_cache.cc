@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_partial.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -66,7 +65,9 @@ class GrpcWorkerCache : public WorkerCachePartial {
     } else {
       SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
       if (!channel) return nullptr;
-      return NewGrpcRemoteWorker(channel, &completion_queue_, &logger_);
+      WorkerInterface* ret =
+          NewGrpcRemoteWorker(channel, &completion_queue_, &logger_);
+      return ret;
     }
   }
 

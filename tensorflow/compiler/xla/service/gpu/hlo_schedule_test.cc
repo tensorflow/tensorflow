@@ -393,3 +393,7 @@ TEST_F(HloScheduleTest, LatticeMatMul) {
 
 }  // namespace gpu
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

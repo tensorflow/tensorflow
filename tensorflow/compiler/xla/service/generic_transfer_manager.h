@@ -36,8 +36,8 @@ namespace xla {
 // infeed.
 class GenericTransferManager : public TransferManager {
  public:
-  GenericTransferManager(perftools::gputools::Platform::Id platform_id,
-                         size_t pointer_size);
+  explicit GenericTransferManager(
+      perftools::gputools::Platform::Id platform_id);
   ~GenericTransferManager() override {}
 
   perftools::gputools::Platform::Id PlatformId() const override;
@@ -51,14 +51,6 @@ class GenericTransferManager : public TransferManager {
   Status TransferLiteralToDevice(
       perftools::gputools::StreamExecutor* executor, const Literal& literal,
       perftools::gputools::DeviceMemoryBase* destination) override;
-
-  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
-      perftools::gputools::StreamExecutor* executor,
-      const ShapedBuffer& device_buffer) override;
-
-  Status TransferLiteralToDevice(perftools::gputools::StreamExecutor* executor,
-                                 const Literal& literal,
-                                 const ShapedBuffer& device_buffer) override;
 
   Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
                                  const Literal& literal) override;
@@ -79,22 +71,11 @@ class GenericTransferManager : public TransferManager {
       const perftools::gputools::DeviceMemoryBase& source,
       const Shape& shape) override;
 
-  int64 GetByteSizeRequirement(const Shape& shape) const override;
-
- protected:
-  Status WriteTuplePointersToDevice(
-      perftools::gputools::StreamExecutor* executor,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          elements,
-      const Shape& shape,
-      perftools::gputools::DeviceMemoryBase* region) override;
+  int64 GetByteSizeRequirement(const Shape& shape) override;
 
  private:
   // The platform this transfer manager targets.
-  const perftools::gputools::Platform::Id platform_id_;
-
-  // The size in bytes of pointers on this platform.
-  const size_t pointer_size_;
+  perftools::gputools::Platform::Id platform_id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GenericTransferManager);
 };

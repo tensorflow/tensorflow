@@ -101,8 +101,7 @@ TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
 
   Output a = ops::Variable(s.WithOpName("a"), {2, 3, 4}, DT_FLOAT);
   Output b = ops::Variable(s.WithOpName("b"), {2, 3, 4}, DT_FLOAT);
-  Output d = ops::AddN(
-      s.WithOpName("some_name_scope/gradients/two_subgraph_inputs"), {a, b});
+  Output d = ops::AddN(s.WithOpName("gradients/two_subgraph_inputs"), {a, b});
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -113,8 +112,7 @@ TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
   (*pre_transform_node_map.GetNode("b")->mutable_attr())["_recompute_hint"]
       .set_i(0);
 
-  MemoryOptimizer optimizer(RewriterConfig::MANUAL,
-                            "some_name_scope/gradients");
+  MemoryOptimizer optimizer(RewriterConfig::MANUAL);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
 
@@ -153,7 +151,7 @@ TEST_F(RecomputeSubgraphTest, MultiNode) {
   pre_transform_node_map.GetNode("BN")->set_op("FusedBatchNorm");
   pre_transform_node_map.GetNode("ReLU")->set_op("Relu");
 
-  MemoryOptimizer optimizer(RewriterConfig::RECOMPUTATION_HEURISTICS);
+  MemoryOptimizer optimizer(RewriterConfig::HEURISTICS);
   GraphDef first_pass_output;
   Status first_pass_status =
       optimizer.Optimize(nullptr, item, &first_pass_output);

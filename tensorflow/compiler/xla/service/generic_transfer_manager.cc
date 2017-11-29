@@ -19,9 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -36,19 +34,21 @@ namespace se = ::perftools::gputools;
 
 namespace xla {
 
-GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id,
-                                               size_t pointer_size)
-    : platform_id_(platform_id), pointer_size_(pointer_size) {
-  // We currently only support kHostPlatformId for CPU, kCudaPlatformId for
-  // GPU and kInterpreterPlatformId for Interpreter. Before supporting other
-  // platforms, we need to test this transfer manager on them.
+GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id)
+    : platform_id_(platform_id) {
+  // We currently only support kHostPlatformId for CPU and kCudaPlatformId for
+  // GPU. Before supporting other platforms, we need to test this transfer
+  // manager on them.
   CHECK(platform_id_ == se::host::kHostPlatformId ||
-        platform_id_ == se::interpreter::kInterpreterPlatformId ||
         platform_id_ == se::cuda::kCudaPlatformId);
 }
 
 se::Platform::Id GenericTransferManager::PlatformId() const {
-  return platform_id_;
+  if (platform_id_ == se::cuda::kCudaPlatformId ||
+      platform_id_ == se::host::kHostPlatformId) {
+    return platform_id_;
+  }
+  CHECK(false) << "GenericTransferManager::platform_id_ is invalid";
 }
 
 Status GenericTransferManager::TransferLiteralFromDevice(
@@ -87,7 +87,7 @@ Status GenericTransferManager::TransferLiteralFromDevice(
       executor, source, /*size=*/ShapeUtil::ByteSizeOf(device_shape),
       /*destination=*/literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    *literal = std::move(*literal->Relayout(literal_shape.layout()));
+    literal->Swap(literal->Relayout(literal_shape.layout()).get());
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -104,7 +104,8 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
   // a vector of void* pointers.
   std::vector<void*> element_pointers(ShapeUtil::TupleElementCount(shape),
                                       nullptr);
-  int64 tuple_size = ShapeUtil::ByteSizeOf(shape, pointer_size_);
+  int64 tuple_size =
+      ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
   auto copy_status = executor->SynchronousMemcpyD2H(source, tuple_size,
                                                     element_pointers.data());
   if (!copy_status.ok()) {
@@ -121,95 +122,11 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
         !ShapeUtil::HasZeroElements(shape.tuple_shapes(i))) {
       return FailedPrecondition("tuple contains nullptr at element %lu", i);
     }
-    destination.emplace_back(element_pointers[i],
-                             GetByteSizeRequirement(shape.tuple_shapes(i)));
+    int64 buffer_size = ShapeUtil::ByteSizeOf(shape.tuple_shapes(i),
+                                              /*pointer_size=*/sizeof(void*));
+    destination.emplace_back(element_pointers[i], buffer_size);
   }
   return std::move(destination);
-}
-
-Status GenericTransferManager::WriteTuplePointersToDevice(
-    perftools::gputools::StreamExecutor* executor,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
-    const Shape& shape, perftools::gputools::DeviceMemoryBase* region) {
-  TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
-
-  std::vector<const void*> element_pointers;
-  for (const se::DeviceMemoryBase& element : elements) {
-    element_pointers.push_back(element.opaque());
-  }
-  return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
-                                element_pointers.data(), region);
-}
-
-StatusOr<std::unique_ptr<Literal>>
-GenericTransferManager::TransferLiteralFromDevice(
-    se::StreamExecutor* executor, const ShapedBuffer& device_buffer) {
-  VLOG(2) << "transferring literal from device ordinal "
-          << executor->device_ordinal() << "; device shape: "
-          << ShapeUtil::HumanStringWithLayout(device_buffer.shape())
-          << "; opaque: " << device_buffer.buffer(/*index=*/{}).opaque();
-  TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
-
-  std::unique_ptr<Literal> literal =
-      Literal::CreateFromShape(device_buffer.shape());
-
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      device_buffer.shape(),
-      [&](const Shape& subshape, const ShapeIndex& index) -> Status {
-        if (!ShapeUtil::IsTuple(subshape)) {
-          TF_RETURN_IF_ERROR(TransferBufferFromDevice(
-              executor,
-              /*source=*/device_buffer.buffer(index),
-              /*size=*/GetByteSizeRequirement(subshape),
-              /*destination=*/
-              literal->GetSubliteral(index).MutableInternalData()));
-        }
-
-        return Status::OK();
-      }));
-  return std::move(literal);
-}
-
-Status GenericTransferManager::TransferLiteralToDevice(
-    se::StreamExecutor* executor, const Literal& literal,
-    const ShapedBuffer& device_buffer) {
-  const Shape& shape = literal.shape();
-  VLOG(2) << "transferring literal shape to device: "
-          << ShapeUtil::HumanString(shape) << "; device location: "
-          << device_buffer.buffer(/*index=*/{}).opaque();
-
-  TF_RET_CHECK(ShapeUtil::Compatible(literal.shape(), device_buffer.shape()));
-  TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
-
-  TF_RETURN_IF_ERROR(WriteTupleIndexTables(executor, device_buffer));
-
-  return ShapeUtil::ForEachSubshapeWithStatus(
-      device_buffer.shape(),
-      [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
-        se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
-        if (ShapeUtil::IsArray(device_subshape)) {
-          TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
-                       device_memory.size());
-          // Element is array-shaped: transfer array data to device buffer.
-          const Literal& subliteral = literal.GetSubliteral(index);
-          std::unique_ptr<Literal> relayed_out_literal;
-          const void* source;
-          if (LayoutUtil::Equal(device_subshape.layout(),
-                                subliteral.shape().layout())) {
-            source = subliteral.InternalData();
-          } else {
-            // Relayout data before transferring.
-            relayed_out_literal = subliteral.Relayout(device_subshape.layout(),
-                                                      /*shape_index=*/{});
-            source = relayed_out_literal->InternalData();
-          }
-          return TransferBufferToDevice(
-              executor,
-              /*size=*/GetByteSizeRequirement(device_subshape), source,
-              &device_memory);
-        }
-        return Status::OK();
-      });
 }
 
 Status GenericTransferManager::TransferLiteralToDevice(
@@ -264,8 +181,8 @@ Status GenericTransferManager::ResetDevices(
       "Device reset is not yet supported on this platform (b/30481585)");
 }
 
-int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
+int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {
+  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
 }  // namespace xla

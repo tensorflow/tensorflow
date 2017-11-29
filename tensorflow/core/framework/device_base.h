@@ -17,10 +17,11 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
 
 #include <memory>
-#include <string>
 #include <unordered_map>
 
+#include "tensorflow/core/framework/device_attributes.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -188,9 +189,6 @@ class DeviceBase {
   // by GPU devices to return a derived type.
   virtual PerOpGpuDevice* MakeGpuDevice() { return nullptr; }
 
-  virtual DeviceBase* UnderlyingDevice() { return this; }
-  virtual const DeviceBase* UnderlyingDevice() const { return this; }
-
   // This is overridden by GPU devices to reinitialize the derived
   // type returned by MakeGpuDevice.
   virtual void ReinitializeGpuDevice(OpKernelContext* /*context*/,
@@ -200,7 +198,6 @@ class DeviceBase {
 
   // Unimplemented by default
   virtual const DeviceAttributes& attributes() const;
-  virtual const string& name() const;
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.

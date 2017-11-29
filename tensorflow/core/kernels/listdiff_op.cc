@@ -24,13 +24,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-template <typename T, typename Tidx>
+template <typename T>
 class ListDiffOp : public OpKernel {
  public:
   explicit ListDiffOp(OpKernelConstruction* context) : OpKernel(context) {
     const DataType dt = DataTypeToEnum<T>::v();
-    const DataType dtidx = DataTypeToEnum<Tidx>::v();
-    OP_REQUIRES_OK(context, context->MatchSignature({dt, dt}, {dt, dtidx}));
+    OP_REQUIRES_OK(context, context->MatchSignature({dt, dt}, {dt, DT_INT32}));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -73,9 +72,9 @@ class ListDiffOp : public OpKernel {
 
     Tensor* indices = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, {out_size}, &indices));
-    auto Tindices = indices->vec<Tidx>();
+    auto Tindices = indices->vec<int32>();
 
-    for (Tidx i = 0, p = 0; i < static_cast<Tidx>(x_size); ++i) {
+    for (int i = 0, p = 0; i < static_cast<int32>(x_size); ++i) {
       if (y_set.count(Tx(i)) == 0) {
         OP_REQUIRES(context, p < out_size,
                     errors::InvalidArgument(
@@ -96,12 +95,7 @@ class ListDiffOp : public OpKernel {
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("out_idx"), \
-                          ListDiffOp<type, int32>)               \
-  REGISTER_KERNEL_BUILDER(Name("ListDiff")                       \
-                              .Device(DEVICE_CPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
-                          ListDiffOp<type, int64>)
+                          ListDiffOp<type>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_LISTDIFF);
 REGISTER_LISTDIFF(string);

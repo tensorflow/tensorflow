@@ -42,11 +42,11 @@ def main():
   # Get all py_test target, note bazel query result will also include
   # cuda_py_test etc.
   try:
-    targets = subprocess.check_output([
-        'bazel', 'query',
-        'kind(py_test, //tensorflow/contrib/... + '
+    targets = subprocess.check_output(
+        'bazel query "kind(py_test, //tensorflow/contrib/... + '
         '//tensorflow/python/... - '
-        '//tensorflow/contrib/tensorboard/...)']).strip()
+        '//tensorflow/contrib/tensorboard/...)"',
+        shell=True).strip()
   except subprocess.CalledProcessError as e:
     targets = e.output
 
@@ -68,8 +68,9 @@ def main():
   files_missing_load = []
   for build_file in build_files:
     updated_build_file = subprocess.check_output(
-        ['buildozer', '-stdout', 'new_load //tensorflow:tensorflow.bzl py_test',
-         build_file])
+        'buildozer -stdout "new_load //tensorflow:tensorflow.bzl py_test" ' +
+        build_file,
+        shell=True)
     with open(build_file, 'r') as f:
       if f.read() != updated_build_file:
         files_missing_load.append(build_file)

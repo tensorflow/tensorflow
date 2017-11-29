@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -49,10 +48,6 @@ class ClientLibraryTestBase : public ::testing::Test {
   explicit ClientLibraryTestBase(
       perftools::gputools::Platform* platform = nullptr);
 
-  // Creates a new ClientLibraryTestBase with custom client options.
-  ClientLibraryTestBase(perftools::gputools::Platform* platform,
-                        const LocalClientOptions& client_options);
-
   // Returns the name of the test currently being run.
   string TestName() const;
 
@@ -76,6 +71,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   // customize the options.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       ComputationBuilder* builder,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+  StatusOr<ExecutionHandle> ExecuteAsync(
+      const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       ComputationBuilder* builder,
@@ -196,16 +194,6 @@ class ClientLibraryTestBase : public ::testing::Test {
       ComputationBuilder* builder, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec abs_error);
 
-  // Convenience method for running a built computation and comparing the result
-  // with the HloEvaluator.
-  void ComputeAndCompare(ComputationBuilder* builder,
-                         const ComputationDataHandle& operand,
-                         tensorflow::gtl::ArraySlice<Literal> arguments);
-  void ComputeAndCompare(ComputationBuilder* builder,
-                         const ComputationDataHandle& operand,
-                         tensorflow::gtl::ArraySlice<Literal> arguments,
-                         ErrorSpec error);
-
   // Create scalar operations for use in reductions.
   Computation CreateScalarRelu();
   Computation CreateScalarMax();
@@ -308,13 +296,6 @@ class ClientLibraryTestBase : public ::testing::Test {
       const std::function<void(const Literal& actual,
                                const string& error_message)>& verify_output,
       const Shape* output_with_layout = nullptr);
-
-  // Executes the computation and calculates the expected reference value using
-  // the HloEvaluator. Returns two literal in the order of (expected, actual).
-  StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
-  ComputeValueAndReference(ComputationBuilder* builder,
-                           const ComputationDataHandle& operand,
-                           tensorflow::gtl::ArraySlice<Literal> arguments);
 };
 
 template <typename NativeT>
@@ -332,10 +313,8 @@ void ClientLibraryTestBase::ComputeAndCompareR0(
     ComputationBuilder* builder, NativeT expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, bfloat16>::value ||
-                    std::is_same<NativeT, complex64>::value,
-                "Float or complex type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value,
+                "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR0<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -357,9 +336,8 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
     ComputationBuilder* builder, tensorflow::gtl::ArraySlice<NativeT> expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, complex64>::value,
-                "Float or complex type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value,
+                "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR1<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -381,9 +359,8 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
     ComputationBuilder* builder, const Array2D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, complex64>::value,
-                "Float or complex type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value,
+                "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR2FromArray2D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -405,9 +382,8 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
     ComputationBuilder* builder, const Array3D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, complex64>::value,
-                "Float or complex type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value,
+                "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR3FromArray3D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -429,9 +405,8 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
     ComputationBuilder* builder, const Array4D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, complex64>::value,
-                "Float or complex type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value,
+                "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -489,7 +464,8 @@ template <typename NativeT>
 std::vector<NativeT> ClientLibraryTestBase::CreatePseudorandomR1(
     const int width, NativeT min_value, NativeT max_value, uint32 seed) {
   std::vector<NativeT> result(width);
-  PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
+  test_utils::PseudorandomGenerator<NativeT> generator(min_value, max_value,
+                                                       seed);
   for (int i = 0; i < width; ++i) {
     result[i] = generator.get();
   }
@@ -501,7 +477,8 @@ std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
     uint32 seed) {
   auto result = MakeUnique<Array2D<NativeT>>(rows, cols);
-  PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
+  test_utils::PseudorandomGenerator<NativeT> generator(min_value, max_value,
+                                                       seed);
   for (int y = 0; y < rows; ++y) {
     for (int x = 0; x < cols; ++x) {
       (*result)(y, x) = generator.get();

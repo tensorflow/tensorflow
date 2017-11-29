@@ -320,8 +320,7 @@ namespace functor {
 
 template <typename T>
 struct CropAndResize<GPUDevice, T> {
-  bool operator()(const OpKernelContext* context,
-                  typename TTypes<T, 4>::ConstTensor image,
+  bool operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
                   float extrapolation_value,
@@ -336,7 +335,6 @@ struct CropAndResize<GPUDevice, T> {
     const int depth = crops.dimension(3);
 
     const int total_count = num_boxes * crop_height * crop_width * depth;
-    const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     if (total_count > 0) {
       CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
@@ -442,7 +440,7 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 
-template struct CheckValidBoxIndexHelper<GPUDevice>;
+template struct CheckValidBoxIndHelper<GPUDevice>;
 
 }  // namespace functor
 }  // namespace tensorflow

@@ -93,8 +93,6 @@ class ListView(object):
 # TODO(fkp): very generic code, it should be moved in a more generic place.
 def is_iterable(obj):
   """Return true if the object is iterable."""
-  if isinstance(obj, tf_ops.Tensor):
-    return False
   try:
     _ = iter(obj)
   except Exception:  # pylint: disable=broad-except

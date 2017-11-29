@@ -35,16 +35,8 @@ import collections as _collections
 
 import six as _six
 
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python.platform import tf_logging as _tf_logging
 from tensorflow.python.util.all_util import remove_undocumented
-
-
-def _sorted(dict_):
-  """Returns a sorted list of the dict keys, with error if keys not sortable."""
-  try:
-    return sorted(_six.iterkeys(dict_))
-  except TypeError:
-    raise TypeError("nest only supports dicts with sortable keys.")
 
 
 def _sequence_like(instance, args):
@@ -52,19 +44,17 @@ def _sequence_like(instance, args):
 
   Args:
     instance: an instance of `tuple`, `list`, `namedtuple`, `dict`, or
-        `collections.OrderedDict`.
-    args: elements to be converted to the `instance` type.
+        `collections.NamedDict`.
+    args: elements to be converted to a sequence.
 
   Returns:
     `args` with the type of `instance`.
   """
   if isinstance(instance, dict):
-    # Pack dictionaries in a deterministic order by sorting the keys.
-    # Notice this means that we ignore the original order of `OrderedDict`
-    # instances. This is intentional, to avoid potential bugs caused by mixing
-    # ordered and plain dicts (e.g., flattening a dict but using a
-    # corresponding `OrderedDict` to pack it back).
-    result = dict(zip(_sorted(instance), args))
+    # For dictionaries with their values extracted, we always order the values
+    # by sorting the keys first (see note below). This code allows recreating
+    # e.g., `OrderedDict`s with their original key ordering.
+    result = dict(zip(sorted(_six.iterkeys(instance)), args))
     return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
   elif (isinstance(instance, tuple) and
         hasattr(instance, "_fields") and
@@ -79,16 +69,35 @@ def _sequence_like(instance, args):
 
 def _yield_value(iterable):
   if isinstance(iterable, dict):
-    # Iterate through dictionaries in a deterministic order by sorting the
-    # keys. Notice this means that we ignore the original order of `OrderedDict`
-    # instances. This is intentional, to avoid potential bugs caused by mixing
-    # ordered and plain dicts (e.g., flattening a dict but using a
-    # corresponding `OrderedDict` to pack it back).
-    for key in _sorted(iterable):
+    # Iterate through dictionaries in a deterministic order. Note: we
+    # intentionally ignore the order in an `OrderedDict` because of the
+    # potential to introduce bugs if the user mixes ordered and plain dicts with
+    # the same keys. (This is based on experience.)
+    for key in sorted(_six.iterkeys(iterable)):
       yield iterable[key]
   else:
     for value in iterable:
       yield value
+
+
+def _yield_flat_nest(nest):
+  for n in _yield_value(nest):
+    if is_sequence(n):
+      for ni in _yield_flat_nest(n):
+        yield ni
+    else:
+      yield n
+
+
+# Used by `_warn_once` to remember which warning messages have been given.
+_ALREADY_WARNED = {}
+
+
+def _warn_once(message):
+  """Logs a warning message, once per unique string."""
+  if message not in _ALREADY_WARNED:
+    _ALREADY_WARNED[message] = True
+    _tf_logging.warning(message)
 
 
 def is_sequence(seq):
@@ -101,26 +110,20 @@ def is_sequence(seq):
     True if the sequence is a not a string and is a collections.Sequence or a
     dict.
   """
-  return _pywrap_tensorflow.IsSequence(seq)
+  if isinstance(seq, dict):
+    return True
+  if isinstance(seq, set):
+    _warn_once("Sets are not currently considered sequences, but this may "
+               "change in the future, so consider avoiding using them.")
+  return (isinstance(seq, _collections.Sequence)
+          and not isinstance(seq, _six.string_types))
 
 
 def flatten(nest):
-  """Returns a flat list from a given nested structure.
+  """Returns a flat sequence from a given nested structure.
 
   If `nest` is not a sequence, tuple, or dict, then returns a single-element
   list: `[nest]`.
-
-  In the case of dict instances, the sequence consists of the values, sorted by
-  key to ensure deterministic behavior. This is true also for `OrderedDict`
-  instances: their sequence order is ignored, the sorting order of keys is
-  used instead. The same convention is followed in `pack_sequence_as`. This
-  correctly repacks dicts and `OrderedDict`s after they have been flattened,
-  and also allows flattening an `OrderedDict` and then repacking it back using
-  a corresponding plain dict, or vice-versa.
-  Dictionaries with non-sortable keys cannot be flattened.
-
-  Users must not modify any collections used in `nest` while this function is
-  running.
 
   Args:
     nest: an arbitrarily nested structure or a scalar object. Note, numpy
@@ -128,11 +131,11 @@ def flatten(nest):
 
   Returns:
     A Python list, the flattened version of the input.
-
-  Raises:
-    TypeError: The nest is or contains a dict with non-sortable keys.
   """
-  return _pywrap_tensorflow.Flatten(nest)
+  if is_sequence(nest):
+    return list(_yield_flat_nest(nest))
+  else:
+    return [nest]
 
 
 def _recursive_assert_same_structure(nest1, nest2, check_types):
@@ -285,19 +288,10 @@ def _packed_nest_with_indices(structure, flat, index):
 
 
 def pack_sequence_as(structure, flat_sequence):
-  """Returns a given flattened sequence packed into a given structure.
+  """Returns a given flattened sequence packed into a nest.
 
   If `structure` is a scalar, `flat_sequence` must be a single-element list;
   in this case the return value is `flat_sequence[0]`.
-
-  If `structure` is or contains a dict instance, the keys will be sorted to
-  pack the flat sequence in deterministic order. This is true also for
-  `OrderedDict` instances: their sequence order is ignored, the sorting order of
-  keys is used instead. The same convention is followed in `flatten`.
-  This correctly repacks dicts and `OrderedDict`s after they have been
-  flattened, and also allows flattening an `OrderedDict` and then repacking it
-  back using a corresponding plain dict, or vice-versa.
-  Dictionaries with non-sortable keys cannot be flattened.
 
   Args:
     structure: Nested structure, whose structure is given by nested lists,
@@ -310,9 +304,7 @@ def pack_sequence_as(structure, flat_sequence):
       `structure`.
 
   Raises:
-    ValueError: If `flat_sequence` and `structure` have different
-      element counts.
-    TypeError: `structure` is or contains a dict with non-sortable keys.
+    ValueError: If nest and structure have different element counts.
   """
   if not is_sequence(flat_sequence):
     raise TypeError("flat_sequence must be a sequence")
@@ -344,9 +336,9 @@ def map_structure(func, *structure, **check_types_dict):
   Args:
     func: A callable that accepts as many arguments as there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
-      tuples/lists, or scalars.  Note: numpy arrays are considered as scalars.
+      tuples/lists, or scalars.  Note: numpy arrays are considered  as scalars.
     **check_types_dict: only valid keyword argument is `check_types`. If set to
-      `True` (default) the types of iterables within the structures have to be
+      `True` (default) the types of iterables within the  structures have to be
       same (e.g. `map_structure(func, [1], (1,))` raises a `TypeError`
       exception). To allow this set this argument to `False`.
 
@@ -390,8 +382,7 @@ def map_structure(func, *structure, **check_types_dict):
 def _yield_flat_up_to(shallow_tree, input_tree):
   """Yields elements `input_tree` partially flattened up to `shallow_tree`."""
   if is_sequence(shallow_tree):
-    for shallow_branch, input_branch in zip(_yield_value(shallow_tree),
-                                            _yield_value(input_tree)):
+    for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       for input_leaf in _yield_flat_up_to(shallow_branch, input_branch):
         yield input_leaf
   else:
@@ -451,17 +442,6 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "The two structures don't have the same sequence length. Input "
           "structure has length %s, while shallow structure has length %s."
           % (len(input_tree), len(shallow_tree)))
-
-    if check_types and isinstance(shallow_tree, dict):
-      if set(input_tree) != set(shallow_tree):
-        raise ValueError(
-            "The two structures don't have the same keys. Input "
-            "structure has keys %s, while shallow structure has keys %s."
-            % (list(_six.iterkeys(input_tree)),
-               list(_six.iterkeys(shallow_tree))))
-
-      input_tree = list(_six.iteritems(input_tree))
-      shallow_tree = list(_six.iteritems(shallow_tree))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -615,71 +595,6 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
 
 
-def get_traverse_shallow_structure(traverse_fn, structure):
-  """Generates a shallow structure from a `traverse_fn` and `structure`.
-
-  `traverse_fn` must accept any possible subtree of `structure` and return
-  a depth=1 structure containing `True` or `False` values, describing which
-  of the top-level subtrees may be traversed.  It may also
-  return scalar `True` or `False` "traversal is OK / not OK for all subtrees."
-
-  Examples are available in the unit tests (nest_test.py).
-
-  Args:
-    traverse_fn: Function taking a substructure and returning either a scalar
-      `bool` (whether to traverse that substructure or not) or a depth=1
-      shallow structure of the same type, describing which parts of the
-      substructure to traverse.
-    structure: The structure to traverse.
-
-  Returns:
-    A shallow structure containing python bools, which can be passed to
-    `map_structure_up_to` and `flatten_up_to`.
-
-  Raises:
-    TypeError: if `traverse_fn` returns a sequence for a non-sequence input,
-      or a structure with depth higher than 1 for a sequence input,
-      or if any leaf values in the returned structure or scalar are not type
-      `bool`.
-  """
-  to_traverse = traverse_fn(structure)
-  if not is_sequence(structure):
-    if not isinstance(to_traverse, bool):
-      raise TypeError("traverse_fn returned structure: %s for non-structure: %s"
-                      % (to_traverse, structure))
-    return to_traverse
-  level_traverse = []
-  if isinstance(to_traverse, bool):
-    if not to_traverse:
-      # Do not traverse this substructure at all.  Exit early.
-      return False
-    else:
-      # Traverse the entire substructure.
-      for branch in _yield_value(structure):
-        level_traverse.append(
-            get_traverse_shallow_structure(traverse_fn, branch))
-  elif not is_sequence(to_traverse):
-    raise TypeError("traverse_fn returned a non-bool scalar: %s for input: %s"
-                    % (to_traverse, structure))
-  else:
-    # Traverse some subset of this substructure.
-    assert_shallow_structure(to_traverse, structure)
-    for t, branch in zip(_yield_value(to_traverse), _yield_value(structure)):
-      if not isinstance(t, bool):
-        raise TypeError(
-            "traverse_fn didn't return a depth=1 structure of bools.  saw: %s "
-            " for structure: %s" % (to_traverse, structure))
-      if t:
-        level_traverse.append(
-            get_traverse_shallow_structure(traverse_fn, branch))
-      else:
-        level_traverse.append(False)
-  return _sequence_like(structure, level_traverse)
-
-
-_pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
-
-
 _allowed_symbols = [
     "assert_same_structure",
     "is_sequence",
@@ -690,7 +605,6 @@ _allowed_symbols = [
     "assert_shallow_structure",
     "flatten_up_to",
     "map_structure_up_to",
-    "get_traverse_shallow_structure",
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

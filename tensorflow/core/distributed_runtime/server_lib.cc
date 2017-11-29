@@ -24,7 +24,7 @@ namespace tensorflow {
 
 namespace {
 mutex* get_server_factory_lock() {
-  static mutex server_factory_lock(LINKER_INITIALIZED);
+  static mutex server_factory_lock;
   return &server_factory_lock;
 }
 

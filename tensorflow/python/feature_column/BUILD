@@ -1,5 +1,11 @@
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -33,27 +39,20 @@ py_library(
     srcs = ["feature_column.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "@six_archive//:six",
     ],
 )
 
@@ -75,23 +74,12 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
-        ":feature_column",
         ":feature_column_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:session",
-        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:inputs",
     ],
 )

@@ -768,8 +768,7 @@ class ProfileAnalyzer(object):
 def create_profiler_ui(graph,
                        run_metadata,
                        ui_type="curses",
-                       on_ui_exit=None,
-                       config=None):
+                       on_ui_exit=None):
   """Create an instance of CursesUI based on a `tf.Graph` and `RunMetadata`.
 
   Args:
@@ -777,13 +776,11 @@ def create_profiler_ui(graph,
     run_metadata: A `RunMetadata` protobuf object.
     ui_type: (str) requested UI type, e.g., "curses", "readline".
     on_ui_exit: (`Callable`) the callback to be called when the UI exits.
-    config: An instance of `cli_config.CLIConfig`.
 
   Returns:
     (base_ui.BaseUI) A BaseUI subtype object with a set of standard analyzer
       commands and tab-completions registered.
   """
-  del config  # Currently unused.
 
   analyzer = ProfileAnalyzer(graph, run_metadata)
 

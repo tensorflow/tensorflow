@@ -18,7 +18,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace boosted_trees {
+namespace gtflow {
 using shape_inference::InferenceContext;
 using shape_inference::DimensionHandle;
 using shape_inference::ShapeHandle;
@@ -118,21 +118,6 @@ quantile_accumulator_handle: The handle to the accumulator.
 stamp_token: Stamp token for Read/Write operations.
              Any operation with a mismatching token will be dropped.
 next_stamp_token: Stamp token to be used for the next iteration.
-)doc");
-
-REGISTER_OP("QuantileAccumulatorFlushSummary")
-    .Input("quantile_accumulator_handle: resource")
-    .Input("stamp_token: int64")
-    .Input("next_stamp_token: int64")
-    .Output("output: string")
-    .Doc(R"doc(
-Resets quantile summary stream and returns the summary.
-
-quantile_accumulator_handle: The handle to the accumulator.
-stamp_token: Stamp token for Read/Write operations.
-             Any operation with a mismatching token will be dropped.
-next_stamp_token: Stamp token to be used for the next iteration.
-output: A scalar string that is the a summary of the accumulator.
 )doc");
 
 REGISTER_OP("QuantileAccumulatorSerialize")
@@ -268,7 +253,6 @@ REGISTER_OP("Quantiles")
     .Input("sparse_values: num_sparse_features * float")
     .Input("dense_buckets: num_dense_features * float")
     .Input("sparse_buckets: num_sparse_features * float")
-    .Input("sparse_indices: num_sparse_features * int64")
     .Output("dense_quantiles: num_dense_features * int32")
     .Output("sparse_quantiles: num_sparse_features * int32")
     .Doc(R"doc(
@@ -281,42 +265,11 @@ dense_values: List of rank 1 tensors containing the dense values.
 sparse_values: List of rank 1 tensors containing the sparse feature values.
 dense_buckets: Quantile summary for each of the dense float tensor.
 sparse_buckets: Quantile summary for each of the sparse feature float tensor.
-sparse_indices: List of rank 2 tensors with indices for sparse float
-tensors.
-dense_quantiles: Rank 2 tensors representing associated quantiles for each of
-dense float tensors and the dimension.
-sparse_quantiles: Rank 2 tensors representing associated quantiles for each of
-the sparse feature tensors for each of sparse feature dimensions:
-[quantile id, dimension id].
+dense_quantiles: Rank 1 tensors representing associated quantiles for each of
+dense float tensors.
+sparse_quantiles: Rank 1 tensors representing associated quantiles for each of
+the sparse feature tensors.
 )doc");
 
-REGISTER_OP("BucketizeWithInputBoundaries")
-    .Input("input: T")
-    .Input("boundaries: float")
-    .Output("output: int32")
-    .Attr("T: {int32, int64, float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Bucketizes 'input' based on 'boundaries'. This function is similar to Bucketize
-op in core math_ops, except that boundaries are specified using an input tensor,
-as compared with a fixed attribute in Bucketize().
-
-For example, if the inputs are
-    boundaries = [0, 10, 100]
-    input = [[-5, 10000]
-             [150,   10]
-             [5,    100]]
-
-then the output will be
-    output = [[0, 3]
-              [3, 2]
-              [1, 3]]
-
-input: Any shape of Tensor contains with numeric type.
-boundaries: A vector Tensor of sorted floats specifies the boundaries
-of the buckets.
-output: Same shape as 'input', where each value of input is replaced with its corresponding bucket index.
-)doc");
-
-}  // namespace boosted_trees
+}  // namespace gtflow
 }  // namespace tensorflow

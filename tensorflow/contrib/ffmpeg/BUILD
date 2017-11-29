@@ -47,25 +47,10 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "decode_video_op_cc",
-    srcs = ["decode_video_op.cc"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/contrib/ffmpeg/default:ffmpeg_lib",
-        "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
 tf_custom_op_library(
     name = "ffmpeg.so",
     deps = [
         ":decode_audio_op_cc",
-        ":decode_video_op_cc",
         ":encode_audio_op_cc",
     ],
 )
@@ -74,7 +59,6 @@ cc_library(
     name = "ffmpeg_op_lib",
     deps = [
         ":decode_audio_op_cc",
-        ":decode_video_op_cc",
         ":encode_audio_op_cc",
     ],
 )
@@ -97,24 +81,13 @@ tf_gen_op_wrapper_py(
     ],
 )
 
-tf_gen_op_wrapper_py(
-    name = "decode_video_op_py",
-    require_shape_functions = True,
-    visibility = ["//visibility:private"],
-    deps = [
-        ":decode_video_op_cc",
-    ],
-)
-
 tf_py_test(
     name = "decode_audio_op_test",
+    size = "small",
     srcs = ["decode_audio_op_test.py"],
     additional_deps = [
         ":ffmpeg_ops_py",
-        "@six_archive//:six",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
     ],
     data = [
@@ -125,32 +98,12 @@ tf_py_test(
 
 tf_py_test(
     name = "encode_audio_op_test",
+    size = "small",
     srcs = ["encode_audio_op_test.py"],
     additional_deps = [
         ":ffmpeg_ops_py",
-        "@six_archive//:six",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform",
-    ],
-    data = [
-        ":test_data",
-    ],
-    tags = ["manual"],
-)
-
-tf_py_test(
-    name = "decode_video_op_test",
-    size = "small",
-    srcs = ["decode_video_op_test.py"],
-    additional_deps = [
-        ":ffmpeg_ops_py",
-        "@six_archive//:six",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:image_ops",
     ],
     data = [
         ":test_data",
@@ -169,7 +122,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":decode_audio_op_py",
-        ":decode_video_op_py",
         ":encode_audio_op_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",

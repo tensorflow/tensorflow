@@ -442,8 +442,7 @@ def read_keyed_batch_features(file_pattern,
                               feature_queue_capacity=100,
                               num_enqueue_threads=2,
                               parse_fn=None,
-                              name=None,
-                              read_batch_size=None):
+                              name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -483,8 +482,6 @@ def read_keyed_batch_features(file_pattern,
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
-    read_batch_size: An int or scalar `Tensor` specifying the number of
-      records to read at once. If `None`, defaults to `batch_size`.
 
   Returns:
     Returns tuple of:
@@ -496,7 +493,6 @@ def read_keyed_batch_features(file_pattern,
   """
 
   with ops.name_scope(name, 'read_batch_features', [file_pattern]) as scope:
-    if read_batch_size is None: read_batch_size = batch_size
     keys, examples = read_keyed_batch_examples(
         file_pattern,
         batch_size,
@@ -505,7 +501,7 @@ def read_keyed_batch_features(file_pattern,
         num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         num_threads=reader_num_threads,
-        read_batch_size=read_batch_size,
+        read_batch_size=batch_size,
         parse_fn=parse_fn,
         name=scope)
     # Parse the example.
@@ -731,8 +727,7 @@ def read_batch_features(file_pattern,
                         reader_num_threads=1,
                         num_enqueue_threads=2,
                         parse_fn=None,
-                        name=None,
-                        read_batch_size=None):
+                        name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -773,8 +768,6 @@ def read_batch_features(file_pattern,
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
-    read_batch_size: An int or scalar `Tensor` specifying the number of
-      records to read at once. If `None`, defaults to `batch_size`.
 
   Returns:
     A dict of `Tensor` or `SparseTensor` objects for each in `features`.
@@ -793,7 +786,6 @@ def read_batch_features(file_pattern,
       reader_num_threads=reader_num_threads,
       feature_queue_capacity=feature_queue_capacity,
       num_enqueue_threads=num_enqueue_threads,
-      read_batch_size=read_batch_size,
       parse_fn=parse_fn,
       name=name)
   return features

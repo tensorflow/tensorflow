@@ -93,15 +93,13 @@ TEST(CreateProtoDebugStringLibTest, ValidSimpleTypes) {
   proto.set_optional_int64(std::numeric_limits<protobuf_int64>::max());
   proto.set_optional_uint32(std::numeric_limits<uint32>::max());
   proto.set_optional_uint64(std::numeric_limits<uint64>::max());
-  // TODO(b/67475677): Re-enable after resolving float precision issue
-  // proto.set_optional_float(std::numeric_limits<float>::max());
+  proto.set_optional_float(std::numeric_limits<float>::max());
   proto.set_optional_double(std::numeric_limits<double>::max());
   EXPECT_TEXT_TRANSFORMS_MATCH();
 
   // Least positive numeric values.
   proto.Clear();
-  // TODO(b/67475677): Re-enable after resolving float precision issue
-  // proto.set_optional_float(std::numeric_limits<float>::min());
+  proto.set_optional_float(std::numeric_limits<float>::min());
   proto.set_optional_double(std::numeric_limits<double>::min());
   EXPECT_TEXT_TRANSFORMS_MATCH();
 
@@ -109,8 +107,7 @@ TEST(CreateProtoDebugStringLibTest, ValidSimpleTypes) {
   proto.Clear();
   proto.set_optional_int32(std::numeric_limits<int32>::lowest());
   proto.set_optional_int64(std::numeric_limits<protobuf_int64>::lowest());
-  // TODO(b/67475677): Re-enable after resolving float precision issue
-  // proto.set_optional_float(std::numeric_limits<float>::lowest());
+  proto.set_optional_float(std::numeric_limits<float>::lowest());
   proto.set_optional_double(std::numeric_limits<double>::lowest());
   EXPECT_TEXT_TRANSFORMS_MATCH();
 

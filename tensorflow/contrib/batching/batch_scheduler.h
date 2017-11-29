@@ -78,7 +78,7 @@ template <typename TaskType>
 class Batch {
  public:
   Batch() = default;
-  virtual ~Batch();  // Blocks until the batch is closed.
+  ~Batch();  // Blocks until the batch is closed.
 
   // Appends 'task' to the batch. After calling AddTask(), the newly-added task
   // can be accessed via task(num_tasks()-1) or mutable_task(num_tasks()-1).

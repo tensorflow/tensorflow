@@ -7,18 +7,18 @@ licenses(["notice"])
 exports_files(["LICENSE.TXT"])
 
 load(
-    "@org_tensorflow//third_party/llvm:llvm.bzl",
+    "@%ws%//third_party/llvm:llvm.bzl",
     "gentbl",
     "expand_cmake_vars",
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
 load(
-    "@org_tensorflow//third_party:common.bzl",
+    "@%ws%//third_party:common.bzl",
     "template_rule",
 )
 
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = ["@%ws%//tensorflow/compiler/xla:internal"])
 
 llvm_host_triple = "x86_64-unknown-linux_gnu"
 
@@ -145,11 +145,11 @@ darwin_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 all_cmake_vars = select({
-    "@org_tensorflow//tensorflow:darwin": cmake_var_string(
+    "@%ws%//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
     ),
-    "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
+    "@%ws%//tensorflow:linux_ppc64le": cmake_var_string(
         cmake_vars +
         llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
         linux_cmake_vars,
@@ -251,7 +251,6 @@ cc_library(
         "LLVM_ENABLE_STATS",
         "__STDC_LIMIT_MACROS",
         "__STDC_CONSTANT_MACROS",
-        "__STDC_FORMAT_MACROS",
         "_DEBUG",
         "LLVM_BUILD_GLOBAL_ISEL",
     ],
@@ -387,7 +386,6 @@ llvm_target_list = [
         "tbl_outs": [
             ("-gen-register-bank", "lib/Target/ARM/ARMGenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/ARM/ARMGenRegisterInfo.inc"),
-            ("-gen-searchable-tables", "lib/Target/ARM/ARMGenSystemRegister.inc"),
             ("-gen-instr-info", "lib/Target/ARM/ARMGenInstrInfo.inc"),
             ("-gen-emitter", "lib/Target/ARM/ARMGenMCCodeEmitter.inc"),
             ("-gen-pseudo-lowering", "lib/Target/ARM/ARMGenMCPseudoLowering.inc"),
@@ -479,15 +477,6 @@ cc_library(
         "lib/Target/X86/*.def",
     ]),
     visibility = ["//visibility:private"],
-)
-
-# This filegroup provides the docker build script in LLVM repo
-filegroup(
-    name = "docker",
-    srcs = glob([
-        "utils/docker/build_docker_image.sh",
-    ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -890,7 +879,6 @@ cc_library(
     deps = [
         ":arm_desc",
         ":arm_info",
-        ":arm_utils",
         ":config",
         ":mc",
         ":mc_parser",
@@ -909,14 +897,12 @@ cc_library(
         "include/llvm/Target/ARM/InstPrinter/*.h",
         "include/llvm/Target/ARM/InstPrinter/*.def",
         "include/llvm/Target/ARM/InstPrinter/*.inc",
-        "lib/Target/ARM/*.h",
         "lib/Target/ARM/InstPrinter/*.h",
     ]),
     copts = ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_info",
         ":arm_target_gen",
-        ":arm_utils",
         ":config",
         ":mc",
         ":support",
@@ -942,7 +928,6 @@ cc_library(
         ":arm_asm_printer",
         ":arm_desc",
         ":arm_info",
-        ":arm_utils",
         ":asm_printer",
         ":code_gen",
         ":config",
@@ -963,7 +948,7 @@ cc_library(
         "lib/Target/ARM/MCTargetDesc/*.cpp",
         "lib/Target/ARM/MCTargetDesc/*.inc",
         "lib/Target/ARM/*.h",
-        "include/llvm/CodeGen/GlobalISel/*.h",
+        "include/llvm/CodeGen/GlobalISel/GISelAccessor.h",
     ]),
     hdrs = glob([
         "include/llvm/Target/ARM/MCTargetDesc/*.h",
@@ -1028,29 +1013,6 @@ cc_library(
         ":config",
         ":support",
         ":target",
-    ],
-)
-
-cc_library(
-    name = "arm_utils",
-    srcs = glob([
-        "lib/Target/ARM/Utils/*.c",
-        "lib/Target/ARM/Utils/*.cpp",
-        "lib/Target/ARM/Utils/*.inc",
-        "lib/Target/ARM/MCTargetDesc/*.h",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/ARM/Utils/*.h",
-        "include/llvm/Target/ARM/Utils/*.def",
-        "include/llvm/Target/ARM/Utils/*.inc",
-        "lib/Target/ARM/Utils/*.h",
-    ]),
-    copts = ["-Iexternal/llvm/lib/Target/ARM"],
-    deps = [
-        ":arm_target_gen",
-        ":config",
-        ":mc",
-        ":support",
     ],
 )
 
@@ -1167,7 +1129,6 @@ cc_library(
         ":config",
         ":core",
         ":mc",
-        ":object",
         ":support",
     ],
 )
@@ -1221,8 +1182,7 @@ cc_library(
         "include/llvm/IR/*.def",
         "include/llvm/IR/*.inc",
         "include/llvm/*.h",
-        "include/llvm/Analysis/*.def",
-    ]),
+    ]) + ["include/llvm/Support/VCSRevision.h"],
     deps = [
         ":attributes_compat_gen",
         ":attributes_gen",
@@ -1990,7 +1950,6 @@ cc_library(
     ]) + [
         "include/llvm/BinaryFormat/MachO.def",
         "include/llvm/Support/DataTypes.h",
-        "include/llvm/Support/VCSRevision.h",
         "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],
     deps = [
@@ -2037,7 +1996,6 @@ cc_library(
         "include/llvm/Target/*.h",
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
-        "include/llvm/CodeGen/*.def",
     ]),
     deps = [
         ":analysis",
@@ -2115,7 +2073,6 @@ cc_library(
         ":mc",
         ":mc_parser",
         ":support",
-        ":x86_asm_printer",
         ":x86_desc",
         ":x86_info",
     ],

@@ -20,18 +20,17 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace grappler {
-namespace {
 
 const char kConcatConst[] = "LayoutOptimizerConcatConst";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
@@ -45,32 +44,36 @@ const char kReshapeConst[] = "LayoutOptimizerReshapeConst";
 const char kReductionConst[] = "LayoutOptimizerReductionConst";
 
 std::set<string> GetOpsFormatSupported() {
-  std::set<string> ops_format_supported = {
-      "AvgPool",
-      "AvgPoolGrad",
-      "Conv2D",
-      "Conv2DBackpropFilter",
-      "Conv2DBackpropInput",
-      "BiasAdd",
-      "BiasAddGrad",
-      "DepthwiseConv2dNative",
-      "DepthwiseConv2dNativeBackpropInput",
-      "DepthwiseConv2dNativeBackpropFilter",
-      "FusedBatchNorm",
-      "FusedBatchNormGrad",
-      "FusedConv2DBiasActivation",
-      "MaxPool",
-      "MaxPoolGrad"};
+  std::set<string> ops_format_supported = {"AvgPool",
+                                           "AvgPoolGrad",
+                                           "Conv2D",
+                                           "Conv2DBackpropFilter",
+                                           "Conv2DBackpropInput",
+                                           "BiasAdd",
+                                           "BiasAddGrad",
+                                           "FusedBatchNorm",
+                                           "FusedBatchNormGrad",
+                                           "MaxPool",
+                                           "MaxPoolGrad"};
   return ops_format_supported;
 }
 
 std::set<string> GetOpsFormatAgnostic() {
-  std::set<string> ops_format_agnostic = {
-      "Add",      "AddN",     "Concat", "ConcatV2",
-      "Floor",    "Identity", "Mul",    "Neg",
-      "Pad",      "RealDiv",  "Relu",   "Relu6",
-      "ReluGrad", "Sigmoid",  "Slice",  "SquaredDifference",
-      "Squeeze",  "Sub"};
+  std::set<string> ops_format_agnostic = {"Add",
+                                          "AddN",
+                                          "Concat",
+                                          "ConcatV2",
+                                          "Floor",
+                                          "Identity",
+                                          "Mul",
+                                          "Neg",
+                                          "RealDiv",
+                                          "Relu",
+                                          "ReluGrad",
+                                          "Slice",
+                                          "SquaredDifference",
+                                          "Squeeze",
+                                          "Sub"};
   return ops_format_agnostic;
 }
 
@@ -92,117 +95,10 @@ bool IsNodeNCHWToNHWC(const string& node_name) {
   return false;
 }
 
-bool IsConcat(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Concat" || op == "ConcatV2";
-}
-
-bool IsConcatV1(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Concat";
-}
-
-bool IsMaxPoolGradV1(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MaxPoolGrad";
-}
-
-class GraphProcessor {
+class NodeProcessor {
  public:
-  GraphProcessor(GraphDef* graph, NodeMap* node_map,
-                 const std::unordered_set<string>& nodes_to_preserve)
-      : graph_(graph),
-        node_map_(node_map),
-        nodes_to_preserve_(nodes_to_preserve) {}
-
- protected:
-  NodeDef* AddNodePermConst(const string& name, const string& device,
-                            const std::vector<int>& permutation) {
-    NodeDef* node = graph_->add_node();
-    node_map_->AddNode(name, node);
-    node->set_name(name);
-    node->set_op("Const");
-    node->set_device(device);
-    AttrValue attr_data_type;
-    attr_data_type.set_type(DT_INT32);
-    node->mutable_attr()->insert({"dtype", attr_data_type});
-    AttrValue attr_tensor;
-    Tensor tensor(DT_INT32, TensorShape({4}));
-    for (int i = 0; static_cast<size_t>(i) < permutation.size(); i++) {
-      tensor.flat<int>()(i) = permutation[i];
-    }
-    tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
-    node->mutable_attr()->insert({"value", attr_tensor});
-    return node;
-  }
-
-  NodeDef* AddNodeConstScalar(const string& name, const string& device,
-                              DataType dtype, int value) {
-    NodeDef* node = graph_->add_node();
-    node_map_->AddNode(name, node);
-    node->set_name(name);
-    node->set_op("Const");
-    node->set_device(device);
-    AttrValue attr_data_type;
-    attr_data_type.set_type(dtype);
-    node->mutable_attr()->insert({"dtype", attr_data_type});
-    AttrValue attr_tensor;
-    Tensor tensor(dtype, TensorShape({}));
-    tensor.scalar<int>()() = value;
-    tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
-    node->mutable_attr()->insert({"value", attr_tensor});
-    return node;
-  }
-
-  NodeDef* AddNodeReductionConst(const string& name, const string& device) {
-    NodeDef* node = graph_->add_node();
-    node_map_->AddNode(name, node);
-    node->set_name(name);
-    node->set_op("Const");
-    node->set_device(device);
-    AttrValue attr_data_type;
-    attr_data_type.set_type(DT_INT32);
-    node->mutable_attr()->insert({"dtype", attr_data_type});
-
-    AttrValue attr_tensor;
-    Tensor tensor(DT_INT32, TensorShape({3}));
-    std::vector<int> axis = {0, 2, 3};
-    for (int i = 0; static_cast<size_t>(i) < axis.size(); i++) {
-      tensor.flat<int>()(i) = axis[i];
-    }
-    tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
-    node->mutable_attr()->insert({"value", attr_tensor});
-    return node;
-  }
-
-  GraphDef* graph_;
-  NodeMap* node_map_;
-  const std::unordered_set<string>& nodes_to_preserve_;
-};
-
-struct OptimizeContext {
-  OptimizeContext(GraphDef* graph, NodeDef* node, NodeMap* node_map,
-                  const std::unordered_set<string>& nodes_to_preserve,
-                  bool is_in_frame)
-      : graph(graph),
-        node(node),
-        node_map(node_map),
-        nodes_to_preserve(nodes_to_preserve),
-        is_in_frame(is_in_frame) {}
-  GraphDef* graph;
-  NodeDef* node;
-  NodeMap* node_map;
-  const std::unordered_set<string>& nodes_to_preserve;
-  bool is_in_frame;
-};
-
-class NodeProcessor : public GraphProcessor {
- public:
-  explicit NodeProcessor(const OptimizeContext& opt_cxt)
-      : GraphProcessor(opt_cxt.graph, opt_cxt.node_map,
-                       opt_cxt.nodes_to_preserve),
-        node_(opt_cxt.node),
-        is_in_frame_(opt_cxt.is_in_frame) {}
+  NodeProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : graph_(graph), node_(node), node_map_(node_map) {}
   virtual ~NodeProcessor() {}
   virtual Status ConvertNode() {
     if (ShouldProcess()) {
@@ -252,12 +148,8 @@ class NodeProcessor : public GraphProcessor {
     return Status::OK();
   }
 
-  bool MustPreserve() const {
-    return nodes_to_preserve_.find(node_->name()) != nodes_to_preserve_.end();
-  }
-
   virtual bool ShouldProcess() const {
-    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs();
+    return IsNHWC() && IsDimsFour(*node_) && HasOutputs();
   }
 
   void UpdateAttrDataFormat() {
@@ -309,23 +201,10 @@ class NodeProcessor : public GraphProcessor {
     if (!success) {
       LOG(ERROR) << "Failed to parse TensorProto.";
     }
-    if (tensor.dims() == 1) {
-      int c = tensor.flat<int>()(3);
-      tensor.flat<int>()(3) = tensor.flat<int>()(2);
-      tensor.flat<int>()(2) = tensor.flat<int>()(1);
-      tensor.flat<int>()(1) = c;
-    } else if (tensor.dims() == 2) {
-      for (int i = 0; i < 2; i++) {
-        int c = tensor.matrix<int>()(3, i);
-        tensor.matrix<int>()(3, i) = tensor.matrix<int>()(2, i);
-        tensor.matrix<int>()(2, i) = tensor.matrix<int>()(1, i);
-        tensor.matrix<int>()(1, i) = c;
-      }
-    } else {
-      return Status(
-          error::INVALID_ARGUMENT,
-          strings::StrCat("Unsupported dimension size: ", tensor.dims()));
-    }
+    int c = tensor.flat<int>()(3);
+    tensor.flat<int>()(3) = tensor.flat<int>()(2);
+    tensor.flat<int>()(2) = tensor.flat<int>()(1);
+    tensor.flat<int>()(1) = c;
     tensor.AsProtoTensorContent(
         node->mutable_attr()->at({"value"}).mutable_tensor());
     return Status::OK();
@@ -333,8 +212,6 @@ class NodeProcessor : public GraphProcessor {
 
   Status UpdateAttrValueOfInput(int input_index) {
     auto input_node = node_map_->GetNode(node_->input(input_index));
-    // We created a copy of the node, so that we don't modify the original node,
-    // which might be used elsewhere.
     NodeDef* added_node = graph_->add_node();
     *added_node = *input_node;
     string base_name = strings::StrCat(node_->name(), "-", input_node->name());
@@ -352,16 +229,15 @@ class NodeProcessor : public GraphProcessor {
   }
 
   NodeDef* AddNodeTranspose(const string& node_name, const string& input_name,
-                            const string& const_name, DataType data_type,
+                            DataType data_type,
                             const TensorShapeProto& input_shape,
                             bool NHWCToNCHW) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(node_name, node);
     node->set_name(node_name);
     *node->add_input() = input_name;
-    *node->add_input() = const_name;
+    *node->add_input() = NHWCToNCHW ? kPermNHWCToNCHW : kPermNCHWToNHWC;
     node->set_op("Transpose");
-    node->set_device(node_->device());
     AttrValue attr_data_type;
     attr_data_type.set_type(data_type);
     node->mutable_attr()->insert({"T", attr_data_type});
@@ -390,21 +266,18 @@ class NodeProcessor : public GraphProcessor {
   virtual Status AddLayoutTransposeToInputs() {
     std::vector<int> input_pos = GetInputPos();
     for (const auto& pos : input_pos) {
-      int output_pos;
-      string input_node_name = ParseNodeName(node_->input(pos), &output_pos);
-      string base_name =
-          strings::StrCat(node_->name(), "-", input_node_name, "-", output_pos);
+      string base_name = strings::StrCat(node_->name(), "-", node_->input(pos));
       string node_name =
           AddPrefixToNodeName(base_name, kTransposeNHWCToNCHW, "-");
       auto input_node = node_map_->GetNode(node_->input(pos));
+      int output_pos = NodePosition(node_->input(pos));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
-      string const_name = GetOrAddNodePermNHWCToNCHW(pos);
-      AddNodeTranspose(
-          node_name, node_->input(pos), const_name,
-          node_->attr().at("T").type(),
+      NodeDef* transpose = AddNodeTranspose(
+          node_name, node_->input(pos), node_->attr().at("T").type(),
           input_node->attr().at("_output_shapes").list().shape(output_pos),
           true);
+      transpose->set_device(node_->device());
       node_map_->UpdateOutput(node_->input(pos), node_->name(), node_name);
       node_map_->AddOutput(node_name, node_->name());
       *node_->mutable_input(pos) = node_name;
@@ -414,7 +287,6 @@ class NodeProcessor : public GraphProcessor {
 
   virtual Status AddLayoutTransposeToOutputs() {
     auto outputs = node_map_->GetOutputs(node_->name());
-    string const_name = GetOrAddNodePermNCHWToNHWC();
     for (const auto& output : outputs) {
       string base_name = strings::StrCat(node_->name(), "-", output->name());
       string node_name =
@@ -441,9 +313,10 @@ class NodeProcessor : public GraphProcessor {
       }
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
-      AddNodeTranspose(
-          node_name, node_->name(), const_name, node_->attr().at("T").type(),
+      NodeDef* transpose = AddNodeTranspose(
+          node_name, node_->name(), node_->attr().at("T").type(),
           node_->attr().at("_output_shapes").list().shape(0), false);
+      transpose->set_device(node_->device());
       *it = node_name;
       node_map_->UpdateOutput(node_->name(), output->name(), node_name);
       node_map_->AddOutput(node_name, output->name());
@@ -453,56 +326,11 @@ class NodeProcessor : public GraphProcessor {
 
   virtual Status CustomizedProcessing() { return Status::OK(); }
 
-  NodeDef* AddNodePermNHWCToNCHW(const string& suffix,
-                                 const string& depended_node,
-                                 const string& device) {
-    auto const_node = AddNodePermConst(
-        strings::StrCat(kPermNHWCToNCHW, "-", suffix), device, {0, 3, 1, 2});
-    // This is to ensure the transpose node and the const node are in the
-    // same frame.
-    *const_node->add_input() = AsControlDependency(depended_node);
-    return const_node;
-  }
-
-  NodeDef* AddNodePermNCHWToNHWC(const string& suffix,
-                                 const string& depended_node,
-                                 const string& device) {
-    auto const_node = AddNodePermConst(
-        strings::StrCat(kPermNCHWToNHWC, "-", suffix), device, {0, 2, 3, 1});
-    // This is to ensure the transpose node and the const node are in the same
-    // frame.
-    *const_node->add_input() = AsControlDependency(depended_node);
-    return const_node;
-  }
-
+  GraphDef* graph_;
   NodeDef* node_;
-  bool is_in_frame_;
+  NodeMap* node_map_;
 
  private:
-  string GetOrAddNodePermNHWCToNCHW(int pos) {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node = AddNodePermNHWCToNCHW(
-          node_->input(pos), NodeName(node_->input(pos)), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kPermNHWCToNCHW;
-    }
-    return const_name;
-  }
-
-  string GetOrAddNodePermNCHWToNHWC() {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node =
-          AddNodePermNCHWToNHWC(node_->name(), node_->name(), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kPermNCHWToNHWC;
-    }
-    return const_name;
-  }
-
   void UpdateTuple(AttrValue_ListValue* list) {
     int64 h = list->i(1);
     int64 w = list->i(2);
@@ -515,8 +343,8 @@ class NodeProcessor : public GraphProcessor {
 
 class AvgPoolGradProcessor : public NodeProcessor {
  public:
-  explicit AvgPoolGradProcessor(const OptimizeContext& opt_cxt)
-      : NodeProcessor(opt_cxt) {}
+  AvgPoolGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : NodeProcessor(graph, node, node_map) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -528,14 +356,11 @@ class AvgPoolGradProcessor : public NodeProcessor {
 
 class BiasAddGradProcessor : public NodeProcessor {
  public:
-  explicit BiasAddGradProcessor(const OptimizeContext& opt_cxt)
-      : NodeProcessor(opt_cxt) {}
+  BiasAddGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : NodeProcessor(graph, node, node_map) {}
 
  protected:
   bool ShouldProcess() const override {
-    if (MustPreserve()) {
-      return false;
-    }
     auto input = node_map_->GetNode(node_->input(0));
     if (input) {
       if ((IsNHWC() && IsDimsFour(*input)) || IsNodeNCHWToNHWC(input->name())) {
@@ -550,12 +375,13 @@ class BiasAddGradProcessor : public NodeProcessor {
 
 class Conv2DProcessor : public NodeProcessor {
  public:
-  Conv2DProcessor(const OptimizeContext& opt_cxt, bool no_gemm)
-      : NodeProcessor(opt_cxt), no_gemm_(no_gemm) {}
+  Conv2DProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map,
+                  bool no_gemm)
+      : NodeProcessor(graph, node, node_map), no_gemm_(no_gemm) {}
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
+    return IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
            (!IsGemmUsed() || no_gemm_);
   }
 
@@ -619,8 +445,9 @@ class Conv2DProcessor : public NodeProcessor {
 
 class Conv2DBackpropFilterProcessor : public Conv2DProcessor {
  public:
-  Conv2DBackpropFilterProcessor(const OptimizeContext& opt_cxt, bool no_gemm)
-      : Conv2DProcessor(opt_cxt, no_gemm) {}
+  Conv2DBackpropFilterProcessor(GraphDef* graph, NodeDef* node,
+                                NodeMap* node_map, bool no_gemm)
+      : Conv2DProcessor(graph, node, node_map, no_gemm) {}
 
  protected:
   bool IsGemmUsed() const override {
@@ -643,8 +470,9 @@ class Conv2DBackpropFilterProcessor : public Conv2DProcessor {
 
 class Conv2DBackpropInputProcessor : public Conv2DProcessor {
  public:
-  Conv2DBackpropInputProcessor(const OptimizeContext& opt_cxt, bool no_gemm)
-      : Conv2DProcessor(opt_cxt, no_gemm) {}
+  Conv2DBackpropInputProcessor(GraphDef* graph, NodeDef* node,
+                               NodeMap* node_map, bool no_gemm)
+      : Conv2DProcessor(graph, node, node_map, no_gemm) {}
 
  protected:
   bool IsGemmUsed() const override {
@@ -663,8 +491,8 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
 
 class FusedBatchNormGradProcessor : public NodeProcessor {
  public:
-  explicit FusedBatchNormGradProcessor(const OptimizeContext& opt_cxt)
-      : NodeProcessor(opt_cxt) {}
+  FusedBatchNormGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : NodeProcessor(graph, node, node_map) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -675,8 +503,8 @@ class FusedBatchNormGradProcessor : public NodeProcessor {
 
 class MaxPoolGradProcessor : public NodeProcessor {
  public:
-  explicit MaxPoolGradProcessor(const OptimizeContext& opt_cxt)
-      : NodeProcessor(opt_cxt) {}
+  MaxPoolGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : NodeProcessor(graph, node, node_map) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -687,13 +515,12 @@ class MaxPoolGradProcessor : public NodeProcessor {
 
 class AgnosticNodeProcessor : public NodeProcessor {
  public:
-  explicit AgnosticNodeProcessor(const OptimizeContext& opt_cxt)
-      : NodeProcessor(opt_cxt) {}
+  AgnosticNodeProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : NodeProcessor(graph, node, node_map) {}
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC();
+    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC();
   }
 
   bool IsNodeAfterNCHWToNHWC() const {
@@ -701,7 +528,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
     auto node = node_map_->GetNode(node_->name());
     while (node->input_size() > 0) {
       int data_input_pos = 0;
-      if (IsConcatV1(*node)) {
+      if (node->op().compare("Concat") == 0) {
         data_input_pos = 1;
       }
       node = node_map_->GetNode(node->input(data_input_pos));
@@ -709,7 +536,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
         return true;
       }
       bool connected =
-          ops_format_agnostic.find(node->op()) != ops_format_agnostic.end();
+          ops_format_agnostic.find(node->name()) != ops_format_agnostic.end();
       if (!connected) {
         return false;
       }
@@ -720,8 +547,8 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
 class AddNProcessor : public AgnosticNodeProcessor {
  public:
-  explicit AddNProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+  AddNProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -736,15 +563,14 @@ class AddNProcessor : public AgnosticNodeProcessor {
 
 class BinaryOpProcessor : public AgnosticNodeProcessor {
  public:
-  explicit BinaryOpProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {
+  BinaryOpProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {
     is_4d_with_vector_ = Is4DOperateWithVector();
   }
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() &&
+    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
            (Is4DOperateWithND(4) || Is4DOperateWithScalar() ||
             Is4DOperateWithVector());
   }
@@ -778,7 +604,6 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     node_map_->AddNode(name, node);
     node->set_name(name);
     node->set_op("Const");
-    node->set_device(node_->device());
     AttrValue attr_data_type;
     attr_data_type.set_type(DT_INT32);
     node->mutable_attr()->insert({"dtype", attr_data_type});
@@ -803,7 +628,6 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     *node->add_input() = input_name;
     *node->add_input() = shape_const_node_name;
     node->set_op("Reshape");
-    node->set_device(node_->device());
 
     AttrValue attr_type_indices;
     attr_type_indices.set_type(DT_INT32);
@@ -826,10 +650,13 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       int vector_size =
           input_node->attr().at("_output_shapes").list().shape(0).dim(0).size();
-      AddNodeShapeConst(shape_const_node_name, vector_size);
+      NodeDef* shp = AddNodeShapeConst(shape_const_node_name, vector_size);
+      shp->set_device("/job:localhost/replica:0/task:0/cpu:0");
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
-      AddNodeReshape(reshape_node_name, node_->input(1), shape_const_node_name,
-                     node_->attr().at("T").type());
+      NodeDef* reshape =
+          AddNodeReshape(reshape_node_name, node_->input(1),
+                         shape_const_node_name, node_->attr().at("T").type());
+      reshape->set_device(node_->device());
       node_map_->AddOutput(shape_const_node_name, reshape_node_name);
       node_map_->UpdateOutput(node_->input(1), node_->name(),
                               reshape_node_name);
@@ -845,24 +672,25 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
 
 class ConcatProcessor : public AgnosticNodeProcessor {
  public:
-  explicit ConcatProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {
+  ConcatProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {
     // For Concat,  the concat axis is the first input; for ConcatV2,
     // the last input.
-    axis_node_pos_ = (IsConcatV1(*node_)) ? 0 : (node_->input_size() - 1);
+    axis_node_pos_ =
+        (node_->op().compare("Concat") == 0) ? 0 : (node_->input_size() - 1);
   }
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && IsAlongDimC();
+    return IsDimsFour(*node_) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           IsAlongDimC();
   }
 
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos;
-    int start = (IsConcatV1(*node_)) ? 1 : 0;
-    int end =
-        (IsConcatV1(*node_)) ? node_->input_size() : (node_->input_size() - 1);
+    int start = (node_->op().compare("Concat") == 0) ? 1 : 0;
+    int end = (node_->op().compare("Concat") == 0) ? node_->input_size()
+                                                   : (node_->input_size() - 1);
     for (int i = start; i < end; i++) {
       input_pos.push_back(i);
     }
@@ -870,9 +698,8 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    string concat_const_name = GetOrAddNodeConcatConst();
-    node_map_->AddOutput(concat_const_name, node_->name());
-    *node_->mutable_input(axis_node_pos_) = concat_const_name;
+    node_map_->AddOutput(kConcatConst, node_->name());
+    *node_->mutable_input(axis_node_pos_) = kConcatConst;
     return Status::OK();
   }
 
@@ -885,68 +712,12 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 
   int axis_node_pos_;
-
- private:
-  NodeDef* AddNodeConcatConst(const string& suffix, const string& depended_node,
-                              const string& device) {
-    auto const_node = AddNodeConstScalar(
-        strings::StrCat(kConcatConst, "-", suffix), device, DT_INT32, 1);
-    // This is to ensure the concat node and the const node are
-    // in the same frame.
-    *const_node->add_input() = AsControlDependency(depended_node);
-    return const_node;
-  }
-
-  string GetOrAddNodeConcatConst() {
-    string const_name;
-    if (is_in_frame_) {
-      int value_node_pos = (axis_node_pos_ == 0) ? 1 : 0;
-      auto const_node = AddNodeConcatConst(
-          node_->name(), NodeName(node_->input(value_node_pos)),
-          node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kConcatConst;
-    }
-    return const_name;
-  }
-};
-
-class PadProcessor : public AgnosticNodeProcessor {
- public:
-  explicit PadProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
-
- protected:
-  bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && PaddingSupported();
-  }
-  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
-
- private:
-  bool PaddingSupported() const {
-    auto pad_const = node_map_->GetNode(node_->input(1));
-    bool is_const = IsConstant(*pad_const);
-    bool is_4D = false;
-    if (HasAttribute(*pad_const, "value").ok()) {
-      Tensor tensor;
-      if (tensor.FromProto(pad_const->mutable_attr()->at({"value"}).tensor())) {
-        if (tensor.dims() == 2) {
-          if (tensor.dim_size(0) == 4 && tensor.dim_size(1) == 2) {
-            is_4D = true;
-          }
-        }
-      }
-    }
-    return is_const && is_4D;
-  }
 };
 
 class ReluGradProcessor : public AgnosticNodeProcessor {
  public:
-  explicit ReluGradProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+  ReluGradProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
   std::vector<int> GetInputPos() const override {
@@ -957,8 +728,8 @@ class ReluGradProcessor : public AgnosticNodeProcessor {
 
 class SliceProcessor : public AgnosticNodeProcessor {
  public:
-  explicit SliceProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+  SliceProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
   Status CustomizedProcessing() override {
@@ -978,62 +749,14 @@ class SliceProcessor : public AgnosticNodeProcessor {
   }
 
  private:
-  NodeDef* AddNodeGatherAxisConst(const string& suffix,
-                                  const string& depended_node,
-                                  const string& device) {
-    auto const_node = AddNodeConstScalar(
-        strings::StrCat(kGatherAxisConst, "-", suffix), device, DT_INT32, 0);
-    // This is to ensure the Slice node and the const node are
-    // in the same frame.
-    *const_node->add_input() = AsControlDependency(depended_node);
-    return const_node;
-  }
-
-  string GetOrAddNodeGatherAxisConst() {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node = AddNodeGatherAxisConst(
-          node_->name(), NodeName(node_->input(0)), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kGatherAxisConst;
-    }
-    return const_name;
-  }
-
-  string GetOrAddNodePermNHWCToNCHW() {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node = AddNodePermNHWCToNCHW(
-          node_->name(), NodeName(node_->input(0)), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kPermNHWCToNCHW;
-    }
-    return const_name;
-  }
-
-  string GetOrAddNodePermNCHWToNHWC() {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node = AddNodePermNCHWToNHWC(
-          node_->name(), NodeName(node_->input(0)), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kPermNCHWToNHWC;
-    }
-    return const_name;
-  }
-
   void AddNodePermVec(const string& node_name, const string& input_name,
                       DataType data_type, bool NHWCToNCHW) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(node_name, node);
     node->set_name(node_name);
     *node->add_input() = input_name;
-    *node->add_input() = NHWCToNCHW ? GetOrAddNodePermNHWCToNCHW()
-                                    : GetOrAddNodePermNCHWToNHWC();
-    *node->add_input() = GetOrAddNodeGatherAxisConst();
+    *node->add_input() = NHWCToNCHW ? kPermNHWCToNCHW : kPermNCHWToNHWC;
+    *node->add_input() = kGatherAxisConst;
     node->set_op("GatherV2");
 
     AttrValue attr_type_indices;
@@ -1059,8 +782,8 @@ class SliceProcessor : public AgnosticNodeProcessor {
 // before this optimization.
 class SliceProcessorConst : public AgnosticNodeProcessor {
  public:
-  explicit SliceProcessorConst(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+  SliceProcessorConst(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
   Status CustomizedProcessing() override {
@@ -1076,24 +799,24 @@ class SliceProcessorConst : public AgnosticNodeProcessor {
 // example use case is in the gradient computation of Concat for InceptionV3.
 class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
  public:
-  explicit SliceProcessorConcatOffset(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+  SliceProcessorConcatOffset(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
   Status CustomizedProcessing() override {
     auto maybe_concatoffset_node =
         node_map_->GetNode(NodeName(node_->input(1)));
-    if (IsConcatOffset(*maybe_concatoffset_node)) {
+    if (maybe_concatoffset_node->op() == "ConcatOffset") {
       auto maybe_axis_node =
           node_map_->GetNode(maybe_concatoffset_node->input(0));
       NodeDef* axis_node;
-      if (IsConstant(*maybe_axis_node)) {
+      if (maybe_axis_node->op() == "Const") {
         axis_node = maybe_axis_node;
         // A FloorMod node might be added between ConcatOffset and the concat
         // dimension const node to handle a negative dimension index -1, meaning
         // the last dimension, which is consistent with the python's notation
         // for negative index.
-      } else if (IsFloorMod(*maybe_axis_node)) {
+      } else if (maybe_axis_node->op() == "FloorMod") {
         axis_node = node_map_->GetNode(maybe_axis_node->input(0));
       } else {
         return Status(error::INVALID_ARGUMENT,
@@ -1126,13 +849,13 @@ class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
 
 class SqueezeProcessor : public AgnosticNodeProcessor {
  public:
-  explicit SqueezeProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+  SqueezeProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsN(*node_, 2) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && IsInputConvertible() && IsAlongDimHW();
+    return IsDimsN(*node_, 2) && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           IsInputConvertible() && IsAlongDimHW();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
@@ -1175,13 +898,13 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
 
 class SumProcessor : public AgnosticNodeProcessor {
  public:
-  explicit SumProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+  SumProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
   bool ShouldProcess() const override {
     auto input0 = node_map_->GetNode(node_->input(0));
-    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+    return HasOutputs() && IsNodeAfterNCHWToNHWC() &&
            (IsDimsFour(*input0) || IsNodeNCHWToNHWC(input0->name())) &&
            IsAlongDimNHW();
   }
@@ -1190,7 +913,7 @@ class SumProcessor : public AgnosticNodeProcessor {
 
   Status CustomizedProcessing() override {
     node_map_->AddOutput(kReductionConst, node_->name());
-    *node_->mutable_input(1) = GetOrAddNodeReductionConst();
+    *node_->mutable_input(1) = kReductionConst;
     return Status::OK();
   }
 
@@ -1215,40 +938,23 @@ class SumProcessor : public AgnosticNodeProcessor {
     }
     return false;
   }
-
-  NodeDef* AddNodeReductionConst(const string& suffix,
-                                 const string& depended_node,
-                                 const string& device) {
-    auto const_node = GraphProcessor::AddNodeReductionConst(
-        strings::StrCat(kReductionConst, "-", suffix), device);
-    // This is to ensure the Sum node and the const node are in the
-    // same frame.
-    *const_node->add_input() = AsControlDependency(depended_node);
-    return const_node;
-  }
-
-  string GetOrAddNodeReductionConst() {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node = AddNodeReductionConst(
-          node_->name(), NodeName(node_->input(0)), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kReductionConst;
-    }
-    return const_name;
-  }
 };
 
-class DataLayoutOptimizer : GraphProcessor {
+struct TuningConfig {
+  // If true, do not use the NHWC GEMM implementation. When filter size is
+  // one or filter size is equal to input image size,
+  // the NHWC implementation of Conv2D, Conv2DBackpropInput, and
+  // Conv2DBackpropFilter will use a specialized GEMM implementation, which is
+  // usually faster than the NCHW implementation. The downside is that this
+  // might result in more non-cancellable layout conversion nodes (implemented
+  // by the Transpose op).
+  bool no_gemm;
+};
+
+class DataLayoutOptimizer {
  public:
-  explicit DataLayoutOptimizer(
-      LayoutOptimizer::TuningConfig config,
-      const std::unordered_set<string>& nodes_to_preserve,
-      const string& default_device, GraphDef* graph, NodeMap* node_map)
-      : GraphProcessor(graph, node_map, nodes_to_preserve),
-        config_(config),
-        default_device_(default_device) {}
+  explicit DataLayoutOptimizer(GraphDef* graph, TuningConfig config)
+      : graph_(graph), node_map_(graph_), config_(config) {}
 
   Status Optimize() {
     LOG(INFO) << "Number of nodes for original graph: " << graph_->node_size();
@@ -1260,69 +966,102 @@ class DataLayoutOptimizer : GraphProcessor {
   }
 
  private:
-  NodeDef* AddNodePermNHWCToNCHW() {
-    return AddNodePermConst(kPermNHWCToNCHW, default_device_, {0, 3, 1, 2});
+  NodeDef* AddNodePermConst(const string& name,
+                            const std::vector<int>& permutation) {
+    NodeDef* node = graph_->add_node();
+    node_map_.AddNode(name, node);
+    node->set_name(name);
+    node->set_op("Const");
+    AttrValue attr_data_type;
+    attr_data_type.set_type(DT_INT32);
+    node->mutable_attr()->insert({"dtype", attr_data_type});
+    AttrValue attr_tensor;
+    Tensor tensor(DT_INT32, TensorShape({4}));
+    for (int i = 0; static_cast<size_t>(i) < permutation.size(); i++) {
+      tensor.flat<int>()(i) = permutation[i];
+    }
+    tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
+    node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
-  NodeDef* AddNodePermNCHWToNHWC() {
-    return AddNodePermConst(kPermNCHWToNHWC, default_device_, {0, 2, 3, 1});
+  NodeDef* AddConstScalar(const char* name, DataType dtype, int value) {
+    NodeDef* node = graph_->add_node();
+    node_map_.AddNode(name, node);
+    node->set_name(name);
+    node->set_op("Const");
+    AttrValue attr_data_type;
+    attr_data_type.set_type(dtype);
+    node->mutable_attr()->insert({"dtype", attr_data_type});
+    AttrValue attr_tensor;
+    Tensor tensor(dtype, TensorShape({}));
+    tensor.scalar<int>()() = value;
+    tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
+    node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
   NodeDef* AddNodeConcatConst() {
-    return AddNodeConstScalar(kConcatConst, default_device_, DT_INT32, 1);
+    return AddConstScalar(kConcatConst, DT_INT32, 1);
   }
 
-  NodeDef* AddNodeGatherAxisConst() {
-    return AddNodeConstScalar(kGatherAxisConst, default_device_, DT_INT32, 0);
+  NodeDef* AddGatherAxisConst() {
+    return AddConstScalar(kGatherAxisConst, DT_INT32, 0);
   }
 
   NodeDef* AddNodeReductionConst() {
-    return GraphProcessor::AddNodeReductionConst(kReductionConst,
-                                                 default_device_);
+    NodeDef* node = graph_->add_node();
+    node_map_.AddNode(kReductionConst, node);
+    node->set_name(kReductionConst);
+    node->set_op("Const");
+    AttrValue attr_data_type;
+    attr_data_type.set_type(DT_INT32);
+    node->mutable_attr()->insert({"dtype", attr_data_type});
+
+    AttrValue attr_tensor;
+    Tensor tensor(DT_INT32, TensorShape({3}));
+    std::vector<int> axis = {0, 2, 3};
+    for (int i = 0; static_cast<size_t>(i) < axis.size(); i++) {
+      tensor.flat<int>()(i) = axis[i];
+    }
+    tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
+    node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
   // Expand all nodes which is in NHWC, but supports NCHW or is layout agnostic.
   Status Expand() {
     int node_size_original = graph_->node_size();
-    std::unordered_map<const NodeDef*, std::vector<int>> frames;
-    int num_frames;
-    TF_RETURN_IF_ERROR(IdentifyFrames(*graph_, &frames, &num_frames));
-
     // This is the first pass where we expand the nodes which support NCHW.
     std::set<string> ops_format_supported = GetOpsFormatSupported();
-    for (int i = 0; i < node_size_original; i++) {
+    for (int i = 0; i < graph_->node_size(); i++) {
       if (ops_format_supported.find(graph_->node(i).op()) !=
           ops_format_supported.end()) {
         auto node = graph_->mutable_node(i);
-        bool is_in_frame = !frames[node].empty();
-        OptimizeContext opt_cxt(graph_, node, node_map_, nodes_to_preserve_,
-                                is_in_frame);
         std::unique_ptr<NodeProcessor> node_processor;
-        if (IsAvgPoolGrad(*node)) {
-          node_processor.reset(new AvgPoolGradProcessor(opt_cxt));
-        } else if (IsBiasAddGrad(*node)) {
-          node_processor.reset(new BiasAddGradProcessor(opt_cxt));
-        } else if (IsConv2D(*node)) {
-          node_processor.reset(new Conv2DProcessor(opt_cxt, config_.no_gemm));
-        } else if (IsConv2DBackpropFilter(*node)) {
+        if (node->op().compare("AvgPoolGrad") == 0) {
           node_processor.reset(
-              new Conv2DBackpropFilterProcessor(opt_cxt, config_.no_gemm));
-        } else if (IsConv2DBackpropInput(*node)) {
+              new AvgPoolGradProcessor(graph_, node, &node_map_));
+        } else if (node->op().compare("BiasAddGrad") == 0) {
           node_processor.reset(
-              new Conv2DBackpropInputProcessor(opt_cxt, config_.no_gemm));
-        } else if (IsDepthwiseConv2dNative(*node)) {
-          node_processor.reset(new Conv2DProcessor(opt_cxt, true));
-        } else if (IsDepthwiseConv2dNativeBackpropFilter(*node)) {
+              new BiasAddGradProcessor(graph_, node, &node_map_));
+        } else if (node->op().compare("Conv2D") == 0) {
           node_processor.reset(
-              new Conv2DBackpropFilterProcessor(opt_cxt, true));
-        } else if (IsDepthwiseConv2dNativeBackpropInput(*node)) {
-          node_processor.reset(new Conv2DBackpropInputProcessor(opt_cxt, true));
-        } else if (IsFusedBatchNormGradV1(*node)) {
-          node_processor.reset(new FusedBatchNormGradProcessor(opt_cxt));
-        } else if (IsMaxPoolGradV1(*node)) {
-          node_processor.reset(new MaxPoolGradProcessor(opt_cxt));
+              new Conv2DProcessor(graph_, node, &node_map_, config_.no_gemm));
+        } else if (node->op().compare("Conv2DBackpropFilter") == 0) {
+          node_processor.reset(new Conv2DBackpropFilterProcessor(
+              graph_, node, &node_map_, config_.no_gemm));
+        } else if (node->op().compare("Conv2DBackpropInput") == 0) {
+          node_processor.reset(new Conv2DBackpropInputProcessor(
+              graph_, node, &node_map_, config_.no_gemm));
+        } else if (node->op().compare("FusedBatchNormGrad") == 0) {
+          node_processor.reset(
+              new FusedBatchNormGradProcessor(graph_, node, &node_map_));
+        } else if (node->op().compare("MaxPoolGrad") == 0) {
+          node_processor.reset(
+              new MaxPoolGradProcessor(graph_, node, &node_map_));
         } else {
-          node_processor.reset(new NodeProcessor(opt_cxt));
+          node_processor.reset(new NodeProcessor(graph_, node, &node_map_));
         }
         TF_RETURN_IF_ERROR(node_processor->ConvertNode());
       }
@@ -1332,47 +1071,59 @@ class DataLayoutOptimizer : GraphProcessor {
     // only needs to be performed if at least one node in the previous pass is
     // expanded.
     if (graph_->node_size() > node_size_original) {
-      NodeDef* n = AddNodePermNHWCToNCHW();
-      n = AddNodePermNCHWToNHWC();
+      NodeDef* n = AddNodePermConst(kPermNHWCToNCHW, {0, 3, 1, 2});
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
+      n = AddNodePermConst(kPermNCHWToNHWC, {0, 2, 3, 1});
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
       n = AddNodeConcatConst();
-      n = AddNodeGatherAxisConst();
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
+      n = AddGatherAxisConst();
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
       n = AddNodeReductionConst();
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
       std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
       for (int i = 0; i < graph_->node_size(); i++) {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
             ops_format_agnostic.end()) {
           auto node = graph_->mutable_node(i);
-          bool is_in_frame = !frames[node].empty();
-          OptimizeContext opt_cxt(graph_, node, node_map_, nodes_to_preserve_,
-                                  is_in_frame);
           std::unique_ptr<NodeProcessor> node_processor;
-          if (IsAddN(*node)) {
-            node_processor.reset(new AddNProcessor(opt_cxt));
-          } else if (IsAdd(*node) || IsMul(*node) || IsRealDiv(*node) ||
-                     IsSquaredDifference(*node) || IsSub(*node)) {
-            node_processor.reset(new BinaryOpProcessor(opt_cxt));
-          } else if (IsConcat(*node)) {
-            node_processor.reset(new ConcatProcessor(opt_cxt));
-          } else if (IsPad(*node)) {
-            node_processor.reset(new PadProcessor(opt_cxt));
-          } else if (IsReluGrad(*node)) {
-            node_processor.reset(new ReluGradProcessor(opt_cxt));
-          } else if (IsSlice(*node)) {
-            auto input1 = node_map_->GetNode(NodeName(node->input(1)));
-            auto input2 = node_map_->GetNode(NodeName(node->input(2)));
-            if (IsConcatOffset(*input1)) {
-              node_processor.reset(new SliceProcessorConcatOffset(opt_cxt));
-            } else if (IsConstant(*input1) && IsConstant(*input2)) {
-              node_processor.reset(new SliceProcessorConst(opt_cxt));
+          if (node->op().compare("AddN") == 0) {
+            node_processor.reset(new AddNProcessor(graph_, node, &node_map_));
+          } else if (node->op().compare("Add") == 0 ||
+                     node->op().compare("Mul") == 0 ||
+                     node->op().compare("RealDiv") == 0 ||
+                     node->op().compare("SquaredDifference") == 0 ||
+                     node->op().compare("Sub") == 0) {
+            node_processor.reset(
+                new BinaryOpProcessor(graph_, node, &node_map_));
+          } else if (node->op().compare("Concat") == 0 ||
+                     node->op().compare("ConcatV2") == 0) {
+            node_processor.reset(new ConcatProcessor(graph_, node, &node_map_));
+          } else if (node->op().compare("ReluGrad") == 0) {
+            node_processor.reset(
+                new ReluGradProcessor(graph_, node, &node_map_));
+          } else if (node->op().compare("Slice") == 0) {
+            auto input1 = node_map_.GetNode(NodeName(node->input(1)));
+            auto input2 = node_map_.GetNode(NodeName(node->input(2)));
+            if (input1->op() == "ConcatOffset") {
+              node_processor.reset(
+                  new SliceProcessorConcatOffset(graph_, node, &node_map_));
+            } else if (input1->op() == "Const" && input2->op() == "Const") {
+              node_processor.reset(
+                  new SliceProcessorConst(graph_, node, &node_map_));
             } else {
-              node_processor.reset(new SliceProcessor(opt_cxt));
+              node_processor.reset(
+                  new SliceProcessor(graph_, node, &node_map_));
             }
-          } else if (IsSqueeze(*node)) {
-            node_processor.reset(new SqueezeProcessor(opt_cxt));
-          } else if (IsSum(*node)) {
-            node_processor.reset(new SumProcessor(opt_cxt));
+
+          } else if (node->op().compare("Squeeze") == 0) {
+            node_processor.reset(
+                new SqueezeProcessor(graph_, node, &node_map_));
+          } else if (node->op().compare("Sum") == 0) {
+            node_processor.reset(new SumProcessor(graph_, node, &node_map_));
           } else {
-            node_processor.reset(new AgnosticNodeProcessor(opt_cxt));
+            node_processor.reset(
+                new AgnosticNodeProcessor(graph_, node, &node_map_));
           }
           TF_RETURN_IF_ERROR(node_processor->ConvertNode());
         }
@@ -1387,17 +1138,16 @@ class DataLayoutOptimizer : GraphProcessor {
     std::unordered_set<string> nodes_removable;
     for (int i = 0; i < graph_->node_size(); i++) {
       auto node = graph_->mutable_node(i);
-      node->mutable_attr()->erase("_output_shapes");
       if (IsNodeNHWCToNCHW(node->name())) {
         if (IsNodeNCHWToNHWC(node->input(0))) {
           const string& trans_first = node->input(0);
           const string& trans_second = node->name();
-          auto outputs = node_map_->GetOutputs(trans_second);
+          auto outputs = node_map_.GetOutputs(trans_second);
           CHECK(outputs.size() == 1)
               << "There is always only a single output for a Transpose node, "
               << "due to the way it is added by NodeProcessor.";
           NodeDef* output = *outputs.begin();
-          string input = node_map_->GetNode(trans_first)->input(0);
+          string input = node_map_.GetNode(trans_first)->input(0);
           for (int i = 0; i < output->input_size(); i++) {
             if (output->input(i).compare(trans_second) == 0) {
               *output->mutable_input(i) = input;
@@ -1419,8 +1169,9 @@ class DataLayoutOptimizer : GraphProcessor {
     return Status::OK();
   }
 
-  LayoutOptimizer::TuningConfig config_;
-  string default_device_;
+  GraphDef* graph_;
+  NodeMap node_map_;
+  TuningConfig config_;
 };
 
 int GetNumTranspose(const GraphDef& graph) {
@@ -1434,73 +1185,52 @@ int GetNumTranspose(const GraphDef& graph) {
   return number;
 }
 
-int GetNumGPUs(const Cluster& cluster) {
-  auto devices = cluster.GetDevices();
-  int num_gpus = 0;
-  for (const auto& device : devices) {
-    if (device.second.type() == "GPU") {
-      if (device.second.environment().find("architecture") !=
-          device.second.environment().end()) {
-        const string arch = device.second.environment().at("architecture");
-        // TODO(yaozhang): Enable for Volta GPUs (compute capability version 7).
-        if (arch < "7") {
-          num_gpus++;
-        }
-      }
+Status LayoutOptimizer::InferOutputShapes(GrapplerItem* item) {
+  GraphProperties graph_properties(*item);
+  TF_RETURN_IF_ERROR(graph_properties.InferStatically());
+  for (int i = 0; i < item->graph.node_size(); i++) {
+    auto node = item->graph.mutable_node(i);
+    AttrValue attr_output_shape;
+    auto tensor_properties = graph_properties.GetOutputProperties(node->name());
+    for (const auto& tensor_property : tensor_properties) {
+      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
     }
+    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
   }
-  return num_gpus;
-}
-}  // namespace
-
-Status LayoutOptimizer::Tune(const GrapplerItem& item,
-                             const GraphProperties& graph_properties,
-                             const string& default_device,
-                             const TuningConfig& config, GraphDef* output) {
-  auto status = graph_properties.AnnotateOutputShapes(output);
-  if (!status.ok()) {
-    *output = item.graph;
-    return status;
-  }
-  NodeMap node_map(output);
-  DataLayoutOptimizer layout_optimizer(config, nodes_to_preserve_,
-                                       default_device, output, &node_map);
-  status = layout_optimizer.Optimize();
-  return status;
+  return Status::OK();
 }
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
-  if (GetNumGPUs(*cluster) < 1) {
+  if (num_gpus_ == 0) {
+    num_gpus_ = GetNumAvailableGPUs();
+  }
+  if (num_gpus_ < 1) {
     // LayoutOptimizer is currently only tuned for GPU.
     *output = item.graph;
     return Status::OK();
   }
 
-  nodes_to_preserve_ = item.NodesToPreserve();
-  GraphProperties graph_properties(item);
-  auto status = graph_properties.InferStatically();
+  GrapplerItem new_item = item;
+  auto status = InferOutputShapes(&new_item);
   if (!status.ok()) {
     *output = item.graph;
     return status;
   }
 
+  *output = new_item.graph;
   TuningConfig config;
   config.no_gemm = false;
-  string default_device = "/job:localhost/replica:0/task:0/cpu:0";
-  if (cluster) {
-    if (!cluster->GetDevices().empty()) {
-      default_device = cluster->GetDevices().begin()->first;
-    }
-  }
-
-  status = Tune(item, graph_properties, default_device, config, output);
+  DataLayoutOptimizer layout_optimizer(output, config);
+  status = layout_optimizer.Optimize();
   // This is based on an empirical observation that if the introduced Transpose
   // nodes is more than 30, not using GEMM implementation would result in better
   // performance.
   if (status.ok() && GetNumTranspose(*output) > 30) {
+    *output = new_item.graph;
     config.no_gemm = true;
-    status = Tune(item, graph_properties, default_device, config, output);
+    DataLayoutOptimizer layout_optimizer(output, config);
+    status = layout_optimizer.Optimize();
   }
 
   if (!status.ok()) {

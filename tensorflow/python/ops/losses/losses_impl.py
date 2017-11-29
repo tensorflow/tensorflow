@@ -27,7 +27,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
-from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.platform import tf_logging as logging
 
 
 class Reduction(object):
@@ -213,14 +213,9 @@ def absolute_difference(
     shape as `labels`; otherwise, it is scalar.
 
   Raises:
-    ValueError: If the shape of `predictions` doesn't match that of
-      `labels` or if the shape of `weights` is invalid or if `labels`
-      or `predictions` is None.
+    ValueError: If the shape of `predictions` doesn't match that of `labels` or
+      if the shape of `weights` is invalid.
   """
-  if labels is None:
-    raise ValueError("labels must not be None.")
-  if predictions is None:
-    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "absolute_difference",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -231,12 +226,10 @@ def absolute_difference(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def cosine_distance(
-    labels, predictions, axis=None, weights=1.0, scope=None,
+    labels, predictions, dim=None, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS,
-    dim=None):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
@@ -245,14 +238,13 @@ def cosine_distance(
   Args:
     labels: `Tensor` whose shape matches 'predictions'
     predictions: An arbitrary matrix.
-    axis: The dimension along which the cosine distance is computed.
+    dim: The dimension along which the cosine distance is computed.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `losses` dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: Type of reduction to apply to loss.
-    dim: The old (deprecated) name for `axis`.
 
   Returns:
     Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
@@ -260,18 +252,10 @@ def cosine_distance(
 
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or
-      `axis`, `labels`, `predictions` or `weights` is `None`.
+      `weights` is `None`.
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
-  if axis is None and dim is None:
-    raise ValueError("You must specify 'axis'.")
-  if labels is None:
-    raise ValueError("labels must not be None.")
-  if predictions is None:
-    raise ValueError("predictions must not be None.")
+  if dim is None:
+    raise ValueError("`dim` cannot be None.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -279,7 +263,7 @@ def cosine_distance(
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(axis,), keep_dims=True)
+    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(dim,), keep_dims=True)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -305,14 +289,9 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
     shape as `labels`; otherwise, it is scalar.
 
   Raises:
-    ValueError: If the shapes of `logits` and `labels` don't match or
-      if `labels` or `logits` is None.
+    ValueError: If the shapes of `logits` and `labels` don't match.
   """
-  if labels is None:
-    raise ValueError("labels must not be None.")
-  if logits is None:
-    raise ValueError("logits must not be None.")
-  with ops.name_scope(scope, "hinge_loss", (logits, labels, weights)) as scope:
+  with ops.name_scope(scope, "hinge_loss", (logits, labels)) as scope:
     logits = math_ops.to_float(logits)
     labels = math_ops.to_float(labels)
     logits.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -367,13 +346,8 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.  Also if `labels` or
-     `predictions` is None.
+      if the shape of `weights` is invalid.
   """
-  if labels is None:
-    raise ValueError("labels must not be None.")
-  if predictions is None:
-    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "huber_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -423,13 +397,8 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.  Also if `labels` or `predictions`
-      is None.
+      if the shape of `weights` is invalid.
   """
-  if labels is None:
-    raise ValueError("labels must not be None.")
-  if predictions is None:
-    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "log_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -485,13 +454,8 @@ def mean_pairwise_squared_error(
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.  Also if `labels` or `predictions
-      is None.
+      if the shape of `weights` is invalid.
   """
-  if labels is None:
-    raise ValueError("labels must not be None.")
-  if predictions is None:
-    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "mean_pairwise_squared_error",
                       (predictions, labels, weights)) as scope:
     weights = math_ops.to_float(weights)
@@ -560,13 +524,8 @@ def mean_squared_error(
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.  Also if `labels` or `predictions`
-      is None.
+      if the shape of `weights` is invalid.
   """
-  if labels is None:
-    raise ValueError("labels must not be None.")
-  if predictions is None:
-    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "mean_squared_error",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -612,16 +571,14 @@ def sigmoid_cross_entropy(
   Raises:
     ValueError: If the shape of `logits` doesn't match that of
       `multi_class_labels` or if the shape of `weights` is invalid, or if
-      `weights` is None.  Also if `multi_class_labels` or `logits` is None.
+      `weights` is None.
   """
-  if multi_class_labels is None:
-    raise ValueError("multi_class_labels must not be None.")
-  if logits is None:
-    raise ValueError("logits must not be None.")
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
                       (logits, multi_class_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
+    logging.info("logits.dtype=%s.", logits.dtype)
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
+    logging.info("multi_class_labels.dtype=%s.", multi_class_labels.dtype)
     logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     if label_smoothing > 0:
@@ -631,6 +588,7 @@ def sigmoid_cross_entropy(
     losses = nn.sigmoid_cross_entropy_with_logits(labels=multi_class_labels,
                                                   logits=logits,
                                                   name="xentropy")
+    logging.info("losses.dtype=%s.", losses.dtype)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -666,13 +624,8 @@ def softmax_cross_entropy(
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
-      or if the shape of `weights` is invalid or if `weights` is None.  Also if
-      `onehot_labels` or `logits` is None.
+      or if the shape of `weights` is invalid or if `weights` is None.
   """
-  if onehot_labels is None:
-    raise ValueError("onehot_labels must not be None.")
-  if logits is None:
-    raise ValueError("logits must not be None.")
   with ops.name_scope(scope, "softmax_cross_entropy_loss",
                       (logits, onehot_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
@@ -763,8 +716,8 @@ def sparse_softmax_cross_entropy(
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
       `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
-    weights: Coefficients for the loss. This must be scalar or broadcastable to
-      `labels` (i.e. same rank and each dimension is either 1 or the same).
+    weights: Coefficients for the loss. This must be scalar or of same rank as
+      `labels`
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
     reduction: Type of reduction to apply to loss.
@@ -774,13 +727,9 @@ def sparse_softmax_cross_entropy(
     `NONE`, this has the same shape as `labels`; otherwise, it is scalar.
 
   Raises:
-    ValueError: If the shapes of `logits`, `labels`, and `weights` are
-      incompatible, or if any of them are None.
+    ValueError: If the shapes of logits, labels, and weight are incompatible, or
+      if `weights` is None.
   """
-  if labels is None:
-    raise ValueError("labels must not be None.")
-  if logits is None:
-    raise ValueError("logits must not be None.")
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
                       (logits, labels, weights)) as scope:
     # As documented above in Args, labels contain class IDs and logits contains

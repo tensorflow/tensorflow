@@ -34,8 +34,8 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
   std::vector<DeviceAttributes> devices;
   dm->ListDeviceAttributes(&devices);
   response->mutable_device_attributes()->Reserve(devices.size());
-  for (auto& d : devices) {
-    response->add_device_attributes()->Swap(&d);
+  for (size_t i = 0; i < devices.size(); ++i) {
+    response->add_device_attributes()->Swap(&devices[i]);
   }
   done(Status::OK());
 }
@@ -48,13 +48,6 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
   done(s);
 }
 
-void Worker::DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
-                                      DeleteWorkerSessionResponse* response,
-                                      StatusCallback done) {
-  Status s = env_->session_mgr->DeleteSession(request->session_handle());
-  done(s);
-}
-
 void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
                                 RegisterGraphResponse* response,
                                 StatusCallback done) {
@@ -62,8 +55,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
-      request->debug_options(), session->cluster_flr.get(),
-      response->mutable_graph_handle());
+      request->debug_options(), response->mutable_graph_handle());
   done(s);
 }
 
@@ -139,8 +131,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     return;
   }
   StepStatsCollector* collector = nullptr;
-  if (request->exec_opts().report_tensor_allocations_upon_oom() ||
-      request->exec_opts().record_timeline() ||
+  if (request->exec_opts().record_timeline() ||
       request->exec_opts().record_costs()) {
     collector = new StepStatsCollector(response->mutable_step_stats());
     // TODO(mrry,pbar): GPU tracing for distributed steps.
@@ -165,9 +156,10 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
       return;
     }
   }
+  CostGraphDef* cost_graph = response->mutable_cost_graph();
   session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, session, request->exec_opts(),
-      collector, response, cm, in,
+      collector, cost_graph, cm, in,
       [this, step_id, response, session, cm, out, token, collector, opts,
        done](Status s) {
         if (s.ok()) {
@@ -187,7 +179,6 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
             response->AddRecv(key, val);
           }
         }
-        if (collector) collector->Finalize();
         delete collector;
         delete out;
         done(s);
@@ -239,7 +230,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     }
     session->graph_mgr->ExecuteAsync(
         graph_handle, step_id, session, request->exec_opts(),
-        nullptr /* collector */, nullptr /* response */, cm, in,
+        nullptr /* collector */, nullptr /* cost_graph */, cm, in,
         [this, token, step_id, cm](Status s) {
           {
             mutex_lock l(mu_);

@@ -1,6 +1,3 @@
-NOTE: THE `tensorflow.contrib.keras` MODULE HAS BEEN DEPRECATED.
-USE INSTEAD `tensorflow.keras`, PART OF CORE TENSORFLOW.
-
 Keras is an object-oriented API for defining and training neural networks.
 
 This module contains a pure-TensorFlow implementation of the Keras API,

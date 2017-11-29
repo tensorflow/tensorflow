@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -37,12 +36,6 @@ std::unique_ptr<DirectSession> CreateSession() {
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
-  options.config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_constant_folding(RewriterConfig::OFF);
-  options.config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_dependency_optimization(RewriterConfig::OFF);
 
   return std::unique_ptr<DirectSession>(
       dynamic_cast<DirectSession*>(NewSession(options)));
@@ -54,11 +47,11 @@ class SessionDebugMinusAXTest : public ::testing::Test {
     Graph graph(OpRegistry::Global());
 
 #if GOOGLE_CUDA
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:GPU:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:CPU:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
 
     Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
@@ -506,17 +499,17 @@ TEST_F(SessionDebugMinusAXTest,
 }
 #endif
 
-class SessionDebugOutputSlotWithoutOutgoingEdgeTest : public ::testing::Test {
+class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
  public:
   void Initialize() {
     Graph graph(OpRegistry::Global());
 
 #if GOOGLE_CUDA
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:GPU:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:CPU:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
 
     Tensor a_tensor(DT_FLOAT, TensorShape({1, 1}));
@@ -543,7 +536,7 @@ class SessionDebugOutputSlotWithoutOutgoingEdgeTest : public ::testing::Test {
   GraphDef def_;
 };
 
-TEST_F(SessionDebugOutputSlotWithoutOutgoingEdgeTest,
+TEST_F(SessionDebugOutputSlotWithoutOngoingEdgeTest,
        WatchSlotWithoutOutgoingEdge) {
   Initialize();
   auto session = CreateSession();
@@ -614,11 +607,11 @@ class SessionDebugVariableTest : public ::testing::Test {
     Graph graph(OpRegistry::Global());
 
 #if GOOGLE_CUDA
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:GPU:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:CPU:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
 
     // Define variable node.
@@ -886,7 +879,7 @@ class SessionDebugGPUSwitchTest : public ::testing::Test {
     Graph graph(OpRegistry::Global());
 
 #ifdef GOOGLE_CUDA
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:GPU:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
 #elif TENSORFLOW_USE_SYCL
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #endif

@@ -76,17 +76,14 @@ echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}"
 
 pushd "${TMP_DIR}"
 
-# Obtain compilation and linking flags
-TF_CFLAGS=( $("${PYTHON_BIN_PATH}" \
-	      -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )
-TF_LFLAGS=( $("${PYTHON_BIN_PATH}" \
-	      -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
+# Obtain paths include and lib paths to the TensorFlow installation
+TF_INC=$("${PYTHON_BIN_PATH}" \
+         -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 
-if [[ -z "${TF_CFLAGS}" || -z "${TF_LFLAGS}" ]]; then
-  die "FAILED to determine TensorFlow compilation or linking flags"
+if [[ -z "${TF_INC}" ]]; then
+  die "FAILED to determine TensorFlow include path"
 else
-  echo "TensorFlow compile flags: ${TF_CFLAGS[@]}"
-  echo "TensorFlow link flags: ${TF_LFLAGS[@]}"
+  echo "TensorFlow include path: ${TF_INC}"
 fi
 
 # Check g++ availability
@@ -145,7 +142,7 @@ if [[ ${IS_GPU} == "0" ]]; then
 
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
     -shared "${SRC_FILE}" -o "${USER_OP_SO}" \
-    -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]}  || \
+    -fPIC -I "${TF_INC}" || \
     die "g++ compilation of ${SRC_FILE} FAILED"
 
 else
@@ -184,7 +181,7 @@ else
   OP_KERNEL_O=$(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.o/')
   "${NVCC_BIN}" -std=c++11 \
       -c -o "${OP_KERNEL_O}" "${OP_KERNEL_CU}" \
-      ${TF_CFLAGS[@]} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
+      -I "${TF_INC}" -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
       die "nvcc compilation of ${OP_KERNEL_CC} FAILED"
 
   CUDA_LIB_DIR="/usr/local/cuda/lib64"
@@ -203,7 +200,7 @@ else
   USER_OP_SO="add_one.so"
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" ${TF_CFLAGS[@]} -L "${CUDA_LIB_DIR}" ${TF_LFLAGS[@]} \
+      "${OP_KERNEL_O}" -I "${TF_INC}" -L "${CUDA_LIB_DIR}" \
       -fPIC -lcudart || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi

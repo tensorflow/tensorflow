@@ -28,10 +28,6 @@ namespace xla {
 Computation CreateScalarAddComputation(PrimitiveType type,
                                        ComputationBuilder* builder);
 
-// Creates a scalar multiply computation and returns it.
-Computation CreateScalarMultiplyComputation(PrimitiveType type,
-                                            ComputationBuilder* builder);
-
 // Creates a scalar ge computation and returns it.
 Computation CreateScalarGeComputation(PrimitiveType type,
                                       ComputationBuilder* builder);
@@ -45,10 +41,10 @@ Computation CreateScalarMinComputation(PrimitiveType type,
                                        ComputationBuilder* builder);
 
 // Creates a scalar logical AND computation and returns it.
-Computation CreateScalarAndComputation(ComputationBuilder* builder);
+Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder);
 
 // Creates a scalar logical OR computation and returns it.
-Computation CreateScalarOrComputation(ComputationBuilder* builder);
+Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder);
 
 // Returns whether any predicate in "predicates" is set.
 //

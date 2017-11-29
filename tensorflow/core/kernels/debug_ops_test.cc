@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/debug/debug_io_utils.h"
-#include "tensorflow/core/debug/debug_node_key.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/summary.pb.h"
@@ -99,8 +98,8 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
     std::vector<string> device_roots;
     DIR* dir0 = opendir(dump_roots[i].c_str());
     struct dirent* ent0;
-    const string kDeviceDirPrefix = strings::StrCat(
-        DebugNodeKey::kMetadataFilePrefix, DebugNodeKey::kDeviceTag);
+    const string kDeviceDirPrefix =
+        strings::StrCat(DebugIO::kMetadataFilePrefix, DebugIO::kDeviceTag);
     while ((ent0 = readdir(dir0)) != nullptr) {
       if (!strncmp(ent0->d_name, kDeviceDirPrefix.c_str(),
                    kDeviceDirPrefix.size())) {
@@ -260,6 +259,10 @@ class DebugNumericSummaryOpTest : public OpsTestBase {
 
 #if defined(PLATFORM_GOOGLE)
   void ClearEnabledWatchKeys() { DebugGrpcIO::ClearEnabledWatchKeys(); }
+
+  void CreateEmptyEnabledSet(const string& grpc_debug_url) {
+    DebugGrpcIO::CreateEmptyEnabledSet(grpc_debug_url);
+  }
 #endif
 };
 
@@ -574,8 +577,7 @@ TEST_F(DebugNumericSummaryOpTest, UInt8Success) {
 
 TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
   TF_ASSERT_OK(Init(DT_BOOL));
-  AddInputFromArray<bool>(TensorShape({2, 3}),
-                          {false, false, true, true, true, false});
+  AddInputFromArray<bool>(TensorShape({2, 3}), {0, 0, 1, 1, 1, 0});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({16}));
@@ -602,6 +604,7 @@ TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
 #if defined(PLATFORM_GOOGLE)
 TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
   ClearEnabledWatchKeys();
+  CreateEmptyEnabledSet("grpc://server:3333");
 
   std::vector<string> debug_urls({"grpc://server:3333"});
   TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
@@ -614,9 +617,8 @@ TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
 
 TEST_F(DebugNumericSummaryOpTest, DisabledDueToNonMatchingWatchKey) {
   ClearEnabledWatchKeys();
-  DebugGrpcIO::SetDebugNodeKeyGrpcState(
-      "grpc://server:3333", "FakeTensor:1:DebugNumeriSummary",
-      EventReply::DebugOpStateChange::READ_ONLY);
+  DebugGrpcIO::EnableWatchKey("grpc://server:3333",
+                              "FakeTensor:1:DebugNumeriSummary");
 
   std::vector<string> debug_urls({"grpc://server:3333"});
   TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));

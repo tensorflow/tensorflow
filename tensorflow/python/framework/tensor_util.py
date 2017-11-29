@@ -23,12 +23,11 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
-# Fallback in case fast_tensor_util is not properly compiled.
+# TODO(opensource): Add support for pyx_library in the open-source build.
+# For now, we use the slow versions that fast_tensor_util replaces.
 # pylint: disable=g-import-not-at-top
 try:
   from tensorflow.python.framework import fast_tensor_util
@@ -61,8 +60,6 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.int64: fast_tensor_util.AppendInt64ArrayToTensorProto,
       np.uint8: fast_tensor_util.AppendUInt8ArrayToTensorProto,
       np.uint16: fast_tensor_util.AppendUInt16ArrayToTensorProto,
-      np.uint32: fast_tensor_util.AppendUInt32ArrayToTensorProto,
-      np.uint64: fast_tensor_util.AppendUInt64ArrayToTensorProto,
       np.int8: fast_tensor_util.AppendInt8ArrayToTensorProto,
       np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.complex64: fast_tensor_util.AppendComplex64ArrayToTensorProto,
@@ -92,17 +89,11 @@ else:
   def SlowAppendIntArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int_val.extend([np.asscalar(x) for x in proto_values])
 
-  def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
-
   def SlowAppendQIntArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int_val.extend([np.asscalar(x[0]) for x in proto_values])
 
-  def SlowAppendUInt32ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.uint32_val.extend([np.asscalar(x) for x in proto_values])
-
-  def SlowAppendUInt64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.uint64_val.extend([np.asscalar(x) for x in proto_values])
+  def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendComplex64ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.scomplex_val.extend([np.asscalar(v)
@@ -128,8 +119,6 @@ else:
       np.int64: SlowAppendInt64ArrayToTensorProto,
       np.uint8: SlowAppendIntArrayToTensorProto,
       np.uint16: SlowAppendIntArrayToTensorProto,
-      np.uint32: SlowAppendUInt32ArrayToTensorProto,
-      np.uint64: SlowAppendUInt64ArrayToTensorProto,
       np.int8: SlowAppendIntArrayToTensorProto,
       np.int16: SlowAppendIntArrayToTensorProto,
       np.complex64: SlowAppendComplex64ArrayToTensorProto,
@@ -200,7 +189,7 @@ def _FlattenToStrings(nested_strings):
 _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
     dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
+    dtypes.quint16, dtypes.qint32,
 ])
 
 
@@ -245,8 +234,7 @@ def _FilterTuple(v):
 def _FilterInt(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterInt(x) for x in v])
-  return None if isinstance(v, (compat.integral_types,
-                                tensor_shape.Dimension)) else _NotNone(v)
+  return None if isinstance(v, compat.integral_types) else _NotNone(v)
 
 
 def _FilterFloat(v):
@@ -286,7 +274,6 @@ _TF_TO_IS_OK = {
     dtypes.bool: [_FilterBool],
     dtypes.complex128: [_FilterComplex],
     dtypes.complex64: [_FilterComplex],
-    dtypes.float16: [_FilterFloat],
     dtypes.float32: [_FilterFloat],
     dtypes.float64: [_FilterFloat],
     dtypes.int16: [_FilterInt],
@@ -325,13 +312,10 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
-    A `TensorProto`. Depending on the type, it may contain data in the
+    A TensorProto. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with `tensor_util.MakeNdarray(proto)`.
-
-    If `values` is a `TensorProto`, it is immediately returned; `dtype` and
-    `shape` are ignored.
+    with tensor_util.MakeNdarray(proto).
 
   Raises:
     TypeError:  if unsupported types are provided.
@@ -359,9 +343,6 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   can not have more elements than what "shape" specifies.
 
   """
-  if isinstance(values, tensor_pb2.TensorProto):
-    return values
-
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 
@@ -374,15 +355,10 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
-  elif callable(getattr(values, "__array__", None)) or isinstance(
-      getattr(values, "__array_interface__", None), dict):
-    # If a class has the __array__ method, or __array_interface__ dict, then it
-    # is possible to convert to numpy array.
+  elif callable(getattr(values, "__array__", None)):
+    # If a class has the __array__ method, then it is possible to convert
+    # to numpy array.
     nparray = np.asarray(values, dtype=dtype)
-
-    # This is the preferred way to create an array from the object, so replace
-    # the `values` with the array so that _FlattenToStrings is not run.
-    values = nparray
   else:
     if values is None:
       raise ValueError("None values not supported.")
@@ -431,8 +407,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
 
   if dtype is not None and (not hasattr(dtype, "base_dtype") or
                             dtype.base_dtype != numpy_dtype.base_dtype):
-    raise TypeError("Incompatible types: %s vs. %s. Value is %s"
-                    % (dtype, nparray.dtype, values))
+    raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
 
   # If shape is not given, get the shape from the numpy array.
   if shape is None:
@@ -620,7 +595,7 @@ def ShapeEquals(tensor_proto, shape):
   return all(x == y for x, y in zip(tensor_shape_list, shape))
 
 
-def _ConstantValue(tensor, partial):
+def _ConstantValue(tensor):
   # TODO(touts): Support Variables?
   if not isinstance(tensor, ops.Tensor):
     raise TypeError("tensor is not a Tensor")
@@ -642,7 +617,7 @@ def _ConstantValue(tensor, partial):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims], dtype=np.int32),
+      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims]),
                         dtype=np.int32)
     else:
       return None
@@ -692,12 +667,9 @@ def _ConstantValue(tensor, partial):
     # and return None.
     if not tensor.op.inputs:
       return None
-    # We can't handle axis != 0 Packs at the moment.
-    if tensor.op.get_attr("axis") != 0:
-      return None
     for x in tensor.op.inputs:
-      value = constant_value(x, partial)
-      if value is None and not partial:
+      value = constant_value(x)
+      if value is None:
         return None
       values.append(value)
     return np.array(values)
@@ -708,27 +680,11 @@ def _ConstantValue(tensor, partial):
       return np.full(fill_shape.as_list(), fill_value, dtype=fill_value.dtype)
     else:
       return None
-  elif tensor.op.type == "Equal":
-    value1 = constant_value(tensor.op.inputs[0])
-    if value1 is None:
-      return None
-    value2 = constant_value(tensor.op.inputs[1])
-    if value2 is None:
-      return None
-    return np.equal(value1, value2)
-  elif tensor.op.type == "NotEqual":
-    value1 = constant_value(tensor.op.inputs[0])
-    if value1 is None:
-      return None
-    value2 = constant_value(tensor.op.inputs[1])
-    if value2 is None:
-      return None
-    return np.not_equal(value1, value2)
   else:
     return None
 
 
-def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
+def constant_value(tensor):
   """Returns the constant value of the given tensor, if efficiently calculable.
 
   This function attempts to partially evaluate the given tensor, and
@@ -745,8 +701,6 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
 
   Args:
     tensor: The Tensor to be evaluated.
-    partial: If True, the returned numpy array is allowed to have partially
-      evaluated values. Values that can't be evaluated will be None.
 
   Returns:
     A numpy ndarray containing the constant value of the given `tensor`,
@@ -755,9 +709,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  if isinstance(tensor, ops.EagerTensor):
-    return tensor.numpy()
-  ret = _ConstantValue(tensor, partial)
+  ret = _ConstantValue(tensor)
   if ret is not None:
     # The caller may now depend on the constant value of `tensor`, so we
     # conservatively prevent it from being fed.
@@ -781,10 +733,6 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   Returns:
     A `TensorShape` based on the constant value of the given `tensor`.
   """
-  if context.in_eager_mode():
-    return tensor_shape.as_shape(
-        [dim if dim != -1 else None for dim in tensor.numpy()])
-
   shape = tensor.get_shape().with_rank(1)
   if tensor.get_shape() == [0]:
     return tensor_shape.scalar()
@@ -792,9 +740,6 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
     ret = tensor_shape.scalar()  # Empty list.
-    # Since we expect rank 1 inputs, Pack's axis must be zero, otherwise it
-    # would not be rank 1.
-    assert tensor.op.get_attr("axis") == 0
     for pack_input in tensor.op.inputs:
       # `pack_input` must be a scalar. Attempt to evaluate it, and append it
       # to `ret`.

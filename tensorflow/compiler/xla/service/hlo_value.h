@@ -45,13 +45,6 @@ struct HloPosition {
     return instruction == other.instruction && index == other.index;
   }
   bool operator!=(const HloPosition& other) const { return !(*this == other); }
-
-  // Stable less-than operator using instruction id and index.
-  bool operator<(const HloPosition& other) const {
-    return instruction->unique_id() < other.instruction->unique_id() ||
-           (instruction->unique_id() == other.instruction->unique_id() &&
-            index < other.index);
-  }
 };
 
 std::ostream& operator<<(std::ostream& out, const HloPosition& position);
@@ -121,12 +114,6 @@ class HloValue {
   HloValue(Id id, HloInstruction* instruction, const ShapeIndex& index,
            bool is_phi = false);
 
-  // Sets the positions in the module at which the HloValue appears. Updates
-  // uses. Should be called once and only once. The defining position should not
-  // be included in 'positions' as this is set at construction time.
-  void SetPositionsAndComputeUses(
-      tensorflow::gtl::ArraySlice<HloPosition> positions);
-
   // Return a unique identifier for this HloValue. This value is used for stable
   // sorting and iteration
   Id id() const { return id_; }
@@ -149,6 +136,11 @@ class HloValue {
   // Return the shape of this HloValue.
   const Shape& shape() const { return defining_position().shape(); }
 
+  // Add or remove a position at which the HloValue appears. The definition
+  // position can not be removed. The uses of the HloValue are updated.
+  void AddPosition(HloInstruction* instruction, const ShapeIndex& index);
+  void RemovePosition(HloInstruction* instruction, const ShapeIndex& index);
+
   // Return all positions of the HloValue in the module.
   const std::vector<HloPosition>& positions() const { return positions_; }
 
@@ -157,6 +149,9 @@ class HloValue {
 
   // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
+
+  // Get whether this HloValue is live out of the computation it is defined in.
+  bool live_out_of_computation() const { return live_out_of_computation_; }
 
   bool operator==(const HloValue& other) const;
   bool operator!=(const HloValue& other) const;
@@ -206,20 +201,17 @@ class HloValueSet {
     SortAndUniquifyValues();
   }
 
-  // Sets this value set to the union of the given value sets. Returns whether
-  // this value set changed.
-  bool AssignUnionOf(tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
+  // Return the union of the given HloValueSets.
+  static HloValueSet Union(
+      tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
 
   // Return the vector of HloValues in the set. Values in the vector are unique
-  // and stably sorted by value id.
+  // and sorted.
   const std::vector<const HloValue*>& values() const { return values_; }
 
   // Adds the value to the set.  Returns true iff the value was added and didn't
   // already exist in the set.
   bool AddValue(const HloValue* value);
-
-  // Clear all values from the set.
-  void Clear() { values_.clear(); }
 
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
@@ -260,9 +252,8 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
  public:
   InstructionValueSet(const Shape& shape) : ShapeTree<HloValueSet>(shape) {}
 
-  // Sets this value set to the union of the given value sets. Returns whether
-  // this value set changed.
-  bool AssignUnionOf(
+  // Return the union of the given InstructionValueSets.
+  static InstructionValueSet Union(
       tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs);
 
   string ToString() const;

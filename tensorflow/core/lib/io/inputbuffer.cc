@@ -116,35 +116,17 @@ Status InputBuffer::ReadNBytes(int64 bytes_to_read, char* result,
 }
 
 Status InputBuffer::ReadVarint32Fallback(uint32* result) {
-  Status s = ReadVarintFallback(result, core::kMaxVarint32Bytes);
-  if (errors::IsDataLoss(s)) {
-    return errors::DataLoss("Stored data is too large to be a varint32.");
-  }
-  return s;
-}
-
-Status InputBuffer::ReadVarint64Fallback(uint64* result) {
-  Status s = ReadVarintFallback(result, core::kMaxVarint64Bytes);
-  if (errors::IsDataLoss(s)) {
-    return errors::DataLoss("Stored data is too large to be a varint64.");
-  }
-  return s;
-}
-
-template <typename T>
-Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
   uint8 scratch = 0;
-  auto* p = reinterpret_cast<char*>(&scratch);
+  char* p = reinterpret_cast<char*>(&scratch);
   size_t unused_bytes_read = 0;
 
   *result = 0;
-  for (int index = 0; index < max_bytes; index++) {
-    int shift = 7 * index;
+  for (int shift = 0; shift <= 28; shift += 7) {
     TF_RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
-    *result |= (static_cast<T>(scratch) & 127) << shift;
+    *result |= (scratch & 127) << shift;
     if (!(scratch & 128)) return Status::OK();
   }
-  return errors::DataLoss("Stored data longer than ", max_bytes, " bytes.");
+  return errors::DataLoss("Stored data is too large to be a varint32.");
 }
 
 Status InputBuffer::SkipNBytes(int64 bytes_to_skip) {

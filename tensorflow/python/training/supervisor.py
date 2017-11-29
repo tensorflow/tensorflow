@@ -23,7 +23,6 @@ import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -289,16 +288,7 @@ class Supervisor(object):
 
     Returns:
       A `Supervisor`.
-
-    Raises:
-      RuntimeError: If called with eager execution enabled.
-
-    @compatibility(eager)
-    `Supervisor`s are not supported when eager execution is enabled.
-    @end_compatibility
     """
-    if context.in_eager_mode():
-      raise RuntimeError("Supervisors are compatible with eager execution.")
     # Set default values of arguments.
     if graph is None:
       graph = ops.get_default_graph()
@@ -745,17 +735,7 @@ class Supervisor(object):
 
     Returns:
       The list of threads started for the `QueueRunners`.
-
-    Raises:
-      RuntimeError: If called with eager execution enabled.
-
-    @compatibility(eager)
-    Queues are not compatible with eager execution. To ingest data when eager
-    execution is enabled, use the `tf.data` API.
-    @end_compatibility
     """
-    if context.in_eager_mode():
-      raise RuntimeError("Queues are not compatible with eager execution.")
     if queue_runners is None:
       queue_runners = self._graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS)
     threads = []
@@ -788,10 +768,7 @@ class Supervisor(object):
     looper.start()
     return looper
 
-  def stop(self,
-           threads=None,
-           close_summary_writer=True,
-           ignore_live_threads=False):
+  def stop(self, threads=None, close_summary_writer=True):
     """Stop the services and the coordinator.
 
     This does not close the session.
@@ -805,19 +782,14 @@ class Supervisor(object):
       close_summary_writer: Whether to close the `summary_writer`.  Defaults to
         `True` if the summary writer was created by the supervisor, `False`
         otherwise.
-      ignore_live_threads: If `True` ignores threads that remain running after
-        a grace period when joining threads via the coordinator, instead of
-        raising a RuntimeError.
     """
     self._coord.request_stop()
     try:
       # coord.join() re-raises the first reported exception; the "finally"
       # block ensures that we clean up whether or not an exception was
       # reported.
-      self._coord.join(
-          threads,
-          stop_grace_period_secs=self._stop_grace_secs,
-          ignore_live_threads=ignore_live_threads)
+      self._coord.join(threads,
+                       stop_grace_period_secs=self._stop_grace_secs)
     finally:
       # Close the writer last, in case one of the running threads was using it.
       if close_summary_writer and self._summary_writer:

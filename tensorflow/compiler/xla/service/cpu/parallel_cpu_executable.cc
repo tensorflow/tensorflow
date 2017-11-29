@@ -24,7 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "external/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -56,23 +56,22 @@ namespace cpu {
 
 ParallelCpuExecutable::ParallelCpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
-    std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<const HloModule> hlo_module,
-    std::unique_ptr<const HloInstructionMap<string>> function_names,
+    std::unique_ptr<BufferAssignment> assignment,
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<std::map<HloInstruction*, string>> function_names,
+    std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
-        aligned_constants,
-    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
-                 std::move(hlo_profile_index_map)),
+        aligned_constants)
+    : Executable(std::move(hlo_module), ParallelCpuExecutable::ShapeSizeBytes),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
-      function_names_(std::move(function_names)),
+      functions_names_(std::move(function_names)),
+      hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
       aligned_constants_(std::move(aligned_constants)) {}
 
 // Type of the computation function we expect in the JIT.
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
-                                     int64*, int64*);
+                                     int64*, uint64*);
 
 // Given a pointer to an output buffer (following the CPU JIT calling
 // conventions), mark addresses that are "live". The initial pointer itself is
@@ -103,11 +102,11 @@ namespace {
 // in 'pending' on 'thread_pool' (storing resulting data in 'results').
 class Executor {
  public:
-  Executor(const HloInstructionMap<ComputeFunctionType>& functions,
+  Executor(const std::map<HloInstruction*, ComputeFunctionType>& functions,
            const ServiceExecutableRunOptions* run_options,
            std::list<HloInstruction*>* pending,
-           HloInstructionMap<const void*>* results, void** temps_array,
-           int64* profile_counters_array, const BufferAssignment* assignment)
+           std::map<HloInstruction*, const void*>* results, void** temps_array,
+           uint64* profile_counters_array, BufferAssignment* assignment)
       : functions_(functions),
         run_options_(run_options),
         pending_(pending),
@@ -143,14 +142,14 @@ class Executor {
   const void** GetOperandBuffers(HloInstruction* instruction);
 
   // Arguments passed into Executor.
-  const HloInstructionMap<ComputeFunctionType>& functions_;
+  const std::map<HloInstruction*, ComputeFunctionType>& functions_;
   const ServiceExecutableRunOptions* run_options_;
   std::list<HloInstruction*>* pending_;
-  HloInstructionMap<const void*>* results_;
+  std::map<HloInstruction*, const void*>* results_;
   void** temps_array_;
-  int64* profile_counters_array_;
+  uint64* profile_counters_array_;
   tensorflow::thread::ThreadPool* thread_pool_;
-  const BufferAssignment* assignment_;
+  BufferAssignment* assignment_;
 
   // Members used to manage instruction execution.
   tensorflow::mutex completion_queue_lock_;
@@ -242,7 +241,7 @@ Status Executor::Run() {
         completion_queue_.pop_front();
         break;
       }
-    } while (true);
+    } while (1);
     TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment_->GetUniqueTopLevelSlice(instruction));
     void* result_buffer =
@@ -378,6 +377,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     HloExecutionProfile* hlo_execution_profile) {
   std::vector<se::DeviceMemoryBase> argument_buffers(arguments.size());
   for (int i = 0; i < arguments.size(); ++i) {
+    TF_RET_CHECK(!ShapeUtil::IsTuple(arguments[i]->shape()));
     argument_buffers[i] = arguments[i]->buffer(/*index=*/{});
   }
   return ExecuteComputeFunctions(run_options, argument_buffers, buffers,
@@ -390,11 +390,9 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
     HloExecutionProfile* hlo_execution_profile) {
   // Allocate profiling counters for each hlo instruction that we would like to
-  // profile.
-  std::vector<int64>* profile_counters = nullptr;
-  if (hlo_execution_profile) {
-    profile_counters = hlo_execution_profile->mutable_profile_counters();
-  }
+  // profile.  Allocate an additional profile counter for the entire
+  // computation.
+  std::vector<uint64> profile_counters(hlo_to_profile_idx_.size() + 1);
 
   std::vector<void*> buffer_pointers;
   buffer_pointers.reserve(buffers.size());
@@ -403,8 +401,8 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   }
 
   // Resolve functions for all the HLO instructions ahead of time.
-  HloInstructionMap<ComputeFunctionType> functions;
-  for (auto& entry : *function_names_) {
+  std::map<HloInstruction*, ComputeFunctionType> functions;
+  for (auto& entry : *functions_names_) {
     tensorflow::mutex_lock lock(jit_mutex_);
     HloInstruction* instruction = entry.first;
     llvm::JITSymbol sym = jit_->FindSymbol(entry.second);
@@ -415,7 +413,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   }
 
   // Map containing pointers to result buffers for each instruction.
-  HloInstructionMap<const void*> results;
+  std::map<HloInstruction*, const void*> results;
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -444,9 +442,9 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   // For example, if we expect a library conv/matmul call to run at max
   // concurrency, we should not dispatch runnable instructions until the
   // library call is finished (to avoid expensive cache invalidation).
-  Executor executor(
-      functions, run_options, &pending, &results, buffer_pointers.data(),
-      profile_counters ? profile_counters->data() : nullptr, assignment_.get());
+  Executor executor(functions, run_options, &pending, &results,
+                    buffer_pointers.data(), profile_counters.data(),
+                    assignment_.get());
 
   TF_RETURN_IF_ERROR(executor.Run());
 
@@ -456,6 +454,18 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     tensorflow::mutex_lock lock(mutex_);
     double nanoseconds = (end_micros - start_micros) * 1000.0;
     execution_profile_.set_compute_time_ns(std::max(nanoseconds, 1.0));
+    // The last profile counter is used for the computation as a whole.
+    execution_profile_.set_compute_cycle_count(profile_counters.back());
+  }
+  if (hlo_execution_profile != nullptr) {
+    hlo_execution_profile->set_total_cycles_executed(entry_computation,
+                                                     profile_counters.back());
+
+    for (auto hlo_prof_idx : hlo_to_profile_idx_) {
+      const HloInstruction* hlo = hlo_prof_idx.first;
+      uint64 cycles_taken = profile_counters[hlo_prof_idx.second];
+      hlo_execution_profile->AddProfileResult(hlo, cycles_taken);
+    }
   }
 
   return Status::OK();
@@ -536,9 +546,10 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
 
-  auto result_buffer =
-      MakeUnique<ShapedBuffer>(result_shape(), stream->parent()->platform(),
-                               stream->parent()->device_ordinal());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result_buffer,
+                      ShapedBuffer::MakeShapedBuffer(
+                          result_shape(), stream->parent()->platform(),
+                          stream->parent()->device_ordinal()));
 
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
@@ -546,15 +557,16 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   TF_RETURN_IF_ERROR(ExecuteComputeFunctions(run_options, arguments, buffers,
                                              hlo_execution_profile));
 
-  // Copy DeviceMemoryBase values which into the respective location in
-  // ShapedBuffer which is returned to the caller.
+  // Copy DeviceMemoryBase values which contain the array(s) of the result into
+  // the respective location in ShapedBuffer which is returned to the caller.
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_RETURN_IF_ERROR(
       result_buffer->mutable_shape_index_to_buffer_entry()
           ->ForEachMutableElementWithStatus(
               [&buffers, &buffers_in_result, &result_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
-                  const auto& sources =
+                if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
+                  const std::vector<const LogicalBuffer*>& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
                   // singleton.
@@ -578,6 +590,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
                   *buffer_entry = result_buffer->mutable_buffers()->size();
                   result_buffer->mutable_buffers()->push_back(buffer);
                   buffers_in_result[buffer_index] = true;
+                }
                 return Status::OK();
               }));
 

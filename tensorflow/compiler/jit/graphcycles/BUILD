@@ -6,8 +6,6 @@ package(
     ],
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
 cc_library(
     name = "graphcycles",
     srcs = ["graphcycles.cc"],
@@ -17,7 +15,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "graphcycles_test",
     srcs = ["graphcycles_test.cc"],
     deps = [

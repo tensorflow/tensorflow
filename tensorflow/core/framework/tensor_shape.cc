@@ -352,18 +352,13 @@ void TensorShapeBase<Shape>::set_dim(int d, int64 size) {
 }
 
 template <class Shape>
-void TensorShapeBase<Shape>::RemoveDimRange(int begin, int end) {
+void TensorShapeBase<Shape>::RemoveDim(int d) {
   if (unknown_rank()) return;
-  begin = begin < 0 ? dims() + begin + 1 : begin;
-  end = end < 0 ? dims() + end + 1 : end;
-  CHECK_GE(begin, 0);
-  CHECK_LE(begin, dims());
-  CHECK_GE(end, 0);
-  CHECK_LE(end, dims());
-  if (begin >= end) return;
+  CHECK_GE(d, 0);
+  CHECK_LT(d, dims());
   gtl::InlinedVector<int64, 8> vals;
   AppendTo(*this, &vals);
-  vals.erase(vals.begin() + begin, vals.begin() + end);
+  vals.erase(vals.begin() + d);
   ClearAllButDataType();
   for (auto dval : vals) {
     AddDim(dval);

@@ -22,27 +22,16 @@ limitations under the License.
 namespace tensorflow {
 namespace random {
 
-namespace {
-std::mt19937_64* InitRngWithRandomSeed() {
+std::mt19937_64* InitRng() {
   std::random_device device("/dev/urandom");
   return new std::mt19937_64(device());
 }
-std::mt19937_64 InitRngWithDefaultSeed() { return std::mt19937_64(); }
-
-}  // anonymous namespace
 
 uint64 New64() {
-  static std::mt19937_64* rng = InitRngWithRandomSeed();
-  static mutex mu(LINKER_INITIALIZED);
+  static std::mt19937_64* rng = InitRng();
+  static mutex mu;
   mutex_lock l(mu);
   return (*rng)();
-}
-
-uint64 New64DefaultSeed() {
-  static std::mt19937_64 rng = InitRngWithDefaultSeed();
-  static mutex mu(LINKER_INITIALIZED);
-  mutex_lock l(mu);
-  return rng();
 }
 
 }  // namespace random

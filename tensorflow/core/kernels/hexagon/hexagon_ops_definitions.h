@@ -18,20 +18,21 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
 // HexagonOpsDefinitions provides ops definitions supported in hexagon library
 // TODO(satok): add a functionality to call functions in hexagon library
-class HexagonOpsDefinitions final : public IRemoteFusedGraphOpsDefinitions {
+class HexagonOpsDefinitions final : public IGraphTransferOpsDefinitions {
  public:
-  static const IRemoteFusedGraphOpsDefinitions& getInstance();
+  static const IGraphTransferOpsDefinitions& getInstance();
 
   int GetTotalOpsCount() const final;
   int GetOpIdFor(const string& op_type, const DataTypeVector& dt) const final;
+  GraphTransferInfo::Destination GetTransferDestination() const final;
 
  private:
   enum class SupportedOpType;

@@ -371,7 +371,7 @@ bool TestFastParse(const string& serialized, Example* example) {
         break;
       }
       default:
-        LOG(FATAL) << "Should not happen.";
+        CHECK(false) << "Should not happen.";
     }
   }
   return true;
@@ -572,7 +572,7 @@ Status FastParseSerializedExample(
             break;
           }
           default:
-            LOG(FATAL) << "Should not happen.";
+            CHECK(false) << "Should not happen.";
         }
       } else {  // if variable length
         SparseBuffer& out = (*output_varlen_dense)[d];
@@ -632,7 +632,7 @@ Status FastParseSerializedExample(
             break;
           }
           default:
-            LOG(FATAL) << "Should not happen.";
+            CHECK(false) << "Should not happen.";
         }
       }
     } else {
@@ -657,8 +657,7 @@ Status FastParseSerializedExample(
           example_dtype != config.sparse[d].dtype) {
         return example_error(strings::StrCat(
             "Data types don't match. ",
-            "Expected type: ", DataTypeString(config.sparse[d].dtype),
-            ", Actual type: ", DataTypeString(example_dtype)));
+            "Expected type: ", DataTypeString(config.sparse[d].dtype)));
       }
 
       switch (config.sparse[d].dtype) {
@@ -690,7 +689,7 @@ Status FastParseSerializedExample(
           break;
         }
         default:
-          LOG(FATAL) << "Should not happen.";
+          CHECK(false) << "Should not happen.";
       }
     }
   }
@@ -727,7 +726,7 @@ Status FastParseSerializedExample(
         break;
       }
       default:
-        LOG(FATAL) << "Should not happen.";
+        CHECK(false) << "Should not happen.";
     }
   }
 
@@ -1024,7 +1023,7 @@ Status FastParseExample(const Config& config,
           break;
         }
         default:
-          LOG(FATAL) << "Should not happen.";
+          CHECK(false) << "Should not happen.";
       }
 
       offset += delta;
@@ -1084,7 +1083,7 @@ Status FastParseExample(const Config& config,
         break;
       }
       default:
-        LOG(FATAL) << "Should not happen.";
+        CHECK(false) << "Should not happen.";
     }
   };
 

@@ -45,10 +45,9 @@ class OperationChecker : public Checker {
       if (node->op_types().find("FusedBatchNorm") != node->op_types().end()) {
         use_fused_batch_norm = true;
       }
-
-      const AttrValue* attr = node->op_attrs("data_format");
-      if (attr) {
-        if (attr->s() == "NHWC" &&
+      if (node->op_attrs().find("data_format") != node->op_attrs().end()) {
+        const AttrValue* attr_val = node->op_attrs().at("data_format");
+        if (attr_val->s() == "NHWC" &&
             IsPlacedOnAccelerator(node->canonical_device())) {
           recommend_nchw = true;
         }

@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
 
 #include <memory>
-#include <set>
 #include <string>
 #include "tensorflow/core/grappler/grappler_item.h"
 
@@ -28,28 +27,24 @@ class MetaGraphDef;
 namespace grappler {
 
 struct ItemConfig {
-  ItemConfig() {}
+  ItemConfig()
+      : ignore_user_placement(true),
+        ignore_colocation(true),
+        placeholder_unknown_output_shape_dim(-1),
+        apply_optimizations(false),
+        inline_functions(false) {}
 
   // If true, ignore all user specified node placement.
-  bool ignore_user_placement = true;
+  bool ignore_user_placement;
   // If true, ignore all user specified colocation attributes.
-  bool ignore_colocation = true;
+  bool ignore_colocation;
   // Dimension to use if a placeholder node has an _output_shapes attribute with
   // a dimension of -1.
-  int placeholder_unknown_output_shape_dim = -1;
+  int placeholder_unknown_output_shape_dim;
   // If true, does L1 optimizations.
-  bool apply_optimizations = false;
+  bool apply_optimizations;
   // If true, does inlining.
-  bool inline_functions = false;
-  // If true, erases all "_noinline" attributes from user-defined functions.
-  // Has no effect if "inline_functions" is disabled.
-  bool erase_noinline_attributes = false;
-  // If non-empty, override the directory of asset paths.
-  string assets_directory_override;
-  // If true, runs ModelPruner on the graph.
-  bool prune_graph = false;
-  // Override feed nodes list.
-  std::set<string> feed_nodes;
+  bool inline_functions;
 };
 
 // Factory method for creating a GrapplerItem from a MetaGraphDef.

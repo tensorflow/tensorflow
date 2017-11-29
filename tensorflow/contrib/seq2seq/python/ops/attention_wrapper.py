@@ -149,7 +149,7 @@ class _BaseAttentionMechanism(AttentionMechanism):
                memory_sequence_length=None,
                memory_layer=None,
                check_inner_dims_defined=True,
-               score_mask_value=None,
+               score_mask_value=float("-inf"),
                name=None):
     """Construct base AttentionMechanism class.
 
@@ -187,13 +187,9 @@ class _BaseAttentionMechanism(AttentionMechanism):
           "memory_layer is not a Layer: %s" % type(memory_layer).__name__)
     self._query_layer = query_layer
     self._memory_layer = memory_layer
-    self.dtype = memory_layer.dtype
     if not callable(probability_fn):
       raise TypeError("probability_fn must be callable, saw type: %s" %
                       type(probability_fn).__name__)
-    if score_mask_value is None:
-      score_mask_value = dtypes.as_dtype(
-          self._memory_layer.dtype).as_numpy_dtype(-np.inf)
     self._probability_fn = lambda score, prev: (  # pylint:disable=g-long-lambda
         probability_fn(
             _maybe_mask_score(score, memory_sequence_length, score_mask_value),
@@ -303,7 +299,7 @@ def _luong_score(query, keys, scale):
   #   [batch_size, 1, depth] . [batch_size, depth, max_time]
   # resulting in an output shape of:
   #   [batch_time, 1, max_time].
-  # we then squeeze out the center singleton dimension.
+  # we then squeee out the center singleton dimension.
   score = math_ops.matmul(query, keys, transpose_b=True)
   score = array_ops.squeeze(score, [1])
 
@@ -338,8 +334,7 @@ class LuongAttention(_BaseAttentionMechanism):
                memory_sequence_length=None,
                scale=False,
                probability_fn=None,
-               score_mask_value=None,
-               dtype=None,
+               score_mask_value=float("-inf"),
                name="LuongAttention"):
     """Construct the AttentionMechanism mechanism.
 
@@ -347,7 +342,7 @@ class LuongAttention(_BaseAttentionMechanism):
       num_units: The depth of the attention mechanism.
       memory: The memory to query; usually the output of an RNN encoder.  This
         tensor should be shaped `[batch_size, max_time, ...]`.
-      memory_sequence_length: (optional) Sequence lengths for the batch entries
+      memory_sequence_length (optional): Sequence lengths for the batch entries
         in memory.  If provided, the memory tensor rows are masked with zeros
         for values past the respective sequence lengths.
       scale: Python boolean.  Whether to scale the energy term.
@@ -355,23 +350,20 @@ class LuongAttention(_BaseAttentionMechanism):
         probabilities.  The default is @{tf.nn.softmax}. Other options include
         @{tf.contrib.seq2seq.hardmax} and @{tf.contrib.sparsemax.sparsemax}.
         Its signature should be: `probabilities = probability_fn(score)`.
-      score_mask_value: (optional) The mask value for score before passing into
+      score_mask_value: (optional): The mask value for score before passing into
         `probability_fn`. The default is -inf. Only used if
         `memory_sequence_length` is not None.
-      dtype: The data type for the memory layer of the attention mechanism.
       name: Name to use when creating ops.
     """
     # For LuongAttention, we only transform the memory layer; thus
     # num_units **must** match expected the query depth.
     if probability_fn is None:
       probability_fn = nn_ops.softmax
-    if dtype is None:
-      dtype = dtypes.float32
     wrapped_probability_fn = lambda score, _: probability_fn(score)
     super(LuongAttention, self).__init__(
         query_layer=None,
         memory_layer=layers_core.Dense(
-            num_units, name="memory_layer", use_bias=False, dtype=dtype),
+            num_units, name="memory_layer", use_bias=False),
         memory=memory,
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
@@ -483,8 +475,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
                memory_sequence_length=None,
                normalize=False,
                probability_fn=None,
-               score_mask_value=None,
-               dtype=None,
+               score_mask_value=float("-inf"),
                name="BahdanauAttention"):
     """Construct the Attention mechanism.
 
@@ -503,20 +494,16 @@ class BahdanauAttention(_BaseAttentionMechanism):
       score_mask_value: (optional): The mask value for score before passing into
         `probability_fn`. The default is -inf. Only used if
         `memory_sequence_length` is not None.
-      dtype: The data type for the query and memory layers of the attention
-        mechanism.
       name: Name to use when creating ops.
     """
     if probability_fn is None:
       probability_fn = nn_ops.softmax
-    if dtype is None:
-      dtype = dtypes.float32
     wrapped_probability_fn = lambda score, _: probability_fn(score)
     super(BahdanauAttention, self).__init__(
         query_layer=layers_core.Dense(
-            num_units, name="query_layer", use_bias=False, dtype=dtype),
+            num_units, name="query_layer", use_bias=False),
         memory_layer=layers_core.Dense(
-            num_units, name="memory_layer", use_bias=False, dtype=dtype),
+            num_units, name="memory_layer", use_bias=False),
         memory=memory,
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
@@ -692,11 +679,7 @@ def _monotonic_probability_fn(score, previous_alignments, sigmoid_noise, mode,
                                      seed=seed)
     score += sigmoid_noise*noise
   # Compute "choosing" probabilities from the attention scores
-  if mode == "hard":
-    # When mode is hard, use a hard sigmoid
-    p_choose_i = math_ops.cast(score > 0, score.dtype)
-  else:
-    p_choose_i = math_ops.sigmoid(score)
+  p_choose_i = math_ops.sigmoid(score)
   # Convert from choosing probabilities to attention distribution
   return monotonic_attention(p_choose_i, previous_alignments, mode)
 
@@ -751,12 +734,11 @@ class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
                memory,
                memory_sequence_length=None,
                normalize=False,
-               score_mask_value=None,
+               score_mask_value=float("-inf"),
                sigmoid_noise=0.,
                sigmoid_noise_seed=None,
                score_bias_init=0.,
                mode="parallel",
-               dtype=None,
                name="BahdanauMonotonicAttention"):
     """Construct the Attention mechanism.
 
@@ -780,21 +762,17 @@ class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
       mode: How to compute the attention distribution.  Must be one of
         'recursive', 'parallel', or 'hard'.  See the docstring for
         `tf.contrib.seq2seq.monotonic_attention` for more information.
-      dtype: The data type for the query and memory layers of the attention
-        mechanism.
       name: Name to use when creating ops.
     """
     # Set up the monotonic probability fn with supplied parameters
-    if dtype is None:
-      dtype = dtypes.float32
     wrapped_probability_fn = functools.partial(
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
     super(BahdanauMonotonicAttention, self).__init__(
         query_layer=layers_core.Dense(
-            num_units, name="query_layer", use_bias=False, dtype=dtype),
+            num_units, name="query_layer", use_bias=False),
         memory_layer=layers_core.Dense(
-            num_units, name="memory_layer", use_bias=False, dtype=dtype),
+            num_units, name="memory_layer", use_bias=False),
         memory=memory,
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
@@ -852,12 +830,11 @@ class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
                memory,
                memory_sequence_length=None,
                scale=False,
-               score_mask_value=None,
+               score_mask_value=float("-inf"),
                sigmoid_noise=0.,
                sigmoid_noise_seed=None,
                score_bias_init=0.,
                mode="parallel",
-               dtype=None,
                name="LuongMonotonicAttention"):
     """Construct the Attention mechanism.
 
@@ -881,21 +858,17 @@ class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
       mode: How to compute the attention distribution.  Must be one of
         'recursive', 'parallel', or 'hard'.  See the docstring for
         `tf.contrib.seq2seq.monotonic_attention` for more information.
-      dtype: The data type for the query and memory layers of the attention
-        mechanism.
       name: Name to use when creating ops.
     """
     # Set up the monotonic probability fn with supplied parameters
-    if dtype is None:
-      dtype = dtypes.float32
     wrapped_probability_fn = functools.partial(
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
     super(LuongMonotonicAttention, self).__init__(
         query_layer=layers_core.Dense(
-            num_units, name="query_layer", use_bias=False, dtype=dtype),
+            num_units, name="query_layer", use_bias=False),
         memory_layer=layers_core.Dense(
-            num_units, name="memory_layer", use_bias=False, dtype=dtype),
+            num_units, name="memory_layer", use_bias=False),
         memory=memory,
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
@@ -1006,9 +979,9 @@ def _compute_attention(attention_mechanism, cell_output, previous_alignments,
   # alignments shape is
   #   [batch_size, 1, memory_time]
   # attention_mechanism.values shape is
-  #   [batch_size, memory_time, memory_size]
+  #   [batch_size, memory_time, attention_mechanism.num_units]
   # the batched matmul is over memory_time, so the output shape is
-  #   [batch_size, 1, memory_size].
+  #   [batch_size, 1, attention_mechanism.num_units].
   # we then squeeze out the singleton dim.
   context = math_ops.matmul(expanded_alignments, attention_mechanism.values)
   context = array_ops.squeeze(context, [1])
@@ -1035,37 +1008,6 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
                initial_cell_state=None,
                name=None):
     """Construct the `AttentionWrapper`.
-
-    **NOTE** If you are using the `BeamSearchDecoder` with a cell wrapped in
-    `AttentionWrapper`, then you must ensure that:
-
-    - The encoder output has been tiled to `beam_width` via
-      @{tf.contrib.seq2seq.tile_batch} (NOT `tf.tile`).
-    - The `batch_size` argument passed to the `zero_state` method of this
-      wrapper is equal to `true_batch_size * beam_width`.
-    - The initial state created with `zero_state` above contains a
-      `cell_state` value containing properly tiled final state from the
-      encoder.
-
-    An example:
-
-    ```
-    tiled_encoder_outputs = tf.contrib.seq2seq.tile_batch(
-        encoder_outputs, multiplier=beam_width)
-    tiled_encoder_final_state = tf.conrib.seq2seq.tile_batch(
-        encoder_final_state, multiplier=beam_width)
-    tiled_sequence_length = tf.contrib.seq2seq.tile_batch(
-        sequence_length, multiplier=beam_width)
-    attention_mechanism = MyFavoriteAttentionMechanism(
-        num_units=attention_depth,
-        memory=tiled_inputs,
-        memory_sequence_length=tiled_sequence_length)
-    attention_cell = AttentionWrapper(cell, attention_mechanism, ...)
-    decoder_initial_state = attention_cell.zero_state(
-        dtype, batch_size=true_batch_size * beam_width)
-    decoder_initial_state = decoder_initial_state.clone(
-        cell_state=tiled_encoder_final_state)
-    ```
 
     Args:
       cell: An instance of `RNNCell`.
@@ -1146,11 +1088,8 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
             % (len(attention_layer_sizes), len(attention_mechanisms)))
       self._attention_layers = tuple(
           layers_core.Dense(
-              attention_layer_size,
-              name="attention_layer",
-              use_bias=False,
-              dtype=attention_mechanisms[i].dtype)
-          for i, attention_layer_size in enumerate(attention_layer_sizes))
+              attention_layer_size, name="attention_layer", use_bias=False)
+          for attention_layer_size in attention_layer_sizes)
       self._attention_layer_size = sum(attention_layer_sizes)
     else:
       self._attention_layers = None
@@ -1218,11 +1157,6 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
 
   @property
   def state_size(self):
-    """The `state_size` property of `AttentionWrapper`.
-
-    Returns:
-      An `AttentionWrapperState` tuple containing shapes used by this object.
-    """
     return AttentionWrapperState(
         cell_state=self._cell.state_size,
         time=tensor_shape.TensorShape([]),
@@ -1233,25 +1167,6 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
             () for _ in self._attention_mechanisms))  # sometimes a TensorArray
 
   def zero_state(self, batch_size, dtype):
-    """Return an initial (zero) state tuple for this `AttentionWrapper`.
-
-    **NOTE** Please see the initializer documentation for details of how
-    to call `zero_state` if using an `AttentionWrapper` with a
-    `BeamSearchDecoder`.
-
-    Args:
-      batch_size: `0D` integer tensor: the batch size.
-      dtype: The internal state data type.
-
-    Returns:
-      An `AttentionWrapperState` tuple containing zeroed out tensors and,
-      possibly, empty `TensorArray` objects.
-
-    Raises:
-      ValueError: (or, possibly at runtime, InvalidArgument), if
-        `batch_size` does not match the output size of the encoder passed
-        to the wrapper object at initialization time.
-    """
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       if self._initial_cell_state is not None:
         cell_state = self._initial_cell_state

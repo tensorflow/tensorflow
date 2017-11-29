@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/cc/training/queue_runner.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -72,6 +73,8 @@ SingleMachine::~SingleMachine() {
   // when we delete the session.
   thread_pool_.reset();
 
+  Reset(options_, {}).IgnoreError();
+
   CHECK(already_created);
   already_created = false;
 }
@@ -88,7 +91,7 @@ Status SingleMachine::Provision() {
   VLOG(1) << "Number of GPUs: " << num_gpus_;
   for (int i = 0; i < num_gpus_; ++i) {
     string device_name =
-        strings::StrCat("/job:localhost/replica:0/task:0/device:GPU:", i);
+        strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i);
     VLOG(1) << "Adding GPU device " << device_name;
     devices_[device_name] = GetLocalGPUInfo(i);
   }
@@ -111,10 +114,10 @@ Status SingleMachine::Shutdown() {
   TF_RETURN_IF_ERROR(CloseSession(true /*use_timeout*/));
 
   // Delete the threadpool: this ensures that all the pending closures complete
-  // before we return. Note that if TF deadlocked on us, the closures will
-  // never complete, and the call to thread_pool_.reset() will never return:
-  // therefore we need to delete the threadpool with the background thread.
-  // That thread itself will also never complete, so the user should
+  // before we return. Note that if that if TF deadlocked on us, the closures
+  // will never complete, and the call to thread_pool_.reset() will never
+  // return: therefore we need to delete the threadpool with the background
+  // thread. That thread itself will also never complete, so the user should
   // abort the process to avoid leaking too many resources.
   auto n = std::make_shared<Notification>();
   Env::Default()->SchedClosure([this, n]() {
@@ -155,19 +158,12 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         // Also clear the timeline to save memory
         init_metadata_.clear_step_stats();
       }
-      // We can have at most one hardware trace. Use it for the main graph, and
-      // downgrade tracing of the queue runners to a software trace.
-      RunOptions queue_options = run_options_;
-      if (queue_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-        queue_options.set_trace_level(RunOptions::SOFTWARE_TRACE);
-      }
       for (size_t i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
         TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
                                             coordinator_.get(), &queue_runner));
-
         TF_RETURN_IF_ERROR(queue_runner->StartAndCollectCostGraph(
-            session_.get(), queue_options));
+            session_.get(), &run_options_));
         TF_RETURN_IF_ERROR(
             coordinator_->RegisterRunner(std::move(queue_runner)));
         TF_RETURN_IF_ERROR(coordinator_->GetStatus());
@@ -281,9 +277,11 @@ Status SingleMachine::ResetSession() {
     // Make sure the session is properly closed
     TF_RETURN_IF_ERROR(Shutdown());
 
-    // Destroying the object deletes all its variables as well. This is only
-    // true for DirectSession.
+    // We need to Reset the session to ensure that all the variables are
+    // deleted. But first we need to delete the session since Reset()
+    // deletes some of the containers referenced by the session.
     session_.reset();
+    TF_RETURN_IF_ERROR(Reset(options_, {}));
   }
 
   LOG(INFO) << "Starting new session";
@@ -293,9 +291,8 @@ Status SingleMachine::ResetSession() {
       Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
 
   session_.reset(NewSession(options_));
-  if (!session_) {
-    return errors::Unknown("Failed to create session");
-  }
+  CHECK(session_ != nullptr);
+
   coordinator_.reset(new Coordinator());
 
   return Status::OK();

@@ -97,7 +97,11 @@ class LogicalBuffer {
   using SizeFunction = std::function<int64(const LogicalBuffer&)>;
   using AlignmentFunction = std::function<int64(LogicalBuffer::Color)>;
 
-  LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id);
+  LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id)
+      : instruction_(instruction),
+        index_(index),
+        id_(id),
+        color_(kInvalidColor) {}
 
   Id id() const { return id_; }
 
@@ -136,13 +140,13 @@ class LogicalBuffer {
   bool IsTopLevel() const { return index_.empty(); }
 
   // Whether this buffer contains a tuple.
-  bool IsTuple() const { return is_tuple_; }
-
-  // Whether this buffer contains an array.
-  bool IsArray() const { return is_array_; }
+  bool IsTuple() const { return ShapeUtil::IsTuple(shape()); }
 
   // operator< is required for std::set.
   bool operator<(const LogicalBuffer& other) const { return id_ < other.id_; }
+
+  // Whether this buffer contains an array.
+  bool IsArray() const { return ShapeUtil::IsArray(shape()); }
 
   string ToString() const;
   LogicalBufferProto ToProto(const SizeFunction& size_fn) const;
@@ -156,11 +160,9 @@ class LogicalBuffer {
 
  private:
   HloInstruction* instruction_;
-  Id id_ : 62;
-  bool is_array_ : 1;
-  bool is_tuple_ : 1;
-  Color color_;
   ShapeIndex index_;
+  Id id_;
+  Color color_;
 
   // Similar to HLO constructs (HloInstruction, etc), pointers are used for
   // comparison to equality, so disable all copying.

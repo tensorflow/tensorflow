@@ -22,15 +22,12 @@ import os
 import tempfile
 import time
 
-from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn import estimator as estimator_lib
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn import run_config
 from tensorflow.contrib.learn.python.learn import trainable
-from tensorflow.contrib.learn.python.learn.estimators import dnn
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
-from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -232,19 +229,14 @@ class ExperimentTest(test.TestCase):
 
   def test_train(self):
     for est in self._estimators_for_tests():
-      if isinstance(est, core_estimator.Estimator):
-        eval_metrics = None
-        saving_listeners = 'saving_listeners'
-      else:
-        eval_metrics = 'eval_metrics'
-        saving_listeners = None
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
       ex = experiment.Experiment(
           est,
           train_input_fn='train_input',
           train_steps='train_steps',
           eval_input_fn='eval_input',
-          eval_metrics=eval_metrics,
-          saving_listeners=saving_listeners)
+          eval_metrics=eval_metrics)
       fit_args = ex.train(delay_secs=0)
       self.assertEqual(1, est.fit_count)
       self.assertIn(('max_steps', 'train_steps'), fit_args)
@@ -680,12 +672,8 @@ class ExperimentTest(test.TestCase):
 
   def test_continuous_train_and_eval(self):
     for est in self._estimators_for_tests(eval_dict={'global_step': 100}):
-      if isinstance(est, core_estimator.Estimator):
-        eval_metrics = None
-        saving_listeners = 'saving_listeners'
-      else:
-        eval_metrics = 'eval_metrics'
-        saving_listeners = None
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
       noop_hook = _NoopHook()
       export_strategy = saved_model_export_utils.make_export_strategy(
           est,
@@ -699,8 +687,7 @@ class ExperimentTest(test.TestCase):
           eval_hooks=[noop_hook],
           train_steps=100,
           eval_steps=100,
-          export_strategies=export_strategy,
-          saving_listeners=saving_listeners)
+          export_strategies=export_strategy)
       ex.continuous_train_and_eval()
       self.assertEqual(1, est.fit_count)
       self.assertEqual(1, est.eval_count)
@@ -731,7 +718,7 @@ class ExperimentTest(test.TestCase):
       ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
       self.assertEqual(0, est.fit_count)
       self.assertEqual(0, est.eval_count)
-      self.assertEqual(0, est.export_count)
+      self.assertEqual(1, est.export_count)
 
   def test_continuous_train_and_eval_with_adapted_steps_per_iteration(self):
     mock_estimator = test.mock.Mock(core_estimator.Estimator)
@@ -752,10 +739,9 @@ class ExperimentTest(test.TestCase):
     ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
     mock_estimator.train.assert_called_once_with(
         input_fn='train_input',
-        steps=int(total_steps / 10),
+        steps=int(total_steps/10),
         max_steps=test.mock.ANY,
-        hooks=test.mock.ANY,
-        saving_listeners=test.mock.ANY)
+        hooks=test.mock.ANY)
 
   def test_continuous_train_and_eval_with_steps_per_iteration_from_user(self):
     mock_estimator = test.mock.Mock(core_estimator.Estimator)
@@ -779,8 +765,7 @@ class ExperimentTest(test.TestCase):
         input_fn='train_input',
         steps=1234,
         max_steps=test.mock.ANY,
-        hooks=test.mock.ANY,
-        saving_listeners=test.mock.ANY)
+        hooks=test.mock.ANY)
 
   def test_continuous_train_and_eval_with_default_steps_per_iteration(self):
     mock_estimator = test.mock.Mock(core_estimator.Estimator)
@@ -803,8 +788,7 @@ class ExperimentTest(test.TestCase):
         input_fn='train_input',
         steps=1000,
         max_steps=test.mock.ANY,
-        hooks=test.mock.ANY,
-        saving_listeners=test.mock.ANY)
+        hooks=test.mock.ANY)
 
   def test_continuous_train_and_eval_with_invalid_predicate_fn(self):
     for est in self._estimators_for_tests():
@@ -870,19 +854,11 @@ class ExperimentTest(test.TestCase):
           est,
           None if isinstance(est, core_estimator.Estimator) else 'export_input',
           exports_to_keep=None)
-      if isinstance(est, core_estimator.Estimator):
-        eval_metrics = None
-        saving_listeners = 'saving_listeners'
-      else:
-        eval_metrics = 'eval_metrics'
-        saving_listeners = None
       ex = experiment.Experiment(
           est,
           train_input_fn='train_input',
           eval_input_fn='eval_input',
-          export_strategies=(exp_strategy,),
-          eval_metrics=eval_metrics,
-          saving_listeners=saving_listeners)
+          export_strategies=(exp_strategy,))
       ex.test()
       self.assertEqual(1, est.fit_count)
       self.assertEqual(1, est.eval_count)
@@ -923,38 +899,6 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(1, est.eval_count)
       self.assertEqual(300, result['called'])
       self.assertEqual(1, result['called_with_eval_result'])
-
-  def test_checkpoint_and_export(self):
-    model_dir = tempfile.mkdtemp()
-    config = run_config_lib.RunConfig(save_checkpoints_steps=3)
-    est = dnn.DNNClassifier(
-        n_classes=3,
-        feature_columns=[
-            feature_column.real_valued_column('feature', dimension=4)
-        ],
-        hidden_units=[3, 3],
-        model_dir=model_dir,
-        config=config)
-
-    exp_strategy = saved_model_export_utils.make_export_strategy(
-        est, 'export_input', exports_to_keep=None)
-
-    ex = experiment.Experiment(
-        est,
-        train_input_fn=test_data.iris_input_multiclass_fn,
-        eval_input_fn=test_data.iris_input_multiclass_fn,
-        export_strategies=(exp_strategy,),
-        train_steps=8,
-        checkpoint_and_export=True,
-        eval_delay_secs=0)
-
-    with test.mock.patch.object(ex, '_maybe_export'):
-      with test.mock.patch.object(ex, '_call_evaluate'):
-        ex.train_and_evaluate()
-        # Eval and export are called after steps 1, 4, 7, and 8 (after training
-        # is completed).
-        self.assertEqual(ex._maybe_export.call_count, 4)
-        self.assertEqual(ex._call_evaluate.call_count, 4)
 
 
 if __name__ == '__main__':

@@ -32,13 +32,15 @@ namespace models {
 class MultipleAdditiveTrees {
  public:
   // Predict runs tree ensemble on the given batch and updates
-  // output predictions accordingly, for the given list of trees.
+  // output predictions accordingly. The method also returns predictions that
+  // we would get if no dropout was applied.
   static void Predict(
       const boosted_trees::trees::DecisionTreeEnsembleConfig& config,
-      const std::vector<int32>& trees_to_include,
+      const bool only_finalized_trees, const std::vector<int32>& trees_to_drop,
       const boosted_trees::utils::BatchFeatures& features,
-      tensorflow::thread::ThreadPool* const worker_threads,
-      tensorflow::TTypes<float>::Matrix output_predictions);
+      thread::ThreadPool* const thread_pool,
+      TTypes<float>::Matrix output_predictions,
+      TTypes<float>::Matrix no_dropout_predictions);
 };
 
 }  // namespace models

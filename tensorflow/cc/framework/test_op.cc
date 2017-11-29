@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -25,7 +24,6 @@ REGISTER_OP("ThrowAway1")
     .Attr("scope: int")
     .Attr("builder: int = 1")
     .Attr("while: int")
-    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Op to test keywords and reserved words in input and attr names.
 
@@ -38,20 +36,12 @@ REGISTER_OP("ThrowAway2")
     .Attr("scope: int = 2")
     .Attr("throw_away2: int = 2")
     .Attr("attrs: int = 4")
-    .Attr("node: int = 4")
-    .SetShapeFn(shape_inference::UnknownShape);
+    .Attr("node: int = 4");
 
-REGISTER_OP("ThrowAway3")
-    .Output("node: int32")
-    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("ThrowAway3").Output("node: int32");
 
-REGISTER_OP("ThrowAway4")
-    .Input("node: int32")
-    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("ThrowAway4").Input("node: int32");
 
-REGISTER_OP("ThrowAway5")
-    .Output("foo: int32")
-    .Attr("node: int = 4")
-    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("ThrowAway5").Output("foo: int32").Attr("node: int = 4");
 
 }  // namespace tensorflow

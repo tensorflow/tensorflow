@@ -36,16 +36,13 @@ class TestVirtualScheduler : public VirtualScheduler {
   FRIEND_TEST(VirtualSchedulerTest, ControlDependency);
   FRIEND_TEST(VirtualSchedulerTest, ComplexDependency);
   FRIEND_TEST(VirtualSchedulerTest, Variable);
-  FRIEND_TEST(VirtualSchedulerTest, InterDeviceTransfer);
 };
 
 class VirtualSchedulerTest : public ::testing::Test {
  protected:
   NodeDef node1_, node2_, node3_, node4_, node5_, node6_;
-  std::unordered_map<const NodeDef*, NodeState> node_states_;
 
   const string kCPU0 = "/job:localhost/replica:0/task:0/cpu:0";
-  const string kCPU1 = "/job:localhost/replica:0/task:0/cpu:1";
 
   DeviceProperties GetDummyCPUDevice() {
     // Create CPU with 2 cores, 4 Ghz freq, 2 GB/s mem bandwidth.
@@ -68,21 +65,6 @@ class VirtualSchedulerTest : public ::testing::Test {
     node5_.set_name("Node5");
     node6_.set_name("Node6");
 
-    // Initialize node_states, with time_ready in reverse order.
-    node_states_[&node1_] = NodeState();
-    node_states_[&node2_] = NodeState();
-    node_states_[&node3_] = NodeState();
-    node_states_[&node4_] = NodeState();
-    node_states_[&node5_] = NodeState();
-    node_states_[&node6_] = NodeState();
-
-    node_states_[&node6_].time_ready = 1000;
-    node_states_[&node5_].time_ready = 2000;
-    node_states_[&node4_].time_ready = 3000;
-    node_states_[&node3_].time_ready = 4000;
-    node_states_[&node2_].time_ready = 5000;
-    node_states_[&node1_].time_ready = 6000;
-
     // Initializes cluster_ and placer_.
     std::unordered_map<string, DeviceProperties> devices;
 
@@ -92,26 +74,28 @@ class VirtualSchedulerTest : public ::testing::Test {
     // IMPORTANT: Device is not actually ever used in the test case since
     // force_cpu_type is defaulted to "Haswell"
     devices[kCPU0] = cpu_device;
-    devices[kCPU1] = cpu_device;
     cluster_.reset(new VirtualCluster(devices));
     placer_.reset(new VirtualPlacer(cluster_.get()));
   }
 
   // Three Conv2Ds with only two in fetch nodes.
   void CreateGrapplerItemWithConv2Ds() {
-    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
-    auto x = ops::RandomUniform(
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
+    auto x = tensorflow::ops::RandomUniform(
         s.WithOpName("x"), {batch_size_, width_, height_, depth_in_}, DT_FLOAT);
-    auto y = ops::RandomUniform(
+    auto y = tensorflow::ops::RandomUniform(
         s.WithOpName("y"), {batch_size_, width_, height_, depth_in_}, DT_FLOAT);
-    auto z = ops::RandomUniform(
+    auto z = tensorflow::ops::RandomUniform(
         s.WithOpName("z"), {batch_size_, width_, height_, depth_in_}, DT_FLOAT);
-    auto f = ops::RandomUniform(
+    auto f = tensorflow::ops::RandomUniform(
         s.WithOpName("f"), {kernel_, kernel_, depth_in_, depth_out_}, DT_FLOAT);
     std::vector<int> strides = {1, 1, 1, 1};
-    auto c0 = ops::Conv2D(s.WithOpName("c0"), x, f, strides, "SAME");
-    auto c1 = ops::Conv2D(s.WithOpName("c1"), y, f, strides, "SAME");
-    auto c2 = ops::Conv2D(s.WithOpName("c2"), z, f, strides, "SAME");
+    auto c0 =
+        tensorflow::ops::Conv2D(s.WithOpName("c0"), x, f, strides, "SAME");
+    auto c1 =
+        tensorflow::ops::Conv2D(s.WithOpName("c1"), y, f, strides, "SAME");
+    auto c2 =
+        tensorflow::ops::Conv2D(s.WithOpName("c2"), z, f, strides, "SAME");
     GraphDef def;
     TF_CHECK_OK(s.ToGraphDef(&def));
 
@@ -126,13 +110,13 @@ class VirtualSchedulerTest : public ::testing::Test {
 
   // A Conv2D with a variable.
   void CreateGrapplerItemWithConv2DAndVariable() {
-    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
-    auto x = ops::RandomUniform(
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
+    auto x = tensorflow::ops::RandomUniform(
         s.WithOpName("x"), {batch_size_, width_, height_, depth_in_}, DT_FLOAT);
-    auto f = ops::Variable(s.WithOpName("f"),
-                           {kernel_, kernel_, depth_in_, depth_out_}, DT_FLOAT);
+    auto f = tensorflow::ops::Variable(
+        s.WithOpName("f"), {kernel_, kernel_, depth_in_, depth_out_}, DT_FLOAT);
     std::vector<int> strides = {1, 1, 1, 1};
-    auto y = ops::Conv2D(s.WithOpName("y"), x, f, strides, "SAME");
+    auto y = tensorflow::ops::Conv2D(s.WithOpName("y"), x, f, strides, "SAME");
     GraphDef def;
     TF_CHECK_OK(s.ToGraphDef(&def));
 
@@ -145,23 +129,25 @@ class VirtualSchedulerTest : public ::testing::Test {
   }
 
   void CreateGrapplerItemWithMatmulChain() {
-    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
     // Add control dependencies to ensure tests do not rely on specific
     // manager and the order remains consistent for the test.
-    auto a = ops::RandomUniform(s.WithOpName("a"), {3200, 3200}, DT_FLOAT);
-    auto b = ops::RandomUniform(s.WithOpName("b").WithControlDependencies(a),
-                                {3200, 3200}, DT_FLOAT);
-    auto c = ops::RandomUniform(s.WithOpName("c").WithControlDependencies(b),
-                                {3200, 3200}, DT_FLOAT);
-    auto d = ops::RandomUniform(s.WithOpName("d").WithControlDependencies(c),
-                                {3200, 3200}, DT_FLOAT);
-    auto e = ops::RandomUniform(s.WithOpName("e").WithControlDependencies(d),
-                                {3200, 3200}, DT_FLOAT);
+    auto a = tensorflow::ops::RandomUniform(s.WithOpName("a"), {3200, 3200},
+                                            DT_FLOAT);
+    auto b = tensorflow::ops::RandomUniform(
+        s.WithOpName("b").WithControlDependencies(a), {3200, 3200}, DT_FLOAT);
+    auto c = tensorflow::ops::RandomUniform(
+        s.WithOpName("c").WithControlDependencies(b), {3200, 3200}, DT_FLOAT);
+    auto d = tensorflow::ops::RandomUniform(
+        s.WithOpName("d").WithControlDependencies(c), {3200, 3200}, DT_FLOAT);
+    auto e = tensorflow::ops::RandomUniform(
+        s.WithOpName("e").WithControlDependencies(d), {3200, 3200}, DT_FLOAT);
 
-    auto ab = ops::MatMul(s.WithOpName("ab").WithControlDependencies(e), a, b);
-    auto abc = ops::MatMul(s.WithOpName("abc"), ab, c);
-    auto abcd = ops::MatMul(s.WithOpName("abcd"), abc, d);
-    auto abcde = ops::MatMul(s.WithOpName("abcde"), abcd, e);
+    auto ab = tensorflow::ops::MatMul(
+        s.WithOpName("ab").WithControlDependencies(e), a, b);
+    auto abc = tensorflow::ops::MatMul(s.WithOpName("abc"), ab, c);
+    auto abcd = tensorflow::ops::MatMul(s.WithOpName("abcd"), abc, d);
+    auto abcde = tensorflow::ops::MatMul(s.WithOpName("abcde"), abcd, e);
 
     GraphDef def;
     TF_CHECK_OK(s.ToGraphDef(&def));
@@ -179,13 +165,17 @@ class VirtualSchedulerTest : public ::testing::Test {
 
   // AddN that takes 4 tensors with 10x10x10x10.
   void CreateGrapplerItemWithAddN() {
-    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
-    auto x = ops::RandomUniform(s.WithOpName("x"), {10, 10, 10, 10}, DT_FLOAT);
-    auto y = ops::RandomUniform(s.WithOpName("y"), {10, 10, 10, 10}, DT_FLOAT);
-    auto z = ops::RandomUniform(s.WithOpName("z"), {10, 10, 10, 10}, DT_FLOAT);
-    auto w = ops::RandomUniform(s.WithOpName("w"), {10, 10, 10, 10}, DT_FLOAT);
-    OutputList input_tensors = {x, y, z, w};
-    auto out = ops::AddN(s.WithOpName("out"), input_tensors);
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
+    auto x = tensorflow::ops::RandomUniform(s.WithOpName("x"), {10, 10, 10, 10},
+                                            DT_FLOAT);
+    auto y = tensorflow::ops::RandomUniform(s.WithOpName("y"), {10, 10, 10, 10},
+                                            DT_FLOAT);
+    auto z = tensorflow::ops::RandomUniform(s.WithOpName("z"), {10, 10, 10, 10},
+                                            DT_FLOAT);
+    auto w = tensorflow::ops::RandomUniform(s.WithOpName("w"), {10, 10, 10, 10},
+                                            DT_FLOAT);
+    tensorflow::OutputList input_tensors = {x, y, z, w};
+    auto out = tensorflow::ops::AddN(s.WithOpName("out"), input_tensors);
     GraphDef def;
     TF_CHECK_OK(s.ToGraphDef(&def));
 
@@ -199,15 +189,15 @@ class VirtualSchedulerTest : public ::testing::Test {
 
   // NoOp that takes 7 NoOps as control dependency.
   void CreateGrapplerItemWithControlDependency() {
-    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
     std::vector<string> input_noop_names = {"x", "y", "z", "w", "u", "v", "t"};
-    std::vector<Operation> input_tensors;
+    std::vector<tensorflow::Operation> input_tensors;
     for (const auto& input : input_noop_names) {
-      auto x = ops::NoOp(s.WithOpName(input));
+      auto x = tensorflow::ops::NoOp(s.WithOpName(input));
       input_tensors.push_back(x.operation);
     }
-    auto out =
-        ops::NoOp(s.WithControlDependencies(input_tensors).WithOpName("out"));
+    auto out = tensorflow::ops::NoOp(
+        s.WithControlDependencies(input_tensors).WithOpName("out"));
     GraphDef def;
     TF_CHECK_OK(s.ToGraphDef(&def));
 
@@ -222,33 +212,33 @@ class VirtualSchedulerTest : public ::testing::Test {
   // FusedBN [an op with multiple outputs] with multiple consumers (including
   // control dependency).
   void CreateGrapplerItemWithBatchNorm() {
-    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
-    auto x = ops::RandomUniform(
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
+    auto x = tensorflow::ops::RandomUniform(
         s.WithOpName("x"), {batch_size_, width_, height_, depth_in_}, DT_FLOAT);
-    auto scale =
-        ops::RandomUniform(s.WithOpName("scale"), {depth_in_}, DT_FLOAT);
-    auto offset =
-        ops::RandomUniform(s.WithOpName("offset"), {depth_in_}, DT_FLOAT);
-    auto mean = ops::RandomUniform(s.WithOpName("mean"), {0}, DT_FLOAT);
-    auto var = ops::RandomUniform(s.WithOpName("var"), {0}, DT_FLOAT);
+    auto scale = tensorflow::ops::RandomUniform(s.WithOpName("scale"),
+                                                {depth_in_}, DT_FLOAT);
+    auto offset = tensorflow::ops::RandomUniform(s.WithOpName("offset"),
+                                                 {depth_in_}, DT_FLOAT);
+    auto mean =
+        tensorflow::ops::RandomUniform(s.WithOpName("mean"), {0}, DT_FLOAT);
+    auto var =
+        tensorflow::ops::RandomUniform(s.WithOpName("var"), {0}, DT_FLOAT);
 
-    auto batch_norm = ops::FusedBatchNorm(
+    auto batch_norm = tensorflow::ops::FusedBatchNorm(
         s.WithOpName("bn"), x, scale, offset, mean, var,
         ops::FusedBatchNorm::IsTraining(true).Epsilon(0.1f));
     auto y = batch_norm.y;
     auto batch_mean = batch_norm.batch_mean;
     auto batch_var = batch_norm.batch_variance;
 
-    auto z1 = ops::Add(s.WithOpName("z1"), x, y);
-    auto z2 = ops::Add(s.WithOpName("z2"), batch_var, batch_var);
-    auto z3 = ops::Add(s.WithOpName("z3"), batch_var, batch_var);
-    std::vector<Operation> input_tensors = {
-        batch_mean.op(),
-        z1.z.op(),
-        z2.z.op(),
-        z3.z.op(),
+    auto z1 = tensorflow::ops::Add(s.WithOpName("z1"), x, y);
+    auto z2 = tensorflow::ops::Add(s.WithOpName("z2"), batch_var, batch_var);
+    auto z3 = tensorflow::ops::Add(s.WithOpName("z3"), batch_var, batch_var);
+    std::vector<tensorflow::Operation> input_tensors = {
+        batch_mean.op(), z1.z.op(), z2.z.op(), z3.z.op(),
     };
-    auto z4 = ops::NoOp(s.WithControlDependencies(batch_var).WithOpName("z4"));
+    auto z4 = tensorflow::ops::NoOp(
+        s.WithControlDependencies(batch_var).WithOpName("z4"));
 
     GraphDef def;
     TF_CHECK_OK(s.ToGraphDef(&def));
@@ -265,573 +255,6 @@ class VirtualSchedulerTest : public ::testing::Test {
     dependency_["z4"] = {"bn"};
   }
 
-  void CreateGrapplerItemWithSendRecv() {
-    const string gdef_ascii = R"EOF(
-node {
-  name: "Const"
-  op: "Const"
-  device: "/job:localhost/replica:0/task:0/device:CPU:0"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_FLOAT
-        tensor_shape {
-        }
-        float_val: 3.1415
-      }
-    }
-  }
-}
-node {
-  name: "Send"
-  op: "_Send"
-  input: "Const"
-  device: "/job:localhost/replica:0/task:0/device:CPU:0"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "client_terminated"
-    value {
-      b: false
-    }
-  }
-  attr {
-    key: "recv_device"
-    value {
-      s: "/job:localhost/replica:0/task:0/device:CPU:0"
-    }
-  }
-  attr {
-    key: "send_device"
-    value {
-      s: "/job:localhost/replica:0/task:0/device:CPU:0"
-    }
-  }
-  attr {
-    key: "send_device_incarnation"
-    value {
-      i: 0
-    }
-  }
-  attr {
-    key: "tensor_name"
-    value {
-      s: "test"
-    }
-  }
-}
-node {
-  name: "Recv"
-  op: "_Recv"
-  device: "/job:localhost/replica:0/task:0/device:CPU:0"
-  attr {
-    key: "client_terminated"
-    value {
-      b: false
-    }
-  }
-  attr {
-    key: "recv_device"
-    value {
-      s: "/job:localhost/replica:0/task:0/device:CPU:0"
-    }
-  }
-  attr {
-    key: "send_device"
-    value {
-      s: "/job:localhost/replica:0/task:0/device:CPU:0"
-    }
-  }
-  attr {
-    key: "send_device_incarnation"
-    value {
-      i: 0
-    }
-  }
-  attr {
-    key: "tensor_name"
-    value {
-      s: "test"
-    }
-  }
-  attr {
-    key: "tensor_type"
-    value {
-      type: DT_FLOAT
-    }
-  }
-}
-library {
-}
-versions {
-  producer: 24
-}
-    )EOF";
-
-    grappler_item_.reset(new GrapplerItem);
-    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
-                                                &grappler_item_->graph));
-    grappler_item_->id = "test_graph";
-    grappler_item_->fetch = {"Recv"};
-  }
-
-  // A simple while loop
-  void CreateGrapplerItemWithLoop() {
-    // Test graph produced in python using:
-    /*
-      with tf.Graph().as_default():
-      i0 = tf.constant(0)
-      m0 = tf.ones([2, 2])
-      c = lambda i, m: i < 10
-      b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
-      r = tf.while_loop(
-      c, b, loop_vars=[i0, m0],
-      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
-      with open('/tmp/graph.pbtxt', 'w') as f:
-      f.write(str(tf.get_default_graph().as_graph_def()))
-    */
-    const string gdef_ascii = R"EOF(
-node {
-  name: "Const"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 0
-      }
-    }
-  }
-}
-node {
-  name: "ones"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_FLOAT
-        tensor_shape {
-          dim {
-            size: 2
-          }
-          dim {
-            size: 2
-          }
-        }
-        float_val: 1.0
-      }
-    }
-  }
-}
-node {
-  name: "while/Enter"
-  op: "Enter"
-  input: "Const"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "frame_name"
-    value {
-      s: "while/while/"
-    }
-  }
-  attr {
-    key: "is_constant"
-    value {
-      b: false
-    }
-  }
-  attr {
-    key: "parallel_iterations"
-    value {
-      i: 10
-    }
-  }
-}
-node {
-  name: "while/Enter_1"
-  op: "Enter"
-  input: "ones"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "frame_name"
-    value {
-      s: "while/while/"
-    }
-  }
-  attr {
-    key: "is_constant"
-    value {
-      b: false
-    }
-  }
-  attr {
-    key: "parallel_iterations"
-    value {
-      i: 10
-    }
-  }
-}
-node {
-  name: "while/Merge"
-  op: "Merge"
-  input: "while/Enter"
-  input: "while/NextIteration"
-  attr {
-    key: "N"
-    value {
-      i: 2
-    }
-  }
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/Merge_1"
-  op: "Merge"
-  input: "while/Enter_1"
-  input: "while/NextIteration_1"
-  attr {
-    key: "N"
-    value {
-      i: 2
-    }
-  }
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-}
-node {
-  name: "while/Less/y"
-  op: "Const"
-  input: "^while/Merge"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 10
-      }
-    }
-  }
-}
-node {
-  name: "while/Less"
-  op: "Less"
-  input: "while/Merge"
-  input: "while/Less/y"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/LoopCond"
-  op: "LoopCond"
-  input: "while/Less"
-}
-node {
-  name: "while/Switch"
-  op: "Switch"
-  input: "while/Merge"
-  input: "while/LoopCond"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@while/Merge"
-      }
-    }
-  }
-}
-node {
-  name: "while/Switch_1"
-  op: "Switch"
-  input: "while/Merge_1"
-  input: "while/LoopCond"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@while/Merge_1"
-      }
-    }
-  }
-}
-node {
-  name: "while/Identity"
-  op: "Identity"
-  input: "while/Switch:1"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/Identity_1"
-  op: "Identity"
-  input: "while/Switch_1:1"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-}
-node {
-  name: "while/add/y"
-  op: "Const"
-  input: "^while/Identity"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 1
-      }
-    }
-  }
-}
-node {
-  name: "while/add"
-  op: "Add"
-  input: "while/Identity"
-  input: "while/add/y"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/concat/axis"
-  op: "Const"
-  input: "^while/Identity"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 0
-      }
-    }
-  }
-}
-node {
-  name: "while/concat"
-  op: "ConcatV2"
-  input: "while/Identity_1"
-  input: "while/Identity_1"
-  input: "while/concat/axis"
-  attr {
-    key: "N"
-    value {
-      i: 2
-    }
-  }
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "Tidx"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/NextIteration"
-  op: "NextIteration"
-  input: "while/add"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/NextIteration_1"
-  op: "NextIteration"
-  input: "while/concat"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-}
-node {
-  name: "while/Exit"
-  op: "Exit"
-  input: "while/Switch"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/Exit_1"
-  op: "Exit"
-  input: "while/Switch_1"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-}
-versions {
-  producer: 21
-}
-  )EOF";
-
-    grappler_item_.reset(new GrapplerItem);
-    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
-                                                &grappler_item_->graph));
-    grappler_item_->id = "test_graph";
-    grappler_item_->fetch = {"while/Exit", "while/Exit_1"};
-  }
-
-  void CreateGrapplerItemWithInterDeviceTransfers() {
-    tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
-
-    // Create a FusedBatchNorm op that has multiple output ports.
-    auto x = ops::RandomUniform(
-        s.WithOpName("x"), {batch_size_, width_, height_, depth_in_}, DT_FLOAT);
-    auto scale =
-        ops::RandomUniform(s.WithOpName("scale"), {depth_in_}, DT_FLOAT);
-    auto offset =
-        ops::RandomUniform(s.WithOpName("offset"), {depth_in_}, DT_FLOAT);
-    auto mean = ops::RandomUniform(s.WithOpName("mean"), {0}, DT_FLOAT);
-    auto var = ops::RandomUniform(s.WithOpName("var"), {0}, DT_FLOAT);
-
-    auto batch_norm = ops::FusedBatchNorm(
-        s.WithOpName("bn"), x, scale, offset, mean, var,
-        ops::FusedBatchNorm::IsTraining(true).Epsilon(0.1f));
-    auto y = batch_norm.y;
-    auto batch_mean = batch_norm.batch_mean;
-    auto batch_var = batch_norm.batch_variance;
-    // y1 and y2 take the same tensor, so there should be only 1 Send and Recv.
-    auto y1 = ops::Identity(s.WithOpName("y1").WithDevice(kCPU1), y);
-    auto y2 = ops::Identity(s.WithOpName("y2").WithDevice(kCPU1), y);
-    // batch_mean1 and batch_var1 take different output ports, so each will
-    // initiate Send/Recv.
-    auto batch_mean1 = ops::Identity(
-        s.WithOpName("batch_mean1").WithDevice(kCPU1), batch_mean);
-    auto batch_var1 =
-        ops::Identity(s.WithOpName("batch_var1").WithDevice(kCPU1), batch_var);
-    // This is control dependency.
-    auto control_dep = ops::NoOp(s.WithOpName("control_dep")
-                                     .WithControlDependencies(y)
-                                     .WithDevice(kCPU1));
-
-    GraphDef def;
-    TF_CHECK_OK(s.ToGraphDef(&def));
-
-    grappler_item_.reset(new GrapplerItem);
-    grappler_item_->id = "test_conv2d_graph";
-    grappler_item_->graph = def;
-    grappler_item_->fetch = {"y1", "y2", "batch_mean1", "batch_var1",
-                             "control_dep"};
-
-    dependency_["bn"] = {"x", "mean", "var"};
-    dependency_["y1"] = {"bn"};
-    dependency_["y2"] = {"bn"};
-    dependency_["batch_mean1"] = {"bn"};
-    dependency_["batch_var1"] = {"bn"};
-    dependency_["control_dep"] = {"bn"};
-  }
-
   // Call this after creating grappler_item_ and setting up dependency_.
   void InitScheduler() {
     scheduler_.reset(new TestVirtualScheduler(
@@ -840,15 +263,14 @@ versions {
   }
 
   // Returns cost based on op.
-  Costs SimplePredictCosts(const OpContext& op_context) const {
+  Costs SimplePredictCosts(const NodeInfo& info) const {
     Costs c;
     int64 exec_cost = 0;
-    if (op_context.op_info.op() == "MatMul") {
+    if (info.op_info.op() == "MatMul") {
       exec_cost = 2000000000;
-    } else if (op_context.op_info.op() == "RandomUniform") {
+    }
+    if (info.op_info.op() == "RandomUniform") {
       exec_cost = 1000000000;
-    } else {
-      exec_cost = 1000;
     }
     c.execution_time = Costs::NanoSeconds(exec_cost);
     return c;
@@ -856,20 +278,18 @@ versions {
 
   // Call this after init scheduler_. Scheduler stops after executing
   // target_node.
-  std::unordered_map<string, OpContext> RunScheduler(
-      const string& target_node) {
+  std::unordered_map<string, NodeInfo> RunScheduler(const string& target_node) {
     Costs zero_costs = Costs::ZeroCosts();
-    std::unordered_map<string, OpContext> ops_executed;
+    std::unordered_map<string, NodeInfo> ops_executed;
     bool more_nodes = true;
     do {
-      OpContext op_context = scheduler_->GetCurrNode();
-      ops_executed[op_context.name] = op_context;
-      std::cout << op_context.name << std::endl;
+      NodeInfo node_info = scheduler_->GetCurrNodeInfo();
+      ops_executed[node_info.name] = node_info;
 
-      Costs node_costs = SimplePredictCosts(op_context);
+      Costs node_costs = SimplePredictCosts(node_info);
 
       // Check scheduling order.
-      auto it = dependency_.find(op_context.name);
+      auto it = dependency_.find(node_info.name);
       if (it != dependency_.end()) {
         for (const auto& preceding_node : it->second) {
           EXPECT_GT(ops_executed.count(preceding_node), 0);
@@ -877,7 +297,7 @@ versions {
       }
       more_nodes = scheduler_->MarkCurrNodeExecuted(node_costs);
 
-      if (op_context.name == target_node) {
+      if (node_info.name == target_node) {
         // Scheduler has the state after executing the target node.
         break;
       }
@@ -936,18 +356,6 @@ versions {
                      return std::make_pair(name, port_num_expected);
                    });
     ExpectSetEq(expected, nodes_at_peak_mem_usage);
-  }
-
-  // Helper method for checking nodes dependency.
-  void ValidateDependencyChain(
-      const std::unordered_map<string, int64>& start_times,
-      const std::vector<string>& nodes_in_dependency_order) {
-    int64 prev_node_time = -1;
-    for (const auto& node : nodes_in_dependency_order) {
-      int64 curr_node_time = start_times.at(node);
-      EXPECT_GE(curr_node_time, prev_node_time);
-      prev_node_time = curr_node_time;
-    }
   }
 
   // Helper method for converting shape vector to TensorProperty.
@@ -1045,15 +453,11 @@ TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleFIFOManager) {
   manager.RemoveCurrNode();
   EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.AddNode(&node5_);
-  // GetCurrNode()  should return the same node even if some nodes are added,
-  // until RemoveCurrNode() is called.
-  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node3", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node4", manager.GetCurrNode()->name());
   manager.AddNode(&node6_);
-  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node5", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
@@ -1126,123 +530,13 @@ TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleLIFOManager) {
   manager.RemoveCurrNode();
   EXPECT_EQ("Node3", manager.GetCurrNode()->name());
   manager.AddNode(&node5_);
-  // GetCurrNode()  should return the same node even if some nodes are added,
-  // until RemoveCurrNode() is called.
-  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node5", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.AddNode(&node6_);
-  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node6", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_TRUE(manager.Empty());
-}
-
-TEST_F(VirtualSchedulerTest, GetSingleNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
-  manager.AddNode(&node1_);
-  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
-}
-
-TEST_F(VirtualSchedulerTest, RemoveSingleNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
-  manager.AddNode(&node1_);
-  manager.RemoveCurrNode();
-  EXPECT_TRUE(manager.Empty());
-}
-
-TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
-  // Insert nodes in some random order.
-  manager.AddNode(&node2_);
-  manager.AddNode(&node1_);
-  manager.AddNode(&node4_);
-  manager.AddNode(&node5_);
-  manager.AddNode(&node3_);
-  manager.AddNode(&node6_);
-
-  // In whatever order we insert nodes, we get the same order based on nodes'
-  // time_ready.
-  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_TRUE(manager.Empty());
-}
-
-TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
-  // Insert nodes in some random order.
-  manager.AddNode(&node2_);
-  manager.AddNode(&node1_);
-  manager.AddNode(&node4_);
-  manager.AddNode(&node5_);
-  manager.AddNode(&node3_);
-  manager.AddNode(&node6_);
-
-  // Among these nodes, node6 has the smallest time_ready, hence, GetCurrNode()
-  // should return it.
-  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
-  // Now insret a few other nodes, but their time_ready's are even smaller than
-  // that of Node6. Before calling RemoveCurrNode(), GetCurrNode() should return
-  // the same node, Node6, in this case.
-
-  NodeDef node7;
-  NodeDef node8;
-  NodeDef node9;
-  node7.set_name("Node7");
-  node8.set_name("Node8");
-  node9.set_name("Node9");
-  node_states_[&node7] = NodeState();
-  node_states_[&node8] = NodeState();
-  node_states_[&node9] = NodeState();
-  node_states_[&node7].time_ready = 5;
-  node_states_[&node8].time_ready = 4;
-  node_states_[&node9].time_ready = 3;
-
-  manager.AddNode(&node7);
-  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
-
-  manager.AddNode(&node8);
-  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
-
-  manager.RemoveCurrNode();
-  // Now Node6 is removed, and GetCurrNode() will return Node8.
-  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
-
-  // Again, AddNode shouldn't change GetCurrNode().
-  manager.AddNode(&node9);
-  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
-
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node9", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node7", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
-  manager.RemoveCurrNode();
-  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node1", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
@@ -1258,11 +552,10 @@ TEST_F(VirtualSchedulerTest, SummaryCostTest) {
   auto ops_executed = RunScheduler("");
   Costs c = scheduler_->Summary();
 
-  // RandomUniform - 5 * 1s
-  // Matmuls - 4 * 2s = 8
-  // Misc - 5 * 1us
-  // Total: 13000005
-  EXPECT_EQ(13000005, c.execution_time.asMicroSeconds().count());
+  // RandomUniform - 5
+  // Matmuls - 4 * 2 = 8
+  // Total: 13
+  EXPECT_EQ(13000000, c.execution_time.asMicroSeconds().count());
 }
 
 // Like the above SummaryCostTest, but makes sure the stepstats timeline is
@@ -1275,7 +568,7 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   RunMetadata metadata;
   Costs c = scheduler_->Summary(&metadata);
   StepStats stepstats = metadata.step_stats();
-  EXPECT_EQ(13000005, c.execution_time.asMicroSeconds().count());
+  EXPECT_EQ(13000000, c.execution_time.asMicroSeconds().count());
 
   // Should only be 1 device!
   EXPECT_EQ(1, stepstats.dev_stats().size());
@@ -1307,7 +600,7 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   }
 
   // The base start_time is the time to compute RandomUniforms
-  int64 cur_time = static_cast<int64>(5000005);
+  int64 cur_time = static_cast<int64>(5000000);
   // The increment is the execution time of one matmul. See
   // CreateGrapplerItemWithMatmulChain for details.
   int64 increment = static_cast<int64>(2000000);
@@ -1377,7 +670,7 @@ TEST_F(VirtualSchedulerTest, CalculateOutputSize) {
   EXPECT_EQ(2 * 10 * 10 * 10, scheduler_->CalculateOutputSize(output, 2));
   EXPECT_EQ(4 * 100 * 7 * 8 * 99, scheduler_->CalculateOutputSize(output, 3));
 
-  // Any unknown shape (-1) shall yield zero output size.
+  // Any uknown shape (-1) shall yield zero output size.
   EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 4));
   EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 5));
 
@@ -1394,8 +687,8 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
   // Run the scheduler.
   RunScheduler("");
 
-  const auto* device_states = scheduler_->GetDeviceStates();
-  const auto& cpu_state = device_states->at(kCPU0);
+  const auto& device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state = device_states.at(kCPU0);
 
   // out node adds 4 tensors, each with 10x10x10x10, so the peak memory usage
   // is 4 x the input tensor size while executing the out node.
@@ -1415,8 +708,8 @@ TEST_F(VirtualSchedulerTest, ControlDependency) {
   // Run the scheduler.
   RunScheduler("");
 
-  const auto* device_states = scheduler_->GetDeviceStates();
-  const auto& cpu_state = device_states->at(kCPU0);
+  const auto& device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state = device_states.at(kCPU0);
 
   // The graph has a NoOp that takes control dependency from 7 NoOps. The peak
   // memory usage is when executing the final NoOp.
@@ -1438,7 +731,7 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
   RunScheduler("bn");
 
   const auto& device_states = scheduler_->GetDeviceStates();
-  const auto& cpu_state = device_states->at(kCPU0);
+  const auto& cpu_state = device_states.at(kCPU0);
 
   // The graph is
   //  bn = FusedBatchNorm(x, scale, offset, mean, var)
@@ -1462,17 +755,15 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
         return std::make_pair(node_port.first->name(), node_port.second);
       });
   std::set<std::pair<string, int>> expected = {
-      std::make_pair("bn", -1),
-      std::make_pair("bn", 0),
-      std::make_pair("bn", 2),
-      std::make_pair("x", 0),
+      std::make_pair("bn", -1), std::make_pair("bn", 0),
+      std::make_pair("bn", 2), std::make_pair("x", 0),
   };
   ExpectSetEq(expected, nodes_in_memory);
 
-  const auto* node_states = scheduler_->GetNodeStates();
+  const auto& node_states = scheduler_->GetNodeStates();
   const NodeState* bn_node = nullptr;
   const NodeState* x_node = nullptr;
-  for (const auto& nodedef_node_state : *node_states) {
+  for (const auto& nodedef_node_state : node_states) {
     const NodeDef* node = nodedef_node_state.first;
     const NodeState& node_state = nodedef_node_state.second;
     if (node->name() == "bn") {
@@ -1500,8 +791,8 @@ TEST_F(VirtualSchedulerTest, Variable) {
   // Run the scheduler.
   RunScheduler("");
 
-  const auto* device_states = scheduler_->GetDeviceStates();
-  const auto& cpu_state = device_states->at(kCPU0);
+  const auto& device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state = device_states.at(kCPU0);
 
   // There is one Conv2D that takes x and f, but f is variable, so it should be
   // in persistent nodes.
@@ -1511,216 +802,6 @@ TEST_F(VirtualSchedulerTest, Variable) {
   // Only x in peak memory usage snapshot.
   ValidateMemoryUsageSnapshot({"x"}, 0 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
-}
-
-TEST_F(VirtualSchedulerTest, WhileLoop) {
-  // Init.
-  CreateGrapplerItemWithLoop();
-  InitScheduler();
-
-  // Run the scheduler.
-  RunScheduler("");
-
-  // Check the timeline
-  RunMetadata metadata;
-  scheduler_->Summary(&metadata);
-
-  // Nodes in topological order:
-  // * const, ones
-  // * while/Enter, while/Enter_1
-  // * while/Merge, while/Merge_1
-  // * while/Less/y
-  // * while/Less
-  // * while/LoopCond
-  // * while/Switch, while/Switch_1
-  // * while/Identity, while/Identity_1, while/Exit, while/Exit_1
-  // * while/add/y, while/concat/axis
-  // * while/add, while/concat
-  // * while/NextIteration, while/NextIteration_1
-
-  int num_next_iteration = 0;
-  int num_next_iteration_1 = 0;
-  int num_exit = 0;
-  int num_exit_1 = 0;
-  int64 next_iter_start_micro;
-  int64 next_iter_1_start_micro;
-  int64 exit_start_micro;
-  int64 exit_1_start_micro;
-
-  std::unordered_map<string, int64> start_times;
-  for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
-    for (const auto& stats : device_step_stats.node_stats()) {
-      start_times[stats.node_name()] = stats.all_start_micros();
-      if (stats.node_name() == "while/NextIteration") {
-        ++num_next_iteration;
-        next_iter_start_micro = stats.all_start_micros();
-      } else if (stats.node_name() == "while/NextIteration_1") {
-        ++num_next_iteration_1;
-        next_iter_1_start_micro = stats.all_start_micros();
-      } else if (stats.node_name() == "while/Exit") {
-        ++num_exit;
-        exit_start_micro = stats.all_start_micros();
-      } else if (stats.node_name() == "while/Exit_1") {
-        ++num_exit_1;
-        exit_1_start_micro = stats.all_start_micros();
-      }
-    }
-  }
-
-  // Make sure we went though the body of the loop once, and that the output of
-  // the loop was scheduled as well.
-  EXPECT_EQ(1, num_next_iteration);
-  EXPECT_EQ(1, num_next_iteration_1);
-  EXPECT_EQ(1, num_exit);
-  EXPECT_EQ(1, num_exit_1);
-
-  // Start times of while/NextIteration and while/NextIteration_1 should be
-  // different, so should be those of while/Exit and while/Exit_1.
-  EXPECT_NE(next_iter_start_micro, next_iter_1_start_micro);
-  EXPECT_NE(exit_start_micro, exit_1_start_micro);
-
-  // Check dependency among the nodes; no matter what scheduling mechanism we
-  // use, the scheduled ops should follow these depedency chains.
-  // Note that currently, VirtualScheduler executes while/Merge twice; hence,
-  // we're not testing dependency chains related to while/Merge.
-  // TODO(dyoon): after fixing while loop behavior correctly (run nodes in the
-  // order of Enter, Merge, ...loop condition ..., ... loop body ...,
-  // NextIteration, Merge, ... loop condition ..., Exit), re-enable dependency
-  // chaing test w/ Merge nodes.
-  ValidateDependencyChain(
-      start_times,
-      {"Const", "while/Enter",  // "while/Merge",
-       "while/Less/y", "while/Less", "while/LoopCond", "while/Switch",
-       "while/Identity", "while/add/y", "while/add", "while/NextIteration"});
-  // ValidateDependencyChain(start_times, {"while/Merge", "while/Less"});
-  ValidateDependencyChain(start_times,
-                          {"ones", "while/Enter_1",  // "while/Merge_1",
-                           "while/Switch_1", "while/Identity_1", "while/concat",
-                           "while/NextIteration_1"});
-  ValidateDependencyChain(start_times, {"while/Switch", "while/Exit"});
-  ValidateDependencyChain(
-      start_times, {"while/Identity", "while/concat/axis", "while/concat"});
-  ValidateDependencyChain(start_times, {"while/Identity", "while/add"});
-  ValidateDependencyChain(start_times, {"while/Switch_1", "while/Exit_1"});
-}
-
-TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
-  // Init.
-  CreateGrapplerItemWithInterDeviceTransfers();
-  InitScheduler();
-
-  // Run the scheduler.
-  auto ops_executed = RunScheduler("");
-
-  // Helper lambda to extract port num from _Send and _Recv op name.
-  auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn_0") != std::string::npos) {
-      return 0;
-    } else if (name.find("bn_1") != std::string::npos) {
-      return 1;
-    } else if (name.find("bn_2") != std::string::npos) {
-      return 2;
-    } else if (name.find("bn_minus1") != std::string::npos) {
-      return -1;
-    }
-    return -999;
-  };
-
-  // Reorganize ops_executed for further testing.
-  std::unordered_map<string, int> op_count;
-  std::unordered_map<int, string> recv_op_names;
-  std::unordered_map<int, string> send_op_names;
-  for (const auto& x : ops_executed) {
-    const auto& name = x.first;
-    const auto& node_info = x.second;
-    const auto& op = node_info.op_info.op();
-    if (op == "_Recv") {
-      recv_op_names[get_port_num(name)] = name;
-    } else if (op == "_Send") {
-      send_op_names[get_port_num(name)] = name;
-    }
-    op_count[op]++;
-  }
-
-  // Same number of _Send and _Recv.
-  EXPECT_EQ(op_count.at("_Send"), op_count.at("_Recv"));
-
-  // Expect 4 Send and Recvs each: port 0, 1, and, 2, and control dependency.
-  EXPECT_EQ(op_count.at("_Recv"), 4);
-  EXPECT_EQ(op_count.at("_Send"), 4);
-
-  // Helper lambda for extracting output Tensor size.
-  auto get_output_size = [this, ops_executed](const string& name) -> int64 {
-    const auto& output_properties_ = ops_executed.at(name).op_info.outputs();
-    std::vector<OpInfo::TensorProperties> output_properties;
-    for (const auto& output_property : output_properties_) {
-      output_properties.push_back(output_property);
-    }
-    return scheduler_->CalculateOutputSize(output_properties, 0);
-  };
-
-  // Validate transfer size.
-  // Batchnorm output y is 4D vector: batch x width x width x depth.
-  int input_size = 4 * batch_size_ * width_ * height_ * depth_in_;
-  EXPECT_EQ(get_output_size(recv_op_names[0]), input_size);
-  EXPECT_EQ(get_output_size(send_op_names[0]), input_size);
-  // Mean and vars are 1-D vector with size depth_in_.
-  EXPECT_EQ(get_output_size(recv_op_names[1]), 4 * depth_in_);
-  EXPECT_EQ(get_output_size(send_op_names[1]), 4 * depth_in_);
-  EXPECT_EQ(get_output_size(recv_op_names[2]), 4 * depth_in_);
-  EXPECT_EQ(get_output_size(send_op_names[2]), 4 * depth_in_);
-  // Control dependency size is 4B.
-  EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
-  EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
-}
-
-TEST_F(VirtualSchedulerTest, GraphWithSendRecv) {
-  // Init.
-  CreateGrapplerItemWithSendRecv();
-  InitScheduler();
-
-  // Run the scheduler.
-  auto ops_executed = RunScheduler("");
-
-  EXPECT_GT(ops_executed.count("Const"), 0);
-  EXPECT_GT(ops_executed.count("Send"), 0);
-  EXPECT_GT(ops_executed.count("Recv"), 0);
-}
-
-TEST_F(VirtualSchedulerTest, GraphWithSendRecvDifferentDevice) {
-  // Init.
-  CreateGrapplerItemWithSendRecv();
-  // Change Recv node's device so that Send and Recv are placed on different
-  // devices.
-  auto& graph = grappler_item_->graph;
-  const string recv_device = kCPU1;
-  for (int i = 0; i < graph.node_size(); i++) {
-    auto* node = graph.mutable_node(i);
-    if (node->name() == "Recv") {
-      node->set_device(recv_device);
-      auto* attr = node->mutable_attr();
-      (*attr)["recv_device"].set_s(recv_device);
-    } else if (node->name() == "Send") {
-      auto* attr = node->mutable_attr();
-      (*attr)["recv_device"].set_s(recv_device);
-    }
-  }
-  InitScheduler();
-
-  // Run the scheduler.
-  auto ops_executed = RunScheduler("");
-
-  // Expect Const, Send, Recv, and VirtualScheduler created Send and Recv ops.
-  EXPECT_GT(ops_executed.count("Const"), 0);
-  EXPECT_GT(ops_executed.count("Send"), 0);
-  EXPECT_GT(ops_executed.count("Send_Send_0_from_/job_localhost/replica_0/"
-                               "task_0/cpu_0_to_/job_localhost"
-                               "/replica_0/task_0/cpu_1"),
-            0);
-  EXPECT_GT(ops_executed.count(
-                "Recv_Send_0_on_/job_localhost/replica_0/task_0/cpu_1"),
-            0);
-  EXPECT_GT(ops_executed.count("Recv"), 0);
 }
 }  // end namespace grappler
 }  // end namespace tensorflow

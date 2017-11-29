@@ -37,13 +37,6 @@ class RenamedDevice : public Device {
     return underlying_->RequiresRecordingAccessedTensors();
   }
 
-  const DeviceBase* UnderlyingDevice() const override {
-    return underlying_->UnderlyingDevice();
-  }
-  DeviceBase* UnderlyingDevice() override {
-    return underlying_->UnderlyingDevice();
-  }
-
   const CpuWorkerThreads* tensorflow_cpu_worker_threads() const override {
     return underlying_->tensorflow_cpu_worker_threads();
   }
@@ -104,8 +97,9 @@ class RenamedDevice : public Device {
 
   Status Sync() override { return underlying_->Sync(); }
 
-  Status MaybeRewriteGraph(std::unique_ptr<Graph>* graph) override {
-    return underlying_->MaybeRewriteGraph(graph);
+  Status MaybeRewriteGraph(const FunctionDefLibrary& library,
+                           std::unique_ptr<Graph>* graph) override {
+    return underlying_->MaybeRewriteGraph(library, graph);
   }
 
   Status FillContextMap(const Graph* graph,

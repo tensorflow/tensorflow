@@ -2,6 +2,10 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [":friends"],
+    features = [
+        "-parse_headers",
+        "no_layering_check",
+    ],
 )
 
 package_group(
@@ -10,8 +14,6 @@ package_group(
         "//tensorflow/compiler/xla:friends",
     ],
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "llvm_gpu_backend",
@@ -35,23 +37,25 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@llvm//:analysis",
+        "@llvm//:asm_printer",
         "@llvm//:bit_reader",
         "@llvm//:bit_writer",
         "@llvm//:code_gen",
         "@llvm//:core",
+        "@llvm//:instrumentation",
         "@llvm//:ipo",
         "@llvm//:ir_reader",
         "@llvm//:linker",
-        "@llvm//:nvptx_code_gen",  # buildcleaner: keep
-        "@llvm//:objc_arc",  # buildcleaner: keep
-        "@llvm//:scalar",
+        "@llvm//:mc",
+        "@llvm//:nvptx_code_gen",
+        "@llvm//:objc_arc",
         "@llvm//:support",
         "@llvm//:target",
         "@llvm//:transform_utils",
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.cc"],
@@ -61,9 +65,9 @@ tf_cc_test(
     deps = [
         ":llvm_gpu_backend",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "@llvm//:core",
         "@llvm//:support",
     ],

@@ -55,10 +55,6 @@ std::unique_ptr<GrowStats> SplitCollectionOperator::CreateGrowStats(
       return std::unique_ptr<GrowStats>(new LeastSquaresRegressionGrowStats(
           params_, depth));
 
-    case STATS_FIXED_SIZE_SPARSE_GINI:
-      return std::unique_ptr<GrowStats>(
-          new FixedSizeSparseClassificationGrowStats(params_, depth));
-
     default:
       LOG(ERROR) << "Unknown grow stats type: " << params_.stats_type();
       return nullptr;
@@ -100,12 +96,7 @@ void SplitCollectionOperator::AddExample(
 }
 
 bool SplitCollectionOperator::IsInitialized(int32 node_id) const {
-  auto it = stats_.find(node_id);
-  if (it == stats_.end()) {
-    LOG(WARNING) << "IsInitialized called with unknown node_id = " << node_id;
-    return false;
-  }
-  return it->second->IsInitialized();
+  return stats_.at(node_id)->IsInitialized();
 }
 
 void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(

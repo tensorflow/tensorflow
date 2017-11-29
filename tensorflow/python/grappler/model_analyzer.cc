@@ -59,15 +59,10 @@ void ModelAnalyzer::PrintNodeInfo(const NodeDef* node,
           if (i > 0) {
             os << ", ";
           }
-          if (prop.shape().dim(i).size() >= 0) {
-            // Print the actual dimension.
-            os << prop.shape().dim(i).size();
-          } else if (prop.shape().dim(i).size() == -1) {
-            // We don't know anything about the dimension.
+          if (prop.shape().dim(i).size() < 0) {
             os << "?";
           } else {
-            // Symbolic dimension.
-            os << "x" << -prop.shape().dim(i).size();
+            os << prop.shape().dim(i).size();
           }
         }
         os << "]";

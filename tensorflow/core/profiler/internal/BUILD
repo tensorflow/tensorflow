@@ -1,5 +1,9 @@
 package(
     default_visibility = ["//tensorflow:internal"],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -90,6 +94,7 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
@@ -112,7 +117,6 @@ cc_library(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
@@ -214,9 +218,6 @@ tf_cc_test(
         ":tfprof_tf_testlib",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
         "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
@@ -235,11 +236,6 @@ tf_cc_test(
         ":tfprof_stats",
         ":tfprof_tf_testlib",
         ":tfprof_utils",
-        "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
         "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
@@ -271,7 +267,10 @@ cc_library(
 cc_library(
     name = "print_model_analysis_hdr",
     hdrs = ["print_model_analysis.h"],
-    deps = ["//tensorflow/core:framework"],
+    deps = [
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -282,7 +281,6 @@ cc_library(
         ":tfprof_options",
         ":tfprof_stats",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:protos_all_cc",
@@ -310,9 +308,6 @@ tf_cc_test(
         ":tfprof_tf_testlib",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
         "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
@@ -345,9 +340,6 @@ tf_cc_test(
         ":tfprof_tf_testlib",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
         "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
@@ -355,6 +347,8 @@ tf_cc_test(
 cc_library(
     name = "tfprof_constants",
     hdrs = ["tfprof_constants.h"],
+    deps = [
+    ],
 )
 
 cc_library(

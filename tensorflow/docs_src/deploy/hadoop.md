@@ -55,10 +55,10 @@ be set:
 If the Hadoop cluster is in secure mode, the following environment variable must
 be set:
 
-*   **KRB5CCNAME**: The path of Kerberos ticket cache file. For example:
+*   **KERB_TICKET_CACHE_PATH**: The path of Kerberos ticket cache file. For example:
 
     ```shell
-    export KRB5CCNAME=/tmp/krb5cc_10002
+    export KERB_TICKET_CACHE_PATH=/tmp/krb5cc_10002
     ```
 
 If you are running @{$distributed$Distributed TensorFlow}, then all

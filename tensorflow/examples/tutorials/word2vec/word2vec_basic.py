@@ -22,7 +22,6 @@ import collections
 import math
 import os
 import random
-from tempfile import gettempdir
 import zipfile
 
 import numpy as np
@@ -34,22 +33,18 @@ import tensorflow as tf
 url = 'http://mattmahoney.net/dc/'
 
 
-# pylint: disable=redefined-outer-name
 def maybe_download(filename, expected_bytes):
   """Download a file if not present, and make sure it's the right size."""
-  local_filename = os.path.join(gettempdir(), filename)
-  if not os.path.exists(local_filename):
-    local_filename, _ = urllib.request.urlretrieve(url + filename,
-                                                   local_filename)
-  statinfo = os.stat(local_filename)
+  if not os.path.exists(filename):
+    filename, _ = urllib.request.urlretrieve(url + filename, filename)
+  statinfo = os.stat(filename)
   if statinfo.st_size == expected_bytes:
     print('Found and verified', filename)
   else:
     print(statinfo.st_size)
-    raise Exception('Failed to verify ' + local_filename +
-                    '. Can you get to it with a browser?')
-  return local_filename
-
+    raise Exception(
+        'Failed to verify ' + filename + '. Can you get to it with a browser?')
+  return filename
 
 filename = maybe_download('text8.zip', 31344016)
 
@@ -78,20 +73,16 @@ def build_dataset(words, n_words):
   data = list()
   unk_count = 0
   for word in words:
-    index = dictionary.get(word, 0)
-    if index == 0:  # dictionary['UNK']
+    if word in dictionary:
+      index = dictionary[word]
+    else:
+      index = 0  # dictionary['UNK']
       unk_count += 1
     data.append(index)
   count[0][1] = unk_count
   reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
   return data, count, dictionary, reversed_dictionary
 
-# Filling 4 global variables:
-# data - list of codes (integers from 0 to vocabulary_size-1).
-#   This is the original text but words are replaced by their codes
-# count - map of words(strings) to count of occurrences
-# dictionary - map of words(strings) to their codes(integers)
-# reverse_dictionary - maps codes(integers) to words(strings)
 data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
                                                             vocabulary_size)
 del vocabulary  # Hint to reduce memory.
@@ -114,11 +105,14 @@ def generate_batch(batch_size, num_skips, skip_window):
   buffer.extend(data[data_index:data_index + span])
   data_index += span
   for i in range(batch_size // num_skips):
-    context_words = [w for w in range(span) if w != skip_window]
-    words_to_use = random.sample(context_words, num_skips)
-    for j, context_word in enumerate(words_to_use):
+    target = skip_window  # target label at the center of the buffer
+    targets_to_avoid = [skip_window]
+    for j in range(num_skips):
+      while target in targets_to_avoid:
+        target = random.randint(0, span - 1)
+      targets_to_avoid.append(target)
       batch[i * num_skips + j] = buffer[skip_window]
-      labels[i * num_skips + j, 0] = buffer[context_word]
+      labels[i * num_skips + j, 0] = buffer[target]
     if data_index == len(data):
       buffer[:] = data[:span]
       data_index = span
@@ -140,16 +134,14 @@ batch_size = 128
 embedding_size = 128  # Dimension of the embedding vector.
 skip_window = 1       # How many words to consider left and right.
 num_skips = 2         # How many times to reuse an input to generate a label.
-num_sampled = 64      # Number of negative examples to sample.
 
 # We pick a random validation set to sample nearest neighbors. Here we limit the
 # validation samples to the words that have a low numeric ID, which by
-# construction are also the most frequent. These 3 variables are used only for
-# displaying model accuracy, they don't affect calculation.
+# construction are also the most frequent.
 valid_size = 16     # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
 valid_examples = np.random.choice(valid_window, valid_size, replace=False)
-
+num_sampled = 64    # Number of negative examples to sample.
 
 graph = tf.Graph()
 
@@ -176,8 +168,6 @@ with graph.as_default():
   # Compute the average NCE loss for the batch.
   # tf.nce_loss automatically draws a new sample of the negative labels each
   # time we evaluate the loss.
-  # Explanation of the meaning of NCE loss:
-  #   http://mccormickml.com/2016/04/19/word2vec-tutorial-the-skip-gram-model/
   loss = tf.reduce_mean(
       tf.nn.nce_loss(weights=nce_weights,
                      biases=nce_biases,
@@ -243,9 +233,7 @@ with tf.Session(graph=graph) as session:
 # Step 6: Visualize the embeddings.
 
 
-# pylint: disable=missing-docstring
-# Function to draw visualization of distance between embeddings.
-def plot_with_labels(low_dim_embs, labels, filename):
+def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
   assert low_dim_embs.shape[0] >= len(labels), 'More labels than embeddings'
   plt.figure(figsize=(18, 18))  # in inches
   for i, label in enumerate(labels):
@@ -269,8 +257,7 @@ try:
   plot_only = 500
   low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only, :])
   labels = [reverse_dictionary[i] for i in xrange(plot_only)]
-  plot_with_labels(low_dim_embs, labels, os.path.join(gettempdir(), 'tsne.png'))
+  plot_with_labels(low_dim_embs, labels)
 
-except ImportError as ex:
+except ImportError:
   print('Please install sklearn, matplotlib, and scipy to show embeddings.')
-  print(ex)

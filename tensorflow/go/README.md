@@ -23,9 +23,9 @@ from source.
 
 -   [bazel](https://www.bazel.build/versions/master/docs/install.html)
 -   Environment to build TensorFlow from source code
-    ([Linux](https://www.tensorflow.org/install/install_sources#PrepareLinux)
+    ([Linux](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-linux)
     or [OS
-    X](https://www.tensorflow.org/install/install_sources#PrepareMac)).
+    X](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-mac-os-x)).
     If you don't need GPU support, then try the following: `sh # Linux sudo
     apt-get install python swig python-numpy # OS X with homebrew brew install
     swig`

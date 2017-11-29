@@ -71,7 +71,7 @@ class CreatedContexts {
  public:
   // Returns whether context is a member of the live set.
   static bool Has(CUcontext context) {
-    tf_shared_lock lock{mu_};
+    shared_lock lock{mu_};
     return Live()->find(context) != Live()->end();
   }
 
@@ -516,25 +516,13 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
     former_context = CUDADriver::CurrentContextOrDie();
     res = cuDevicePrimaryCtxRetain(&new_context, device);
     if (former_context != nullptr) {
-      CUdevice former_device;
-      if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
-        if (former_device == device) {
-          if (former_context == new_context) {
-            VLOG(2) << "The primary context " << former_context
-                    << " for device " << device
-                    << " exists before initializing the StreamExecutor.";
-          } else {
-            LOG(WARNING)
-                << "A non-primary context " << former_context << " for device "
-                << device
-                << " exists before initializing the StreamExecutor. The "
-                << "primary context is now " << new_context << ". We "
-                << "haven't verified StreamExecutor works with that.";
-          }
-        }
+      if (former_context == new_context) {
+        VLOG(2) << "The primary context " << former_context
+                << " exists before initializing the StreamExecutor.";
       } else {
-        LOG(ERROR) << "Failed to get the device of the current context "
-                   << former_context;
+        LOG(WARNING) << "A non-primary context " << former_context
+                     << " exists before initializing the StreamExecutor. We "
+                        "haven't verified StreamExecutor works with that.";
       }
     }
 #else

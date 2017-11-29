@@ -20,7 +20,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/variant_encode_decode.h"
 
 namespace tensorflow {
 namespace functor {
@@ -51,7 +50,6 @@ DEFINE_SETZERO_CPU(int32);
 DEFINE_SETZERO_CPU(int64);
 DEFINE_SETZERO_CPU(complex64);
 DEFINE_SETZERO_CPU(complex128);
-DEFINE_SETZERO_CPU(Variant);
 #undef DEFINE_SETZERO_CPU
 
 #ifdef TENSORFLOW_USE_SYCL

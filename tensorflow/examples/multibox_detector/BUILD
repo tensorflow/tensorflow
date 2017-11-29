@@ -3,15 +3,17 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
 )
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-
-tf_cc_binary(
+cc_binary(
     name = "detect_objects",
     srcs = [
         "main.cc",
@@ -23,7 +25,6 @@ tf_cc_binary(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ],
 )

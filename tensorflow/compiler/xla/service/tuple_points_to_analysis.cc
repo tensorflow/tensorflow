@@ -46,7 +46,8 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
 bool PointsToSet::IsAmbiguous() const {
   bool ambiguous = false;
   ForEachElement(
-      [&ambiguous](const ShapeIndex& /*index*/, const BufferList& points_to) {
+      [&ambiguous](const ShapeIndex& /*index*/,
+                   const std::vector<const LogicalBuffer*>& points_to) {
         ambiguous |= points_to.size() > 1;
       });
   return ambiguous;
@@ -55,8 +56,9 @@ bool PointsToSet::IsAmbiguous() const {
 bool PointsToSet::IsDistinct() const {
   bool distinct = true;
   std::set<const LogicalBuffer*> all_points_to;
-  ForEachElement([&distinct, &all_points_to](const ShapeIndex& /*index*/,
-                                             const BufferList& points_to) {
+  ForEachElement([&distinct, &all_points_to](
+                     const ShapeIndex& /*index*/,
+                     const std::vector<const LogicalBuffer*>& points_to) {
     for (auto& buffer : points_to) {
       if (all_points_to.count(buffer) != 0) {
         distinct = false;
@@ -73,19 +75,21 @@ size_t PointsToSet::size() const {
   return CreateFlattenedSet().size();
 }
 
-PointsToSet::BufferSet PointsToSet::CreateFlattenedSet() const {
-  BufferSet flat_set;
-  ForEachElement(
-      [&flat_set](const ShapeIndex& /*index*/, const BufferList& buffers) {
-        flat_set.insert(buffers.begin(), buffers.end());
-      });
+tensorflow::gtl::FlatSet<const LogicalBuffer*> PointsToSet::CreateFlattenedSet()
+    const {
+  tensorflow::gtl::FlatSet<const LogicalBuffer*> flat_set;
+  ForEachElement([&flat_set](const ShapeIndex& /*index*/,
+                             const std::vector<const LogicalBuffer*>& buffers) {
+    flat_set.insert(buffers.begin(), buffers.end());
+  });
   return flat_set;
 }
 
 bool PointsToSet::ContainsBuffer(const LogicalBuffer& buffer) const {
   bool found = false;
   ForEachElement([&found, &buffer](const ShapeIndex& /*index*/,
-                                   const BufferList& pointed_to_buffers) {
+                                   const std::vector<const LogicalBuffer*>&
+                                       pointed_to_buffers) {
     if (!found &&
         std::find(pointed_to_buffers.begin(), pointed_to_buffers.end(),
                   &buffer) != pointed_to_buffers.end()) {
@@ -97,7 +101,7 @@ bool PointsToSet::ContainsBuffer(const LogicalBuffer& buffer) const {
 
 bool PointsToSet::ContainsBufferAtIndex(const LogicalBuffer& buffer,
                                         const ShapeIndex& index) const {
-  const auto& pointed_to_buffers = element(index);
+  const std::vector<const LogicalBuffer*>& pointed_to_buffers = element(index);
   return std::find(pointed_to_buffers.begin(), pointed_to_buffers.end(),
                    &buffer) != pointed_to_buffers.end();
 }
@@ -110,66 +114,39 @@ void PointsToSet::AddPointedToBuffer(const LogicalBuffer& buffer,
   mutable_element(index)->push_back(&buffer);
 }
 
-const PointsToSet::SourceSet& PointsToSet::tuple_sources(
+const std::set<HloInstruction*>& PointsToSet::tuple_sources(
     const ShapeIndex& index) const {
-  return tree_.element(index).tuple_sources;
+  return tuple_sources_.element(index);
 }
 
 void PointsToSet::add_tuple_source(const ShapeIndex& index,
                                    HloInstruction* tuple) {
-  tree_.mutable_element(index)->tuple_sources.insert(tuple);
+  tuple_sources_.mutable_element(index)->insert(tuple);
 }
-
-namespace {
-
-// Gather fusion instructions from 'instruction' into 'fusion_instructions'.
-void GatherFusionInstructions(
-    HloInstruction* instruction,
-    std::vector<HloInstruction*>* fusion_instructions) {
-  CHECK_EQ(HloOpcode::kFusion, instruction->opcode());
-  for (auto* fused : instruction->fused_instructions()) {
-    if (fused->opcode() == HloOpcode::kFusion) {
-      GatherFusionInstructions(fused, fusion_instructions);
-    }
-  }
-  fusion_instructions->push_back(instruction);
-}
-
-}  // namespace
 
 /* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
 TuplePointsToAnalysis::Run(const HloModule* module) {
-  auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
-  std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
-      module, logical_buffer_analysis.ConsumeValueOrDie()));
+  std::unique_ptr<TuplePointsToAnalysis> analysis(
+      new TuplePointsToAnalysis(module));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
 }
 
 Status TuplePointsToAnalysis::Analyze() {
-  per_instruction_.clear();
-  per_instruction_.resize(module_->NumUniqueInstructionIds());
-
-  logical_buffer_aliases_.clear();
-  logical_buffer_aliases_.resize(
-      logical_buffer_analysis_->num_logical_buffers());
-
-  std::vector<HloInstruction*> fusion_instructions;
-  for (auto* computation : module_->MakeNonfusionComputations()) {
+  points_to_.clear();
+  for (auto& computation : module_->computations()) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
-    for (auto* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kFusion) {
-        GatherFusionInstructions(instruction, &fusion_instructions);
+    // Run points-to analysis on fusion instructions in 'computation'.
+    for (auto& instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kFusion) {
+        continue;
       }
+      TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
+      TF_RETURN_IF_ERROR(
+          PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
     }
-  }
-  // Run points-to analysis on fusion instructions in 'computation'.
-  for (auto* instruction : fusion_instructions) {
-    TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
-    TF_RETURN_IF_ERROR(
-        PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
   }
 
   XLA_VLOG_LINES(3, ToString());
@@ -177,25 +154,32 @@ Status TuplePointsToAnalysis::Analyze() {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(const decltype(
-    std::declval<HloComputation>().instructions())& instructions) {
-  for (auto* instruction : instructions) {
-    PerInstruction* pi = PerInst(instruction);
+Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
+    const std::list<std::unique_ptr<HloInstruction>>& instructions) {
+  for (auto& instruction : instructions) {
     TF_RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
-        instruction, &pi->instruction_defined_buffers));
+        instruction.get(), &instruction_defined_buffers_[instruction.get()]));
 
-    const PointsToSet& points_to_set = GetPointsToSet(instruction);
+    const PointsToSet& points_to_set = GetPointsToSet(instruction.get());
     points_to_set.ForEachElement(
         [this, &instruction](
             const ShapeIndex& index,
-            const PointsToSet::BufferList& pointed_to_buffers) {
+            const std::vector<const LogicalBuffer*>& pointed_to_buffers) {
           for (const LogicalBuffer* buffer : pointed_to_buffers) {
-            logical_buffer_aliases_[buffer->id()].emplace_back(instruction,
-                                                               index);
+            buffer_aliases_[buffer].emplace_back(instruction.get(), index);
           }
         });
   }
   return Status::OK();
+}
+
+const LogicalBuffer& TuplePointsToAnalysis::NewLogicalBuffer(
+    HloInstruction* instruction, const ShapeIndex& index) {
+  CHECK_EQ(logical_buffers_.size(), next_buffer_id_);
+  logical_buffers_.push_back(
+      MakeUnique<LogicalBuffer>(instruction, index, next_buffer_id_));
+  ++next_buffer_id_;
+  return *logical_buffers_.back();
 }
 
 Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
@@ -205,9 +189,9 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
   PointsToSet& points_to_set = CreateEmptyPointsToSet(hlo_instruction);
   points_to_set.ForEachMutableElement(
       [this, hlo_instruction](const ShapeIndex& index,
-                              PointsToSet::BufferList* buffers) {
-        buffers->push_back(
-            &logical_buffer_analysis_->GetBuffer(hlo_instruction, index));
+                              std::vector<const LogicalBuffer*>* buffers) {
+        const LogicalBuffer& buffer = NewLogicalBuffer(hlo_instruction, index);
+        buffers->push_back(&buffer);
       });
 
   if (ShapeUtil::IsTuple(hlo_instruction->shape())) {
@@ -220,20 +204,19 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
 }
 
 Status TuplePointsToAnalysis::HandleGetTupleElement(
-    HloInstruction* get_tuple_element) {
+    HloInstruction* get_tuple_element, HloInstruction* operand) {
   // GetTupleElement forwards a pointer to a particular element of the tuple
   // operand.
   int64 element_index = get_tuple_element->tuple_index();
 
   PointsToSet& points_to_set = CreateEmptyPointsToSet(get_tuple_element);
-  const PointsToSet& operand_points_to_set =
-      *PerInst(get_tuple_element->operand(0))->points_to_set;
+  const PointsToSet& operand_points_to_set = *FindOrDie(points_to_, operand);
 
   // Copy the points-to set (and tuple sources) at index {element_index} of the
   // operand to the points-to set for this GetTupleElement instruction.
   points_to_set.ForEachMutableElement(
       [&, this](const ShapeIndex& target_index,
-                PointsToSet::BufferList* points_to) {
+                std::vector<const LogicalBuffer*>* points_to) {
         // Construct an index into the operand by prepending element_index to
         // the index for the GetTupleElement instruction's points-to set.
         ShapeIndex src_index;
@@ -258,9 +241,8 @@ Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
   // tuple shape) come from the operand
   PointsToSet& points_to_set = CreateCopiedPointsToSet(copy, copy->operand(0));
   points_to_set.mutable_element(/*index=*/{})->clear();
-  points_to_set.AddPointedToBuffer(
-      logical_buffer_analysis_->GetBuffer(copy, /*index=*/{}),
-      /*index=*/{});
+  points_to_set.AddPointedToBuffer(NewLogicalBuffer(copy, /*index=*/{}),
+                                   /*index=*/{});
 
   return Status::OK();
 }
@@ -273,83 +255,25 @@ Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
-  // RecvDone aliases its input (Recv) tuple element {0} to its output.
-  PointsToSet& points_to_set = CreateEmptyPointsToSet(recv_done);
-  const PointsToSet& operand_points_to_set =
-      GetPointsToSet(recv_done->operand(0));
-
-  // Recursively copy the points to set of the operand tuple {0}.
-  points_to_set.ForEachMutableElement(
-      [this, &points_to_set, &operand_points_to_set](
-          const ShapeIndex& index, PointsToSet::BufferList* buffers) {
-        ShapeIndex src_index({0});
-        for (auto element : index) {
-          src_index.push_back(element);
-        }
-        *buffers = operand_points_to_set.element(src_index);
-        for (auto& tuple_source :
-             operand_points_to_set.tuple_sources(src_index)) {
-          points_to_set.add_tuple_source(index, tuple_source);
-        }
-      });
-  return Status::OK();
-}
-
-Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
-  // Send creates a tuple of {aliased operand, U32 context}.
-  PointsToSet& points_to_set = CreateEmptyPointsToSet(send);
-
-  // Creates the points to set for the tuple and its element at {1}.
-  auto top_buffer = points_to_set.mutable_element(ShapeIndex({}));
-  top_buffer->push_back(
-      &logical_buffer_analysis_->GetBuffer(send, ShapeIndex({})));
-  points_to_set.add_tuple_source({}, send);
-
-  auto context_buffer = points_to_set.mutable_element(ShapeIndex({1}));
-  context_buffer->push_back(
-      &logical_buffer_analysis_->GetBuffer(send, ShapeIndex({1})));
-
-  // Recursively copy the points to set of the operand to output tuple {0}.
-  const PointsToSet& operand_points_to_set = GetPointsToSet(send->operand(0));
-  operand_points_to_set.ForEachElement(
-      [&points_to_set, &operand_points_to_set](
-          const ShapeIndex& src_index,
-          const PointsToSet::BufferList& points_to) {
-        ShapeIndex target_index({0});
-        for (auto element : src_index) {
-          target_index.push_back(element);
-        }
-        *points_to_set.mutable_element(target_index) = points_to;
-
-        for (HloInstruction* tuple :
-             operand_points_to_set.tuple_sources(src_index)) {
-          points_to_set.add_tuple_source(target_index, tuple);
-        }
-      });
-
-  return Status::OK();
-}
-
-Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
+Status TuplePointsToAnalysis::HandleTuple(
+    HloInstruction* tuple,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   PointsToSet& points_to_set = CreateEmptyPointsToSet(tuple);
-  points_to_set.AddPointedToBuffer(
-      logical_buffer_analysis_->GetBuffer(tuple, /*index=*/{}),
-      /*index=*/{});
+  points_to_set.AddPointedToBuffer(NewLogicalBuffer(tuple, /*index=*/{}),
+                                   /*index=*/{});
 
   // A tuple contains references to all input operands and transitively any
   // references in those operands.
   for (int64 i = 0; i < operands.size(); ++i) {
     const PointsToSet& operand_points_to_set =
-        *PerInst(operands[i])->points_to_set;
+        *FindOrDie(points_to_, operands[i]);
 
     // Copy the points-to set (and tuple sources) of the operand into the
     // respective subtree of the tuple instructions points-to set.
     operand_points_to_set.ForEachElement(
         [&points_to_set, &operand_points_to_set, i](
             const ShapeIndex& src_index,
-            const PointsToSet::BufferList& points_to) {
+            const std::vector<const LogicalBuffer*>& points_to) {
           ShapeIndex target_index;
           target_index.push_back(i);
           for (auto element : src_index) {
@@ -370,7 +294,10 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select) {
+Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
+                                           HloInstruction* /*pred*/,
+                                           HloInstruction* on_true,
+                                           HloInstruction* on_false) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer. Which side is chosen cannot be
   // determined statically so conservatively set the points-to set to the union
@@ -378,12 +305,10 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select) {
   //
   // First create a copy of the on_true points-to set (and tuple sources), then
   // add in elements of the on_false points-to set (tuple sources).
-  auto on_true = select->operand(1);
-  auto on_false = select->operand(2);
   PointsToSet& points_to_set = CreateCopiedPointsToSet(select, on_true);
-  const PointsToSet& false_points_to_set = *PerInst(on_false)->points_to_set;
+  const PointsToSet& false_points_to_set = *FindOrDie(points_to_, on_false);
   points_to_set.ForEachMutableElement(
-      [&](const ShapeIndex& index, PointsToSet::BufferList* buffers) {
+      [&](const ShapeIndex& index, std::vector<const LogicalBuffer*>* buffers) {
         for (const LogicalBuffer* false_buffer :
              false_points_to_set.element(index)) {
           points_to_set.AddPointedToBuffer(*false_buffer, index);
@@ -397,31 +322,29 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select) {
   // Select creates a new (top-level) buffer to store its result, so its
   // respective element in the points-to set should contain only itself.
   points_to_set.mutable_element({})->clear();
-  points_to_set.AddPointedToBuffer(
-      logical_buffer_analysis_->GetBuffer(select, /*index=*/{}),
-      /*index=*/{});
+  points_to_set.AddPointedToBuffer(NewLogicalBuffer(select, /*index=*/{}),
+                                   /*index=*/{});
   return Status::OK();
 }
 
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
     const HloInstruction* hlo_instruction) const {
-  return *PerInst(hlo_instruction)->points_to_set;
+  return *FindOrDie(points_to_, hlo_instruction);
 }
 
 PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
     const HloInstruction* instruction) {
-  PerInstruction* pi = PerInst(instruction);
-  CHECK(pi->points_to_set == nullptr)
-      << "instruction should not have been present in the map.";
   auto set = MakeUnique<PointsToSet>(&instruction->shape());
-  pi->points_to_set = std::move(set);
+  auto res = points_to_.emplace(instruction, std::move(set));
+  CHECK(res.second) << "instruction should not have been present in the map.";
   // Return *set using the iterator returned by emplace.
-  return *pi->points_to_set;
+  return *res.first->second;
 }
 
 bool TuplePointsToAnalysis::InstructionDefinesBufferAtIndex(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  const auto& buffers = GetPointsToSet(instruction).element(index);
+  const std::vector<const LogicalBuffer*>& buffers =
+      GetPointsToSet(instruction).element(index);
   return (buffers.size() == 1 && buffers[0]->instruction() == instruction);
 }
 
@@ -433,8 +356,7 @@ Status TuplePointsToAnalysis::VerifyBuffer(const LogicalBuffer& buffer) const {
         buffer.ToString().c_str(), buffer.instruction()->name().c_str());
   }
 
-  if (buffer.id() < 0 ||
-      buffer.id() >= logical_buffer_analysis_->num_logical_buffers()) {
+  if (buffer.id() < 0 || buffer.id() >= next_buffer_id_) {
     return FailedPrecondition(
         "LogicalBuffer %s is ill-defined: invalid id %lld",
         buffer.ToString().c_str(), buffer.id());
@@ -452,13 +374,14 @@ Status TuplePointsToAnalysis::VerifyBuffer(const LogicalBuffer& buffer) const {
 const LogicalBuffer& TuplePointsToAnalysis::GetBuffer(
     LogicalBuffer::Id id) const {
   CHECK_GE(id, 0);
-  CHECK_LT(id, logical_buffer_analysis_->num_logical_buffers());
-  return logical_buffer_analysis_->GetBuffer(id);
+  CHECK_LT(id, logical_buffers_.size());
+  return *logical_buffers_[id];
 }
 
 StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  const auto& buffers = GetPointsToSet(instruction).element(index);
+  const std::vector<const LogicalBuffer*>& buffers =
+      GetPointsToSet(instruction).element(index);
   if (buffers.size() != 1 || buffers[0]->instruction() != instruction) {
     return FailedPrecondition(
         "instruction %s does not define buffer at index {%s}",
@@ -468,41 +391,42 @@ StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
   return buffers[0];
 }
 
-const TuplePointsToAnalysis::BufferAliasVector&
-TuplePointsToAnalysis::GetBufferAliases(const LogicalBuffer& buffer) const {
-  return logical_buffer_aliases_.at(buffer.id());
+const std::vector<BufferAlias>& TuplePointsToAnalysis::GetBufferAliases(
+    const LogicalBuffer& buffer) const {
+  return buffer_aliases_.at(&buffer);
 }
 
-const TuplePointsToAnalysis::BufferDefinitionVector&
+const std::vector<const LogicalBuffer*>&
 TuplePointsToAnalysis::GetBuffersDefinedByInstruction(
     const HloInstruction* instruction) const {
-  return PerInst(instruction)->instruction_defined_buffers;
+  return instruction_defined_buffers_.at(instruction);
 }
 
 Status TuplePointsToAnalysis::GatherBuffersDefinedByInstruction(
     const HloInstruction* instruction,
-    TuplePointsToAnalysis::BufferDefinitionVector* buffers) {
+    std::vector<const LogicalBuffer*>* buffers) {
   GetPointsToSet(instruction)
-      .ForEachElement([this, buffers, instruction](
-                          const ShapeIndex& index,
-                          const PointsToSet::BufferList& source_buffers) {
-        // Add buffers which 'instruction' is the source of.
-        CHECK(!source_buffers.empty());
-        if (source_buffers.size() == 1 &&
-            source_buffers[0]->instruction() == instruction) {
-          // If this instruction is the source of this buffer the
-          // indices must match.
-          DCHECK(source_buffers[0]->index() == index);
-          buffers->push_back(source_buffers[0]);
-        } else {
-          // If the points-to set includes more than one buffer then
-          // necessarily this instruction did not produce the
-          // buffer.
-          for (const LogicalBuffer* source_buffer : source_buffers) {
-            DCHECK(source_buffer->instruction() != instruction);
-          }
-        }
-      });
+      .ForEachElement(
+          [this, buffers, instruction](
+              const ShapeIndex& index,
+              const std::vector<const LogicalBuffer*>& source_buffers) {
+            // Add buffers which 'instruction' is the source of.
+            CHECK(!source_buffers.empty());
+            if (source_buffers.size() == 1 &&
+                source_buffers[0]->instruction() == instruction) {
+              // If this instruction is the source of this buffer the
+              // indices must match.
+              DCHECK(source_buffers[0]->index() == index);
+              buffers->push_back(source_buffers[0]);
+            } else {
+              // If the points-to set includes more than one buffer then
+              // necessarily this instruction did not produce the
+              // buffer.
+              for (const LogicalBuffer* source_buffer : source_buffers) {
+                DCHECK(source_buffer->instruction() != instruction);
+              }
+            }
+          });
   return Status::OK();
 }
 
@@ -514,40 +438,41 @@ PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
   const PointsToSet& src_points_to_set = GetPointsToSet(src);
   dst_points_to_set.ForEachMutableElement(
       [this, &dst_points_to_set, &src_points_to_set](
-          const ShapeIndex& index, PointsToSet::BufferList* buffers) {
+          const ShapeIndex& index, std::vector<const LogicalBuffer*>* buffers) {
         *buffers = src_points_to_set.element(index);
         for (auto& tuple_source : src_points_to_set.tuple_sources(index)) {
           dst_points_to_set.add_tuple_source(index, tuple_source);
         }
       });
-  return *PerInst(instruction)->points_to_set;
+  return *FindOrDie(points_to_, instruction);
 }
 
 string TuplePointsToAnalysis::ToString() const {
   string output = tensorflow::strings::Printf(
       "TuplePointsToSet for module %s:\n", module_->name().c_str());
-  for (const auto* computation : module_->MakeNonfusionComputations()) {
+  for (const auto& computation : module_->computations()) {
     const char* entry =
-        computation == module_->entry_computation() ? "entry " : "";
+        computation.get() == module_->entry_computation() ? "entry " : "";
     tensorflow::strings::StrAppend(&output, entry, "computation ",
                                    computation->name(), ":\n");
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       InstructionToString(instruction, &output);
       if (instruction->opcode() == HloOpcode::kFusion) {
-        for (auto* fused : instruction->fused_instructions()) {
-          InstructionToString(fused, &output);
+        for (auto& fused : instruction->fused_instructions()) {
+          InstructionToString(fused.get(), &output);
         }
       }
     }
   }
 
   tensorflow::strings::StrAppend(&output, "LogicalBuffers:\n");
-  for (const auto& b : logical_buffer_analysis_->logical_buffers()) {
-    tensorflow::strings::StrAppend(&output, "  buffer ", b->ToString(), ":\n");
-    for (const BufferAlias& alias : logical_buffer_aliases_.at(b->id())) {
-      tensorflow::strings::StrAppend(&output, "    alias ", alias.ToString(),
-                                     "\n");
+  for (auto& buffer : logical_buffers_) {
+    tensorflow::strings::StrAppend(&output, "  buffer ", buffer->ToString(),
+                                   ":\n");
+    for (const BufferAlias& buffer_alias : buffer_aliases_.at(buffer.get())) {
+      tensorflow::strings::StrAppend(&output, "    alias ",
+                                     buffer_alias.ToString(), "\n");
     }
   }
   return output;
@@ -561,7 +486,8 @@ void TuplePointsToAnalysis::InstructionToString(
   const PointsToSet& points_to_set = GetPointsToSet(instruction);
   points_to_set.ForEachElement([&prefix, &output](
                                    const ShapeIndex& index,
-                                   const PointsToSet::BufferList& points_to) {
+                                   const std::vector<const LogicalBuffer*>&
+                                       points_to) {
     tensorflow::strings::StrAppend(
         output, prefix, "    {", tensorflow::str_util::Join(index, ","), "}: ",
         tensorflow::str_util::Join(

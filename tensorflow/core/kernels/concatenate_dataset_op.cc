@@ -36,17 +36,15 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
                     " have different output_types %s and %s",
                     (DataTypeVectorString(input->output_dtypes()),
                      DataTypeVectorString(to_concatenate->output_dtypes()))));
-    *output = new Dataset(ctx, input, to_concatenate);
+    *output = new Dataset(input, to_concatenate);
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
-    explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
+    explicit Dataset(const DatasetBase* input,
                      const DatasetBase* to_concatenate)
-        : GraphDatasetBase(ctx),
-          input_(input),
-          to_concatenate_(to_concatenate) {
+        : input_(input), to_concatenate_(to_concatenate) {
       input_->Ref();
       to_concatenate_->Ref();
 
@@ -62,52 +60,30 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
       to_concatenate_->Unref();
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
-        const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Concatenate")}));
+    std::unique_ptr<IteratorBase> MakeIterator() const override {
+      return std::unique_ptr<IteratorBase>(new Iterator(this));
     }
 
     const DataTypeVector& output_dtypes() const override {
       return input_->output_dtypes();
     }
-
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return output_shapes_;
     }
 
     string DebugString() override { return "ConcatenateDatasetOp::Dataset"; }
 
-   protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
-                              Node** output) const override {
-      Node* input_graph = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph));
-      Node* to_concatenate_graph = nullptr;
-      TF_RETURN_IF_ERROR(
-          b->AddParentDataset(ctx, to_concatenate_, &to_concatenate_graph));
-      TF_RETURN_IF_ERROR(
-          b->AddDataset(this, {input_graph, to_concatenate_graph}, output));
-      return Status::OK();
-    }
-
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
+      explicit Iterator(const Dataset* dataset)
+          : DatasetIterator<Dataset>(dataset),
             i_(0),
-            input_impl_(params.dataset->input_->MakeIterator(
-                strings::StrCat(params.prefix, "[0]"))) {}
+            input_impl_(dataset->input_->MakeIterator()) {}
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        if (!input_impl_) {
-          *end_of_sequence = true;
-          return Status::OK();
-        }
         while (i_ < 2) {
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -115,38 +91,11 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
             return Status::OK();
           }
           if (++i_ < 2) {
-            input_impl_ = dataset()->to_concatenate_->MakeIterator(
-                strings::StrCat(prefix(), "[1]"));
+            input_impl_ = dataset()->to_concatenate_->MakeIterator();
           }
         }
         *end_of_sequence = true;
         input_impl_.reset();
-        return Status::OK();
-      }
-
-     protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
-        return Status::OK();
-      }
-
-      Status RestoreInternal(OpKernelContext* ctx,
-                             IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
-        if (!TF_PREDICT_TRUE(i_ >= 0 && i_ <= 2))
-          return errors::InvalidArgument("i_ must be in range [0, 2].");
-        if (i_ == 1) {
-          input_impl_ = dataset()->to_concatenate_->MakeIterator(
-              strings::StrCat(prefix(), "[1]"));
-        } else if (i_ == 2) {
-          input_impl_.reset();
-        }
-        if (input_impl_) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
-        }
         return Status::OK();
       }
 

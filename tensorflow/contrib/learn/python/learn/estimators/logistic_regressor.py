@@ -111,7 +111,7 @@ def LogisticRegressor(  # pylint: disable=invalid-name
                       into the model.
 
   Returns:
-    An `Estimator` instance.
+    A `tf.contrib.learn.Estimator` instance.
   """
   return estimator.Estimator(
       model_fn=_get_model_fn_with_logistic_metrics(model_fn),

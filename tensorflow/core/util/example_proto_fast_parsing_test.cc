@@ -312,7 +312,7 @@ void Fuzz(random::SimplePhilox* rng) {
           break;
         }
         default: {
-          LOG(QFATAL);
+          QCHECK(false);
           break;
         }
       }

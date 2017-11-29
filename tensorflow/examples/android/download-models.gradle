@@ -10,9 +10,8 @@
 // hard coded model files
 // LINT.IfChange
 def models = ['inception5h.zip',
-              'object_detection/ssd_mobilenet_v1_android_export.zip',
-              'stylize_v1.zip',
-              'speech_commands_conv_actions.zip']
+              'mobile_multibox_v1a.zip',
+              'stylize_v1.zip']
 // LINT.ThenChange(//tensorflow/examples/android/BUILD)
 
 // Root URL for model archives
@@ -38,8 +37,7 @@ task downloadFile(type: Download){
 
 task extractModels(type: Copy) {
     for (f in models) {
-        def localFile = f.split("/")[-1]
-        from zipTree(project.ext.TMP_DIR + '/' + localFile)
+        from zipTree(project.ext.TMP_DIR + '/' + f)
     }
 
     into file(project.ext.ASSET_DIR)
@@ -48,8 +46,7 @@ task extractModels(type: Copy) {
 
     def needDownload = false
     for (f in models) {
-        def localFile = f.split("/")[-1]
-        if (!(new File(project.ext.TMP_DIR + '/' + localFile)).exists()) {
+        if (!(new File(project.ext.TMP_DIR + '/' + f)).exists()) {
             needDownload = true
         }
     }

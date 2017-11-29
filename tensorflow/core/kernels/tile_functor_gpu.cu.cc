@@ -18,11 +18,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/tile_functor.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 namespace internal {
@@ -61,8 +60,7 @@ void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
     host_buf[ndims + i] = out_strides[i];
     host_buf[ndims * 2 + i] = in.dim_size(i);
   }
-  // Copies the input strides, output strides and input dimension sizes to the
-  // device.
+  // Copies the input strides, output strides and input dimension sizes to the device.
   auto num_bytes = sizeof(int64) * host_buf.size();
   auto dev_buf = d.allocate(num_bytes);
   // NOTE: host_buf is not allocated by CudaHostAllocator, and
@@ -86,11 +84,8 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 // Register functors used for Tile functor.
-#define DEFINE_TYPE(T)                       \
-  template struct Tile<GPUDevice, T, int32>; \
-  template struct Tile<GPUDevice, T, int64>;
+#define DEFINE_TYPE(T) template struct Tile<GPUDevice, T>;
 
-TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_int16(DEFINE_TYPE);
 TF_CALL_int32(DEFINE_TYPE);
 TF_CALL_int64(DEFINE_TYPE);

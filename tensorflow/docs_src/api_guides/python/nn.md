@@ -8,7 +8,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 ## Activation Functions
 
 The activation ops provide different types of nonlinearities for use in neural
-networks. These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`, `selu`,
+networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
 `softplus`, and `softsign`), continuous but not everywhere differentiable
 functions (`relu`, `relu6`, `crelu` and `relu_x`), and random regularization
 (`dropout`).
@@ -20,7 +20,6 @@ shape as the input tensor.
 *   @{tf.nn.relu6}
 *   @{tf.nn.crelu}
 *   @{tf.nn.elu}
-*   @{tf.nn.selu}
 *   @{tf.nn.softplus}
 *   @{tf.nn.softsign}
 *   @{tf.nn.dropout}

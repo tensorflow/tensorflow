@@ -281,11 +281,6 @@ class BufferAssignment {
   std::set<BufferAllocation::Slice> GetAllSlices(
       const HloInstruction* instruction, const ShapeIndex& index) const;
 
-  // Convenience function which returns whether the buffer of the
-  // instruction at the given index is assigned an allocation.
-  bool HasAllocationAt(const HloInstruction* instruction,
-                       const ShapeIndex& index) const;
-
   // Convenience function which returns whether the top-level buffer of the
   // instruction (index == {}) is assigned an allocation.
   bool HasTopLevelAllocation(const HloInstruction* instruction) const;
@@ -306,7 +301,7 @@ class BufferAssignment {
 
   // Returns the set LogicalBuffers which may be the source of the value at the
   // given index and instruction.
-  const PointsToSet::BufferList& GetSourceBuffers(
+  const std::vector<const LogicalBuffer*>& GetSourceBuffers(
       const HloInstruction* instruction, const ShapeIndex& index) const {
     return GetPointsToSet(instruction).element(index);
   }
@@ -320,22 +315,13 @@ class BufferAssignment {
                           const HloInstruction* hlo_b,
                           const ShapeIndex& shape_index_b) const;
 
-  // Returns true if the top-level buffers of hlo_a and hlo_b are the same.
-  // REQUIRES: HasTopLevelAllocation(hlo_a) && HasTopLevelAllocation(hlo_b).
-  bool SharesTopLevelSlice(const HloInstruction* hlo_a,
-                           const HloInstruction* hlo_b) const {
-    return SharesSliceAtIndex(hlo_a, {}, hlo_b, {});
-  }
-
-  // Returns true if hlo_a and hlo_b both have at least one buffer assigned for
-  // their top-level and each of their nested shape indices, and if hlo_a's
-  // buffers are all different from hlo_b's buffers.
-  bool HaveDisjointSlices(const HloInstruction* hlo_a,
-                          const HloInstruction* hlo_b) const;
-
   // Returns the underlying points-to analysis used for this assignment.
   const TuplePointsToAnalysis& points_to_analysis() const {
     return liveness_->points_to_analysis();
+  }
+
+  TuplePointsToAnalysis& mutable_points_to_analysis() const {
+    return liveness_->mutable_points_to_analysis();
   }
 
   // Returns the BufferLiveness object used to construct this assignment.
@@ -446,11 +432,12 @@ class BufferAssigner {
       LogicalBuffer::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allow_input_output_aliasing = false,
-      BufferLiveness::Colorer colorer = BufferLiveness::DefaultColorer());
+      TuplePointsToAnalysis::Colorer colorer =
+          TuplePointsToAnalysis::DefaultColorer());
 
  private:
   BufferAssigner(bool allow_input_output_aliasing,
-                 BufferLiveness::Colorer colorer)
+                 TuplePointsToAnalysis::Colorer colorer)
       : allow_input_output_aliasing_(allow_input_output_aliasing),
         colorer_(colorer) {}
   virtual ~BufferAssigner() = default;
@@ -551,7 +538,7 @@ class BufferAssigner {
   bool allow_input_output_aliasing_;
 
   // Functor used to assign colors to newly allocated logical buffers.
-  BufferLiveness::Colorer colorer_;
+  TuplePointsToAnalysis::Colorer colorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

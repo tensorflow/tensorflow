@@ -118,7 +118,8 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
 // functionality to coordinate with remote workers.
 class BaseRemoteRendezvous : public RemoteRendezvous {
  public:
-  BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id);
+  BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
+                       bool tolerate_dup_recv);
 
   // Upgrades the BaseRemoteRendezvous to full initialization.
   Status Initialize(WorkerSession* session) override;

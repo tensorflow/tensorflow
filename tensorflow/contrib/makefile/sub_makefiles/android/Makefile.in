@@ -52,9 +52,7 @@ $(INFERENCE_SO_PATH): $(LIB_OBJS) $(INFERENCE_OBJS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $@ $(INFERENCE_OBJS) $(LIB_OBJS) \
-	$(LIBFLAGS) $(LDFLAGS) \
-	-shared -Wl,-soname,$(INFERENCE_SO_NAME) \
-	$(LIBS)
+	$(LIBFLAGS) $(LDFLAGS) -shared $(LIBS)
 
 $(INFERENCE_SO_NAME): $(INFERENCE_SO_PATH)
 

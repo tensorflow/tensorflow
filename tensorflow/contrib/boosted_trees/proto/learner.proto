@@ -17,7 +17,7 @@ message TreeRegularizationConfig {
 
 // Tree constraints config.
 message TreeConstraintsConfig {
-  // Maximum depth of the trees. The default value is 6 if not specified.
+  // Maximum depth of the trees.
   uint32 max_tree_depth = 1;
 
   // Min hessian weight per node.
@@ -86,22 +86,20 @@ message LearningRateDropoutDrivenConfig {
 
 message LearnerConfig {
   enum PruningMode {
-    PRUNING_MODE_UNSPECIFIED = 0;
-    PRE_PRUNE = 1;
-    POST_PRUNE = 2;
+    PRE_PRUNE = 0;
+    POST_PRUNE = 1;
   }
 
   enum GrowingMode {
-    GROWING_MODE_UNSPECIFIED = 0;
-    WHOLE_TREE = 1;
-    LAYER_BY_LAYER = 2;
+    WHOLE_TREE = 0;
+    // Layer by layer is only supported by the batch learner.
+    LAYER_BY_LAYER = 1;
   }
 
   enum MultiClassStrategy {
-    MULTI_CLASS_STRATEGY_UNSPECIFIED = 0;
-    TREE_PER_CLASS = 1;
-    FULL_HESSIAN = 2;
-    DIAGONAL_HESSIAN = 3;
+    TREE_PER_CLASS = 0;
+    FULL_HESSIAN = 1;
+    DIAGONAL_HESSIAN = 2;
   }
 
   // Number of classes.
@@ -120,18 +118,16 @@ message LearnerConfig {
   // Constraints.
   TreeConstraintsConfig constraints = 5;
 
-  // Pruning. POST_PRUNE is the default pruning mode.
+  // Pruning.
   PruningMode pruning_mode = 8;
 
-  // Growing Mode. LAYER_BY_LAYER is the default growing mode.
+  // Growing Mode.
   GrowingMode growing_mode = 9;
 
-  // Learning rate. By default we use fixed learning rate of 0.1.
+  // Learning rate.
   LearningRateConfig learning_rate_tuner = 6;
 
-  // Multi-class strategy. By default we use TREE_PER_CLASS for binary
-  // classification and linear regression. For other cases, we use
-  // DIAGONAL_HESSIAN as the default.
+  // Multi-class strategy.
   MultiClassStrategy multi_class_strategy = 10;
 
   // If you want to average the ensembles (for regularization), provide the

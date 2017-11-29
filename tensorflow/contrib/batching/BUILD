@@ -2,11 +2,10 @@
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
 )
 
 licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "batch_scheduler_hdrs",
@@ -24,8 +23,9 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "batch_scheduler_test",
+    size = "small",
     srcs = ["batch_scheduler_test.cc"],
     deps = [
         ":batch_scheduler",
@@ -56,37 +56,15 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_test(
+cc_test(
     name = "shared_batch_scheduler_test",
+    size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
         ":shared_batch_scheduler",
         "//tensorflow/contrib/batching/test_util:fake_clock_env",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
-    name = "adaptive_shared_batch_scheduler",
-    hdrs = ["adaptive_shared_batch_scheduler.h"],
-    deps = [
-        ":batch_scheduler",
-        "//tensorflow/contrib/batching/util:periodic_function_dynamic",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "adaptive_shared_batch_scheduler_test",
-    srcs = ["adaptive_shared_batch_scheduler_test.cc"],
-    tags = ["manual"],  # b/69013768
-    deps = [
-        ":adaptive_shared_batch_scheduler",
-        "//tensorflow/contrib/batching/test_util:fake_clock_env",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -100,8 +78,9 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "basic_batch_scheduler_test",
+    size = "small",
     srcs = ["basic_batch_scheduler_test.cc"],
     deps = [
         ":basic_batch_scheduler",
@@ -112,7 +91,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "basic_batch_scheduler_benchmark",
     srcs = ["basic_batch_scheduler_benchmark.cc"],
     tags = [
@@ -178,13 +157,14 @@ tf_custom_op_py_library(
     deps = [
         ":batch_ops",
         "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 

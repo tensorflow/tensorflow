@@ -7,9 +7,6 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
 # Convertor of a frozen graph definition into the memmapped format.
 cc_library(
     name = "convert_graphdef_memmapped_format_lib",
@@ -25,7 +22,7 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "convert_graphdef_memmapped_format",
     srcs = ["convert_graphdef_memmapped_format.cc"],
     deps = [
@@ -35,7 +32,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "convert_graphdef_memmapped_format_test",
     srcs = ["convert_graphdef_memmapped_format_test.cc"],
     linkopts = select({
@@ -54,7 +51,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.cc"],
     deps = [

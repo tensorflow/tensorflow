@@ -26,14 +26,11 @@ class WindowDataset : public DatasetBase {
         output_types_(std::move(output_types)),
         output_shapes_(std::move(output_shapes)) {}
 
-  std::unique_ptr<IteratorBase> MakeIterator(
-      const string& prefix) const override {
-    return std::unique_ptr<IteratorBase>(
-        new Iterator({this, strings::StrCat(prefix, "::Window")}));
+  std::unique_ptr<IteratorBase> MakeIterator() const override {
+    return std::unique_ptr<IteratorBase>(new Iterator(this));
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
-
   const std::vector<PartialTensorShape>& output_shapes() const override {
     return output_shapes_;
   }
@@ -43,12 +40,11 @@ class WindowDataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<WindowDataset> {
    public:
-    explicit Iterator(const Params& params)
-        : DatasetIterator<WindowDataset>(params) {}
+    explicit Iterator(const WindowDataset* dataset)
+        : DatasetIterator<WindowDataset>(dataset) {}
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                   bool* end_of_sequence) override {
       mutex_lock l(mu_);
       if (i_ == dataset()->elements_.size()) {
         *end_of_sequence = true;

@@ -23,10 +23,7 @@ import copy
 SUPPORTED_UI_TYPES = ["curses", "readline"]
 
 
-def get_ui(ui_type,
-           on_ui_exit=None,
-           available_ui_types=None,
-           config=None):
+def get_ui(ui_type, on_ui_exit=None, available_ui_types=None):
   """Create a `base_ui.BaseUI` subtype.
 
   This factory method attempts to fallback to other available ui_types on
@@ -39,8 +36,6 @@ def get_ui(ui_type,
     on_ui_exit: (`Callable`) the callback to be called when the UI exits.
     available_ui_types: (`None` or `list` of `str`) Manually-set available
       ui_types.
-    config: An instance of `cli_config.CLIConfig()` carrying user-facing
-      configurations.
 
   Returns:
     A `base_ui.BaseUI` subtype object.
@@ -58,10 +53,10 @@ def get_ui(ui_type,
     # pylint: disable=g-import-not-at-top
     if not ui_type or ui_type == "curses":
       from tensorflow.python.debug.cli import curses_ui
-      return curses_ui.CursesUI(on_ui_exit=on_ui_exit, config=config)
+      return curses_ui.CursesUI(on_ui_exit=on_ui_exit)
     elif ui_type == "readline":
       from tensorflow.python.debug.cli import readline_ui
-      return readline_ui.ReadlineUI(on_ui_exit=on_ui_exit, config=config)
+      return readline_ui.ReadlineUI(on_ui_exit=on_ui_exit)
     # pylint: enable=g-import-not-at-top
   except ImportError:
     available_ui_types.remove(ui_type)

@@ -41,7 +41,7 @@ string Demangle(const char *mangled) {
 #if HAS_CXA_DEMANGLE
   result = abi::__cxa_demangle(mangled, nullptr, nullptr, &status);
 #endif
-  if (status == 0 && result != nullptr) {  // Demangling succeeded.
+  if (status == 0 && result != nullptr) {  // Demangling succeeeded.
     demangled.append(result);
     free(result);
   }

@@ -254,7 +254,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
   def _resnet_small(self,
                     inputs,
                     num_classes=None,
-                    is_training=True,
+                    is_training=None,
                     global_pool=True,
                     output_stride=None,
                     include_root_block=True,

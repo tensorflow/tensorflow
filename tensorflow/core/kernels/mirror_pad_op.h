@@ -64,8 +64,9 @@ class TensorMirrorPadOp
       StorageKind;
   typedef typename Eigen::internal::traits<TensorMirrorPadOp>::Index Index;
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorMirrorPadOp(
-      const XprType& expr, const PaddingDimensions& padding_dims, Index offset)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+  TensorMirrorPadOp(const XprType& expr, const PaddingDimensions& padding_dims,
+                    Index offset)
       : xpr_(expr), padding_dims_(padding_dims), offset_(offset) {}
 
   EIGEN_DEVICE_FUNC
@@ -335,12 +336,12 @@ namespace functor {
 
 // offset argument must be either 0 or 1. This controls whether the boundary
 // values are replicated (offset == 0) or not replicated (offset == 1).
-template <typename Device, typename T, typename Tpaddings, int Dims>
+template <typename Device, typename T, int Dims>
 struct MirrorPad {
   void operator()(const Device& device,
                   typename TTypes<T, Dims, int32>::Tensor output,
                   typename TTypes<T, Dims, int32>::ConstTensor input,
-                  typename TTypes<Tpaddings>::ConstMatrix padding, int offset) {
+                  TTypes<int32>::ConstMatrix padding, int offset) {
     Eigen::array<Eigen::IndexPair<int32>, Dims> padding_dims;
 
     for (int i = 0; i < Dims; ++i) {
@@ -362,12 +363,12 @@ struct MirrorPad {
 
 // offset argument must be either 0 or 1. This controls whether the boundary
 // values are replicated (offset == 0) or not replicated (offset == 1).
-template <typename Device, typename T, typename Tpaddings, int Dims>
+template <typename Device, typename T, int Dims>
 struct MirrorPadGrad {
   void operator()(const Device& device,
                   typename TTypes<T, Dims, int32>::Tensor output,
                   typename TTypes<T, Dims, int32>::ConstTensor input,
-                  typename TTypes<Tpaddings>::ConstMatrix paddings, int offset,
+                  TTypes<int32>::ConstMatrix paddings, int offset,
                   typename TTypes<T, Dims, int32>::Tensor scratch) {
     // Copy the gradient input into the scratch buffer.
     scratch.device(device) = input;

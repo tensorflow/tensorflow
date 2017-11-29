@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdarg.h>
 #include <numeric>
 
+#include "tensorflow/compiler/xla/legacy_flags/util_flags.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -26,31 +27,36 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
 namespace {
 
-// Logs the provided status message with a backtrace.
-Status WithLogBacktrace(const Status& status) {
-  CHECK(!status.ok());
-  VLOG(1) << status.ToString();
-  VLOG(1) << tensorflow::CurrentStackTrace();
-  return status;
+// Adds a backtrace to the provided status iff the xla_status_add_backtrace flag
+// is set. This is useful for quickly tracing status errors observed coming out
+// of the service.
+Status MaybeAddBacktrace(const Status& prior) {
+  DCHECK(!prior.ok());
+  if (legacy_flags::GetUtilFlags()->xla_status_add_backtrace) {
+    return Status{prior.code(),
+                  tensorflow::strings::StrCat(prior.error_message(), " :: ",
+                                              tensorflow::CurrentStackTrace())};
+  } else {
+    return prior;
+  }
 }
 
 }  // namespace
 
-ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
-    : enabled(enabled), label(label) {
-  if (enabled) {
+ScopedLoggingTimer::ScopedLoggingTimer(const string& label, int32 vlog_level)
+    : label(label), vlog_level(vlog_level) {
+  if (VLOG_IS_ON(vlog_level)) {
     start_micros = tensorflow::Env::Default()->NowMicros();
   }
 }
 
 ScopedLoggingTimer::~ScopedLoggingTimer() {
-  if (enabled) {
+  if (VLOG_IS_ON(vlog_level)) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros) / 1000000.0;
 
@@ -80,7 +86,7 @@ Status InvalidArgument(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return WithLogBacktrace(tensorflow::errors::InvalidArgument(message));
+  return MaybeAddBacktrace(tensorflow::errors::InvalidArgument(message));
 }
 
 Status Unimplemented(const char* format, ...) {
@@ -89,7 +95,7 @@ Status Unimplemented(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Unimplemented(message));
+  return MaybeAddBacktrace(tensorflow::errors::Unimplemented(message));
 }
 
 Status InternalError(const char* format, ...) {
@@ -98,7 +104,7 @@ Status InternalError(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Internal(message));
+  return MaybeAddBacktrace(tensorflow::errors::Internal(message));
 }
 
 Status FailedPrecondition(const char* format, ...) {
@@ -107,16 +113,7 @@ Status FailedPrecondition(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return WithLogBacktrace(tensorflow::errors::FailedPrecondition(message));
-}
-
-Status Cancelled(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Cancelled(message));
+  return MaybeAddBacktrace(tensorflow::errors::FailedPrecondition(message));
 }
 
 Status ResourceExhausted(const char* format, ...) {
@@ -125,7 +122,7 @@ Status ResourceExhausted(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return WithLogBacktrace(tensorflow::errors::ResourceExhausted(message));
+  return MaybeAddBacktrace(tensorflow::errors::ResourceExhausted(message));
 }
 
 Status NotFound(const char* format, ...) {
@@ -134,7 +131,7 @@ Status NotFound(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return WithLogBacktrace(tensorflow::errors::NotFound(message));
+  return MaybeAddBacktrace(tensorflow::errors::NotFound(message));
 }
 
 Status Unavailable(const char* format, ...) {
@@ -143,7 +140,7 @@ Status Unavailable(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Unavailable(message));
+  return MaybeAddBacktrace(tensorflow::errors::Unavailable(message));
 }
 
 string Reindent(tensorflow::StringPiece original,
@@ -211,18 +208,6 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
   return padding_config;
 }
 
-PaddingConfig MakeEdgePaddingConfig(
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
-  PaddingConfig padding_config;
-  for (const std::pair<int64, int64>& dim : padding) {
-    auto dimension = padding_config.add_dimensions();
-    dimension->set_edge_padding_low(dim.first);
-    dimension->set_edge_padding_high(dim.second);
-    dimension->set_interior_padding(0);
-  }
-  return padding_config;
-}
-
 bool HasInteriorPadding(const PaddingConfig& config) {
   for (const auto& dim : config.dimensions()) {
     if (dim.interior_padding() != 0) {
@@ -232,11 +217,9 @@ bool HasInteriorPadding(const PaddingConfig& config) {
   return false;
 }
 
-namespace {
-string HumanReadableNumOps(double flops, double nanoseconds,
-                           tensorflow::StringPiece op_prefix) {
+string HumanReadableNumFlops(double flops, double nanoseconds) {
   if (nanoseconds == 0) {
-    return tensorflow::strings::StrCat("NaN ", op_prefix, "OP/s");
+    return "NaN FLOP/s";
   }
   double nano_flops = flops / nanoseconds;
   string throughput = tensorflow::strings::HumanReadableNum(
@@ -247,17 +230,8 @@ string HumanReadableNumOps(double flops, double nanoseconds,
       sp.ends_with("b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += tensorflow::strings::StrCat(op_prefix, "OP/s");
+  throughput += "FLOP/s";
   return throughput;
-}
-}  // namespace
-
-string HumanReadableNumFlops(double flops, double nanoseconds) {
-  return HumanReadableNumOps(flops, nanoseconds, "FL");
-}
-
-string HumanReadableNumTranscendentalOps(double trops, double nanoseconds) {
-  return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
 void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
@@ -266,11 +240,6 @@ void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
   if (sev == tensorflow::FATAL) {
     sev = tensorflow::ERROR;
   }
-
-  // Protect calls with a mutex so we don't interleave calls to LogLines from
-  // multiple threads.
-  static tensorflow::mutex log_lines_mu(tensorflow::LINKER_INITIALIZED);
-  tensorflow::mutex_lock lock(log_lines_mu);
 
   size_t cur = 0;
   while (cur < text.size()) {
@@ -334,15 +303,6 @@ std::vector<std::pair<int64, int64>> CommonFactors(
     }
   }
   return bounds;
-}
-
-string SanitizeFileName(string file_name) {
-  for (char& c : file_name) {
-    if (c == '/' || c == '\\' || c == '[' || c == ']') {
-      c = '_';
-    }
-  }
-  return file_name;
 }
 
 }  // namespace xla

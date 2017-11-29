@@ -31,7 +31,8 @@ from tensorflow.python.training import session_run_hook
 _GRPC_ENDPOINT_PREFIX = "grpc://"
 
 
-class LocalCLIDebugHook(session_run_hook.SessionRunHook):
+class LocalCLIDebugHook(session_run_hook.SessionRunHook,
+                        local_cli_wrapper.LocalCLIDebugWrapperSession):
   """Command-line-interface debugger hook.
 
   Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
@@ -58,7 +59,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
     self._ui_type = ui_type
     self._dump_root = dump_root
     self._thread_name_filter = thread_name_filter
-    self._session_wrapper = None
+    self._wrapper_initialized = False
     self._pending_tensor_filters = {}
 
   def add_tensor_filter(self, filter_name, tensor_filter):
@@ -76,8 +77,9 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
         `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
     """
 
-    if self._session_wrapper:
-      self._session_wrapper.add_tensor_filter(filter_name, tensor_filter)
+    if self._wrapper_initialized:
+      local_cli_wrapper.LocalCLIDebugWrapperSession.add_tensor_filter(
+          self, filter_name, tensor_filter)
     else:
       self._pending_tensor_filters[filter_name] = tensor_filter
 
@@ -85,8 +87,9 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
     pass
 
   def before_run(self, run_context):
-    if not self._session_wrapper:
-      self._session_wrapper = local_cli_wrapper.LocalCLIDebugWrapperSession(
+    if not self._wrapper_initialized:
+      local_cli_wrapper.LocalCLIDebugWrapperSession.__init__(
+          self,
           run_context.session,
           ui_type=self._ui_type,
           dump_root=self._dump_root,
@@ -95,43 +98,40 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
       # Actually register tensor filters registered prior to the construction
       # of the underlying LocalCLIDebugWrapperSession object.
       for filter_name in self._pending_tensor_filters:
-        self._session_wrapper.add_tensor_filter(
-            filter_name, self._pending_tensor_filters[filter_name])
+        local_cli_wrapper.LocalCLIDebugWrapperSession.add_tensor_filter(
+            self, filter_name, self._pending_tensor_filters[filter_name])
+
+      self._wrapper_initialized = True
 
     # Increment run call counter.
-    self._session_wrapper.increment_run_call_count()
+    self._run_call_count += 1
 
     # Adapt run_context to an instance of OnRunStartRequest for invoking
     # superclass on_run_start().
     on_run_start_request = framework.OnRunStartRequest(
         run_context.original_args.fetches, run_context.original_args.feed_dict,
-        None, None, self._session_wrapper.run_call_count)
+        None, None, self._run_call_count)
 
-    on_run_start_response = self._session_wrapper.on_run_start(
-        on_run_start_request)
+    on_run_start_response = self.on_run_start(on_run_start_request)
     self._performed_action = on_run_start_response.action
 
     run_args = session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=config_pb2.RunOptions())
     if self._performed_action == framework.OnRunStartAction.DEBUG_RUN:
-      # pylint: disable=protected-access
-      self._session_wrapper._decorate_run_options_for_debug(
+      self._decorate_options_for_debug(
           run_args.options,
-          on_run_start_response.debug_urls,
-          debug_ops=on_run_start_response.debug_ops,
-          node_name_regex_whitelist=(
-              on_run_start_response.node_name_regex_whitelist),
-          op_type_regex_whitelist=(
-              on_run_start_response.op_type_regex_whitelist),
-          tensor_dtype_regex_whitelist=(
-              on_run_start_response.tensor_dtype_regex_whitelist),
-          tolerate_debug_op_creation_failures=(
-              on_run_start_response.tolerate_debug_op_creation_failures))
-      # pylint: enable=protected-access
+          run_context.session.graph,
+          framework.WatchOptions(
+              node_name_regex_whitelist=(
+                  on_run_start_response.node_name_regex_whitelist),
+              op_type_regex_whitelist=(
+                  on_run_start_response.op_type_regex_whitelist),
+              tensor_dtype_regex_whitelist=(
+                  on_run_start_response.tensor_dtype_regex_whitelist),
+              tolerate_debug_op_creation_failures=(
+                  on_run_start_response.tolerate_debug_op_creation_failures)))
     elif self._performed_action == framework.OnRunStartAction.PROFILE_RUN:
-      # pylint: disable=protected-access
-      self._session_wrapper._decorate_run_options_for_profile(run_args.options)
-      # pylint: enable=protected-access
+      self._decorate_run_options_for_profile(run_args.options)
     elif self._performed_action == framework.OnRunStartAction.INVOKE_STEPPER:
       # The _finalized property must be set to False so that the NodeStepper
       # can insert ops for retrieving TensorHandles.
@@ -144,7 +144,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
           run_context.original_args.
           fetches,
           run_context.original_args.feed_dict) as node_stepper:
-        self._session_wrapper.invoke_node_stepper(
+        self.invoke_node_stepper(
             node_stepper, restore_variable_values_on_exit=True)
 
     return run_args
@@ -152,12 +152,26 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   def after_run(self, run_context, run_values):
     # Adapt run_context and run_values to OnRunEndRequest and invoke superclass
     # on_run_end()
-    on_run_end_request = framework.OnRunEndRequest(
-        self._performed_action, run_values.run_metadata)
-    self._session_wrapper.on_run_end(on_run_end_request)
+    on_run_end_request = framework.OnRunEndRequest(self._performed_action,
+                                                   run_values.run_metadata)
+    self.on_run_end(on_run_end_request)
+
+  def _decorate_options_for_debug(self, options, graph, watch_options):
+    """Modify RunOptions.debug_options.debug_tensor_watch_opts for debugging."""
+    debug_utils.watch_graph(
+        options,
+        graph,
+        debug_urls=self._get_run_debug_urls(),
+        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
+        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
+        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        tolerate_debug_op_creation_failures=(
+            watch_options.tolerate_debug_op_creation_failures))
+    options.output_partition_graphs = True
 
 
-class DumpingDebugHook(session_run_hook.SessionRunHook):
+class DumpingDebugHook(session_run_hook.SessionRunHook,
+                       dumping_wrapper.DumpingDebugWrapperSession):
   """A debugger hook that dumps debug data to filesystem.
 
   Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
@@ -186,26 +200,28 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
     self._watch_fn = watch_fn
     self._thread_name_filter = thread_name_filter
     self._log_usage = log_usage
-    self._session_wrapper = None
+    self._wrapper_initialized = False
 
   def begin(self):
     pass
 
   def before_run(self, run_context):
-    if not self._session_wrapper:
-      self._session_wrapper = dumping_wrapper.DumpingDebugWrapperSession(
+    if not self._wrapper_initialized:
+      # TODO(cais): Make this hook have a DumpingDebugWrapperSession property
+      # instead of subclassing DumpingDebugWrapperSession.
+      dumping_wrapper.DumpingDebugWrapperSession.__init__(
+          self,
           run_context.session,
           self._session_root,
           watch_fn=self._watch_fn,
           thread_name_filter=self._thread_name_filter,
           log_usage=self._log_usage)
+      self._wrapper_initialized = True
 
-    self._session_wrapper.increment_run_call_count()
+    self._run_call_count += 1
 
-    # pylint: disable=protected-access
-    debug_urls, watch_options = self._session_wrapper._prepare_run_watch_config(
+    debug_urls, watch_options = self._prepare_run_watch_config(
         run_context.original_args.fetches, run_context.original_args.feed_dict)
-    # pylint: enable=protected-access
     run_options = config_pb2.RunOptions()
     debug_utils.watch_graph(
         run_options,

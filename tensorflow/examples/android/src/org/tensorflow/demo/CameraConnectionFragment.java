@@ -59,7 +59,7 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import org.tensorflow.demo.env.Logger;
-import org.tensorflow.demo.R; // Explicit import needed for internal Google builds.
+import org.tensorflow.demo.R;
 
 public class CameraConnectionFragment extends Fragment {
   private static final Logger LOGGER = new Logger();
@@ -265,7 +265,7 @@ public class CameraConnectionFragment extends Fragment {
    * @param height The minimum desired height
    * @return The optimal {@code Size}, or an arbitrary one if none were big enough
    */
-  protected static Size chooseOptimalSize(final Size[] choices, final int width, final int height) {
+  private static Size chooseOptimalSize(final Size[] choices, final int width, final int height) {
     final int minSize = Math.max(Math.min(width, height), MINIMUM_PREVIEW_SIZE);
     final Size desiredSize = new Size(width, height);
 
@@ -353,44 +353,58 @@ public class CameraConnectionFragment extends Fragment {
     super.onPause();
   }
 
-  public void setCamera(String cameraId) {
-    this.cameraId = cameraId;
-  }
-
   /**
    * Sets up member variables related to camera.
+   *
+   * @param width  The width of available size for camera preview
+   * @param height The height of available size for camera preview
    */
-  private void setUpCameraOutputs() {
+  private void setUpCameraOutputs(final int width, final int height) {
     final Activity activity = getActivity();
     final CameraManager manager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
     try {
-      final CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+      for (final String cameraId : manager.getCameraIdList()) {
+        final CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
 
-      final StreamConfigurationMap map =
-          characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        // We don't use a front facing camera in this sample.
+        final Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+        if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
+          continue;
+        }
 
-      // For still image captures, we use the largest available size.
-      final Size largest =
-          Collections.max(
-              Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)),
-              new CompareSizesByArea());
+        final StreamConfigurationMap map =
+            characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
 
-      sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+        if (map == null) {
+          continue;
+        }
 
-      // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
-      // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
-      // garbage capture data.
-      previewSize =
-          chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
-              inputSize.getWidth(),
-              inputSize.getHeight());
+        // For still image captures, we use the largest available size.
+        final Size largest =
+            Collections.max(
+                Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)),
+                new CompareSizesByArea());
 
-      // We fit the aspect ratio of TextureView to the size of preview we picked.
-      final int orientation = getResources().getConfiguration().orientation;
-      if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-        textureView.setAspectRatio(previewSize.getWidth(), previewSize.getHeight());
-      } else {
-        textureView.setAspectRatio(previewSize.getHeight(), previewSize.getWidth());
+        sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+
+        // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
+        // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
+        // garbage capture data.
+        previewSize =
+            chooseOptimalSize(
+                map.getOutputSizes(SurfaceTexture.class),
+                inputSize.getWidth(),
+                inputSize.getHeight());
+
+        // We fit the aspect ratio of TextureView to the size of preview we picked.
+        final int orientation = getResources().getConfiguration().orientation;
+        if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+          textureView.setAspectRatio(previewSize.getWidth(), previewSize.getHeight());
+        } else {
+          textureView.setAspectRatio(previewSize.getHeight(), previewSize.getWidth());
+        }
+
+        CameraConnectionFragment.this.cameraId = cameraId;
       }
     } catch (final CameraAccessException e) {
       LOGGER.e(e, "Exception!");
@@ -411,7 +425,7 @@ public class CameraConnectionFragment extends Fragment {
    * Opens the camera specified by {@link CameraConnectionFragment#cameraId}.
    */
   private void openCamera(final int width, final int height) {
-    setUpCameraOutputs();
+    setUpCameraOutputs(width, height);
     configureTransform(width, height);
     final Activity activity = getActivity();
     final CameraManager manager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);

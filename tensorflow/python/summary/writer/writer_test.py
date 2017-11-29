@@ -39,7 +39,6 @@ from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
-from tensorflow.python.util import compat
 
 
 class SummaryWriterTestCase(test.TestCase):
@@ -268,13 +267,6 @@ class SummaryWriterTestCase(test.TestCase):
     sw.close()
     self._assertRecent(time_before_close)
 
-  def testWithStatement(self):
-    test_dir = self._CleanTestDir("with_statement")
-    with writer.FileWriter(test_dir) as sw:
-      sw.add_session_log(event_pb2.SessionLog(status=SessionLog.START), 1)
-    event_paths = sorted(glob.glob(os.path.join(test_dir, "event*")))
-    self.assertEquals(1, len(event_paths))
-
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the
   # protocol buffers correctly.
@@ -335,11 +327,11 @@ class SummaryWriterTestCase(test.TestCase):
     # should strip the metadata from the second one.
     value = summary_pb2.Summary.Value(tag="foo", simple_value=10.0)
     value.metadata.plugin_data.plugin_name = "bar"
-    value.metadata.plugin_data.content = compat.as_bytes("... content ...")
+    value.metadata.plugin_data.content = "... content ..."
     sw.add_summary(summary_pb2.Summary(value=[value]), 10)
     value = summary_pb2.Summary.Value(tag="foo", simple_value=10.0)
     value.metadata.plugin_data.plugin_name = "bar"
-    value.metadata.plugin_data.content = compat.as_bytes("... content ...")
+    value.metadata.plugin_data.content = "... content ..."
     sw.add_summary(summary_pb2.Summary(value=[value]), 10)
 
     sw.close()

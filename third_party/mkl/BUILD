@@ -1,6 +1,4 @@
-licenses(["notice"])  # 3-Clause BSD
-
-exports_files(["LICENSE"])
+licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like     TODO
 
 config_setting(
     name = "using_mkl",
@@ -18,9 +16,10 @@ load(
 cc_library(
     name = "intel_binary_blob",
     srcs = if_mkl([
-        "@mkl//:libmklml_intel.so",
-        "@mkl//:libiomp5.so",
+        "libdl.so.2",
+        "libmklml_intel.so",
+        "libiomp5.so",
     ]),
+    includes = ["."],
     visibility = ["//visibility:public"],
-    deps = ["@mkl//:mkl_headers"],
 )

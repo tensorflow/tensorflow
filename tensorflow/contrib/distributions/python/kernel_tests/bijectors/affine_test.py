@@ -76,7 +76,7 @@ class AffineBijectorTest(test.TestCase):
       for run in (static_run, dynamic_run):
         mu = -1.
         # Corresponds to scale = 2
-        bijector = Affine(shift=mu, scale_identity_multiplier=2., event_ndims=0)
+        bijector = Affine(shift=mu, scale_diag=[2.], event_ndims=0)
         self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
@@ -84,7 +84,7 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose(-np.log(2.),
                             run(bijector.inverse_log_det_jacobian, x))
 
-  def testWeirdSampleNoBatchScalarViaDiagMultiplier(self):
+  def testWeirdSampleNoBatchScalarViaIdentity(self):
     with self.test_session() as sess:
 
       def static_run(fun, x):
@@ -156,7 +156,7 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose([np.log(0.5)],
                             run(bijector.inverse_log_det_jacobian, x))
 
-  def testOneBatchScalarViaDiagMultiplier(self):
+  def testOneBatchScalarViaDiag(self):
     with self.test_session() as sess:
 
       def static_run(fun, x):
@@ -171,7 +171,7 @@ class AffineBijectorTest(test.TestCase):
         mu = [1.]
         # One batch, scalar.
         # Corresponds to scale = 1.
-        bijector = Affine(shift=mu, scale_identity_multiplier=1., event_ndims=0)
+        bijector = Affine(shift=mu, scale_diag=[1.], event_ndims=0)
         self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1.]  # One sample from one batches.
         self.assertAllClose([2.], run(bijector.forward, x))
@@ -200,7 +200,7 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose([0., 2], run(bijector.inverse, x))
         self.assertAllClose(0., run(bijector.inverse_log_det_jacobian, x))
 
-  def testTwoBatchScalarIdentityViaDiagMultiplier(self):
+  def testTwoBatchScalarIdentityViaDiag(self):
     with self.test_session() as sess:
 
       def static_run(fun, x):
@@ -215,7 +215,7 @@ class AffineBijectorTest(test.TestCase):
         mu = [1., -1]
         # Univariate, two batches.
         # Corresponds to scale = 1.
-        bijector = Affine(shift=mu, scale_identity_multiplier=1., event_ndims=0)
+        bijector = Affine(shift=mu, scale_diag=[1.], event_ndims=0)
         self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1., 1]  # One sample from each of two batches.
         self.assertAllClose([2., 0], run(bijector.forward, x))
@@ -410,13 +410,13 @@ class AffineBijectorTest(test.TestCase):
         bijector = Affine(
             shift=mu,
             scale_identity_multiplier=1.,
-            scale_diag=[1., 1., 1.],
-            event_ndims=1)
-        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
+            scale_diag=[1.],
+            event_ndims=0)
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
         self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
-        self.assertAllClose(-np.log(2.**3),
+        self.assertAllClose(-np.log(2.),
                             run(bijector.inverse_log_det_jacobian, x))
 
   def testIdentityWithTriL(self):
@@ -644,17 +644,15 @@ class AffineBijectorTest(test.TestCase):
           # Has zero on the diagonal.
           scale_diag=[0., 1],
           validate_args=True)
-      with self.assertRaisesOpError("diagonal part must be non-zero"):
+      with self.assertRaisesOpError("Condition x > 0"):
         bijector.forward([1., 1.]).eval()
 
   def testEventNdimsLargerThanOneRaises(self):
     with self.test_session():
       mu = [1., -1]
-      with self.assertRaisesRegexp(
-          ValueError, (r"event_ndims\(2\) was not 0 or 1")):
-        # Scale corresponds to 2x2 identity matrix.
-        bijector = Affine(shift=mu, event_ndims=2, validate_args=True)
-        bijector.forward([1., 1.]).eval()
+      # Scale corresponds to 2x2 identity matrix.
+      bijector = Affine(shift=mu, event_ndims=2, validate_args=True)
+      bijector.forward([1., 1.]).eval()
 
   def testScaleZeroScalarRaises(self):
     with self.test_session():
@@ -662,22 +660,24 @@ class AffineBijectorTest(test.TestCase):
       # Check Identity matrix with zero scaling.
       bijector = Affine(
           shift=mu,
-          scale_identity_multiplier=0.,
+          scale_identity_multiplier=0.0,
           event_ndims=0,
           validate_args=True)
-      with self.assertRaisesOpError("identity_multiplier should be non-zero"):
+      with self.assertRaisesOpError("Condition x > 0"):
         bijector.forward(1.).eval()
 
-  def testScaleDiagAndEventNdimsZeroRaises(self):
-    # Check Diag matrix with zero scaling.
-    with self.assertRaisesRegexp(ValueError, "only scale argument"):
-      Affine(shift=None, scale_diag=[0.0], event_ndims=0, validate_args=True)
+      # Check Diag matrix with zero scaling.
+      bijector = Affine(
+          shift=mu, scale_diag=[0.0], event_ndims=0, validate_args=True)
+      with self.assertRaisesOpError("Condition x > 0"):
+        bijector.forward(1.).eval()
 
   def testScalarCongruency(self):
     with self.test_session():
       bijector = Affine(
           shift=3.6, scale_identity_multiplier=0.42, event_ndims=0)
-      assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
+      assert_scalar_congruency(
+          bijector, lower_x=-2., upper_x=2.)
 
   def _makeScale(self,
                  x,
@@ -700,7 +700,11 @@ class AffineBijectorTest(test.TestCase):
     if c is None and d1 is None and tril is None:
       # Special case when no scale args are passed in. This means use an
       # identity matrix.
-      c = 1.
+      if v is None and d2 is None:
+        c = 1.
+      # No scale.
+      else:
+        return None
 
     matrix = np.float32(0.)
     if c is not None:
@@ -829,14 +833,12 @@ class AffineBijectorTest(test.TestCase):
         x=np.array(
             [1., 2], dtype=np.float32))
 
-  def testScalarEventIdentityScale(self):
-    with self.test_session() as sess:
-      doubler = Affine(
-          scale_identity_multiplier=2.,
-          event_ndims=0)
-      doubler2 = doubler.inverse_log_det_jacobian(2.)
-      doubler2_ildj_ = sess.run([doubler2])
-      self.assertAllClose([-np.log(2.)], doubler2_ildj_)
+  def testScalePropertyAssertsCorrectly(self):
+    with self.test_session():
+      with self.assertRaises(NotImplementedError):
+        scale = Affine(  # pylint:disable=unused-variable
+            scale_tril=[[1., 0], [2, 1]],
+            scale_perturb_factor=[2., 1.]).scale
 
 
 if __name__ == "__main__":

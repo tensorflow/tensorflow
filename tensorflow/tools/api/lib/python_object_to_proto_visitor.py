@@ -13,7 +13,7 @@
 # limitations under the License.
 #
 # ==============================================================================
-"""A visitor class that generates protobufs for each python object."""
+"""A visitor class that generates protobufs for each pyton object."""
 
 from __future__ import absolute_import
 from __future__ import division

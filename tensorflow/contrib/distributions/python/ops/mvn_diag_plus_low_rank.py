@@ -237,7 +237,7 @@ class MultivariateNormalDiagPlusLowRank(
             scale_perturb_diag,
             name="scale_perturb_diag")
         if has_low_rank:
-          scale = linalg.LinearOperatorLowRankUpdate(
+          scale = linalg.LinearOperatorUDVHUpdate(
               scale,
               u=scale_perturb_factor,
               diag_update=scale_perturb_diag,

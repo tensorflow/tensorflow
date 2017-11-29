@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -36,7 +35,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
+#endif // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -44,7 +43,7 @@ namespace {
 // NUM_CHANNELS can be <= 0 to compute it dynamically from <input>
 // Otherwise, it must equal input.dim_size(2) and is used as a compile-time
 // constant.
-template <typename T, int NUM_CHANNELS>
+template <int NUM_CHANNELS>
 void ReverseRows(OpKernelContext* context, const Tensor& input,
                  Tensor* result) {
   auto work = [&input, result](int64 start, int64 end) {
@@ -54,8 +53,8 @@ void ReverseRows(OpKernelContext* context, const Tensor& input,
     const int64 row_size = inner_size * middle_size;
     DCHECK_EQ(input.dim_size(2), inner_size);
 
-    const T* in_ptr = input.bit_casted_tensor<T, 3>().data();
-    T* out_ptr = result->bit_casted_tensor<T, 3>().data();
+    const int32* in_ptr = input.bit_casted_tensor<int32, 3>().data();
+    int32* out_ptr = result->bit_casted_tensor<int32, 3>().data();
 
     in_ptr += start * row_size;
     out_ptr += start * row_size;
@@ -65,7 +64,7 @@ void ReverseRows(OpKernelContext* context, const Tensor& input,
       int remaining = middle_size;
       while (remaining > 0) {
         out_ptr -= inner_size;
-        memcpy(out_ptr, in_ptr, inner_size * sizeof(T));
+        memcpy(out_ptr, in_ptr, inner_size * sizeof(float));
         in_ptr += inner_size;
         --remaining;
       }
@@ -82,48 +81,6 @@ void ReverseRows(OpKernelContext* context, const Tensor& input,
         std::move(work));
 }
 
-template <typename T>
-struct data_type_can_memcpy {
-  static constexpr bool value =
-      std::is_same<T, uint8>::value || std::is_same<T, int8>::value ||
-      std::is_same<T, bool>::value || std::is_same<T, uint16>::value ||
-      std::is_same<T, int16>::value || std::is_same<T, Eigen::half>::value ||
-      std::is_same<T, int32>::value || std::is_same<T, float>::value ||
-      std::is_same<T, int64>::value || std::is_same<T, double>::value ||
-      std::is_same<T, complex64>::value || std::is_same<T, complex128>::value;
-};
-
-template <typename T, int NUM_CHANNELS>
-typename std::enable_if<data_type_can_memcpy<T>::value>::type
-DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
-                    Tensor* result) {
-  if (sizeof(T) == 1) {
-    static_assert(sizeof(uint8) == 1, "uint8 must be 1 byte.");
-    ReverseRows<uint8, NUM_CHANNELS>(context, input, result);
-  } else if (sizeof(T) == 2) {
-    static_assert(sizeof(uint16) == 2, "uint16 must be 2 bytes");
-    ReverseRows<uint16, NUM_CHANNELS>(context, input, result);
-  } else if (sizeof(T) == 4) {
-    static_assert(sizeof(uint32) == 4, "uint32 must be 4 bytes");
-    ReverseRows<uint32, NUM_CHANNELS>(context, input, result);
-  } else if (sizeof(T) == 8) {
-    static_assert(sizeof(uint64) == 8, "uint64 must be 8 bytes");
-    ReverseRows<uint64, NUM_CHANNELS>(context, input, result);
-  } else if (sizeof(T) == 16) {
-    static_assert(sizeof(complex128) == 16, "complex128 must be 16 bytes");
-    ReverseRows<complex128, NUM_CHANNELS>(context, input, result);
-  } else {
-    context->CtxFailure(
-        errors::InvalidArgument("%s has unexpected size of %d bytes",
-                                DataTypeString(input.dtype()), sizeof(T)));
-  }
-}
-
-template <typename T, int NUM_CHANNELS>
-typename std::enable_if<!data_type_can_memcpy<T>::value>::type
-DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
-                    Tensor* result) {}
-
 }  // namespace
 
 template <typename Device, typename T, int NDIMS>
@@ -134,14 +91,15 @@ void HandleReverseCase(OpKernelContext* context,
 
   // Use optimized reverse if possible.
   if (NDIMS == 3 && std::is_same<Device, CPUDevice>::value &&
-      data_type_can_memcpy<T>::value && (!dims(0) && dims(1) && !dims(2))) {
+      std::is_same<T, float>::value && (!dims(0) && dims(1) && !dims(2))) {
     if (input.dim_size(2) == 3) {
-      DoHandleReverseCase<T, 3>(context, input, result);
+      ReverseRows<3>(context, input, result);
     } else {
-      DoHandleReverseCase<T, -1>(context, input, result);
+      ReverseRows<-1>(context, input, result);
     }
     return;
   }
+
   typename Eigen::array<bool, NDIMS> axes_di;
   for (int i = 0; i < NDIMS; i++) {
     axes_di[i] = dims(i);
@@ -210,11 +168,11 @@ void HandleReverseV2Case(OpKernelContext* context,
 
   // Use optimized reverse if possible.
   if (NDIMS == 3 && std::is_same<Device, CPUDevice>::value &&
-      data_type_can_memcpy<T>::value && (!axes[0] && axes[1] && !axes[2])) {
+      std::is_same<T, float>::value && (!axes[0] && axes[1] && !axes[2])) {
     if (input.dim_size(2) == 3) {
-      DoHandleReverseCase<T, 3>(context, input, result);
+      ReverseRows<3>(context, input, result);
     } else {
-      DoHandleReverseCase<T, -1>(context, input, result);
+      ReverseRows<-1>(context, input, result);
     }
     return;
   }

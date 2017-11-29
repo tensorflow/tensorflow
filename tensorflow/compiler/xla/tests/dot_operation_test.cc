@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -151,41 +153,20 @@ XLA_TEST_F(DotOperationTest, Dot_2x0_0x2) {
                              error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, FusedDot) {
-  ComputationBuilder builder(client_, TestName());
-  auto param0 = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 4}), "arg0");
-  auto param1 = builder.Parameter(1, ShapeUtil::MakeShape(F32, {4, 1}), "arg1");
-  auto exp0 = builder.Exp(param0);
-  auto result = builder.Dot(exp0, param1);
-
-  auto lhs_handle = client_
-                        ->TransferToServer(*Literal::CreateR2<float>(
-                            {{1.0, 2.0, 3.0, 4.0}, {-1.0, -2.0, -3.0, -4.0}}))
-                        .ConsumeValueOrDie();
-  auto rhs_handle = client_
-                        ->TransferToServer(*Literal::CreateR2<float>(
-                            {{1.0}, {2.0}, {3.0}, {4.0}}))
-                        .ConsumeValueOrDie();
-
-  ComputeAndCompareR2<float>(
-      &builder, Array2D<float>({{296.14560492846033}, {0.8611737683031964}}),
-      {lhs_handle.get(), rhs_handle.get()}, error_spec_);
-}
-
 template <typename Element>
 void DotOperationTest::TestSquareMatrixDot(bool lhs_row_major,
                                            bool rhs_row_major) {
   auto lhs_handle =
       client_
-          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
+          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
               {{1.0, 2.0}, {3.0, -4.0}},
-              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(lhs_row_major))))
+              MinorToMajorForIsRowMajor(lhs_row_major)))
           .ConsumeValueOrDie();
   auto rhs_handle =
       client_
-          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
+          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
               {{1.0, 6.0}, {7.0, -4.0}},
-              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(rhs_row_major))))
+              MinorToMajorForIsRowMajor(rhs_row_major)))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());
@@ -277,62 +258,6 @@ XLA_TEST_F(DotOperationTest, MatrixDotF32_260_3_520_MinorToMajorFF) {
   TestMatrixDot(260, 3, 520, false, false);
 }
 
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x8x8) {
-  TestMatrixDot(1, 8, 8, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x130x8) {
-  TestMatrixDot(1, 130, 8, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x8x130) {
-  TestMatrixDot(1, 8, 130, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x290x130) {
-  TestMatrixDot(1, 290, 130, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_2x1x1) {
-  TestMatrixDot(2, 1, 1, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_8x8x1) {
-  TestMatrixDot(8, 8, 1, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_16x1x1) {
-  TestMatrixDot(16, 1, 1, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_16x3x1) {
-  TestMatrixDot(16, 3, 1, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_3x3x1) {
-  TestMatrixDot(3, 3, 1, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_29x29x1) {
-  TestMatrixDot(29, 29, 1, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x8x2) {
-  TestMatrixDot(1, 8, 2, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x2x8) {
-  TestMatrixDot(1, 2, 8, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_259x258x1) {
-  TestMatrixDot(259, 258, 1, true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_259x258x1_FT) {
-  TestMatrixDot(259, 258, 1, false, true);
-}
-
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFF) {
   constexpr bool kLhsRowMajor = false;
   constexpr bool kRhsRowMajor = false;
@@ -362,15 +287,15 @@ void DotOperationTest::TestNonsquareMatrixDot(bool lhs_row_major,
                                               bool rhs_row_major) {
   auto lhs_handle =
       client_
-          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
+          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
               {{1.0, 2.0, 3.0}, {3.0, -4.0, -1.0}},
-              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(lhs_row_major))))
+              MinorToMajorForIsRowMajor(lhs_row_major)))
           .ConsumeValueOrDie();
   auto rhs_handle =
       client_
-          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
+          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
               {{1.0, 6.0}, {2.0, 3.0}, {7.0, -4.0}},
-              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(rhs_row_major))))
+              MinorToMajorForIsRowMajor(rhs_row_major)))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());
@@ -386,67 +311,34 @@ void DotOperationTest::TestNonsquareMatrixDot(bool lhs_row_major,
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorFF) {
-  TestNonsquareMatrixDot<float>(false, false);
+  constexpr bool kLhsRowMajor = false;
+  constexpr bool kRhsRowMajor = false;
+  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorFT) {
-  TestNonsquareMatrixDot<float>(false, true);
+  constexpr bool kLhsRowMajor = false;
+  constexpr bool kRhsRowMajor = true;
+  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTF) {
-  TestNonsquareMatrixDot<float>(true, false);
+  constexpr bool kLhsRowMajor = true;
+  constexpr bool kRhsRowMajor = false;
+  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
 }
 
-XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTT) {
-  TestNonsquareMatrixDot<float>(true, true);
+TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTT) {
+  constexpr bool kLhsRowMajor = true;
+  constexpr bool kRhsRowMajor = true;
+  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF64) {
   TestNonsquareMatrixDot<double>();
 }
 
-XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorFF) {
-  TestNonsquareMatrixDot<complex64>(false, false);
-}
-
-XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorFT) {
-  TestNonsquareMatrixDot<complex64>(false, true);
-}
-
-XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorTF) {
-  TestNonsquareMatrixDot<complex64>(true, false);
-}
-
-XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorTT) {
-  TestNonsquareMatrixDot<complex64>(true, true);
-}
-
-XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
-  auto lhs_handle =
-      client_
-          ->TransferToServer(*Literal::CreateR2WithLayout<complex64>(
-              {{1.0, 2.0, 3.0, -4.0}}, LayoutUtil::MakeLayout({1, 0})))
-          .ConsumeValueOrDie();
-  auto rhs_handle =
-      client_
-          ->TransferToServer(*Literal::CreateR2WithLayout<complex64>(
-              {{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}, {-4.0, 4.0}},
-              LayoutUtil::MakeLayout({1, 0})))
-          .ConsumeValueOrDie();
-
-  ComputationBuilder builder(client_, TestName());
-  auto prim_type = primitive_util::NativeToPrimitiveType<complex64>();
-  auto result = builder.Dot(
-      builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {1, 4}), "lhs"),
-      builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {4, 2}), "rhs"));
-
-  Array2D<complex64> expected({{30.0, -2.0}});
-
-  ComputeAndCompareR2<complex64>(
-      &builder, expected, {lhs_handle.get(), rhs_handle.get()}, error_spec_);
-}
-
-XLA_TEST_F(DotOperationTest, ConcurrentMatMul) {
+TEST_F(DotOperationTest, ConcurrentMatMul) {
   ComputationBuilder builder(client_, TestName());
   auto matrix1 = builder.ConstantR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto matrix2 = builder.ConstantR2<float>({{5.0, 6.0}, {7.0, 8.0}});
@@ -563,3 +455,21 @@ TEST_F(DotOperationTest, TransposeFolding) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendLayoutUtilFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    LOG(ERROR) << "\n" << usage;
+    return 2;
+  }
+  testing::InitGoogleTest(&argc, argv);
+  if (argc > 1) {
+    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
+    return 2;
+  }
+  return RUN_ALL_TESTS();
+}

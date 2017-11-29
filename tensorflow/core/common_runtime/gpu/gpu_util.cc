@@ -354,7 +354,7 @@ Status GPUUtil::Sync(Device* gpu_device) {
   }
   dev_info->stream->BlockHostUntilDone();
   if (!dev_info->stream->ok()) {
-    return errors::Internal("GPU sync failed");
+    LOG(FATAL) << "GPU sync failed";
   }
   return Status::OK();
 }
@@ -367,7 +367,7 @@ Status GPUUtil::SyncAll(Device* gpu_device) {
   }
   if (!dev_info->stream->parent()->SynchronizeAllActivity() ||
       !dev_info->stream->ok()) {
-    return errors::Internal("GPU sync failed");
+    LOG(FATAL) << "GPU sync failed";
   }
   return Status::OK();
 }

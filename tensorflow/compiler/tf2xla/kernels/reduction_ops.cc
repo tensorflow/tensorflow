@@ -129,7 +129,7 @@ class AllOp : public XlaReductionOp {
   void BuildReducer(xla::ComputationBuilder* builder,
                     const xla::ComputationDataHandle& scalar_lhs,
                     const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->And(scalar_lhs, scalar_rhs);
+    builder->LogicalAnd(scalar_lhs, scalar_rhs);
   }
 };
 
@@ -147,7 +147,7 @@ class AnyOp : public XlaReductionOp {
   void BuildReducer(xla::ComputationBuilder* builder,
                     const xla::ComputationDataHandle& scalar_lhs,
                     const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->Or(scalar_lhs, scalar_rhs);
+    builder->LogicalOr(scalar_lhs, scalar_rhs);
   }
 };
 

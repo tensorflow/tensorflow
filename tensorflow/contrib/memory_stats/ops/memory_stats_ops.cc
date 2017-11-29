@@ -17,10 +17,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("BytesInUse")
-    .Output("out: int64")
-    .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape);
 REGISTER_OP("BytesLimit")
     .Output("out: int64")
     .SetIsStateful()

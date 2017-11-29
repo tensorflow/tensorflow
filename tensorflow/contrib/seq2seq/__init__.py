@@ -47,7 +47,6 @@ _allowed_symbols = [
     "FinalBeamSearchDecoderOutput",
     "gather_tree",
     "GreedyEmbeddingHelper",
-    "InferenceHelper",
     "SampleEmbeddingHelper",
     "ScheduledEmbeddingTrainingHelper",
     "ScheduledOutputTrainingHelper",

@@ -35,8 +35,6 @@ class PointsToAnalysisTestBase : public HloTestBase {
     CHECK_NOTNULL(module_.get());
     points_to_analysis_ =
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
-    dataflow_analysis_ =
-        HloDataflowAnalysis::Run(module_.get()).ConsumeValueOrDie();
   }
 
   void BuildModuleAndRunAnalysis(std::unique_ptr<HloComputation> computation) {
@@ -47,7 +45,6 @@ class PointsToAnalysisTestBase : public HloTestBase {
   std::unique_ptr<HloModule> module_;
   HloComputation* computation_ = nullptr;
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
-  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 };
 
 class DoesNotUseOperandBufferTest : public PointsToAnalysisTestBase {};
@@ -73,11 +70,6 @@ TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
   EXPECT_TRUE(DoesNotUseOperandBuffer(tuple, {1}, gte1, *points_to_analysis_));
   EXPECT_FALSE(DoesNotUseOperandBuffer(tuple, {}, gte0, *points_to_analysis_));
   EXPECT_FALSE(DoesNotUseOperandBuffer(tuple, {}, gte1, *points_to_analysis_));
-
-  EXPECT_TRUE(DoesNotUseOperandBuffer(tuple, {0}, gte0, *dataflow_analysis_));
-  EXPECT_TRUE(DoesNotUseOperandBuffer(tuple, {1}, gte1, *dataflow_analysis_));
-  EXPECT_FALSE(DoesNotUseOperandBuffer(tuple, {}, gte0, *dataflow_analysis_));
-  EXPECT_FALSE(DoesNotUseOperandBuffer(tuple, {}, gte1, *dataflow_analysis_));
 }
 
 TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
@@ -113,10 +105,6 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
       DoesNotUseOperandBuffer(tuple, {0}, fusion, *points_to_analysis_));
   EXPECT_FALSE(
       DoesNotUseOperandBuffer(tuple, {1}, fusion, *points_to_analysis_));
-
-  EXPECT_TRUE(DoesNotUseOperandBuffer(tuple, {0}, fusion, *dataflow_analysis_));
-  EXPECT_FALSE(
-      DoesNotUseOperandBuffer(tuple, {1}, fusion, *dataflow_analysis_));
 }
 
 class CanShareOperandBufferWithUserTest : public PointsToAnalysisTestBase {};
@@ -134,15 +122,10 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseSameShape) {
 
   BuildModuleAndRunAnalysis(builder.Build());
 
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(param, {}, exp, {}, *points_to_analysis_));
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(exp, {}, log, {}, *points_to_analysis_));
-
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(param, {}, exp, {}, *dataflow_analysis_));
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(exp, {}, log, {}, *dataflow_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(param, {}, exp, {},
+                                            points_to_analysis_.get()));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(exp, {}, log, {},
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
@@ -160,14 +143,9 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
   BuildModuleAndRunAnalysis(builder.Build());
 
   EXPECT_FALSE(CanShareOperandBufferWithUser(param0, {}, result, {},
-                                             *points_to_analysis_));
+                                             points_to_analysis_.get()));
   EXPECT_FALSE(CanShareOperandBufferWithUser(param1, {}, result, {},
-                                             *points_to_analysis_));
-
-  EXPECT_FALSE(CanShareOperandBufferWithUser(param0, {}, result, {},
-                                             *dataflow_analysis_));
-  EXPECT_FALSE(CanShareOperandBufferWithUser(param1, {}, result, {},
-                                             *dataflow_analysis_));
+                                             points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
@@ -183,15 +161,10 @@ TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
 
   BuildModuleAndRunAnalysis(builder.Build());
 
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(param, {}, exp, {}, *points_to_analysis_));
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(exp, {}, copy, {}, *points_to_analysis_));
-
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(param, {}, exp, {}, *dataflow_analysis_));
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(exp, {}, copy, {}, *dataflow_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(param, {}, exp, {},
+                                            points_to_analysis_.get()));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(exp, {}, copy, {},
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
@@ -224,14 +197,9 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 
   // The fusion instruction can share with tuple element 1.
   EXPECT_FALSE(CanShareOperandBufferWithUser(tuple, {0}, fusion, {},
-                                             *points_to_analysis_));
+                                             points_to_analysis_.get()));
   EXPECT_TRUE(CanShareOperandBufferWithUser(tuple, {1}, fusion, {},
-                                            *points_to_analysis_));
-
-  EXPECT_FALSE(CanShareOperandBufferWithUser(tuple, {0}, fusion, {},
-                                             *dataflow_analysis_));
-  EXPECT_TRUE(CanShareOperandBufferWithUser(tuple, {1}, fusion, {},
-                                            *dataflow_analysis_));
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
@@ -253,19 +221,12 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
 
   // The DynamicUpdateSlice instruction can share with the data operand, but not
   // with update or starts.
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(data, {}, dus, {}, *points_to_analysis_));
-  EXPECT_FALSE(
-      CanShareOperandBufferWithUser(update, {}, dus, {}, *points_to_analysis_));
-  EXPECT_FALSE(
-      CanShareOperandBufferWithUser(starts, {}, dus, {}, *points_to_analysis_));
-
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(data, {}, dus, {}, *dataflow_analysis_));
-  EXPECT_FALSE(
-      CanShareOperandBufferWithUser(update, {}, dus, {}, *dataflow_analysis_));
-  EXPECT_FALSE(
-      CanShareOperandBufferWithUser(starts, {}, dus, {}, *dataflow_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(data, {}, dus, {},
+                                            points_to_analysis_.get()));
+  EXPECT_FALSE(CanShareOperandBufferWithUser(update, {}, dus, {},
+                                             points_to_analysis_.get()));
+  EXPECT_FALSE(CanShareOperandBufferWithUser(starts, {}, dus, {},
+                                             points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
@@ -295,10 +256,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
 
   // Output fused dot add should be able to share buffer with 'add_operand'.
   EXPECT_TRUE(CanShareOperandBufferWithUser(add_operand, {}, fusion, {},
-                                            *points_to_analysis_));
-
-  EXPECT_TRUE(CanShareOperandBufferWithUser(add_operand, {}, fusion, {},
-                                            *dataflow_analysis_));
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
@@ -334,10 +292,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
 
   // Output fused transpose-dot-add should be share buffer with 'add_operand'.
   EXPECT_TRUE(CanShareOperandBufferWithUser(add_operand, {}, fusion, {},
-                                            *points_to_analysis_));
-
-  EXPECT_TRUE(CanShareOperandBufferWithUser(add_operand, {}, fusion, {},
-                                            *dataflow_analysis_));
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
@@ -365,10 +320,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
 
   // Output fused operand->reverse->add cannot alias operand buffer 'operand'.
   EXPECT_FALSE(CanShareOperandBufferWithUser(operand, {}, fusion, {},
-                                             *points_to_analysis_));
-
-  EXPECT_FALSE(CanShareOperandBufferWithUser(operand, {}, fusion, {},
-                                             *dataflow_analysis_));
+                                             points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
@@ -408,51 +360,13 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
   RunAnalysis();
 
   // The While instruction can share with the data operand.
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(data, {}, whil, {}, *points_to_analysis_));
-
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(data, {}, whil, {}, *dataflow_analysis_));
-}
-
-// Tests that Call can alias operand buffer if the only use of the operand
-// in the called computation is an elementwise instruction.
-TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
-  Shape shape = ShapeUtil::MakeShape(F32, {8});
-  // Build sub-computation with fusion root.
-  auto sub_builder = HloComputation::Builder(TestName() + "_sub");
-  auto sub_param = sub_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "sub_param"));
-  auto one = sub_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
-  auto ones = sub_builder.AddInstruction(
-      HloInstruction::CreateBroadcast(shape, one, {1}));
-  auto add = sub_builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sub_param, ones));
-
-  module_ = CreateNewModule();
-  auto sub_computation = module_->AddEmbeddedComputation(sub_builder.Build());
-  sub_computation->CreateFusionInstruction({add, ones},
-                                           HloInstruction::FusionKind::kLoop);
-
-  // Build entry-computation with kCall which calls 'sub_computation'.
-  auto builder = HloComputation::Builder(TestName());
-
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "param"));
-  auto reverse =
-      builder.AddInstruction(HloInstruction::CreateReverse(shape, param, {0}));
-  auto call = builder.AddInstruction(
-      HloInstruction::CreateCall(shape, {reverse}, sub_computation));
-  computation_ = module_->AddEntryComputation(builder.Build());
-
-  RunAnalysis();
-
-  EXPECT_TRUE(CanShareOperandBufferWithUser(reverse, {}, call, {},
-                                            *points_to_analysis_));
-  EXPECT_TRUE(CanShareOperandBufferWithUser(reverse, {}, call, {},
-                                            *dataflow_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(data, {}, whil, {},
+                                            points_to_analysis_.get()));
 }
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

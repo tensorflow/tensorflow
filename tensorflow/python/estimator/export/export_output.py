@@ -150,9 +150,6 @@ class RegressionOutput(ExportOutput):
     return signature_def_utils.regression_signature_def(examples, self.value)
 
 
-_SINGLE_OUTPUT_DEFAULT_NAME = 'output'
-
-
 class PredictOutput(ExportOutput):
   """Represents the output of a generic prediction head.
 
@@ -165,15 +162,16 @@ class PredictOutput(ExportOutput):
     """Constructor for PredictOutput.
 
     Args:
-      outputs: A `Tensor` or a dict of string to `Tensor` representing the
-        predictions.
+      outputs: A dict of string to `Tensor` representing the predictions.
 
     Raises:
       ValueError: if the outputs is not dict, or any of its keys are not
           strings, or any of its values are not `Tensor`s.
     """
     if not isinstance(outputs, dict):
-      outputs = {_SINGLE_OUTPUT_DEFAULT_NAME: outputs}
+      raise ValueError(
+          'Prediction outputs must be given as a dict of string to Tensor; '
+          'got {}'.format(outputs))
     for key, value in outputs.items():
       if not isinstance(key, six.string_types):
         raise ValueError(

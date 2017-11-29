@@ -142,8 +142,7 @@ BigQueryTableAccessor::BigQueryTableAccessor(
           project_id, dataset_id, table_id, timestamp_millis, row_buffer_size,
           end_point, columns, partition,
           std::unique_ptr<AuthProvider>(new GoogleAuthProvider()),
-          std::unique_ptr<HttpRequest::Factory>(
-              new CurlHttpRequest::Factory())) {
+          std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory())) {
   row_buffer_.resize(row_buffer_size);
 }
 
@@ -393,7 +392,7 @@ Status BigQueryTableAccessor::AppendValueToExample(
 }
 
 string BigQueryTableAccessor::BigQueryTableAccessor::BigQueryUriPrefix() {
-  CurlHttpRequest request;
+  HttpRequest request;
   return strings::StrCat(bigquery_end_point_, "/projects/",
                          request.EscapeString(project_id_), "/datasets/",
                          request.EscapeString(dataset_id_), "/tables/",

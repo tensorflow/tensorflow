@@ -25,8 +25,6 @@ limitations under the License.
 namespace tensorflow {
 
 class OpKernelContext;
-class Status;
-class Tensor;
 
 namespace functor {
 template <typename Device, typename T, typename Index, int IXDIM>
@@ -41,9 +39,6 @@ struct GatherNdSlice {
                    typename TTypes<T>::Matrix Tout);
 };
 
-template <typename Device, typename T, typename Index>
-Status DoGatherNd(OpKernelContext* c, const Tensor& params,
-                  const Tensor& indices, Tensor* out);
 }  // namespace functor
 }  // namespace tensorflow
 

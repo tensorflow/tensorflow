@@ -6,7 +6,6 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
-    "tf_cc_binary",
 )
 
 exports_files(["LICENSE"])
@@ -25,7 +24,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "clock_cycle_profiling",
     testonly = 1,
     srcs = ["clock_cycle_profiling_main.cc"],
@@ -52,9 +51,13 @@ tf_cc_binary(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
         "//conditions:default": [
+            "//tensorflow/core:core_cpu",
             "//tensorflow/core:lib",
+            "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
+            "//tensorflow/core:test",
         ],
     }),
 )

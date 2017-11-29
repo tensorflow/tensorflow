@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.ops import gen_lookup_ops
@@ -40,10 +39,9 @@ class CheckpointedOp(object):
     else:
       self.table_ref = table_ref
     self._name = name
-    if context.in_graph_mode():
-      self._saveable = CheckpointedOp.CustomSaveable(self, name)
-      ops_lib.add_to_collection(ops_lib.GraphKeys.SAVEABLE_OBJECTS,
-                                self._saveable)
+    self._saveable = CheckpointedOp.CustomSaveable(self, name)
+    ops_lib.add_to_collection(ops_lib.GraphKeys.SAVEABLE_OBJECTS,
+                              self._saveable)
 
   @property
   def name(self):
@@ -51,10 +49,7 @@ class CheckpointedOp(object):
 
   @property
   def saveable(self):
-    if context.in_graph_mode():
-      return self._saveable
-    else:
-      return CheckpointedOp.CustomSaveable(self, self.name)
+    return self._saveable
 
   def insert(self, keys, values):
     return gen_lookup_ops._lookup_table_insert_v2(self.table_ref, keys, values)

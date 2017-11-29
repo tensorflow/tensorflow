@@ -278,7 +278,7 @@ class LabeledTensor(object):
   @tc.accepts(object, ops.Tensor,
               tc.Union(Axes, tc.Collection(tc.Union(string_types, AxisLike))))
   def __init__(self, tensor, axes):
-    """Construct a LabeledTensor.
+    """Construct a LabeledTenor.
 
     Args:
       tensor: The underlying tensor containing the data.

@@ -20,37 +20,17 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
-from tensorflow.contrib.tpu.python.tpu import tpu_function
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.training import optimizer
 
 
 class CrossShardOptimizer(optimizer.Optimizer):
-  """An optimizer that averages gradients across TPU shards."""
+  """A optimizer sums gradients across TPU shards."""
 
-  def __init__(self,
-               opt,
-               reduction=losses.Reduction.MEAN,
-               name="CrossShardOptimizer"):
-    """Construct a new cross-shard optimizer.
-
-    Args:
-      opt: An existing `Optimizer` to encapsulate.
-      reduction: The reduction to apply to the shard losses.
-      name: Optional name prefix for the operations created when applying
-        gradients. Defaults to "CrossShardOptimizer".
-
-    Raises:
-      ValueError: If reduction is not a valid cross-shard reduction.
-    """
-    if reduction not in (losses.Reduction.SUM, losses.Reduction.MEAN):
-      raise ValueError("Unsupported reduction: %s." % reduction)
-
+  def __init__(self, opt, name="CrossShardOptimizer"):
     super(CrossShardOptimizer, self).__init__(False, name)
     self._opt = opt
-    self._reduction = reduction
 
-  def compute_gradients(self, loss, var_list=None, **kwargs):
+  def compute_gradients(self, *args, **kwargs):
     """Compute gradients of "loss" for the variables in "var_list".
 
     This simply wraps the compute_gradients() from the real optimizer. The
@@ -60,26 +40,13 @@ class CrossShardOptimizer(optimizer.Optimizer):
     gradients can hurt the gradients from other replicas.
 
     Args:
-      loss: A Tensor containing the value to minimize.
-      var_list: Optional list or tuple of `tf.Variable` to update to minimize
-        `loss`.  Defaults to the list of variables collected in the graph
-        under the key `GraphKey.TRAINABLE_VARIABLES`.
+      *args: Arguments for compute_gradients().
       **kwargs: Keyword arguments for compute_gradients().
 
     Returns:
       A list of (gradient, variable) pairs.
-
-    Raises:
-      ValueError: If not within a tpu_shard_context.
     """
-    num_shards = tpu_function.get_tpu_context().number_of_shards
-    if num_shards is None:
-      raise ValueError("CrossShardOptimizer must be used within a "
-                       "tpu_shard_context.")
-    if num_shards > 1 and self._reduction == losses.Reduction.MEAN:
-      scale = 1.0 / num_shards
-      loss *= scale
-    return self._opt.compute_gradients(loss, var_list=var_list, **kwargs)
+    return self._opt.compute_gradients(*args, **kwargs)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.

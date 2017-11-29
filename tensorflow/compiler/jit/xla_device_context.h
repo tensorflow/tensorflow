@@ -26,11 +26,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-// The allocator used for Tensors assigned to the XLA device. It uses
-// XLA backend's allocator.
+// The allocator used for Tensors assigned to the XLA device. The allocator
+// doesn't actually back Tensors with storage. Instead, each tensor is a thin
+// wrapper around XLA-managed storage.
 class XlaDeviceAllocator : public Allocator {
  public:
-  XlaDeviceAllocator(const xla::Backend* backend, int device_ordinal);
+  XlaDeviceAllocator();
   ~XlaDeviceAllocator() override;
 
   string Name() override;
@@ -40,28 +41,32 @@ class XlaDeviceAllocator : public Allocator {
   void GetStats(AllocatorStats* stats) override;
 
  private:
-  // Which backend in the client this allocator belongs to.
-  const xla::Backend* backend_;
-  // Which hardware device in the client's backend this allocator belongs to.
-  const int device_ordinal_;
+  void RunStringCtor(string* p, size_t n) override;
+  void RunStringDtor(string* p, size_t n) override;
+  void RunResourceCtor(ResourceHandle* p, size_t n) override;
+  void RunResourceDtor(ResourceHandle* p, size_t n) override;
 };
 
 // Helper class for managing data transfers between host and XLA devices.
 class XlaTransferManager {
  public:
-  explicit XlaTransferManager(perftools::gputools::Stream* stream);
+  explicit XlaTransferManager(xla::Client* client);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done) const;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done);
-  perftools::gputools::Stream* stream() const { return stream_; }
+
+  // Helper methods to get/set the xla::GlobalData backing a Tensor on the
+  // XlaDevice.
+  static std::shared_ptr<xla::GlobalData> GetTensorGlobalData(
+      const Tensor& tensor);
+  static void SetTensorGlobalData(std::shared_ptr<xla::GlobalData> global_data,
+                                  Tensor* tensor);
 
  private:
-  // Stream obtained from a Device, used to transfer tensors between
-  // CPU and device.
-  perftools::gputools::Stream* stream_;
+  xla::Client* client_;
 };
 
 // DeviceContext for operators assigned to XlaDevice devices. The
@@ -69,7 +74,7 @@ class XlaTransferManager {
 // wraps the methods in XlaTransferManager.
 class XlaDeviceContext : public DeviceContext {
  public:
-  explicit XlaDeviceContext(perftools::gputools::Stream* stream);
+  explicit XlaDeviceContext(xla::Client* client);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,
@@ -77,9 +82,6 @@ class XlaDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
-  perftools::gputools::Stream* stream() const override {
-    return manager_.stream();
-  }
 
  private:
   XlaTransferManager manager_;

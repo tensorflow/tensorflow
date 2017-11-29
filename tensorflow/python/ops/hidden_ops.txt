@@ -5,7 +5,6 @@ BroadcastGradientArgs
 ConcatOffset
 Concat
 ConcatV2
-ConjugateTranspose
 Const
 DebugGradientIdentity
 EditDistance
@@ -38,11 +37,6 @@ LearnedUnigramCandidateSampler
 LogUniformCandidateSampler
 ThreadUnsafeUnigramCandidateSampler
 UniformCandidateSampler
-
-# checkpoint_ops
-GenerateVocabRemapping
-LoadAndRemapMatrix
-
 
 # control_flow_ops
 Switch
@@ -164,16 +158,13 @@ TensorArrayWriteV3
 SymbolicGradient
 
 # image_ops
-AdjustContrastv2
-NonMaxSuppression
-NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
-ResizeBicubicGrad
 ResizeNearestNeighborGrad
+AdjustContrastv2
+ScaleImageGrad
 SampleDistortedBoundingBox
 SampleDistortedBoundingBoxV2
-ScaleImageGrad
 
 # io_ops
 FixedLengthRecordReader
@@ -209,7 +200,6 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
-DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -222,8 +212,6 @@ BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
-LogMatrixDeterminant
-MatrixExponential
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -243,9 +231,7 @@ TensorSummaryV2
 
 # math_ops
 Abs
-AccumulateNV2
 AddN
-AddV2
 All
 Any
 BatchMatMul
@@ -261,7 +247,6 @@ ComplexAbs
 Conj
 FloorDiv
 FloorMod
-HistogramFixedWidth
 Max
 Mean
 Min
@@ -293,7 +278,6 @@ AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
-FusedBatchNormV2
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
@@ -306,7 +290,6 @@ MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
-SeluGrad
 SoftplusGrad
 SoftsignGrad
 TopK
@@ -316,13 +299,10 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
-MaxPoolV2
 Softmax
 LogSoftmax
 FractionalAvgPoolGrad
 FractionalMaxPoolGrad
-InTopK
-InTopKV2
 
 # parsing_ops
 ParseExample
@@ -354,7 +334,6 @@ DestroyTemporaryVariable
 AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
-DeserializeSparse
 DeserializeManySparse
 SerializeManySparse
 SerializeSparse

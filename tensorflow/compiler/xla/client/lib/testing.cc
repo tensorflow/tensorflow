@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -29,10 +28,9 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-namespace {
 
-std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
-                                                       Client* client) {
+std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
+                                              Client* client) {
   ComputationBuilder b(
       client,
       tensorflow::strings::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
@@ -45,26 +43,6 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
   *execution_options.mutable_shape_with_output_layout() = shape;
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
       .ConsumeValueOrDie();
-}
-
-}  // namespace
-
-std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
-                                              Client* client) {
-  if (ShapeUtil::ByteSizeOf(shape) < (1LL << 30)) {
-    StatusOr<std::unique_ptr<Literal>> literal_status = MakeFakeLiteral(shape);
-    if (!literal_status.ok()) {
-      // If we got an Unimplemented error, fall back to making the fake data via
-      // an on-device computation.
-      CHECK_EQ(literal_status.status().code(),
-               tensorflow::error::UNIMPLEMENTED);
-      return MakeFakeDataViaDeviceOrDie(shape, client);
-    }
-    return client->TransferToServer(*literal_status.ValueOrDie()).ValueOrDie();
-  }
-
-  // If the data is large, generate it on-device.
-  return MakeFakeDataViaDeviceOrDie(shape, client);
 }
 
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(

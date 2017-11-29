@@ -1,19 +1,9 @@
 licenses(["restricted"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
-
-STREAM_EXECUTOR_HEADERS = glob([
-    "*.h",
-    "cuda/*.h",
-    "host/*.h",
-    "lib/*.h",
-    "lib/gtl/*.h",
-    "platform/**/*.h",
-])
 
 cc_library(
-    name = "stream_executor_impl",
+    name = "stream_executor",
     srcs = glob(
         [
             "*.cc",
@@ -26,7 +16,14 @@ cc_library(
             "**/*_test.cc",
         ],
     ),
-    hdrs = STREAM_EXECUTOR_HEADERS,
+    hdrs = glob([
+        "*.h",
+        "cuda/*.h",
+        "host/*.h",
+        "lib/*.h",
+        "lib/gtl/*.h",
+        "platform/**/*.h",
+    ]),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
@@ -40,16 +37,6 @@ cc_library(
 )
 
 cc_library(
-    name = "stream_executor",
-    hdrs = STREAM_EXECUTOR_HEADERS,
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:lib",
-        "@local_config_cuda//cuda:cuda_headers",
-    ] + if_static([":stream_executor_impl"]),
-)
-
-cc_library(
     name = "cuda_platform",
     srcs = if_cuda_is_configured(
         glob(
@@ -59,10 +46,6 @@ cc_library(
             exclude = ["cuda/cuda_platform_id.cc"],
         ),
     ),
-    copts = select({
-        "//tensorflow:windows": ["/DNOGDI"],
-        "//conditions:default": [],
-    }),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
@@ -71,7 +54,6 @@ cc_library(
     deps = [
         ":stream_executor",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:ops_util",
         "@local_config_cuda//cuda:cuda_headers",
     ] + if_cuda_is_configured([
         "//tensorflow/core:cuda",

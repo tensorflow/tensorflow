@@ -146,7 +146,6 @@ void RecordYielder::MainLoop() {
     }
 
     if (num_records_added_in_epoch_ < opts_.bufsize) {
-      mutex_lock l(mu_);
       opts_.bufsize = num_records_added_in_epoch_;
     }
 

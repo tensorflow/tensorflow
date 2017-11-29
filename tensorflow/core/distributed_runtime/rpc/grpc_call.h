@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 
 #include "grpc++/grpc++.h"
 #include "grpc++/impl/codegen/service_type.h"

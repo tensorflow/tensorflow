@@ -29,13 +29,20 @@ limitations under the License.
 namespace tensorflow {
 namespace grpc {
 
+static void do_nothing(void* raw) {}
+static void unref_tensorbuffer(void* raw) {
+  TensorBuffer* buf = static_cast<TensorBuffer*>(raw);
+  buf->Unref();
+}
+
 void EncodeRecvTensorResponseToByteBuffer(const RecvTensorResponse& proto,
                                           ::grpc::ByteBuffer* result) {
-  ::grpc::Slice slice(proto.ByteSizeLong());
+  size_t len = proto.ByteSizeLong();
+  gpr_slice s = gpr_slice_malloc(len);
   proto.SerializeWithCachedSizesToArray(
-      const_cast<uint8*>(reinterpret_cast<const uint8*>(slice.begin())));
-  ::grpc::ByteBuffer tmp(&slice, 1);
-  result->Swap(&tmp);
+      reinterpret_cast<uint8*>(GPR_SLICE_START_PTR(s)));
+  ::grpc::Slice slice(s, ::grpc::Slice::STEAL_REF);
+  *result = ::grpc::ByteBuffer(&slice, 1);
 }
 
 // We generate a RecvTensorResponse protocol buffer encoding into "*result",
@@ -61,12 +68,12 @@ void EncodeRecvTensorResponseToByteBuffer(const RecvTensorResponse& proto,
 // E:   <actual data for val's representation>
 //
 // If the tensor data is up to "kLargeTensorBytes", then A
-// through E will all be encoded into "*result" in a single grpc::Slice.
+// through E will all be encoded into "*result" in a single gpr_slice.
 //
 // If the tensor data is larger than "kLargeTensorBytes", then A through
-// D2 will be encoded in one grpc::Slice, and E will be encoded in a second
-// grpc::Slice that points to the backing store for the tensor data, to avoid
-// copying the tensor data (and the grpc::Slice setup will be arrange so as
+// D2 will be encoded in one gpr_slice, and E will be encoded in a second
+// gpr_slice that points to the backing store for the tensor data, to avoid
+// copying the tensor data (and the gpr_slice setup will be arrange so as
 // to dereference the underlying tensor data buffer when it is no longer
 // needed in the "*result" ByteBuffer).
 static int VarLengthEncodingSize(uint32 tag, size_t bytes) {
@@ -198,30 +205,55 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     // All but the tensor backing store are serialized now
 
     // Now allocate memory and put into the ByteBuffer
-    ::grpc::Slice slices[2];
+    ::grpc::Slice slices[3];
     int num_slices = 0;
     {
       size_t slice_len = e.size() + (tensor_data_is_large ? 0 : tdata.size());
-      slices[0] = ::grpc::Slice(slice_len);
-      memcpy(const_cast<uint8_t*>(slices[0].begin()), e.data(), e.size());
+      gpr_slice s0 = gpr_slice_malloc(slice_len);
+      memcpy(GPR_SLICE_START_PTR(s0), e.data(), e.size());
       if (!tensor_data_is_large) {
         // (E)
-        memcpy(const_cast<uint8_t*>(slices[0].begin()) + e.size(), tdata.data(),
-               tdata.size());
+        memcpy(GPR_SLICE_START_PTR(s0) + e.size(), tdata.data(), tdata.size());
       }
+      slices[0] = ::grpc::Slice(s0, ::grpc::Slice::STEAL_REF);
       num_slices += 1;
     }
 
     if (tensor_data_is_large) {
+      // Encode the actual tensor data by pointing to the backing store,
+      // and add a special zero-length slice that is really a TensorBuffer
+      // reference that we will unref when we are done.
+      //
+      // TODO(jeff): Note that this approach relies on the fact that
+      // slices are destroyed in the order in which they are added to
+      // the ByteBuffer.  In principle, these could be broken by future
+      // hypothetical grpc_slice-related changes (e.g. the
+      // implementation could decide to destroy 0-length slices
+      // eagerly).  In practice, this does not happen with the current
+      // implementation, and the gpr_slice interface at the moment does
+      // not allow us to do the Tensor-unreferencing in the right way
+      // (since the Tensor pointer is different than the backing store
+      // array pointer).
+      //
+      // TODO(jeff,sanjay): switch to using new
+      // gsr_slice_new_with_user_data interface that allows for
+      // different pointers for the data and the argument to the
+      // destroy function once that has been added integrated into grpc
+      // (see https://github.com/grpc/grpc/pull/7488)
+
       // (E) Encode tensor data, but by sharing backing store
+
       const TensorBuffer* buf = DMAHelper::buffer(&val);
       buf->Ref();
-      slices[1] = ::grpc::Slice(
+      gpr_slice s1 = gpr_slice_new(
           const_cast<void*>(static_cast<const void*>(tdata.data())),
-          tdata.size(),
-          [](void* backing) { static_cast<TensorBuffer*>(backing)->Unref(); },
-          const_cast<TensorBuffer*>(buf));
-      num_slices += 1;
+          tdata.size(), do_nothing);
+      slices[1] = ::grpc::Slice(s1, ::grpc::Slice::STEAL_REF);
+
+      gpr_slice s2 =
+          gpr_slice_new(const_cast<TensorBuffer*>(buf), 0, unref_tensorbuffer);
+      slices[2] = ::grpc::Slice(s2, ::grpc::Slice::STEAL_REF);
+      num_slices += 2;
     }
     size_t total_bytes = 0;
     for (int i = 0; i < num_slices; i++) {
@@ -229,8 +261,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     }
     CHECK_EQ(total_bytes, expected_size);
 
-    ::grpc::ByteBuffer tmp(&slices[0], num_slices);
-    result->Swap(&tmp);
+    *result = ::grpc::ByteBuffer(&slices[0], num_slices);
   }
 }
 

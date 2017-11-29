@@ -65,11 +65,7 @@ KernelBase::KernelBase(StreamExecutor *parent,
                        internal::KernelInterface *implementation)
     : parent_(parent), implementation_(implementation) {}
 
-KernelBase::~KernelBase() {
-  if (parent_) {
-    parent_->UnloadKernel(this);
-  }
-}
+KernelBase::~KernelBase() {}
 
 unsigned KernelBase::Arity() const { return implementation_->Arity(); }
 

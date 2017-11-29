@@ -116,11 +116,11 @@ class Dimension(object):
     Dimensions are combined as follows:
 
     ```python
-    tf.Dimension(n)   .merge_with(tf.Dimension(n))    == tf.Dimension(n)
-    tf.Dimension(n)   .merge_with(tf.Dimension(None)) == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(n))    == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(None)) == tf.Dimension(None)
-    tf.Dimension(n)   .merge_with(tf.Dimension(m))  # raises ValueError for n != m
+        Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
+        Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
+        Dimension(None).merge_with(Dimension(n))    == Dimension(n)
+        Dimension(None).merge_with(Dimension(None)) == Dimension(None)
+        Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
     ```
 
     Args:
@@ -146,12 +146,10 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
-    ```python
-    tf.Dimension(m)    + tf.Dimension(n)    == tf.Dimension(m + n)
-    tf.Dimension(m)    + tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(None) == tf.Dimension(None)
-    ```
+      Dimension(m)    + Dimension(n)    == Dimension(m + n)
+      Dimension(m)    + Dimension(None) == Dimension(None)
+      Dimension(None) + Dimension(n)    == Dimension(None)
+      Dimension(None) + Dimension(None) == Dimension(None)
 
     Args:
       other: Another Dimension.
@@ -170,12 +168,10 @@ class Dimension(object):
 
     Dimensions are subtracted as follows:
 
-    ```python
-    tf.Dimension(m)    - tf.Dimension(n)    == tf.Dimension(m - n)
-    tf.Dimension(m)    - tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(None) == tf.Dimension(None)
-    ```
+      Dimension(m)    - Dimension(n)    == Dimension(m - n)
+      Dimension(m)    - Dimension(None) == Dimension(None)
+      Dimension(None) - Dimension(n)    == Dimension(None)
+      Dimension(None) - Dimension(None) == Dimension(None)
 
     Args:
       other: Another Dimension.
@@ -194,11 +190,11 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
-    ```python
-    tf.Dimension(m)    * tf.Dimension(n)    == tf.Dimension(m * n)
-    tf.Dimension(m)    * tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(None) == tf.Dimension(None)
+    ```
+      Dimension(m)    * Dimension(n)    == Dimension(m * n)
+      Dimension(m)    * Dimension(None) == Dimension(None)
+      Dimension(None) * Dimension(n)    == Dimension(None)
+      Dimension(None) * Dimension(None) == Dimension(None)
     ```
 
     Args:
@@ -218,12 +214,10 @@ class Dimension(object):
 
     Dimensions are divided as follows:
 
-    ```python
-    tf.Dimension(m)    // tf.Dimension(n)    == tf.Dimension(m // n)
-    tf.Dimension(m)    // tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(None) == tf.Dimension(None)
-    ```
+      Dimension(m)    // Dimension(n)    == Dimension(m // n)
+      Dimension(m)    // Dimension(None) == Dimension(None)
+      Dimension(None) // Dimension(n)    == Dimension(None)
+      Dimension(None) // Dimension(None) == Dimension(None)
 
     Args:
       other: Another `Dimension`.
@@ -256,14 +250,12 @@ class Dimension(object):
   def __mod__(self, other):
     """Returns `self` modulo `other.
 
-    Dimension moduli are computed as follows:
+    Dimension moduli are computed  as follows:
 
-    ```python
-    tf.Dimension(m)    % tf.Dimension(n)    == tf.Dimension(m % n)
-    tf.Dimension(m)    % tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(None) == tf.Dimension(None)
-    ```
+      Dimension(m)    % Dimension(n)     == Dimension(m % n)
+      Dimension(m)    % Dimension(None)  == Dimension(None)
+      Dimension(None) % Dimension(n)     == Dimension(None)
+      Dimension(None) %  Dimension(None) == Dimension(None)
 
     Args:
       other: Another Dimension.
@@ -282,12 +274,10 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-    ```python
-    (tf.Dimension(m)    < tf.Dimension(n))    == (m < n)
-    (tf.Dimension(m)    < tf.Dimension(None)) == None
-    (tf.Dimension(None) < tf.Dimension(n))    == None
-    (tf.Dimension(None) < tf.Dimension(None)) == None
-    ```
+      Dimension(m)    < Dimension(n)    == m < n
+      Dimension(m)    < Dimension(None) == None
+      Dimension(None) < Dimension(n)    == None
+      Dimension(None) < Dimension(None) == None
 
     Args:
       other: Another Dimension.
@@ -307,12 +297,10 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-    ```python
-    (tf.Dimension(m)    <= tf.Dimension(n))    == (m <= n)
-    (tf.Dimension(m)    <= tf.Dimension(None)) == None
-    (tf.Dimension(None) <= tf.Dimension(n))    == None
-    (tf.Dimension(None) <= tf.Dimension(None)) == None
-    ```
+      Dimension(m)    <= Dimension(n)    == m <= n
+      Dimension(m)    <= Dimension(None) == None
+      Dimension(None) <= Dimension(n)    == None
+      Dimension(None) <= Dimension(None) == None
 
     Args:
       other: Another Dimension.
@@ -332,12 +320,10 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-    ```python
-    (tf.Dimension(m)    > tf.Dimension(n))    == (m > n)
-    (tf.Dimension(m)    > tf.Dimension(None)) == None
-    (tf.Dimension(None) > tf.Dimension(n))    == None
-    (tf.Dimension(None) > tf.Dimension(None)) == None
-    ```
+      Dimension(m)    > Dimension(n)    == m > n
+      Dimension(m)    > Dimension(None) == None
+      Dimension(None) > Dimension(n)    == None
+      Dimension(None) > Dimension(None) == None
 
     Args:
       other: Another Dimension.
@@ -357,12 +343,10 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-    ```python
-    (tf.Dimension(m)    >= tf.Dimension(n))    == (m >= n)
-    (tf.Dimension(m)    >= tf.Dimension(None)) == None
-    (tf.Dimension(None) >= tf.Dimension(n))    == None
-    (tf.Dimension(None) >= tf.Dimension(None)) == None
-    ```
+      Dimension(m)    >= Dimension(n)    == m >= n
+      Dimension(m)    >= Dimension(None) == None
+      Dimension(None) >= Dimension(n)    == None
+      Dimension(None) >= Dimension(None) == None
 
     Args:
       other: Another Dimension.

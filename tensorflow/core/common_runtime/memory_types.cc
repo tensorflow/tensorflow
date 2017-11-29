@@ -104,21 +104,10 @@ Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g) {
       });
 }
 
-// Given an Edge whose two endpoints have different memory types and
-// are gonna to insert a pair of HostSend/Recv or Send/HostRecv nodes,
-// GetTensorName() returns a unique string that we can use as part of
-// the rendezvous key. The return string is guaranteed to be unique
-// within this process. That is sufficient because EnsureMemoryTypes
-// is only used on a TensorFlow graph that is gonna to be executed in
-// a single tf device (hence within a single process).
-static string GetTensorName(const Edge* edge) {
-  static std::atomic<int64> counter(0);
-  return strings::StrCat("memtype_", counter.fetch_add(1), "_",
-                         edge->src()->name());
-}
-
-static Node* Send(Graph* g, const string& tensor_name,
-                  const string& device_name, bool host, const Edge* edge) {
+static Node* Send(Graph* g, const string& device_name, bool host,
+                  const Edge* edge) {
+  const string tensor_name =
+      strings::StrCat("edge_", edge->id(), "_", edge->src()->name());
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), host ? "_HostSend" : "_Send")
                   .Input(edge->src(), edge->src_output())
@@ -126,13 +115,14 @@ static Node* Send(Graph* g, const string& tensor_name,
                   .Attr("send_device", device_name)
                   .Attr("send_device_incarnation", 0)  // Do not care.
                   .Attr("recv_device", device_name)
-                  .Attr("_hostmem_sendrecv", true)
                   .Finalize(g, &ret));
   return ret;
 }
 
-static Node* Recv(Graph* g, const string& tensor_name,
-                  const string& device_name, bool host, const Edge* edge) {
+static Node* Recv(Graph* g, const string& device_name, bool host,
+                  const Edge* edge) {
+  const string tensor_name =
+      strings::StrCat("edge_", edge->id(), "_", edge->src()->name());
   Node* ret;
   TF_CHECK_OK(
       NodeBuilder(g->NewName("n"), host ? "_HostRecv" : "_Recv")
@@ -141,7 +131,6 @@ static Node* Recv(Graph* g, const string& tensor_name,
           .Attr("send_device", device_name)
           .Attr("send_device_incarnation", 0)
           .Attr("recv_device", device_name)
-          .Attr("_hostmem_sendrecv", true)
           .Finalize(g, &ret));
   return ret;
 }
@@ -182,10 +171,8 @@ Status EnsureMemoryTypes(const DeviceType& device_type,
       Endpoint key{e->src()->id(), e->src_output()};
       auto iter = recv_nodes.find(key);
       if (iter == recv_nodes.end()) {
-        const string tensor_name = GetTensorName(e);
-        Node* send =
-            Send(g, tensor_name, device_name, (item.sm == HOST_MEMORY), e);
-        recv = Recv(g, tensor_name, device_name, (item.dm == HOST_MEMORY), e);
+        Node* send = Send(g, device_name, (item.sm == HOST_MEMORY), e);
+        recv = Recv(g, device_name, (item.dm == HOST_MEMORY), e);
         if (!has_ref) {
           // We only cache if there is no ref is involved.
           recv_nodes[key] = recv;

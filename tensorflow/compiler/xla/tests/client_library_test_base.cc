@@ -37,35 +37,22 @@ namespace xla {
 namespace {
 // Wrapper function that creates a nicer error message (than a bare
 // ValueOrDie()) if the platform we intend to test is not available.
-Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
-  StatusOr<Client*> result =
-      ClientLibrary::GetOrCreateLocalClient(client_options);
-  TF_CHECK_OK(result.status()) << " could not create local client for testing";
+Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
+  StatusOr<Client*> result = ClientLibrary::GetOrCreateLocalClient(platform);
+  TF_CHECK_OK(result.status()) << "could not create local client for testing";
   return result.ValueOrDie();
 }
 }  // namespace
 
-ClientLibraryTestBase::ClientLibraryTestBase(
-    perftools::gputools::Platform* platform,
-    const LocalClientOptions& client_options)
-    : client_(GetOrCreateLocalClientOrDie(client_options)),
+ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
+    : client_(GetOrCreateLocalClientOrDie(platform)),
       execution_options_(CreateDefaultExecutionOptions()) {
-  CHECK_EQ(platform, client_options.platform());
   // Disabling constant_folding so that tests (usually written using Constants)
   // will exercise the intended code paths, instead of being constant folded.
   //
   // TODO(b/38354253): Constant folding is currently disabled. Change tests to
   // use Parameters instead of Constants, and re-enable constant folding by
   // default.
-  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
-      "constant_folding");
-}
-
-ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
-    : execution_options_(CreateDefaultExecutionOptions()) {
-  LocalClientOptions default_options;
-  default_options.set_platform(platform);
-  client_ = GetOrCreateLocalClientOrDie(default_options);
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
 }
@@ -80,6 +67,12 @@ StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return client_->Execute(computation, arguments, &execution_options_);
+}
+
+StatusOr<ExecutionHandle> ClientLibraryTestBase::ExecuteAsync(
+    const Computation& computation,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+  return client_->ExecuteAsync(computation, arguments, &execution_options_);
 }
 
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
@@ -254,13 +247,11 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_layout) {
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-  if (ShapeUtil::ElementIsFloating(expected.shape()) ||
-      ShapeUtil::ElementIsComplex(expected.shape())) {
+  if (ShapeUtil::ElementIsFloating(expected.shape())) {
     LOG(WARNING) << "performing exact comparison of floating point numbers";
   } else {
     TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
-                 expected.shape().element_type() == PRED)
-        << ShapeUtil::HumanString(expected.shape());
+                 expected.shape().element_type() == PRED);
   }
   auto expect_equal = [&](const Literal& actual, const string& error_message) {
     LiteralTestUtil::ExpectEqual(expected, actual, error_message);
@@ -283,8 +274,7 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
     const Shape* shape_with_layout) {
-  TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
-               ShapeUtil::ElementIsComplex(expected.shape()));
+  TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   auto expect_near = [&](const Literal& actual, const string& error_message) {
     LiteralTestUtil::ExpectNear(expected, actual, error, error_message);
@@ -344,60 +334,6 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
   }
   auto actual = actual_status.ConsumeValueOrDie();
   LiteralTestUtil::ExpectNearTuple(expected, *actual, error);
-}
-
-void ClientLibraryTestBase::ComputeAndCompare(
-    ComputationBuilder* builder, const ComputationDataHandle& operand,
-    tensorflow::gtl::ArraySlice<Literal> arguments) {
-  auto status_or_data = ComputeValueAndReference(builder, operand, arguments);
-  EXPECT_IS_OK(status_or_data);
-  if (!status_or_data.ok()) {
-    return;
-  }
-  std::unique_ptr<Literal> reference, result;
-  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqual(*reference, *result);
-}
-
-void ClientLibraryTestBase::ComputeAndCompare(
-    ComputationBuilder* builder, const ComputationDataHandle& operand,
-    tensorflow::gtl::ArraySlice<Literal> arguments, ErrorSpec error) {
-  auto status_or_data = ComputeValueAndReference(builder, operand, arguments);
-  EXPECT_IS_OK(status_or_data);
-  if (!status_or_data.ok()) {
-    return;
-  }
-  std::unique_ptr<Literal> reference, result;
-  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectNear(*reference, *result, error);
-}
-
-StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
-ClientLibraryTestBase::ComputeValueAndReference(
-    ComputationBuilder* builder, const ComputationDataHandle& operand,
-    tensorflow::gtl::ArraySlice<Literal> arguments) {
-  // Transfer the arguments to the executor service. We put the unique_ptr's
-  // into a vector to keep the data alive on the service until the end of this
-  // function.
-  std::vector<std::unique_ptr<GlobalData>> argument_data;
-  for (const auto& arg : arguments) {
-    TF_ASSIGN_OR_RETURN(auto data, client_->TransferToServer(arg));
-    argument_data.push_back(std::move(data));
-  }
-
-  // Create raw pointers to the GlobalData for the rest of the call stack.
-  std::vector<GlobalData*> argument_data_ptr;
-  std::transform(
-      argument_data.begin(), argument_data.end(),
-      std::back_inserter(argument_data_ptr),
-      [](const std::unique_ptr<GlobalData>& data) { return data.get(); });
-
-  TF_ASSIGN_OR_RETURN(
-      auto reference,
-      builder->ComputeConstant(operand, /*output_layout=*/nullptr, arguments));
-  TF_ASSIGN_OR_RETURN(auto result,
-                      ExecuteAndTransfer(builder, argument_data_ptr));
-  return std::make_pair(std::move(reference), std::move(result));
 }
 
 Computation ClientLibraryTestBase::CreateScalarRelu() {

@@ -326,9 +326,6 @@ string DataTypeToPython(DataType dtype, const string& dtype_module) {
 }
 
 string ShapeToPython(const TensorShapeProto& shape) {
-  if (shape.unknown_rank()) {
-    return "None";
-  }
   string python = "[";
   for (const auto& dim : shape.dim()) {
     if (python.size() > 1) strings::StrAppend(&python, ", ");
@@ -395,9 +392,6 @@ string AttrListToPython(const AttrValue& value,
   return ret;
 }
 
-// NOTE: The return value may contain spaces (for example, it could be
-// a string "foo bar" with an embedded space) and is not safe to pass
-// to WordWrap().
 string AttrValueToPython(const string& type, const AttrValue& value,
                          const string& dtype_module) {
   if (type == "string") {
@@ -405,11 +399,7 @@ string AttrValueToPython(const string& type, const AttrValue& value,
   } else if (type == "int") {
     return strings::StrCat(value.i());
   } else if (type == "float") {
-    if (std::isnan(value.f()) || std::isinf(value.f())) {
-      return strings::StrCat("float('", value.f(), "')");
-    } else {
-      return strings::StrCat(value.f());
-    }
+    return strings::StrCat(value.f());
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
   } else if (type == "type") {
@@ -447,48 +437,23 @@ static void AddDelimiter(string* append_to, const string& delim) {
   if (!append_to->empty()) strings::StrAppend(append_to, delim);
 }
 
-const ApiDef::Attr* FindAttr(StringPiece name, const ApiDef& api_def) {
-  for (int i = 0; i < api_def.attr_size(); ++i) {
-    if (api_def.attr(i).name() == name) {
-      return &api_def.attr(i);
-    }
-  }
-  return nullptr;
-}
-
-const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
-  for (int i = 0; i < api_def.in_arg_size(); ++i) {
-    if (api_def.in_arg(i).name() == name) {
-      return &api_def.in_arg(i);
-    }
-  }
-  return nullptr;
-}
-
-GenPythonOp::GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                         const string& function_name)
+GenPythonOp::GenPythonOp(const OpDef& op_def, const string& function_name)
     : op_def_(op_def),
-      api_def_(api_def),
       function_name_(function_name),
       num_outs_(op_def.output_arg_size()) {}
 
 GenPythonOp::~GenPythonOp() {}
 
 string GenPythonOp::Code() {
-  if (api_def_.visibility() == ApiDef::SKIP) {
-    return "";
-  }
   // This has all the input args followed by those attrs that don't have
   // defaults.
   std::vector<string> args_no_default;
   // The parameters with defaults (these have to be listed after those without).
   // No input args are included, just attrs.
   std::vector<string> args_with_defaults;
-
-  for (int i = 0; i < api_def_.arg_order_size(); ++i) {
-    const auto& arg = *FindInputArg(api_def_.arg_order(i), op_def_);
-    const auto& api_def_arg = *FindInputArg(api_def_.arg_order(i), api_def_);
-    args_no_default.push_back(api_def_arg.rename_to());
+  for (int i = 0; i < op_def_.input_arg_size(); ++i) {
+    const auto& arg(op_def_.input_arg(i));
+    args_no_default.push_back(arg.name());
     if (!arg.type_attr().empty()) {
       gtl::InsertIfNotPresent(&inferred_attrs_, arg.type_attr(), arg.name());
     } else if (!arg.type_list_attr().empty()) {
@@ -499,14 +464,14 @@ string GenPythonOp::Code() {
       gtl::InsertIfNotPresent(&inferred_attrs_, arg.number_attr(), arg.name());
     }
   }
-  for (int i = 0; i < api_def_.attr_size(); ++i) {
-    const auto& attr(api_def_.attr(i));
+  for (int i = 0; i < op_def_.attr_size(); ++i) {
+    const auto& attr(op_def_.attr(i));
     // Do not add inferred attrs to the Python function signature.
     if (inferred_attrs_.find(attr.name()) == inferred_attrs_.end()) {
       if (attr.has_default_value()) {
-        args_with_defaults.push_back(attr.rename_to());
+        args_with_defaults.push_back(attr.name());
       } else {
-        args_no_default.push_back(attr.rename_to());
+        args_no_default.push_back(attr.name());
       }
     }
   }
@@ -540,7 +505,6 @@ string GenPythonOp::Code() {
   AddDelimiter(&parameters, ", ");
   strings::StrAppend(&parameters, "name=None");
 
-  AddExport();
   AddDefLine(parameters);
   AddDocStringDescription();
   AddDocStringArgs();
@@ -556,37 +520,20 @@ string GenPythonOp::Code() {
   return prelude_ + result_;
 }
 
-void GenPythonOp::AddExport() {
-  if (api_def_.visibility() != api_def_.VISIBLE) {
-    return;
-  }
-  strings::StrAppend(&result_, "tf_export(");
-
-  // Add all endpoint names to tf_export.
-  bool first_endpoint = true;
-  for (const auto& endpoint : api_def_.endpoint()) {
-    if (!first_endpoint) {
-      strings::StrAppend(&result_, ", ");
-    } else {
-      first_endpoint = false;
-    }
-    strings::StrAppend(&result_, "'", endpoint.name(), "'");
-  }
-  strings::StrAppend(&result_, ")\n");
-}
-
 void GenPythonOp::AddDefLine(const string& parameters) {
-  strings::StrAppend(&result_, "def ", function_name_, "(", parameters, "):\n");
+  const string def_prefix = strings::StrCat("def ", function_name_, "(");
+  strings::StrAppend(
+      &result_, WordWrap(def_prefix, parameters + "):", kRightMargin), "\n");
 }
 
 void GenPythonOp::AddDocStringDescription() {
   string comment;
-  if (api_def_.summary().empty()) {
+  if (op_def_.summary().empty()) {
     comment = "TODO: add doc.\n";
   } else {
-    comment = strings::StrCat(api_def_.summary(), "\n");
-    if (!api_def_.description().empty()) {
-      strings::StrAppend(&comment, "\n", Indent(2, 2, api_def_.description()));
+    comment = strings::StrCat(op_def_.summary(), "\n");
+    if (!op_def_.description().empty()) {
+      strings::StrAppend(&comment, "\n", Indent(2, 2, op_def_.description()));
     }
   }
   strings::StrAppend(&result_, "  r\"\"\"", comment, "\n");
@@ -597,10 +544,9 @@ void GenPythonOp::AddDocStringArgs() {
 }
 
 void GenPythonOp::AddDocStringInputs() {
-  for (int i = 0; i < api_def_.arg_order_size(); ++i) {
-    const auto& arg = *FindInputArg(api_def_.arg_order(i), op_def_);
-    const auto& api_def_arg = *FindInputArg(api_def_.arg_order(i), api_def_);
-    StringPiece description = api_def_arg.description();
+  for (int i = 0; i < op_def_.input_arg_size(); ++i) {
+    const auto& arg(op_def_.input_arg(i));
+    StringPiece description = op_def_.input_arg(i).description();
     string desc;
     if (ConsumeEquals(&description)) {  // Skip the generated type info.
       desc = strings::StrCat(param_names_[i], ": ");
@@ -618,9 +564,7 @@ void GenPythonOp::AddDocStringInputs() {
 void GenPythonOp::AddDocStringAttrs() {
   for (const string& name : attrs_) {
     const auto& attr = *FindAttr(name, op_def_);
-    const auto& api_def_attr = *FindAttr(name, api_def_);
-    string desc =
-        strings::StrCat(AvoidPythonReserved(api_def_attr.rename_to()), ": ");
+    string desc = strings::StrCat(AvoidPythonReserved(name), ": ");
 
     static const char* const kAttrTypeName[][2] = {
         {"string", "`string`"},
@@ -644,7 +588,7 @@ void GenPythonOp::AddDocStringAttrs() {
     for (size_t i = 0; i < TF_ARRAYSIZE(kAttrTypeName); ++i) {
       if (attr.type() == kAttrTypeName[i][0]) {
         string s;
-        if (api_def_attr.has_default_value()) {
+        if (attr.has_default_value()) {
           s = strings::StrCat("optional ", kAttrTypeName[i][1]);
         } else {
           s = kAttrTypeName[i][1];
@@ -673,13 +617,14 @@ void GenPythonOp::AddDocStringAttrs() {
 
     strings::StrAppend(&desc, ".");
 
-    if (api_def_attr.has_default_value()) {
-      strings::StrAppend(
-          &desc, " Defaults to `",
-          AttrValueToPython(attr.type(), api_def_attr.default_value()), "`.");
+    if (attr.has_default_value()) {
+      strings::StrAppend(&desc, " Defaults to `",
+                         AttrValueToPython(attr.type(), attr.default_value()),
+                         "`.");
     }
-    if (!api_def_attr.description().empty()) {
-      AppendWithinWidth(&desc, api_def_attr.description(),
+
+    if (!attr.description().empty()) {
+      AppendWithinWidth(&desc, attr.description(),
                         kRightMargin - 4 /* indent */);
     }
     strings::StrAppend(&result_, Indent(4, 6, desc));
@@ -697,8 +642,8 @@ void GenPythonOp::AddOutputGlobals() {
     // Prepare the list of output names
     std::vector<string> out_names(num_outs_);
     for (int i = 0; i < num_outs_; ++i) {
-      if (!api_def_.out_arg(i).rename_to().empty()) {
-        out_names[i] = api_def_.out_arg(i).rename_to();
+      if (!op_def_.output_arg(i).name().empty()) {
+        out_names[i] = op_def_.output_arg(i).name();
       } else {
         out_names[i] = strings::StrCat("output", i);
       }
@@ -737,38 +682,34 @@ void GenPythonOp::AddDocStringOutputs() {
 }
 
 void GenPythonOp::AddBody(const string& prefix) {
-  const string apply_prefix =
-      strings::StrCat(prefix, "_result = _op_def_lib.apply_op(");
-  AddBodyNoReturn(apply_prefix);
-  if (num_outs_ > 1) {
-    strings::StrAppend(&result_, prefix, "_result = _", op_def_.name(),
-                       "Output._make(_result)\n");
-  }
-  strings::StrAppend(&result_, prefix, "return _result\n");
-}
-
-void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
-  string args = strings::StrCat("\"", op_def_.name(), "\", ");
+  string return_prefix =
+      strings::StrCat(prefix, "result = _op_def_lib.apply_op(");
+  string return_args = strings::StrCat("\"", op_def_.name(), "\", ");
   for (size_t i = 0; i < param_names_.size(); ++i) {
-    strings::StrAppend(&args, param_names_[i], "=", param_names_[i], ", ");
+    strings::StrAppend(&return_args, param_names_[i], "=", param_names_[i],
+                       ", ");
   }
-  strings::StrAppend(&args, "name=name)");
+  strings::StrAppend(&return_args, "name=name)");
 
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
-                     WordWrap(apply_prefix, args, kRightMargin), "\n");
+                     WordWrap(return_prefix, return_args, kRightMargin), "\n");
+
+  if (num_outs_ <= 1) {
+    strings::StrAppend(&result_, prefix, "return result\n");
+  } else {
+    strings::StrAppend(&result_, prefix, "return _", op_def_.name(),
+                       "Output._make(result)\n");
+  }
 }
 
 }  // namespace python_op_gen_internal
 
-string GetPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                   const string& function_name) {
-  return python_op_gen_internal::GenPythonOp(op_def, api_def, function_name)
-      .Code();
+string GetPythonOp(const OpDef& op_def, const string& function_name) {
+  return python_op_gen_internal::GenPythonOp(op_def, function_name).Code();
 }
 
-string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops,
+string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes) {
   string result;
   // Header
@@ -788,7 +729,6 @@ from tensorflow.python.framework import common_shapes as _common_shapes
 from tensorflow.python.framework import op_def_registry as _op_def_registry
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import op_def_library as _op_def_library
-from tensorflow.python.util.tf_export import tf_export
 )");
 
   // We'll make a copy of ops that filters out descriptions.
@@ -817,8 +757,7 @@ from tensorflow.python.util.tf_export import tf_export
       continue;
     }
 
-    const auto* api_def = api_defs.GetApiDef(op_def.name());
-    strings::StrAppend(&result, GetPythonOp(op_def, *api_def, function_name));
+    strings::StrAppend(&result, GetPythonOp(op_def, function_name));
 
     if (!require_shapes) {
       strings::StrAppend(&result, "_ops.RegisterShape(\"", op_def.name(),
@@ -851,18 +790,16 @@ from tensorflow.python.util.tf_export import tf_export
   return result;
 }
 
-void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops,
+void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes) {
-  printf("%s", GetPythonOps(ops, api_defs, hidden_ops, require_shapes).c_str());
+  printf("%s", GetPythonOps(ops, hidden_ops, require_shapes).c_str());
 }
 
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   string op_list_str(op_list_buf, op_list_len);
   OpList ops;
   ops.ParseFromString(op_list_str);
-  ApiDefMap api_def_map(ops);
-  return GetPythonOps(ops, api_def_map, {}, false);
+  return GetPythonOps(ops, {}, false);
 }
 
 }  // namespace tensorflow

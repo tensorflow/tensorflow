@@ -936,7 +936,8 @@ class InputStatisticsFromMiniBatch(object):
     start_time = variable_scope.get_variable(
         name="start_time",
         dtype=dtypes.int64,
-        initializer=dtypes.int64.max,
+        initializer=init_ops.zeros_initializer(),
+        shape=[],
         trainable=False)
     total_observation_count = variable_scope.get_variable(
         name="total_observation_count",

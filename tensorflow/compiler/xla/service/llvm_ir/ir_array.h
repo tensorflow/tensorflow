@@ -19,8 +19,8 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Value.h"
+#include "external/llvm/include/llvm/IR/IRBuilder.h"
+#include "external/llvm/include/llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -83,7 +83,7 @@ class IrArray {
     Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
           const Shape& shape, llvm::IRBuilder<>* ir_builder);
 
-    // Constructs an index from both a multi-dimensional index and a linear
+    // Consturcts an index from both a multi-dimensional index and a linear
     // index. "shape" has the same meaning as that in the constructor that takes
     // only a linear index.
     Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
@@ -107,8 +107,6 @@ class IrArray {
 
     const_iterator begin() const { return multidim().begin(); }
     const_iterator end() const { return multidim().end(); }
-
-    llvm::Value* back() const { return multidim().back(); }
 
     bool LinearValidOnShape(const Shape& a) const;
 
@@ -195,10 +193,6 @@ class IrArray {
                                        llvm::IRBuilder<>* ir_builder,
                                        tensorflow::StringPiece name = "") const;
 
-  // Attach metadata this IrArray instance knows about to "instruction".
-  void AnnotateLoadStoreInstructionWithMetadata(
-      llvm::Instruction* instruction) const;
-
   // Emit IR to read an array element at the given index. Returns the read
   // result (effectively, a Value loaded from memory). This method seamlessly
   // handles scalar shapes by broadcasting their value to all indices (index is
@@ -220,45 +214,16 @@ class IrArray {
                       llvm::IRBuilder<>* ir_builder) const;
 
   void AddAliasScopeMetadata(llvm::MDNode* alias_scope) {
-    CHECK_NE(alias_scope, nullptr);
     AddMetadata(llvm::LLVMContext::MD_alias_scope, alias_scope);
   }
 
   void AddNoaliasMetadata(llvm::MDNode* noalias) {
-    CHECK_NE(noalias, nullptr);
     AddMetadata(llvm::LLVMContext::MD_noalias, noalias);
   }
 
-  // Promises LLVM that the data pointed to by this IrArray never changes after
-  // it's first loaded.
-  //
-  // The temporal scope of this promise is the "whole program" from LLVM's point
-  // of view, but how this translates to HLOs differs between backends.
-  //
-  // In the single-threaded CPU backend, we emit one function that
-  // runs all the HLOs in sequence, so the whole program is the whole HLO
-  // module.
-  //
-  // In the GPU backend, we emit one GPU kernel per top-level HLO (i.e. per HLO
-  // in the entry computation).  From LLVM's perspective, launching a new kernel
-  // is like launching a new program, and so the whole program is one top-level
-  // HLO.  Since the scope of the promise is smaller than in the CPU backend, we
-  // can mark more things as invariant in the GPU backend.
-  //
-  // Marking loads as invariant is particularly helpful on GPUs because
-  // invariant loads can be lowered to PTX ld.global.nc (equivalent to CUDA's
-  // __ldg intrinsic).  These loads use a special cache, and can be
-  // significantly faster than regular loads.
-  void MarkInvariantOverWholeProgram(llvm::LLVMContext* context) {
-    if (is_invariant_) {
-      return;
-    }
-    is_invariant_ = true;
-    AddMetadata(llvm::LLVMContext::MD_invariant_load,
-                llvm::MDNode::get(*context, {}));
+  void AddInvariantLoad(llvm::MDNode* invariant_load) {
+    AddMetadata(llvm::LLVMContext::MD_invariant_load, invariant_load);
   }
-
-  const std::map<int, llvm::MDNode*>& metadata() const { return metadata_; }
 
   // Bumps the "which_dimension" value within the provided index by the provided
   // addend.
@@ -285,8 +250,6 @@ class IrArray {
   // loads/stores for this array.  They keys are the metadata kinds and the
   // values are the metadata nodes.
   std::map<int, llvm::MDNode*> metadata_;
-
-  bool is_invariant_ = false;
 };
 
 }  // namespace llvm_ir

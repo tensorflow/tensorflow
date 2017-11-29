@@ -26,24 +26,20 @@ namespace grappler {
 
 constexpr int kOpsPerMac = 2;
 constexpr char kConv2d[] = "Conv2D";
-constexpr char kConv2dBackpropFilter[] = "Conv2DBackpropFilter";
-constexpr char kConv2dBackpropInput[] = "Conv2DBackpropInput";
+constexpr char kConv2dBackPropFilter[] = "Conv2DBackpropFilter";
+constexpr char kConv2dBackPropInput[] = "Conv2DBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kIdentity[] = "Identity";
-constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
 constexpr char kRecv[] = "_Recv";
-constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
 constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
 constexpr char kSize[] = "Size";
-constexpr char kStopGradient[] = "StopGradient";
-constexpr char kPreventGradient[] = "PreventGradient";
 
 namespace {
 
@@ -90,7 +86,7 @@ TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
   if (shape.unknown_rank() || shape.dim_size() < rank) {
     *found_unknown_shapes = true;
     TensorShapeProto::Dim dim;
-    VLOG(2) << "Use minimum shape because the rank is unknown.";
+    VLOG(1) << "WARNING: Use minimum shape because the rank is unknown.";
     // The size of each dimension is at least 1, if unknown.
     dim.set_size(1);
     for (int i = 0; i < rank; i++) {
@@ -98,9 +94,10 @@ TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
     }
   } else {
     for (int i = 0; i < shape.dim_size(); i++) {
-      if (shape.dim(i).size() < 0) {
+      if (shape.dim(i).size() == -1) {
         *found_unknown_shapes = true;
-        VLOG(2) << "Use minimum dim size 1 because the shape is unknown.";
+        VLOG(1)
+            << "WARNING: Use minimum dim size 1 because the shape is unknown.";
         // The size of each dimension is at least 1, if unknown.
         shape.mutable_dim(i)->set_size(1);
       }
@@ -143,30 +140,24 @@ int64 CwiseOutputElementCount(const TensorShapeProto& input_shape_1,
 OpLevelCostEstimator::OpLevelCostEstimator() {
   // Syntactic sugar to build and return a lambda that takes an OpInfo and
   // returns a cost.
-  typedef Costs (OpLevelCostEstimator::*CostImpl)(const OpContext& op_context)
+  typedef Costs (OpLevelCostEstimator::*CostImpl)(const OpInfo& op_feature)
       const;
-  auto wrap = [this](CostImpl impl) -> std::function<Costs(const OpContext&)> {
-    return [this, impl](const OpContext& op_context) {
-      return (this->*impl)(op_context);
-    };
+  auto wrap = [this](CostImpl impl) -> std::function<Costs(const OpInfo&)> {
+    return [this, impl](const OpInfo& op) { return (this->*impl)(op); };
   };
 
   device_cost_impl_ = {
       {kConv2d, wrap(&OpLevelCostEstimator::PredictConv2D)},
-      {kConv2dBackpropFilter,
-       wrap(&OpLevelCostEstimator::PredictConv2DBackpropFilter)},
-      {kConv2dBackpropInput,
-       wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
+      {kConv2dBackPropFilter,
+       wrap(&OpLevelCostEstimator::PredictConv2DBackPropFilter)},
+      {kConv2dBackPropInput,
+       wrap(&OpLevelCostEstimator::PredictConv2DBackPropInput)},
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kStopGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kSend, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
@@ -271,44 +262,40 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                           Eigen::internal::scalar_quotient_op<float>>::Cost},
       {"TruncateMod", Eigen::internal::functor_traits<
                           Eigen::internal::scalar_mod_op<float>>::Cost}};
-
-  // By default, use sum of memory_time and compute_time for execution_time.
-  compute_memory_overlap_ = false;
 }
 
-Costs OpLevelCostEstimator::PredictCosts(const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {
   auto it = device_cost_impl_.find(op_features.op());
   if (it == device_cost_impl_.end()) {
     if (elementwise_ops_.find(op_features.op()) != elementwise_ops_.end()) {
-      return PredictCwiseOp(op_context);
+      return PredictCwiseOp(op_features);
     }
     VLOG(1) << "Missing implementation for op: " << op_features.op();
-    return DummyExecutionTime(op_context);
+    return DummyExecutionTime(op_features);
   }
 
-  std::function<Costs(const OpContext&)> estimator = it->second;
-  Costs costs = estimator(op_context);
+  std::function<Costs(const OpInfo&)> estimator = it->second;
+  Costs costs = estimator(op_features);
   VLOG(1) << "Operation " << op_features.op() << " takes "
           << costs.execution_time.count() << " ns.";
   return costs;
 }
 
-OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
+std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
     const DeviceProperties& device) const {
   double gflops = -1;
-  double gb_per_sec = -1;
+  double bandwidth = -1;
 
   if (device.type() == "CPU") {
     // Check if vector instructions are available, and refine performance
     // prediction based on this.
     // Frequencies are stored in MHz in the DeviceProperties.
     gflops = device.num_cores() * device.frequency() * 1e-3;
-    if (gb_per_sec < 0) {
+    if (bandwidth < 0) {
       if (device.bandwidth() > 0) {
-        gb_per_sec = device.bandwidth() / 1e6;
+        bandwidth = device.bandwidth() / 1e6;
       } else {
-        gb_per_sec = 32;
+        bandwidth = 32;
       }
     }
   } else if (device.type() == "GPU") {
@@ -324,26 +311,24 @@ OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
       // Maxwell
       cores_per_multiprocessor = 128;
     } else {
-      // Pascal (compute capability version 6) and Volta (compute capability
-      // version 7)
+      // Pascal
       cores_per_multiprocessor = 64;
     }
     gflops = device.num_cores() * device.frequency() * 1e-3 *
              cores_per_multiprocessor * kOpsPerMac;
     if (device.bandwidth() > 0) {
-      gb_per_sec = device.bandwidth() / 1e6;
+      bandwidth = device.bandwidth() / 1e6;
     } else {
-      gb_per_sec = 100;
+      bandwidth = 100;
     }
   }
-  VLOG(1) << "Device: " << device.type() << " gflops: " << gflops
-          << " gb_per_sec: " << gb_per_sec;
+  VLOG(1) << "Device: " << device.type() << " GFLOPS: " << gflops
+          << " Bandwidth: " << bandwidth;
 
-  return {gflops, gb_per_sec};
+  return std::make_pair(gflops, bandwidth);
 }
 
-Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+Costs OpLevelCostEstimator::PredictCwiseOp(const OpInfo& op_features) const {
   bool found_unknown_shapes = false;
   // For unary or binary element-wise operations, op count is the element count
   // of any input. We use the count for the largest input here to be more robust
@@ -376,17 +361,17 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
 }
 
 Costs OpLevelCostEstimator::DummyExecutionTime(
-    const OpContext& op_context) const {
+    const OpInfo& op_features) const {
   // Use CwiseOp time as an estimation
-  auto costs = PredictCwiseOp(op_context);
+  auto costs = PredictCwiseOp(op_features);
   costs.inaccurate = true;
   return costs;
 }
 
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
     double operations, const OpInfo& op_features) const {
-  DeviceInfo device_perf = GetDeviceInfo(op_features.device());
-  Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.gigaops));
+  std::pair<double, double> device_perf = GetDeviceInfo(op_features.device());
+  Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.first));
   VLOG(1) << "Op:" << op_features.op() << " GOps:" << operations / 1e9
           << " Execution Time (ns):" << compute_cost.count();
 
@@ -397,19 +382,14 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
       CalculateOutputSize(op_features, &found_unknown_shapes);
   double total_io_size = total_input_size + total_output_size;
 
-  Costs::NanoSeconds memory_cost(
-      std::ceil(total_io_size / device_perf.gb_per_sec));
+  Costs::NanoSeconds memory_cost(std::ceil(total_io_size / device_perf.second));
   VLOG(1) << "Op:" << op_features.op() << " Size (KB):" << (total_io_size) / 1e3
           << " Memory Time (ns):" << memory_cost.count();
 
   Costs costs;
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
-  if (compute_memory_overlap_) {
-    costs.execution_time = std::max(compute_cost, memory_cost);
-  } else {
-    costs.execution_time = compute_cost + memory_cost;
-  }
+  costs.execution_time = compute_cost + memory_cost;
   costs.inaccurate = found_unknown_shapes;
   return costs;
 }
@@ -504,11 +484,16 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
   return CountMatMulOperations(op_features, nullptr, found_unknown_shapes);
 }
 
-// TODO(nishantpatil): Create separate estimator for Sparse Matmul
 int64 OpLevelCostEstimator::CountMatMulOperations(
     const OpInfo& op_features, MatMulDimensions* mat_mul,
     bool* found_unknown_shapes) const {
   double ops = 0;
+
+  // TODO(nishantpatil): Create separate estimator for Sparse Matmul
+  if ((op_features.op() != kMatMul) && (op_features.op() != kSparseMatMul)) {
+    LOG(ERROR) << "Invalid Operation";
+    return ops;
+  }
 
   // first matrix
   auto& a_matrix = op_features.inputs(0);
@@ -676,20 +661,20 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   return ops;
 }
 
-// TODO(cliffy): Dedup this method and CountConv2DBackpropFilterOperations.
-int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
+// TODO(cliffy): Dedup this method and CountConv2DBackPropFilterOperations.
+int64 OpLevelCostEstimator::CountConv2DBackPropInputOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
     bool* found_unknown_shapes) const {
   int64 ops = 0;
 
-  if (op_features.op() != kConv2dBackpropInput) {
+  if (op_features.op() != kConv2dBackPropInput) {
     LOG(ERROR) << "Invalid Operation";
     return ops;
   }
 
   if (op_features.outputs_size() != 1) {
     // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackpropInput op.";
+    LOG(ERROR) << "No output shape in Conv2DBackPropInput op.";
     return ops;
   }
 
@@ -704,7 +689,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
   ops *= conv_dims.iz * conv_dims.oz;
   ops *= kOpsPerMac;
 
-  VLOG(1) << "Operations for Conv2DBackpropInput " << ops;
+  VLOG(1) << "Operations for Conv2DBackPropInput " << ops;
 
   if (returned_conv_dims != nullptr) {
     *returned_conv_dims = conv_dims;
@@ -712,18 +697,18 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
   return ops;
 }
 
-int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
+int64 OpLevelCostEstimator::CountConv2DBackPropFilterOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
     bool* found_unknown_shapes) const {
   int64 ops = 0;
-  if (op_features.op() != kConv2dBackpropFilter) {
+  if (op_features.op() != kConv2dBackPropFilter) {
     LOG(ERROR) << "Invalid Operation";
     return ops;
   }
 
   if (op_features.outputs_size() != 1) {
     // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackpropFilter op.";
+    LOG(ERROR) << "No output shape in Conv2DBackPropFilter op.";
     return ops;
   }
 
@@ -738,7 +723,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
   ops *= conv_dims.iz * conv_dims.oz;
   ops *= kOpsPerMac;
 
-  VLOG(1) << "Operations for Conv2DBackpropFilter" << ops;
+  VLOG(1) << "Operations for Conv2DBackPropFilter" << ops;
 
   if (returned_conv_dims != nullptr) {
     *returned_conv_dims = conv_dims;
@@ -748,7 +733,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
 
 int64 OpLevelCostEstimator::CalculateTensorElementCount(
     const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
-  VLOG(2) << "   with " << tensor.dtype() << " tensor of shape "
+  VLOG(1) << "   with " << tensor.dtype() << " tensor of shape "
           << tensor.shape().DebugString();
   int64 tensor_size = 1;
   int num_dims = std::max(1, tensor.shape().dim_size());
@@ -814,8 +799,7 @@ int64 OpLevelCostEstimator::CalculateOutputSize(
   return total_output_size;
 }
 
-Costs OpLevelCostEstimator::PredictConv2D(const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+Costs OpLevelCostEstimator::PredictConv2D(const OpInfo& op_features) const {
   bool found_unknown_shapes = false;
   auto costs = PredictOpCountBasedCost(
       CountConv2DOperations(op_features, &found_unknown_shapes), op_features);
@@ -823,32 +807,29 @@ Costs OpLevelCostEstimator::PredictConv2D(const OpContext& op_context) const {
   return costs;
 }
 
-Costs OpLevelCostEstimator::PredictConv2DBackpropInput(
-    const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+Costs OpLevelCostEstimator::PredictConv2DBackPropInput(
+    const OpInfo& op_features) const {
   bool found_unknown_shapes = false;
   auto costs =
-      PredictOpCountBasedCost(CountConv2DBackpropInputOperations(
+      PredictOpCountBasedCost(CountConv2DBackPropInputOperations(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
   return costs;
 }
 
-Costs OpLevelCostEstimator::PredictConv2DBackpropFilter(
-    const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+Costs OpLevelCostEstimator::PredictConv2DBackPropFilter(
+    const OpInfo& op_features) const {
   bool found_unknown_shapes = false;
   auto costs =
-      PredictOpCountBasedCost(CountConv2DBackpropFilterOperations(
+      PredictOpCountBasedCost(CountConv2DBackPropFilterOperations(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
   return costs;
 }
 
-Costs OpLevelCostEstimator::PredictMatMul(const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+Costs OpLevelCostEstimator::PredictMatMul(const OpInfo& op_features) const {
   bool found_unknown_shapes = false;
   auto costs = PredictOpCountBasedCost(
       CountMatMulOperations(op_features, &found_unknown_shapes), op_features);
@@ -856,15 +837,13 @@ Costs OpLevelCostEstimator::PredictMatMul(const OpContext& op_context) const {
   return costs;
 }
 
-Costs OpLevelCostEstimator::PredictNoOp(const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+Costs OpLevelCostEstimator::PredictNoOp(const OpInfo& op_features) const {
   VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
   return Costs::ZeroCosts();
 }
 
 Costs OpLevelCostEstimator::PredictBatchMatMul(
-    const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+    const OpInfo& op_features) const {
   bool found_unknown_shapes = false;
   Costs costs = PredictOpCountBasedCost(
       CountBatchMatMulOperations(op_features, &found_unknown_shapes),
@@ -873,8 +852,7 @@ Costs OpLevelCostEstimator::PredictBatchMatMul(
   return costs;
 }
 
-Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
-  const auto& op_features = op_context.op_info;
+Costs OpLevelCostEstimator::PredictMetadata(const OpInfo& op_features) const {
   Costs costs;
   costs.max_memory = CalculateOutputSize(op_features, &costs.inaccurate);
   // Metadata operations are so cheap we assume they take the minimum amount of

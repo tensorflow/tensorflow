@@ -158,39 +158,6 @@ Notes:
    optionally choose names for the variables in the checkpoint files.
 
 
-### Inspect variables in a checkpoint
-
-We can quickly inspect variables in a checkpoint with the 
-[`inspect_checkpoint`](https://www.tensorflow.org/code/tensorflow/python/tools/inspect_checkpoint.py) library.
-
-Continuing from the save/restore examples shown earlier:
-
-```python
-# import the inspect_checkpoint library
-from tensorflow.python.tools import inspect_checkpoint as chkp
-
-# print all tensors in checkpoint file
-chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='', all_tensors=True)
-
-# tensor_name:  v1
-# [ 1.  1.  1.]
-# tensor_name:  v2
-# [-1. -1. -1. -1. -1.]
-
-# print only tensor v1 in checkpoint file
-chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='v1', all_tensors=False)
-
-# tensor_name:  v1
-# [ 1.  1.  1.]
-
-# print only tensor v2 in checkpoint file
-chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='v2', all_tensors=False)
-
-# tensor_name:  v2
-# [-1. -1. -1. -1. -1.]
-```
-
-
 <a name="models"></a>
 ## Overview of saving and restoring models
 
@@ -238,7 +205,7 @@ For example, the following code suggests a typical way to use
 ```python
 export_dir = ...
 ...
-builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
+builder = tf.saved_model_builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph_and_variables(sess,
@@ -476,7 +443,7 @@ For local deployment, you can serve your model using
 [TensorFlow Serving](http://github.com/tensorflow/serving), an open-source project that loads a
 SavedModel and exposes it as a [gRPC](http://www.grpc.io/) service.
 
-First, [install TensorFlow Serving](http://github.com/tensorflow/serving).
+First, [install TensorFlow Serving](https://tensorflow.github.io/serving/setup#prerequisites).
 
 Then build and run the local model server, substituting `$export_dir_base` with
 the path to the SavedModel you exported above:
@@ -912,6 +879,3 @@ of checkpoints and assets:
 
 Each graph is associated with a specific set of tags, which enables
 identification during a load or restore operation.
-
-
-

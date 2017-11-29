@@ -18,10 +18,6 @@ limitations under the License.
 #include <cmath>
 #include "tensorflow/core/platform/test.h"
 
-// LLVM does not support <cfenv>. Disable these tests when building with it.
-// See b/35384639 for more information.
-#if !defined(__clang__) || !defined(__OPTIMIZE__)
-
 namespace tensorflow {
 namespace {
 
@@ -98,5 +94,3 @@ TEST(SetScopedSetRound, Scoped) {
 
 }  // namespace
 }  // namespace tensorflow
-
-#endif  // !defined(__clang__) || !defined(__OPTIMIZE__)

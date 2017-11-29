@@ -26,53 +26,38 @@ namespace grappler {
 // Kahn's algorithm is implemented.
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
 void TopologicalSort(GraphDef* graph) {
-  OutputMap output_map(graph);
-  std::vector<NodeDef*> ready_nodes;
-  ready_nodes.reserve(graph->node_size());
-  int front = 0;
-  int back = 0;
+  NodeMap node_map(graph);
+  std::deque<const NodeDef*> ready_nodes;
   std::unordered_map<const NodeDef*, int> ready_inputs;
-  for (int i = 0; i < graph->node_size(); i++) {
-    auto node = graph->mutable_node(i);
-    if (node->input_size() == 0) {
-      ready_nodes.push_back(node);
-      back++;
+  for (const NodeDef& node : graph->node()) {
+    if (node.input_size() == 0) {
+      ready_nodes.push_back(&node);
     }
-    if (IsMerge(*node)) {
-      ready_inputs[node] = 0;
-      for (const auto& input : node->input()) {
-        if (IsNextIteration(*output_map.GetNode(input))) {
-          ready_inputs[node]++;
+    if (node.op() == "Merge") {
+      ready_inputs[&node] = 0;
+      for (const auto& input : node.input()) {
+        if (IsNextIteration(*node_map.GetNode(input))) {
+          ready_inputs[&node]++;
         }
       }
     } else {
-      ready_inputs[node] = 0;
+      ready_inputs[&node] = 0;
     }
   }
-
-  while (front != back) {
-    auto ready_node = ready_nodes[front];
-    for (const auto& fanout_pair : output_map.GetOutputs(ready_node->name())) {
-      auto fanout = fanout_pair.first;
-      ready_inputs[fanout] += fanout_pair.second;
+  GraphDef sorted_graph;
+  while (!ready_nodes.empty()) {
+    auto ready_node = ready_nodes.front();
+    *sorted_graph.add_node() = *ready_node;
+    for (const auto& fanout : node_map.GetOutputs(ready_node->name())) {
+      ready_inputs[fanout]++;
       if (ready_inputs[fanout] == fanout->input_size()) {
         ready_nodes.push_back(fanout);
-        back++;
       }
     }
-    front++;
+    ready_nodes.pop_front();
   }
-
-  if (back == graph->node_size()) {
-    GraphDef new_graph;
-    new_graph.mutable_node()->Reserve(graph->node_size());
-    for (int i = 0; i < graph->node_size(); i++) {
-      auto new_node = new_graph.add_node();
-      new_node->Swap(ready_nodes[i]);
-    }
-    graph->mutable_node()->Swap(new_graph.mutable_node());
-  } else {
-    LOG(ERROR) << "The graph couldn't be sorted in topological order.";
+  if (sorted_graph.node_size() == graph->node_size()) {
+    graph->mutable_node()->Swap(sorted_graph.mutable_node());
   }
 }
 

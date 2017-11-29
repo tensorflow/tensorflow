@@ -24,7 +24,7 @@ namespace grappler {
 
 namespace {
 // Wrangles the minimum number of proto fields to set up a matrix.
-void DescribeMatrix(int rows, int columns, OpInfo* op_features) {
+void DescribeMatrix(int rows, int columns, OpInfo *op_features) {
   auto input = op_features->add_inputs();
   auto shape = input->mutable_shape();
   auto shape_rows = shape->add_dim();
@@ -43,31 +43,31 @@ void SetCpuDevice(OpInfo* op_features) {
 }
 
 // Returns an OpInfo for MatMul with the minimum set of fields set up.
-OpContext DescribeMatMul(int m, int n, int l, int k) {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("MatMul");
+OpInfo DescribeMatMul(int m, int n, int l, int k) {
+  OpInfo op_features;
+  SetCpuDevice(&op_features);
+  op_features.set_op("MatMul");
 
-  DescribeMatrix(m, l, &op_context.op_info);
-  DescribeMatrix(k, n, &op_context.op_info);
-  return op_context;
+  DescribeMatrix(m, l, &op_features);
+  DescribeMatrix(k, n, &op_features);
+  return op_features;
 }
 
 // Returns an OpInfo for MatMul with unknown input shapes.
-OpContext DescribeMatMulUnknownShape() {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("MatMul");
+OpInfo DescribeMatMulUnknownShape() {
+  OpInfo op_features;
+  SetCpuDevice(&op_features);
+  op_features.set_op("MatMul");
 
-  auto input = op_context.op_info.add_inputs();
+  auto input = op_features.add_inputs();
   auto shape = input->mutable_shape();
   shape->set_unknown_rank(true);
 
-  input = op_context.op_info.add_inputs();
+  input = op_features.add_inputs();
   shape = input->mutable_shape();
   shape->set_unknown_rank(true);
 
-  return op_context;
+  return op_features;
 }
 
 // Wrangles the minimum number of proto fields to set up an input of
@@ -83,21 +83,21 @@ void DescribeArbitraryRankInput(const std::vector<int>& dims, DataType dtype,
 }
 
 // Returns an OpInfo for a BatchMatMul
-OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
-                              const std::vector<int>& dims_b) {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("BatchMatMul");
+OpInfo DescribeBatchMatMul(const std::vector<int>& dims_a,
+                           const std::vector<int>& dims_b) {
+  OpInfo op_features;
+  SetCpuDevice(&op_features);
+  op_features.set_op("BatchMatMul");
 
-  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
-  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
-  return op_context;
+  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_features);
+  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_features);
+  return op_features;
 }
 
 // Wrangles the minimum number of proto fields to set up a 4D Tensor for cost
 // estimation purposes.
 void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
-                      OpInfo* op_features) {
+                      OpInfo *op_features) {
   auto input = op_features->add_inputs();
   auto shape = input->mutable_shape();
   shape->add_dim()->set_size(dim0);
@@ -108,26 +108,26 @@ void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
 }
 
 // Returns an OpInfo for Conv2D with the minimum set of fields set up.
-OpContext DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2,
-                              int kx, int ky, int oz) {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("Conv2D");
+OpInfo DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2, int kx,
+                           int ky, int oz) {
+  OpInfo op_features;
+  SetCpuDevice(&op_features);
+  op_features.set_op("Conv2D");
 
-  DescribeTensor4D(batch, ix, iy, iz1, &op_context.op_info);
-  DescribeTensor4D(kx, ky, iz2, oz, &op_context.op_info);
-  return op_context;
+  DescribeTensor4D(batch, ix, iy, iz1, &op_features);
+  DescribeTensor4D(kx, ky, iz2, oz, &op_features);
+  return op_features;
 }
 
-OpContext DescribeOp(const string& op, int size1, int size2) {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op(op);
+OpInfo DescribeOp(const string& op, int size1, int size2) {
+  OpInfo op_features;
+  SetCpuDevice(&op_features);
+  op_features.set_op(op);
 
-  DescribeTensor4D(size1, 1, 1, 1, &op_context.op_info);
-  DescribeTensor4D(2 * size1, size2, 1, 1, &op_context.op_info);
+  DescribeTensor4D(size1, 1, 1, 1, &op_features);
+  DescribeTensor4D(2 * size1, size2, 1, 1, &op_features);
 
-  auto output = op_context.op_info.add_outputs();
+  auto output = op_features.add_outputs();
   auto shape = output->mutable_shape();
   shape->add_dim()->set_size(2 * size1);
   shape->add_dim()->set_size(size2);
@@ -135,15 +135,15 @@ OpContext DescribeOp(const string& op, int size1, int size2) {
   shape->add_dim()->set_size(1);
   output->set_dtype(DT_FLOAT);
 
-  SetCpuDevice(&op_context.op_info);
-  return op_context;
+  SetCpuDevice(&op_features);
+  return op_features;
 }
 }  // namespace
 
 class OpLevelCostEstimatorTest : public ::testing::Test {
  protected:
-  Costs PredictCosts(const OpContext& op_context) const {
-    return estimator_.PredictCosts(op_context);
+  Costs PredictCosts(const OpInfo& op_features) const {
+    return estimator_.PredictCosts(op_features);
   }
 
   int64 CountMatMulOperations(const OpInfo& op_features,
@@ -157,10 +157,6 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
                                                  found_unknown_shapes);
   }
 
-  void SetComputeMemoryOverlap(bool value) {
-    estimator_.compute_memory_overlap_ = value;
-  }
-
   OpLevelCostEstimator estimator_;
 };
 
@@ -170,16 +166,6 @@ TEST_F(OpLevelCostEstimatorTest, DummyExecutionTime) {
   EXPECT_EQ(Costs::Duration(200), cost.compute_time);
   EXPECT_EQ(Costs::Duration(2200), cost.execution_time);
   EXPECT_TRUE(cost.inaccurate);
-}
-
-TEST_F(OpLevelCostEstimatorTest, ExecutionTimeSumOrMax) {
-  SetComputeMemoryOverlap(true);
-  auto cost = PredictCosts(DescribeOp("Dummy", 1000, 1));
-  EXPECT_EQ(Costs::Duration(2000), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(200), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(2000), cost.execution_time);  // max(2000, 200)
-  EXPECT_TRUE(cost.inaccurate);
-  SetComputeMemoryOverlap(false);  // Set it back to default.
 }
 
 TEST_F(OpLevelCostEstimatorTest, MulExecutionTime) {
@@ -228,21 +214,20 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
   bool matmul_inaccurate = false;
   bool batch_matmul_inaccurate = false;
   EXPECT_EQ(
-      CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
-                            &matmul_inaccurate),
-      CountBatchMatMulOperations(DescribeBatchMatMul({2, 4}, {4, 2}).op_info,
+      CountMatMulOperations(DescribeMatMul(2, 2, 4, 4), &matmul_inaccurate),
+      CountBatchMatMulOperations(DescribeBatchMatMul({2, 4}, {4, 2}),
                                  &batch_matmul_inaccurate));
   EXPECT_EQ(matmul_inaccurate, batch_matmul_inaccurate);
-  EXPECT_EQ(10 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
+  EXPECT_EQ(10 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4),
                                        &matmul_inaccurate),
             CountBatchMatMulOperations(
-                DescribeBatchMatMul({10, 2, 4}, {-1, 10, 4, 2}).op_info,
+                DescribeBatchMatMul({10, 2, 4}, {-1, 10, 4, 2}),
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
-  EXPECT_EQ(20 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
+  EXPECT_EQ(20 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4),
                                        &matmul_inaccurate),
             CountBatchMatMulOperations(
-                DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}).op_info,
+                DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}),
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
 }

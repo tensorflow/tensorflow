@@ -216,12 +216,9 @@ void RestoreTensor(OpKernelContext* context,
 
   if (output_shape.num_elements() == 0) return;
 
-#define READER_COPY(T)                                                \
-  case DataTypeToEnum<T>::value:                                      \
-    OP_REQUIRES(context,                                              \
-                reader->CopySliceData(tensor_name, slice_to_load,     \
-                                      t->flat<T>().data()),           \
-                errors::InvalidArgument("Error copying slice data")); \
+#define READER_COPY(T)                                                      \
+  case DataTypeToEnum<T>::value:                                            \
+    reader->CopySliceData(tensor_name, slice_to_load, t->flat<T>().data()); \
     break;
 
   switch (type) {

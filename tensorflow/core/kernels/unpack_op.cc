@@ -69,8 +69,6 @@ class UnpackOp : public OpKernel {
                                  std::numeric_limits<Eigen::DenseIndex>::max()),
         errors::InvalidArgument("output size must fit in Eigen DenseIndex"));
 
-// This optimization is currently not applicable for SYCL devices
-#ifndef TENSORFLOW_USE_SYCL
     // Special case: Aligned, so we can share the underlying buffer.
     //
     // Apply this optimization conservatively: if input is aligned,
@@ -87,7 +85,6 @@ class UnpackOp : public OpKernel {
       }
       return;
     }
-#endif  // TENSORFLOW_USE_SYCL
 
     int64 before_dim = 1;
     for (int i = 0; i < axis; ++i) {
@@ -153,12 +150,6 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
-REGISTER_KERNEL_BUILDER(Name("Unpack")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("value")
-                            .HostMemory("output")
-                            .TypeConstraint<int64>("T"),
-                        UnpackOp<CPUDevice, int64>);
 
 #endif  // GOOGLE_CUDA
 
@@ -176,12 +167,6 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
-REGISTER_KERNEL_BUILDER(Name("Unpack")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("value")
-                            .HostMemory("output")
-                            .TypeConstraint<int64>("T"),
-                        UnpackOp<CPUDevice, int64>);
 #undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 

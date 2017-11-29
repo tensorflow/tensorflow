@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
@@ -425,9 +424,6 @@ class MutableRunGraphResponseWrapper {
   // execution, if necessary.
   virtual StepStats* mutable_step_stats() = 0;
   virtual CostGraphDef* mutable_cost_graph() = 0;
-  virtual size_t num_partition_graphs() const = 0;
-  virtual GraphDef* mutable_partition_graph(size_t i) = 0;
-  virtual void AddPartitionGraph(const GraphDef& partition_graph) = 0;
 
  protected:
   // Returns a mutable protobuf message that represents the contents of
@@ -455,9 +451,6 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddRecv(const string& key, const Tensor& value) override;
   StepStats* mutable_step_stats() override;
   CostGraphDef* mutable_cost_graph() override;
-  size_t num_partition_graphs() const override;
-  GraphDef* mutable_partition_graph(size_t i) override;
-  void AddPartitionGraph(const GraphDef& partition_graph) override;
 
  protected:
   // NOTE: This method is not implemented. See
@@ -468,7 +461,6 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   gtl::InlinedVector<std::pair<string, Tensor>, 4> recvs_;
   StepStats step_stats_;
   CostGraphDef cost_graph_;
-  std::vector<GraphDef> partition_graphs_;
 };
 
 // Proto-based message wrapper for use on the client side of the RunGraph RPC.
@@ -482,9 +474,6 @@ class OwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddRecv(const string& key, const Tensor& value) override;
   StepStats* mutable_step_stats() override;
   CostGraphDef* mutable_cost_graph() override;
-  size_t num_partition_graphs() const override;
-  GraphDef* mutable_partition_graph(size_t i) override;
-  void AddPartitionGraph(const GraphDef& partition_graph) override;
 
  protected:
   RunGraphResponse* get_proto() override;
@@ -506,9 +495,6 @@ class NonOwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddRecv(const string& key, const Tensor& value) override;
   StepStats* mutable_step_stats() override;
   CostGraphDef* mutable_cost_graph() override;
-  size_t num_partition_graphs() const override;
-  GraphDef* mutable_partition_graph(size_t i) override;
-  void AddPartitionGraph(const GraphDef& partition_graph) override;
 
  protected:
   RunGraphResponse* get_proto() override;

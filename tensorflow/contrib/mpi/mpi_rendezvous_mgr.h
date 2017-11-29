@@ -114,7 +114,7 @@ class MPIRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   MPIRemoteRendezvous(const WorkerEnv* env, int64 step_id, const MPIUtils* util,
                       BaseRendezvousMgr* mgr_)
-      : BaseRemoteRendezvous(env, step_id),
+      : BaseRemoteRendezvous(env, step_id, false),
         mpiutils_(util),
         rendezvous_mgr_(mgr_) {}
 

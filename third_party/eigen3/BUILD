@@ -26,7 +26,6 @@ cc_library(
         "Eigen/Eigenvalues",
         "Eigen/QR",
         "Eigen/SVD",
-        "unsupported/Eigen/MatrixFunctions",
         "unsupported/Eigen/SpecialFunctions",
         "unsupported/Eigen/CXX11/ThreadPool",
         "unsupported/Eigen/CXX11/Tensor",
@@ -38,13 +37,4 @@ cc_library(
         "@eigen_archive//:eigen",
         "@local_config_sycl//sycl:sycl",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = ["**/OWNERS"],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

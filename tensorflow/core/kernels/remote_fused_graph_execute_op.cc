@@ -41,8 +41,7 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
           RemoteFusedGraphExecuteUtils::GetExecutorBuildFunc(
               execute_info_.executor_name());
       if (build_func != nullptr) {
-        TF_CHECK_OK((*build_func)(&remote_fused_graph_executor_));
-        CHECK(remote_fused_graph_executor_->IsEnabled());
+        Status status = (*build_func)(&remote_fused_graph_executor_);
       } else {
         LOG(ERROR) << "Executor not found for "
                    << execute_info_.executor_name();

@@ -32,8 +32,7 @@ ZlibInputStream::ZlibInputStream(
       z_stream_input_(new Bytef[input_buffer_capacity_]),
       z_stream_output_(new Bytef[output_buffer_capacity_]),
       zlib_options_(zlib_options),
-      z_stream_(new z_stream),
-      bytes_read_(0) {
+      z_stream_(new z_stream) {
   InitZlibBuffer();
 }
 
@@ -46,7 +45,6 @@ ZlibInputStream::~ZlibInputStream() {
 Status ZlibInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   InitZlibBuffer();
-  bytes_read_ = 0;
   return Status::OK();
 }
 
@@ -129,7 +127,6 @@ size_t ZlibInputStream::ReadBytesFromCache(size_t bytes_to_read,
     result->append(next_unread_byte_, can_read_bytes);
     next_unread_byte_ += can_read_bytes;
   }
-  bytes_read_ += can_read_bytes;
   return can_read_bytes;
 }
 
@@ -173,7 +170,8 @@ Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, string* result) {
   return Status::OK();
 }
 
-int64 ZlibInputStream::Tell() const { return bytes_read_; }
+// TODO(srbs): Implement this.
+int64 ZlibInputStream::Tell() const { return -1; }
 
 Status ZlibInputStream::Inflate() {
   int error = inflate(z_stream_.get(), zlib_options_.flush_mode);

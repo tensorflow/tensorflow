@@ -70,7 +70,7 @@ class UserComputation {
 
   // Enqueues a pad instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddPadInstruction(
-      const PadRequest& pad_request);
+      const PadRequest& parameter_request);
 
   // Enqueues a tracing instruction onto this user computation.
   // Returns an error status if the operand cannot be resolved.
@@ -89,10 +89,6 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddBatchNormTrainingInstruction(
       const BatchNormTrainingRequest& batch_norm_training_request);
 
-  // Enqueues a batch norm inference instruction onto this user computation.
-  StatusOr<ComputationDataHandle> AddBatchNormInferenceInstruction(
-      const BatchNormInferenceRequest& batch_norm_inference_request);
-
   // Enqueues a batch norm grad instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddBatchNormGradInstruction(
       const BatchNormGradRequest& batch_norm_grad_request);
@@ -105,7 +101,7 @@ class UserComputation {
   // Enqueues a ternary instruction onto this user computation.
   // Returns an error status if the operand indices are out of bounds.
   StatusOr<ComputationDataHandle> AddTernaryInstruction(
-      const TernaryOpRequest& ternary_request);
+      const TernaryOpRequest& request);
 
   // Enqueues a variadic instruction onto this user computation.
   // Returns an error status if the operand indices are out of bounds.
@@ -179,30 +175,26 @@ class UserComputation {
 
   // Enqueues a concatenate instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddConcatenateInstruction(
-      const ConcatenateRequest& concatenate_request);
+      const ConcatenateRequest& slice_request);
 
   // Enqueues a convert instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddConvertInstruction(
       const ConvertRequest& convert_request);
 
-  // Enqueues a bitcast element instruction onto this user computation.
-  StatusOr<ComputationDataHandle> AddBitcastConvertInstruction(
-      const ConvertRequest& convert_request);
-
   // Enqueues a reduce instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddReduceInstruction(
       const ReduceRequest& reduce_request,
-      const UserComputation& to_apply_computation);
+      const UserComputation& reduction_computation);
 
   // Enqueues a windowed reduce instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddReduceWindowInstruction(
       const ReduceWindowRequest& reduce_window_request,
-      const UserComputation& to_apply_computation);
+      const UserComputation& reduction_computation);
 
   // Enqueues a select-and-scatter instruction onto this user
   // computation.
   StatusOr<ComputationDataHandle> AddSelectAndScatterInstruction(
-      const SelectAndScatterRequest& select_and_scatter_request,
+      const SelectAndScatterRequest& scatter_to_selected_window_element_request,
       const UserComputation& select_computation,
       const UserComputation& scatter_computation);
 
@@ -254,11 +246,9 @@ class UserComputation {
   StatusOr<std::shared_ptr<const ProgramShape>> ComputeProgramShape(
       VersionedComputationHandle::Version version) const;
 
-  // Returns true if the given data handle does not depend on any parameter with
-  // index higher then num_parameters. That is, the value can be computed at
-  // compile time if we know the first num_parameters arguments.
-  StatusOr<bool> IsConstant(const ComputationDataHandle& handle,
-                            int64 num_parameters);
+  // Returns true if the given data handle does not depend on any
+  // parameters. That is, the value can be computed at compile time.
+  StatusOr<bool> IsConstant(const ComputationDataHandle& handle);
 
   // Returns the output shape of the operation indicated by the given handle.
   StatusOr<Shape> GetShape(const ComputationDataHandle& handle);
@@ -266,10 +256,6 @@ class UserComputation {
   // Sets metadata on the Hlo instruction referenced by the given handle.
   Status SetOpMetadata(const ComputationDataHandle& handle,
                        const OpMetadata& metadata);
-
-  // Sets the device assignment on the Hlo instruction referenced by 'handle'.
-  Status SetOpSharding(const ComputationDataHandle& handle,
-                       const OpSharding& sharding);
 
   // Builds a HLO computation from the UserComputation. The parameter "resolver"
   // is a function which returns a pointer to the HloComputation corresponding

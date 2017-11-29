@@ -24,7 +24,7 @@ namespace port {
 // hardware. The first time it's called it will run lightweight checks of
 // available SIMD acceleration features and log warnings about any that aren't
 // used.
-void InfoAboutUnusedCPUFeatures();
+void WarnAboutUnusedCPUFeatures();
 
 }  // namespace port
 }  // namespace tensorflow

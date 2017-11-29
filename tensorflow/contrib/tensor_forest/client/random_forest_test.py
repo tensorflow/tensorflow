@@ -35,8 +35,7 @@ class TensorForestTrainerTests(test.TestCase):
         max_nodes=1000,
         num_classes=3,
         num_features=4,
-        split_after_samples=20,
-        inference_tree_paths=True)
+        split_after_samples=20)
     classifier = random_forest.TensorForestEstimator(hparams.fill())
 
     iris = base.load_iris()
