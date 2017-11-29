@@ -40,12 +40,12 @@ def decode_libsvm(content, num_features, dtype=None, label_dtype=None):
     label_dtype: The type of the output label tensor. Default to tf.int64.
 
   Returns:
-    label: A `Tensor` of the same shape as content.
-    feature: A `SparseTensor` of the shape `[input_shape, num_features]`.
+    features: A `SparseTensor` of the shape `[input_shape, num_features]`.
+    labels: A `Tensor` of the same shape as content.
   """
-  label, indices, values, shape = gen_libsvm_ops.decode_libsvm(
+  labels, indices, values, shape = gen_libsvm_ops.decode_libsvm(
       content, num_features, dtype=dtype, label_dtype=label_dtype)
-  return label, sparse_tensor.SparseTensor(indices, values, shape)
+  return sparse_tensor.SparseTensor(indices, values, shape), labels
 
 
 ops.NotDifferentiable('DecodeLibSVM')
