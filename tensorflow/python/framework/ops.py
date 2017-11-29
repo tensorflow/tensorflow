@@ -1635,8 +1635,6 @@ class Operation(object):
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
 
-    self._graph._add_op(self)  # pylint: disable=protected-access
-
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
     """Regroups a flat list of input tensors into scalar and sequence inputs.
 
@@ -3100,7 +3098,6 @@ class Graph(object):
         input_types=input_types,
         original_op=self._default_original_op,
         op_def=op_def)
-
     self._create_op_helper(ret, compute_shapes=compute_shapes,
                            compute_device=compute_device)
     return ret
@@ -3139,6 +3136,8 @@ class Graph(object):
     # compute_shapes argument.
     if op._c_op or compute_shapes:  # pylint: disable=protected-access
       set_shapes_for_outputs(op)
+    # TODO(b/XXXX): move to Operation.__init__ once _USE_C_API flag is removed.
+    self._add_op(op)
 
     # Apply any additional attributes requested. Do not overwrite any existing
     # attributes.
