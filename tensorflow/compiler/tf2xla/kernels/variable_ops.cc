@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
@@ -121,5 +122,31 @@ class ResourceGatherOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ResourceGather").TypeConstraint("dtype", kNumericTypes),
                 ResourceGatherOp);
 
+class VariableShapeOp : public XlaOpKernel {
+ public:
+  explicit VariableShapeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType dtype;
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &dtype, &shape));
+    const int rank = shape.dims();
+    Tensor shape_constant(DT_INT32, TensorShape({rank}));
+    auto vec = shape_constant.vec<int32>();
+    // TODO(dga): support int64.  b/28119922.
+    for (int i = 0; i < rank; ++i) {
+      int64 dim_size = shape.dim_size(i);
+      OP_REQUIRES(
+          ctx, FastBoundsCheck(dim_size, std::numeric_limits<int32>::max()),
+          errors::InvalidArgument("Shape does not support tensors > int32max",
+                                  " but dim ", i, " is ", dim_size));
+      vec(i) = static_cast<int32>(dim_size);
+    }
+
+    ctx->SetConstantOutput(0, shape_constant);
+  }
+};
+
+REGISTER_XLA_OP(Name("VariableShape"), VariableShapeOp);
 }  // namespace
 }  // namespace tensorflow
