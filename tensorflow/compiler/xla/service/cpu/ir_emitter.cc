@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
+#include "tensorflow/compiler/xla/service/cpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
@@ -1892,7 +1893,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   VLOG(2) << "HandleSlice: " << slice->ToString();
   auto operand = slice->operand(0);
   // The code below emits a sequential loop nest. For the parallel backend, use
-  // EmitParallelTargetElementLoop() which respects dynamic loop bounds.
+  // ParallelLoopEmitter which respects dynamic loop bounds.
   if (ShouldEmitParallelLoopFor(*slice)) {
     return DefaultAction(slice);
   }
@@ -2997,68 +2998,25 @@ Status IrEmitter::EmitTargetElementLoop(
 
   } else {
     if (ShouldEmitParallelLoopFor(*target_op)) {
-      TF_RETURN_IF_ERROR(EmitParallelTargetElementLoop(
-          target_shape, element_generator, IrName(target_op), &target_array));
+      // Emit code to read dynamic loop bounds from compute function argument.
+      ParallelLoopEmitter::LoopBounds dynamic_loop_bounds(
+          num_dynamic_loop_bounds_);
+      for (int i = 0; i < num_dynamic_loop_bounds_; ++i) {
+        dynamic_loop_bounds[i].first =
+            compute_function_->GetDynamicLoopBound(i * 2 + 0);
+        dynamic_loop_bounds[i].second =
+            compute_function_->GetDynamicLoopBound(i * 2 + 1);
+      }
+      // Emit parallel loop with dynamic loop bounds for most-major dimensions.
+      TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, target_array,
+                                             &dynamic_loop_bounds, &ir_builder_)
+                             .EmitLoop(IrName(target_op)));
     } else {
       TF_RETURN_IF_ERROR(
           llvm_ir::LoopEmitter(element_generator, target_array, &ir_builder_)
               .EmitLoop(IrName(target_op)));
     }
   }
-  return Status::OK();
-}
-
-Status IrEmitter::EmitParallelTargetElementLoop(
-    const Shape& target_shape,
-    const llvm_ir::ElementGenerator& element_generator,
-    tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array) {
-  CHECK(!ShapeUtil::IsTuple(target_shape));
-  CHECK(!ShapeUtil::IsScalar(target_shape));
-
-  // Emit code to read dynamic loop bounds from function argument 4.
-  std::vector<llvm::Value*> dynamic_loop_bounds(2 * num_dynamic_loop_bounds_);
-  for (int i = 0; i < 2 * num_dynamic_loop_bounds_; ++i) {
-    dynamic_loop_bounds[i] = compute_function_->GetDynamicLoopBound(i);
-  }
-
-  llvm_ir::ForLoopNest loop_nest(loop_name, &ir_builder_);
-  const int64 num_dims = target_shape.dimensions_size();
-  llvm_ir::IrArray::Index array_index(num_dims);
-
-  // Add loops from outer-most to inner-most dimensions.
-  for (int i = target_shape.layout().minor_to_major_size() - 1; i >= 0; --i) {
-    const int64 dimension = target_shape.layout().minor_to_major(i);
-    const int bounds_index = num_dims - 1 - i;
-    if (bounds_index < num_dynamic_loop_bounds_) {
-      // Emit dynamic loop bounds for this dimension. Dynamic loop bounds
-      // are read from ir function dynamic loop bounds argument.
-      llvm::Value* start_index = dynamic_loop_bounds[bounds_index * 2 + 0];
-      llvm::Value* end_index = dynamic_loop_bounds[bounds_index * 2 + 1];
-
-      std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
-          /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension),
-          start_index, end_index);
-      array_index[dimension] = loop->GetIndVarValue();
-    } else {
-      // Emit static loop bounds for this dimension.
-      std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
-          /*start_index=*/0,
-          /*end_index=*/target_shape.dimensions(dimension),
-          /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension));
-      array_index[dimension] = loop->GetIndVarValue();
-    }
-  }
-  // Point IR builder at inner loop BB.
-  SetToFirstInsertPoint(loop_nest.GetInnerLoopBodyBasicBlock(), &ir_builder_);
-
-  // Emit loop body.
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
-                      element_generator(array_index));
-  target_array->EmitWriteArrayElement(array_index, target_element,
-                                      &ir_builder_);
-  // Point IR builder at outer loop exit BB.
-  SetToFirstInsertPoint(loop_nest.GetOuterLoopExitBasicBlock(), &ir_builder_);
-
   return Status::OK();
 }
 
