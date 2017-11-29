@@ -514,6 +514,7 @@ class _InfeedThreadController(_InfeedOutfeedThreadBaseController):
           exc_info=1
       )
       time.sleep(120)
+      logging.error('Closing the failed session.')
       session.close()
 
   def join(self):
