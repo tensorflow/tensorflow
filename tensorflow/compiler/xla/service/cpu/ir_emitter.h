@@ -336,15 +336,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       HloInstruction* target_op, tensorflow::StringPiece desc,
       const llvm_ir::ElementGenerator& element_generator);
 
-  // Emit IR to perform a computation for every element in a partition/slice of
-  // 'target_shape'. The loop bounds for the outer-dimension partitions are
-  // passed into the compute function as a runtime argument (accessible from
-  // GetDynamicLoopBound).
-  Status EmitParallelTargetElementLoop(
-      const Shape& target_shape,
-      const llvm_ir::ElementGenerator& element_generator,
-      tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array);
-
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the
   // emitted_value_ table.
@@ -482,7 +473,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm_ir::AliasAnalysis alias_analysis_;
 
   // The number of root instruction outer dimensions used in parallel loop
-  // emission (EmitParallelTargetElementLoop).
+  // emission (ParallelLoopEmitter).
   int64 num_dynamic_loop_bounds_ = 0;
 
   // Returns whether the given instruction should be emitted as a parallel loop.
