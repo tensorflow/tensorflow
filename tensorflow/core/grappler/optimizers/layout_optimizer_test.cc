@@ -495,7 +495,80 @@ TEST_F(LayoutOptimizerTest, SplitNonConstDim) {
   auto split_node = node_map.GetNode("split");
   EXPECT_EQ(split_node->input(0), "i1");
   EXPECT_EQ(split_node->input(1),
-            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-split");
+            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-split-1");
+}
+
+TEST_F(LayoutOptimizerTest, SplitSamePortToMultipleInputsOfSameNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto axis = ops::Const(s.WithOpName("axis"), 3);
+  auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
+  auto concat =
+      ops::Concat(s.WithOpName("concat"), {split[1], split[1], split[1]}, axis);
+  auto o = ops::Identity(s.WithOpName("o"), concat);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto concat_node = node_map.GetNode("concat");
+  EXPECT_EQ(concat_node->input(0), "split:1");
+  EXPECT_EQ(concat_node->input(1), "split:1");
+  EXPECT_EQ(concat_node->input(2), "split:1");
+  EXPECT_EQ(concat_node->input(3), "LayoutOptimizerConcatConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerConcatConst-concat");
+  EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 1);
+}
+
+TEST_F(LayoutOptimizerTest, Concat) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto axis = ops::Const(s.WithOpName("axis"), 3);
+  auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
+  auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
+  auto o = ops::Identity(s.WithOpName("o"), concat);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto concat_node = node_map.GetNode("concat");
+  EXPECT_EQ(concat_node->input(0), "split");
+  EXPECT_EQ(concat_node->input(1), "split:1");
+  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerConcatConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerConcatConst-concat");
+  EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 1);
+}
+
+TEST_F(LayoutOptimizerTest, Sum) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto reduction_indices =
+      ops::Const(s.WithOpName("reduction_indices"), {0, 1, 2}, {3});
+  auto sum = ops::Sum(s.WithOpName("sum"), conv, reduction_indices);
+  auto o = ops::Identity(s.WithOpName("o"), sum);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  // TODO(yaozhang): enable SumProcessor with auto-tuning. Currently disabled
+  // because of the worse performance in some cases.
+  /*
+  NodeMap node_map(&output);
+  auto sum_node = node_map.GetNode("sum");
+  EXPECT_EQ(sum_node->input(0), "Conv2D");
+  EXPECT_EQ(sum_node->input(1), "LayoutOptimizer-sum-reduction_indices");
+  auto sum_const = node_map.GetNode("LayoutOptimizer-sum-reduction_indices");
+  Tensor tensor;
+  EXPECT_TRUE(
+      tensor.FromProto(sum_const->mutable_attr()->at({"value"}).tensor()));
+  Tensor tensor_expected(DT_INT32, {3});
+  test::FillValues<int>(&tensor_expected, {0, 2, 3});
+  test::ExpectTensorEqual<int>(tensor_expected, tensor);
+  */
 }
 
 }  // namespace
