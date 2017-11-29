@@ -20,10 +20,8 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
 from tensorflow.contrib.estimator.python.estimator.dnn import *
-from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
 from tensorflow.contrib.estimator.python.estimator.extenders import *
 from tensorflow.contrib.estimator.python.estimator.head import *
-from tensorflow.contrib.estimator.python.estimator.linear import *
 from tensorflow.contrib.estimator.python.estimator.logit_fns import *
 from tensorflow.contrib.estimator.python.estimator.multi_head import *
 
@@ -40,8 +38,6 @@ _allowed_symbols = [
     'multi_label_head',
     'regression_head',
     'DNNEstimator',
-    'DNNLinearCombinedEstimator',
-    'LinearEstimator',
     'call_logit_fn',
     'dnn_logit_fn_builder',
     'linear_logit_fn_builder',

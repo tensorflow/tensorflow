@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/tensor_shape.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -207,7 +206,23 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// \brief Removes dimension `d` from the `TensorShape`.
   /// REQUIRES: `0 <= d < dims()`
-  void RemoveDim(int d);
+  void RemoveDim(int d) {
+    CHECK_GE(d, 0);
+    RemoveDimRange(d, d + 1);
+  }
+
+  /// \brief Removes last `n` dimensions from the `TensorShape`.
+  /// REQUIRES: `0 <= n <= dims()`
+  void RemoveLastDims(int n) {
+    CHECK_LE(n, dims());
+    RemoveDimRange(dims() - n, dims());
+  }
+
+  /// \brief Removes the dimensions in range `[begin:end)` from `TensorShape`.
+  /// Negative values of `end` are interpreted as `dims() + end + 1` (as in
+  /// Python). The same is true for negative values of `begin`. REQUIRES:
+  /// `-(dims()+1) <= begin <= dims()` REQUIRES: `-(dims()+1) <= end <= dims()`
+  void RemoveDimRange(int begin, int end);
 
   /// Return whether the rank is unknown
   bool unknown_rank() const {

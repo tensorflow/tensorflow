@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -97,7 +96,7 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
       }
       default: {
         // Default to Add
-        CHECK(false);
+        LOG(FATAL);
       }
     }
   }
@@ -160,7 +159,7 @@ XLA_TEST_F(BroadcastSimpleTest, 1DTo2D) {
 }
 
 // Tests implicit broadcasting of PREDs.
-XLA_TEST_F(BroadcastSimpleTest, LogicalAnd2DTo3D_Pred) {
+XLA_TEST_F(BroadcastSimpleTest, BooleanAnd2DTo3D_Pred) {
   ComputationBuilder b(client_, TestName());
 
   Array2D<bool> x_vals(2, 1);
@@ -175,7 +174,7 @@ XLA_TEST_F(BroadcastSimpleTest, LogicalAnd2DTo3D_Pred) {
   ComputationDataHandle x, y;
   auto x_data = CreateR2Parameter<bool>(x_vals, 0, "x", &b, &x);
   auto y_data = CreateR3Parameter<bool>(y_vals, 1, "y", &b, &y);
-  b.LogicalAnd(x, y, /*broadcast_dimensions=*/{1, 2});
+  b.And(x, y, /*broadcast_dimensions=*/{1, 2});
 
   Array3D<bool> expected(2, 2, 1);
   expected(0, 0, 0) = false;
@@ -694,20 +693,3 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

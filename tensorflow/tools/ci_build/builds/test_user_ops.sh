@@ -79,11 +79,14 @@ pushd "${TMP_DIR}"
 # Obtain paths include and lib paths to the TensorFlow installation
 TF_INC=$("${PYTHON_BIN_PATH}" \
          -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+TF_LIB=$("${PYTHON_BIN_PATH}" \
+         -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
 
 if [[ -z "${TF_INC}" ]]; then
   die "FAILED to determine TensorFlow include path"
 else
   echo "TensorFlow include path: ${TF_INC}"
+  TF_INCLUDE_PATH="-I${TF_INC} -I${TF_INC}/external/nsync/public"
 fi
 
 # Check g++ availability
@@ -142,7 +145,7 @@ if [[ ${IS_GPU} == "0" ]]; then
 
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
     -shared "${SRC_FILE}" -o "${USER_OP_SO}" \
-    -fPIC -I "${TF_INC}" || \
+    -fPIC ${TF_INCLUDE_PATH} -L "${TF_LIB}" -ltensorflow_framework  || \
     die "g++ compilation of ${SRC_FILE} FAILED"
 
 else
@@ -181,7 +184,7 @@ else
   OP_KERNEL_O=$(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.o/')
   "${NVCC_BIN}" -std=c++11 \
       -c -o "${OP_KERNEL_O}" "${OP_KERNEL_CU}" \
-      -I "${TF_INC}" -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
+      ${TF_INCLUDE_PATH} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
       die "nvcc compilation of ${OP_KERNEL_CC} FAILED"
 
   CUDA_LIB_DIR="/usr/local/cuda/lib64"
@@ -200,8 +203,8 @@ else
   USER_OP_SO="add_one.so"
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" -I "${TF_INC}" -L "${CUDA_LIB_DIR}" \
-      -fPIC -lcudart || \
+      "${OP_KERNEL_O}" ${TF_INCLUDE_PATH} -L "${CUDA_LIB_DIR}" -L "${TF_LIB}" \
+      -fPIC -lcudart -ltensorflow_framework || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi
 

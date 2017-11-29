@@ -61,6 +61,8 @@ class InterpreterExecutable : public Executable {
 
   static int64 ShapeSizeBytes(const Shape& shape);
 
+  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(InterpreterExecutable);
 };

@@ -3,15 +3,24 @@
 Note: The preferred way to feed data into a tensorflow program is using the
 @{$datasets$Datasets API}.
 
-There are three other methods of getting data into a TensorFlow program:
+There are four methods of getting data into a TensorFlow program:
 
+*   `Dataset` API: Easily construct a complex input pipeline. (preferred method)
 *   Feeding: Python code provides the data when running each step.
-*   Reading from files: an input pipeline reads the data from files
+*   `QueueRunner`: a queue-based input pipeline reads the data from files
     at the beginning of a TensorFlow graph.
 *   Preloaded data: a constant or variable in the TensorFlow graph holds
     all the data (for small data sets).
 
 [TOC]
+
+## Dataset API
+
+See the @{$datasets$programmer's guide} for an in-depth explanation of
+@{tf.data.Dataset}. The `Dataset` API allows you to extract and preprocess data
+from different input/file formats, and apply transformations such as batch,
+shuffle, and map to the dataset. This is an improved version of the old input
+methods, feeding and `QueueRunner`.
 
 ## Feeding
 
@@ -22,7 +31,7 @@ graph.
 Supply feed data through the `feed_dict` argument to a run() or eval() call
 that initiates computation.
 
-Note: "Feeding" is the least efficient way to feed data into a tensorflow
+Warning: "Feeding" is the least efficient way to feed data into a tensorflow
 program and should only be used for small experiments and debugging.
 
 ```python
@@ -44,9 +53,9 @@ in
 [`tensorflow/examples/tutorials/mnist/fully_connected_feed.py`](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/fully_connected_feed.py),
 and is described in the @{$mechanics$MNIST tutorial}.
 
-## Reading from files
+## `QueueRunner`
 
-A typical pipeline for reading records from files has the following stages:
+A typical queue-based pipeline for reading records from files has the following stages:
 
 1.  The list of filenames
 2.  *Optional* filename shuffling
@@ -57,8 +66,8 @@ A typical pipeline for reading records from files has the following stages:
 7.  *Optional* preprocessing
 8.  Example queue
 
-Note: This section discusses implementing input pipelines useing the
-queue-based APIs which can be cleanly replaced by the ${$datasets$Dataset API}.
+Warning: This section discusses implementing input pipelines using the
+queue-based APIs which can be cleanly replaced by the @{$datasets$Datasets API}.
 
 ### Filenames, shuffling, and epoch limits
 
@@ -496,6 +505,6 @@ that allow the user to change the input pipeline without rebuilding the graph or
 session.
 
 Note: Regardless of the implementation, many
-operations (like ${tf.layers.batch_normalization}, and @{tf.layers.dropout})
+operations (like @{tf.layers.batch_normalization}, and @{tf.layers.dropout})
 need to know if they are in training or evaluation mode, and you must be
-careful to set this apropriately if you change the data source.
+careful to set this appropriately if you change the data source.

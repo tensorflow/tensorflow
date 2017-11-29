@@ -25,8 +25,16 @@ namespace grappler {
 // Swap tensors in and out of device memory.
 class MemoryOptimizer : public GraphOptimizer {
  public:
-  explicit MemoryOptimizer(RewriterConfig::MemOptType optimization_level)
-      : optimization_level_(optimization_level) {}
+  // optimization_level: Controls the level of autonomy for the memory
+  //   optimizer. See RewriterConfig::memory_optimization.
+  // recomputation_targets_name_prefix: Name prefix for potential outputs of
+  //   recomputations. See
+  //   RewriterConfig::memory_optimizer_target_node_name_prefix.
+  explicit MemoryOptimizer(
+      RewriterConfig::MemOptType optimization_level,
+      const string& recomputation_targets_name_prefix = "gradients/")
+      : optimization_level_(optimization_level),
+        recomputation_targets_name_prefix_(recomputation_targets_name_prefix) {}
   ~MemoryOptimizer() override {}
 
   string name() const override { return "memory_optimizer"; };
@@ -39,6 +47,7 @@ class MemoryOptimizer : public GraphOptimizer {
 
  private:
   RewriterConfig::MemOptType optimization_level_;
+  string recomputation_targets_name_prefix_;
 };
 
 }  // end namespace grappler

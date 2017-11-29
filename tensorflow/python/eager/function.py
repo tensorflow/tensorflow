@@ -211,7 +211,7 @@ def _map_sequence_obj_to_idx(sequence):
   return {id(x): i for i, x in enumerate(sequence)}
 
 
-class GraphModeFunction(object):
+class _GraphModeFunction(object):
   """Callable object representing a graph-mode function.
 
   Args:
@@ -232,19 +232,10 @@ class GraphModeFunction(object):
       func_outputs structure.
     output_shapes: List of shapes of all tensors which are output by the
       internal function.
-    variables: (optional) List of variables to watch during function execution.
   """
 
-  def __init__(self,
-               input_placeholders,
-               extra_inputs,
-               fdef,
-               graph,
-               operations,
-               func_outputs,
-               func_outputs_to_fdef_outputs,
-               output_shapes,
-               variables=None):
+  def __init__(self, input_placeholders, extra_inputs, fdef, graph, operations,
+               func_outputs, func_outputs_to_fdef_outputs, output_shapes):
     assert len(input_placeholders) == len(fdef.signature.input_arg), "%s %s" % (
         len(input_placeholders), len(fdef.signature.input_arg))
     self._input_placeholders = input_placeholders
@@ -260,11 +251,6 @@ class GraphModeFunction(object):
         func_outputs, (ops.Tensor, type(None))) else list(func_outputs)
     self._returns_to_fedf_outputs = func_outputs_to_fdef_outputs
     self._output_shapes = output_shapes
-    self._variables = variables if variables is not None else []
-
-  @property
-  def variables(self):
-    return self._variables
 
   def _compute_backprop(self):
     """Computes the backprop function object for this function."""
@@ -296,7 +282,7 @@ class GraphModeFunction(object):
                      ] + list(sorted(c.known_ops, key=lambda x: x.name)),
         all_inputs, backward_outputs)
     _register_with_name(_backward_name(self._func_name), backward_function_def)
-    self._backward_function = GraphModeFunction(
+    self._backward_function = _GraphModeFunction(
         all_inputs, [], backward_function_def, self._graph, c.known_ops,
         in_gradients, _map_sequence_obj_to_idx(backward_outputs), shapes)
 
@@ -346,15 +332,10 @@ class GraphModeFunction(object):
 
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
-    for v in self._variables:
-      if v._trainable:  # pylint: disable=protected-access
-        tape.watch_variable(v)
-
     tensor_inputs = [
         x for x in nest.flatten(args)
         if isinstance(x, ops.Tensor)
     ]
-
     if tape.should_record(tensor_inputs) or tape.should_record(
         self._extra_inputs):
       if not self._has_backprop:
@@ -426,15 +407,9 @@ def _get_defun_inputs(args):
 
 def _defun_internal(name, func, args, kwds):
   """Defines and returns graph-mode version of func."""
-  container_prefix = ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
   with context.graph_mode():
     captures = {}
     tmp_graph = CapturingGraph(captures)
-    # Inherit the container prefix, since this is used for error checking when
-    # isolating eager execution (the container prefix at creation must match the
-    # container prefix when used, and variables accessed in the defun will be
-    # used in the outside context).
-    tmp_graph._container_prefix = container_prefix  # pylint: disable=protected-access
     # Copy the graph collections to ensure summaries and other things work. This
     # lets the function access (but not mutate) collections of the containing
     # graph, such as the global step and the summary writer collections.
@@ -446,11 +421,7 @@ def _defun_internal(name, func, args, kwds):
       func_inputs = _get_defun_inputs(args)
 
       with capture_tensors(captures):
-        tape.push_new_tape()
-        try:
-          func_outputs = func(*func_inputs, **kwds)
-        finally:
-          variables = tape.pop_tape().watched_variables()
+        func_outputs = func(*func_inputs, **kwds)
       ids = list(sorted(captures.keys()))
       if ids:
         extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
@@ -475,16 +446,10 @@ def _defun_internal(name, func, args, kwds):
     _register_with_name(f.name, f.definition)
   _register_with_name(_inference_name(name), inference_function_def)
 
-  return GraphModeFunction(
-      all_inputs,
-      extra_inputs,
-      inference_function_def,
-      tmp_graph,
-      tmp_graph.get_operations(),
-      func_outputs,
-      _map_sequence_obj_to_idx(func_def_outputs),
-      output_shapes,
-      variables=variables)
+  return _GraphModeFunction(
+      all_inputs, extra_inputs, inference_function_def, tmp_graph,
+      tmp_graph.get_operations(), func_outputs,
+      _map_sequence_obj_to_idx(func_def_outputs), output_shapes)
 
 
 # Defun uses this instead of Tensor as a cache key. Using dtype because

@@ -14,7 +14,10 @@
 # Host compilation settings
 
 # Find where we're running from, so we can store generated files here.
-MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+ifeq ($(origin MAKEFILE_DIR), undefined)
+	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+endif
+
 HAS_GEN_HOST_PROTOC := \
 $(shell test -f $(MAKEFILE_DIR)/gen/protobuf-host/bin/protoc && echo "true" ||\
 echo "false")
@@ -40,6 +43,11 @@ ifdef HEXAGON_LIBS
     $(error "hexagon is only supported on Android")
 	endif
 endif # HEXAGON_LIBS
+
+# If ANDROID_TYPES is not set assume __ANDROID_TYPES_SLIM__
+ifeq ($(ANDROID_TYPES),)
+	ANDROID_TYPES := -D__ANDROID_TYPES_SLIM__
+endif
 
 # Try to figure out the host system
 HOST_OS :=
@@ -71,9 +79,12 @@ HOST_LDOPTS += -L/usr/local/lib
 
 HOST_INCLUDES := \
 -I. \
+-I$(MAKEFILE_DIR)/../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
-  -I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/nsync/public \
+-I$(MAKEFILE_DIR)/downloads/fft2d \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -83,6 +94,7 @@ endif
 HOST_INCLUDES += -I/usr/local/include
 
 HOST_LIBS := \
+$(HOST_NSYNC_LIB) \
 -lstdc++ \
 -lprotobuf \
 -lpthread \
@@ -153,6 +165,8 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/nsync/public \
+-I$(MAKEFILE_DIR)/downloads/fft2d \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -163,6 +177,7 @@ endif
 INCLUDES += -I/usr/local/include
 
 LIBS := \
+$(TARGET_NSYNC_LIB) \
 -lstdc++ \
 -lprotobuf \
 -lz \
@@ -184,6 +199,10 @@ LIBFLAGS :=
 
 # If we're on OS X, make sure that globals aren't stripped out.
 ifeq ($(TARGET),OSX)
+ifeq ($(HAS_GEN_HOST_PROTOC),true)
+	LIBFLAGS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
+	export LD_LIBRARY_PATH=$(MAKEFILE_DIR)/gen/protobuf-host/lib
+endif
 	LDFLAGS += -all_load
 endif
 # Make sure that we don't strip global constructors on Linux.
@@ -202,7 +221,7 @@ ifeq ($(TARGET),LINUX)
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
-	CXXFLAGS += -D__ANDROID_TYPES_SLIM__
+	CXXFLAGS += $(ANDROID_TYPES) -DRASPBERRY_PI
 	LDFLAGS := -Wl,--no-whole-archive
 	LIBS += -ldl -lpthread
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
@@ -233,14 +252,15 @@ ifeq ($(TARGET),ANDROID)
     $(error "NDK_ROOT is not defined.")
 	endif
 	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-g++
+	CC := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-gcc
 	CXXFLAGS +=\
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
 -Wno-narrowing \
+-fomit-frame-pointer \
 -march=armv7-a \
 -mfloat-abi=softfp \
 -mfpu=neon \
 -fPIE
-
 	INCLUDES = \
 -I$(NDK_ROOT)/sources/android/support/include \
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \
@@ -249,16 +269,20 @@ ifeq ($(TARGET),ANDROID)
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/nsync/public \
+-I$(MAKEFILE_DIR)/downloads/fft2d \
 -I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 
 	LIBS := \
+$(TARGET_NSYNC_LIB) \
 -lgnustl_static \
 -lprotobuf \
 -llog \
 -lz \
--lm
+-lm \
+-ldl
 
 	LD := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/arm-linux-androideabi/bin/ld
 
@@ -307,19 +331,19 @@ ifeq ($(TARGET),IOS)
 	IPHONESIMULATOR_SYSROOT := $(shell xcrun --sdk iphonesimulator \
 	--show-sdk-path)
 	IOS_SDK_VERSION := $(shell xcrun --sdk iphoneos --show-sdk-version)
-	MIN_SDK_VERSION := 8.0
+	MIN_SDK_VERSION := 9.0
 # Override IOS_ARCH with ARMV7, ARMV7S, ARM64, or I386.
 	IOS_ARCH := X86_64
 	ifeq ($(IOS_ARCH),ARMV7)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7 \
 		-fembed-bitcode \
-		-D__thread= \
+		-D__thread=thread_local \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -338,12 +362,12 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7s \
 		-fembed-bitcode \
-		-D__thread= \
+		-D__thread=thread_local \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -362,11 +386,11 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch arm64 \
 		-fembed-bitcode \
-		-D__thread= \
+		-D__thread=thread_local \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -386,11 +410,11 @@ ifeq ($(TARGET),IOS)
 		-arch i386 \
 		-mno-sse \
 		-fembed-bitcode \
-		-D__thread= \
+		-D__thread=thread_local \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
@@ -409,11 +433,11 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch x86_64 \
 		-fembed-bitcode \
-		-D__thread= \
+		-D__thread=thread_local \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
@@ -473,6 +497,7 @@ $(wildcard tensorflow/core/*/*/*main.cc) \
 $(wildcard tensorflow/core/debug/*.cc) \
 $(wildcard tensorflow/core/framework/op_gen_lib.cc) \
 $(wildcard tensorflow/core/graph/dot.*) \
+$(wildcard tensorflow/core/lib/db/*) \
 $(wildcard tensorflow/core/lib/gif/*) \
 $(wildcard tensorflow/core/lib/io/zlib*) \
 $(wildcard tensorflow/core/lib/io/record*) \
@@ -490,17 +515,19 @@ $(wildcard tensorflow/core/platform/google/*) \
 $(wildcard tensorflow/core/platform/google/*/*) \
 $(wildcard tensorflow/core/platform/jpeg.*) \
 $(wildcard tensorflow/core/platform/png.*) \
+$(wildcard tensorflow/core/platform/s3/*) \
 $(wildcard tensorflow/core/platform/stream_executor.*) \
 $(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/user_ops/*.cu.cc) \
 $(wildcard tensorflow/core/common_runtime/gpu/*) \
 $(wildcard tensorflow/core/common_runtime/gpu_device_factory.*) \
 $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
+$(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/clusters/single_machine.*)
 # Filter out all the excluded files.
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily
-TF_CC_SRCS += tensorflow/core/common_runtime/gpu/gpu_tracer.cc
+TF_CC_SRCS += tensorflow/contrib/makefile/downloads/fft2d/fftsg.c
 # Also include the op and kernel definitions.
 TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
@@ -523,7 +550,8 @@ tensorflow/core/kernels/hexagon/hexagon_remote_fused_graph_executor_build.cc
 endif
 
 # File names of the intermediate files target compilation generates.
-TF_CC_OBJS := $(addprefix $(OBJDIR), $(TF_CC_SRCS:.cc=.o))
+TF_CC_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_CC_SRCS))))
 PBT_GEN_FILES := $(addprefix $(PBTGENDIR), $(PBT_CC_SRCS))
 PBT_OBJS := $(addprefix $(OBJDIR), $(PBT_CC_SRCS:.cc=.o))
 PROTO_CC_SRCS := $(addprefix $(PROTOGENDIR), $(PROTO_SRCS:.proto=.pb.cc))
@@ -559,6 +587,14 @@ $(OBJDIR)%.o: %.cc | $(PBT_GEN_FILES)
 	@mkdir -p $(dir $@)
 	@mkdir -p $(dir $(DEPDIR)$*)
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
+	@mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d
+
+# Matches on plain C files.
+$(OBJDIR)%.o: %.c
+	@mkdir -p $(dir $@)
+	@mkdir -p $(dir $(DEPDIR)$*)
+	$(CXX) $(patsubst --std=c++11,--std=c99, $(CXXFLAGS)) -x c $(DEPFLAGS) \
+$(INCLUDES) -c $< -o $@
 	@mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d
 
 # Compiles C++ source files that have been generated by protoc.

@@ -94,6 +94,9 @@ class BufferedInputStream : public InputStreamInterface {
   size_t pos_ = 0;    // current position in buf_.
   size_t limit_ = 0;  // just past the end of valid data in buf_.
   bool owns_input_stream_ = false;
+  // When EoF is reached, file_status_ contains the status to skip unnecessary
+  // buffer allocations.
+  Status file_status_ = Status::OK();
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferedInputStream);
 };

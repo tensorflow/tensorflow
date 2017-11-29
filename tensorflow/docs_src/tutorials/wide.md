@@ -24,16 +24,16 @@ To try the code for this tutorial:
         # Ubuntu/Linux 64-bit
         $ sudo apt-get install python-pip python-dev
 
-        # Mac OS X
+        # macOS
         $ sudo easy_install pip
         $ sudo easy_install --upgrade six
 
     b. Use `pip` to install pandas:
 
-        $ sudo pip install pandas
+        $ pip install -U pandas
 
     If you have trouble installing pandas, consult the
-    [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
+    [instructions](https://pandas.pydata.org/pandas-docs/stable/install.html)
     on the pandas site.
 
 4. Execute the tutorial code with the following command to train the linear
@@ -62,7 +62,7 @@ urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/ad
 ```
 
 Once the CSV files are downloaded, let's read them into
-[Pandas](http://pandas.pydata.org/) dataframes.
+[Pandas](https://pandas.pydata.org/) dataframes.
 
 ```python
 import pandas as pd
@@ -106,8 +106,8 @@ Here's a list of columns available in the Census Income dataset:
 :                :             : military, private, etc.).         :
 | fnlwgt         | Continuous  | The number of people the census   |
 :                :             : takers believe that observation   :
-:                :             : represents (sample weight). This  :
-:                :             : variable will not be used.        :
+:                :             : represents (sample weight). Final :
+:                :             : weight will not be used.          :
 | education      | Categorical | The highest level of education    |
 :                :             : achieved for that individual.     :
 | education_num  | Continuous  | The highest level of education in |
@@ -127,7 +127,7 @@ Here's a list of columns available in the Census Income dataset:
 :                :             : individual.                       :
 | income         | Categorical | ">50K" or "<=50K", meaning        |
 :                :             : whether the person makes more     :
-:                :             : than \$50,000 annually.           :
+:                :             : than $50,000 annually.           :
 
 ## Converting Data into Tensors
 
@@ -383,7 +383,7 @@ API:
 ```python
 # set num_epochs to None to get infinite stream of data.
 m.train(
-    input_fn=input_fn(train_file_name, num_epochs=None, shuffle=True),
+    input_fn=input_fn(train_file.name, num_epochs=None, shuffle=True),
     steps=train_steps)
 ```
 
@@ -392,7 +392,7 @@ the labels of the holdout data:
 
 ```python
 results = m.evaluate(
-    input_fn=input_fn(test_file_name, num_epochs=1, shuffle=False),
+    input_fn=input_fn(test_file.name, num_epochs=1, shuffle=False),
     steps=None)
 print("model directory = %s" % model_dir)
 for key in sorted(results):
@@ -426,8 +426,7 @@ m = tf.estimator.LinearClassifier(
     optimizer=tf.train.FtrlOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=1.0,
-      l2_regularization_strength=1.0),
-    model_dir=model_dir)
+      l2_regularization_strength=1.0))
 ```
 
 One important difference between L1 and L2 regularization is that L1

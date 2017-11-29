@@ -25,6 +25,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     "SequenceDict",
+    "setdefault",
     "tensors_to_column",
     "column_to_tensors",
     "kronecker_product",

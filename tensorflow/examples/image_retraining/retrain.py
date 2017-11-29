@@ -293,7 +293,7 @@ def run_bottleneck_on_image(sess, image_data, image_data_tensor,
     sess: Current active TensorFlow Session.
     image_data: String of raw JPEG data.
     image_data_tensor: Input data layer in the graph.
-    decoded_image_tensor: Output of initial image resizing and  preprocessing.
+    decoded_image_tensor: Output of initial image resizing and preprocessing.
     resized_input_tensor: The input node of the recognition graph.
     bottleneck_tensor: Layer before the final softmax.
 
@@ -391,9 +391,9 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
     label_name: Label string we want to get an image for.
     index: Integer offset of the image we want. This will be modulo-ed by the
     available number of images for the label, so it can be arbitrarily large.
-    image_dir: Root folder string  of the subfolders containing the training
+    image_dir: Root folder string of the subfolders containing the training
     images.
-    category: Name string of which  set to pull images from - training, testing,
+    category: Name string of which set to pull images from - training, testing,
     or validation.
     bottleneck_dir: Folder string holding cached files of bottleneck values.
     jpeg_data_tensor: The tensor to feed loaded jpeg data into.
@@ -969,7 +969,7 @@ def main(_):
   # See https://github.com/tensorflow/tensorflow/issues/3047
   tf.logging.set_verbosity(tf.logging.INFO)
 
-  # Prepare necessary directories  that can be used during training
+  # Prepare necessary directories that can be used during training
   prepare_file_system()
 
   # Gather information about the model architecture we'll be using.

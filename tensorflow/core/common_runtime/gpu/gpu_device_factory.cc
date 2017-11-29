@@ -112,7 +112,7 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
       n = iter->second;
     }
     for (int i = 0; i < n; i++) {
-      string name = strings::StrCat(name_prefix, "/cpu:", i);
+      string name = strings::StrCat(name_prefix, "/device:CPU:", i);
       devices->push_back(new GPUCompatibleCPUDevice(
           options, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator()));
     }

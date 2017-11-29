@@ -29,7 +29,6 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'expectation',
-    'expectation_v2',
     'expectation_importance_sampler',
     'expectation_importance_sampler_logspace',
 ]

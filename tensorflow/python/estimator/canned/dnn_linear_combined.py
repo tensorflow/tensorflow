@@ -23,14 +23,12 @@ import math
 import six
 
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import model_fn
+from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import head as head_lib
+from tensorflow.python.estimator.canned import linear
 from tensorflow.python.estimator.canned import optimizers
-from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
@@ -149,36 +147,15 @@ def _dnn_linear_combined_model_fn(
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=dnn_partitioner):
-      with variable_scope.variable_scope('input',
-                                         partitioner=input_layer_partitioner):
-        net = feature_column_lib.input_layer(
-            features=features,
-            feature_columns=dnn_feature_columns)
 
-      for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
-        with variable_scope.variable_scope(
-            'hiddenlayer_%d' % layer_id,
-            values=(net,)) as dnn_hidden_layer_scope:
-          net = core_layers.dense(
-              net,
-              units=num_hidden_units,
-              activation=dnn_activation_fn,
-              kernel_initializer=init_ops.glorot_uniform_initializer(),
-              name=dnn_hidden_layer_scope)
-          if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-            net = core_layers.dropout(net, rate=dnn_dropout, training=True)
-        _add_layer_summary(net, dnn_hidden_layer_scope.name)
-
-      with variable_scope.variable_scope(
-          'logits',
-          values=(net,)) as dnn_logits_scope:
-        dnn_logits = core_layers.dense(
-            net,
-            units=head.logits_dimension,
-            activation=None,
-            kernel_initializer=init_ops.glorot_uniform_initializer(),
-            name=dnn_logits_scope)
-      _add_layer_summary(dnn_logits, dnn_logits_scope.name)
+      dnn_logit_fn = dnn._dnn_logit_fn_builder(  # pylint: disable=protected-access
+          units=head.logits_dimension,
+          hidden_units=dnn_hidden_units,
+          feature_columns=dnn_feature_columns,
+          activation_fn=dnn_activation_fn,
+          dropout=dnn_dropout,
+          input_layer_partitioner=input_layer_partitioner)
+      dnn_logits = dnn_logit_fn(features=features, mode=mode)
 
   linear_parent_scope = 'linear'
 
@@ -193,10 +170,10 @@ def _dnn_linear_combined_model_fn(
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as scope:
-      linear_logits = feature_column_lib.linear_model(
-          features=features,
-          feature_columns=linear_feature_columns,
-          units=head.logits_dimension)
+      logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
+          units=head.logits_dimension,
+          feature_columns=linear_feature_columns)
+      linear_logits = logit_fn(features=features)
       _add_layer_summary(linear_logits, scope.name)
 
   # Combine logits and build full model.
@@ -248,22 +225,23 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
 
   ```python
   numeric_feature = numeric_column(...)
-  sparse_column_a = categorical_column_with_hash_bucket(...)
-  sparse_column_b = categorical_column_with_hash_bucket(...)
+  categorical_column_a = categorical_column_with_hash_bucket(...)
+  categorical_column_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_x_categorical_feature_b = crossed_column(...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_id_column=categorical_feature_b, ...)
 
   estimator = DNNLinearCombinedClassifier(
       # wide settings
-      linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
+      linear_feature_columns=[categorical_feature_a_x_categorical_feature_b],
       linear_optimizer=tf.train.FtrlOptimizer(...),
       # deep settings
       dnn_feature_columns=[
-          sparse_feature_a_emb, sparse_feature_b_emb, numeric_feature],
+          categorical_feature_a_emb, categorical_feature_b_emb,
+          numeric_feature],
       dnn_hidden_units=[1000, 500, 100],
       dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
 
@@ -300,6 +278,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       whose `value` is a `Tensor`.
 
   Loss is calculated by using softmax cross entropy.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,
@@ -407,22 +389,23 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
 
   ```python
   numeric_feature = numeric_column(...)
-  sparse_column_a = categorical_column_with_hash_bucket(...)
-  sparse_column_b = categorical_column_with_hash_bucket(...)
+  categorical_column_a = categorical_column_with_hash_bucket(...)
+  categorical_column_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_x_categorical_feature_b = crossed_column(...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_column=categorical_feature_b, ...)
 
   estimator = DNNLinearCombinedRegressor(
       # wide settings
-      linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
+      linear_feature_columns=[categorical_feature_a_x_categorical_feature_b],
       linear_optimizer=tf.train.FtrlOptimizer(...),
       # deep settings
       dnn_feature_columns=[
-          sparse_feature_a_emb, sparse_feature_b_emb, numeric_feature],
+          categorical_feature_a_emb, categorical_feature_b_emb,
+          numeric_feature],
       dnn_hidden_units=[1000, 500, 100],
       dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
 
@@ -459,6 +442,10 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       whose `value` is a `Tensor`.
 
   Loss is calculated by using mean squared error.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,

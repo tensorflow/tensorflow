@@ -29,7 +29,7 @@ installed on your system:
     Ensure that you append the relevant Cuda pathnames to the `%PATH%`
     environment variable as described in the NVIDIA documentation.
   * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v6 or v6.1. For details, see
+  * cuDNN v6.1. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Note that cuDNN is typically installed in a different location from the
     other CUDA DLLs. Ensure that you add the directory where you installed
@@ -71,7 +71,7 @@ Use that package at your own risk.
 
 ## Installing with native pip
 
-If neither of the following versions of Python is installed on your machine,
+If one of the following versions of Python is not installed on your machine,
 install it now:
 
   * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
@@ -105,7 +105,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
   2. Create a conda environment named <tt>tensorflow</tt>
      by invoking the following command:
 
-     <pre>C:\> <b>conda create -n tensorflow python=3.5</b> </pre>
+     <pre>C:\> <b>conda create -n tensorflow pip python=3.5</b> </pre>
 
   3. Activate the conda environment by issuing the following command:
 

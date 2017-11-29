@@ -37,6 +37,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
+from tensorflow.python.util.deprecation import deprecated
 
 
 __all__ = ['add_model_variable',
@@ -82,7 +83,7 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
       resource_loader.get_path_to_datafile("_variable_ops.so"))
   return gen_variable_ops.zero_initializer(ref, name=name)
 
-
+@deprecated(None, "Please switch to tf.train.assert_global_step")
 def assert_global_step(global_step_tensor):
   training_util.assert_global_step(global_step_tensor)
 
@@ -110,11 +111,11 @@ def assert_or_get_global_step(graph=None, global_step_tensor=None):
     assert_global_step(global_step_tensor)
   return global_step_tensor
 
-
+@deprecated(None, "Please switch to tf.train.get_global_step")
 def get_global_step(graph=None):
   return training_util.get_global_step(graph)
 
-
+@deprecated(None, "Please switch to tf.train.create_global_step")
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
@@ -132,7 +133,7 @@ def create_global_step(graph=None):
   """
   return training_util.create_global_step(graph)
 
-
+@deprecated(None, "Please switch to tf.train.get_or_create_global_step")
 def get_or_create_global_step(graph=None):
   """Returns and create (if necessary) the global step tensor.
 
@@ -416,7 +417,7 @@ def get_unique_variable(var_op_name):
   for candidate in candidates:
     if candidate.op.name == var_op_name:
       return candidate
-  raise ValueError('Variable %s does not uniquely identify a variable',
+  raise ValueError('Variable %s does not uniquely identify a variable' %
                    var_op_name)
 
 
@@ -444,7 +445,7 @@ def assign_from_values(var_names_to_values):
     var_value = var_names_to_values[var_name]
     var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, var_name)
     if not var:
-      raise ValueError('Variable %s wasnt found', var_name)
+      raise ValueError('Variable %s wasn\'t found' % var_name)
     elif len(var) > 1:
       # tf.get_collection is just a filter on the prefix: find the exact match:
       found = False
@@ -455,7 +456,7 @@ def assign_from_values(var_names_to_values):
           break
 
       if not found:
-        raise ValueError('Variable %s doesnt uniquely identify a variable',
+        raise ValueError('Variable %s doesn\'t uniquely identify a variable' %
                          var_name)
     else:
       var = var[0]
@@ -561,7 +562,7 @@ def assign_from_checkpoint(model_path, var_list, ignore_missing_vars=False):
       grouped_vars[ckpt_name].append(var)
 
   else:
-    for ckpt_name, value in var_list.iteritems():
+    for ckpt_name, value in var_list.items():
       if isinstance(value, (tuple, list)):
         grouped_vars[ckpt_name] = value
       else:

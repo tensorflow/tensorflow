@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -201,6 +202,32 @@ TEST_F(ReferenceUtilTest, SliceStridedArray4D) {
       *actual_literal, ErrorSpec(0.0001));
 }
 
+TEST_F(ReferenceUtilTest, ConvArray3DWithSamePadding) {
+  Array3D<float> input = {{{1, 2, 3, 4}}};
+  Array3D<float> weights = {{{5, 6}}};
+  std::unique_ptr<Array3D<float>> actual =
+      ReferenceUtil::ConvArray3D(input, weights, 1, Padding::kSame);
+  Array3D<float> expected = {{{17, 28, 39, 20}}};
+
+  auto actual_literal = Literal::CreateR3FromArray3D(*actual);
+
+  LiteralTestUtil::ExpectR3NearArray3D<float>(expected, *actual_literal,
+                                              ErrorSpec(0.0001));
+}
+
+TEST_F(ReferenceUtilTest, ConvArray3DWithValidPadding) {
+  Array3D<float> input = {{{1, 2, 3, 4}}};
+  Array3D<float> weights = {{{5, 6}}};
+  std::unique_ptr<Array3D<float>> actual =
+      ReferenceUtil::ConvArray3D(input, weights, 1, Padding::kValid);
+  Array3D<float> expected = {{{17, 28, 39}}};
+
+  auto actual_literal = Literal::CreateR3FromArray3D(*actual);
+
+  LiteralTestUtil::ExpectR3NearArray3D<float>(expected, *actual_literal,
+                                              ErrorSpec(0.0001));
+}
+
 TEST_F(ReferenceUtilTest, ConvWithSamePadding) {
   Array4D<float> input(1, 1, 4, 4);
   // clang-format off
@@ -295,8 +322,10 @@ TEST_F(ReferenceUtilTest, ConvGeneralDimensionsWithSamePadding) {
 
   // Set the convolution dimension numbers.
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_batch_dimension(2);
-  dimension_numbers.set_feature_dimension(0);
+  dimension_numbers.set_input_batch_dimension(2);
+  dimension_numbers.set_input_feature_dimension(0);
+  dimension_numbers.set_output_batch_dimension(2);
+  dimension_numbers.set_output_feature_dimension(0);
   dimension_numbers.add_spatial_dimensions(1);
   dimension_numbers.add_spatial_dimensions(3);
   dimension_numbers.set_kernel_output_feature_dimension(0);
@@ -347,8 +376,10 @@ TEST_F(ReferenceUtilTest, ConvGeneralDimensionsWithValidPadding) {
 
   // Set the convolution dimension numbers.
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_batch_dimension(2);
-  dimension_numbers.set_feature_dimension(0);
+  dimension_numbers.set_input_batch_dimension(2);
+  dimension_numbers.set_input_feature_dimension(0);
+  dimension_numbers.set_output_batch_dimension(2);
+  dimension_numbers.set_output_feature_dimension(0);
   dimension_numbers.add_spatial_dimensions(1);
   dimension_numbers.add_spatial_dimensions(3);
 

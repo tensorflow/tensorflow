@@ -53,8 +53,7 @@ from tensorflow.python.training import monitored_session
 
 def no_rewrite_session_config():
   rewriter_config = rewriter_config_pb2.RewriterConfig(
-      disable_model_pruning=True,
-      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+      disable_model_pruning=True)
   graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
   return config_pb2.ConfigProto(graph_options=graph_options)
 

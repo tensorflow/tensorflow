@@ -48,7 +48,6 @@ cc_library(
     hdrs = ["hlo_parser.h"],
     deps = [
         ":hlo_lexer",
-        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -65,7 +64,6 @@ tf_cc_test(
     srcs = ["hlo_parser_test.cc"],
     deps = [
         ":hlo_parser",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

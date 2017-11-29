@@ -37,6 +37,7 @@ See the @{$python/contrib.framework} guide.
 
 @@arg_scope
 @@add_arg_scope
+@@current_arg_scope
 @@has_arg_scope
 @@arg_scoped_arguments
 

@@ -193,6 +193,25 @@ class PadOpTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, "Unknown padding mode"):
         array_ops.pad(x, [[1, 0], [2, 1]], mode="weird").eval()
 
+  def testPaddingTypes(self):
+    paddings = [[1, 0], [2, 3], [0, 2]]
+    inputs = np.random.randint(-100, 100, (4, 4, 3)).astype(np.float32)
+    for mode in ("CONSTANT", "REFLECT", "SYMMETRIC", "reflect", "symmetric",
+                 "constant"):
+      for padding_dtype in [dtypes.int32, dtypes.int64]:
+        np_val = self._npPad(inputs,
+                             paddings,
+                             mode=mode,
+                             constant_values=0)
+        with self.test_session(use_gpu=True):
+          tf_val = array_ops.pad(inputs,
+                                 constant_op.constant(paddings, padding_dtype),
+                                 mode=mode,
+                                 constant_values=0)
+          out = tf_val.eval()
+        self.assertAllEqual(np_val, out)
+        self.assertShapeEqual(np_val, tf_val)
+
   def testIntTypes(self):
     # TODO(touts): Figure out why the padding tests do not work on GPU
     # for int types and rank > 2.
@@ -235,6 +254,46 @@ class PadOpTest(test.TestCase):
     padded = array_ops.pad(inp, array_ops.placeholder(dtypes.int32))
     self.assertAllEqual(None, padded.get_shape().ndims)
 
+  def testPartialShapeInformation(self):
+    unknown = array_ops.placeholder(dtypes.int32)
+
+    # Known input shape, partial unknown padding (one dimension).
+    inp = constant_op.constant(0.0, shape=[4, 4])
+    padded = array_ops.pad(inp, [[1, 2], unknown])
+    self.assertEqual([7, None], padded.get_shape().as_list())
+
+    # Known input shape, partial unknown padding (begin).
+    inp = constant_op.constant(0.0, shape=[4, 4])
+    padded = array_ops.pad(inp, [[unknown, 0], [1, 2]])
+    self.assertEqual([None, 7], padded.get_shape().as_list())
+
+    # Known input shape, partial unknown padding (end).
+    inp = constant_op.constant(0.0, shape=[4, 4])
+    padded = array_ops.pad(inp, [[1, 2], [0, unknown]])
+    self.assertEqual([7, None], padded.get_shape().as_list())
+
+    # Unknown input shape, partial unknown padding (one dimension).
+    padded = array_ops.pad(unknown, [[1, 2], unknown])
+    self.assertEqual([None, None], padded.get_shape().as_list())
+
+    # Unknown input shape (rank known), partial unknown padding (one dimension).
+    rank_known = array_ops.placeholder(dtypes.int32)
+    rank_known.set_shape([None, None])
+    padded = array_ops.pad(rank_known, [[1, 2], unknown])
+    self.assertEqual([None, None], padded.get_shape().as_list())
+
+    # Known input shape, partial unknown padding (begin), with constant begin.
+    inp = constant_op.constant(0.0, shape=[4, 4])
+    padded = array_ops.pad(inp, [[constant_op.constant(1, shape=[]), 2],
+                                 [0, unknown]])
+    self.assertEqual([7, None], padded.get_shape().as_list())
+
+    # Known input shape, partial unknown padding (begin), with constant dim.
+    inp = constant_op.constant(0.0, shape=[4, 4])
+    padded = array_ops.pad(inp,
+                           [constant_op.constant(1, shape=[2]), [0, unknown]])
+    self.assertEqual([6, None], padded.get_shape().as_list())
+
   def testScalars(self):
     paddings = np.zeros((0, 2), dtype=np.int32)
     inp = np.asarray(7)
@@ -244,6 +303,15 @@ class PadOpTest(test.TestCase):
     self.assertAllEqual(inp, out)
     self.assertShapeEqual(inp, tf_val)
 
+  def testPadTypes(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      paddings = np.zeros((0, 2))
+      inp = np.asarray(7)
+      with self.test_session(use_gpu=True):
+        tf_val = array_ops.pad(inp, constant_op.constant(paddings, dtype=dtype))
+        out = tf_val.eval()
+      self.assertAllEqual(inp, out)
+      self.assertShapeEqual(inp, tf_val)
 
 if __name__ == "__main__":
   test.main()

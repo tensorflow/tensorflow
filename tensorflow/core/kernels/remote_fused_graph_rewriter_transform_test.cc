@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_op_test_utils.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -43,11 +44,28 @@ Status PlaceRemoteGraphArguments(const GraphDef& input_graph_def,
                                  GraphDef* output_graph_def);
 
 namespace {
-
 constexpr const char* const REMOTE_FUSED_GRAPH_EXECUTOR_NAME =
     "remote_fused_graph_executor_name";
 constexpr const char* const REMOTE_FUSED_GRAPH_NODE_NAME =
     "remote_fused_graph_node_name";
+constexpr const char* const REMOTE_FUSED_EXECUTOR_NAME0 =
+    "fuse_test_remote_fused_graph_executor0";
+constexpr const char* const REMOTE_FUSED_EXECUTOR_NAME1 =
+    "fuse_test_remote_fused_graph_executor1";
+
+Status BuildRemoteFusedGraphExecutor0(
+    std::unique_ptr<IRemoteFusedGraphExecutor>* executor) {
+  executor->reset(
+      new TestRemoteFusedGraphExecutor({"Mul"}, REMOTE_FUSED_EXECUTOR_NAME0));
+  return Status::OK();
+}
+
+Status BuildRemoteFusedGraphExecutor1(
+    std::unique_ptr<IRemoteFusedGraphExecutor>* executor) {
+  executor->reset(new TestRemoteFusedGraphExecutor(
+      {"Const", "Mul"}, REMOTE_FUSED_EXECUTOR_NAME1));
+  return Status::OK();
+}
 
 class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
  protected:
@@ -55,11 +73,18 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
     TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(
         &input_graph_def_));
     RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
-        k_hexagon_remote_fused_graph_executor_build(
+        hexagon_remote_fused_graph_executor_build(
             REMOTE_FUSED_GRAPH_EXECUTOR_NAME,
             [](std::unique_ptr<IRemoteFusedGraphExecutor>* executor) -> Status {
               return Status::OK();
             });
+    RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
+        test_remote_fused_graph_executor_build0(REMOTE_FUSED_EXECUTOR_NAME0,
+                                                BuildRemoteFusedGraphExecutor0);
+
+    RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
+        test_remote_fused_graph_executor_build1(REMOTE_FUSED_EXECUTOR_NAME1,
+                                                BuildRemoteFusedGraphExecutor1);
   }
 
   void TearDown() final {}
@@ -113,10 +138,16 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
            {fused_op_types_str_}}));
     }
 
+    if (fuse_by_executor_) {
+      context.params.insert(std::pair<string, std::vector<string>>(
+          {RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSE_BY_EXECUTOR,
+           {"true"}}));
+    }
+
     context.params.insert(std::pair<string, std::vector<string>>(
         {RemoteFusedGraphExecuteUtils::
              TRANSFORM_ARG_REMOTE_FUSED_GRAPH_EXECUTOR_NAME,
-         {REMOTE_FUSED_GRAPH_EXECUTOR_NAME}}));
+         {remote_fused_graph_executor_name_}}));
     context.params.insert(std::pair<string, std::vector<string>>(
         {RemoteFusedGraphExecuteUtils::
              TRANSFORM_ARG_REMOTE_FUSED_GRAPH_NODE_NAME,
@@ -160,7 +191,7 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
                             ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO,
                         &serialized_proto));
         info.ParseFromString(serialized_proto);
-        CHECK_EQ(REMOTE_FUSED_GRAPH_EXECUTOR_NAME, info.executor_name());
+        CHECK_EQ(remote_fused_graph_executor_name_, info.executor_name());
       }
     }
     EXPECT_EQ(expected_cluster_count, cluster_count);
@@ -178,6 +209,8 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
   string border_inputs_str_;
   string border_outputs_str_;
   string fused_op_types_str_;
+  string remote_fused_graph_executor_name_{REMOTE_FUSED_GRAPH_EXECUTOR_NAME};
+  bool fuse_by_executor_{false};
 };
 
 TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
@@ -256,6 +289,24 @@ TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
        FuseRemoteGraphByOpTypes_FGHIJ) {
   ReplaceOpType({"F", "G", "H", "I", "J"}, "Mul");
   fused_op_types_str_ = "Const,Mul";
+  TF_ASSERT_OK(Fuse());
+  CheckGraph(3, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
+       FuseRemoteGraphByExecutor_HIJ) {
+  ReplaceOpType({"H", "I", "J"}, "Mul");
+  remote_fused_graph_executor_name_ = REMOTE_FUSED_EXECUTOR_NAME0;
+  fuse_by_executor_ = true;
+  TF_ASSERT_OK(Fuse());
+  CheckGraph(9, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
+       FuseRemoteGraphByExecutor_FGHIJ) {
+  ReplaceOpType({"F", "G", "H", "I", "J"}, "Mul");
+  remote_fused_graph_executor_name_ = REMOTE_FUSED_EXECUTOR_NAME1;
+  fuse_by_executor_ = true;
   TF_ASSERT_OK(Fuse());
   CheckGraph(3, 1);
 }

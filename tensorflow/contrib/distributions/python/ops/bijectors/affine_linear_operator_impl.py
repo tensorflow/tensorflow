@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
-from tensorflow.contrib.linalg.python.ops import linear_operator
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -27,6 +26,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.ops.linalg import linear_operator
 
 
 __all__ = [
@@ -66,7 +66,7 @@ class AffineLinearOperator(bijector.Bijector):
   Example Use:
 
   ```python
-  linalg = tf.contrib.linalg
+  linalg = tf.linalg
 
   x = [1., 2, 3]
 
@@ -82,7 +82,7 @@ class AffineLinearOperator(bijector.Bijector):
   tril = [[1., 0, 0],
           [2, 1, 0],
           [3, 2, 1]]
-  scale = linalg.LinearOperatorTriL(tril)
+  scale = linalg.LinearOperatorLowerTriangular(tril)
   affine = AffineLinearOperator(shift, scale)
   # In this case, `forward` is equivalent to:
   # np.squeeze(np.matmul(tril, np.expand_dims(x, -1)), -1) + shift

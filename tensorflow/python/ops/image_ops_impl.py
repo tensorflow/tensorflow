@@ -397,9 +397,10 @@ def central_crop(image, central_fraction):
 
   img_shape = array_ops.shape(image)
   depth = image.get_shape()[2]
-  fraction_offset = int(1 / ((1 - central_fraction) / 2.0))
-  bbox_h_start = math_ops.div(img_shape[0], fraction_offset)
-  bbox_w_start = math_ops.div(img_shape[1], fraction_offset)
+  img_h = math_ops.to_double(img_shape[0])
+  img_w = math_ops.to_double(img_shape[1])
+  bbox_h_start = math_ops.to_int32((img_h - img_h * central_fraction) / 2)
+  bbox_w_start = math_ops.to_int32((img_w - img_w * central_fraction) / 2)
 
   bbox_h_size = img_shape[0] - bbox_h_start * 2
   bbox_w_size = img_shape[1] - bbox_w_start * 2
@@ -707,6 +708,12 @@ def resize_images(images,
   *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
     https://en.wikipedia.org/wiki/Bicubic_interpolation)
   *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
+
+  The return value has the same type as `images` if `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
+  if the size of `images` can be statically determined to be the same as `size`,
+  because `images` is returned in this case. Otherwise, the return value has
+  type `float32`.
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or
@@ -1061,7 +1068,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         # Scaling up, cast first, then scale. The scale will not map in.max to
         # out.max, but converting back and forth should result in no change.
         if saturate:
-          cast = math_ops.saturate_cast(scaled, dtype)
+          cast = math_ops.saturate_cast(image, dtype)
         else:
           cast = math_ops.cast(image, dtype)
         scale = (scale_out + 1) // (scale_in + 1)
@@ -1566,11 +1573,56 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       Provide as input to `tf.image.draw_bounding_boxes`.
   """
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
-    # TODO (yongtang): Need to switch to v2 after 3 weeks.
-    return gen_image_ops._sample_distorted_bounding_box(image_size,
+    return gen_image_ops._sample_distorted_bounding_box_v2(image_size,
                 bounding_boxes, seed=seed,
                 seed2=seed2, min_object_covered=min_object_covered,
                 aspect_ratio_range=aspect_ratio_range, area_range=area_range,
                 max_attempts=max_attempts,
                 use_image_if_no_bounding_boxes=use_image_if_no_bounding_boxes,
                 name=name)
+
+
+def non_max_suppression(boxes,
+                        scores,
+                        max_output_size,
+                        iou_threshold=0.5,
+                        name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes.  Bounding boxes are supplied as
+  [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+  is agnostic to where the origin is in the coordinate system.  Note that this
+  algorithm is invariant to orthogonal transformations and translations
+  of the coordinate system; thus translating or reflections of the coordinate
+  system result in the same boxes being selected by the algorithm.
+  The output of this operation is a set of integers indexing into the input
+  collection of bounding boxes representing the selected boxes.  The bounding
+  box coordinates corresponding to the selected indices can then be obtained
+  using the `tf.gather operation`.  For example:
+    selected_indices = tf.image.non_max_suppression(
+        boxes, scores, max_output_size, iou_threshold)
+    selected_boxes = tf.gather(boxes, selected_indices)
+
+  Args:
+    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+  """
+  with ops.name_scope(name, 'non_max_suppression'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    # pylint: disable=protected-access
+    return gen_image_ops._non_max_suppression_v2(boxes, scores, max_output_size,
+                                                 iou_threshold)
+    # pylint: enable=protected-access

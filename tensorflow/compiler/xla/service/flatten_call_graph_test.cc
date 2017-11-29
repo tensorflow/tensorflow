@@ -139,7 +139,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   }
 
   {
-    TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
     std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(module.get());
     const CallGraphNode& c_node = flat_call_graph->GetNode(c_computation);
@@ -182,7 +182,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   }
 
   {
-    TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
     const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
@@ -211,10 +211,10 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
   module->AddEntryComputation(
       MakeCallingComputation(b_computation, /*callsites=*/2, ".Entry"));
 
-  TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
-  EXPECT_EQ(7, module->computations().size());
+  EXPECT_EQ(7, module->computation_count());
 
   const CallGraphNode& c_node = call_graph->GetNode(c_computation);
   EXPECT_EQ(1, c_node.caller_callsites().size());
@@ -225,7 +225,3 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

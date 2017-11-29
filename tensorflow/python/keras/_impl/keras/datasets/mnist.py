@@ -34,9 +34,7 @@ def load_data(path='mnist.npz'):
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
   """
   path = get_file(
-      path,
-      origin='https://s3.amazonaws.com/img-datasets/mnist.npz',
-      file_hash='8a61469f7ea1b51cbae51d4f78837e45')
+      path, origin='https://s3.amazonaws.com/img-datasets/mnist.npz')
   f = np.load(path)
   x_train = f['x_train']
   y_train = f['y_train']

@@ -326,6 +326,9 @@ string DataTypeToPython(DataType dtype, const string& dtype_module) {
 }
 
 string ShapeToPython(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) {
+    return "None";
+  }
   string python = "[";
   for (const auto& dim : shape.dim()) {
     if (python.size() > 1) strings::StrAppend(&python, ", ");
@@ -392,6 +395,9 @@ string AttrListToPython(const AttrValue& value,
   return ret;
 }
 
+// NOTE: The return value may contain spaces (for example, it could be
+// a string "foo bar" with an embedded space) and is not safe to pass
+// to WordWrap().
 string AttrValueToPython(const string& type, const AttrValue& value,
                          const string& dtype_module) {
   if (type == "string") {
@@ -399,7 +405,11 @@ string AttrValueToPython(const string& type, const AttrValue& value,
   } else if (type == "int") {
     return strings::StrCat(value.i());
   } else if (type == "float") {
-    return strings::StrCat(value.f());
+    if (std::isnan(value.f()) || std::isinf(value.f())) {
+      return strings::StrCat("float('", value.f(), "')");
+    } else {
+      return strings::StrCat(value.f());
+    }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
   } else if (type == "type") {
@@ -521,9 +531,7 @@ string GenPythonOp::Code() {
 }
 
 void GenPythonOp::AddDefLine(const string& parameters) {
-  const string def_prefix = strings::StrCat("def ", function_name_, "(");
-  strings::StrAppend(
-      &result_, WordWrap(def_prefix, parameters + "):", kRightMargin), "\n");
+  strings::StrAppend(&result_, "def ", function_name_, "(", parameters, "):\n");
 }
 
 void GenPythonOp::AddDocStringDescription() {
@@ -682,25 +690,26 @@ void GenPythonOp::AddDocStringOutputs() {
 }
 
 void GenPythonOp::AddBody(const string& prefix) {
-  string return_prefix =
-      strings::StrCat(prefix, "result = _op_def_lib.apply_op(");
-  string return_args = strings::StrCat("\"", op_def_.name(), "\", ");
-  for (size_t i = 0; i < param_names_.size(); ++i) {
-    strings::StrAppend(&return_args, param_names_[i], "=", param_names_[i],
-                       ", ");
+  const string apply_prefix =
+      strings::StrCat(prefix, "_result = _op_def_lib.apply_op(");
+  AddBodyNoReturn(apply_prefix);
+  if (num_outs_ > 1) {
+    strings::StrAppend(&result_, prefix, "_result = _", op_def_.name(),
+                       "Output._make(_result)\n");
   }
-  strings::StrAppend(&return_args, "name=name)");
+  strings::StrAppend(&result_, prefix, "return _result\n");
+}
+
+void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
+  string args = strings::StrCat("\"", op_def_.name(), "\", ");
+  for (size_t i = 0; i < param_names_.size(); ++i) {
+    strings::StrAppend(&args, param_names_[i], "=", param_names_[i], ", ");
+  }
+  strings::StrAppend(&args, "name=name)");
 
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
-                     WordWrap(return_prefix, return_args, kRightMargin), "\n");
-
-  if (num_outs_ <= 1) {
-    strings::StrAppend(&result_, prefix, "return result\n");
-  } else {
-    strings::StrAppend(&result_, prefix, "return _", op_def_.name(),
-                       "Output._make(result)\n");
-  }
+                     WordWrap(apply_prefix, args, kRightMargin), "\n");
 }
 
 }  // namespace python_op_gen_internal

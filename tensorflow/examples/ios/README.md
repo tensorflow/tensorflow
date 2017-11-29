@@ -30,7 +30,7 @@ cp ~/graphs/inception5h/* tensorflow/examples/ios/simple/data/
    long time since it is big (~450MB). For example, if you want to run the
    simple example, then:
 ```bash
-cd tensorflow/ios/simple
+cd tensorflow/examples/ios/simple
 pod install
 open tf_simple_example.xcworkspace # obs, not the .xcodeproj directory
 ```

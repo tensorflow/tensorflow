@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/dataset.h"
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 
@@ -72,7 +71,7 @@ Status HandleElementToLargerSliceWithRank(const Tensor& element, Tensor* parent,
   }
 
   switch (element.dtype()) {
-    TF_CALL_ALL_TYPES(HANDLE_TYPE);
+    TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented(
@@ -116,7 +115,7 @@ Status SetElementZero(Tensor* element, const Tensor& padding) {
     element->flat<T>().setConstant(padding.scalar<T>()()); \
     return Status::OK();                                   \
   }
-  TF_CALL_ALL_TYPES(HANDLE_TYPE);
+  TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
   return errors::Unimplemented("SetElementZero Unhandled data type: ",
                                element->dtype());
@@ -214,8 +213,10 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::PaddedBatch")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -237,12 +238,13 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
 
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         // Each row of `batch_elements` is a tuple of tensors from the
         // input iterator.
         std::vector<std::vector<Tensor>> batch_elements;
@@ -347,7 +349,6 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 i_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 

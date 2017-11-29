@@ -39,26 +39,17 @@ class LocalService : public Service {
   static StatusOr<std::unique_ptr<LocalService>> NewService(
       const ServiceOptions& options);
 
-  // Return a handle to a buffer large enough to hold shape, allocated
-  // on device_ordinal. If allocate_space_for_deep_copy, the buffer is
-  // large enough to hold all sub-buffers of a tuple shape, otherwise
-  // it is only as large as the top-level tuple pointer array.
-  StatusOr<GlobalDataHandle> AllocateBufferOnDevice(
-      const Shape& shape, int device_ordinal,
-      bool allocate_space_for_deep_copy);
-
   // Builds an Executable with the given argument layouts and options. If
   // result_layout is non-null, then the executable is compiled to produce a
   // result of the given layout.
   StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       const ComputationHandle& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const Shape* result_layout, int device_ordinal, bool has_hybrid_result);
+      const Shape* result_layout, int device_ordinal);
 
  private:
   explicit LocalService(const ServiceOptions& options,
-                        std::unique_ptr<Backend> backend,
-                        std::unique_ptr<Backend> compute_constant_backend);
+                        std::unique_ptr<Backend> backend);
   LocalService(const LocalService&) = delete;
   void operator=(const LocalService&) = delete;
 };

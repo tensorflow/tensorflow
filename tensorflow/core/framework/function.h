@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -37,6 +36,7 @@ class CancellationManager;
 class GraphDef;
 class OpKernel;
 class ResourceMgr;
+class Rendezvous;
 class ScopedStepContainer;
 class StepStatsCollector;
 class Node;
@@ -229,6 +229,11 @@ string DebugStringWhole(const GraphDef& gdef);
 // of NodeDefs doesn't matter.
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 
+// Return a hash of `fdef` that is consistent with FunctionDefsEqual method.
+// In other words, if two fdefs compare equal, their hash values will be the
+// same.
+uint64 FunctionDefHash(const FunctionDef& fdef);
+
 // Returns a canonicalized string for the instantiation of the
 // function of the given "name" and attributes "attrs".
 //
@@ -292,20 +297,24 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // 'fdef' already exists in this function library.
   // If 'fdef' is successfully added to the library, it will be accessible
   // from 'LookUp' and included in the proto returned by 'ToProto'.
+  // This operation is atomic.
   Status AddFunctionDef(const FunctionDef& fdef);
 
   // Adds gradient definition 'grad' to this function library.
   // This is a no-op if 'grad' already exists in this function library.
   // If 'grad' is successfully added, it will be accessible via 'FindGradient'
   // and included in the proto returned by 'ToProto'.
+  // This operation is atomic.
   Status AddGradientDef(const GradientDef& grad);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
+  // This operation is atomic.
   Status AddLibrary(const FunctionLibraryDefinition& other);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
+  // This operation is atomic.
   Status AddLibrary(const FunctionDefLibrary& lib_def);
 
   // If the gradient function for 'func' is specified explicitly in
@@ -345,14 +354,19 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   }
 
  private:
-  // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
+  // Shape inference for functions is handled separately by ShapeRefiner.
+
   struct FunctionDefAndOpRegistration {
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
-        : fdef(fdef_in), op_registration_data(fdef.signature()) {}
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
     FunctionDef fdef;
     OpRegistrationData op_registration_data;
   };
+
+  // Same as AddFunctionDef/AddGradientDef except these methods set
+  // `added` to true if the `fdef`/`grad` were actually added to this.
+  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added);
+  Status AddGradientDefHelper(const GradientDef& grad, bool* added);
 
   const OpRegistryInterface* const default_registry_;
   gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
@@ -362,6 +376,18 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
   const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
+
+  // Remove function `func` from the library. `func` must be in the library.
+  void RemoveFunction(const string& func);
+
+  // Remove gradient of function `func` from the library. `func` must have
+  // a gradient.
+  void RemoveGradient(const string& func);
+
+  // Remove all functions in `funcs` and all gradients of
+  // functions in `funcs_with_grads` from this library.
+  void Remove(const std::vector<string>& funcs,
+              const std::vector<string>& funcs_with_grads);
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -397,16 +423,21 @@ class FunctionLibraryRuntime {
   // "done" is called with an error status.
   //
   // Does not take ownership of "rets".
+  // In the cross-process scenario, runner isn't used for making the Async
+  // RPC calls.
   struct Options {
-    CancellationManager* cancellation_manager = nullptr;
     // The id of the step that is calling this function.
     int64 step_id = 0;
-
-    // Per-step container.
+    Rendezvous* rendezvous = nullptr;
+    CancellationManager* cancellation_manager = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollector* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
+
+    // Parameters for remote function execution.
+    bool remote_execution = false;
+    string source_device = "";  // Fully specified device name.
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
@@ -438,7 +469,49 @@ class FunctionLibraryRuntime {
 
   // Returns the graph version number.
   virtual int graph_def_version() = 0;
+
+  typedef uint64 LocalHandle;
 };
+
+const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
+const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
+typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
+                             std::unique_ptr<OpKernel>*)>
+    CustomKernelCreator;
+
+// Used to instantiate and run functions in a distributed system.
+class DistributedFunctionLibraryRuntime {
+ public:
+  virtual ~DistributedFunctionLibraryRuntime() {}
+
+  // The _target attr in attrs determines where the function is instantiated.
+  virtual Status Instantiate(const string& function_name,
+                             const FunctionLibraryDefinition& lib_def,
+                             AttrSlice attrs,
+                             FunctionLibraryRuntime::LocalHandle* handle) = 0;
+
+  // opts.runner isn't used for execution.
+  virtual void Run(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::LocalHandle handle,
+                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   FunctionLibraryRuntime::DoneCallback done) = 0;
+};
+
+// Extracts the actual type from "attr_values" based on its definition
+// "arg_def".
+//
+// If "arg_def" is a N*T type, *is_type_list is set to false, and
+// *dtypes is set to be a vector of size N and each element is T.
+//
+// If "arg_def" is a list(type), *is_type_list is set to true, and
+// *dtypes is set to be a vector of types specified in attrs for
+// arg_def.
+//
+// Otherwise (arg_def is a simple type T), *is_type_list is set to
+// false, and *dtypes is set to a single element vector, whose only
+// element is T.
+Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
+                  bool* is_type_list, DataTypeVector* dtypes);
 
 // To register a gradient function for a builtin op, one should use
 //   REGISTER_OP_GRADIENT(<op_name>, <c++ grad factory>);

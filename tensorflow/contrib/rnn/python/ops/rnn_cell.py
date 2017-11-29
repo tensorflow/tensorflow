@@ -26,6 +26,7 @@ from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
@@ -524,7 +525,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       self._state_tuple_type = collections.namedtuple(
           "GridLSTMStateTuple", state_names.strip(","))
       self._state_size = self._state_tuple_type(
-              *([num_units, num_units] * self._total_blocks))
+          *([num_units, num_units] * self._total_blocks))
     else:
       self._state_tuple_type = None
       self._state_size = num_units * self._total_blocks * 2
@@ -1016,7 +1017,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
 
 
 # pylint: disable=protected-access
-_linear = rnn_cell_impl._linear
+_Linear = rnn_cell_impl._Linear  # pylint: disable=invalid-name
 # pylint: enable=protected-access
 
 
@@ -1078,6 +1079,9 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
     self._attn_size = attn_size
     self._attn_length = attn_length
     self._reuse = reuse
+    self._linear1 = None
+    self._linear2 = None
+    self._linear3 = None
 
   @property
   def state_size(self):
@@ -1109,7 +1113,9 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
     input_size = self._input_size
     if input_size is None:
       input_size = inputs.get_shape().as_list()[1]
-    inputs = _linear([inputs, attns], input_size, True)
+    if self._linear1 is None:
+      self._linear1 = _Linear([inputs, attns], input_size, True)
+    inputs = self._linear1([inputs, attns])
     cell_output, new_state = self._cell(inputs, state)
     if self._state_is_tuple:
       new_state_cat = array_ops.concat(nest.flatten(new_state), 1)
@@ -1117,7 +1123,9 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
       new_state_cat = new_state
     new_attns, new_attn_states = self._attention(new_state_cat, attn_states)
     with vs.variable_scope("attn_output_projection"):
-      output = _linear([cell_output, new_attns], self._attn_size, True)
+      if self._linear2 is None:
+        self._linear2 = _Linear([cell_output, new_attns], self._attn_size, True)
+      output = self._linear2([cell_output, new_attns])
     new_attn_states = array_ops.concat(
         [new_attn_states, array_ops.expand_dims(output, 1)], 1)
     new_attn_states = array_ops.reshape(
@@ -1140,7 +1148,9 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
       hidden = array_ops.reshape(attn_states,
                                  [-1, self._attn_length, 1, self._attn_size])
       hidden_features = conv2d(hidden, k, [1, 1, 1, 1], "SAME")
-      y = _linear(query, self._attn_vec_size, True)
+      if self._linear3 is None:
+        self._linear3 = _Linear(query, self._attn_vec_size, True)
+      y = self._linear3(query)
       y = array_ops.reshape(y, [-1, 1, 1, self._attn_vec_size])
       s = reduce_sum(v * tanh(hidden_features + y), [2, 3])
       a = softmax(s)
@@ -1536,6 +1546,7 @@ class UGRNNCell(rnn_cell_impl.RNNCell):
     self._forget_bias = forget_bias
     self._activation = activation
     self._reuse = reuse
+    self._linear = None
 
   @property
   def state_size(self):
@@ -1572,7 +1583,9 @@ class UGRNNCell(rnn_cell_impl.RNNCell):
     with vs.variable_scope(vs.get_variable_scope(),
                            initializer=self._initializer):
       cell_inputs = array_ops.concat([inputs, state], 1)
-      rnn_matrix = _linear(cell_inputs, 2 * self._num_units, True)
+      if self._linear is None:
+        self._linear = _Linear(cell_inputs, 2 * self._num_units, True)
+      rnn_matrix = self._linear(cell_inputs)
 
       [g_act, c_act] = array_ops.split(
           axis=1, num_or_size_splits=2, value=rnn_matrix)
@@ -1637,6 +1650,8 @@ class IntersectionRNNCell(rnn_cell_impl.RNNCell):
     self._num_input_proj = num_in_proj
     self._y_activation = y_activation
     self._reuse = reuse
+    self._linear1 = None
+    self._linear2 = None
 
   @property
   def state_size(self):
@@ -1679,7 +1694,9 @@ class IntersectionRNNCell(rnn_cell_impl.RNNCell):
       if input_size.value != self._num_units:
         if self._num_input_proj:
           with vs.variable_scope("in_projection"):
-            inputs = _linear(inputs, self._num_units, True)
+            if self._linear1 is None:
+              self._linear1 = _Linear(inputs, self._num_units, True)
+            inputs = self._linear1(inputs)
         else:
           raise ValueError("Must have input size == output size for "
                            "Intersection RNN. To fix, num_in_proj should "
@@ -1687,7 +1704,9 @@ class IntersectionRNNCell(rnn_cell_impl.RNNCell):
 
       n_dim = i_dim = self._num_units
       cell_inputs = array_ops.concat([inputs, state], 1)
-      rnn_matrix = _linear(cell_inputs, 2*n_dim + 2*i_dim, True)
+      if self._linear2 is None:
+        self._linear2 = _Linear(cell_inputs, 2*n_dim + 2*i_dim, True)
+      rnn_matrix = self._linear2(cell_inputs)
 
       gh_act = rnn_matrix[:, :n_dim]                           # b x n
       h_act = rnn_matrix[:, n_dim:2*n_dim]                     # b x n
@@ -1824,6 +1843,9 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
     self._period_init_min = period_init_min
     self._period_init_max = period_init_max
     self._reuse = reuse
+    self._linear1 = None
+    self._linear2 = None
+    self._linear3 = None
 
   @property
   def state_size(self):
@@ -1871,14 +1893,18 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
       in_mask_gates.append(c_prev)
 
     with vs.variable_scope("mask_gates"):
+      if self._linear1 is None:
+        self._linear1 = _Linear(in_mask_gates, 2 * self._num_units, True)
+
       mask_gates = math_ops.sigmoid(
-          _linear(in_mask_gates, 2 * self._num_units, True))
+          self._linear1(in_mask_gates))
       [input_gate, forget_gate] = array_ops.split(
           axis=1, num_or_size_splits=2, value=mask_gates)
 
     with vs.variable_scope("new_input"):
-      new_input = math_ops.tanh(
-          _linear([x, h_prev], self._num_units, True))
+      if self._linear2 is None:
+        self._linear2 = _Linear([x, h_prev], self._num_units, True)
+      new_input = math_ops.tanh(self._linear2([x, h_prev]))
 
     new_c = (c_prev * forget_gate + input_gate * new_input)
 
@@ -1887,8 +1913,9 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
       in_out_gate.append(new_c)
 
     with vs.variable_scope("output_gate"):
-      output_gate = math_ops.sigmoid(
-          _linear(in_out_gate, self._num_units, True))
+      if self._linear3 is None:
+        self._linear3 = _Linear(in_out_gate, self._num_units, True)
+      output_gate = math_ops.sigmoid(self._linear3(in_out_gate))
 
     new_h = math_ops.tanh(new_c) * output_gate
 
@@ -1921,6 +1948,183 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
 
     return new_h, new_state
 
+class ConvLSTMCell(rnn_cell_impl.RNNCell):
+  """Convolutional LSTM recurrent network cell.
+
+  https://arxiv.org/pdf/1506.04214v1.pdf
+  """
+
+  def __init__(self,
+               conv_ndims,
+               input_shape,
+               output_channels,
+               kernel_shape,
+               use_bias=True,
+               skip_connection=False,
+               forget_bias=1.0,
+               initializers=None,
+               name="conv_lstm_cell"):
+    """Construct ConvLSTMCell.
+    Args:
+      conv_ndims: Convolution dimensionality (1, 2 or 3).
+      input_shape: Shape of the input as int tuple, excluding the batch size.
+      output_channels: int, number of output channels of the conv LSTM.
+      kernel_shape: Shape of kernel as in tuple (of size 1,2 or 3).
+      use_bias: Use bias in convolutions.
+      skip_connection: If set to `True`, concatenate the input to the
+      output of the conv LSTM. Default: `False`.
+      forget_bias: Forget bias.
+      name: Name of the module.
+    Raises:
+      ValueError: If `skip_connection` is `True` and stride is different from 1
+        or if `input_shape` is incompatible with `conv_ndims`.
+    """
+    super(ConvLSTMCell, self).__init__(name=name)
+
+    if conv_ndims != len(input_shape)-1:
+      raise ValueError("Invalid input_shape {} for conv_ndims={}.".format(
+          input_shape, conv_ndims))
+
+    self._conv_ndims = conv_ndims
+    self._input_shape = input_shape
+    self._output_channels = output_channels
+    self._kernel_shape = kernel_shape
+    self._use_bias = use_bias
+    self._forget_bias = forget_bias
+    self._skip_connection = skip_connection
+
+    self._total_output_channels = output_channels
+    if self._skip_connection:
+      self._total_output_channels += self._input_shape[-1]
+
+    state_size = tensor_shape.TensorShape(self._input_shape[:-1] 
+                                          + [self._output_channels])
+    self._state_size = rnn_cell_impl.LSTMStateTuple(state_size, state_size)
+    self._output_size = tensor_shape.TensorShape(self._input_shape[:-1]
+                                                 + [self._total_output_channels])
+
+  @property
+  def output_size(self):
+    return self._output_size
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  def call(self, inputs, state, scope=None):
+    cell, hidden = state
+    new_hidden = _conv([inputs, hidden],
+                       self._kernel_shape,
+                       4*self._output_channels,
+                       self._use_bias)
+    gates = array_ops.split(value=new_hidden,
+                            num_or_size_splits=4,
+                            axis=self._conv_ndims+1)
+
+    input_gate, new_input, forget_gate, output_gate = gates
+    new_cell = math_ops.sigmoid(forget_gate + self._forget_bias) * cell
+    new_cell += math_ops.sigmoid(input_gate) * math_ops.tanh(new_input)
+    output = math_ops.tanh(new_cell) * math_ops.sigmoid(output_gate)
+
+    if self._skip_connection:
+      output = array_ops.concat([output, inputs], axis=-1)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_cell, output)
+    return output, new_state
+
+class Conv1DLSTMCell(ConvLSTMCell):
+  """1D Convolutional LSTM recurrent network cell.
+
+  https://arxiv.org/pdf/1506.04214v1.pdf
+  """
+  def __init__(self, name="conv_1d_lstm_cell", **kwargs):
+    """Construct Conv1DLSTM. See `ConvLSTMCell` for more details."""
+    super(Conv1DLSTMCell, self).__init__(conv_ndims=1, **kwargs)
+
+class Conv2DLSTMCell(ConvLSTMCell):
+  """2D Convolutional LSTM recurrent network cell.
+
+  https://arxiv.org/pdf/1506.04214v1.pdf
+  """
+  def __init__(self, name="conv_2d_lstm_cell", **kwargs):
+    """Construct Conv2DLSTM. See `ConvLSTMCell` for more details."""
+    super(Conv2DLSTMCell, self).__init__(conv_ndims=2, **kwargs)
+
+class Conv3DLSTMCell(ConvLSTMCell):
+  """3D Convolutional LSTM recurrent network cell.
+
+  https://arxiv.org/pdf/1506.04214v1.pdf
+  """
+  def __init__(self, name="conv_3d_lstm_cell", **kwargs):
+    """Construct Conv3DLSTM. See `ConvLSTMCell` for more details."""
+    super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
+
+def _conv(args, 
+          filter_size,
+          num_features,
+          bias,
+          bias_start=0.0):
+  """convolution:
+  Args:
+    args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D, 
+    batch x n, Tensors.
+    filter_size: int tuple of filter height and width.
+    num_features: int, number of features.
+    bias_start: starting value to initialize the bias; 0 by default.
+  Returns:
+    A 3D, 4D, or 5D Tensor with shape [batch ... num_features]
+  Raises:
+    ValueError: if some of the arguments has unspecified or wrong shape.
+  """
+
+  # Calculate the total size of arguments on dimension 1.
+  total_arg_size_depth = 0
+  shapes = [a.get_shape().as_list() for a in args]
+  shape_length = len(shapes[0])
+  for shape in shapes:
+    if len(shape) not in [3,4,5]:
+      raise ValueError("Conv Linear expects 3D, 4D "
+                       "or 5D arguments: %s" % str(shapes))
+    if len(shape) != len(shapes[0]):
+      raise ValueError("Conv Linear expects all args "
+                       "to be of same Dimension: %s" % str(shapes))
+    else:
+      total_arg_size_depth += shape[-1]
+  dtype = [a.dtype for a in args][0]
+
+  # determine correct conv operation
+  if   shape_length == 3:
+    conv_op = nn_ops.conv1d
+    strides = 1
+  elif shape_length == 4:
+    conv_op = nn_ops.conv2d
+    strides = shape_length*[1]
+  elif shape_length == 5:
+    conv_op = nn_ops.conv3d
+    strides = shape_length*[1]
+
+  # Now the computation.
+  kernel = vs.get_variable(
+      "kernel",
+      filter_size + [total_arg_size_depth, num_features],
+      dtype=dtype)
+  if len(args) == 1:
+    res = conv_op(args[0],
+                  kernel,
+                  strides,
+                  padding='SAME')
+  else:
+    res = conv_op(array_ops.concat(axis=shape_length-1, values=args),
+                  kernel,
+                  strides,
+                  padding='SAME')
+  if not bias:
+    return res
+  bias_term = vs.get_variable(
+      "biases", [num_features],
+      dtype=dtype,
+      initializer=init_ops.constant_initializer(
+          bias_start, dtype=dtype))
+  return res + bias_term
 
 class GLSTMCell(rnn_cell_impl.RNNCell):
   """Group LSTM cell (G-LSTM).
@@ -1983,6 +2187,8 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     else:
       self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_units)
       self._output_size = num_units
+    self._linear1 = None
+    self._linear2 = None
 
   @property
   def state_size(self):
@@ -2026,7 +2232,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
         Here output_dim is:
            num_proj if num_proj was set,
            num_units otherwise.
-      - LSTMStateTuple representing the new state of G-LSTM  cell
+      - LSTMStateTuple representing the new state of G-LSTM cell
         after reading `inputs` when the previous state was `state`.
 
     Raises:
@@ -2051,7 +2257,9 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
                                        self._group_shape[0]),
              self._get_input_for_group(m_prev, group_id,
                                        self._group_shape[0])], axis=1)
-          R_k = _linear(x_g_id, 4 * self._group_shape[1], bias=False)
+          if self._linear1 is None:
+            self._linear1 = _Linear(x_g_id, 4 * self._group_shape[1], False)
+          R_k = self._linear1(x_g_id)  # pylint: disable=invalid-name
           i_k, j_k, f_k, o_k = array_ops.split(R_k, 4, 1)
 
         i_parts.append(i_k)
@@ -2091,7 +2299,9 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
 
     if self._num_proj is not None:
       with vs.variable_scope("projection"):
-        m = _linear(m, self._num_proj, bias=False)
+        if self._linear2 is None:
+          self._linear2 = _Linear(m, self._num_proj, False)
+        m = self._linear2(m)
 
     new_state = rnn_cell_impl.LSTMStateTuple(c, m)
     return m, new_state

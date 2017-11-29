@@ -42,34 +42,25 @@ const char* kRecomputeTriggerNodePrefix = "RecomputeTrigger";
 // Attribute which may be added to nodes to manually allow them to be
 // recomputed.
 const char* kRecomputeHint = "_recompute_hint";
-const char* kRecomputationTargetNamePrefix = "gradients/";
 
 // Ops which we wouldn't mind recomputing to save memory.
 // TODO(allenl): Replace this list with a cost model.
 std::unordered_set<string> GetCheapToRecomputeOps() {
   std::unordered_set<string> cheap_ops = {
-      "Add",      "AddN",           "BiasAdd",
-      "Cast",     "Fill",           "FloorDiv",
-      "FloorMod", "FusedBatchNorm", "Mul",
-      "Neg",      "RealDiv",        "Reciprocal",
-      "Relu",     "Reshape",        "Rsqrt",
-      "Sqrt",     "Square",         "SquaredDifference",
-      "Sub",      "Tile",           "Transpose"};
+      "Add",  "AddN",     "BiasAdd",           "Cast",
+      "Fill", "FloorDiv", "FloorMod",          "FusedBatchNorm",
+      "Mul",  "Neg",      "RealDiv",           "Reciprocal",
+      "Relu", "Relu6",    "Reshape",           "Rsqrt",
+      "Sqrt", "Square",   "SquaredDifference", "Sub",
+      "Tile", "Transpose"};
   return cheap_ops;
-}
-
-// Nodes whose inputs we may want to recompute (i.e. gradients).
-// TODO(allenl): Rather than blindly recomputing gradient inputs, use a static
-// schedule (grappler::EstimateEarliestExecutionTimes) to recompute only nodes
-// whose outputs will sit around for a while.
-bool IsTargetOp(const NodeDef& node) {
-  return node.name().find(kRecomputationTargetNamePrefix) == 0;
 }
 
 // Find recomputable ops which feed into target nodes.
 std::unordered_set<const NodeDef*> FindCandidateRecomputeNodes(
     const NodeMap& node_map, const GraphDef* graph,
-    const std::function<bool(const NodeDef&)>& is_candidate) {
+    const std::function<bool(const NodeDef&)>& is_candidate,
+    const std::function<bool(const NodeDef&)>& is_target) {
   std::unordered_set<const NodeDef*> candidate_recompute_nodes;
   for (const auto& node : graph->node()) {
     if (!is_candidate(node)) {
@@ -79,7 +70,7 @@ std::unordered_set<const NodeDef*> FindCandidateRecomputeNodes(
     for (const NodeDef* output : node_map.GetOutputs(node.name())) {
       // It only makes sense to recompute this if it feeds into a target
       // node. We expand this to dependencies in GetOpGroupsToRecompute.
-      if (IsTargetOp(*output)) {
+      if (is_target(*output)) {
         has_target_output = true;
         break;
       }
@@ -91,7 +82,7 @@ std::unordered_set<const NodeDef*> FindCandidateRecomputeNodes(
     for (const string& input_name : node.input()) {
       // Don't recompute nodes which depend on target nodes.
       const NodeDef* input_node = node_map.GetNode(input_name);
-      if (IsTargetOp(*input_node)) {
+      if (is_target(*input_node)) {
         has_target_input = true;
         break;
       }
@@ -148,11 +139,12 @@ struct RecomputedSubGraph {
 // Find groups of ops to recompute together based on `should_recompute`.
 std::vector<RecomputedSubGraph> GetOpGroupsToRecompute(
     const GraphDef* graph, const NodeMap& node_map,
-    const std::function<bool(const NodeDef&)>& should_recompute) {
+    const std::function<bool(const NodeDef&)>& should_recompute,
+    const std::function<bool(const NodeDef&)>& is_target) {
   std::unordered_set<const NodeDef*> visited_nodes;
   std::vector<RecomputedSubGraph> subgraphs_to_recompute;
   std::unordered_set<const NodeDef*> candidate_recompute_nodes =
-      FindCandidateRecomputeNodes(node_map, graph, should_recompute);
+      FindCandidateRecomputeNodes(node_map, graph, should_recompute, is_target);
   for (const NodeDef* recompute_node : candidate_recompute_nodes) {
     if (visited_nodes.count(recompute_node) > 0) {
       continue;
@@ -172,7 +164,7 @@ std::vector<RecomputedSubGraph> GetOpGroupsToRecompute(
     for (const NodeDef* recompute_node : unpruned_recompute_nodes) {
       bool inserted_feed = false;
       for (NodeDef* output : node_map.GetOutputs(recompute_node->name())) {
-        if (IsTargetOp(*output)) {
+        if (is_target(*output)) {
           current_recomputation.target_nodes.insert(output);
           if (!inserted_feed) {
             // Keep track of nodes which feed directly into a target node. These
@@ -417,6 +409,7 @@ void RecomputeSubgraph(
 }
 
 void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
+                                const string& recomputation_targets_name_prefix,
                                 GraphDef* graph, const GrapplerItem& item) {
   // The topological numberings and NodeMap will be stale as soon as we start
   // modifying the graph in RecomputeSubgraph. However, RecomputeSubgraph only
@@ -434,6 +427,17 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
   for (const auto& feed : item.feed) {
     feeds.insert(NodeName(feed.first));
   }
+  std::function<bool(const NodeDef&)> is_target =
+      [&recomputation_targets_name_prefix](const NodeDef& node) {
+        // Nodes whose inputs we may want to recompute. Typically targets will
+        // be gradients (recomputation_targets_name_prefix="gradients/"),
+        // although the prefix is configurable since gradients may be created in
+        // a name scope.
+        // TODO(allenl): Use a static schedule
+        // (grappler::EstimateEarliestExecutionTimes) to recompute only nodes
+        // whose outputs will sit around for a while.
+        return node.name().find(recomputation_targets_name_prefix) == 0;
+      };
   if (optimization_level == RewriterConfig::HEURISTICS) {
     // TODO(allenl): Handle ResNet-like architectures better. Right now all of
     // the cheap forward ops get grouped into a single subgraph which must
@@ -443,17 +447,20 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
         GetCheapToRecomputeOps();
     recomputed_subgraphs = GetOpGroupsToRecompute(
         graph, node_map,
-        [&cheap_to_recompute_ops, &feeds](const NodeDef& node) {
-          return !IsTargetOp(node) && feeds.count(node.name()) == 0 &&
+        [&cheap_to_recompute_ops, &feeds, &is_target](const NodeDef& node) {
+          return !is_target(node) && feeds.count(node.name()) == 0 &&
                  (cheap_to_recompute_ops.count(node.op()) > 0 ||
                   node.attr().count(kRecomputeHint) > 0);
-        });
-  } else {  // optimization_level == RewriterConfig::MANUAL
-    recomputed_subgraphs =
-        GetOpGroupsToRecompute(graph, node_map, [&feeds](const NodeDef& node) {
-          return !IsTargetOp(node) && feeds.count(node.name()) == 0 &&
+        },
+        is_target);
+  } else if (optimization_level == RewriterConfig::MANUAL) {
+    recomputed_subgraphs = GetOpGroupsToRecompute(
+        graph, node_map,
+        [&feeds, &is_target](const NodeDef& node) {
+          return !is_target(node) && feeds.count(node.name()) == 0 &&
                  node.attr().count(kRecomputeHint) > 0;
-        });
+        },
+        is_target);
   }
   if (!recomputed_subgraphs.empty()) {
     std::unordered_map<const NodeDef*, int> topological_numbering;
@@ -491,6 +498,9 @@ std::pair<NodeDef*, NodeDef*> BuildSwapPair(NodeDef* node, int input_to_swap,
   (*swap_in_node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
   (*node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
 
+  const DataType input_type = node->attr().at("T").type();
+  (*swap_in_node->mutable_attr())["T"].set_type(input_type);
+  (*swap_out_node->mutable_attr())["T"].set_type(input_type);
   return std::make_pair(swap_out_node, swap_in_node);
 }
 
@@ -596,7 +606,9 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
 
-  RecomputationRewritingPass(optimization_level_, optimized_graph, item);
+  RecomputationRewritingPass(optimization_level_,
+                             recomputation_targets_name_prefix_,
+                             optimized_graph, item);
 
   // Figure out what needs to be swapped;
   std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;

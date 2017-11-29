@@ -37,22 +37,35 @@ namespace xla {
 namespace {
 // Wrapper function that creates a nicer error message (than a bare
 // ValueOrDie()) if the platform we intend to test is not available.
-Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
-  StatusOr<Client*> result = ClientLibrary::GetOrCreateLocalClient(platform);
-  TF_CHECK_OK(result.status()) << "could not create local client for testing";
+Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
+  StatusOr<Client*> result =
+      ClientLibrary::GetOrCreateLocalClient(client_options);
+  TF_CHECK_OK(result.status()) << " could not create local client for testing";
   return result.ValueOrDie();
 }
 }  // namespace
 
-ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
-    : client_(GetOrCreateLocalClientOrDie(platform)),
+ClientLibraryTestBase::ClientLibraryTestBase(
+    perftools::gputools::Platform* platform,
+    const LocalClientOptions& client_options)
+    : client_(GetOrCreateLocalClientOrDie(client_options)),
       execution_options_(CreateDefaultExecutionOptions()) {
+  CHECK_EQ(platform, client_options.platform());
   // Disabling constant_folding so that tests (usually written using Constants)
   // will exercise the intended code paths, instead of being constant folded.
   //
   // TODO(b/38354253): Constant folding is currently disabled. Change tests to
   // use Parameters instead of Constants, and re-enable constant folding by
   // default.
+  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+      "constant_folding");
+}
+
+ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
+    : execution_options_(CreateDefaultExecutionOptions()) {
+  LocalClientOptions default_options;
+  default_options.set_platform(platform);
+  client_ = GetOrCreateLocalClientOrDie(default_options);
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
 }
@@ -67,12 +80,6 @@ StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return client_->Execute(computation, arguments, &execution_options_);
-}
-
-StatusOr<ExecutionHandle> ClientLibraryTestBase::ExecuteAsync(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  return client_->ExecuteAsync(computation, arguments, &execution_options_);
 }
 
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
@@ -247,11 +254,13 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_layout) {
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-  if (ShapeUtil::ElementIsFloating(expected.shape())) {
+  if (ShapeUtil::ElementIsFloating(expected.shape()) ||
+      ShapeUtil::ElementIsComplex(expected.shape())) {
     LOG(WARNING) << "performing exact comparison of floating point numbers";
   } else {
     TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
-                 expected.shape().element_type() == PRED);
+                 expected.shape().element_type() == PRED)
+        << ShapeUtil::HumanString(expected.shape());
   }
   auto expect_equal = [&](const Literal& actual, const string& error_message) {
     LiteralTestUtil::ExpectEqual(expected, actual, error_message);
@@ -274,7 +283,8 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
     const Shape* shape_with_layout) {
-  TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()));
+  TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
+               ShapeUtil::ElementIsComplex(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   auto expect_near = [&](const Literal& actual, const string& error_message) {
     LiteralTestUtil::ExpectNear(expected, actual, error, error_message);

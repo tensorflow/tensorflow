@@ -18,21 +18,41 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import trig
+import numpy as np
+
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
 
-sinh = trig.sinh
-arcsinh = trig.arcsinh
-cosh = trig.cosh
-log_cosh = trig.log_cosh
-
 __all__ = [
     "SinhArcsinh",
 ]
+
+
+def _sqrtx2p1(x):
+  """Implementation of `sqrt(1 + x**2)` which is stable despite large `x`."""
+  return array_ops.where(
+      math_ops.abs(x) * np.sqrt(np.finfo(x.dtype.as_numpy_dtype).eps) <= 1.,
+      math_ops.sqrt(x**2. + 1.),
+      # For large x, calculating x**2 can overflow. This can be alleviated by
+      # considering:
+      # sqrt(1 + x**2)
+      # = exp(0.5 log(1 + x**2))
+      # = exp(0.5 log(x**2 * (1 + x**-2)))
+      # = exp(log(x) + 0.5 * log(1 + x**-2))
+      # = |x| * exp(0.5 log(1 + x**-2))
+      # = |x| * sqrt(1 + x**-2)
+      # We omit the last term in this approximation.
+      # When |x| > 1 / sqrt(machineepsilon), the second term will be 1,
+      # due to sqrt(1 + x**-2) = 1. This is also true with the gradient term,
+      # and higher order gradients, since the first order derivative of
+      # sqrt(1 + x**-2) is -2 * x**-3 / (1 + x**-2) = -2 / (x**3 + x),
+      # and all nth-order derivatives will be O(x**-(n + 2)). This makes any
+      # gradient terms that contain any derivatives of sqrt(1 + x**-2) vanish.
+      math_ops.abs(x))
 
 
 class SinhArcsinh(bijector.Bijector):
@@ -69,18 +89,18 @@ class SinhArcsinh(bijector.Bijector):
   """
 
   def __init__(self,
-               skewness=0.,
-               tailweight=1.,
+               skewness=None,
+               tailweight=None,
                event_ndims=0,
                validate_args=False,
-               name="sinh_arcsinh"):
+               name="SinhArcsinh"):
     """Instantiates the `SinhArcsinh` bijector.
 
     Args:
-      skewness:  Skewness parameter.  Float-type `Tensor`.
+      skewness:  Skewness parameter.  Float-type `Tensor`.  Default is `0`
+        of type `float32`.
       tailweight:  Tailweight parameter.  Positive `Tensor` of same `dtype` as
-        `skewness`
-        and broadcastable `shape`.
+        `skewness` and broadcastable `shape`.  Default is `1` of type `float32`.
       event_ndims: Python scalar indicating the number of dimensions associated
         with a particular draw from the distribution.
       validate_args: Python `bool` indicating whether arguments should be
@@ -91,8 +111,12 @@ class SinhArcsinh(bijector.Bijector):
     self._name = name
     self._validate_args = validate_args
     with self._name_scope("init", values=[skewness, tailweight]):
-      self._skewness = ops.convert_to_tensor(skewness, name="skewness")
-      self._tailweight = ops.convert_to_tensor(tailweight, name="tailweight")
+      tailweight = 1. if tailweight is None else tailweight
+      skewness = 0. if skewness is None else skewness
+      self._skewness = ops.convert_to_tensor(
+          skewness, name="skewness")
+      self._tailweight = ops.convert_to_tensor(
+          tailweight, name="tailweight", dtype=self._skewness.dtype)
       check_ops.assert_same_float_dtype([self._skewness, self._tailweight])
       if validate_args:
         self._tailweight = control_flow_ops.with_dependencies([
@@ -114,10 +138,10 @@ class SinhArcsinh(bijector.Bijector):
     return self._tailweight
 
   def _forward(self, x):
-    return sinh((arcsinh(x) + self.skewness) * self.tailweight)
+    return math_ops.sinh((math_ops.asinh(x) + self.skewness) * self.tailweight)
 
   def _inverse(self, y):
-    return sinh(arcsinh(y) / self.tailweight - self.skewness)
+    return math_ops.sinh(math_ops.asinh(y) / self.tailweight - self.skewness)
 
   def _inverse_log_det_jacobian(self, y):
     # x = sinh(arcsinh(y) / tailweight - skewness)
@@ -127,8 +151,14 @@ class SinhArcsinh(bijector.Bijector):
     #     / (tailweight * sqrt(y**2 + 1))
     event_dims = self._event_dims_tensor(y)
     return math_ops.reduce_sum(
-        log_cosh(arcsinh(y) / self.tailweight - self.skewness) -
-        math_ops.log(self.tailweight) - 0.5 * math_ops.log1p(y**2),
+        # This is computed inside the log to avoid catastrophic cancellations
+        # from cosh((arcsinh(y) / tailweight) - skewness) and sqrt(x**2 + 1).
+        math_ops.log(math_ops.cosh(
+            math_ops.asinh(y) / self.tailweight - self.skewness)
+                     # TODO(srvasude): Consider using cosh(arcsinh(x)) in cases
+                     # where (arcsinh(x) / tailweight) - skewness ~= arcsinh(x).
+                     / _sqrtx2p1(y))
+        - math_ops.log(self.tailweight),
         axis=event_dims)
 
   def _forward_log_det_jacobian(self, x):
@@ -138,6 +168,12 @@ class SinhArcsinh(bijector.Bijector):
     # = cosh((arcsinh(x) + skewness) * tailweight) * tailweight / sqrt(x**2 + 1)
     event_dims = self._event_dims_tensor(x)
     return math_ops.reduce_sum(
-        log_cosh((arcsinh(x) + self.skewness) * self.tailweight) +
-        math_ops.log(self.tailweight) - 0.5 * math_ops.log1p(x**2),
+        # This is computed inside the log to avoid catastrophic cancellations
+        # from cosh((arcsinh(x) + skewness) * tailweight) and sqrt(x**2 + 1).
+        math_ops.log(math_ops.cosh(
+            (math_ops.asinh(x) + self.skewness) * self.tailweight)
+                     # TODO(srvasude): Consider using cosh(arcsinh(x)) in cases
+                     # where (arcsinh(x) + skewness) * tailweight ~= arcsinh(x).
+                     / _sqrtx2p1(x))
+        + math_ops.log(self.tailweight),
         axis=event_dims)

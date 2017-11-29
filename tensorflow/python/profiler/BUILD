@@ -13,7 +13,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":model_analyzer",
+        ":option_builder",
         ":tfprof_logger",
+        "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:util",
     ],
 )
@@ -35,7 +37,9 @@ py_library(
         ":option_builder",
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
+        "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
+        "@six_archive//:six",
     ],
 )
 
@@ -43,6 +47,7 @@ cuda_py_test(
     name = "model_analyzer_test",
     srcs = ["model_analyzer_test.py"],
     additional_deps = [
+        ":profile_context",
         ":model_analyzer",
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
         "//tensorflow/python:client",
@@ -77,6 +82,7 @@ py_library(
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python/profiler/internal:flops_registry",
         "@six_archive//:six",
     ],
 )
@@ -98,6 +104,31 @@ tf_py_test(
 )
 
 py_library(
+    name = "profile_context",
+    srcs = ["profile_context.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":model_analyzer",
+        ":tfprof_logger",
+    ],
+)
+
+cuda_py_test(
+    name = "profile_context_test",
+    srcs = ["profile_context_test.py"],
+    additional_deps = [
+        ":profile_context",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/profiler/internal:model_analyzer_testlib",
+        "//tensorflow/python:variables",
+    ],
+    tags = ["no_pip"],
+)
+
+py_library(
     name = "pprof_profiler",
     srcs = ["pprof_profiler.py"],
     srcs_version = "PY2AND3",
@@ -113,10 +144,11 @@ py_test(
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [
         ":pprof_profiler",
-        "//tensorflow/python:client",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:math_ops",
         "@com_google_pprof//:pprof_proto_py",
     ],
 )

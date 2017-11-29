@@ -57,12 +57,15 @@ message BuildConfiguration {
 
 message CommitId {
   oneof kind {
+    // Submitted changelist.
     int64 changelist = 1;
     string hash = 2;
   }
   // Hash of intermediate change between hash/changelist and what was tested.
   // Not used if the build is from a commit without modifications.
   string snapshot = 3;
+  // Changelist tested if the change list is not already submitted.
+  int64 pending_changelist = 4;
 };
 
 message CPUInfo {
@@ -185,5 +188,9 @@ message TestResults {
   BenchmarkType benchmark_type = 10;
 
   // Used for differentiating between continuous and debug builds.
+  // Must be one of:
+  // * cbuild: results from continuous build.
+  // * presubmit: results from oneshot requests.
+  // * culprit: results from culprit finder rerun.
   string run_mode = 11;
 };

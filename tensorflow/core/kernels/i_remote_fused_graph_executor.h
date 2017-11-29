@@ -59,6 +59,13 @@ class IRemoteFusedGraphExecutor {
   virtual bool ReadOutputNode(const string& node_name,
                               TensorAllocatorFunc tensor_allocator) = 0;
 
+  virtual Status FuseRemoteGraph(const GraphDef& original_graph_def,
+                                 const std::vector<string>& inputs,
+                                 const std::vector<string>& outputs,
+                                 GraphDef* fused_graph_def) = 0;
+
+  virtual bool IsEnabled() const = 0;
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(IRemoteFusedGraphExecutor);
 };

@@ -36,7 +36,13 @@ inline PyObject* PyType(PyObject* obj) {
 }
 
 bool IsPyString(PyObject* obj) {
+  // TODO(josh11b): Support unicode strings in Python 2? bytearrays? NumPy string
+  // types?
+#if PY_MAJOR_VERSION >= 3
   return PyBytes_Check(obj) || PyUnicode_Check(obj);
+#else
+  return PyBytes_Check(obj);
+#endif
 }
 
 bool IsPyInt(PyObject* obj) {
@@ -303,21 +309,15 @@ const char* ConvertOneString(PyObject* v, string* out) {
     out->assign(PyBytes_AS_STRING(v), PyBytes_GET_SIZE(v));
     return nullptr;
   }
-  if (PyUnicode_Check(v)) {
 #if PY_MAJOR_VERSION >= 3
+  if (PyUnicode_Check(v)) {
     Py_ssize_t size;
     const char* str = PyUnicode_AsUTF8AndSize(v, &size);
     if (str == nullptr) return ErrorConvertingUnicodeString;
     out->assign(str, size);
     return nullptr;
-#else
-    PyObject* py_str = PyUnicode_AsUTF8String(v);
-    if (py_str == nullptr) return ErrorConvertingUnicodeString;
-    out->assign(PyBytes_AS_STRING(py_str), PyBytes_GET_SIZE(py_str));
-    Py_DECREF(py_str);
-    return nullptr;
-#endif
   }
+#endif
   return ErrorMixedTypes;
 }
 

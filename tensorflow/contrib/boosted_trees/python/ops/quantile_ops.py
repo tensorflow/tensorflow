@@ -19,6 +19,9 @@ from __future__ import print_function
 import re
 
 from tensorflow.contrib.boosted_trees.python.ops import batch_ops_utils
+# pylint: disable=unused-import
+from tensorflow.contrib.boosted_trees.python.ops import boosted_trees_ops_loader
+# pylint: enable=unused-import
 from tensorflow.contrib.boosted_trees.python.ops import gen_quantile_ops
 
 # go/tf-wildcard-import
@@ -26,12 +29,9 @@ from tensorflow.contrib.boosted_trees.python.ops import gen_quantile_ops
 from tensorflow.contrib.boosted_trees.python.ops.gen_quantile_ops import *
 # pylint: enable=wildcard-import,undefined-variable
 
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import resources
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
 
 # Pattern to remove all non alpha numeric from a string.
@@ -139,7 +139,7 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
           sparse_float_feature_values=[column.values],
           sparse_float_feature_shapes=[column.dense_shape],
           example_weights=example_weights,
-          epsilon=self._epsilon)[1][0]
+          epsilon=self._epsilon / 2).sparse_summaries[0]
     else:
       return gen_quantile_ops.make_quantile_summaries(
           dense_float_features=[column],
@@ -147,11 +147,18 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
           sparse_float_feature_values=[],
           sparse_float_feature_shapes=[],
           example_weights=example_weights,
-          epsilon=self._epsilon)[0][0]
+          epsilon=self._epsilon / 2).dense_summaries[0]
 
   def add_summary(self, stamp_token, column, example_weights):
     """Adds quantile summary to its stream in resource."""
     summary = self._make_summary(column, example_weights)
+    return gen_quantile_ops.quantile_accumulator_add_summaries(
+        quantile_accumulator_handles=[self._quantile_accumulator_handle],
+        stamp_token=stamp_token,
+        summaries=[summary])
+
+  def add_prebuilt_summary(self, stamp_token, summary):
+    """Adds quantile summary to its stream in resource."""
     return gen_quantile_ops.quantile_accumulator_add_summaries(
         quantile_accumulator_handles=[self._quantile_accumulator_handle],
         stamp_token=stamp_token,
@@ -172,10 +179,10 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
         stamp_token=stamp_token,
         next_stamp_token=next_stamp_token)
 
-
-# Conditionally load ops, they might already be statically linked in.
-try:
-  _quantile_ops = loader.load_op_library(
-      resource_loader.get_path_to_datafile("_quantile_ops.so"))
-except (errors.NotFoundError, IOError):
-  print("Error loading _quantile_ops.so")
+  def flush_summary(self, stamp_token, next_stamp_token):
+    """Finalizes quantile summary stream and resets it for next iteration."""
+    result = gen_quantile_ops.quantile_accumulator_flush_summary(
+        quantile_accumulator_handle=self._quantile_accumulator_handle,
+        stamp_token=stamp_token,
+        next_stamp_token=next_stamp_token)
+    return result

@@ -21,12 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_runner.h"
+#include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -39,10 +39,9 @@ namespace xla {
 // building a graph of HLO instructions to run.
 class HloTestBase : public ::testing::Test {
  protected:
-  struct EigenThreadPoolWrapper;
-  HloTestBase();
+  HloTestBase() {}
 
-  ~HloTestBase() override;
+  ~HloTestBase() override {}
 
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
@@ -102,21 +101,13 @@ class HloTestBase : public ::testing::Test {
 
   static string TestName();
 
-  std::unique_ptr<Backend> backend_;
+  // Returns the backend owned by the HloRunner.
+  Backend& backend();
 
-  // This vector contains handles of all the device memory allocations performed
-  // by the test. These are deallocated on destruction of the test object.
-  std::vector<perftools::gputools::DeviceMemoryBase> allocations_;
+  HloRunner runner_;
 
   ErrorSpec error_spec_{0.0001};
-
-  std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
 };
-
-// Convenience function that parses XLA debug options flags from argc/argv,
-// calls InitGoogleTest and then calls and returns RUN_ALL_TESTS. Intended to be
-// invoked from a test main() function.
-int ParseDebugOptionsFlagsAndRunTests(int argc, char** argv);
 
 }  // namespace xla
 

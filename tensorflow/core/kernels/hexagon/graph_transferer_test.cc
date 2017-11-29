@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
-#include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -50,7 +50,7 @@ class GraphTransfererTest : public ::testing::Test {
 
 const RemoteFusedGraphExecuteUtils::TensorShapeMap EMPTY_OUTPUT_TENSOR_MAP;
 
-class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
+class TestGraphTransferOpsDefinitions : public IRemoteFusedGraphOpsDefinitions {
  public:
   int GetTotalOpsCount() const final { return op_types_.size(); }
 
@@ -62,10 +62,6 @@ class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
     }
     return -1;
 }
-
-GraphTransferInfo::Destination GetTransferDestination() const final {
-  return GraphTransferInfo::NOP;
-  }
 
  private:
   const std::vector<string> op_types_{"INPUT",   "OUTPUT",  "Conv2D",
@@ -371,14 +367,14 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
 }
 
 TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
-  const IGraphTransferOpsDefinitions& ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions& ops_definitions =
       HexagonOpsDefinitions::getInstance();
   const int total_ops_count = ops_definitions.GetTotalOpsCount();
   EXPECT_GT(total_ops_count, 0);
 }
 
 TEST(GraphTransferer, LoadGraphFromProtoFile) {
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
   string filename =
       io::JoinPath(testing::TensorFlowSrcRoot(),
@@ -441,7 +437,7 @@ void CompareGraphTransferInfo(const GraphTransferInfo& a,
 }  // anonymous namespace
 
 TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
   string filename =
       io::JoinPath(testing::TensorFlowSrcRoot(),

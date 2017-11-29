@@ -59,7 +59,10 @@ public class MultiBoxTracker {
   private static final float MIN_CORRELATION = 0.3f;
 
   private static final int[] COLORS = {
-    Color.BLUE, Color.RED, Color.GREEN, Color.YELLOW, Color.CYAN, Color.MAGENTA
+    Color.BLUE, Color.RED, Color.GREEN, Color.YELLOW, Color.CYAN, Color.MAGENTA, Color.WHITE,
+    Color.parseColor("#55FF55"), Color.parseColor("#FFA500"), Color.parseColor("#FF8888"),
+    Color.parseColor("#AAAAFF"), Color.parseColor("#FFFFAA"), Color.parseColor("#55AAAA"),
+    Color.parseColor("#AA33AA"), Color.parseColor("#0D0068")
   };
 
   private final Queue<Integer> availableColors = new LinkedList<Integer>();

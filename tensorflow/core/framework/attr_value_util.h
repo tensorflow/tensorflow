@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
 #define TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
 
+#include <functional>
 #include <string>
 #include <vector>
-#include "tensorflow/core/framework/attr_value.pb.h"  // TODO(62899350): Remove
+
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -87,8 +88,15 @@ void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 void SetAttrValue(const AttrValue& value, AttrValue* out);
 
 // Returns true if a and b have the same value.
-// NOTE: May return false negatives for tensor values.
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
+
+// Returns a hash of `a` that is consistent with AreAttrValuesEqual. In other
+// words, if two AttrValues compare equal according to AreAttrValuesEqual,
+// they will have the same hash value.
+// Similarly to protobuf deterministic serialization, hash value is
+// guaranteed to be stable only for a given binary. In particular, one should
+// probably not persist the returned value.
+uint64 AttrValueHash(const AttrValue& a);
 
 // Returns true if "val" has a placeholder.
 bool HasPlaceHolder(const AttrValue& val);
@@ -100,8 +108,8 @@ bool HasPlaceHolder(const AttrValue& val);
 // SubstituteFunc is given a placeholder string. If the placeholder is
 // unknown, SubstituteFunc returns false. Otherwise, overwrites the
 // attr value and returns true.
-typedef std::function<bool(const string&, AttrValue*)> SubstituteFunc;
-bool SubstitutePlaceholders(SubstituteFunc substitute, AttrValue* value);
+using SubstituteFunc = std::function<bool(const string&, AttrValue*)>;
+bool SubstitutePlaceholders(const SubstituteFunc& substitute, AttrValue* value);
 
 }  // namespace tensorflow
 

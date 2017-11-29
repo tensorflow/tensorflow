@@ -31,7 +31,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 batch_size;
+    int64 batch_size = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument<int64>(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
@@ -61,8 +61,10 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(new Iterator(
+          Iterator::Params{this, strings::StrCat(prefix, "::Batch")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -82,18 +84,16 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
     //
     // TODO(mrry): Reconcile this method with the similar method in
     // the queue implementation.
-    template <DataType DT>
+    template <typename T>
     static Status HandleElementToSlice(const Tensor& element, Tensor* parent,
-                                       int index) {
-      typedef typename EnumToDataType<DT>::Type T;
+                                       int64 index) {
       if (element.NumElements() !=
           (parent->NumElements() / parent->dim_size(0))) {
         TensorShape chip_shape = parent->shape();
         chip_shape.RemoveDim(0);
-        return errors::Internal(
+        return errors::InvalidArgument(
             "HandleElementToSlice Cannot copy slice: number of elements does "
-            "not "
-            "match.  Shapes are: [element]: ",
+            "not match. Shapes are: [element]: ",
             element.shape().DebugString(),
             ", [parent slice]: ", chip_shape.DebugString());
       }
@@ -105,41 +105,29 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
     // Copies element into the index^th slice of parent (in the 0th dimension).
     static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
                                      int64 index) {
-#define HANDLE_TYPE(DT)                                                   \
-  if (element.dtype() == DT) {                                            \
-    TF_RETURN_IF_ERROR(HandleElementToSlice<DT>(element, parent, index)); \
-    return Status::OK();                                                  \
+#define HANDLE_TYPE(T)                                      \
+  case DataTypeToEnum<T>::value: {                          \
+    return HandleElementToSlice<T>(element, parent, index); \
   }
-      HANDLE_TYPE(DT_FLOAT);
-      HANDLE_TYPE(DT_HALF);
-      HANDLE_TYPE(DT_DOUBLE);
-      HANDLE_TYPE(DT_INT32);
-      HANDLE_TYPE(DT_UINT8);
-      HANDLE_TYPE(DT_INT16);
-      HANDLE_TYPE(DT_INT8);
-      HANDLE_TYPE(DT_STRING);
-      HANDLE_TYPE(DT_COMPLEX64);
-      HANDLE_TYPE(DT_COMPLEX128);
-      HANDLE_TYPE(DT_INT64);
-      HANDLE_TYPE(DT_BOOL);
-      HANDLE_TYPE(DT_QINT8);
-      HANDLE_TYPE(DT_QUINT8);
-      HANDLE_TYPE(DT_QINT32);
-      HANDLE_TYPE(DT_QINT16);
-      HANDLE_TYPE(DT_QUINT16);
+
+      switch (element.dtype()) {
+        TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
-      return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
-                                   element.dtype());
+        default:
+          return errors::Unimplemented(
+              "CopyElementToSlice Unhandled data type: ", element.dtype());
+      }
     }
 
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         // Each row of `batch_elements` is a tuple of tensors from the
         // input iterator.
         std::vector<std::vector<Tensor>> batch_elements;
@@ -193,7 +181,6 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 i_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 

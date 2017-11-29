@@ -168,6 +168,7 @@ message CleanupAllResponse {
 message ExecutorOpts {
   bool record_costs = 1;
   bool record_timeline = 3;
+  bool record_partition_graphs = 4;
 };
 
 message RunGraphRequest {
@@ -212,10 +213,12 @@ message RunGraphResponse {
   // `RunGraphRequest.recv_key`.
   repeated NamedTensorProto recv = 1;
 
-  // If the request asked for execution stats or cost graph, these are returned
-  // here.
+  // If the request asked for execution stats, the cost graph, or the partition
+  // graphs, these are returned here.
+  // TODO(suharshs): Package these in a RunMetadata instead.
   StepStats step_stats = 2;
   CostGraphDef cost_graph = 3;
+  repeated GraphDef partition_graph = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -53,7 +53,7 @@ class GraphTransferer {
   // TODO(satok): Pass a pair of TensorShape and DataType instead of
   // Tensor as input_node_info_list.
   Status LoadGraphFromProto(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const GraphDef& graph_def,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names,
@@ -63,7 +63,7 @@ class GraphTransferer {
   // TODO(satok): Pass a pair of TensorShape and DataType instead of
   // Tensor as input_node_info_list.
   Status LoadGraphFromProtoFile(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const string& graph_def_path,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names, const bool is_text_proto,
@@ -112,7 +112,7 @@ class GraphTransferer {
       Graph* graph, ShapeRefiner* shape_refiner);
 
   Status RegisterNode(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names);
@@ -140,30 +140,29 @@ class GraphTransferer {
                             const ShapeRefiner& shape_refiner);
 
   void RegisterNodeWithPaddingAndStrides(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterNodeWithRank(const IGraphTransferOpsDefinitions& ops_definitions,
-                            const ShapeRefiner& shape_refiner,
-                            const Node& node);
+  void RegisterNodeWithRank(
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterPadNode(const IGraphTransferOpsDefinitions& ops_definitions,
+  void RegisterPadNode(const IRemoteFusedGraphOpsDefinitions& ops_definitions,
                        const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterInputNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                         const ShapeRefiner& shape_refiner,
-                         const Node& node);
+  void RegisterInputNode(const IRemoteFusedGraphOpsDefinitions& ops_definitions,
+                         const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterFlattenNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                           const ShapeRefiner& shape_refiner,
-                           const Node& node);
+  void RegisterFlattenNode(
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterGenericNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                           const ShapeRefiner& shape_refiner,
-                           const Node& node);
+  void RegisterGenericNode(
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner, const Node& node);
 
   Status RegisterNodeIfAllInputsAreCached(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node,
       const bool only_register_const_node,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,

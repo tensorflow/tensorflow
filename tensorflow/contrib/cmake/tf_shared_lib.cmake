@@ -27,6 +27,7 @@ if(WIN32)
       $<TARGET_OBJECTS:tf_cc>
       $<TARGET_OBJECTS:tf_cc_framework>
       $<TARGET_OBJECTS:tf_cc_ops>
+      $<TARGET_OBJECTS:tf_cc_while_loop>
       $<TARGET_OBJECTS:tf_core_lib>
       $<TARGET_OBJECTS:tf_core_cpu>
       $<TARGET_OBJECTS:tf_core_framework>
@@ -63,6 +64,7 @@ add_library(tensorflow SHARED
     $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_framework>
     $<TARGET_OBJECTS:tf_cc_ops>
+    $<TARGET_OBJECTS:tf_cc_while_loop>
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>

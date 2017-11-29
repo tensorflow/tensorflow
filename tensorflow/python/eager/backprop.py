@@ -120,7 +120,6 @@ _tracing = False
 # gradient function registration site, to be less error-prone
 # TODO(apassos) add ops other than those in nn_grad and math_grad
 _ops_which_dont_need_outputs = set([
-    "Identity",
     "MatMul",
     "Conv2DBackpropInput",
     "Conv2DBackpropFilter",
@@ -196,7 +195,6 @@ _ops_which_dont_need_outputs = set([
 ])
 
 _ops_which_dont_need_inputs = set([
-    "Identity",
     "Softmax",
     "LogSoftmax",
     "BiasAdd",
@@ -305,7 +303,6 @@ def implicit_val_and_grad(f):
   is not known ahead of time.
 
   Example:
-
   ```python
   dense_layer = tf.layers.Dense(1)
   def loss(x, y):
@@ -335,9 +332,6 @@ def implicit_val_and_grad(f):
     A function which, when called, returns a tuple pair.
     Its first element is the value to which the function evaluates.
     Its second element is list of (gradient, variable) pairs.
-
-  Raises:
-    ValueError: if `f` returns None.
   """
   # TODO(cais): Remove calls to tf.constant() once the gradients functions
   # accept lists and np.ndarrays.
@@ -347,13 +341,9 @@ def implicit_val_and_grad(f):
     tape.push_new_tape()
     try:
       end_node = f(*args)
-      if end_node is None:
-        raise ValueError("Cannot differentiate a function that returns None; "
-                         "did you forget to return a value from {}?".format(
-                             f.__name__))
+      variables = tape.top_tape_watched_variables()
     finally:
       popped_tape = tape.pop_tape()
-      variables = popped_tape.watched_variables()
     sources = [x.handle for x in variables]
 
     if not sources:
@@ -379,7 +369,6 @@ def implicit_grad(f):
   is not known ahead of time.
 
   Example:
-
   ```python
   dense_layer = tf.layers.Dense(1)
   def loss(x, y):
@@ -641,8 +630,6 @@ def make_vjp(f, params=None):
     # result is 9.0
     vjp()  # the vjp function rturns 6.0
 
-  Raises:
-    ValueError: if `f` returns None.
   """
 
   def decorated(*args, **kwds):
@@ -661,14 +648,10 @@ def make_vjp(f, params=None):
       for i in parameter_positions:
         sources.append(args[i])
         tape.watch(args[i])
-      result = f(*args)
-      if result is None:
-        raise ValueError("Cannot differentiate a function that returns None; "
-                         "did you forget to return a value from {}?".format(
-                             f.__name__))
-      flat_result = nest.flatten(result)
-      flat_result = [gen_array_ops.identity(x) for x in flat_result]
-      result = nest.pack_sequence_as(result, flat_result)
+        result = f(*args)
+        flat_result = nest.flatten(result)
+        flat_result = [gen_array_ops.identity(x) for x in flat_result]
+        result = nest.pack_sequence_as(result, flat_result)
     finally:
       t = tape.pop_tape()
     def vjp(dy=None):
@@ -731,32 +714,12 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-_last_shape_dtype = [None, None]
-_last_zero = [None]
-
-
-def _fast_fill(value, shape, dtype):
-  return array_ops.fill(shape, constant_op.constant(value, dtype=dtype))
-
-
-def _zeros(shape, dtype):
-  """Wraps array_ops.zeros to cache last zero for a given shape and dtype."""
-  if [shape, dtype] != _last_shape_dtype:
-    _last_shape_dtype[:] = [shape, dtype]
-    _last_zero[0] = _fast_fill(0, shape, dtype)
-  return _last_zero[0]
-
-
-def _ones(shape, dtype):
-  return _fast_fill(1, shape, dtype)
-
-
 _default_vspace = imperative_grad.VSpace(
     num_elements_fn=_num_elements,
     aggregate_fn=_aggregate_grads,
     tensor_id=ops.tensor_id,
-    zeros=_zeros,
-    ones=_ones)
+    zeros=array_ops.zeros,
+    ones_like=lambda x: ops.convert_to_tensor(array_ops.ones_like(x)))
 
 
 class GradientTape(object):
@@ -845,5 +808,5 @@ class GradientTape(object):
                for x in sources]
     grad = imperative_grad.imperative_grad(
         _default_vspace, self._tape, [target], sources)
-    self._tape = None
+    self.tape = None
     return grad

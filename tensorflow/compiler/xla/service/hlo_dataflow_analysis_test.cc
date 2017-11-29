@@ -17,8 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -45,6 +47,7 @@ class HloDataflowAnalysisTest : public HloTestBase,
   // reference to the generated analysis stored in analysis_.
   const HloDataflowAnalysis& RunAnalysis(bool ssa_form,
                                          bool bitcast_defines_value = false) {
+    hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before dataflow analysis");
     analysis_ =
         HloDataflowAnalysis::Run(module_.get(), ssa_form, bitcast_defines_value)
             .ConsumeValueOrDie();
@@ -70,8 +73,8 @@ class HloDataflowAnalysisTest : public HloTestBase,
                                 const HloInstruction* b) {
     EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
     EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
-    return analysis_->MayInterfere(analysis_->GetValueDefinedAt(a),
-                                   analysis_->GetValueDefinedAt(b), ordering);
+    return ordering.MayInterfere(analysis_->GetValueDefinedAt(a),
+                                 analysis_->GetValueDefinedAt(b), *analysis_);
   }
 
   std::unique_ptr<HloModule> module_;
@@ -952,17 +955,17 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select));
 
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant4)));
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(inner_tuple1),
-                                     analysis.GetValueDefinedAt(inner_tuple2)));
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant2),
-                                     analysis.GetValueDefinedAt(constant5)));
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant3)));
+  EXPECT_THAT(HloValuesAt(select, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
+                                   analysis.GetValueDefinedAt(constant4)));
+  EXPECT_THAT(HloValuesAt(select, /*index=*/{1}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(inner_tuple1),
+                                   analysis.GetValueDefinedAt(inner_tuple2)));
+  EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant2),
+                                   analysis.GetValueDefinedAt(constant5)));
+  EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 1}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant3)));
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {

@@ -37,7 +37,7 @@ def _shuffle_to_front(input_tensor, k):
     k: A scalar `Tensor` specifying how many indices to shuffle.
 
   Returns:
-    A tranposed version of `input_tensor` with `k` indices shuffled to the
+    A transposed version of `input_tensor` with `k` indices shuffled to the
     front.
 
   Raises:

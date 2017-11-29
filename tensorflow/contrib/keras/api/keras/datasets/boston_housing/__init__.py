@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.keras.python.keras.datasets.boston_housing import load_data
+from tensorflow.python.keras._impl.keras.datasets.boston_housing import load_data
 
 del absolute_import
 del division

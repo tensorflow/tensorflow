@@ -57,7 +57,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
           name=None):
   """Expands `signal`'s `axis` dimension into frames of `frame_length`.
 
-  Slides a window of size `frame_length` over `signal`s `axis` dimension
+  Slides a window of size `frame_length` over `signal`'s `axis` dimension
   with a stride of `frame_step`, replacing the `axis` dimension with
   `[frames, frame_length]` frames.
 
@@ -91,7 +91,8 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
     A `Tensor` of frames with shape `[..., frames, frame_length, ...]`.
 
   Raises:
-    ValueError: If `frame_length`, `frame_step`, or `pad_value` are not scalar.
+    ValueError: If `frame_length`, `frame_step`, `pad_value`, or `axis` are not
+      scalar.
   """
   with ops.name_scope(name, "frame", [signal, frame_length, frame_step,
                                       pad_value]):

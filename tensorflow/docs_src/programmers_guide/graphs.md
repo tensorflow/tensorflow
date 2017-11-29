@@ -100,7 +100,7 @@ to all API functions in the same context.  For example:
   when run, will apply those gradients to a set of variables.
 
 Most programs rely solely on the default graph. However,
-see [Dealing with multiple graphs](#dealing-with-multiple-graphs) for more
+see [Dealing with multiple graphs](#programming_with_multiple_graphs) for more
 advanced use cases. High-level APIs such as the @{tf.estimator.Estimator} API
 manage the default graph on your behalf, and--for example--may create different
 graphs for training and evaluation.
@@ -319,7 +319,7 @@ described below.
 * **`target`.** If this argument is left empty (the default), the session will
   only use devices in the local machine. However, you may also specify a
   `grpc://` URL to specify the address of a TensorFlow server, which gives the
-  session access to all devices on machines that that server controls. See
+  session access to all devices on machines that this server controls. See
   @{tf.train.Server} for details of how to create a TensorFlow
   server. For example, in the common **between-graph replication**
   configuration, the @{tf.Session} connects to a @{tf.train.Server} in the same
@@ -404,8 +404,8 @@ y = tf.square(x)
 
 with tf.Session() as sess:
   # Feeding a value changes the result that is returned when you evaluate `y`.
-  print(sess.run(y, {x: [1.0, 2.0, 3.0]})  # => "[1.0, 4.0, 9.0]"
-  print(sess.run(y, {x: [0.0, 0.0, 5.0]})  # => "[0.0, 0.0, 25.0]"
+  print(sess.run(y, {x: [1.0, 2.0, 3.0]}))  # => "[1.0, 4.0, 9.0]"
+  print(sess.run(y, {x: [0.0, 0.0, 5.0]}))  # => "[0.0, 0.0, 25.0]"
 
   # Raises `tf.errors.InvalidArgumentError`, because you must feed a value for
   # a `tf.placeholder()` when evaluating a tensor that depends on it.

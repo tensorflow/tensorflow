@@ -76,6 +76,13 @@ class MultinomialTest(test.TestCase):
       self.assertAllClose(p, multinom.probs.eval())
       self.assertAllClose(logits, multinom.logits.eval())
 
+  def testPmfUnderflow(self):
+    logits = np.array([[-200, 0]], dtype=np.float32)
+    with self.test_session():
+      dist = multinomial.Multinomial(total_count=1., logits=logits)
+      lp = dist.log_prob([1., 0.]).eval()[0]
+      self.assertAllClose(-200, lp, atol=0, rtol=1e-6)
+
   def testPmfandCountsAgree(self):
     p = [[0.1, 0.2, 0.7]]
     n = [[5.]]

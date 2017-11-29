@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.keras.python.keras.preprocessing.text import one_hot
-from tensorflow.contrib.keras.python.keras.preprocessing.text import text_to_word_sequence
-from tensorflow.contrib.keras.python.keras.preprocessing.text import Tokenizer
+from tensorflow.python.keras._impl.keras.preprocessing.text import one_hot
+from tensorflow.python.keras._impl.keras.preprocessing.text import text_to_word_sequence
+from tensorflow.python.keras._impl.keras.preprocessing.text import Tokenizer
 
 del absolute_import
 del division

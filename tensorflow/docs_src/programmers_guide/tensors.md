@@ -147,7 +147,7 @@ Passing a single number, however, returns a subvector of a matrix, as follows:
 
 
 ```python
-my_row_vetor = my_matrix[2]
+my_row_vector = my_matrix[2]
 my_column_vector = my_matrix[:, 3]
 ```
 
@@ -197,7 +197,7 @@ For example, here is how to make a vector of zeros with the same size as the
 number of columns in a given matrix:
 
 ``` python
-zeros = tf.zeros(tf.shape(my_matrix)[1])
+zeros = tf.zeros(my_matrix.shape[1])
 ```
 
 ### Changing the shape of a `tf.Tensor`

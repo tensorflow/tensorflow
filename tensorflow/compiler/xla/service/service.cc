@@ -20,9 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/backend_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -144,41 +145,15 @@ int ServiceOptions::intra_op_parallelism_threads() const {
   backend_options.set_platform(platform);
   TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
-                      CreateComputeConstantBackend());
   std::unique_ptr<Service> service(
-      new Service(options, std::move(execute_backend),
-                  std::move(compute_constant_backend)));
+      new Service(options, std::move(execute_backend)));
   return std::move(service);
 }
 
-/* static */ StatusOr<std::unique_ptr<Backend>>
-Service::CreateComputeConstantBackend() {
-  TF_ASSIGN_OR_RETURN(std::vector<se::Platform*> platforms,
-                      PlatformUtil::GetSupportedPlatforms());
-  for (auto* platform : platforms) {
-    if (platform->id() == se::host::kHostPlatformId) {
-      BackendOptions backend_options;
-      backend_options.set_platform(platform);
-      return Backend::CreateBackend(backend_options);
-    }
-  }
-  return NotFound("CPU platform not found");
-}
-
 Service::Service(const ServiceOptions& options,
-                 std::unique_ptr<Backend> execute_backend,
-                 std::unique_ptr<Backend> compute_constant_backend)
-    : options_(options),
-      execute_backend_(std::move(execute_backend)),
-      compute_constant_backend_(std::move(compute_constant_backend)) {
-  // TODO(b/32648682): this flag / options update dance will go away once we
-  // pass the replica count explicitly to the service.
-  if (options_.number_of_replicas() < 0) {
-    legacy_flags::BackendFlags* flags = legacy_flags::GetBackendFlags();
-    options_.set_number_of_replicas(flags->xla_replicas);
-  }
-
+                 std::unique_ptr<Backend> execute_backend)
+    : options_(options), execute_backend_(std::move(execute_backend)) {
+  CHECK_GT(options_.number_of_replicas(), 0);
   if (execute_backend_) {
     if (execute_backend_->device_count() > 0) {
       CHECK_GE(execute_backend_->device_count(), options_.number_of_replicas())
@@ -212,8 +187,9 @@ tensorflow::Status Service::Computation(const ComputationRequest* arg,
 
   *result->mutable_computation() =
       computation_tracker_.NewComputation(arg->name());
-  VLOG(1) << Printf("Created new computation %s on service %p",
-                    result->computation().ShortDebugString().c_str(), this);
+  VLOG(1) << Printf("Created new computation %s on service %p, name %s",
+                    result->computation().ShortDebugString().c_str(), this,
+                    arg->name().c_str());
   return tensorflow::Status::OK();
 }
 
@@ -292,80 +268,100 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
 
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
-    tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-    const ExecutionOptions& execution_options) {
-  auto module_config = MakeUnique<HloModuleConfig>(program_shape);
-  auto* computation_layout = module_config->mutable_entry_computation_layout();
+    tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
+    const ExecutionOptions* execution_options) {
+  auto config = MakeUnique<HloModuleConfig>(program_shape);
+  auto* computation_layout = config->mutable_entry_computation_layout();
 
-  if (program_shape.parameters_size() != arguments.size()) {
+  if (program_shape.parameters_size() != argument_shapes.size()) {
     return InvalidArgument("computation takes %d parameters, but %zu given",
-                           program_shape.parameters_size(), arguments.size());
+                           program_shape.parameters_size(),
+                           argument_shapes.size());
   }
-
-  for (size_t i = 0; i < arguments.size(); ++i) {
+  for (int i = 0; i < argument_shapes.size(); ++i) {
     // Verify that shape of arguments matches the shape of the arguments in the
     // ProgramShape.
-    if (!ShapeUtil::Compatible(arguments[i]->shape(),
+    if (!ShapeUtil::Compatible(*argument_shapes[i],
                                program_shape.parameters(i))) {
       return InvalidArgument(
-          "computation expects parameter %lu to have shape %s, given shape %s",
+          "computation expects parameter %d to have shape %s, given shape %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
-          ShapeUtil::HumanString(arguments[i]->shape()).c_str());
+          ShapeUtil::HumanString(*argument_shapes[i]).c_str());
     }
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-            arguments[i]->shape()));
+            *argument_shapes[i]));
   }
-  if (!execution_options.has_shape_with_output_layout()) {
-    computation_layout->mutable_result_layout()->Clear();
-  } else {
+  if (execution_options != nullptr &&
+      execution_options->has_shape_with_output_layout()) {
     const auto& shape_with_output_layout =
-        execution_options.shape_with_output_layout();
+        execution_options->shape_with_output_layout();
     TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(shape_with_output_layout,
                                                      program_shape.result()));
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
+  } else {
+    computation_layout->mutable_result_layout()->Clear();
   }
 
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (flags->xla_hlo_profile) {
-    module_config->enable_hlo_profiling(true);
+  config->set_replica_count(options_.number_of_replicas());
+  if (execution_options != nullptr) {
+    config->set_seed(execution_options->seed());
+    config->set_debug_options(execution_options->debug_options());
+    config->enable_hlo_profiling(
+        execution_options->debug_options().xla_hlo_profile());
+  } else {
+    config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
   }
 
-  module_config->set_replica_count(options_.number_of_replicas());
-  module_config->set_seed(execution_options.seed());
-  module_config->set_debug_options(execution_options.debug_options());
+  if (execute_backend_ != nullptr &&
+      execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
+    config->set_intra_op_parallelism_threads(
+        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+  }
+  return std::move(config);
+}
 
-  return std::move(module_config);
+StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
+    const ProgramShape& program_shape,
+    tensorflow::gtl::ArraySlice<const Allocation*> arguments,
+    const ExecutionOptions& execution_options) {
+  std::vector<const Shape*> argument_shapes;
+  for (const auto* arg : arguments) {
+    argument_shapes.push_back(&arg->shape());
+  }
+  return CreateModuleConfig(program_shape, argument_shapes, &execution_options);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     std::vector<VersionedComputationHandle> versioned_handles,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     Backend* backend,
-    std::vector<perftools::gputools::StreamExecutor*> executors) {
+    std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors) {
   VLOG(1) << Printf("BuildExecutable on service %p", this);
 
   // Dump computation proto state if flag is set.
   std::vector<std::unique_ptr<SessionModule>> session_modules;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_computations_to;
-  const string& other_directory_path = flags->xla_dump_executions_to;
-  if ((!directory_path.empty() || !other_directory_path.empty())) {
-    for (int64 i = 0; i < versioned_handles.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<SessionModule> session_module,
-                          computation_tracker_.SnapshotComputation(
-                              versioned_handles[i].handle));
-      if (!directory_path.empty()) {
-        string filename = Printf("computation_%lld__%s__version_%lld",
-                                 versioned_handles[i].handle.handle(),
-                                 session_module->entry().name().c_str(),
-                                 versioned_handles[i].version);
-        TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
-                                                       *session_module));
-        session_modules.push_back(std::move(session_module));
-      }
+  for (int64 i = 0; i < versioned_handles.size(); ++i) {
+    const string& directory_path =
+        module_configs[i]->debug_options().xla_dump_computations_to();
+    const string& other_directory_path =
+        module_configs[i]->debug_options().xla_dump_executions_to();
+    if (directory_path.empty() && other_directory_path.empty()) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<SessionModule> session_module,
+        computation_tracker_.SnapshotComputation(versioned_handles[i].handle));
+    if (!directory_path.empty()) {
+      string filename = Printf("computation_%lld__%s__version_%lld",
+                               versioned_handles[i].handle.handle(),
+                               session_module->entry().name().c_str(),
+                               versioned_handles[i].version);
+      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
+                                                     *session_module));
+      session_modules.push_back(std::move(session_module));
     }
   }
 
@@ -390,8 +386,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
       std::vector<std::unique_ptr<Executable>> executables,
       backend->compiler()->Compile(std::move(modules), std::move(executors)));
 
-  if (!other_directory_path.empty()) {
-    for (size_t i = 0; i < versioned_handles.size(); ++i) {
+  for (size_t i = 0; i < versioned_handles.size(); ++i) {
+    if (!module_configs[i]->debug_options().xla_dump_executions_to().empty()) {
       executables[i]->set_session_module(std::move(session_modules[i]));
     }
   }
@@ -402,7 +398,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const VersionedComputationHandle& versioned_handle,
     std::unique_ptr<HloModuleConfig> module_config,
-    bool executable_for_compute_constant,
     const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
         arguments,
     Backend* backend, se::StreamExecutor* executor) {
@@ -411,11 +406,11 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   // Dump computation proto state if flag is set.
   std::unique_ptr<SessionModule> session_module;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_computations_to;
-  const string& other_directory_path = flags->xla_dump_executions_to;
-  if (!executable_for_compute_constant &&
-      (!directory_path.empty() || !other_directory_path.empty())) {
+  const string& directory_path =
+      module_config->debug_options().xla_dump_computations_to();
+  const string& other_directory_path =
+      module_config->debug_options().xla_dump_executions_to();
+  if (!directory_path.empty() || !other_directory_path.empty()) {
     TF_ASSIGN_OR_RETURN(
         session_module,
         computation_tracker_.SnapshotComputation(versioned_handle.handle));
@@ -433,7 +428,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       std::unique_ptr<HloModule> module,
       computation_tracker_.BuildHloModule(versioned_handle, *module_config,
                                           /*include_unreachable_instructions=*/
-                                          !executable_for_compute_constant));
+                                          true));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
@@ -473,8 +468,7 @@ StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
   HloModuleConfig original_module_config = *module_config;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable_unique_ptr,
-      BuildExecutable(versioned_handle, std::move(module_config),
-                      /*executable_for_compute_constant=*/false, arguments,
+      BuildExecutable(versioned_handle, std::move(module_config), arguments,
                       backend, executor));
 
   if (profile != nullptr) {
@@ -621,31 +615,41 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   VLOG(1) << "running execute-parallel request: " << arg->ShortDebugString();
 
   std::vector<std::vector<se::DeviceMemoryBase>> all_arguments;
-  std::vector<perftools::gputools::StreamExecutor*> executors;
+  std::vector<std::vector<perftools::gputools::StreamExecutor*>> all_executors;
   std::vector<VersionedComputationHandle> versioned_handles;
   std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
   std::vector<string> computation_names;
   std::vector<DeviceHandle> device_handles;
 
-  if (arg->requests_size() * options_.number_of_replicas() >
+  int num_requested_devices =
+      std::accumulate(arg->requests().begin(), arg->requests().end(), 0,
+                      [](int a, const ExecuteRequest& r) -> int {
+                        return a + r.execution_options().device_handles_size();
+                      });
+  if (num_requested_devices * options_.number_of_replicas() >
       execute_backend_->device_count()) {
     return FailedPrecondition(
         "there are not enough stream executors to execute %d computations",
-        arg->requests_size());
+        num_requested_devices);
   }
 
   for (int64 i = 0; i < arg->requests_size(); ++i) {
     // Get the stream executor for the i'th computation. This stream executor
     // is one of the executors to run the replicated computation.
-    if (!arg->requests(i).has_device_handle()) {
+    const ExecutionOptions& execution_options =
+        arg->requests(i).execution_options();
+    if (execution_options.device_handles().empty()) {
       return FailedPrecondition(
           "device handles must be given to execute parallel computations");
     }
-    TF_ASSIGN_OR_RETURN(
-        auto replicas,
-        Replicas(*execute_backend_, arg->requests(i).device_handle()));
-    se::StreamExecutor* executor = replicas[0];
-    CHECK(executor != nullptr);
+    std::vector<perftools::gputools::StreamExecutor*> executors;
+    for (const auto& device_handle : execution_options.device_handles()) {
+      TF_ASSIGN_OR_RETURN(auto replicas,
+                          Replicas(*execute_backend_, device_handle));
+      se::StreamExecutor* executor = replicas[0];
+      CHECK(executor != nullptr);
+      executors.push_back(executor);
+    }
 
     // Resolve the UserComputation object associated with the requested
     // computation and compute the program shape.
@@ -664,10 +668,12 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
 
     // Resolve the allocations for the arguments of the computation, and create
     // a vector of device memory offsets for the arguments from the allocations.
+    // In the case of partitioned computations, assume all arguments go on the
+    // zeroth core.
     TF_ASSIGN_OR_RETURN(
         std::vector<const Allocation*> arg_allocations,
         ResolveAndValidateArguments(request.arguments(), execute_backend_.get(),
-                                    executor->device_ordinal()));
+                                    executors[0]->device_ordinal()));
     std::vector<se::DeviceMemoryBase> arguments;
     arguments.reserve(arg_allocations.size());
     for (const Allocation* allocation : arg_allocations) {
@@ -684,11 +690,15 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
 
     // Adds to the vectors to build and execute the computations after the loop.
     all_arguments.push_back(arguments);
+    all_arguments.insert(all_arguments.end(), executors.size() - 1, {});
     versioned_handles.push_back(versioned_handle);
     module_configs.push_back(std::move(module_config));
-    computation_names.push_back(user_computation->name());
-    executors.push_back(executor);
-    device_handles.push_back(arg->requests(i).device_handle());
+    computation_names.insert(computation_names.end(), executors.size(),
+                             user_computation->name());
+    all_executors.push_back(executors);
+    device_handles.insert(device_handles.end(),
+                          execution_options.device_handles().begin(),
+                          execution_options.device_handles().end());
   }
 
   // Build the user computations into HloModules and compile to generate the
@@ -696,7 +706,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       BuildExecutables(versioned_handles, std::move(module_configs),
-                       execute_backend_.get(), executors));
+                       execute_backend_.get(), all_executors));
   std::vector<Executable*> executable_ptrs;
   executable_ptrs.reserve(executables.size());
   for (const auto& executable : executables) {
@@ -756,6 +766,17 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
 
   if (user_computation->request_count(versioned_handle.version) == 0) {
     return InvalidArgument("computations may not be empty");
+  }
+
+  // If we received multiple device handles, we must partition the module.
+  if (arg->execution_options().device_handles_size() > 1) {
+    ExecuteParallelRequest parallel_arg;
+    *parallel_arg.add_requests() = *arg;
+    ExecuteParallelResponse parallel_result;
+    TF_RETURN_IF_ERROR(ExecuteParallel(&parallel_arg, &parallel_result));
+    TF_RET_CHECK(parallel_result.responses_size() > 0);
+    *result = parallel_result.responses(0);
+    return Status::OK();
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -936,9 +957,10 @@ tensorflow::Status Service::TransferToClient(const TransferToClientRequest* arg,
   }
 
   Literal literal;
-  auto status = LiteralFromAllocation(allocation, *literal_shape, &literal);
+  TF_RETURN_IF_ERROR(
+      LiteralFromAllocation(allocation, *literal_shape, &literal));
   *result->mutable_literal() = literal.ToProto();
-  return status;
+  return tensorflow::Status::OK();
 }
 
 tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
@@ -1081,7 +1103,6 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_ASSIGN_OR_RETURN(bool is_constant,
                       user_computation->IsConstant(arg->operand()));
-
   if (!is_constant) {
     return InvalidArgument("Operand to ComputeConstant depends on parameter.");
   }
@@ -1095,8 +1116,10 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = xla::CreateDefaultExecutionOptions();
   execution_options.mutable_debug_options()->set_xla_enable_fast_math(false);
+  execution_options.mutable_debug_options()
+      ->set_xla_eliminate_hlo_implicit_broadcast(true);
   *execution_options.mutable_shape_with_output_layout() =
       program_shape.result();
 
@@ -1111,20 +1134,22 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                       CreateModuleConfig(program_shape, {}, execution_options));
 
+  // Exclude dead parameter instructions for the purpose of computing constants.
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<Executable> executable,
-      BuildExecutable(versioned_handle, std::move(module_config),
-                      /*executable_for_compute_constant=*/true,
-                      /*arguments=*/{}, compute_constant_backend_.get(),
-                      compute_constant_backend_->default_stream_executor()));
+      std::unique_ptr<HloModule> module,
+      computation_tracker_.BuildHloModule(versioned_handle, *module_config,
+                                          /*include_unreachable_instructions=*/
+                                          false));
 
-  TF_ASSIGN_OR_RETURN(
-      *result->mutable_output(),
-      ExecuteAndRegisterResult(
-          executable.get(), /*arguments=*/{}, compute_constant_backend_.get(),
-          compute_constant_backend_->default_stream_executor(),
-          "constant computed from " + user_computation->name(),
-          /*profile=*/nullptr));
+  HloEvaluator evaluator;
+  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
+  // Since the shape_with_output_layout option in ExecutionOption is
+  // non-effective to the Evaluator results, explicit relayout here.
+  if (arg->has_output_layout()) {
+    result_literal = result_literal->Relayout(arg->output_layout());
+  }
+  *result->mutable_literal() = result_literal->ToProto();
+
   return tensorflow::Status::OK();
 }
 
@@ -1182,8 +1207,7 @@ tensorflow::Status Service::GetComputationStats(
   HloCostAnalysis analysis(
       execute_backend_->compiler()->ShapeSizeBytesFunction());
 
-  TF_RETURN_IF_ERROR(
-      module->entry_computation()->root_instruction()->Accept(&analysis));
+  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
 
   ComputationStats stats;
   stats.set_flop_count(analysis.flop_count());
@@ -1213,6 +1237,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kBatchNormTrainingRequest:
       handle_status = computation->AddBatchNormTrainingInstruction(
           arg->batch_norm_training_request());
+      break;
+    case OpRequest::kBatchNormInferenceRequest:
+      handle_status = computation->AddBatchNormInferenceInstruction(
+          arg->batch_norm_inference_request());
       break;
     case OpRequest::kBatchNormGradRequest:
       handle_status = computation->AddBatchNormGradInstruction(
@@ -1387,6 +1415,8 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
   // proto in the above switch statement.
   TF_ASSIGN_OR_RETURN(ComputationDataHandle handle, handle_status);
   TF_RETURN_IF_ERROR(computation->SetOpMetadata(handle, arg->metadata()));
+  TF_RETURN_IF_ERROR(
+      computation->SetOpDeviceAssignment(handle, arg->device_assignment()));
 
   return tensorflow::Status::OK();
 }

@@ -27,7 +27,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
-from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import estimators
 from tensorflow.python.client import session as session_lib
@@ -43,6 +42,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
+from tensorflow.python.training import training_util
 
 
 class _MyEveryN(learn.monitors.EveryN):
@@ -616,7 +616,7 @@ class CheckpointSaverTest(test.TestCase):
     self.graph = ops.Graph()
     with self.graph.as_default():
       self.scaffold = monitored_session.Scaffold()
-      self.global_step = variables_lib.get_or_create_global_step()
+      self.global_step = training_util.get_or_create_global_step()
       self.train_op = state_ops.assign_add(self.global_step, 1)
 
   def tearDown(self):
@@ -780,7 +780,7 @@ class RunHookAdapterForMonitorsTest(test.TestCase):
 
   def test_calls_and_steps(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:
-      global_step_tensor = variables_lib.create_global_step()
+      global_step_tensor = training_util.create_global_step()
       inc_5 = state_ops.assign_add(global_step_tensor, 5)
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
@@ -821,7 +821,7 @@ class RunHookAdapterForMonitorsTest(test.TestCase):
 
   def test_requests(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:
-      variables_lib.create_global_step()
+      training_util.create_global_step()
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
 

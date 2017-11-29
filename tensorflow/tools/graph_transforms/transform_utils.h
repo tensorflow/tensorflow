@@ -109,8 +109,8 @@ void FilterGraphDef(const GraphDef& input_graph_def,
                     std::function<bool(const NodeDef&)> selector,
                     GraphDef* output_graph_def);
 
-// Creates a copy of the input graph, with all occurrences of the attributes with
-// the names in the argument removed from the node defs.
+// Creates a copy of the input graph, with all occurrences of the attributes
+// with the names in the argument removed from the node defs.
 void RemoveAttributes(const GraphDef& input_graph_def,
                       const std::vector<string>& attributes,
                       GraphDef* output_graph_def);
@@ -133,9 +133,8 @@ Status IsGraphValid(const GraphDef& graph_def);
 Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
                      DataTypeVector* outputs);
 
-// First tries to load the file as a text protobuf, if that fails tries to parse
-// it as a binary protobuf, and returns an error if both fail.
-Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph);
+// Takes a comma-separated string of numbers and parses them into a shape.
+Status TensorShapeFromString(const string& shape_string, TensorShape* result);
 
 // This is used to spot particular subgraphs in a larger model. To use it,
 // create a pattern like:

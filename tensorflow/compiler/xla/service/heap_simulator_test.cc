@@ -481,7 +481,7 @@ TEST_F(HeapSimulatorTest, WholeModule) {
 // Base class for heap algorithm tests.
 class HeapAlgorithmTestBase : public ::testing::Test {
  protected:
-  HeapAlgorithmTestBase() {
+  HeapAlgorithmTestBase() : builder_("heap_simulator_test") {
     buffer_a_ = DummyLogicalBuffer();
     buffer_b_ = DummyLogicalBuffer();
     buffer_c_ = DummyLogicalBuffer();
@@ -505,15 +505,16 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   const LogicalBuffer* buffer_i_;
 
  private:
-  // Create a dummy LogicalBuffer to pass to the heap algorithm.  Since the
-  // algorithms only use the buffer as a handle, we don't need to fill in much
-  // other than the id and color.
+  // Create a dummy LogicalBuffer to pass to the heap algorithm.
   const LogicalBuffer* DummyLogicalBuffer() {
     const LogicalBuffer::Id id = buffers_.size();
-    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id));
+    auto const0 = builder_.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+    buffers_.emplace_back(MakeUnique<LogicalBuffer>(const0, ShapeIndex{}, id));
     return buffers_.back().get();
   }
 
+  HloComputation::Builder builder_;
   std::vector<std::unique_ptr<LogicalBuffer>> buffers_;
 };
 

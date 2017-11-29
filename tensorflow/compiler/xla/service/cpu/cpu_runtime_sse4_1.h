@@ -28,23 +28,25 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-constexpr char kExpV4F32[] = "__xla_cpu_runtime_ExpV4F32";
-constexpr char kLogV4F32[] = "__xla_cpu_runtime_LogV4F32";
-constexpr char kTanhV4F32[] = "__xla_cpu_runtime_TanhV4F32";
+extern const char *const kExpV4F32SSESymbolName;
+extern const char *const kLogV4F32SSESymbolName;
 
-typedef float V4F32 __attribute__((__vector_size__(16)));
-
-// The following functions are vectorized versions of a selection of libm
-// library functions.
-// References to these functions are created by the LLVM vectorizer.
-V4F32 ExpV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
-
-V4F32 LogV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
-
-V4F32 TanhV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
+typedef float V4F32SSE __attribute__((__vector_size__(16)));
 
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla
+
+extern "C" {
+
+// The following functions are vectorized versions of a selection of libm
+// library functions.
+// References to these functions are created by the LLVM vectorizer.
+xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_ExpV4F32SSE(
+    xla::cpu::runtime::V4F32SSE x) TF_ATTRIBUTE_WEAK;
+
+xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_LogV4F32SSE(
+    xla::cpu::runtime::V4F32SSE x) TF_ATTRIBUTE_WEAK;
+}
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_SSE4_1_H_

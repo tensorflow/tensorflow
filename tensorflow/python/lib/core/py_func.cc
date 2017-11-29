@@ -79,6 +79,9 @@ Status MakeArgTuple(PyCall* call, PyObject** tuple) {
 // module.
 Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   switch (np) {
+    case NPY_FLOAT16:
+      *tf = DT_HALF;
+      break;
     case NPY_FLOAT32:
       *tf = DT_FLOAT;
       break;
@@ -294,8 +297,15 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
         char* el;
         Py_ssize_t el_size;
         if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
-          return errors::Unimplemented("Unsupported object type ",
-                                       input_data[i]->ob_type->tp_name);
+#if PY_MAJOR_VERSION >= 3
+          el = PyUnicode_AsUTF8AndSize(input_data[i], &el_size);
+          if (!el) {
+#endif
+            return errors::Unimplemented("Unsupported object type ",
+                                         input_data[i]->ob_type->tp_name);
+#if PY_MAJOR_VERSION >= 3
+          }
+#endif
         }
         tflat(i) = string(el, el_size);
       }

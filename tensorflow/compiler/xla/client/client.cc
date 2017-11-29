@@ -206,6 +206,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     *request.mutable_execution_options() = *execution_options;
   }
   for (GlobalData* argument : arguments) {
+    CHECK(argument != nullptr) << "Argument pointers must not be null.";
     *request.add_arguments() = argument->handle();
   }
 
@@ -240,9 +241,6 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
     *single_request.mutable_computation() = computation.computation.handle();
     for (GlobalData* argument : computation.arguments) {
       *single_request.add_arguments() = argument->handle();
-    }
-    if (computation.device_handle != nullptr) {
-      *single_request.mutable_device_handle() = *computation.device_handle;
     }
     *single_request.mutable_execution_options() = computation.execution_options;
     *request.add_requests() = single_request;
@@ -292,61 +290,6 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
   }
 
   return device_handles;
-}
-
-StatusOr<ExecutionHandle> Client::ExecuteAsync(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const ExecutionOptions* execution_options) {
-  ExecuteAsyncRequest request;
-  *request.mutable_computation() = computation.handle();
-  for (GlobalData* argument : arguments) {
-    *request.add_arguments() = argument->handle();
-  }
-  if (execution_options == nullptr) {
-    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
-  } else {
-    *request.mutable_execution_options() = *execution_options;
-  }
-
-  ExecuteAsyncResponse response;
-  VLOG(1) << "making execute async request: " << request.ShortDebugString();
-  Status s = stub_->ExecuteAsync(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-
-  return response.execution();
-}
-
-StatusOr<std::unique_ptr<GlobalData>> Client::WaitForExecution(
-    const Computation& computation, const ExecutionHandle& execution,
-    ExecutionProfile* execution_profile) {
-  WaitForExecutionRequest request;
-  *request.mutable_execution() = execution;
-
-  WaitForExecutionResponse response;
-  VLOG(1) << "making wait-for-execute request: " << request.ShortDebugString();
-  Status s = stub_->WaitForExecution(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-
-  if (execution_profile != nullptr) {
-    *execution_profile = response.profile();
-    if (VLOG_IS_ON(1)) {
-      TF_ASSIGN_OR_RETURN(
-          auto execution_stats,
-          ExecutionStatsAsString(computation, response.profile()));
-      VLOG(1) << execution_stats;
-    }
-  }
-
-  return MakeUnique<GlobalData>(stub_, response.output());
 }
 
 Status Client::Unregister(const GlobalData& data) {

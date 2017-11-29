@@ -19,29 +19,30 @@ from __future__ import division
 from __future__ import print_function
 
 # Initializer functions / callable classes.
-from tensorflow.contrib.keras.python.keras.initializers import Constant
-from tensorflow.contrib.keras.python.keras.initializers import Identity
-from tensorflow.contrib.keras.python.keras.initializers import Initializer
-from tensorflow.contrib.keras.python.keras.initializers import Ones
-from tensorflow.contrib.keras.python.keras.initializers import Orthogonal
-from tensorflow.contrib.keras.python.keras.initializers import RandomNormal
-from tensorflow.contrib.keras.python.keras.initializers import RandomUniform
-from tensorflow.contrib.keras.python.keras.initializers import TruncatedNormal
-from tensorflow.contrib.keras.python.keras.initializers import VarianceScaling
-from tensorflow.contrib.keras.python.keras.initializers import Zeros
+from tensorflow.python.keras._impl.keras.initializers import Constant
+from tensorflow.python.keras._impl.keras.initializers import Identity
+from tensorflow.python.keras._impl.keras.initializers import Initializer
+from tensorflow.python.keras._impl.keras.initializers import Ones
+from tensorflow.python.keras._impl.keras.initializers import Orthogonal
+from tensorflow.python.keras._impl.keras.initializers import RandomNormal
+from tensorflow.python.keras._impl.keras.initializers import RandomUniform
+from tensorflow.python.keras._impl.keras.initializers import TruncatedNormal
+from tensorflow.python.keras._impl.keras.initializers import VarianceScaling
+from tensorflow.python.keras._impl.keras.initializers import Zeros
 
 # Functional interface.
 # pylint: disable=g-bad-import-order
-from tensorflow.contrib.keras.python.keras.initializers import glorot_normal
-from tensorflow.contrib.keras.python.keras.initializers import glorot_uniform
-from tensorflow.contrib.keras.python.keras.initializers import he_normal
-from tensorflow.contrib.keras.python.keras.initializers import he_uniform
-from tensorflow.contrib.keras.python.keras.initializers import lecun_uniform
+from tensorflow.python.keras._impl.keras.initializers import glorot_normal
+from tensorflow.python.keras._impl.keras.initializers import glorot_uniform
+from tensorflow.python.keras._impl.keras.initializers import he_normal
+from tensorflow.python.keras._impl.keras.initializers import he_uniform
+from tensorflow.python.keras._impl.keras.initializers import lecun_normal
+from tensorflow.python.keras._impl.keras.initializers import lecun_uniform
 
 # Auxiliary utils.
-from tensorflow.contrib.keras.python.keras.initializers import deserialize
-from tensorflow.contrib.keras.python.keras.initializers import serialize
-from tensorflow.contrib.keras.python.keras.initializers import get
+from tensorflow.python.keras._impl.keras.initializers import deserialize
+from tensorflow.python.keras._impl.keras.initializers import serialize
+from tensorflow.python.keras._impl.keras.initializers import get
 
 del absolute_import
 del division

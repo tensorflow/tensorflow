@@ -17,57 +17,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
-import itertools
-import traceback
 import types
 
 import six  # pylint: disable=unused-import
 
-# pylint: disable=g-bad-import-order,g-import-not-at-top
-try:
-  from weakref import finalize
-except ImportError:
-  from backports.weakref import finalize
-
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import tf_decorator
 # pylint: enable=g-bad-import-order,g-import-not-at-top
 
 
-class _RefInfoField(
-    collections.namedtuple(
-        '_RefInfoField', ('type_', 'repr_', 'creation_stack', 'object_used'))):
-  pass
-
-
-# Thread-safe up to int32max/2 thanks to python's GIL; and may be safe even for
-# higher values in Python 3.4+.  We don't expect to ever count higher than this.
-# https://mail.python.org/pipermail/python-list/2005-April/342279.html
-_REF_ITER = itertools.count()
-
-# Dictionary mapping id(obj) => _RefInfoField.
-_REF_INFO = {}
-
-
-def _deleted(obj_id, fatal_error):
-  obj = _REF_INFO[obj_id]
-  del _REF_INFO[obj_id]
-  if not obj.object_used:
-    if fatal_error:
-      logger = tf_logging.fatal
-    else:
-      logger = tf_logging.error
-    logger(
-        '==================================\n'
-        'Object was never used (type %s):\n%s\nIf you want to mark it as '
-        'used call its "mark_used()" method.\nIt was originally created '
-        'here:\n%s\n'
-        '==================================' %
-        (obj.type_, obj.repr_, obj.creation_stack))
-
-
+# TODO(b/65412899): Re-implement to avoid leaking python objects.
+# This function / class remains since the API is public (mark_used()).
 def _add_should_use_warning(x, fatal_error=False):
   """Wraps object x so that if it is never used, a warning is logged.
 
@@ -80,16 +40,17 @@ def _add_should_use_warning(x, fatal_error=False):
     An instance of `TFShouldUseWarningWrapper` which subclasses `type(x)`
     and is a very shallow wrapper for `x` which logs access into `x`.
   """
+  del fatal_error
   if x is None:  # special corner case where x is None
     return x
-  if hasattr(x, '_tf_ref_id'):  # this is already a TFShouldUseWarningWrapper
+
+  # TODO(apassos) we don't have an easier way to check because importing context
+  # or ops here would create a BUILD dependency cycle.
+  if type(x).__name__ == 'EagerTensor':
     return x
 
   def override_method(method):
     def fn(self, *args, **kwargs):
-      # pylint: disable=protected-access
-      _REF_INFO[self._tf_ref_id] = _REF_INFO[self._tf_ref_id]._replace(
-          object_used=True)
       return method(self, *args, **kwargs)
     return fn
 
@@ -98,38 +59,16 @@ def _add_should_use_warning(x, fatal_error=False):
 
     def __init__(self, true_self):
       self.__dict__ = true_self.__dict__
-      stack = [s.strip() for s in traceback.format_stack()]
-      # Remove top three stack entries from adding the wrapper
-      self.creation_stack = '\n'.join(stack[:-3])
-      self._tf_ref_id = next(_REF_ITER)
-      _REF_INFO[self._tf_ref_id] = _RefInfoField(
-          type_=type(x),
-          repr_=repr(x),
-          creation_stack=stack,
-          object_used=False)
-
-      # Create a finalizer for self, which will be called when self is
-      # garbage collected.  Can't add self as the args because the
-      # loop will break garbage collection.  We keep track of
-      # ourselves via python ids.
-      finalize(self, _deleted, self._tf_ref_id, fatal_error)
 
     # Not sure why this pylint warning is being used; this is not an
     # old class form.
     # pylint: disable=super-on-old-class
     def __getattribute__(self, name):
-      if name == '_tf_ref_id':
-        return super(TFShouldUseWarningWrapper, self).__getattribute__(name)
-      if self._tf_ref_id in _REF_INFO:
-        _REF_INFO[self._tf_ref_id] = _REF_INFO[self._tf_ref_id]._replace(
-            object_used=True)
       return super(TFShouldUseWarningWrapper, self).__getattribute__(name)
 
     def mark_used(self, *args, **kwargs):
-      _REF_INFO[self._tf_ref_id] = _REF_INFO[self._tf_ref_id]._replace(
-          object_used=True)
-      if hasattr(super(TFShouldUseWarningWrapper, self), 'mark_used'):
-        return super(TFShouldUseWarningWrapper, self).mark_used(*args, **kwargs)
+      return
+
     # pylint: enable=super-on-old-class
 
   for name in dir(TFShouldUseWarningWrapper):
@@ -143,8 +82,6 @@ def _add_should_use_warning(x, fatal_error=False):
 
   wrapped = TFShouldUseWarningWrapper(x)
   wrapped.__doc__ = x.__doc__  # functools.wraps fails on some objects.
-  ref_id = wrapped._tf_ref_id  # pylint: disable=protected-access
-  _REF_INFO[ref_id] = _REF_INFO[ref_id]._replace(object_used=False)
   return wrapped
 
 

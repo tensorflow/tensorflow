@@ -22,6 +22,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -49,96 +50,6 @@ limitations under the License.
 
 namespace xla {
 
-// This class is a simple vector of boolean values. It's used to workaround some
-// implementations of std::vector<bool> that use a bitset which does not have
-// the semantics expected by Literal::preds().
-class BoolVector {
- public:
-  typedef bool* iterator;
-  typedef const bool* const_iterator;
-
-  BoolVector() : bits_(nullptr), size_(0), capacity_(0) {}
-
-  BoolVector(const_iterator other_begin, const_iterator other_end)
-      : bits_(nullptr), size_(0), capacity_(0) {
-    if (other_begin && other_end) {
-      resize(other_end - other_begin);
-      memcpy(begin(), other_begin, size());
-    }
-  }
-
-  BoolVector(const BoolVector& other) { CopyFrom(other); }
-  BoolVector(BoolVector&&) = default;
-
-  BoolVector& operator=(const BoolVector& other) {
-    CopyFrom(other);
-    return *this;
-  }
-  BoolVector& operator=(BoolVector&&) = default;
-
-  void push_back(const bool& value) {
-    resize(size_ + 1);
-    bits_[size_ - 1] = value;
-  }
-
-  bool* data() const { return bits_.get(); }
-
-  size_t size() const { return size_; }
-
-  size_t capacity() const { return capacity_; }
-
-  void resize(size_t new_size, bool val = false) {
-    if (new_size == 0) {
-      bits_.reset(nullptr);
-      size_ = 0;
-      capacity_ = 0;
-    } else {
-      size_t old_size = size();
-      if (new_size > old_size) {
-        grow(new_size);
-      }
-      if (old_size < new_size) {
-        memset(&bits_[old_size], val, new_size - old_size);
-      }
-      size_ = new_size;
-    }
-  }
-
-  void clear() {
-    bits_.reset(nullptr);
-    size_ = 0;
-    capacity_ = 0;
-  }
-
-  iterator begin() { return &bits_[0]; }
-  iterator end() { return &bits_[size()]; }
-  const_iterator begin() const { return &bits_[0]; }
-  const_iterator end() const { return &bits_[size()]; }
-
- private:
-  void grow(size_t n) {
-    if (capacity_ < n) {
-      capacity_ = 2 * n;
-      bool* new_bits = new bool[capacity_]();
-      if (size_ > 0) {
-        memcpy(new_bits, bits_.get(), size_);
-      }
-      bits_.reset(new_bits);
-    }
-  }
-
-  void CopyFrom(const BoolVector& other) {
-    bits_ = MakeUnique<bool[]>(other.capacity());
-    memcpy(begin(), other.begin(), other.size());
-    size_ = other.size();
-    capacity_ = other.capacity();
-  }
-
-  std::unique_ptr<bool[]> bits_;
-  size_t size_;
-  size_t capacity_;
-};
-
 // Utility class for dealing with XLA literal values.  Most methods are
 // templated by native (host) type which corresponds to a unique XLA
 // PrimitiveType. See ComputationBuilder for details.  Not all primitive types
@@ -156,6 +67,11 @@ class Literal {
   Literal& operator=(const Literal& other) = default;
   Literal& operator=(Literal&&) = default;
 
+  // Literals are equal if they have compatible shapes and the same data
+  // values. Layout is not checked.
+  bool operator==(const Literal& other) const;
+  bool operator!=(const Literal& other) const { return !(*this == other); }
+
   LiteralProto ToProto() const;
 
   bool has_shape() const {
@@ -167,12 +83,17 @@ class Literal {
   string DebugString() const { return ToProto().DebugString(); }
   string ShortDebugString() const { return ToProto().ShortDebugString(); }
 
+  // Return the nested literal at the given shape index.
+  const Literal& GetSubliteral(const ShapeIndex& index) const;
+  Literal& GetSubliteral(const ShapeIndex& index);
+
   void Clear() {
     shape_.Clear();
-    preds_.clear();
     u8s_.clear();
+    s16s_.clear();
     s32s_.clear();
     s64s_.clear();
+    u16s_.clear();
     u32s_.clear();
     u64s_.clear();
     f16s_.clear();
@@ -181,9 +102,22 @@ class Literal {
     tuple_literals_.clear();
   }
 
-  int preds_size() const { return preds().size(); }
-  const BoolVector& preds() const { return preds_; }
-  BoolVector* mutable_preds() { return &preds_; }
+  int preds_size() const { return u8s().size(); }
+  const std::vector<uint8>& preds() const {
+    static_assert(sizeof(uint8) == sizeof(bool),
+                  "The uint8 and bool types should be the same size");
+    return u8s_;
+  }
+  std::vector<uint8>* mutable_preds() {
+    static_assert(sizeof(uint8) == sizeof(bool),
+                  "The uint8 and bool types should be the same size");
+    return &u8s_;
+  }
+
+  int s16s_size() const { return s16s().size(); }
+  int32 s16s(int i) const { return s16s_[i]; }
+  const std::vector<int16>& s16s() const { return s16s_; }
+  std::vector<int16>* mutable_s16s() { return &s16s_; }
 
   int s32s_size() const { return s32s().size(); }
   int32 s32s(int i) const { return s32s_[i]; }
@@ -194,6 +128,11 @@ class Literal {
   void add_s64s(int64 value) { s64s_.push_back(value); }
   const std::vector<int64>& s64s() const { return s64s_; }
   std::vector<int64>* mutable_s64s() { return &s64s_; }
+
+  int u16s_size() const { return u16s().size(); }
+  uint32 u16s(int i) const { return u16s_[i]; }
+  const std::vector<uint16>& u16s() const { return u16s_; }
+  std::vector<uint16>* mutable_u16s() { return &u16s_; }
 
   int u32s_size() const { return u32s().size(); }
   uint32 u32s(int i) const { return u32s_[i]; }
@@ -219,6 +158,10 @@ class Literal {
   int f64s_size() const { return f64s().size(); }
   const std::vector<double>& f64s() const { return f64s_; }
   std::vector<double>* mutable_f64s() { return &f64s_; }
+
+  int c64s_size() const { return c64s().size(); }
+  const std::vector<complex64>& c64s() const { return c64s_; }
+  std::vector<complex64>* mutable_c64s() { return &c64s_; }
 
   int tuple_literals_size() const { return tuple_literals().size(); }
   const Literal& tuple_literals(int i) const { return tuple_literals_[i]; }
@@ -248,12 +191,6 @@ class Literal {
 
   const Shape& shape() const { return shape_; }
   Shape* mutable_shape() { return &shape_; }
-
-  void Swap(Literal* other) {
-    Literal temp = *this;
-    *this = *other;
-    *other = temp;
-  }
 
   // Creates a new literal of a given rank. To minimize ambiguity (for users
   // and the compiler) these CreateR[0-2] methods should explicitly specify the
@@ -320,6 +257,9 @@ class Literal {
   // The src_literal and this literal must have the same primitive type,
   // src_base+copy_size must fit the source literal dimensions, as well as
   // dest_base+copy_size must fit the destination literal dimensions.
+  // Note: if either src_literal or this literal contains dimensions with zero
+  // element, then copy_size must be 0 in these dimensions while the
+  // corresponding base indices being 0.
   Status Copy(const Literal& src_literal,
               tensorflow::gtl::ArraySlice<int64> src_base,
               tensorflow::gtl::ArraySlice<int64> dest_base,
@@ -331,10 +271,14 @@ class Literal {
   // minor-to-major dimension layout and the value in the cell at any given
   // logical index (i0, i1) will be the same.
   //
+  // For tuple shaped literals, shape_index should be used to select the inner
+  // array that the new layout applies to.
+  //
   // Note: this is useful when the client wants to ensure that a value placed in
   // the XLA allocation tracker has a particular layout; for efficiency
   // purposes or avoiding unimplemented operation/layout combinations.
-  std::unique_ptr<Literal> Relayout(const Layout& new_layout) const;
+  std::unique_ptr<Literal> Relayout(const Layout& new_layout,
+                                    const ShapeIndex& shape_index = {}) const;
 
   // Creates a new literal by reshaping this literal to have 'shape'. Both the
   // original shape and 'shape' must contain the same number of elements. The
@@ -393,6 +337,11 @@ class Literal {
   // Creates a new literal from an array. The variants not ending with
   // WithLayout use the default XLA layout for the literal's linear
   // representation in memory.
+  template <typename NativeT>
+  static std::unique_ptr<Literal> CreateFromArray(const Array<NativeT>& values);
+  template <typename NativeT>
+  static std::unique_ptr<Literal> CreateFromArrayWithLayout(
+      const Array<NativeT>& values, const Layout& layout);
   template <typename NativeT>
   static std::unique_ptr<Literal> CreateR2FromArray2D(
       const Array2D<NativeT>& values);
@@ -473,6 +422,11 @@ class Literal {
   // into text.
   string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index) const;
 
+  // As Get(), but determines the correct type and converts the value into
+  // int64.
+  StatusOr<int64> GetIntegralAsS64(
+      tensorflow::gtl::ArraySlice<int64> multi_index) const;
+
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
   static std::unique_ptr<Literal> MakeIdentityR2(int64 size);
@@ -536,6 +490,11 @@ class Literal {
       std::initializer_list<std::initializer_list<NativeT>> values,
       const Layout& layout);
   template <typename NativeT>
+  void PopulateFromArray(const Array<NativeT>& values);
+  template <typename NativeT>
+  void PopulateFromArrayWithLayout(const Array<NativeT>& values,
+                                   const Layout& layout);
+  template <typename NativeT>
   void PopulateR2FromArray2D(const Array2D<NativeT>& values);
   template <typename NativeT>
   void PopulateR2FromArray2DWithLayout(const Array2D<NativeT>& values,
@@ -553,10 +512,11 @@ class Literal {
 
   // Populates literal values by calling the generator function for every cell
   // in this literal object.
-  template <typename NativeT>
-  Status Populate(
-      const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-          generator);
+  //
+  // generator must be a callable of the type
+  // NativeT(tensorflow::gtl::ArraySlice<int64> indexes) or compatible.
+  template <typename NativeT, typename FnType>
+  Status Populate(const FnType& generator);
 
   // Creates a Literal of the given dimensions with all elements set to the
   // given value.
@@ -582,10 +542,6 @@ class Literal {
   template <typename NativeT>
   void Resize(int64 num_elements, NativeT value);
 
-  // Returns true if this literal has the same shape and value as the given
-  // literal. Layout is not considered in the comparison.
-  bool Equal(const Literal& literal2) const;
-
   // Returns whether every element in this literal is equal to value.
   //
   // value is an int8 because we expect this to be called with small
@@ -607,6 +563,17 @@ class Literal {
   // use this to check for values that can be expressed precisely as a float,
   // e.g. -0.5.
   bool IsAllFloat(float value) const;
+
+  // Like IsAll(const Literal&, int8), except we check whether the literal is
+  // equal to a particular complex number.
+  //
+  // If the literal is not a complex value, this always returns false.
+  //
+  // This casts value to the type of literal, then compares using ==.  The usual
+  // admonishments about floating-point equality checks apply.  We expect you to
+  // use this to check for complex values that can be expressed precisely as
+  // float pairs e.g. (-0.5, 1.0).
+  bool IsAllComplex(complex64 value) const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array.
@@ -648,17 +615,21 @@ class Literal {
   };
 
   Shape shape_;
-  BoolVector preds_;
   std::vector<uint8> u8s_;
+  std::vector<int16> s16s_;
   std::vector<int32> s32s_;
   std::vector<int64> s64s_;
+  std::vector<uint16> u16s_;
   std::vector<uint32> u32s_;
   std::vector<uint64> u64s_;
   std::vector<half> f16s_;
   std::vector<float> f32s_;
   std::vector<double> f64s_;
+  std::vector<complex64> c64s_;
   std::vector<Literal> tuple_literals_;
 };
+
+std::ostream& operator<<(std::ostream& out, const Literal& literal);
 
 // Declarations of template specializations for GetArraySlice and
 // GetMutableArraySlice. The specializations map native type to XLA primitive
@@ -671,6 +642,12 @@ tensorflow::gtl::ArraySlice<uint8> Literal::GetArraySlice<uint8>() const;
 
 template <>
 tensorflow::gtl::ArraySlice<int8> Literal::GetArraySlice<int8>() const;
+
+template <>
+tensorflow::gtl::ArraySlice<uint16> Literal::GetArraySlice<uint16>() const;
+
+template <>
+tensorflow::gtl::ArraySlice<int16> Literal::GetArraySlice<int16>() const;
 
 template <>
 tensorflow::gtl::ArraySlice<uint32> Literal::GetArraySlice<uint32>() const;
@@ -698,6 +675,10 @@ template <>
 tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const;
 
 template <>
+tensorflow::gtl::ArraySlice<complex64> Literal::GetArraySlice<complex64>()
+    const;
+
+template <>
 tensorflow::gtl::MutableArraySlice<bool> Literal::GetMutableArraySlice();
 
 template <>
@@ -705,6 +686,12 @@ tensorflow::gtl::MutableArraySlice<int8> Literal::GetMutableArraySlice();
 
 template <>
 tensorflow::gtl::MutableArraySlice<uint8> Literal::GetMutableArraySlice();
+
+template <>
+tensorflow::gtl::MutableArraySlice<int16> Literal::GetMutableArraySlice();
+
+template <>
+tensorflow::gtl::MutableArraySlice<uint16> Literal::GetMutableArraySlice();
 
 template <>
 tensorflow::gtl::MutableArraySlice<int32> Literal::GetMutableArraySlice();
@@ -726,6 +713,9 @@ tensorflow::gtl::MutableArraySlice<double> Literal::GetMutableArraySlice();
 
 template <>
 tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice();
+
+template <>
+tensorflow::gtl::MutableArraySlice<complex64> Literal::GetMutableArraySlice();
 
 template <>
 void Literal::Resize<bool>(int64 num_elements, bool value);
@@ -756,6 +746,9 @@ void Literal::Resize<double>(int64 num_elements, double value);
 
 template <>
 void Literal::Resize<half>(int64 num_elements, half value);
+
+template <>
+void Literal::Resize<complex64>(int64 num_elements, complex64 value);
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR0(NativeT value) {
@@ -859,33 +852,42 @@ template <typename NativeT>
 }
 
 template <typename NativeT>
+/* static */ std::unique_ptr<Literal> Literal::CreateFromArrayWithLayout(
+    const Array<NativeT>& values, const Layout& layout) {
+  auto literal = MakeUnique<Literal>();
+  literal->PopulateFromArrayWithLayout(values, layout);
+  return literal;
+}
+
+template <typename NativeT>
+/* static */ std::unique_ptr<Literal> Literal::CreateFromArray(
+    const Array<NativeT>& values) {
+  return CreateFromArrayWithLayout(
+      values, LayoutUtil::GetDefaultLayoutForRank(values.num_dimensions()));
+}
+
+template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
-  auto literal = MakeUnique<Literal>();
-  literal->PopulateR2FromArray2DWithLayout(values, layout);
-  return literal;
+  return CreateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return CreateR2FromArray2DWithLayout(values,
-                                       LayoutUtil::GetDefaultLayoutForR2());
+  return CreateFromArray(values);
 }
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
-  auto literal = MakeUnique<Literal>();
-  literal->PopulateR3FromArray3DWithLayout(values, layout);
-  return literal;
+  return CreateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR3FromArray3D(
     const Array3D<NativeT>& values) {
-  return CreateR3FromArray3DWithLayout(values,
-                                       LayoutUtil::GetDefaultLayoutForR3());
+  return CreateFromArray(values);
 }
 
 template <typename NativeT>
@@ -944,16 +946,13 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR4FromArray4D(
     const Array4D<NativeT>& values) {
-  return CreateR4FromArray4DWithLayout(values,
-                                       LayoutUtil::GetDefaultLayoutForR4());
+  return CreateFromArray(values);
 }
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
-  auto literal = MakeUnique<Literal>();
-  literal->PopulateR4FromArray4DWithLayout(values, layout);
-  return literal;
+  return CreateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
@@ -1113,90 +1112,59 @@ void Literal::PopulateR2(
 }
 
 template <typename NativeT>
+void Literal::PopulateFromArrayWithLayout(const Array<NativeT>& values,
+                                          const Layout& layout) {
+  *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
+      primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
+      AsInt64Slice(layout.minor_to_major()));
+  Reserve(values.num_elements());
+  values.Each([this](tensorflow::gtl::ArraySlice<int64> indices,
+                     NativeT value) { this->Set(indices, value); });
+}
+
+template <typename NativeT>
+void Literal::PopulateFromArray(const Array<NativeT>& values) {
+  PopulateFromArrayWithLayout(
+      values, LayoutUtil::GetDefaultLayoutForRank(values.num_dimensions()));
+}
+
+template <typename NativeT>
 void Literal::PopulateR2FromArray2DWithLayout(const Array2D<NativeT>& values,
                                               const Layout& layout) {
-  *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(),
-      {values.height(), values.width()}, AsInt64Slice(layout.minor_to_major()));
-
-  const int64 dim1_size = values.width();
-  const int64 dim0_size = values.height();
-  CHECK_EQ(dim0_size, shape().dimensions(0));
-  CHECK_EQ(dim1_size, shape().dimensions(1));
-  Reserve(dim1_size * dim0_size);
-  for (int64 dim0 = 0; dim0 < dim0_size; ++dim0) {
-    for (int64 dim1 = 0; dim1 < dim1_size; ++dim1) {
-      Set({dim0, dim1}, values(dim0, dim1));
-    }
-  }
+  PopulateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 void Literal::PopulateR2FromArray2D(const Array2D<NativeT>& values) {
-  PopulateR2FromArray2DWithLayout(values, LayoutUtil::GetDefaultLayoutForR2());
+  PopulateFromArray(values);
 }
 
 template <typename NativeT>
 void Literal::PopulateR3FromArray3DWithLayout(const Array3D<NativeT>& values,
                                               const Layout& layout) {
-  *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(),
-      {values.n1(), values.n2(), values.n3()},
-      AsInt64Slice(layout.minor_to_major()));
-
-  CHECK_EQ(values.n1(), shape().dimensions(0));
-  CHECK_EQ(values.n2(), shape().dimensions(1));
-  CHECK_EQ(values.n3(), shape().dimensions(2));
-  Reserve(values.n1() * values.n2() * values.n3());
-  for (int64 dim0 = 0; dim0 < values.n1(); ++dim0) {
-    for (int64 dim1 = 0; dim1 < values.n2(); ++dim1) {
-      for (int64 dim2 = 0; dim2 < values.n3(); ++dim2) {
-        Set({dim0, dim1, dim2}, values(dim0, dim1, dim2));
-      }
-    }
-  }
+  PopulateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 void Literal::PopulateR3FromArray3D(const Array3D<NativeT>& values) {
-  PopulateR3FromArray3DWithLayout(values, LayoutUtil::GetDefaultLayoutForR3());
+  PopulateFromArray(values);
 }
 
 template <typename NativeT>
 void Literal::PopulateR4FromArray4DWithLayout(const Array4D<NativeT>& values,
                                               const Layout& layout) {
-  *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(),
-      {values.planes(), values.depth(), values.height(), values.width()},
-      AsInt64Slice(layout.minor_to_major()));
-
-  CHECK_EQ(values.n1(), shape().dimensions(0));
-  CHECK_EQ(values.n2(), shape().dimensions(1));
-  CHECK_EQ(values.n3(), shape().dimensions(2));
-  CHECK_EQ(values.n4(), shape().dimensions(3));
-  Reserve(values.n1() * values.n2() * values.n3() * values.n4());
-  for (int64 dim0 = 0; dim0 < values.n1(); ++dim0) {
-    for (int64 dim1 = 0; dim1 < values.n2(); ++dim1) {
-      for (int64 dim2 = 0; dim2 < values.n3(); ++dim2) {
-        for (int64 dim3 = 0; dim3 < values.n4(); ++dim3) {
-          Set({dim0, dim1, dim2, dim3}, values(dim0, dim1, dim2, dim3));
-        }
-      }
-    }
-  }
+  PopulateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 void Literal::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
-  PopulateR4FromArray4DWithLayout(values, LayoutUtil::GetDefaultLayoutForR4());
+  PopulateFromArray(values);
 }
 
-template <typename NativeT>
-Status Literal::Populate(
-    const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-        generator) {
+template <typename NativeT, typename FnType>
+Status Literal::Populate(const FnType& generator) {
   const Shape& this_shape = shape();
-  int64 rank = ShapeUtil::Rank(this_shape);
+  const int64 rank = ShapeUtil::Rank(this_shape);
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
   tensorflow::gtl::MutableArraySlice<NativeT> data =
@@ -1209,7 +1177,7 @@ Status Literal::Populate(
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
     auto init_function = [&](const std::vector<int64>& indexes) {
-      int64 index = LinearIndex(indexes);
+      const int64 index = LinearIndex(indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       for (int64 i = 0; i < minor_dimension_size; ++i) {
         minor_scan_indexes[stride_config.minor_dimension] = i;

@@ -24,11 +24,6 @@ The units are now as follows:
     explains how to save and restore variables and models.
   * @{$programmers_guide/datasets$Input Pipelines}, which explains how to
     set up data pipelines to read data sets into your TensorFlow program.
-  * @{$programmers_guide/threading_and_queues$Threading and Queues}, which
-    explains TensorFlow's older system for multi-threaded, queue-based input
-    pipelines. Beginning with TensorFlow 1.2, we recommend using the
-    `tf.contrib.data` module instead, which is documented in the
-    "Input Pipelines" unit.
   * @{$programmers_guide/embedding$Embeddings}, which introduces the concept
     of embeddings, provides a simple example of training an embedding in
     TensorFlow, and explains how to view embeddings with the TensorBoard

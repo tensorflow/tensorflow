@@ -27,6 +27,7 @@ py_library(
     deps = [
         ":timeseries",
         "//tensorflow/contrib/timeseries/examples:known_anomaly",
+        "//tensorflow/contrib/timeseries/examples:lstm",
         "//tensorflow/contrib/timeseries/examples:multivariate",
         "//tensorflow/contrib/timeseries/examples:predict",
         "//tensorflow/contrib/timeseries/python/timeseries:test_utils",

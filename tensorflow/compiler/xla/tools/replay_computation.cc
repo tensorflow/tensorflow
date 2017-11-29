@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -55,11 +56,16 @@ limitations under the License.
 
 namespace xla {
 namespace tools {
+namespace {
 
 // Invokes the given computation passing arbitrary data for every (unbound)
 // parameter if use_fake_data, Otherwise use recorded data if available.
+//
+// Similarly, infeeds fake data of shape fake_infeed_shape if it is provided;
+// otherwise, no infeed is performed.
 StatusOr<std::unique_ptr<Literal>> ReplayComputation(
-    const SessionModule& module, bool use_fake_data, Client* client) {
+    const SessionModule& module, tensorflow::StringPiece fake_infeed_shape,
+    bool use_fake_data, Client* client) {
   TF_ASSIGN_OR_RETURN(Computation computation, client->LoadSnapshot(module));
 
   std::vector<std::unique_ptr<GlobalData>> arguments;
@@ -74,6 +80,27 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
     }
   }
 
+  // We only instantiate the thread pool if the user has requested that a
+  // concurrent infeed occur via the fake_infeed_shape.
+  tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+
+  if (!fake_infeed_shape.empty()) {
+    pool.emplace(tensorflow::Env::Default(), "infeed",
+                 /*num_threads=*/1);
+    pool->Schedule([fake_infeed_shape, client]() {
+      StatusOr<Shape> shape_status =
+          ShapeUtil::ParseShapeString(fake_infeed_shape);
+      TF_CHECK_OK(shape_status.status());
+      Shape shape = std::move(shape_status).ValueOrDie();
+      StatusOr<std::unique_ptr<Literal>> data_status = MakeFakeLiteral(shape);
+      TF_CHECK_OK(data_status.status());
+      std::unique_ptr<Literal> data = std::move(data_status).ValueOrDie();
+      while (true) {
+        TF_CHECK_OK(client->TransferToInfeed(*data));
+      }
+    });
+  }
+
   std::vector<GlobalData*> execute_arguments;
   execute_arguments.reserve(arguments.size());
   for (auto& argument : arguments) {
@@ -82,17 +109,20 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
   return client->ExecuteAndTransfer(computation, execute_arguments);
 }
 
-void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool use_fake_data) {
+int RealMain(tensorflow::gtl::ArraySlice<char*> args,
+             tensorflow::StringPiece fake_infeed_shape, bool use_fake_data) {
   Client* client = ClientLibrary::LocalClientOrDie();
   tensorflow::Env* env = tensorflow::Env::Default();
+  int exit_status = EXIT_SUCCESS;
   for (char* arg : args) {
     SessionModule module;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(env, arg, &module));
     StatusOr<std::unique_ptr<Literal>> result_status =
-        ReplayComputation(module, use_fake_data, client);
+        ReplayComputation(module, fake_infeed_shape, use_fake_data, client);
     if (!result_status.ok()) {
       fprintf(stderr, "%s: error: %s\n", arg,
               result_status.status().ToString().c_str());
+      exit_status = EXIT_FAILURE;
       continue;
     }
     std::unique_ptr<Literal> result = result_status.ConsumeValueOrDie();
@@ -105,17 +135,22 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool use_fake_data) {
               Literal(module.result()).ToString().c_str());
     }
   }
+  return exit_status;
 }
 
+}  // namespace
 }  // namespace tools
 }  // namespace xla
 
 int main(int argc, char** argv) {
   // Flags
+  xla::string fake_infeed_shape;
   bool use_fake_data = false;
   const std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("use_fake_data", &use_fake_data,
                        "Replay computation using fake data"),
+      tensorflow::Flag("fake_infeed_shape", &fake_infeed_shape,
+                       "Shape of fake data to construct for (infinite) infeed"),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
@@ -126,6 +161,5 @@ int main(int argc, char** argv) {
 
   tensorflow::gtl::ArraySlice<char*> args(argv, argc);
   args.pop_front();  // Pop off the binary name, argv[0]
-  xla::tools::RealMain(args, use_fake_data);
-  return 0;
+  return xla::tools::RealMain(args, fake_infeed_shape, use_fake_data);
 }

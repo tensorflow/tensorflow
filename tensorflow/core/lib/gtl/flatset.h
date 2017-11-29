@@ -108,8 +108,8 @@ class FlatSet {
     const_iterator(Bucket* b, Bucket* end, uint32 i)
         : b_(b), end_(end), i_(i) {}
 
-    reference operator*() { return key(); }
-    pointer operator->() { return &key(); }
+    reference operator*() const { return key(); }
+    pointer operator->() const { return &key(); }
     bool operator==(const const_iterator& x) const {
       return b_ == x.b_ && i_ == x.i_;
     }

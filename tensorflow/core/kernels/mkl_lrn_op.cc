@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"

@@ -96,7 +96,7 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
 }
 
 /* static */ GraphDef GraphTransferUtils::BuildFusedGraphDef(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
     const std::vector<std::pair<string, Tensor>>& inputs,
     const std::vector<string>& outputs, GraphDef* original_def) {

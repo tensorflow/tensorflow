@@ -225,6 +225,8 @@ class StreamExecutorInterface {
   virtual port::Status SetDeviceSharedMemoryConfig(
       SharedMemoryConfig config) = 0;
 
+  virtual int64 GetDeviceLoad() { return -1; }
+
   virtual bool DeviceMemoryUsage(int64 *free, int64 *total) const {
     return false;
   }

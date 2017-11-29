@@ -399,7 +399,7 @@ ASBSQueue<TaskType>::~ASBSQueue() {
 
 template <typename TaskType>
 Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
-  ASBSBatch<TaskType>* new_batch = nullptr;
+  bool added_new_batch = false;
   size_t size = (*task)->size();
   if (size > options_.max_batch_size) {
     return errors::InvalidArgument("Task size ", size,
@@ -418,14 +418,15 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
       current_batch_ = nullptr;
     }
     if (!current_batch_) {
+      added_new_batch = true;
       num_enqueued_batches_++;
-      current_batch_ = new_batch =
+      current_batch_ =
           new ASBSBatch<TaskType>(this, scheduler_->GetEnv()->NowMicros());
     }
     current_batch_->AddTask(std::move(*task));
     num_enqueued_tasks_++;
   }
-  if (new_batch != nullptr) scheduler_->AddBatch(new_batch);
+  if (added_new_batch) scheduler_->AddBatch(current_batch_);
   return Status::OK();
 }
 

@@ -39,6 +39,14 @@ namespace {
 class HloDceTest : public HloTestBase {
  protected:
   HloDceTest() {}
+
+  // Returns whether the given instruction exists in the given computation.
+  bool HasInstruction(const HloComputation& computation,
+                      const HloInstruction* instruction) {
+    return std::find(computation.instructions().begin(),
+                     computation.instructions().end(),
+                     instruction) != computation.instructions().end();
+  }
 };
 
 TEST_F(HloDceTest, NoDeadCode) {
@@ -128,35 +136,256 @@ TEST_F(HloDceTest, ControlDependencies) {
   TF_ASSERT_OK(dead_negate_with_control_dep->AddControlDependencyTo(
       dead_add_with_control_dep));
 
-  // Returns whether the given instruction exists in the test computation.
-  auto has_instruction = [computation](const HloInstruction* instruction) {
-    for (auto& inst : computation->instructions()) {
-      if (inst.get() == instruction) {
-        return true;
-      }
-    }
-    return false;
-  };
-
   EXPECT_EQ(7, computation->instruction_count());
-  EXPECT_TRUE(has_instruction(dead_negate));
-  EXPECT_TRUE(has_instruction(dead_add));
-  EXPECT_TRUE(has_instruction(dead_negate_with_control_dep));
-  EXPECT_TRUE(has_instruction(dead_add_with_control_dep));
+  EXPECT_TRUE(HasInstruction(*computation, dead_negate));
+  EXPECT_TRUE(HasInstruction(*computation, dead_add));
+  EXPECT_TRUE(HasInstruction(*computation, dead_negate_with_control_dep));
+  EXPECT_TRUE(HasInstruction(*computation, dead_add_with_control_dep));
 
   HloDCE dce;
   EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(5, computation->instruction_count());
-  EXPECT_FALSE(has_instruction(dead_negate));
-  EXPECT_FALSE(has_instruction(dead_add));
-  EXPECT_TRUE(has_instruction(dead_negate_with_control_dep));
-  EXPECT_TRUE(has_instruction(dead_add_with_control_dep));
+  EXPECT_FALSE(HasInstruction(*computation, dead_negate));
+  EXPECT_FALSE(HasInstruction(*computation, dead_add));
+  EXPECT_TRUE(HasInstruction(*computation, dead_negate_with_control_dep));
+  EXPECT_TRUE(HasInstruction(*computation, dead_add_with_control_dep));
+}
+
+// Tests that a dead call instruction is removed.
+TEST_F(HloDceTest, DeadInstructionWithCalledComputation) {
+  auto module = CreateNewModule();
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  // Called computation for the call instruction.
+  auto callee_builder = HloComputation::Builder(TestName() + "-callee");
+  {
+    auto param = callee_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "param"));
+    callee_builder.AddInstruction(
+        HloInstruction::CreateUnary(shape, HloOpcode::kNegate, param));
+  }
+  auto called_computation =
+      module->AddEmbeddedComputation(callee_builder.Build());
+
+  // Entry computation with a call instruction.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto dead_call = builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {param}, called_computation));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, param));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(2, param->user_count());
+  EXPECT_EQ(0, dead_call->user_count());
+  EXPECT_TRUE(HasInstruction(*computation, dead_call));
+
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+
+  EXPECT_EQ(2, computation->instruction_count());
+  EXPECT_EQ(1, param->user_count());
+  EXPECT_FALSE(HasInstruction(*computation, dead_call));
+}
+
+// Tests that a while instruction with an infeed (effectul instruction) in its
+// body is not removed, even its user count is 0.
+TEST_F(HloDceTest, CalledComputationWithSideEffect) {
+  auto module = CreateNewModule();
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  // Condition computation of a while instruction.
+  auto cond_builder = HloComputation::Builder(TestName() + "-cond");
+  {
+    auto param = cond_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "cond_param"));
+    auto constant = cond_builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+    cond_builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param, constant));
+  }
+  auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
+
+  // Body computation of a while instruction.
+  auto body_builder = HloComputation::Builder(TestName() + "-body");
+  {
+    auto param = body_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "param"));
+
+    auto infeed =
+        body_builder.AddInstruction(HloInstruction::CreateInfeed(shape, ""));
+    body_builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, infeed));
+  }
+  auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
+
+  // Entry computation with a while instruction and a negate on the parameter.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto live_while = builder.AddInstruction(HloInstruction::CreateWhile(
+      shape, cond_computation, body_computation, param));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, param));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  // Check the while instruction is not removed even if its user count is 0.
+  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(2, param->user_count());
+  EXPECT_EQ(0, live_while->user_count());
+  EXPECT_TRUE(HasInstruction(*computation, live_while));
+
+  HloDCE dce;
+  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+
+  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(2, param->user_count());
+  EXPECT_EQ(0, live_while->user_count());
+  EXPECT_TRUE(HasInstruction(*computation, live_while));
+}
+
+// Tests that a nested call instruction with a side effect is not removed.
+TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
+  auto module = CreateNewModule();
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  // Nested called computation with a side effect.
+  auto nested_callee_builder =
+      HloComputation::Builder(TestName() + "-nested_callee");
+  {
+    auto param = nested_callee_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "param"));
+    nested_callee_builder.AddInstruction(
+        HloInstruction::CreateOutfeed(shape, param, ""));
+  }
+  auto nested_called_computation =
+      module->AddEmbeddedComputation(nested_callee_builder.Build());
+
+  // Outer called computation that calls the nested computation.
+  auto callee_builder = HloComputation::Builder(TestName() + "-callee");
+  {
+    auto param = callee_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "param"));
+    callee_builder.AddInstruction(
+        HloInstruction::CreateCall(shape, {param}, nested_called_computation));
+  }
+  auto called_computation =
+      module->AddEmbeddedComputation(callee_builder.Build());
+
+  // Entry computation with a call instruction.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto live_call = builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {param}, called_computation));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, param));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(2, param->user_count());
+  EXPECT_EQ(0, live_call->user_count());
+  EXPECT_TRUE(HasInstruction(*computation, live_call));
+
+  HloDCE dce;
+  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+
+  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(2, param->user_count());
+  EXPECT_EQ(0, live_call->user_count());
+  EXPECT_TRUE(HasInstruction(*computation, live_call));
+}
+
+TEST_F(HloDceTest, RemoveDeadSubcomputation) {
+  auto module = CreateNewModule();
+  HloComputation::Builder builder(TestName());
+
+  HloComputation::Builder subcomp_builder("reduction_subcomp");
+  {
+    auto* param0 =
+        subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "param0"));
+    auto* param1 =
+        subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "param1"));
+    subcomp_builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, param0, param1));
+  }
+  auto reduce_subcomp = module->AddEmbeddedComputation(subcomp_builder.Build());
+
+  // Create a dead reduce instruction.
+  builder.AddInstruction(HloInstruction::CreateReduce(
+      ShapeUtil::MakeShape(F32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {100}), "param0")),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+      /*dimensions_to_reduce=*/{0}, reduce_subcomp));
+
+  // Add another instruction as the root of the computation.
+  builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
+
+  module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+
+  // We should have DCE'ed the reduction computation along with the reduction
+  // instruction.
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 1);
+}
+
+TEST_F(HloDceTest, KeepUsedSubcomputation) {
+  auto module = CreateNewModule();
+  HloComputation::Builder builder(TestName());
+
+  HloComputation::Builder subcomp_builder("reduction_subcomp");
+  {
+    auto* param0 =
+        subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "param0"));
+    auto* param1 =
+        subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "param1"));
+    subcomp_builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, param0, param1));
+  }
+  auto reduce_subcomp = module->AddEmbeddedComputation(subcomp_builder.Build());
+
+  // Create a dead reduce instruction.
+  builder.AddInstruction(HloInstruction::CreateReduce(
+      ShapeUtil::MakeShape(F32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {100}), "param0")),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+      /*dimensions_to_reduce=*/{0}, reduce_subcomp));
+
+  // Add another instruction as the root of the computation that also uses
+  // reduce_subcomp.
+  builder.AddInstruction(HloInstruction::CreateReduce(
+      ShapeUtil::MakeShape(F32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {100}), "param1")),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+      /*dimensions_to_reduce=*/{0}, reduce_subcomp));
+
+  module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+
+  // We shouldn't have DCE'ed reduce_subcomp, even though we removed one of
+  // its users.
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

@@ -129,6 +129,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ProfilerHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ProximalAdagradOptimizer"
     mtype: "<type \'type\'>"
   }
@@ -261,6 +265,10 @@ tf_module {
     argspec: "args=[\'checkpoint_prefix\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "cosine_decay"
+    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "create_global_step"
     argspec: "args=[\'graph\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -325,6 +333,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'num_epochs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "linear_cosine_decay"
+    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'num_periods\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'0.0\', \'0.001\', \'None\'], "
+  }
+  member_method {
     name: "list_variables"
     argspec: "args=[\'ckpt_dir_or_file\'], varargs=None, keywords=None, defaults=None"
   }
@@ -361,6 +373,10 @@ tf_module {
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "noisy_linear_cosine_decay"
+    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'initial_variance\', \'variance_decay\', \'num_periods\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'1.0\', \'0.55\', \'0.5\', \'0.0\', \'0.001\', \'None\'], "
+  }
+  member_method {
     name: "piecewise_constant"
     argspec: "args=[\'x\', \'boundaries\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -382,7 +398,7 @@ tf_module {
   }
   member_method {
     name: "sdca_optimizer"
-    argspec: "args=[\'sparse_example_indices\', \'sparse_feature_indices\', \'sparse_feature_values\', \'dense_features\', \'example_weights\', \'example_labels\', \'sparse_indices\', \'sparse_weights\', \'dense_weights\', \'example_state_data\', \'loss_type\', \'l1\', \'l2\', \'num_loss_partitions\', \'num_inner_iterations\', \'adaptative\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'sparse_example_indices\', \'sparse_feature_indices\', \'sparse_feature_values\', \'dense_features\', \'example_weights\', \'example_labels\', \'sparse_indices\', \'sparse_weights\', \'dense_weights\', \'example_state_data\', \'loss_type\', \'l1\', \'l2\', \'num_loss_partitions\', \'num_inner_iterations\', \'adaptative\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "sdca_shrink_l1"

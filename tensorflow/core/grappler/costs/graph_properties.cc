@@ -70,6 +70,7 @@ Status ShapeOfMergeNode(const Node* node, InferenceContext* c) {
 Status UpdateEnter(ShapeRefiner* shape_refiner, const Node* node, bool relax,
                    std::queue<const Node*>* new_shapes) {
   auto enter_ctx = shape_refiner->GetContext(node);
+  CHECK_NE(enter_ctx, nullptr);
   for (int i = 0; i < enter_ctx->num_outputs(); i++) {
     TF_RETURN_IF_ERROR(shape_refiner->SetShape(node, i, enter_ctx->input(0)));
   }
@@ -82,7 +83,7 @@ Status UpdateEnter(ShapeRefiner* shape_refiner, const Node* node, bool relax,
         continue;
       }
       InferenceContext* merge_ctx = shape_refiner->GetContext(dst);
-      DCHECK_NE(merge_ctx, nullptr);
+      CHECK_NE(merge_ctx, nullptr);
       TF_RETURN_IF_ERROR(ShapeOfMergeNode(dst, merge_ctx));
       new_shapes->push(dst);
     }
@@ -113,6 +114,21 @@ Status PropagateShapes(ShapeRefiner* shape_refiner, bool relax,
     }
   }
   return Status::OK();
+}
+
+bool IsQueue(const Node& node) {
+  StringPiece type(node.type_string());
+  return type.ends_with("QueueV2");
+}
+
+// Returns true if the node is an Enter op AND its input is a Queue.
+bool IsEnterWithQueue(const Node& node) {
+  if (node.IsEnter()) {
+    const Node* in_node;
+    TF_CHECK_OK(node.input_node(0, &in_node));
+    return IsQueue(*in_node);
+  }
+  return false;
 }
 
 }  // namespace
@@ -181,6 +197,7 @@ Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
+  shape_refiner.set_disable_constant_propagation(true);
   ImportGraphDefOptions options;
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
@@ -204,6 +221,41 @@ Status GraphProperties::InferStatically() {
       for (const Node* output : node->out_nodes()) {
         if (output->IsMerge()) {
           merge_nodes.insert(output);
+        }
+      }
+    }
+
+    // Infer output shape for Restore op.
+    if (node->op_def().name() == "Restore" ||
+        node->op_def().name() == "RestoreV2" ||
+        node->op_def().name() == "RestoreSlice") {
+      auto ctx = shape_refiner.GetContext(node);
+      for (const Edge* out_edge : node->out_edges()) {
+        const Node* output = out_edge->dst();
+        int output_idx = out_edge->src_output();
+        if (output_idx < 0) {
+          continue;
+        }
+        if (!ctx->FullyDefined(ctx->output(output_idx)) &&
+            output->op_def().name() == "Assign") {
+          if (!output->attrs().Find("validate_shape") ||
+              !output->attrs().Find("validate_shape")->b()) {
+            continue;
+          }
+          auto output_ctx = shape_refiner.GetContext(output);
+          if (output_ctx->FullyDefined(output_ctx->output(0))) {
+            ctx->set_output(output_idx, output_ctx->output(0));
+            output_ctx->MergeInput(1, output_ctx->output(0));
+          } else {
+            const Node* var;
+            TF_CHECK_OK(node->input_node(0, &var));
+            if (node->IsVariable()) {
+              auto var_ctx = shape_refiner.GetContext(var);
+              CHECK(var_ctx->FullyDefined(var_ctx->output(0)));
+              ctx->set_output(output_idx, var_ctx->output(0));
+              output_ctx->MergeInput(1, var_ctx->output(0));
+            }
+          }
         }
       }
     }
@@ -248,8 +300,8 @@ Status GraphProperties::InferStatically() {
       new_shapes = std::queue<const Node*>();
       for (const auto& resource_data : resources) {
         const Node* qnode = resource_data.first;
-        StringPiece type(qnode->type_string());
-        if (!type.ends_with("QueueV2") && !qnode->IsEnter()) {
+        // Proceed only if qnode is a queue or an Enter with queue input.
+        if (!IsQueue(*qnode) && !IsEnterWithQueue(*qnode)) {
           continue;
         }
         auto qctx = shape_refiner.GetContext(qnode);
@@ -345,44 +397,48 @@ Status GraphProperties::InferStatically() {
     if (!ctx) {
       continue;
     }
-    CHECK_EQ(ctx->num_inputs(), node->num_inputs());
-    std::vector<OpInfo::TensorProperties> input_properties;
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OpInfo::TensorProperties properties;
-      properties.set_dtype(node->input_type(i));
-      ShapeHandle shp = ctx->input(i);
-      if (!ctx->RankKnown(shp)) {
-        properties.mutable_shape()->set_unknown_rank(true);
-      } else {
-        for (int j = 0; j < ctx->Rank(shp); ++j) {
-          shape_inference::DimensionHandle dim = ctx->Dim(shp, j);
-          int64 d = ctx->Value(dim);
-          properties.mutable_shape()->add_dim()->set_size(d);
-        }
-      }
-      input_properties.push_back(properties);
-    }
-    input_properties_[node->name()] = input_properties;
 
-    // TODO(bsteiner): share this code with the input processing above.
-    CHECK_EQ(ctx->num_outputs(), node->num_outputs());
-    std::vector<OpInfo::TensorProperties> output_properties;
-    for (int i = 0; i < ctx->num_outputs(); ++i) {
-      OpInfo::TensorProperties properties;
-      properties.set_dtype(node->output_type(i));
-      ShapeHandle shp = ctx->output(i);
-      if (!ctx->RankKnown(shp)) {
-        properties.mutable_shape()->set_unknown_rank(true);
-      } else {
-        for (int j = 0; j < ctx->Rank(shp); ++j) {
-          shape_inference::DimensionHandle dim = ctx->Dim(shp, j);
-          int64 d = ctx->Value(dim);
-          properties.mutable_shape()->add_dim()->set_size(d);
-        }
+    // Fill input properties.
+    {
+      CHECK_EQ(ctx->num_inputs(), node->num_inputs());
+      auto& input_properties = input_properties_[node->name()];
+
+      // Should always be empty, node names in graph are supposed to be unique.
+      CHECK_EQ(input_properties.size(), 0);
+
+      input_properties.resize(ctx->num_inputs());
+      for (int i = 0; i < ctx->num_inputs(); ++i) {
+        FillTensorPropertiesFromContext(ctx->input(i), node->input_type(i), ctx,
+                                        &input_properties[i]);
       }
-      output_properties.push_back(properties);
+      for (const auto& edge : node->in_edges()) {
+        if (!edge->src()->IsConstant()) {
+          continue;
+        }
+        const int input_id = edge->dst_input();
+        if (input_id >= input_properties.size()) {
+          continue;
+        }
+        const NodeDef& node = edge->src()->def();
+        const TensorProto& raw_val = node.attr().at("value").tensor();
+        *input_properties[input_id].mutable_value() = raw_val;
+      }
     }
-    output_properties_[node->name()] = output_properties;
+
+    // Fill output properties.
+    {
+      CHECK_EQ(ctx->num_outputs(), node->num_outputs());
+      auto& output_properties = output_properties_[node->name()];
+
+      // Should always be empty, node names in graph are supposed to be unique.
+      CHECK_EQ(output_properties.size(), 0);
+
+      output_properties.resize(ctx->num_outputs());
+      for (int i = 0; i < ctx->num_outputs(); ++i) {
+        FillTensorPropertiesFromContext(ctx->output(i), node->output_type(i),
+                                        ctx, &output_properties[i]);
+      }
+    }
   }
 
   return Status::OK();
@@ -397,6 +453,20 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
       cluster->Run(item_.graph, item_.feed, item_.fetch, &metadata));
 
   return InferFromCostGraph(metadata.cost_graph());
+}
+
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) {
+  *output_graph_def = item_.graph;
+  for (int i = 0; i < output_graph_def->node_size(); i++) {
+    auto node = output_graph_def->mutable_node(i);
+    AttrValue attr_output_shape;
+    auto tensor_properties = GetOutputProperties(node->name());
+    for (const auto& tensor_property : tensor_properties) {
+      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+    }
+    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
+  }
+  return Status::OK();
 }
 
 Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
@@ -456,6 +526,21 @@ GraphProperties::GetOutputProperties(const string& node_name) const {
     return it->second;
   }
   return missing_properties_;
+}
+
+void GraphProperties::FillTensorPropertiesFromContext(
+    const ShapeHandle& shape, const DataType& type, InferenceContext* ctx,
+    OpInfo::TensorProperties* properties) {
+  properties->set_dtype(type);
+  if (!ctx->RankKnown(shape)) {
+    properties->mutable_shape()->set_unknown_rank(true);
+  } else {
+    for (int j = 0; j < ctx->Rank(shape); ++j) {
+      shape_inference::DimensionHandle dim = ctx->Dim(shape, j);
+      int64 d = ctx->Value(dim);
+      properties->mutable_shape()->add_dim()->set_size(d);
+    }
+  }
 }
 
 }  // end namespace grappler

@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 import traceback
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.util import compat
 
 
@@ -454,15 +454,26 @@ def _make_specific_exception(node_def, op, message, error_code):
     return UnknownError(node_def, op, message, error_code)
 
 
-@contextlib.contextmanager
-def raise_exception_on_not_ok_status():
-  status = pywrap_tensorflow.TF_NewStatus()
-  try:
-    yield status
-    if pywrap_tensorflow.TF_GetCode(status) != 0:
-      raise _make_specific_exception(
-          None, None,
-          compat.as_text(pywrap_tensorflow.TF_Message(status)),
-          pywrap_tensorflow.TF_GetCode(status))
-  finally:
-    pywrap_tensorflow.TF_DeleteStatus(status)
+# Named like a function for backwards compatibility with the
+# @tf_contextlib.contextmanager version, which was switched to a class to avoid
+# some object creation overhead.
+class raise_exception_on_not_ok_status(object):  # pylint: disable=invalid-name
+  """Context manager to check for C API status."""
+
+  def __enter__(self):
+    self.status = c_api_util.ScopedTFStatus()
+    return self.status.status
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    try:
+      if c_api.TF_GetCode(self.status.status) != 0:
+        raise _make_specific_exception(
+            None, None,
+            compat.as_text(c_api.TF_Message(self.status.status)),
+            c_api.TF_GetCode(self.status.status))
+    # Delete the underlying status object from memory otherwise it stays alive
+    # as there is a reference to status from this from the traceback due to
+    # raise.
+    finally:
+      del self.status
+    return False  # False values do not suppress exceptions

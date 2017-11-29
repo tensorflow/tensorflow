@@ -41,16 +41,21 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
                  "HloConstantFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
 
-  for (auto& computation : module->computations()) {
+  for (auto* computation : module->MakeNonfusionComputations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
       if (instruction->user_count() == 0 &&
           computation->root_instruction() != instruction) {
         continue;
       }
-      // Skip Constant and Parameter operation.
+      // Skip Constant, Parameter, Reduce operation.
+      // TODO(b/35975797): Enable Reduce operation once arbitrary computation
+      // are supported by the evaluator.
+      // TODO(b/64407269): Enable Tuple once the timeout issue is resolved.
       if (instruction->opcode() == HloOpcode::kParameter ||
-          instruction->opcode() == HloOpcode::kConstant) {
+          instruction->opcode() == HloOpcode::kConstant ||
+          instruction->opcode() == HloOpcode::kTuple ||
+          instruction->opcode() == HloOpcode::kReduce) {
         continue;
       }
       // Skip instructions with non-constant operands.
@@ -58,8 +63,8 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         continue;
       }
 
-      // Broadcasts dramatically increase the size of constants with is often
-      // detrimental to performance and memory capacity so do not fold
+      // Broadcasts dramatically increase the size of constants, which is often
+      // detrimental to performance and memory capacity, so do not fold
       // broadcasts.
       if (instruction->opcode() == HloOpcode::kBroadcast) {
         continue;

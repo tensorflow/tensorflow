@@ -34,7 +34,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
+class SessionDebugFileTest(session_debug_testlib.SessionDebugTestBase):
 
   def _no_rewrite_session_config(self):
     rewriter_config = rewriter_config_pb2.RewriterConfig(

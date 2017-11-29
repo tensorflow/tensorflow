@@ -49,7 +49,7 @@ def get_lib():
     The directory as string.
   """
   import tensorflow as tf
-  return _os_path.join(_os_path.dirname(tf.__file__), 'core')
+  return _os_path.join(_os_path.dirname(tf.__file__))
 
 _allowed_symbols = []
 remove_undocumented(__name__, _allowed_symbols)

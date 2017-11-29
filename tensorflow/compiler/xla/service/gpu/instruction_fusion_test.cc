@@ -15,12 +15,93 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace gpu {
 
 using InstructionFusionTest = HloTestBase;
+
+TEST_F(InstructionFusionTest,
+       CostlyProducerAndOperandElementReusingConsumerNotFused) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+  HloInstruction* broadcast2 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(S32, {1}), exp1, {0}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(broadcast2, computation->root_instruction());
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie());
+  EXPECT_EQ(broadcast2, computation->root_instruction());
+}
+
+TEST_F(InstructionFusionTest,
+       NonCostlyProducerAndOperandElementReusingConsumerFused) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+  HloInstruction* negate1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, const0));
+  HloInstruction* broadcast2 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(S32, {1}), negate1, {0}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(broadcast2, computation->root_instruction());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+}
+
+TEST_F(InstructionFusionTest,
+       CostlyProducerAndNonOperandElementReusingConsumerFused_Reshape) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+  HloInstruction* reshape2 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), exp1));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(reshape2, computation->root_instruction());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+}
+
+TEST_F(InstructionFusionTest,
+       CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+  HloInstruction* transpose2 = builder.AddInstruction(
+      HloInstruction::CreateTranspose(ShapeUtil::MakeShape(S32, {}), exp1, {}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(transpose2, computation->root_instruction());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+}
 
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
@@ -71,8 +152,10 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfConvolutionUnfused) {
   conv_window_col->set_padding_high(1);
 
   ConvolutionDimensionNumbers conv_dnums;
-  conv_dnums.set_batch_dimension(0);
-  conv_dnums.set_feature_dimension(1);
+  conv_dnums.set_input_batch_dimension(0);
+  conv_dnums.set_output_batch_dimension(0);
+  conv_dnums.set_input_feature_dimension(1);
+  conv_dnums.set_output_feature_dimension(1);
   conv_dnums.add_spatial_dimensions(2);
   conv_dnums.add_spatial_dimensions(3);
   conv_dnums.set_kernel_output_feature_dimension(0);
@@ -123,7 +206,3 @@ TEST_F(InstructionFusionTest, GetTupleElementFused) {
 
 }  // namespace gpu
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

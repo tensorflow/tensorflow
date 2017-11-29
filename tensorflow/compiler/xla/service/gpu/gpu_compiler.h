@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -35,7 +35,7 @@ namespace xla {
 namespace gpu {
 
 // The GPU compiler generates efficient GPU executables.
-class GpuCompiler : public Compiler {
+class GpuCompiler : public LLVMCompiler {
  public:
   GpuCompiler();
   ~GpuCompiler() override {}
@@ -46,7 +46,8 @@ class GpuCompiler : public Compiler {
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::vector<std::unique_ptr<HloModule>> modules,
-      std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+          stream_execs) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
@@ -61,6 +62,13 @@ class GpuCompiler : public Compiler {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     };
   }
+
+  // The triple that represents our target.
+  static const char* kTargetTriple;
+
+  // The data layout of the emitted module. Copied from computeDataLayout in
+  // NVPTXTargetMachine.cpp.
+  static const char* kDataLayout;
 
  private:
   // The parent directory of libdevice IR libraries.

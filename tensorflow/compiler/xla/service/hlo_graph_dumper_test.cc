@@ -45,7 +45,7 @@ class DotRenderer : public hlo_graph_dumper::GraphRendererInterface {
   string last_graph_;
 };
 
-XLA_REGISTER_GRAPH_RENDERER(DotRenderer);
+XLA_REGISTER_GRAPH_RENDERER(DotRenderer, std::numeric_limits<int>::max());
 
 TEST(HloGraphDumperTest, NestedFusion) {
   HloComputation::Builder b("b");

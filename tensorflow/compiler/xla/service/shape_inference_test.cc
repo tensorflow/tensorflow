@@ -35,6 +35,7 @@ class ShapeInferenceTest : public ::testing::Test {
   // Some handy scalar shapes.
   const Shape s32_ = ShapeUtil::MakeShape(S32, {});
   const Shape f32_ = ShapeUtil::MakeShape(F32, {});
+  const Shape f64_ = ShapeUtil::MakeShape(F64, {});
   const Shape pred_ = ShapeUtil::MakeShape(PRED, {});
 
   // Some handy vector and matrix shapes of F32 type.
@@ -251,6 +252,44 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
                    .ok());
 }
 
+TEST_F(ShapeInferenceTest, Complex) {
+  auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
+                           const tensorflow::gtl::ArraySlice<int64>& bcast) {
+    return ShapeInference::InferBinaryOpShape(BinaryOperation::BINOP_COMPLEX,
+                                              lhs, rhs, bcast);
+  };
+  // Inputs must be FP.
+  ASSERT_FALSE(complex_shape(s32_, s32_, {}).ok());
+  ASSERT_FALSE(complex_shape(pred_, pred_, {}).ok());
+  // Component types must match.
+  ASSERT_FALSE(complex_shape(f32_, f64_, {}).ok());
+  // Only F32->C64 supported.
+  ASSERT_FALSE(complex_shape(f64_, f64_, {}).ok());
+  // Validate correct uses.
+  Shape c64_32 = ShapeUtil::MakeShape(C64, {32});
+  TF_ASSERT_OK_AND_ASSIGN(Shape result, complex_shape(f32_, f32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, ShapeUtil::MakeShape(C64, {})));
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(vector_32_, f32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32));
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(f32_, vector_32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32));
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(vector_32_, f32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32));
+
+  Shape c64_32_64 = ShapeUtil::MakeShape(C64, {32, 64});
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          complex_shape(vector_64_, matrix_32_64_, {1}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          complex_shape(matrix_32_64_, vector_64_, {1}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          complex_shape(matrix_32_64_, matrix_32_64_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(matrix_32_64_, f32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+}
+
 TEST_F(ShapeInferenceTest, VariadicOpTuplify) {
   StatusOr<Shape> result = ShapeInference::InferVariadicOpShape(
       VariadicOperation::VAROP_TUPLE, {&s32_, &f32_});
@@ -352,8 +391,10 @@ TEST_F(ShapeInferenceTest, Convolve) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 3, 4});
-  dnums.set_batch_dimension(0);
-  dnums.set_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_output_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -392,8 +433,10 @@ TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 103, 4});
-  dnums.set_batch_dimension(0);
-  dnums.set_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_output_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -433,8 +476,10 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 3, 4});
-  dnums.set_batch_dimension(0);
-  dnums.set_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_output_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -475,8 +520,10 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {12, 11, 3, 2});
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_batch_dimension(3);
-  dnums.set_feature_dimension(2);
+  dnums.set_input_batch_dimension(3);
+  dnums.set_output_batch_dimension(3);
+  dnums.set_input_feature_dimension(2);
+  dnums.set_output_feature_dimension(2);
   dnums.add_spatial_dimensions(0);
   dnums.add_spatial_dimensions(1);
   dnums.set_kernel_input_feature_dimension(0);  // duplicated with kernel_x0
@@ -505,7 +552,7 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
 TEST_F(ShapeInferenceTest, MapThatChangesElementType) {
   Shape arg = ShapeUtil::MakeShape(F32, {20});
   ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_}, s32_);
-  auto inferred_status = ShapeInference::InferMapShape({&arg}, to_apply);
+  auto inferred_status = ShapeInference::InferMapShape({&arg}, to_apply, {0});
   EXPECT_IS_OK(inferred_status.status());
   Shape expected = ShapeUtil::MakeShape(S32, {20});
   EXPECT_TRUE(ShapeUtil::Equal(expected, inferred_status.ValueOrDie()));
@@ -514,91 +561,92 @@ TEST_F(ShapeInferenceTest, MapThatChangesElementType) {
 TEST_F(ShapeInferenceTest, Map) {
   auto inferred_status_r1f32 = ShapeInference::InferMapShape(
       {&vector_32_, &vector_32_},
-      ShapeUtil::MakeProgramShape({f32_, f32_}, f32_));
+      ShapeUtil::MakeProgramShape({f32_, f32_}, f32_), {0});
   EXPECT_IS_OK(inferred_status_r1f32.status());
   EXPECT_TRUE(ShapeUtil::Equal(vector_32_, inferred_status_r1f32.ValueOrDie()));
 
   // It's OK to provide a single argument, as long as the applied arity matches
   // (this degenerates to a Map).
   auto inferred_status_r1f32_one = ShapeInference::InferMapShape(
-      {&vector_32_}, ShapeUtil::MakeProgramShape({f32_}, f32_));
+      {&vector_32_}, ShapeUtil::MakeProgramShape({f32_}, f32_), {0});
   EXPECT_IS_OK(inferred_status_r1f32_one.status());
   EXPECT_TRUE(
       ShapeUtil::Equal(vector_32_, inferred_status_r1f32_one.ValueOrDie()));
 
   auto inferred_status_r2s32 = ShapeInference::InferMapShape(
       {&s32matrix_64_64_, &s32matrix_64_64_, &s32matrix_64_64_},
-      ShapeUtil::MakeProgramShape({s32_, s32_, s32_}, s32_));
+      ShapeUtil::MakeProgramShape({s32_, s32_, s32_}, s32_), {0, 1});
   EXPECT_IS_OK(inferred_status_r2s32.status());
   EXPECT_TRUE(
       ShapeUtil::Equal(s32matrix_64_64_, inferred_status_r2s32.ValueOrDie()));
 
   auto no_args_error = ShapeInference::InferMapShape(
-      {}, ShapeUtil::MakeProgramShape({f32_, f32_}, f32_));
+      {}, ShapeUtil::MakeProgramShape({f32_, f32_}, f32_), {});
   ASSERT_FALSE(no_args_error.ok());
   ASSERT_THAT(no_args_error.status().error_message(),
               HasSubstr("expects at least one argument"));
 
   auto args_diff_shapes_error = ShapeInference::InferMapShape(
       {&vector_32_, &vector_64_},
-      ShapeUtil::MakeProgramShape({f32_, f32_}, f32_));
+      ShapeUtil::MakeProgramShape({f32_, f32_}, f32_), {0});
   ASSERT_FALSE(args_diff_shapes_error.ok());
   ASSERT_THAT(args_diff_shapes_error.status().error_message(),
               HasSubstr("requires all operands to have the same shape"));
 
   auto arity_error = ShapeInference::InferMapShape(
-      {&vector_32_, &vector_32_}, ShapeUtil::MakeProgramShape({f32_}, f32_));
+      {&vector_32_, &vector_32_}, ShapeUtil::MakeProgramShape({f32_}, f32_),
+      {0});
   ASSERT_FALSE(arity_error.ok());
   ASSERT_THAT(arity_error.status().error_message(),
               HasSubstr("function arity must match"));
 
   auto output_shape_error = ShapeInference::InferMapShape(
       {&vector_32_, &vector_32_},
-      ShapeUtil::MakeProgramShape({f32_, f32_}, vector_32_));
+      ShapeUtil::MakeProgramShape({f32_, f32_}, vector_32_), {0});
   ASSERT_FALSE(output_shape_error.ok());
   ASSERT_THAT(output_shape_error.status().error_message(),
               HasSubstr("result has to be a scalar"));
 
   auto param_shape_error = ShapeInference::InferMapShape(
       {&vector_32_, &vector_32_},
-      ShapeUtil::MakeProgramShape({vector_32_, f32_}, f32_));
+      ShapeUtil::MakeProgramShape({vector_32_, f32_}, f32_), {0});
   ASSERT_FALSE(param_shape_error.ok());
   ASSERT_THAT(param_shape_error.status().error_message(),
               HasSubstr("parameter has to be a scalar"));
 
   auto param_element_type_error = ShapeInference::InferMapShape(
       {&vector_32_, &vector_32_},
-      ShapeUtil::MakeProgramShape({f32_, s32_}, f32_));
+      ShapeUtil::MakeProgramShape({f32_, s32_}, f32_), {0});
   ASSERT_FALSE(param_element_type_error.ok());
   ASSERT_THAT(param_element_type_error.status().error_message(),
               HasSubstr("parameter type has to match argument"));
 
   Shape arg = ShapeUtil::MakeShape(F32, {20});
   ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_}, f32_);
-  auto inferred_status = ShapeInference::InferMapShape({&arg}, to_apply);
+  auto inferred_status = ShapeInference::InferMapShape({&arg}, to_apply, {0});
   EXPECT_IS_OK(inferred_status.status());
   EXPECT_TRUE(ShapeUtil::Equal(arg, inferred_status.ValueOrDie()));
 
   auto inferred_status_error1 = ShapeInference::InferMapShape(
-      {&arg}, ShapeUtil::MakeProgramShape({f32_, f32_}, f32_));
+      {&arg}, ShapeUtil::MakeProgramShape({f32_, f32_}, f32_), {0});
   ASSERT_FALSE(inferred_status_error1.ok());
   ASSERT_THAT(inferred_status_error1.status().error_message(),
               HasSubstr("arity must match number of arguments"));
 
   auto inferred_status_error2 = ShapeInference::InferMapShape(
-      {&arg}, ShapeUtil::MakeProgramShape({vector_32_}, f32_));
+      {&arg}, ShapeUtil::MakeProgramShape({vector_32_}, f32_), {0});
   ASSERT_FALSE(inferred_status_error2.ok());
   ASSERT_THAT(inferred_status_error2.status().error_message(),
               HasSubstr("has to be a scalar"));
 
   auto inferred_status_error3 = ShapeInference::InferMapShape(
-      {&arg}, ShapeUtil::MakeProgramShape({f32_}, vector_32_));
+      {&arg}, ShapeUtil::MakeProgramShape({f32_}, vector_32_), {0});
   ASSERT_FALSE(inferred_status_error3.ok());
   ASSERT_THAT(inferred_status_error3.status().error_message(),
               HasSubstr("has to be a scalar"));
 
   auto inferred_status_error5 = ShapeInference::InferMapShape(
-      {&arg}, ShapeUtil::MakeProgramShape({s32_}, s32_));
+      {&arg}, ShapeUtil::MakeProgramShape({s32_}, s32_), {0});
   ASSERT_FALSE(inferred_status_error5.ok());
   ASSERT_THAT(inferred_status_error5.status().error_message(),
               HasSubstr("parameter type has to match argument"));

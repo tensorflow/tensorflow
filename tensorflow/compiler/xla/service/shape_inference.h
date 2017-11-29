@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -31,45 +33,67 @@ limitations under the License.
 namespace xla {
 
 // For a given operation and input shapes, infers what the resulting shape is
-// for the operation. With this functionality, the user does not need to
-// specify the expected result type for computations that are built up via the
-// API -- the shape that results from an operation is inferred.
+// for the operation. With this functionality, the user does not need to specify
+// the expected result type for computations that are built up via the API --
+// the shape that results from an operation is inferred. Some methods have
+// overloads for inferring shape at the HLO level.
 class ShapeInference {
  public:
   // Infers the shape produced by applying the given unary operation to the
   // given input shape.
   static StatusOr<Shape> InferUnaryOpShape(UnaryOperation operation,
                                            const Shape& arg);
+  static StatusOr<Shape> InferUnaryOpShape(HloOpcode opcode,
+                                           const HloInstruction* operand);
 
   // Infers the shape produced by applying the given binary operation to the
   // given input shapes.
   static StatusOr<Shape> InferBinaryOpShape(
       BinaryOperation operation, const Shape& lhs, const Shape& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+  static StatusOr<Shape> InferBinaryOpShape(HloOpcode opcode,
+                                            const HloInstruction* lhs,
+                                            const HloInstruction* rhs);
 
   // Infers the shape produced by applying the given ternary operation to the
   // given input shapes.
   static StatusOr<Shape> InferTernaryOpShape(TernaryOperation operation,
                                              const Shape& lhs, const Shape& rhs,
                                              const Shape& ehs);
+  static StatusOr<Shape> InferTernaryOpShape(HloOpcode opcode,
+                                             const HloInstruction* lhs,
+                                             const HloInstruction* rhs,
+                                             const HloInstruction* ehs);
 
   // Infers the shape produced by applying the given variadic operation to the
   // given input operand shapes.
   static StatusOr<Shape> InferVariadicOpShape(
-      VariadicOperation operation, std::vector<const Shape*> operand_shapes);
+      VariadicOperation operation,
+      tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
+  static StatusOr<Shape> InferVariadicOpShape(
+      HloOpcode opcode,
+      tensorflow::gtl::ArraySlice<const HloInstruction*> operands);
 
   // Infers the shape produced by applying the given mapping computation shape
   // to the given operand shapes.
   static StatusOr<Shape> InferMapShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
-      const ProgramShape& to_apply);
+      const ProgramShape& to_apply,
+      tensorflow::gtl::ArraySlice<int64> dimensions);
 
   // Infers the shape produced by InferBatchNormTraining with the given
   // operands.
   static StatusOr<Shape> InferBatchNormTrainingShape(const Shape& operand_shape,
-                                                     const Shape& offset_shape,
                                                      const Shape& scale_shape,
+                                                     const Shape& offset_shape,
                                                      int64 feature_index);
+
+  // Infers the shape produced by InferBatchNormInference with the given
+  // operands.
+  static StatusOr<Shape> InferBatchNormInferenceShape(
+      const Shape& operand_shape, const Shape& scale_shape,
+      const Shape& offset_shape, const Shape& mean_shape,
+      const Shape& variance_shape, int64 feature_index);
 
   // Infers the shape produced by InferBatchNormGrad with the given operands.
   static StatusOr<Shape> InferBatchNormGradShape(const Shape& operand_shape,

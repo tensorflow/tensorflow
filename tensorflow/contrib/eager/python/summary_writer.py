@@ -114,9 +114,11 @@ class SummaryWriter(object):
       self._resource = gen_summary_ops.summary_writer(shared_name=self._name)
       gen_summary_ops.create_summary_file_writer(
           self._resource, logdir, max_queue, flush_secs, filename_suffix)
-      # Delete the resource when this object is deleted
-      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-          handle=self._resource, handle_device=self._CPU_DEVICE)
+
+  def __del__(self):
+    if self._resource:
+      resource_variable_ops.destroy_resource_op(self._resource)
+      self._resource = None
 
   def step(self):
     """Increment the global step counter of this SummaryWriter instance."""

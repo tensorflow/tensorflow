@@ -18,7 +18,9 @@
 @@accuracy
 @@auc
 @@false_negatives
+@@false_negatives_at_thresholds
 @@false_positives
+@@false_positives_at_thresholds
 @@mean
 @@mean_absolute_error
 @@mean_cosine_distance
@@ -37,9 +39,12 @@
 @@sensitivity_at_specificity
 @@sparse_average_precision_at_k
 @@sparse_precision_at_k
+@@precision_at_top_k
 @@specificity_at_sensitivity
 @@true_negatives
+@@true_negatives_at_thresholds
 @@true_positives
+@@true_positives_at_thresholds
 
 """
 from __future__ import absolute_import

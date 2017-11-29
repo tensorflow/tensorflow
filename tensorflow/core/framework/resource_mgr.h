@@ -22,7 +22,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -492,9 +491,16 @@ template <typename T>
 void IsResourceInitialized<T>::Compute(OpKernelContext* ctx) {
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
-  T* unused;
-  output->flat<bool>()(0) =
-      LookupResource(ctx, HandleFromInput(ctx, 0), &unused).ok();
+  T* object;
+  bool found;
+  if (LookupResource(ctx, HandleFromInput(ctx, 0), &object).ok()) {
+    found = true;
+    object->Unref();
+  } else {
+    found = false;
+  }
+
+  output->flat<bool>()(0) = found;
 }
 
 template <typename T>

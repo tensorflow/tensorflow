@@ -251,7 +251,6 @@ import os
 import sys
 import time
 
-from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.training.python.training import training
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import timeline
@@ -263,7 +262,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import optimizer as tf_optimizer
@@ -552,7 +551,9 @@ def train(train_op,
           save_interval_secs=600,
           sync_optimizer=None,
           session_config=None,
-          trace_every_n_steps=None):
+          session_wrapper=None,
+          trace_every_n_steps=None,
+          ignore_live_threads=False):
   """Runs a training loop using a TensorFlow supervisor.
 
   When the sync_optimizer is supplied, gradient updates are applied
@@ -608,9 +609,16 @@ def train(train_op,
       If left as `None`, gradient updates will be asynchronous.
     session_config: An instance of `tf.ConfigProto` that will be used to
       configure the `Session`. If left as `None`, the default will be used.
+    session_wrapper: A function that takes a `tf.Session` object as the only
+      argument and returns a wrapped session object that has the same methods
+      that the original object has, or `None`. Iff not `None`, the wrapped
+      object will be used for training.
     trace_every_n_steps: produce and save a `Timeline` in Chrome trace format
       and add it to the summaries every `trace_every_n_steps`. If None, no trace
       information will be produced or saved.
+    ignore_live_threads: If `True` ignores threads that remain running after
+      a grace period when stopping the supervisor, instead of raising a
+      RuntimeError.
 
   Returns:
     the value of the loss function after training.
@@ -646,7 +654,7 @@ def train(train_op,
   graph = graph or ops.get_default_graph()
   with graph.as_default():
     if global_step is None:
-      global_step = variables.get_or_create_global_step()
+      global_step = training_util.get_or_create_global_step()
     saver = saver or tf_saver.Saver()
 
     if sync_optimizer is not None:
@@ -657,14 +665,14 @@ def train(train_op,
 
     with ops.name_scope('init_ops'):
       if init_op == _USE_DEFAULT:
-        init_op = tf_variables.global_variables_initializer()
+        init_op = variables.global_variables_initializer()
 
       if ready_op == _USE_DEFAULT:
-        ready_op = tf_variables.report_uninitialized_variables()
+        ready_op = variables.report_uninitialized_variables()
 
       if local_init_op == _USE_DEFAULT:
         local_init_op = control_flow_ops.group(
-            tf_variables.local_variables_initializer(),
+            variables.local_variables_initializer(),
             lookup_ops.tables_initializer())
 
       if sync_optimizer is not None and isinstance(sync_optimizer, list):
@@ -737,6 +745,10 @@ def train(train_op,
       with sv.managed_session(
           master, start_standard_services=False, config=session_config) as sess:
         logging.info('Starting Session.')
+        if session_wrapper is not None:
+          logging.info(
+              'Wrapping session with wrapper function: %s', session_wrapper)
+          sess = session_wrapper(sess)
         if is_chief:
           if logdir:
             sv.start_standard_services(sess)
@@ -764,7 +776,10 @@ def train(train_op,
         if logdir and sv.is_chief:
           logging.info('Finished training! Saving model to disk.')
           sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-          sv.stop(threads, close_summary_writer=True)
+          sv.stop(
+              threads,
+              close_summary_writer=True,
+              ignore_live_threads=ignore_live_threads)
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the

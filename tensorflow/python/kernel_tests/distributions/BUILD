@@ -2,10 +2,6 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -31,7 +27,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "util_test",
-    size = "small",
+    size = "medium",
     srcs = ["util_test.py"],
     additional_deps = [
         "//tensorflow/python/ops/distributions",

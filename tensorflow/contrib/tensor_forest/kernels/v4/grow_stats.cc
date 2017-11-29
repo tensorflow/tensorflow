@@ -159,7 +159,7 @@ void ClassificationStats::AdditionalInitializationExample(
 }
 
 bool ClassificationStats::IsFinished() const {
-  bool basic = weight_sum_ >= split_after_samples_ && num_outputs_seen() > 1;
+  bool basic = (weight_sum_ >= split_after_samples_) && !is_pure();
   return basic || finish_early_;
 }
 
@@ -193,8 +193,11 @@ void ClassificationStats::AddExample(
         left_gini_->update(i, left_count(i, int_label), weight);
       }
       ClassificationAddLeftExample(i, int_label, weight);
-    } else if (right_gini_ != nullptr) {
-      right_gini_->update(i, right_count(i, int_label), weight);
+    } else {
+      if (right_gini_ != nullptr) {
+        right_gini_->update(i, right_count(i, int_label), weight);
+      }
+      ClassificationAddRightExample(i, int_label, weight);
     }
   }
 
@@ -374,6 +377,41 @@ void ClassificationStats::CheckFinishEarlyBootstrap() {
   finish_early_ = worst_g1 < best_g2;
 }
 
+bool ClassificationStats::BestSplit(SplitCandidate* best) const {
+  float min_score = FLT_MAX;
+  int best_index = -1;
+  float best_left_sum, best_right_sum;
+
+  // Calculate sums.
+  for (int i = 0; i < num_splits(); ++i) {
+    float left_sum, right_sum;
+    const float split_score = MaybeCachedGiniScore(i, &left_sum, &right_sum);
+    // Find the lowest gini.
+    if (left_sum > 0 && right_sum > 0 &&
+        split_score < min_score) {  // useless check
+      min_score = split_score;
+      best_index = i;
+      best_left_sum = left_sum;
+      best_right_sum = right_sum;
+    }
+  }
+
+  // This could happen if all the splits are useless.
+  if (best_index < 0) {
+    return false;
+  }
+
+  // Fill in stats to be used for leaf model.
+  *best->mutable_split() = splits_[best_index];
+  auto* left = best->mutable_left_stats();
+  left->set_weight_sum(best_left_sum);
+  auto* right = best->mutable_right_stats();
+  right->set_weight_sum(best_right_sum);
+  InitLeafClassStats(best_index, left, right);
+
+  return true;
+}
+
 // ------------------------ Dense Classification --------------------------- //
 void DenseClassificationGrowStats::ExtractFromProto(const FertileSlot& slot) {
   Initialize();
@@ -449,52 +487,20 @@ float DenseClassificationGrowStats::GiniScore(int split, float* left_sum,
   return left_score + right_score;
 }
 
-bool DenseClassificationGrowStats::BestSplit(SplitCandidate* best) const {
-  float min_score = FLT_MAX;
-  int best_index = -1;
-  float best_left_sum, best_right_sum;
-
-  // Calculate sums.
-  for (int i = 0; i < num_splits(); ++i) {
-    float left_sum, right_sum;
-    const float split_score = MaybeCachedGiniScore(i, &left_sum, &right_sum);
-    // Find the lowest gini.
-    if (left_sum > 0 && right_sum > 0 &&
-        split_score < min_score) {  // useless check
-      min_score = split_score;
-      best_index = i;
-      best_left_sum = left_sum;
-      best_right_sum = right_sum;
-    }
-  }
-
-  // This could happen if all the splits are useless.
-  if (best_index < 0) {
-    return false;
-  }
-
-  // Fill in stats to be used for leaf model.
-  *best->mutable_split() = splits_[best_index];
-  // Left
-  auto* left = best->mutable_left_stats();
-  auto* left_class_stats = left->mutable_classification();
-  left->set_weight_sum(best_left_sum);
+void DenseClassificationGrowStats::InitLeafClassStats(
+    int best_split_index, LeafStat* left_stats, LeafStat* right_stats) const {
+  auto* left_class_stats = left_stats->mutable_classification();
   auto* left_counts = left_class_stats->mutable_dense_counts();
   for (int i = 0; i < params_.num_outputs(); ++i) {
-    left_counts->add_value()->set_float_value(
-        left_count(best_index, i));
+    left_counts->add_value()->set_float_value(left_count(best_split_index, i));
   }
 
-  // Right
-  auto* right = best->mutable_right_stats();
-  auto* right_class_stats = right->mutable_classification();
-  right->set_weight_sum(best_right_sum);
+  auto* right_class_stats = right_stats->mutable_classification();
   auto* right_counts = right_class_stats->mutable_dense_counts();
   for (int i = 0; i < params_.num_outputs(); ++i) {
-    right_counts->add_value()->set_float_value(
-        total_counts_[i] - left_count(best_index, i));
+    right_counts->add_value()->set_float_value(total_counts_[i] -
+                                               left_count(best_split_index, i));
   }
-  return true;
 }
 
 // ------------------------ Sparse Classification --------------------------- //
@@ -584,49 +590,18 @@ float SparseClassificationGrowStats::GiniScore(
   return left_score + right_score;
 }
 
-bool SparseClassificationGrowStats::BestSplit(SplitCandidate* best) const {
-  float min_score = FLT_MAX;
-  int best_index = -1;
-  float best_left_sum = -1;
-  float best_right_sum = -1;
-
-  // Find the lowest gini.
-  for (int i = 0; i < num_splits(); ++i) {
-    float left_sum, right_sum;
-    const float split_score = MaybeCachedGiniScore(i, &left_sum, &right_sum);
-    if (left_sum > 0 && right_sum > 0 &&
-        split_score < min_score) {  // useless check
-      min_score = split_score;
-      best_index = i;
-      best_left_sum = left_sum;
-      best_right_sum = right_sum;
-    }
-  }
-
-  // This could happen if all the splits are useless.
-  if (best_index < 0) {
-    return false;
-  }
-
-  // Fill in stats to be used for leaf model.
-  *best->mutable_split() = splits_[best_index];
-  // Left
-  auto* left = best->mutable_left_stats();
-  auto* left_class_stats = left->mutable_classification();
-  left->set_weight_sum(best_left_sum);
+void SparseClassificationGrowStats::InitLeafClassStats(
+    int best_split_index, LeafStat* left_stats, LeafStat* right_stats) const {
+  auto* left_class_stats = left_stats->mutable_classification();
   auto* left_counts =
       left_class_stats->mutable_sparse_counts()->mutable_sparse_value();
-
-  // Right
-  auto* right = best->mutable_right_stats();
-  auto* right_class_stats = right->mutable_classification();
-  right->set_weight_sum(best_right_sum);
+  auto* right_class_stats = right_stats->mutable_classification();
   auto* right_counts =
       right_class_stats->mutable_sparse_counts()->mutable_sparse_value();
 
   for (const auto& entry : total_counts_) {
-    auto it = left_counts_[best_index].find(entry.first);
-    if (it == left_counts_[best_index].end()) {
+    auto it = left_counts_[best_split_index].find(entry.first);
+    if (it == left_counts_[best_split_index].end()) {
       (*right_counts)[entry.first].set_float_value(entry.second);
     } else {
       const float left = it->second;
@@ -637,7 +612,184 @@ bool SparseClassificationGrowStats::BestSplit(SplitCandidate* best) const {
       }
     }
   }
-  return true;
+}
+
+// -------------------- FixedSizeClassStats --------------------------------- //
+
+// FixedSizeClassStats implements the "SpaceSaving" algorithm by
+// Ahmed Metwally, Divyakant Agrawal and Amr El Abbadi.  See for example
+// https://pdfs.semanticscholar.org/72f1/5aba2e67b1cc9cd1fb12c99e101c4c1aae4b.pdf
+
+int argmin(const std::unordered_map<int, float>& m) {
+  int c = -1;
+  float f = FLT_MAX;
+  for (const auto it : m) {
+    if (it.second < f) {
+      f = it.second;
+      c = it.first;
+    }
+  }
+  return c;
+}
+
+void FixedSizeClassStats::accumulate(int c, float w) {
+  auto it = class_weights_.find(c);
+  if (it != class_weights_.end()) {
+    it->second += w;
+    if (c == smallest_weight_class_) {
+      smallest_weight_class_ = argmin(class_weights_);
+    }
+    return;
+  }
+
+  if (class_weights_.size() < n_) {
+    class_weights_.insert(it, std::pair<int, float>(c, w));
+    if (class_weights_.size() == n_) {
+      // Can't assume last added has the smallest weight, because the
+      // w's might be all different.
+      smallest_weight_class_ = argmin(class_weights_);
+    }
+    return;
+  }
+
+  // This is the slightly unintuitive heart of the SpaceSaving algorithm:
+  // if the map is full and we see a new class, we find the entry with the
+  // smallest weight and "take it over":  we add our weight to its weight,
+  // and assign it all to the new seen class.
+  it = class_weights_.find(smallest_weight_class_);
+  float new_weight = it->second + w;
+  class_weights_.erase(it);
+  class_weights_[c] = new_weight;
+  smallest_weight_class_ = argmin(class_weights_);
+}
+
+float FixedSizeClassStats::get_weight(int c) const {
+  // Every entry in class_weights_ might be overstated by as much as the
+  // smallest_weight.  We therefore assume that each has been overstated
+  // by smallest_weight / 2.0, and we re-distribute that mass over all
+  // num_classes_ classes.
+  float smallest_weight = 0.0;
+  auto it = class_weights_.find(smallest_weight_class_);
+  if (it != class_weights_.end()) {
+    smallest_weight = it->second;
+  }
+  float w = (smallest_weight / 2.0) * n_ / static_cast<float>(num_classes_);
+  it = class_weights_.find(c);
+  if (it != class_weights_.end()) {
+    w += it->second - smallest_weight / 2.0;
+  }
+  return w;
+}
+
+void FixedSizeClassStats::set_sum_and_square(float* sum, float* square) const {
+  *sum = 0.0;
+  *square = 0.0;
+
+  float smallest_weight = 0.0;
+  auto it = class_weights_.find(smallest_weight_class_);
+  if (it != class_weights_.end()) {
+    smallest_weight = it->second;
+  }
+
+  float w;
+  for (const auto it : class_weights_) {
+    *sum += it.second;
+    w = get_weight(it.first);
+    *square += w * w;
+  }
+
+  w = (smallest_weight / 2.0) * n_ / static_cast<float>(num_classes_);
+  *square += (num_classes_ - n_) * w * w;
+}
+
+void FixedSizeClassStats::ExtractFromProto(
+    const decision_trees::SparseVector& sparse_vector) {
+  for (const auto& it : sparse_vector.sparse_value()) {
+    class_weights_[it.first] = it.second.float_value();
+  }
+  if (class_weights_.size() == n_) {
+    smallest_weight_class_ = argmin(class_weights_);
+  }
+}
+
+void FixedSizeClassStats::PackToProto(
+    decision_trees::SparseVector* sparse_vector) const {
+  for (const auto it : class_weights_) {
+    (*sparse_vector->mutable_sparse_value())[it.first].set_float_value(
+        it.second);
+  }
+}
+
+// --------------------- FixedSizeSparseClassificationGrowStats ------------- //
+
+void FixedSizeSparseClassificationGrowStats::ExtractFromProto(
+    const FertileSlot& slot) {
+  Initialize();
+  if (!slot.has_post_init_leaf_stats()) {
+    return;
+  }
+  weight_sum_ = slot.post_init_leaf_stats().weight_sum();
+
+  // Candidate counts and splits.
+  int split_num = 0;
+  left_counts_.clear();
+  right_counts_.clear();
+  for (const auto& cand : slot.candidates()) {
+    AddSplit(cand.split(), nullptr, nullptr, -1);
+    const auto& left_stats = cand.left_stats().classification().sparse_counts();
+    left_counts_.emplace_back(params_.num_classes_to_track(),
+                              params_.num_outputs());
+    left_counts_[split_num].ExtractFromProto(left_stats);
+    const auto& right_stats =
+        cand.right_stats().classification().sparse_counts();
+    right_counts_.emplace_back(params_.num_classes_to_track(),
+                               params_.num_outputs());
+    right_counts_[split_num].ExtractFromProto(right_stats);
+    ++split_num;
+  }
+}
+
+void FixedSizeSparseClassificationGrowStats::PackToProto(
+    FertileSlot* slot) const {
+  auto* slot_stats = slot->mutable_post_init_leaf_stats();
+  slot_stats->set_weight_sum(weight_sum_);
+
+  for (int split_num = 0; split_num < num_splits(); ++split_num) {
+    auto* cand = slot->add_candidates();
+    *cand->mutable_split() = splits_[split_num];
+    auto* left_stats = cand->mutable_left_stats()
+                           ->mutable_classification()
+                           ->mutable_sparse_counts();
+    left_counts_[split_num].PackToProto(left_stats);
+    auto* right_stats = cand->mutable_right_stats()
+                            ->mutable_classification()
+                            ->mutable_sparse_counts();
+    right_counts_[split_num].PackToProto(right_stats);
+  }
+}
+
+float FixedSizeSparseClassificationGrowStats::GiniScore(
+    int split, float* left_sum, float* right_sum) const {
+  float left_square, right_square;
+  left_counts_[split].set_sum_and_square(left_sum, &left_square);
+  right_counts_[split].set_sum_and_square(right_sum, &right_square);
+  const int32 num_classes = params_.num_outputs();
+  const float left_score =
+      WeightedSmoothedGini(*left_sum, left_square, num_classes);
+  const float right_score =
+      WeightedSmoothedGini(*right_sum, right_square, num_classes);
+  return left_score + right_score;
+}
+
+void FixedSizeSparseClassificationGrowStats::InitLeafClassStats(
+    int best_split_index, LeafStat* left_stats, LeafStat* right_stats) const {
+  auto* left_class_stats = left_stats->mutable_classification();
+  auto* left_counts = left_class_stats->mutable_sparse_counts();
+  left_counts_[best_split_index].PackToProto(left_counts);
+
+  auto* right_class_stats = right_stats->mutable_classification();
+  auto* right_counts = right_class_stats->mutable_sparse_counts();
+  right_counts_[best_split_index].PackToProto(right_counts);
 }
 
 // --------------------- Least Squares Regression --------------------------- //

@@ -31,9 +31,9 @@ TEST(GrpcChannelTest, IsSameAddressSpace) {
   EXPECT_TRUE(IsSameAddrSp("/job:mnist/replica:10/task:10/cpu:0",
                            "/job:mnist/replica:10/task:10/cpu:1"));
   EXPECT_TRUE(IsSameAddrSp("/job:mnist/replica:10/task:10/cpu:0",
-                           "/job:mnist/replica:10/task:10/gpu:2"));
+                           "/job:mnist/replica:10/task:10/device:GPU:2"));
   EXPECT_TRUE(IsSameAddrSp("/job:mnist/replica:10/task:10",
-                           "/job:mnist/replica:10/task:10/gpu:2"));
+                           "/job:mnist/replica:10/task:10/device:GPU:2"));
   EXPECT_TRUE(IsSameAddrSp("/job:mnist/replica:10/task:10/cpu:1",
                            "/job:mnist/replica:10/task:10"));
 

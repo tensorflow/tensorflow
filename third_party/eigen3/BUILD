@@ -38,3 +38,12 @@ cc_library(
         "@local_config_sycl//sycl:sycl",
     ],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = ["**/OWNERS"],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)

@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
+#include "tensorflow/cc/ops/while_loop.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -50,7 +52,7 @@ extern Status TopologicalSortNodesWithTimePriority(
 
 namespace {
 
-const char gpu_device[] = "/job:a/replica:0/task:0/gpu:0";
+const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
 
 string SplitByDevice(const Node* node) { return node->assigned_device_name(); }
 
@@ -71,10 +73,13 @@ void Partition(const GraphDef& graph_def,
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &g));
 
-  // Assigns devices to each node. Uses 1st letter of the node name as
-  // the device index.
+  // Assigns devices to each node. Uses 1st letter of the node name as the
+  // device index if no device is specified.
   for (Node* node : g.nodes()) {
-    node->set_assigned_device_name(DeviceName(node));
+    string device_name = !node->requested_device().empty()
+                             ? node->requested_device()
+                             : DeviceName(node);
+    node->set_assigned_device_name(device_name);
   }
 
   PartitionOptions popts;
@@ -86,10 +91,9 @@ void Partition(const GraphDef& graph_def,
   Status s = Partition(popts, &g, partitions);
   CHECK(s.ok()) << s;
 
-  // Check versions
+  // Check versions.
   EXPECT_EQ(graph_def.versions().producer(), TF_GRAPH_DEF_VERSION);
-  EXPECT_EQ(graph_def.versions().min_consumer(),
-            TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
+  // Partitions must inherit the versions of the original graph.
   for (auto& it : *partitions) {
     EXPECT_EQ(graph_def.versions().producer(), it.second.versions().producer());
     EXPECT_EQ(graph_def.versions().min_consumer(),
@@ -141,9 +145,17 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
   }
 }
 
-REGISTER_OP("FloatInput").Output("o: float");
-REGISTER_OP("BoolInput").Output("o: bool");
-REGISTER_OP("Combine").Input("a: float").Input("b: float").Output("o: float");
+REGISTER_OP("FloatInput")
+    .Output("o: float")
+    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("BoolInput")
+    .Output("o: bool")
+    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("Combine")
+    .Input("a: float")
+    .Input("b: float")
+    .Output("o: float")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 Output ConstructOp(const Scope& scope, const string& op_type,
                    const gtl::ArraySlice<Input>& inputs) {
@@ -157,6 +169,8 @@ Output ConstructOp(const Scope& scope, const string& op_type,
   scope.UpdateBuilder(&builder);
   Node* ret;
   scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  if (!scope.ok()) return Output();
+  scope.UpdateStatus(scope.DoShapeInference(ret));
   if (!scope.ok()) return Output();
   return Output(ret);
 }
@@ -357,7 +371,7 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   ExpectMatchB();
 }
 
-TEST_F(GraphPartitionTest, CrossDeviceLoop) {
+TEST_F(GraphPartitionTest, CrossDeviceLoopSimple) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
   auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("A2"), a1, "foo");
@@ -371,7 +385,7 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop) {
   CheckLoopConstruction(ToGraphDef());
 }
 
-TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
+TEST_F(GraphPartitionTest, CrossDeviceLoopSimple1) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
   auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("B2"), a1, "foo");
@@ -394,6 +408,29 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
       }
     }
   }
+}
+
+TEST_F(GraphPartitionTest, CrossDeviceLoopFull) {
+  Scope cpu0 = in_.WithDevice("/job:a/replica:0/task:0/cpu:0");
+  auto p1 = ops::Placeholder(cpu0, DT_INT32);
+  auto p2 = ops::Placeholder(cpu0, DT_INT32);
+  OutputList outputs;
+  // while i1 < 10: i1 += i2
+  TF_ASSERT_OK(ops::BuildWhileLoop(
+      cpu0, {p1, p2},
+      [](const Scope& s, const std::vector<Output>& inputs, Output* output) {
+        *output = ops::Less(s, inputs[0], 10);
+        return s.status();
+      },
+      [](const Scope& s, const std::vector<Output>& inputs,
+         std::vector<Output>* outputs) {
+        Scope cpu1 = s.WithDevice("/job:a/replica:0/task:0/cpu:1");
+        outputs->push_back(ops::AddN(cpu1, {inputs[0], inputs[1]}));
+        outputs->push_back(inputs[1]);
+        return s.status();
+      },
+      "test_loop", &outputs));
+  CheckLoopConstruction(ToGraphDef());
 }
 
 TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {
@@ -443,6 +480,41 @@ TEST_F(GraphPartitionTest, Functions) {
   string b = "/job:a/replica:0/task:0/cpu:1";
   ExpectFunctions(partitions_[a].library(), {"XTimesTwo", "XTimesFour"});
   ExpectFunctions(partitions_[b].library(), {"XTimesTwo", "XTimesFour"});
+}
+
+TEST_F(GraphPartitionTest, SetIncarnation) {
+  GraphDef gdef;
+  const char* const kSendRecvAttrs = R"proto(
+  attr { key: 'T' value { type: DT_FLOAT  }  }
+  attr { key: 'client_terminated' value {  b: false } }
+  attr { key: 'recv_device' value { s: 'B' } }
+  attr { key: 'send_device' value { s: 'A' } }
+  attr { key: 'send_device_incarnation' value { i: 0 }  }
+  attr { key: 'tensor_name' value { s: 'test' } }
+)proto";
+  CHECK(protobuf::TextFormat::ParseFromString(
+      StrCat("node { name: 'A/Pi' op: 'Const' ",
+             "  attr { key: 'dtype' value { type: DT_FLOAT } } ",
+             "  attr { key: 'value' value { tensor { ",
+             "    dtype: DT_FLOAT tensor_shape {} float_val: 3.14 } } } }",
+             "node { name: 'A' op: '_Send' input: 'A/Pi' ", kSendRecvAttrs, "}",
+             "node { name: 'B' op: '_Recv' ", kSendRecvAttrs,
+             "  attr { key: 'tensor_type' value { type:DT_FLOAT}}}"),
+      &gdef));
+  gdef.mutable_versions()->set_producer(TF_GRAPH_DEF_VERSION);
+  Partition(gdef, &partitions_);
+  EXPECT_EQ(2, partitions_.size());
+
+  for (const auto& kv : partitions_) {
+    const GraphDef& gdef = kv.second;
+    for (const NodeDef& ndef : gdef.node()) {
+      if (ndef.name() == "A" || ndef.name() == "B") {
+        int64 val;
+        TF_CHECK_OK(GetNodeAttr(ndef, "send_device_incarnation", &val));
+        EXPECT_EQ(val, 100);  // Send device is "A".
+      }
+    }
+  }
 }
 
 TEST(TopologicalSortNodesWithTimePriorityTest, NoDependencies) {
@@ -552,6 +624,7 @@ TEST(TopologicalSortNodesWithTimePriority, WhileLoop) {
     placeholders_in_order.back().node()->AddAttr("_start_time", i + 1);
   }
   std::vector<Placeholder> placeholders;
+  placeholders.reserve(indexes.size());
   for (int i : indexes) {
     placeholders.push_back(placeholders_in_order[i]);
   }
@@ -579,15 +652,16 @@ TEST(TopologicalSortNodesWithTimePriority, WhileLoop) {
     scope.graph()->AddEdge(next_iteration.node(), 0, merge.output.node(), 1);
 
     int base_start_time = i * 10 + 100;
-    for (auto op : std::vector<Output>{enter, merge.output, cv, loop_cond,
-                                       switch_node.output_false, identity,
-                                       next_iteration, while_exits.back()}) {
+    for (const auto& op : std::initializer_list<Output>{
+             enter, merge.output, cv, loop_cond, switch_node.output_false,
+             identity, next_iteration, while_exits.back()}) {
       op.node()->AddAttr("_start_time", base_start_time++);
     }
   }
 
   // Create ops that depend on the loop exits.
   std::vector<Square> squares;
+  squares.reserve(indexes.size());
   for (int i : indexes) {
     squares.emplace_back(root.WithOpName(StrCat("s", i)), while_exits[i]);
     squares.back().node()->AddAttr("_start_time", 500 - (i + 1));

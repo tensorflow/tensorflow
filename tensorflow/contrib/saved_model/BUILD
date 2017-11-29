@@ -77,6 +77,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "utils_test",
+    size = "small",
+    srcs = ["python/saved_model/utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":saved_model_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model:signature_constants",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

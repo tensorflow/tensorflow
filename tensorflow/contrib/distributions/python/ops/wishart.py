@@ -21,11 +21,13 @@ from __future__ import print_function
 import math
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
-from tensorflow.contrib.distributions.python.ops import operator_pd_full
+from tensorflow.contrib import linalg
+from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -34,8 +36,6 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
-from tensorflow.python.ops.distributions import util as distribution_util
-
 
 __all__ = [
     "WishartCholesky",
@@ -43,11 +43,11 @@ __all__ = [
 ]
 
 
-class _WishartOperatorPD(distribution.Distribution):
+class _WishartLinearOperator(distribution.Distribution):
   """The matrix Wishart distribution on positive definite matrices.
 
   This distribution is defined by a scalar number of degrees of freedom `df` and
-  an instance of `OperatorPDBase`, which provides matrix-free access to a
+  an instance of `LinearOperator`, which provides matrix-free access to a
   symmetric positive definite operator, which defines the scale matrix.
 
   #### Mathematical Details
@@ -75,7 +75,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def __init__(self,
                df,
-               scale_operator_pd,
+               scale_operator,
                cholesky_input_output_matrices=False,
                validate_args=False,
                allow_nan_stats=True,
@@ -85,7 +85,7 @@ class _WishartOperatorPD(distribution.Distribution):
     Args:
       df: `float` or `double` tensor, the degrees of freedom of the
         distribution(s). `df` must be greater than or equal to `k`.
-      scale_operator_pd: `float` or `double` instance of `OperatorPDBase`.
+      scale_operator: `float` or `double` instance of `LinearOperator`.
       cholesky_input_output_matrices: Python `bool`. Any function which whose
         input or output is a matrix assumes the input is Cholesky and returns a
         Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
@@ -109,28 +109,32 @@ class _WishartOperatorPD(distribution.Distribution):
     """
     parameters = locals()
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
-    with ops.name_scope(name):
-      with ops.name_scope("init", values=[df, scale_operator_pd]):
-        if not scale_operator_pd.dtype.is_floating:
+    with ops.name_scope(name) as ns:
+      with ops.name_scope("init", values=[df, scale_operator]):
+        if not scale_operator.dtype.is_floating:
           raise TypeError(
-              "scale_operator_pd.dtype=%s is not a floating-point type" %
-              scale_operator_pd.dtype)
-        self._scale_operator_pd = scale_operator_pd
+              "scale_operator.dtype=%s is not a floating-point type" %
+              scale_operator.dtype)
+        if not scale_operator.is_square:
+          print(scale_operator.to_dense().eval())
+          raise ValueError("scale_operator must be square.")
+
+        self._scale_operator = scale_operator
         self._df = ops.convert_to_tensor(
             df,
-            dtype=scale_operator_pd.dtype,
+            dtype=scale_operator.dtype,
             name="df")
-        check_ops.assert_same_float_dtype(
-            (self._df, self._scale_operator_pd))
-        if (self._scale_operator_pd.get_shape().ndims is None or
-            self._scale_operator_pd.get_shape()[-1].value is None):
+        contrib_tensor_util.assert_same_float_dtype(
+            (self._df, self._scale_operator))
+        if (self._scale_operator.shape.ndims is None or
+            self._scale_operator.shape[-1].value is None):
           self._dimension = math_ops.cast(
-              self._scale_operator_pd.vector_space_dimension(),
-              dtype=self._scale_operator_pd.dtype, name="dimension")
+              self._scale_operator.domain_dimension_tensor(),
+              dtype=self._scale_operator.dtype, name="dimension")
         else:
           self._dimension = ops.convert_to_tensor(
-              self._scale_operator_pd.get_shape()[-1].value,
-              dtype=self._scale_operator_pd.dtype, name="dimension")
+              self._scale_operator.shape[-1].value,
+              dtype=self._scale_operator.dtype, name="dimension")
         df_val = tensor_util.constant_value(self._df)
         dim_val = tensor_util.constant_value(self._dimension)
         if df_val is not None and dim_val is not None:
@@ -151,32 +155,36 @@ class _WishartOperatorPD(distribution.Distribution):
                        (self._dimension, self._df)))
           self._df = control_flow_ops.with_dependencies(
               [assertions], self._df)
-    super(_WishartOperatorPD, self).__init__(
-        dtype=self._scale_operator_pd.dtype,
+    super(_WishartLinearOperator, self).__init__(
+        dtype=self._scale_operator.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=([self._df, self._dimension] +
-                       self._scale_operator_pd.inputs),
-        name=name)
+                       self._scale_operator.graph_parents),
+        name=ns)
 
   @property
   def df(self):
     """Wishart distribution degree(s) of freedom."""
     return self._df
 
+  def _square_scale_operator(self):
+    return self.scale_operator.matmul(
+        self.scale_operator.to_dense(), adjoint_arg=True)
+
   def scale(self):
     """Wishart distribution scale matrix."""
     if self._cholesky_input_output_matrices:
-      return self.scale_operator_pd.sqrt_to_dense()
+      return self.scale_operator.to_dense()
     else:
-      return self.scale_operator_pd.to_dense()
+      return self._square_scale_operator()
 
   @property
-  def scale_operator_pd(self):
-    """Wishart distribution scale matrix as an OperatorPD."""
-    return self._scale_operator_pd
+  def scale_operator(self):
+    """Wishart distribution scale matrix as an Linear Operator."""
+    return self._scale_operator
 
   @property
   def cholesky_input_output_matrices(self):
@@ -189,18 +197,18 @@ class _WishartOperatorPD(distribution.Distribution):
     return self._dimension
 
   def _event_shape_tensor(self):
-    s = self.scale_operator_pd.shape()
-    return array_ops.strided_slice(s, array_ops.shape(s) - 2,
-                                   array_ops.shape(s))
+    dimension = self.scale_operator.domain_dimension_tensor()
+    return array_ops.stack([dimension, dimension])
 
   def _event_shape(self):
-    return self.scale_operator_pd.get_shape()[-2:]
+    dimension = self.scale_operator.domain_dimension
+    return tensor_shape.TensorShape([dimension, dimension])
 
   def _batch_shape_tensor(self):
-    return self.scale_operator_pd.batch_shape()
+    return self.scale_operator.batch_shape_tensor()
 
   def _batch_shape(self):
-    return self.scale_operator_pd.get_batch_shape()
+    return self.scale_operator.batch_shape
 
   def _sample_n(self, n, seed):
     batch_shape = self.batch_shape_tensor()
@@ -242,10 +250,10 @@ class _WishartOperatorPD(distribution.Distribution):
     x = array_ops.reshape(x, shape)
 
     # Complexity: O(nbM) where M is the complexity of the operator solving a
-    # vector system. E.g., for OperatorPDDiag, each matmul is O(k**2), so
-    # this complexity is O(nbk**2). For OperatorPDCholesky, each matmul is
-    # O(k^3) so this step has complexity O(nbk^3).
-    x = self.scale_operator_pd.sqrt_matmul(x)
+    # vector system. E.g., for LinearOperatorDiag, each matmul is O(k**2), so
+    # this complexity is O(nbk**2). For LinearOperatorLowerTriangular,
+    # each matmul is O(k^3) so this step has complexity O(nbk^3).
+    x = self.scale_operator.matmul(x)
 
     # Undo make batch-op ready.
     # Complexity: O(nbk**2)
@@ -298,10 +306,10 @@ class _WishartOperatorPD(distribution.Distribution):
     scale_sqrt_inv_x_sqrt = array_ops.reshape(scale_sqrt_inv_x_sqrt, shape)
 
     # Complexity: O(nbM*k) where M is the complexity of the operator solving
-    # a vector system. E.g., for OperatorPDDiag, each solve is O(k), so
-    # this complexity is O(nbk**2). For OperatorPDCholesky, each solve is
-    # O(k**2) so this step has complexity O(nbk^3).
-    scale_sqrt_inv_x_sqrt = self.scale_operator_pd.sqrt_solve(
+    # a vector system. E.g., for LinearOperatorDiag, each solve is O(k), so
+    # this complexity is O(nbk**2). For LinearOperatorLowerTriangular,
+    # each solve is O(k**2) so this step has complexity O(nbk^3).
+    scale_sqrt_inv_x_sqrt = self.scale_operator.solve(
         scale_sqrt_inv_x_sqrt)
 
     # Undo make batch-op ready.
@@ -353,18 +361,18 @@ class _WishartOperatorPD(distribution.Distribution):
     half_dp1 = 0.5 * self.dimension + 0.5
     half_df = 0.5 * self.df
     return (self.dimension * (half_df + half_dp1 * math.log(2.)) +
-            half_dp1 * self.scale_operator_pd.log_det() +
+            2 * half_dp1 * self.scale_operator.log_abs_determinant() +
             self._multi_lgamma(half_df, self.dimension) +
             (half_dp1 - half_df) * self._multi_digamma(half_df, self.dimension))
 
   def _mean(self):
     if self.cholesky_input_output_matrices:
       return (math_ops.sqrt(self.df)
-              * self.scale_operator_pd.sqrt_to_dense())
-    return self.df * self.scale_operator_pd.to_dense()
+              * self.scale_operator.to_dense())
+    return self.df * self._square_scale_operator()
 
   def _variance(self):
-    x = math_ops.sqrt(self.df) * self.scale_operator_pd.to_dense()
+    x = math_ops.sqrt(self.df) * self._square_scale_operator()
     d = array_ops.expand_dims(array_ops.matrix_diag_part(x), -1)
     v = math_ops.square(x) + math_ops.matmul(d, d, adjoint_b=True)
     if self.cholesky_input_output_matrices:
@@ -385,20 +393,20 @@ class _WishartOperatorPD(distribution.Distribution):
         constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"),
         s)
     if self.cholesky_input_output_matrices:
-      return math_ops.sqrt(s) * self.scale_operator_pd.sqrt_to_dense()
-    return s * self.scale_operator_pd.to_dense()
+      return math_ops.sqrt(s) * self.scale_operator.to_dense()
+    return s * self._square_scale_operator()
 
   def mean_log_det(self, name="mean_log_det"):
     """Computes E[log(det(X))] under this Wishart distribution."""
     with self._name_scope(name):
       return (self._multi_digamma(0.5 * self.df, self.dimension) +
               self.dimension * math.log(2.) +
-              self.scale_operator_pd.log_det())
+              2 * self.scale_operator.log_abs_determinant())
 
   def log_normalization(self, name="log_normalization"):
     """Computes the log normalizing constant, log(Z)."""
     with self._name_scope(name):
-      return (self.df * self.scale_operator_pd.sqrt_log_det() +
+      return (self.df * self.scale_operator.log_abs_determinant() +
               0.5 * self.df * self.dimension * math.log(2.) +
               self._multi_lgamma(0.5 * self.df, self.dimension))
 
@@ -428,7 +436,7 @@ class _WishartOperatorPD(distribution.Distribution):
                                  axis=[-1])
 
 
-class WishartCholesky(_WishartOperatorPD):
+class WishartCholesky(_WishartLinearOperator):
   """The matrix Wishart distribution on positive definite matrices.
 
   This distribution is defined by a scalar degrees of freedom `df` and a
@@ -521,10 +529,26 @@ class WishartCholesky(_WishartOperatorPD):
     """
     parameters = locals()
     with ops.name_scope(name, values=[scale]):
+      with ops.name_scope("init", values=[scale]):
+        scale = ops.convert_to_tensor(scale)
+        if validate_args:
+          scale = control_flow_ops.with_dependencies([
+              check_ops.assert_positive(
+                  array_ops.matrix_diag_part(scale),
+                  message="scale must be positive definite"),
+              check_ops.assert_equal(
+                  array_ops.shape(scale)[-1],
+                  array_ops.shape(scale)[-2],
+                  message="scale must be square")
+          ] if validate_args else [], scale)
+
       super(WishartCholesky, self).__init__(
           df=df,
-          scale_operator_pd=operator_pd_cholesky.OperatorPDCholesky(
-              scale, verify_pd=validate_args),
+          scale_operator=linalg.LinearOperatorLowerTriangular(
+              tril=scale,
+              is_non_singular=True,
+              is_positive_definite=True,
+              is_square=True),
           cholesky_input_output_matrices=cholesky_input_output_matrices,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
@@ -532,7 +556,7 @@ class WishartCholesky(_WishartOperatorPD):
     self._parameters = parameters
 
 
-class WishartFull(_WishartOperatorPD):
+class WishartFull(_WishartLinearOperator):
   """The matrix Wishart distribution on positive definite matrices.
 
   This distribution is defined by a scalar degrees of freedom `df` and a
@@ -620,13 +644,24 @@ class WishartFull(_WishartOperatorPD):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[scale]) as ns:
-      super(WishartFull, self).__init__(
-          df=df,
-          scale_operator_pd=operator_pd_full.OperatorPDFull(
-              scale, verify_pd=validate_args),
-          cholesky_input_output_matrices=cholesky_input_output_matrices,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=ns)
+    with ops.name_scope(name) as ns:
+      with ops.name_scope("init", values=[scale]):
+        scale = ops.convert_to_tensor(scale)
+        if validate_args:
+          scale = distribution_util.assert_symmetric(scale)
+        chol = linalg_ops.cholesky(scale)
+        chol = control_flow_ops.with_dependencies([
+            check_ops.assert_positive(array_ops.matrix_diag_part(chol))
+        ] if validate_args else [], chol)
+    super(WishartFull, self).__init__(
+        df=df,
+        scale_operator=linalg.LinearOperatorLowerTriangular(
+            tril=chol,
+            is_non_singular=True,
+            is_positive_definite=True,
+            is_square=True),
+        cholesky_input_output_matrices=cholesky_input_output_matrices,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        name=ns)
     self._parameters = parameters

@@ -341,7 +341,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(a_val)
       b = control_flow_ops.no_op()  # An op, not a tensor.
       c = constant_op.constant(c_val)
-      # List of lists, tuples, namedtuple, and  dict
+      # List of lists, tuples, namedtuple, and dict
       res = sess.run([[a, b, c], (a, b, c), ABC(a=a, b=b, c=c),
                       {'a': a.name, 'c': c, 'b': b}])
       self.assertTrue(isinstance(res, list))
@@ -365,7 +365,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(a_val, res[3]['a'])
       self.assertEqual(b_val, res[3]['b'])
       self.assertEqual(c_val, res[3]['c'])
-      # Tuple of lists, tuples, namedtuple, and  dict
+      # Tuple of lists, tuples, namedtuple, and dict
       res = sess.run(([a, b, c], (a.name, b, c), ABC(a=a, b=b, c=c),
                       {'a': a, 'c': c, 'b': b}))
       self.assertTrue(isinstance(res, tuple))
@@ -1124,7 +1124,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     # which is why placing this is invalid.  If at some point
     # GPU kernels are added to this test, some other different
     # op / device combo should be chosen.
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       a = constant_op.constant(1.0, shape=[1, 2])
 
     b = constant_op.constant(1.0, shape=[1, 2])
@@ -1145,7 +1145,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     # which is why placing this is invalid.  If at some point
     # GPU kernels are added to this test, some other different
     # op / device combo should be chosen.
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       _ = constant_op.constant(1.0, shape=[1, 2])
 
     b = constant_op.constant(1.0, shape=[1, 2])
@@ -1494,7 +1494,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         allow_soft_placement=True,
         graph_options=config_pb2.GraphOptions(build_cost_model=100))
     with session.Session(config=config) as sess:
-      with ops.device('/gpu:0'):
+      with ops.device('/device:GPU:0'):
         a = array_ops.placeholder(dtypes.float32, shape=[])
         b = math_ops.add(a, a)
         c = array_ops.identity(b)
@@ -1507,6 +1507,22 @@ class SessionTest(test_util.TensorFlowTestCase):
           self.assertTrue(run_metadata.HasField('cost_graph'))
         else:
           self.assertFalse(run_metadata.HasField('cost_graph'))
+
+  def runTestOutputPartitionGraphs(self, sess):
+    run_options = config_pb2.RunOptions(output_partition_graphs=True)
+    a = constant_op.constant(1)
+    run_metadata = config_pb2.RunMetadata()
+    sess.run(a, options=run_options, run_metadata=run_metadata)
+    self.assertGreater(len(run_metadata.partition_graphs), 0)
+    sess.run(a, run_metadata=run_metadata)
+    self.assertEqual(len(run_metadata.partition_graphs), 0)
+
+  def testOutputPartitionGraphsDirect(self):
+    self.runTestOutputPartitionGraphs(session.Session())
+
+  def testOutputPartitionGraphsDistributed(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestOutputPartitionGraphs(session.Session(server.target))
 
   def testNonInteractiveSessionNesting(self):
     sess1 = session.Session()
@@ -1640,7 +1656,8 @@ class SessionTest(test_util.TensorFlowTestCase):
       with CaptureStderr() as log:
         sess.run(c)
       # Ensure that we did log device placement.
-      self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log), str(log))
+      self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in str(log),
+                      str(log))
 
   def testLocalMasterSessionTimeout(self):
     # Test that the timeout passed in a config to the session works correctly.

@@ -67,21 +67,9 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     self.assertAllClose(x, y, atol=atol, rtol=rtol)
 
   @property
-  def _adjoint_options(self):
-    return [False, True]
-
-  @property
-  def _adjoint_arg_options(self):
-    return [False, True]
-
-  @property
   def _dtypes_to_test(self):
     # TODO(langmore) Test tf.float16 once tf.matrix_solve works in 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
-
-  @property
-  def _use_placeholder_options(self):
-    return [False, True]
 
   @abc.abstractproperty
   def _shapes_to_test(self):
@@ -163,7 +151,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_to_dense(self):
     self._skip_if_tests_to_skip_contains("to_dense")
-    for use_placeholder in self._use_placeholder_options:
+    for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
@@ -178,7 +166,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_det(self):
     self._skip_if_tests_to_skip_contains("det")
-    for use_placeholder in self._use_placeholder_options:
+    for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
@@ -195,7 +183,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_log_abs_det(self):
     self._skip_if_tests_to_skip_contains("log_abs_det")
-    for use_placeholder in self._use_placeholder_options:
+    for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
@@ -212,11 +200,11 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_matmul(self):
     self._skip_if_tests_to_skip_contains("matmul")
-    for use_placeholder in self._use_placeholder_options:
+    for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          for adjoint in self._adjoint_options:
-            for adjoint_arg in self._adjoint_arg_options:
+          for adjoint in False, True:
+            for adjoint_arg in False, True:
               with self.test_session(graph=ops.Graph()) as sess:
                 sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
                 operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
@@ -240,11 +228,11 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_solve(self):
     self._skip_if_tests_to_skip_contains("solve")
-    for use_placeholder in self._use_placeholder_options:
+    for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          for adjoint in self._adjoint_options:
-            for adjoint_arg in self._adjoint_arg_options:
+          for adjoint in False, True:
+            for adjoint_arg in False, True:
               with self.test_session(graph=ops.Graph()) as sess:
                 sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
                 operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
@@ -269,7 +257,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_trace(self):
     self._skip_if_tests_to_skip_contains("trace")
-    for use_placeholder in self._use_placeholder_options:
+    for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
@@ -286,7 +274,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_add_to_tensor(self):
     self._skip_if_tests_to_skip_contains("add_to_tensor")
-    for use_placeholder in self._use_placeholder_options:
+    for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
@@ -305,7 +293,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_diag_part(self):
     self._skip_if_tests_to_skip_contains("diag_part")
-    for use_placeholder in self._use_placeholder_options:
+    for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:

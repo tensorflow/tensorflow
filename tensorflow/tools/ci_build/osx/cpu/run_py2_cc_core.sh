@@ -26,11 +26,9 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export TF_NEED_GCP=0
-export TF_NEED_HDFS=0
 export TF_NEED_CUDA=0
 export PYTHON_BIN_PATH=$(which python2)
-yes "" | ./configure
+yes "" | $PYTHON_BIN_PATH configure.py
 which bazel
 bazel test --test_tag_filters=-no_oss,-gpu,-benchmark-test,-nomac \
     --test_timeout 300,450,1200,3600 \

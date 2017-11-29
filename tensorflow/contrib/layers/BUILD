@@ -58,6 +58,7 @@ tf_custom_op_py_library(
         "python/layers/feature_column_ops.py",
         "python/layers/initializers.py",
         "python/layers/layers.py",
+        "python/layers/normalization.py",
         "python/layers/optimizers.py",
         "python/layers/regularizers.py",
         "python/layers/summaries.py",
@@ -152,10 +153,10 @@ py_test(
     deps = [
         ":layers_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
         "//third_party/py/numpy",
     ],
 )
@@ -167,9 +168,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -177,8 +178,24 @@ py_test(
 )
 
 py_test(
-    name = "optimizers_test",
+    name = "normalization_test",
     size = "small",
+    srcs = ["python/layers/normalization_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "optimizers_test",
     srcs = ["python/layers/optimizers_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -221,6 +238,7 @@ py_test(
         ":layers_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
@@ -263,9 +281,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
         "//tensorflow/python:variables",
     ],
 )
@@ -277,9 +295,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",

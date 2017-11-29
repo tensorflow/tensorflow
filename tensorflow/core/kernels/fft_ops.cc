@@ -301,7 +301,7 @@ gpu::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 // into base class.
 class CufftScratchAllocator : public gpu::ScratchAllocator {
  public:
-  virtual ~CufftScratchAllocator() {}
+  ~CufftScratchAllocator() override {}
   CufftScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64 GetMemoryLimitInBytes(gpu::Stream* stream) override {

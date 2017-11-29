@@ -54,6 +54,19 @@ xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
   return b->ConstantLiteral(xla::Literal::One(type));
 }
 
+xla::ComputationDataHandle XlaHelpers::Epsilon(xla::ComputationBuilder* b,
+                                               DataType data_type) {
+  switch (data_type) {
+    case DT_FLOAT:
+      return b->ConstantR0<float>(std::numeric_limits<float>::epsilon());
+    case DT_DOUBLE:
+      return b->ConstantR0<double>(std::numeric_limits<double>::epsilon());
+    default:
+      LOG(FATAL) << "Unsupported type in XlaHelpers::Epsilon: "
+                 << DataTypeString(data_type);
+  }
+}
+
 xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     xla::ComputationBuilder* b, DataType data_type, int64 value) {
   xla::Literal literal;
@@ -83,6 +96,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
       break;
     case xla::F64:
       literal = *xla::Literal::CreateR0<double>(value);
+      break;
+    case xla::C64:
+      literal = *xla::Literal::CreateR0<complex64>(value);
       break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
@@ -119,6 +135,9 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
     case xla::F64:
       return b->ConstantR0<double>(value);
       break;
+    case xla::C64:
+      return b->ConstantR0<complex64>(value);
+      break;
     default:
       LOG(FATAL) << "unhandled element type " << type;
   }
@@ -153,6 +172,30 @@ static Tensor MakeLinspaceTensor(const TensorShape& shape, int64 depth) {
     linspace_flat(i) = i;
   }
   return linspace;
+}
+
+Status XlaHelpers::Iota(xla::ComputationBuilder* builder, DataType dtype,
+                        int64 size, xla::ComputationDataHandle* iota) {
+  TensorShape linspace_shape({size});
+  Tensor linspace;
+  switch (dtype) {
+    case DT_UINT8:
+      linspace = MakeLinspaceTensor<uint8>(linspace_shape, size);
+      break;
+    case DT_INT32:
+      linspace = MakeLinspaceTensor<int32>(linspace_shape, size);
+      break;
+    case DT_INT64:
+      linspace = MakeLinspaceTensor<int64>(linspace_shape, size);
+      break;
+    default:
+      return errors::InvalidArgument("Invalid argument type ",
+                                     DataTypeString(dtype));
+  }
+  xla::Literal linspace_literal;
+  TF_RETURN_IF_ERROR(HostTensorToLiteral(linspace, &linspace_literal));
+  *iota = builder->ConstantLiteral(linspace_literal);
+  return Status::OK();
 }
 
 Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
@@ -203,15 +246,6 @@ Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
       one_hot_bool, builder->Broadcast(on_value, output_shape.dim_sizes()),
       builder->Broadcast(off_value, output_shape.dim_sizes()));
   return Status::OK();
-}
-
-xla::ComputationDataHandle XlaHelpers::PadWithZeros(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
-    int count) {
-  xla::ComputationDataHandle zero = builder->ConstantR1<int32>({0});
-  std::vector<xla::ComputationDataHandle> xs(count + 1, zero);
-  xs[0] = builder->Reshape(x, {1});
-  return builder->ConcatInDim(xs, 0);
 }
 
 }  // end namespace tensorflow

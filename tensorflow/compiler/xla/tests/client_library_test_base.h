@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -48,6 +49,10 @@ class ClientLibraryTestBase : public ::testing::Test {
   explicit ClientLibraryTestBase(
       perftools::gputools::Platform* platform = nullptr);
 
+  // Creates a new ClientLibraryTestBase with custom client options.
+  ClientLibraryTestBase(perftools::gputools::Platform* platform,
+                        const LocalClientOptions& client_options);
+
   // Returns the name of the test currently being run.
   string TestName() const;
 
@@ -71,9 +76,6 @@ class ClientLibraryTestBase : public ::testing::Test {
   // customize the options.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
-  StatusOr<ExecutionHandle> ExecuteAsync(
-      const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       ComputationBuilder* builder,
@@ -359,8 +361,9 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
     ComputationBuilder* builder, const Array2D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR2FromArray2D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -382,8 +385,9 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
     ComputationBuilder* builder, const Array3D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR3FromArray3D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -405,8 +409,9 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
     ComputationBuilder* builder, const Array4D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,

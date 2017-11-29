@@ -26,9 +26,11 @@ from tensorflow.contrib.bayesflow.python.ops.monte_carlo_impl import _get_sample
 from tensorflow.contrib.distributions.python.ops import mvn_diag as mvn_diag_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution as distribution_lib
+from tensorflow.python.ops.distributions import gamma as gamma_lib
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.platform import test
 
@@ -122,28 +124,6 @@ class ExpectationImportanceSampleLogspaceTest(test.TestCase):
       self.assertAllClose([1., (2 / 3.)**2], e_x2.eval(), rtol=0.02)
 
 
-class ExpectationTest(test.TestCase):
-
-  def test_mc_estimate_of_normal_mean_and_variance_is_correct_vs_analytic(self):
-    random_seed.set_random_seed(0)
-    n = 20000
-    with self.test_session():
-      p = normal_lib.Normal(loc=[1.0, -1.0], scale=[0.3, 0.5])
-      # Compute E_p[X] and E_p[X^2].
-      z = p.sample(n, seed=42)
-      e_x = mc.expectation(lambda x: x, p, z=z, seed=42)
-      e_x2 = mc.expectation(math_ops.square, p, z=z, seed=0)
-      var = e_x2 - math_ops.square(e_x)
-
-      self.assertEqual(p.batch_shape, e_x.get_shape())
-      self.assertEqual(p.batch_shape, e_x2.get_shape())
-
-      # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
-      # pass.
-      self.assertAllClose(p.mean().eval(), e_x.eval(), rtol=0.01)
-      self.assertAllClose(p.variance().eval(), var.eval(), rtol=0.02)
-
-
 class GetSamplesTest(test.TestCase):
   """Test the private method 'get_samples'."""
 
@@ -184,7 +164,7 @@ class GetSamplesTest(test.TestCase):
       self.assertEqual((10,), z.get_shape())
 
 
-class Expectationv2Test(test.TestCase):
+class ExpectationTest(test.TestCase):
 
   def test_works_correctly(self):
     with self.test_session() as sess:
@@ -195,9 +175,9 @@ class Expectationv2Test(test.TestCase):
       f = lambda u: u
       efx_true = x
       samples = p.sample(int(1e5), seed=1)
-      efx_reparam = mc.expectation_v2(f, samples, p.log_prob)
-      efx_score = mc.expectation_v2(f, samples, p.log_prob,
-                                    use_reparametrization=False)
+      efx_reparam = mc.expectation(f, samples, p.log_prob)
+      efx_score = mc.expectation(f, samples, p.log_prob,
+                                 use_reparametrization=False)
 
       [
           efx_true_,
@@ -232,6 +212,93 @@ class Expectationv2Test(test.TestCase):
       self.assertAllClose(efx_true_grad_[2:-2],
                           efx_score_grad_[2:-2],
                           rtol=0.05, atol=0.)
+
+  def test_docstring_example_normal(self):
+    with self.test_session() as sess:
+      num_draws = int(1e5)
+      mu_p = constant_op.constant(0.)
+      mu_q = constant_op.constant(1.)
+      p = normal_lib.Normal(loc=mu_p, scale=1.)
+      q = normal_lib.Normal(loc=mu_q, scale=2.)
+      exact_kl_normal_normal = kullback_leibler.kl_divergence(p, q)
+      approx_kl_normal_normal = monte_carlo_lib.expectation(
+          f=lambda x: p.log_prob(x) - q.log_prob(x),
+          samples=p.sample(num_draws, seed=42),
+          log_prob=p.log_prob,
+          use_reparametrization=(p.reparameterization_type
+                                 == distribution_lib.FULLY_REPARAMETERIZED))
+      [exact_kl_normal_normal_, approx_kl_normal_normal_] = sess.run([
+          exact_kl_normal_normal, approx_kl_normal_normal])
+      self.assertEqual(
+          True,
+          p.reparameterization_type == distribution_lib.FULLY_REPARAMETERIZED)
+      self.assertAllClose(exact_kl_normal_normal_, approx_kl_normal_normal_,
+                          rtol=0.01, atol=0.)
+
+      # Compare gradients. (Not present in `docstring`.)
+      gradp = lambda fp: gradients_impl.gradients(fp, mu_p)[0]
+      gradq = lambda fq: gradients_impl.gradients(fq, mu_q)[0]
+      [
+          gradp_exact_kl_normal_normal_,
+          gradq_exact_kl_normal_normal_,
+          gradp_approx_kl_normal_normal_,
+          gradq_approx_kl_normal_normal_,
+      ] = sess.run([
+          gradp(exact_kl_normal_normal),
+          gradq(exact_kl_normal_normal),
+          gradp(approx_kl_normal_normal),
+          gradq(approx_kl_normal_normal),
+      ])
+      self.assertAllClose(gradp_exact_kl_normal_normal_,
+                          gradp_approx_kl_normal_normal_,
+                          rtol=0.01, atol=0.)
+      self.assertAllClose(gradq_exact_kl_normal_normal_,
+                          gradq_approx_kl_normal_normal_,
+                          rtol=0.01, atol=0.)
+
+  def test_docstring_example_gamma(self):
+    with self.test_session() as sess:
+      num_draws = int(1e5)
+      concentration_p = constant_op.constant(1.)
+      concentration_q = constant_op.constant(2.)
+      p = gamma_lib.Gamma(concentration=concentration_p, rate=1.)
+      q = gamma_lib.Gamma(concentration=concentration_q, rate=3.)
+      approx_kl_gamma_gamma = monte_carlo_lib.expectation(
+          f=lambda x: p.log_prob(x) - q.log_prob(x),
+          samples=p.sample(num_draws, seed=42),
+          log_prob=p.log_prob,
+          use_reparametrization=(p.reparameterization_type
+                                 == distribution_lib.FULLY_REPARAMETERIZED))
+      exact_kl_gamma_gamma = kullback_leibler.kl_divergence(p, q)
+      [exact_kl_gamma_gamma_, approx_kl_gamma_gamma_] = sess.run([
+          exact_kl_gamma_gamma, approx_kl_gamma_gamma])
+      self.assertEqual(
+          False,
+          p.reparameterization_type == distribution_lib.FULLY_REPARAMETERIZED)
+      self.assertAllClose(exact_kl_gamma_gamma_, approx_kl_gamma_gamma_,
+                          rtol=0.01, atol=0.)
+
+      # Compare gradients. (Not present in `docstring`.)
+      gradp = lambda fp: gradients_impl.gradients(fp, concentration_p)[0]
+      gradq = lambda fq: gradients_impl.gradients(fq, concentration_q)[0]
+      [
+          gradp_exact_kl_gamma_gamma_,
+          gradq_exact_kl_gamma_gamma_,
+          gradp_approx_kl_gamma_gamma_,
+          gradq_approx_kl_gamma_gamma_,
+      ] = sess.run([
+          gradp(exact_kl_gamma_gamma),
+          gradq(exact_kl_gamma_gamma),
+          gradp(approx_kl_gamma_gamma),
+          gradq(approx_kl_gamma_gamma),
+      ])
+      # Notice that variance (i.e., `rtol`) is higher when using score-trick.
+      self.assertAllClose(gradp_exact_kl_gamma_gamma_,
+                          gradp_approx_kl_gamma_gamma_,
+                          rtol=0.05, atol=0.)
+      self.assertAllClose(gradq_exact_kl_gamma_gamma_,
+                          gradq_approx_kl_gamma_gamma_,
+                          rtol=0.03, atol=0.)
 
 
 if __name__ == '__main__':
