@@ -383,12 +383,11 @@ void TF_Reset_Helper(const TF_SessionOptions* opt, const char** containers,
 // be less than the total node count.
 Status ValidateNoCycles(const Graph& g) {
   // TODO(nolivia): check this on a subset of the graph instead of all of it.
-  int total_num_nodes = g.num_node_ids();
   // A node is ready when all of its inputs have been visited.
   std::vector<const Node*> ready;
-  std::vector<int> pending_count(total_num_nodes, 0);
+  std::vector<int> pending_count(g.num_node_ids(), 0);
 
-  for (int i = 0; i < total_num_nodes; ++i) {
+  for (int i = 0; i < g.num_node_ids(); ++i) {
     const Node* n = g.FindNodeId(i);
     if (n == nullptr) continue;
     pending_count[i] = n->in_edges().size();
@@ -421,7 +420,7 @@ Status ValidateNoCycles(const Graph& g) {
     }
   }
 
-  if (processed < total_num_nodes) {
+  if (processed < g.num_nodes()) {
     std::vector<string> nodes_in_cycle;
     for (int i = 0; i < pending_count.size() && nodes_in_cycle.size() < 3;
          ++i) {
@@ -430,7 +429,7 @@ Status ValidateNoCycles(const Graph& g) {
       }
     }
     return errors::InvalidArgument(
-        "Graph is invalid, contains a cycle with ", total_num_nodes - processed,
+        "Graph is invalid, contains a cycle with ", g.num_nodes() - processed,
         " nodes, including: ", str_util::Join(nodes_in_cycle, ", "));
   }
   return Status::OK();
