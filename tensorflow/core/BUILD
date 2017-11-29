@@ -1008,7 +1008,7 @@ filegroup(
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + if_not_android_mips_and_mips64(["-Os"]),
+    copts = tf_copts(android_optimization_level_override = None),
     linkopts = ["-lz"],
     tags = [
         "manual",
@@ -1096,8 +1096,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib_selective_registration",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + [
-        "-Os",
+    copts = tf_copts(android_optimization_level_override = None) + [
         "-DSUPPORT_SELECTIVE_REGISTRATION",
     ],
     tags = [
@@ -1118,8 +1117,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib_selective_registration_nortti",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + tf_opts_nortti_if_android() + [
-        "-Os",
+    copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android() + [
         "-DSUPPORT_SELECTIVE_REGISTRATION",
     ],
     tags = [
@@ -1198,7 +1196,7 @@ cc_library(
         "framework/tensor_testutil.h",
         "util/reporter.h",
     ],
-    copts = tf_copts() + ["-Os"],
+    copts = tf_copts(android_optimization_level_override = None),
     tags = [
         "manual",
         "notap",
