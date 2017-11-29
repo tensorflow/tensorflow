@@ -522,8 +522,10 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
     return false;
   }
 
-  if (!primitive_util::IsFloatingPointType(dot_.shape().element_type()) &&
-      !primitive_util::IsIntegralType(dot_.shape().element_type())) {
+  PrimitiveType primitive_type = dot_.shape().element_type();
+
+  if (!primitive_util::IsFloatingPointType(primitive_type) &&
+      !primitive_util::IsIntegralType(primitive_type)) {
     return false;
   }
 
@@ -573,30 +575,50 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   int64 tiling_factor = GetGemvTilingFactor();
   CHECK_GT(tiling_factor, 0);
 
+  llvm::Value* result_op = target_array_.GetBasePointer();
+  llvm::Value* lhs_op =
+      swap_operands ? rhs_array_.GetBasePointer() : lhs_array_.GetBasePointer();
+  llvm::Value* rhs_op =
+      swap_operands ? lhs_array_.GetBasePointer() : rhs_array_.GetBasePointer();
+
   if (is_column_major_matrix_vector) {
     VLOG(2) << "Emitting column major matrix-vector multiply with m = " << m
             << " and k = " << k;
-    ColumnMajorMatrixVectorProductEmitter emitter(
-        dot_.shape().element_type(), /*tile_rows=*/8,
-        /*tile_cols=*/tiling_factor, m, k,
-        swap_operands ? rhs_array_.GetBasePointer()
-                      : lhs_array_.GetBasePointer(),
-        swap_operands ? lhs_array_.GetBasePointer()
-                      : rhs_array_.GetBasePointer(),
-        target_array_.GetBasePointer(), ir_builder_);
-    emitter.Emit();
+    int64 tile_rows = 8;
+    int64 tile_cols = tiling_factor;
+
+    string kernel_name = tensorflow::strings::StrCat(
+        "col_major_gemv_", PrimitiveType_Name(primitive_type), "_", tile_rows,
+        "_", tile_cols, "_", m, "_", k);
+
+    KernelSupportLibrary::EmitAndCallOutlinedKernel(
+        ir_builder_, kernel_name, lhs_op, rhs_op, result_op,
+        [this, tile_rows, tile_cols, m, k, primitive_type](
+            llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* result_op) {
+          ColumnMajorMatrixVectorProductEmitter emitter(
+              primitive_type, tile_rows, tile_cols, m, k, lhs_op, rhs_op,
+              result_op, ir_builder_);
+          emitter.Emit();
+        });
   } else {
     VLOG(2) << "Emitting row major matrix-vector multiply with m = " << m
             << " and k = " << k;
-    RowMajorMatrixVectorProductEmitter emitter(
-        dot_.shape().element_type(), /*tile_rows=*/tiling_factor,
-        /*tile_cols=*/8, m, k,
-        swap_operands ? rhs_array_.GetBasePointer()
-                      : lhs_array_.GetBasePointer(),
-        swap_operands ? lhs_array_.GetBasePointer()
-                      : rhs_array_.GetBasePointer(),
-        target_array_.GetBasePointer(), ir_builder_);
-    emitter.Emit();
+    int64 tile_rows = tiling_factor;
+    int64 tile_cols = 8;
+
+    string kernel_name = tensorflow::strings::StrCat(
+        "row_major_gemv_", PrimitiveType_Name(primitive_type), "_", tile_rows,
+        "_", tile_cols, "_", m, "_", k);
+
+    KernelSupportLibrary::EmitAndCallOutlinedKernel(
+        ir_builder_, kernel_name, lhs_op, rhs_op, result_op,
+        [this, tile_rows, tile_cols, m, k, primitive_type](
+            llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* result_op) {
+          RowMajorMatrixVectorProductEmitter emitter(
+              primitive_type, tile_rows, tile_cols, m, k, lhs_op, rhs_op,
+              result_op, ir_builder_);
+          emitter.Emit();
+        });
   }
 
   return true;
