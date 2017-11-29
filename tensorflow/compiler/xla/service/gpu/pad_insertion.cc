@@ -49,8 +49,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
     // applies positive padding and dilation.
     PaddingConfig padding_config =
         MakeNoPaddingConfig(input->shape().dimensions_size());
-    for (size_t i = 0; i < conv_dnums.spatial_dimensions().size(); ++i) {
-      int64 dim = conv_dnums.spatial_dimensions(i);
+    for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
+      int64 dim = conv_dnums.input_spatial_dimensions(i);
       padding_config.mutable_dimensions(dim)->set_edge_padding_low(
           std::max<int64>(0LL, conv_window.dimensions(i).padding_low()));
       padding_config.mutable_dimensions(dim)->set_edge_padding_high(
@@ -81,8 +81,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
     std::vector<int64> limit_indices(input->shape().dimensions().begin(),
                                      input->shape().dimensions().end());
     std::vector<int64> strides(input->shape().dimensions_size(), 1);
-    for (size_t i = 0; i < conv_dnums.spatial_dimensions().size(); ++i) {
-      int64 dim = conv_dnums.spatial_dimensions(i);
+    for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
+      int64 dim = conv_dnums.input_spatial_dimensions(i);
       // If dimension "dim" has negative padding, increase the start index or
       // decrement the limit index by the amount of negative padding.
       start_indices[dim] +=
@@ -117,8 +117,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   for (size_t i = 0; i < kernel->shape().dimensions_size(); ++i) {
     padding_config.add_dimensions();
   }
-  for (size_t i = 0; i < conv_dnums.spatial_dimensions().size(); ++i) {
-    int64 dim = conv_dnums.spatial_dimensions(i);
+  for (size_t i = 0; i < conv_dnums.kernel_spatial_dimensions().size(); ++i) {
+    int64 dim = conv_dnums.kernel_spatial_dimensions(i);
     padding_config.mutable_dimensions(dim)->set_interior_padding(
         conv_window.dimensions(i).window_dilation() - 1);
   }
@@ -229,7 +229,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
     // later. Therefore, the amount of new padding (low or high) is the minimum
     // of the amount of old padding low and old padding high.
     int64 new_conv_padding = std::min(padding_low, padding_high);
-    int64 dim = backward_conv_dnums.spatial_dimensions(i);
+    int64 dim = backward_conv_dnums.input_spatial_dimensions(i);
     input_padding_config.mutable_dimensions(dim)->set_edge_padding_low(
         padding_low - new_conv_padding);
     input_padding_config.mutable_dimensions(dim)->set_edge_padding_high(
@@ -369,12 +369,11 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
   std::vector<int64> limit_indices(
       new_backward_conv->shape().dimensions().begin(),
       new_backward_conv->shape().dimensions().end());
-  std::vector<int64> strides(new_backward_conv->shape().dimensions_size(),
-                             1LL);
+  std::vector<int64> strides(new_backward_conv->shape().dimensions_size(), 1LL);
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
     int64 padding_low = backward_conv->window().dimensions(i).padding_low();
     int64 padding_high = backward_conv->window().dimensions(i).padding_high();
-    int64 dim = backward_conv_dnums.spatial_dimensions(i);
+    int64 dim = backward_conv_dnums.output_spatial_dimensions(i);
     if (padding_low > padding_high) {
       // If the amount of low padding (of the old backward convolution) is
       // larger, we internally pad the low end of the activations and slice

@@ -51,15 +51,15 @@ must be installed on your system:
     <pre>
     $ <b>sudo apt-get install cuda-command-line-tools</b>
     </pre>
-    
+
     and add its path to your `LD_LIBRARY_PATH` environment variable:
 
-    <pre> 
-    $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b> 
+    <pre>
+    $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b>
     </pre>
 
     For CUDA Toolkit <= 7.5 do:
-    
+
     <pre>
     $ <b>sudo apt-get install libcupti-dev</b>
     </pre>

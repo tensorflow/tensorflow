@@ -29,12 +29,12 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
+using se::dnn::AlgorithmDesc;
 using se::dnn::BatchDescriptor;
 using se::dnn::ConvolutionDescriptor;
 using se::dnn::DataLayout;
 using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
-using se::dnn::AlgorithmDesc;
 
 ConvolveScratchAllocator::ConvolveScratchAllocator(
     int device_ordinal, DeviceMemoryAllocator* memory_allocator)
@@ -131,8 +131,9 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   const int effective_num_dimensions = std::max(2, num_dimensions);
 
   CHECK_EQ(F32, output_shape_.element_type());
-  CHECK_EQ(num_dimensions, dim_nums_.spatial_dimensions_size());
+  CHECK_EQ(num_dimensions, dim_nums_.input_spatial_dimensions_size());
   CHECK_EQ(num_dimensions, dim_nums_.kernel_spatial_dimensions_size());
+  CHECK_EQ(num_dimensions, dim_nums_.output_spatial_dimensions_size());
   for (const WindowDimension& dim : window_.dimensions()) {
     CHECK_EQ(dim.padding_low(), dim.padding_high());
   }
@@ -148,7 +149,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
     // Note that the dimensions are reversed. The same holds below.
     input_descriptor.set_spatial_dim(
         static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
-        input_shape_.dimensions(dim_nums_.spatial_dimensions(dim)));
+        input_shape_.dimensions(dim_nums_.input_spatial_dimensions(dim)));
   }
 
   FilterDescriptor filter_descriptor(effective_num_dimensions);
@@ -182,7 +183,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   for (int dim = 0; dim < num_dimensions; ++dim) {
     output_descriptor.set_spatial_dim(
         static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
-        output_shape_.dimensions(dim_nums_.spatial_dimensions(dim)));
+        output_shape_.dimensions(dim_nums_.output_spatial_dimensions(dim)));
   }
 
   // Add a singleton dimension in the 1D convolution case.

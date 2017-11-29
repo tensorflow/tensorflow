@@ -1458,6 +1458,8 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertTrue(run_metadata.HasField('step_stats'))
         self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
+  # TODO(nolivia): C API doesn't yet handle marking nodes as not feedable.
+  @test_util.disable_c_api
   def testFeedShapeCompatibility(self):
     with session.Session() as sess:
       some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])
@@ -1583,7 +1585,6 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
 
-  @test_util.disable_c_api  # set_device does not work with C API
   def testRegisterFetchAndFeedConversionFunctions(self):
     class SquaredTensor(object):
       def __init__(self, tensor):
@@ -1733,11 +1734,9 @@ class SessionTest(test_util.TensorFlowTestCase):
       result = sess.run(f)
       self.assertEqual(result, 2.0)
 
-  @test_util.disable_c_api  # functions don't work with C API
   def testAddFunctionToSession(self):
     self.runTestAddFunctionToSession()
 
-  @test_util.disable_c_api  # functions don't work with C API
   def testAddFunctionToGrpcSession(self):
     server = server_lib.Server.create_local_server()
     self.runTestAddFunctionToSession(server.target)

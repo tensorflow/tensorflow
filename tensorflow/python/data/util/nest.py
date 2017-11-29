@@ -17,17 +17,22 @@
 """## Functions for working with arbitrarily nested sequences of elements.
 
 NOTE(mrry): This fork of the `tensorflow.python.util.nest` module
-makes two changes:
+makes three changes:
 
 1. It adds support for dictionaries as a level of nesting in nested structures.
 2. It removes support for lists as a level of nesting in nested structures.
+3. It adds support for `SparseTensorValue` as an atomic element.
 
-The motivation for this change is twofold:
+The motivation for this change is threefold:
 
 1. Many input-processing functions (e.g. `tf.parse_example()`) return
    dictionaries, and we would like to support them natively in datasets.
 2. It seems more natural for lists to be treated (e.g. in Dataset constructors)
    as tensors, rather than lists of (lists of...) tensors.
+3. This is needed because `SparseTensorValue` is implemented as a `namedtuple`
+   that would normally be flattened and we want to be able to create sparse
+   tensor from `SparseTensorValue's similarly to creating tensors from numpy
+   arrays.
 """
 
 from __future__ import absolute_import
@@ -38,6 +43,7 @@ import collections as _collections
 
 import six as _six
 
+from tensorflow.python.framework import sparse_tensor as _sparse_tensor
 from tensorflow.python.util.all_util import remove_undocumented
 
 
@@ -87,6 +93,8 @@ def _yield_value(iterable):
     # corresponding `OrderedDict` to pack it back).
     for key in _sorted(iterable):
       yield iterable[key]
+  elif isinstance(iterable, _sparse_tensor.SparseTensorValue):
+    yield iterable
   else:
     for value in iterable:
       yield value
@@ -116,8 +124,9 @@ def is_sequence(seq):
     True if the sequence is a not a string or list and is a
     collections.Sequence.
   """
-  return (isinstance(seq, (_collections.Sequence, dict))
-          and not isinstance(seq, (list, _six.string_types)))
+  return (isinstance(seq, (_collections.Sequence, dict)) and
+          not isinstance(seq, _sparse_tensor.SparseTensorValue) and
+          not isinstance(seq, (list, _six.string_types)))
 
 
 def flatten(nest):

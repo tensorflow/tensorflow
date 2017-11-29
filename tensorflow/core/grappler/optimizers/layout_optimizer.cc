@@ -27,13 +27,16 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace {
 
 const char kConcatConst[] = "LayoutOptimizerConcatConst";
+const char kSplitConst[] = "LayoutOptimizerSplitConst";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
 const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
@@ -60,17 +63,32 @@ std::set<string> GetOpsFormatSupported() {
       "FusedBatchNormGrad",
       "FusedConv2DBiasActivation",
       "MaxPool",
-      "MaxPoolGrad"};
+      "MaxPoolGrad",
+      "SpaceToDepth",
+      "DepthToSpace"};
   return ops_format_supported;
 }
 
 std::set<string> GetOpsFormatAgnostic() {
-  std::set<string> ops_format_agnostic = {
-      "Add",      "AddN",     "Concat", "ConcatV2",
-      "Floor",    "Identity", "Mul",    "Neg",
-      "Pad",      "RealDiv",  "Relu",   "Relu6",
-      "ReluGrad", "Sigmoid",  "Slice",  "SquaredDifference",
-      "Squeeze",  "Sub"};
+  std::set<string> ops_format_agnostic = {"Add",
+                                          "AddN",
+                                          "Concat",
+                                          "ConcatV2",
+                                          "Floor",
+                                          "Identity",
+                                          "Mul",
+                                          "Neg",
+                                          "Pad",
+                                          "RealDiv",
+                                          "Relu",
+                                          "Relu6",
+                                          "ReluGrad",
+                                          "Sigmoid",
+                                          "Slice",
+                                          "Split",
+                                          "SquaredDifference",
+                                          "Squeeze",
+                                          "Sub"};
   return ops_format_agnostic;
 }
 
@@ -109,11 +127,13 @@ bool IsMaxPoolGradV1(const NodeDef& node) {
 
 class GraphProcessor {
  public:
-  GraphProcessor(GraphDef* graph, NodeMap* node_map,
-                 const std::unordered_set<string>& nodes_to_preserve)
-      : graph_(graph),
-        node_map_(node_map),
-        nodes_to_preserve_(nodes_to_preserve) {}
+  GraphProcessor(const VirtualPlacer& virtual_placer,
+                 const std::unordered_set<string>& nodes_to_preserve,
+                 GraphDef* graph, NodeMap* node_map)
+      : virtual_placer_(virtual_placer),
+        nodes_to_preserve_(nodes_to_preserve),
+        graph_(graph),
+        node_map_(node_map) {}
 
  protected:
   NodeDef* AddNodePermConst(const string& name, const string& device,
@@ -122,7 +142,6 @@ class GraphProcessor {
     node_map_->AddNode(name, node);
     node->set_name(name);
     node->set_op("Const");
-    node->set_device(device);
     AttrValue attr_data_type;
     attr_data_type.set_type(DT_INT32);
     node->mutable_attr()->insert({"dtype", attr_data_type});
@@ -133,6 +152,13 @@ class GraphProcessor {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    string device_name;
+    if (device.empty()) {
+      device_name = virtual_placer_.get_canonical_device_name(*node);
+    } else {
+      device_name = device;
+    }
+    node->set_device(device_name);
     return node;
   }
 
@@ -142,7 +168,6 @@ class GraphProcessor {
     node_map_->AddNode(name, node);
     node->set_name(name);
     node->set_op("Const");
-    node->set_device(device);
     AttrValue attr_data_type;
     attr_data_type.set_type(dtype);
     node->mutable_attr()->insert({"dtype", attr_data_type});
@@ -151,6 +176,13 @@ class GraphProcessor {
     tensor.scalar<int>()() = value;
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    string device_name;
+    if (device.empty()) {
+      device_name = virtual_placer_.get_canonical_device_name(*node);
+    } else {
+      device_name = device;
+    }
+    node->set_device(device_name);
     return node;
   }
 
@@ -159,7 +191,6 @@ class GraphProcessor {
     node_map_->AddNode(name, node);
     node->set_name(name);
     node->set_op("Const");
-    node->set_device(device);
     AttrValue attr_data_type;
     attr_data_type.set_type(DT_INT32);
     node->mutable_attr()->insert({"dtype", attr_data_type});
@@ -172,26 +203,37 @@ class GraphProcessor {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    string device_name;
+    if (device.empty()) {
+      device_name = virtual_placer_.get_canonical_device_name(*node);
+    } else {
+      device_name = device;
+    }
+    node->set_device(device_name);
     return node;
   }
 
+  const VirtualPlacer& virtual_placer_;
+  const std::unordered_set<string>& nodes_to_preserve_;
   GraphDef* graph_;
   NodeMap* node_map_;
-  const std::unordered_set<string>& nodes_to_preserve_;
 };
 
 struct OptimizeContext {
   OptimizeContext(GraphDef* graph, NodeDef* node, NodeMap* node_map,
+                  const VirtualPlacer& virtual_placer,
                   const std::unordered_set<string>& nodes_to_preserve,
                   bool is_in_frame)
       : graph(graph),
         node(node),
         node_map(node_map),
+        virtual_placer(virtual_placer),
         nodes_to_preserve(nodes_to_preserve),
         is_in_frame(is_in_frame) {}
   GraphDef* graph;
   NodeDef* node;
   NodeMap* node_map;
+  const VirtualPlacer& virtual_placer;
   const std::unordered_set<string>& nodes_to_preserve;
   bool is_in_frame;
 };
@@ -199,8 +241,8 @@ struct OptimizeContext {
 class NodeProcessor : public GraphProcessor {
  public:
   explicit NodeProcessor(const OptimizeContext& opt_cxt)
-      : GraphProcessor(opt_cxt.graph, opt_cxt.node_map,
-                       opt_cxt.nodes_to_preserve),
+      : GraphProcessor(opt_cxt.virtual_placer, opt_cxt.nodes_to_preserve,
+                       opt_cxt.graph, opt_cxt.node_map),
         node_(opt_cxt.node),
         is_in_frame_(opt_cxt.is_in_frame) {}
   virtual ~NodeProcessor() {}
@@ -257,7 +299,25 @@ class NodeProcessor : public GraphProcessor {
   }
 
   virtual bool ShouldProcess() const {
-    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs();
+    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
+           IsOnGPU();
+  }
+
+  virtual bool IsOnGPU() const {
+    string device_name;
+    if (node_->device().empty()) {
+      device_name = virtual_placer_.get_canonical_device_name(*node_);
+    } else {
+      device_name = node_->device();
+    }
+    string device;
+    string not_used;
+    if (DeviceNameUtils::SplitDeviceName(device_name, &not_used, &device) &&
+        (StringPiece(str_util::Lowercase(device)))
+            .contains(str_util::Lowercase(DEVICE_GPU))) {
+      return true;
+    }
+    return false;
   }
 
   void UpdateAttrDataFormat() {
@@ -536,6 +596,9 @@ class BiasAddGradProcessor : public NodeProcessor {
     if (MustPreserve()) {
       return false;
     }
+    if (!IsOnGPU()) {
+      return false;
+    }
     auto input = node_map_->GetNode(node_->input(0));
     if (input) {
       if ((IsNHWC() && IsDimsFour(*input)) || IsNodeNCHWToNHWC(input->name())) {
@@ -556,7 +619,7 @@ class Conv2DProcessor : public NodeProcessor {
  protected:
   bool ShouldProcess() const override {
     return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
-           (!IsGemmUsed() || no_gemm_);
+           (!IsGemmUsed() || no_gemm_) && IsOnGPU();
   }
 
   TensorShapeProto GetShape(const string& input_name) const {
@@ -667,9 +730,23 @@ class FusedBatchNormGradProcessor : public NodeProcessor {
       : NodeProcessor(opt_cxt) {}
 
  protected:
+  bool ShouldProcess() const override {
+    return NodeProcessor::ShouldProcess() && IsTraining();
+  }
+
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos = {0, 1};
     return input_pos;
+  }
+
+ private:
+  bool IsTraining() const {
+    if (node_->attr().find("is_training") != node_->attr().end()) {
+      if (node_->attr().at("is_training").b()) {
+        return true;
+      }
+    }
+    return false;
   }
 };
 
@@ -693,7 +770,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
  protected:
   bool ShouldProcess() const override {
     return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC();
+           IsNodeAfterNCHWToNHWC() && IsOnGPU();
   }
 
   bool IsNodeAfterNCHWToNHWC() const {
@@ -701,7 +778,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
     auto node = node_map_->GetNode(node_->name());
     while (node->input_size() > 0) {
       int data_input_pos = 0;
-      if (IsConcatV1(*node)) {
+      if (IsConcatV1(*node) || IsSplit(*node)) {
         data_input_pos = 1;
       }
       node = node_map_->GetNode(node->input(data_input_pos));
@@ -746,7 +823,8 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() &&
            (Is4DOperateWithND(4) || Is4DOperateWithScalar() ||
-            Is4DOperateWithVector());
+            Is4DOperateWithVector()) &&
+           IsOnGPU();
   }
 
   std::vector<int> GetInputPos() const override {
@@ -855,7 +933,7 @@ class ConcatProcessor : public AgnosticNodeProcessor {
  protected:
   bool ShouldProcess() const override {
     return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && IsAlongDimC();
+           IsNodeAfterNCHWToNHWC() && IsAlongDimC() && IsOnGPU();
   }
 
   std::vector<int> GetInputPos() const override {
@@ -920,7 +998,7 @@ class PadProcessor : public AgnosticNodeProcessor {
  protected:
   bool ShouldProcess() const override {
     return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && PaddingSupported();
+           IsNodeAfterNCHWToNHWC() && PaddingSupported() && IsOnGPU();
   }
   Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
 
@@ -940,6 +1018,68 @@ class PadProcessor : public AgnosticNodeProcessor {
       }
     }
     return is_const && is_4D;
+  }
+};
+
+class SplitProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit SplitProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    return AgnosticNodeProcessor::ShouldProcess() && SplitSupported();
+  }
+
+  std::vector<int> GetInputPos() const override {
+    std::vector<int> input_pos = {1};
+    return input_pos;
+  }
+
+  Status CustomizedProcessing() override {
+    string split_const_name = AddNodeSplitConst()->name();
+    node_map_->AddOutput(split_const_name, node_->name());
+    *node_->mutable_input(0) = split_const_name;
+    return Status::OK();
+  }
+
+ private:
+  bool SplitSupported() const {
+    auto dim_node = node_map_->GetNode(node_->input(0));
+    if (!IsConstant(*dim_node)) {
+      return false;
+    }
+    if (HasAttribute(*dim_node, "value").ok()) {
+      auto tensor = dim_node->attr().at({"value"}).tensor();
+      if (tensor.tensor_shape().dim_size() == 0 && tensor.int_val_size() == 1) {
+        if (tensor.int_val(0) < 4 && tensor.int_val(0) >= -4) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  NodeDef* AddNodeSplitConst() {
+    auto dim_node = node_map_->GetNode(node_->input(0));
+    auto tensor = dim_node->attr().at({"value"}).tensor();
+    int value = tensor.int_val(0);
+    value = (value >= 0) ? value : value + 4;
+    if (value == 1 || value == 2) {
+      value = value + 1;
+    } else if (value == 3) {
+      value = 1;
+    }
+    // We created a copy of the node, so that we don't modify the original node,
+    // which might be used elsewhere. Note that this copy also copies the
+    // control dependency input in the case this node is inside a loop,
+    // to ensure added_node is in the same frame with the Split node.
+    NodeDef* added_node = graph_->add_node();
+    *added_node = *dim_node;
+    added_node->set_name(strings::StrCat(kSplitConst, "-", node_->name()));
+    added_node->mutable_attr()->at({"value"}).mutable_tensor()->set_int_val(
+        0, value);
+    return added_node;
   }
 };
 
@@ -1132,7 +1272,8 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
  protected:
   bool ShouldProcess() const override {
     return !MustPreserve() && IsDimsN(*node_, 2) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && IsInputConvertible() && IsAlongDimHW();
+           IsNodeAfterNCHWToNHWC() && IsInputConvertible() && IsAlongDimHW() &&
+           IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
@@ -1183,7 +1324,7 @@ class SumProcessor : public AgnosticNodeProcessor {
     auto input0 = node_map_->GetNode(node_->input(0));
     return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
            (IsDimsFour(*input0) || IsNodeNCHWToNHWC(input0->name())) &&
-           IsAlongDimNHW();
+           IsAlongDimNHW() && IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
@@ -1243,42 +1384,41 @@ class SumProcessor : public AgnosticNodeProcessor {
 class DataLayoutOptimizer : GraphProcessor {
  public:
   explicit DataLayoutOptimizer(
-      LayoutOptimizer::TuningConfig config,
-      const std::unordered_set<string>& nodes_to_preserve,
-      const string& default_device, GraphDef* graph, NodeMap* node_map)
-      : GraphProcessor(graph, node_map, nodes_to_preserve),
-        config_(config),
-        default_device_(default_device) {}
+      const VirtualPlacer& virtual_placer,
+      const LayoutOptimizer::TuningConfig& config,
+      const std::unordered_set<string>& nodes_to_preserve, GraphDef* graph,
+      NodeMap* node_map)
+      : GraphProcessor(virtual_placer, nodes_to_preserve, graph, node_map),
+        config_(config) {}
 
   Status Optimize() {
-    LOG(INFO) << "Number of nodes for original graph: " << graph_->node_size();
+    VLOG(1) << "Number of nodes for original graph: " << graph_->node_size();
     TF_RETURN_IF_ERROR(Expand());
-    LOG(INFO) << "Number of nodes after Expand: " << graph_->node_size();
+    VLOG(1) << "Number of nodes after Expand: " << graph_->node_size();
     TF_RETURN_IF_ERROR(Collapse());
-    LOG(INFO) << "Number of nodes after Collapse: " << graph_->node_size();
+    VLOG(1) << "Number of nodes after Collapse: " << graph_->node_size();
     return Status::OK();
   }
 
  private:
   NodeDef* AddNodePermNHWCToNCHW() {
-    return AddNodePermConst(kPermNHWCToNCHW, default_device_, {0, 3, 1, 2});
+    return AddNodePermConst(kPermNHWCToNCHW, "", {0, 3, 1, 2});
   }
 
   NodeDef* AddNodePermNCHWToNHWC() {
-    return AddNodePermConst(kPermNCHWToNHWC, default_device_, {0, 2, 3, 1});
+    return AddNodePermConst(kPermNCHWToNHWC, "", {0, 2, 3, 1});
   }
 
   NodeDef* AddNodeConcatConst() {
-    return AddNodeConstScalar(kConcatConst, default_device_, DT_INT32, 1);
+    return AddNodeConstScalar(kConcatConst, "", DT_INT32, 1);
   }
 
   NodeDef* AddNodeGatherAxisConst() {
-    return AddNodeConstScalar(kGatherAxisConst, default_device_, DT_INT32, 0);
+    return AddNodeConstScalar(kGatherAxisConst, "", DT_INT32, 0);
   }
 
   NodeDef* AddNodeReductionConst() {
-    return GraphProcessor::AddNodeReductionConst(kReductionConst,
-                                                 default_device_);
+    return GraphProcessor::AddNodeReductionConst(kReductionConst, "");
   }
 
   // Expand all nodes which is in NHWC, but supports NCHW or is layout agnostic.
@@ -1295,8 +1435,8 @@ class DataLayoutOptimizer : GraphProcessor {
           ops_format_supported.end()) {
         auto node = graph_->mutable_node(i);
         bool is_in_frame = !frames[node].empty();
-        OptimizeContext opt_cxt(graph_, node, node_map_, nodes_to_preserve_,
-                                is_in_frame);
+        OptimizeContext opt_cxt(graph_, node, node_map_, virtual_placer_,
+                                nodes_to_preserve_, is_in_frame);
         std::unique_ptr<NodeProcessor> node_processor;
         if (IsAvgPoolGrad(*node)) {
           node_processor.reset(new AvgPoolGradProcessor(opt_cxt));
@@ -1343,8 +1483,8 @@ class DataLayoutOptimizer : GraphProcessor {
             ops_format_agnostic.end()) {
           auto node = graph_->mutable_node(i);
           bool is_in_frame = !frames[node].empty();
-          OptimizeContext opt_cxt(graph_, node, node_map_, nodes_to_preserve_,
-                                  is_in_frame);
+          OptimizeContext opt_cxt(graph_, node, node_map_, virtual_placer_,
+                                  nodes_to_preserve_, is_in_frame);
           std::unique_ptr<NodeProcessor> node_processor;
           if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
@@ -1367,6 +1507,8 @@ class DataLayoutOptimizer : GraphProcessor {
             } else {
               node_processor.reset(new SliceProcessor(opt_cxt));
             }
+          } else if (IsSplit(*node)) {
+            node_processor.reset(new SplitProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
           } else if (IsSum(*node)) {
@@ -1419,8 +1561,7 @@ class DataLayoutOptimizer : GraphProcessor {
     return Status::OK();
   }
 
-  LayoutOptimizer::TuningConfig config_;
-  string default_device_;
+  const LayoutOptimizer::TuningConfig& config_;
 };
 
 int GetNumTranspose(const GraphDef& graph) {
@@ -1430,7 +1571,7 @@ int GetNumTranspose(const GraphDef& graph) {
       number++;
     }
   }
-  LOG(INFO) << "Number of Transpose nodes: " << number;
+  VLOG(1) << "Number of Transpose nodes: " << number;
   return number;
 }
 
@@ -1455,7 +1596,6 @@ int GetNumGPUs(const Cluster& cluster) {
 
 Status LayoutOptimizer::Tune(const GrapplerItem& item,
                              const GraphProperties& graph_properties,
-                             const string& default_device,
                              const TuningConfig& config, GraphDef* output) {
   auto status = graph_properties.AnnotateOutputShapes(output);
   if (!status.ok()) {
@@ -1463,8 +1603,8 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
     return status;
   }
   NodeMap node_map(output);
-  DataLayoutOptimizer layout_optimizer(config, nodes_to_preserve_,
-                                       default_device, output, &node_map);
+  DataLayoutOptimizer layout_optimizer(*virtual_placer_, config,
+                                       nodes_to_preserve_, output, &node_map);
   status = layout_optimizer.Optimize();
   return status;
 }
@@ -1477,6 +1617,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
+  virtual_placer_.reset(new VirtualPlacer(cluster));
   nodes_to_preserve_ = item.NodesToPreserve();
   GraphProperties graph_properties(item);
   auto status = graph_properties.InferStatically();
@@ -1487,20 +1628,13 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   TuningConfig config;
   config.no_gemm = false;
-  string default_device = "/job:localhost/replica:0/task:0/cpu:0";
-  if (cluster) {
-    if (!cluster->GetDevices().empty()) {
-      default_device = cluster->GetDevices().begin()->first;
-    }
-  }
-
-  status = Tune(item, graph_properties, default_device, config, output);
+  status = Tune(item, graph_properties, config, output);
   // This is based on an empirical observation that if the introduced Transpose
   // nodes is more than 30, not using GEMM implementation would result in better
   // performance.
   if (status.ok() && GetNumTranspose(*output) > 30) {
     config.no_gemm = true;
-    status = Tune(item, graph_properties, default_device, config, output);
+    status = Tune(item, graph_properties, config, output);
   }
 
   if (!status.ok()) {

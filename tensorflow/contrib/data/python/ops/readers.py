@@ -164,7 +164,7 @@ def read_batch_features(file_pattern,
       shuffling but would increase memory usage and startup time.
 
   Returns:
-    A dict from keys in features to Tensor or SparseTensor objects.
+    A dict from keys in features to `Tensor` or `SparseTensor` objects.
   """
   filenames = _get_file_names(file_pattern, randomize_input)
   if reader_args:

@@ -1624,8 +1624,11 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     ConvolutionDimensionNumbers dnums;
     std::vector<int64> in_dims;
     int in_channel_idx = -1;
-    dnums.add_spatial_dimensions(-1);  // filled in later
-    dnums.add_spatial_dimensions(-1);  // filled in later
+    // filled in later
+    dnums.add_input_spatial_dimensions(-1);
+    dnums.add_output_spatial_dimensions(-1);
+    dnums.add_input_spatial_dimensions(-1);
+    dnums.add_output_spatial_dimensions(-1);
     for (int i = 0; i < strlen(options.dim_order); ++i) {
       char ch = options.dim_order[i];
       if (ch == 'N') {
@@ -1633,10 +1636,12 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         dnums.set_output_batch_dimension(i);
         in_dims.push_back(options.in_batch);
       } else if (ch == 'H') {
-        dnums.set_spatial_dimensions(0, i);
+        dnums.set_input_spatial_dimensions(0, i);
+        dnums.set_output_spatial_dimensions(0, i);
         in_dims.push_back(options.in_height);
       } else if (ch == 'W') {
-        dnums.set_spatial_dimensions(1, i);
+        dnums.set_input_spatial_dimensions(1, i);
+        dnums.set_output_spatial_dimensions(1, i);
         in_dims.push_back(options.in_width);
       } else if (ch == 'C') {
         dnums.set_input_feature_dimension(i);

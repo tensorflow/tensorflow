@@ -131,9 +131,12 @@ class FilterDatasetTest(test.TestCase):
     self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testSparse(self):
+
     def _map_fn(i):
-      return sparse_tensor.SparseTensor(
-          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+      return sparse_tensor.SparseTensorValue(
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1])),
+          dense_shape=np.array([1, 1])), i
 
     def _filter_fn(_, i):
       return math_ops.equal(i % 2, 0)
@@ -148,10 +151,8 @@ class FilterDatasetTest(test.TestCase):
       sess.run(init_op)
       for i in range(5):
         actual = sess.run(get_next)
-        expected = sparse_tensor.SparseTensor(
-            indices=[[0, 0]], values=[i*2], dense_shape=[1, 1])
         self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
-        self.assertSparseValuesEqual(actual, expected.eval())
+        self.assertSparseValuesEqual(actual, _map_fn(i * 2)[0])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
