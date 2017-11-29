@@ -146,7 +146,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         FunctionLibraryRuntime::Options opts;
         opts.step_id = CapturedFunction::generate_step_id();
         ScopedStepContainer step_container(
-            opts.step_id, [this, ctx](const string& name) {
+            opts.step_id, [this](const string& name) {
               dataset()
                   ->captured_func_->resource_manager()
                   ->Cleanup(name)
