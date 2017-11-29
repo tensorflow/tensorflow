@@ -6129,6 +6129,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "random_dataset_op",
+    srcs = ["random_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "range_dataset_op",
     srcs = ["range_dataset_op.cc"],
     deps = [
@@ -6295,6 +6307,7 @@ tf_kernel_library(
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
+        ":random_dataset_op",
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",
