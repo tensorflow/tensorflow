@@ -15,6 +15,21 @@ import numpy as np
 
 class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
+  def testConv1x1_Stride2x1_In1x5(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.Session() as sess:
+        pa = tf.placeholder(tf.float32, [1,1,5,1], name="a")
+        pb = tf.placeholder(tf.float32, [1,1,1,1], name="b")
+        output = nn_ops.convolution(pa, pb, strides=[1,2], padding="VALID")
+
+        fd = {
+          pa: [[[[1], [2], [3], [4], [5]]]],
+          pb: [[[[10]]]]
+        }
+        result = sess.run(output, fd)
+        self.assertAllClose(result,
+                            [[[[10], [30], [50]]]])
+
     def testConv3x3_Pad1x1(self):
         with tf.device("/device:XLA_IPU:0"):
             with tf.Session() as sess:

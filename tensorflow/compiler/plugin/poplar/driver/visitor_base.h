@@ -51,6 +51,8 @@ public:
 
   Status HandleConcatenate(HloInstruction* inst) override;
 
+  Status HandleBitcastConvert(HloInstruction* inst) override;
+
   Status HandleCopy(HloInstruction* inst) override;
 
   Status HandleDot(HloInstruction* inst) override;

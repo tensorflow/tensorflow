@@ -145,6 +145,17 @@ Status BaseVisitor::HandleConcatenate(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleBitcastConvert(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+  poplar::Type type;
+  TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
+  out = out.reinterpret(type);
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  return Status::OK();
+}
+
 Status BaseVisitor::HandleDot(HloInstruction* inst) {
   return Unimplemented(inst);
 }
