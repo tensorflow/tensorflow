@@ -275,7 +275,7 @@ py_test(
 
 py_test(
     name = "map_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
