@@ -54,7 +54,8 @@ class GpuExecutable : public Executable {
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
                 std::unique_ptr<const HloModule> hlo_module,
                 std::unique_ptr<const BufferAssignment> assignment,
-                HloCostAnalysis::ShapeSizeFunction shape_size_function);
+                std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -94,8 +95,6 @@ class GpuExecutable : public Executable {
     // TODO(b/62952745) Implement equality test on GPU executable.
     return Unimplemented("Equality test on GPU executable is not implemented.");
   }
-
-  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
  private:
   // If `block_host_until_done` is false, execution will not block the host
@@ -139,9 +138,6 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::unique_ptr<const BufferAssignment> assignment_;
-
-  // Function to compute the size of a given Shape, in bytes.
-  const HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

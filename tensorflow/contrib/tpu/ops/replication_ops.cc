@@ -24,7 +24,9 @@ using shape_inference::ShapeHandle;
 
 REGISTER_OP("TPUReplicateMetadata")
     .Attr("num_replicas: int >= 0")
-    .Attr("global_tpu_id: list(int) = []")
+    .Attr("topology: string = \"\"")
+    .Attr("device_assignment: list(int) = []")
+    .Attr("computation_shape: list(int) = []")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("TPUReplicatedInput")
@@ -64,7 +66,9 @@ REGISTER_OP("TPUReplicatedOutput")
 REGISTER_OP("TPUReplicate")
     .Attr("computation: func")
     .Attr("num_replicas: int >= 1")
-    .Attr("global_tpu_id: list(int) = []")
+    .Attr("topology: string = \"\"")
+    .Attr("device_assignment: list(int) = []")
+    .Attr("computation_shape: list(int) = []")
     .Attr("Tinputs: list(type) >= 0")
     .Attr("Tbroadcast_inputs: list(type) >= 0")
     .Attr("NumVariables: int >= 0")
@@ -79,7 +83,14 @@ Runs replicated computations on a distributed TPU system.
 
 computation: a function containing the computation to run.
 num_replicas: the number of replicas of the computation to run.
-global_tpu_id: map from device to global tpu id.
+topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
+computation_shape: a [mesh_dimension] array describing the shape of each
+  computation replica in numbers of cores in the TPU mesh.
+device_assignment: a flattened array with shape
+  [replica] + computation_shape + [mesh_dimension] that maps the coordinates of
+  logical cores in each replica of a computation to physical coordinates in
+  the TPU topology.
 Tinputs: the types of the arguments to 'computation'.
 inputs: the inputs to 'computation', flattened, in replica-major order.
 Tbroadcast_inputs: the types of the additional arguments to broadcast to all

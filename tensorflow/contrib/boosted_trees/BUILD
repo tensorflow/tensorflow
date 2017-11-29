@@ -359,8 +359,8 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:example_partitioner",
-        "//tensorflow/contrib/boosted_trees/lib:feature-column-handlers",
         "//tensorflow/contrib/boosted_trees/lib:models",
+        "//tensorflow/contrib/boosted_trees/lib:node-stats",
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
@@ -404,10 +404,12 @@ tf_kernel_library(
     name = "split_handler_ops_kernels",
     srcs = ["kernels/split_handler_ops.cc"],
     deps = [
-        "//tensorflow/contrib/boosted_trees/lib:feature-column-handlers",
+        "//tensorflow/contrib/boosted_trees/lib:node-stats",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )

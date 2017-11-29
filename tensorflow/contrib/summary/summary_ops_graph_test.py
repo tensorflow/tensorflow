@@ -16,13 +16,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 import six
 
 from tensorflow.contrib.summary import summary_ops
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_util
 
@@ -46,6 +52,49 @@ class DbTest(summary_test_util.SummaryDbTest):
         summary_ops.initialize(graph=graph)
     six.assertCountEqual(self, [name],
                          get_all(self.db, 'SELECT node_name FROM Nodes'))
+
+  def testSummaryGraphModeCond(self):
+    with ops.Graph().as_default(), self.test_session():
+      training_util.get_or_create_global_step()
+      logdir = tempfile.mkdtemp()
+      with summary_ops.create_summary_file_writer(
+          logdir, max_queue=0,
+          name='t2').as_default(), summary_ops.always_record_summaries():
+        summary_ops.initialize()
+        training_util.get_or_create_global_step().initializer.run()
+        def f():
+          summary_ops.scalar('scalar', 2.0)
+          return constant_op.constant(True)
+        pred = array_ops.placeholder(dtypes.bool)
+        x = control_flow_ops.cond(pred, f,
+                                  lambda: constant_op.constant(False))
+        x.eval(feed_dict={pred: True})
+
+      events = summary_test_util.events_from_logdir(logdir)
+      self.assertEqual(len(events), 2)
+      self.assertEqual(events[1].summary.value[0].tag, 'cond/scalar')
+
+  def testSummaryGraphModeWhile(self):
+    with ops.Graph().as_default(), self.test_session():
+      training_util.get_or_create_global_step()
+      logdir = tempfile.mkdtemp()
+      with summary_ops.create_summary_file_writer(
+          logdir, max_queue=0,
+          name='t2').as_default(), summary_ops.always_record_summaries():
+        summary_ops.initialize()
+        training_util.get_or_create_global_step().initializer.run()
+        def body(unused_pred):
+          summary_ops.scalar('scalar', 2.0)
+          return constant_op.constant(False)
+        def cond(pred):
+          return pred
+        pred = array_ops.placeholder(dtypes.bool)
+        x = control_flow_ops.while_loop(cond, body, [pred])
+        x.eval(feed_dict={pred: True})
+
+      events = summary_test_util.events_from_logdir(logdir)
+      self.assertEqual(len(events), 2)
+      self.assertEqual(events[1].summary.value[0].tag, 'while/scalar')
 
 
 if __name__ == '__main__':

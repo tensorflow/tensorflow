@@ -39,7 +39,7 @@ const char kTestMp3Filename[] =
 
 // Set to true via a command line flag iff the test is expected to have FFmpeg
 // installed.
-mutex mu;
+mutex mu(LINKER_INITIALIZED);
 bool should_ffmpeg_be_installed GUARDED_BY(mu) = false;
 
 string ParseTestFlags(int* argc, char** argv) {

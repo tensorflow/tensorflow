@@ -34,7 +34,7 @@ def _rank_resample(weights, biases, inputs, sampled_values, num_resampled,
 
       log(sum_j exp((w_i * x_j + b_i) / resampling_temperature))
 
-  where w_i, b_i are the weight and bias of the i-th class, repsectively,
+  where w_i, b_i are the weight and bias of the i-th class, respectively,
   and j ranges over the rows of `inputs`. For efficiency, we rearrange the
   computation to
 

@@ -52,6 +52,7 @@ namespace xla {
   V(kBatchNormInference, "batch-norm-inference")             \
   V(kBatchNormTraining, "batch-norm-training")               \
   V(kBitcast, "bitcast")                                     \
+  V(kBitcastConvert, "bitcast-convert")                      \
   V(kBroadcast, "broadcast")                                 \
   V(kCall, "call", kHloOpcodeIsVariadic)                     \
   V(kCeil, "ceil")                                           \

@@ -395,8 +395,10 @@ TEST_F(ShapeInferenceTest, Convolve) {
   dnums.set_output_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
   dnums.set_output_feature_dimension(1);
-  dnums.add_spatial_dimensions(2);
-  dnums.add_spatial_dimensions(3);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.add_output_spatial_dimensions(3);
 
   // Dimension order: x1, batch, feature, x0
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 12, 11, 3});
@@ -437,8 +439,10 @@ TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
   dnums.set_output_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
   dnums.set_output_feature_dimension(1);
-  dnums.add_spatial_dimensions(2);
-  dnums.add_spatial_dimensions(3);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.add_output_spatial_dimensions(3);
 
   // Dimension order: x1, batch, feature, x0
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 12, 11, 3});
@@ -480,8 +484,10 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
   dnums.set_output_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
   dnums.set_output_feature_dimension(1);
-  dnums.add_spatial_dimensions(2);
-  dnums.add_spatial_dimensions(3);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.add_output_spatial_dimensions(3);
 
   // Dimension order: x1, batch, feature, x0
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 12, 11, 4});
@@ -524,8 +530,10 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   dnums.set_output_batch_dimension(3);
   dnums.set_input_feature_dimension(2);
   dnums.set_output_feature_dimension(2);
-  dnums.add_spatial_dimensions(0);
-  dnums.add_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(0);
+  dnums.add_output_spatial_dimensions(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
   dnums.set_kernel_input_feature_dimension(0);  // duplicated with kernel_x0
   dnums.set_kernel_output_feature_dimension(3);
   dnums.add_kernel_spatial_dimensions(0);

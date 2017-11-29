@@ -52,10 +52,11 @@ class ParallelCpuExecutable : public Executable {
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<const HloModule> hlo_module,
       std::unique_ptr<const HloInstructionMap<string>> function_names,
-      std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
       std::unordered_map<const HloInstruction*,
                          std::unique_ptr<unsigned char[]>>
-          aligned_constants);
+          aligned_constants,
+      std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~ParallelCpuExecutable() override {}
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
@@ -94,8 +95,6 @@ class ParallelCpuExecutable : public Executable {
     return Unimplemented(
         "Equality test on CPU parallel executable is not implemented.");
   }
-
-  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
  private:
   // Allocate buffers required for execution and assign them to the elements of
@@ -142,9 +141,6 @@ class ParallelCpuExecutable : public Executable {
 
   // Map containing the JITted function names for each HLO instruction.
   const std::unique_ptr<const HloInstructionMap<string>> function_names_;
-
-  // Maps HLOs to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;
 
   // Map from HLO Constant instructions to a pointer to their literal data.
   // The data stored in the protocol buffer might be insufficiently aligned,

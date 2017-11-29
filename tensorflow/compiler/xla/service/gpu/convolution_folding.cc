@@ -74,9 +74,10 @@ MatchBackwardFilter(HloInstruction* conv) {
       conv->convolution_dimension_numbers();
   auto input_batch_dim = conv_dnums.input_batch_dimension();
   auto input_feature_dim = conv_dnums.input_feature_dimension();
+  auto input_spatial_dims = conv_dnums.input_spatial_dimensions();
   auto output_batch_dim = conv_dnums.output_batch_dimension();
   auto output_feature_dim = conv_dnums.output_feature_dimension();
-  auto spatial_dims = conv_dnums.spatial_dimensions();
+  auto output_spatial_dims = conv_dnums.output_spatial_dimensions();
 
   for (const WindowDimension& window_dim : conv->window().dimensions()) {
     if (window_dim.stride() != 1) {
@@ -108,11 +109,11 @@ MatchBackwardFilter(HloInstruction* conv) {
   //
   // Compute the window of the backward convolution.
   Window backward_conv_window;
-  for (int i = 0; i < spatial_dims.size(); ++i) {
+  for (int i = 0; i < input_spatial_dims.size(); ++i) {
     WindowDimension* dim = backward_conv_window.add_dimensions();
     // The window size of the backward convolution equals the output size of the
     // forward convolution.
-    int64 filter_size = conv->shape().dimensions(spatial_dims[i]);
+    int64 filter_size = conv->shape().dimensions(output_spatial_dims[i]);
     dim->set_size(filter_size);
     // The window stride equals the window dilation of the forward convolution.
     dim->set_stride(conv->window().dimensions(i).window_dilation());
@@ -120,7 +121,8 @@ MatchBackwardFilter(HloInstruction* conv) {
     // activations.
     dim->set_padding_low(conv->window().dimensions(i).padding_low());
 
-    int64 input_size = conv->operand(0)->shape().dimensions(spatial_dims[i]);
+    int64 input_size =
+        conv->operand(0)->shape().dimensions(input_spatial_dims[i]);
     int64 output_size = conv->window().dimensions(i).size();
     // Compute the range of the amount of valid high padding. We first compute
     // min_padding_high, the amount of padding on the right/bottom to ensure the
@@ -189,8 +191,11 @@ MatchBackwardFilter(HloInstruction* conv) {
   backward_conv_dnums.set_input_feature_dimension(input_batch_dim);
   backward_conv_dnums.set_output_batch_dimension(output_feature_dim);
   backward_conv_dnums.set_output_feature_dimension(output_batch_dim);
-  for (int i = 0; i < spatial_dims.size(); ++i) {
-    backward_conv_dnums.add_spatial_dimensions(spatial_dims[i]);
+  for (int i = 0; i < input_spatial_dims.size(); ++i) {
+    backward_conv_dnums.add_input_spatial_dimensions(input_spatial_dims[i]);
+  }
+  for (int i = 0; i < output_spatial_dims.size(); ++i) {
+    backward_conv_dnums.add_output_spatial_dimensions(output_spatial_dims[i]);
   }
   // The dimension numbering of the output of the forward convolution (before
   // transposition) is the same as that of the activations (according to the
@@ -205,9 +210,9 @@ MatchBackwardFilter(HloInstruction* conv) {
       PositionInContainer(transpose->dimensions(), output_batch_dim));
   backward_conv_dnums.set_kernel_output_feature_dimension(
       PositionInContainer(transpose->dimensions(), output_feature_dim));
-  for (int i = 0; i < spatial_dims.size(); ++i) {
+  for (int i = 0; i < output_spatial_dims.size(); ++i) {
     backward_conv_dnums.add_kernel_spatial_dimensions(
-        PositionInContainer(transpose->dimensions(), spatial_dims[i]));
+        PositionInContainer(transpose->dimensions(), output_spatial_dims[i]));
   }
 
   return std::make_tuple(true, std::vector<HloInstruction*>({transpose, conv}),
@@ -272,12 +277,14 @@ MatchBackwardInput(HloInstruction* conv) {
     }
   }
 
-  const auto& spatial_dims = dnums.spatial_dimensions();
-  CHECK_EQ(conv->window().dimensions().size(), spatial_dims.size());
+  const auto& input_spatial_dims = dnums.input_spatial_dimensions();
+  const auto& output_spatial_dims = dnums.output_spatial_dimensions();
+  CHECK_EQ(conv->window().dimensions().size(), input_spatial_dims.size());
+  CHECK_EQ(output_spatial_dims.size(), input_spatial_dims.size());
 
   const Window& old_window = conv->window();
   Window new_window = old_window;
-  for (size_t i = 0; i < spatial_dims.size(); ++i) {
+  for (size_t i = 0; i < input_spatial_dims.size(); ++i) {
     // Restore backward convolution's padding config from the matched pattern.
     // See the comment in tensorflow/core/kernels/conv_grad_tuple_ops.cc
     // for how we convert backward input convolution to a variant of forward
@@ -310,8 +317,9 @@ MatchBackwardInput(HloInstruction* conv) {
     // end at the border. The maximum amount (max_padding_high) equals
     // min_padding_high+stride-1 -- max_padding_high+1 would cause the output
     // size to change.
-    auto unpadded_input_size = conv->shape().dimensions(spatial_dims[i]);
-    auto output_size = conv->operand(0)->shape().dimensions(spatial_dims[i]);
+    auto unpadded_input_size = conv->shape().dimensions(output_spatial_dims[i]);
+    auto output_size =
+        conv->operand(0)->shape().dimensions(input_spatial_dims[i]);
     auto padded_input_size = kernel_size + dim->stride() * (output_size - 1);
     auto total_pad_size = padded_input_size - unpadded_input_size;
     auto min_padding_high = total_pad_size - backward_padding_low;

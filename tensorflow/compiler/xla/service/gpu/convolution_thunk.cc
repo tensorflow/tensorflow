@@ -29,12 +29,12 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
+using se::dnn::AlgorithmDesc;
 using se::dnn::BatchDescriptor;
 using se::dnn::ConvolutionDescriptor;
 using se::dnn::DataLayout;
 using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
-using se::dnn::AlgorithmDesc;
 
 ConvolveScratchAllocator::ConvolveScratchAllocator(
     int device_ordinal, DeviceMemoryAllocator* memory_allocator)
@@ -131,8 +131,9 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   const int effective_num_dimensions = std::max(2, num_dimensions);
 
   CHECK_EQ(F32, output_shape_.element_type());
-  CHECK_EQ(num_dimensions, dim_nums_.spatial_dimensions_size());
+  CHECK_EQ(num_dimensions, dim_nums_.input_spatial_dimensions_size());
   CHECK_EQ(num_dimensions, dim_nums_.kernel_spatial_dimensions_size());
+  CHECK_EQ(num_dimensions, dim_nums_.output_spatial_dimensions_size());
   for (const WindowDimension& dim : window_.dimensions()) {
     CHECK_EQ(dim.padding_low(), dim.padding_high());
   }
@@ -148,7 +149,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
     // Note that the dimensions are reversed. The same holds below.
     input_descriptor.set_spatial_dim(
         static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
-        input_shape_.dimensions(dim_nums_.spatial_dimensions(dim)));
+        input_shape_.dimensions(dim_nums_.input_spatial_dimensions(dim)));
   }
 
   FilterDescriptor filter_descriptor(effective_num_dimensions);
@@ -182,7 +183,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   for (int dim = 0; dim < num_dimensions; ++dim) {
     output_descriptor.set_spatial_dim(
         static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
-        output_shape_.dimensions(dim_nums_.spatial_dimensions(dim)));
+        output_shape_.dimensions(dim_nums_.output_spatial_dimensions(dim)));
   }
 
   // Add a singleton dimension in the 1D convolution case.
@@ -258,22 +259,19 @@ tensorflow::Status ConvolutionThunk::Convolve(
 }
 
 std::vector<AlgorithmDesc> ConvolutionThunk::GetAlgorithms(
-    se::StreamExecutor* stream_exec) const {
+    bool with_winograd_nonfused, se::StreamExecutor* stream_exec) const {
   std::vector<AlgorithmDesc> algorithms;
-  // TODO(yangzihao): Currently disable the use of winograd nonfused in XLA
-  // by default. Should send in conv parameters and enable it when
-  // ShouldIncludeWinogradNonfusedAlgo() returns true.
   switch (convolution_kind_) {
     case ConvolutionKind::kBackwardFilter:
       CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(
-          /*with_winograd_nonfused=*/false, &algorithms));
+          with_winograd_nonfused, &algorithms));
       break;
     case ConvolutionKind::kBackwardInput:
       CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(
-          /*with_winograd_nonfused=*/false, &algorithms));
+          with_winograd_nonfused, &algorithms));
       break;
     case ConvolutionKind::kForward:
-      CHECK(stream_exec->GetConvolveAlgorithms(/*with_winograd_nonfused=*/false,
+      CHECK(stream_exec->GetConvolveAlgorithms(with_winograd_nonfused,
                                                &algorithms));
       break;
   }
@@ -285,6 +283,26 @@ static string AlgorithmToString(const se::dnn::AlgorithmDesc& algo) {
     return tensorflow::strings::StrCat(algo.algo_id(), "+TC");
   }
   return tensorflow::strings::StrCat(algo.algo_id());
+}
+
+// Determines whether we can safely perform a winograd non-fused convolution for
+// the given input and output descriptors.  This works around b/68264959, an
+// integer overflow in cuDNNv5 and cuDNNv6.
+static bool ShouldIncludeWinogradNonfusedAlgo(
+    const BatchDescriptor& input_descriptor,
+    const BatchDescriptor& output_descriptor) {
+  int64 batch = input_descriptor.count();
+  int64 in_depths = input_descriptor.feature_map_count();
+  int64 in_rows = input_descriptor.height();
+  int64 in_cols = input_descriptor.width();
+  int64 out_depths = output_descriptor.feature_map_count();
+
+  int64 total_size = 16 * std::ceil(batch / 16.0) *
+                     std::max(in_depths, out_depths) * in_cols * in_rows *
+                     sizeof(float);
+  int64 threshold = 1L << 31;
+
+  return total_size < threshold;
 }
 
 tensorflow::Status ConvolutionThunk::ConvolveWithTune(
@@ -303,9 +321,13 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
                "ConvolutionThunk: "
             << this;
 
+    bool with_winograd_nonfused =
+        ShouldIncludeWinogradNonfusedAlgo(input_descriptor, output_descriptor);
+
     se::dnn::ProfileResult best_result;
     se::dnn::ProfileResult best_result_without_scratch;
-    std::vector<AlgorithmDesc> algorithms = GetAlgorithms(stream->parent());
+    std::vector<AlgorithmDesc> algorithms =
+        GetAlgorithms(with_winograd_nonfused, stream->parent());
     for (auto algorithm : algorithms) {
       ConvolveScratchAllocator scratch_allocator(
           buffer_allocations.device_ordinal(),

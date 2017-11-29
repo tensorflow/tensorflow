@@ -164,7 +164,7 @@ def read_batch_features(file_pattern,
       shuffling but would increase memory usage and startup time.
 
   Returns:
-    A dict from keys in features to Tensor or SparseTensor objects.
+    A dict from keys in features to `Tensor` or `SparseTensor` objects.
   """
   filenames = _get_file_names(file_pattern, randomize_input)
   if reader_args:
@@ -268,6 +268,10 @@ class _SqlDataset(dataset_ops.Dataset):
                                        self._data_source_name, self._query,
                                        nest.flatten(self.output_types),
                                        nest.flatten(self.output_shapes))
+
+  @property
+  def output_classes(self):
+    return nest.map_structure(lambda _: ops.Tensor, self._output_types)
 
   @property
   def output_shapes(self):

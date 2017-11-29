@@ -128,8 +128,6 @@ class ZipDatasetOp : public DatasetOpKernel {
         if (*end_of_sequence) {
           out_tensors->clear();
           input_impls_.clear();
-        } else {
-          *end_of_sequence = false;
         }
         return Status::OK();
       }

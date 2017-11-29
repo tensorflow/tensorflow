@@ -641,40 +641,35 @@ def strided_slice(input_,
                   name=None):
   """Extracts a strided slice of a tensor (generalized python array indexing).
 
-  **Most users will want to use @{tf.Tensor.__getitem__} and
-  @{tf.Variable.__getitem__}.** That allows  NumPy style slicing syntax (i.e.
-  `tensor[..., 3:4:-1, tf.newaxis, 3]`).
-  This op is the low-level interface that are used to implement operators.
-  Those interfaces are much more friendly, and highly recommended.
+  **Instead of calling this op directly most users will want to use the
+  NumPy-style slicing syntax (e.g. `tensor[..., 3:4:-1, tf.newaxis, 3]`), which
+  is supported via @{tf.Tensor.__getitem__} and @{tf.Variable.__getitem__}.**
+  The interface of this op is a low-level encoding of the slicing syntax.
 
-  To a first order, this operation extracts a slice of size `end - begin`
-  from a tensor `input`
-  starting at the location specified by `begin`. The slice continues by adding
-  `stride` to the `begin` index until all dimensions are not less than `end`.
-  Note that components of stride can be negative, which causes a reverse
-  slice.
+  Roughly speaking, this op extracts a slice of size `(end-begin)/stride`
+  from the given `input_` tensor. Starting at the location specified by `begin`
+  the slice continues by adding `stride` to the index until all dimensions are
+  not less than `end`.
+  Note that a stride can be negative, which causes a reverse slice.
 
-  This operation can be thought of an encoding of a numpy style sliced
-  range. Given a python slice input[<spec0>, <spec1>, ..., <specn>]
+  Given a Python slice `input[spec0, spec1, ..., specn]`,
   this function will be called as follows.
 
-  `begin`, `end`, and `strides` will be all length n. n is in general
-  not the same dimensionality as `input`.
+  `begin`, `end`, and `strides` will be vectors of length n.
+  n in general is not equal to the rank of the `input_` tensor.
 
-  For the ith spec,
-  `begin_mask`, `end_mask`, `ellipsis_mask`, `new_axis_mask`,
-  and `shrink_axis_mask` will have the ith bit corresponding to
+  In each mask field (`begin_mask`, `end_mask`, `ellipsis_mask`,
+  `new_axis_mask`, `shrink_axis_mask`) the ith bit will correspond to
   the ith spec.
 
-  If the ith bit of `begin_mask` is non-zero, `begin[i]` is ignored and
+  If the ith bit of `begin_mask` is set, `begin[i]` is ignored and
   the fullest possible range in that dimension is used instead.
   `end_mask` works analogously, except with the end range.
 
   `foo[5:,:,:3]` on a 7x8x9 tensor is equivalent to `foo[5:7,0:8,0:3]`.
   `foo[::-1]` reverses a tensor with shape 8.
 
-
-  If the ith bit of `ellipsis_mask` is non-zero, as many unspecified dimensions
+  If the ith bit of `ellipsis_mask` is set, as many unspecified dimensions
   as needed will be inserted between other dimensions. Only one
   non-zero bit is allowed in `ellipsis_mask`.
 
@@ -682,20 +677,21 @@ def strided_slice(input_,
   equivalent to `foo[3:5,:,:,4:5]` and
   `foo[3:5,...]` is equivalent to `foo[3:5,:,:,:]`.
 
-  If the ith bit of `new_axis_mask` is one, then `begin`,
+  If the ith bit of `new_axis_mask` is set, then `begin`,
   `end`, and `stride` are ignored and a new length 1 dimension is
   added at this point in the output tensor.
 
-  For example `foo[3:5,4]` on a 10x8 tensor produces a shape 2 tensor
-  whereas `foo[3:5,4:5]` produces a shape 2x1 tensor with shrink_mask
-  being 1<<1 == 2.
+  For example,
+  `foo[:4, tf.newaxis, :2]` would produce a shape `(4, 1, 2)` tensor.
 
-  If the ith bit of `shrink_axis_mask` is one, then `begin`,
-  `end[i]`, and `stride[i]` are used to do a slice in the appropriate
-  dimension, but the output tensor will be reduced in dimensionality
-  by one. This is only valid if the ith entry of slice[i]==1.
+  If the ith bit of `shrink_axis_mask` is set, it implies that the ith
+  specification shrinks the dimensionality by 1. `begin[i]`, `end[i]` and
+  `strides[i]` must imply a slice of size 1 in the dimension. For example in
+  Python one might do `foo[:, 3, :]` which would result in
+  `shrink_axis_mask` equal to 2.
 
-  NOTE: `begin` and `end` are zero-indexed`.
+
+  NOTE: `begin` and `end` are zero-indexed.
   `strides` entries must be non-zero.
 
 
@@ -1198,18 +1194,19 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           "Number of mask dimensions must be specified, even if some dimensions"
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
-    shape_tensor[axis:axis+ndims_mask].assert_is_compatible_with(shape_mask)
+    shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
 
-    leading_size = gen_math_ops._prod(shape(tensor)[axis:axis+ndims_mask], [0])
+    leading_size = gen_math_ops._prod(
+        shape(tensor)[axis:axis + ndims_mask], [0])
     tensor = reshape(tensor,
-                     concat([shape(tensor)[:axis],
-                             [leading_size],
-                             shape(tensor)[axis+ndims_mask:]], 0))
-    first_dim = shape_tensor[axis:axis+ndims_mask].num_elements()
+                     concat([
+                         shape(tensor)[:axis], [leading_size],
+                         shape(tensor)[axis + ndims_mask:]
+                     ], 0))
+    first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
     tensor.set_shape(
-        tensor_shape.as_shape(shape_tensor[:axis])
-        .concatenate([first_dim])
-        .concatenate(shape_tensor[axis+ndims_mask:]))
+        tensor_shape.as_shape(shape_tensor[:axis]).concatenate([first_dim])
+        .concatenate(shape_tensor[axis + ndims_mask:]))
 
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask, axis)

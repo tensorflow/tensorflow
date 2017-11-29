@@ -96,13 +96,13 @@ class TargetTest(test_util.TensorFlowTestCase):
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
   def testSummaryGlobalStep(self):
-    global_step = training_util.get_or_create_global_step()
+    step = training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
     with summary_ops.create_summary_file_writer(
         logdir, max_queue=0,
         name='t2').as_default(), summary_ops.always_record_summaries():
 
-      summary_ops.scalar('scalar', 2.0, global_step=global_step)
+      summary_ops.scalar('scalar', 2.0, step=step)
 
       events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
