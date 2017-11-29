@@ -407,4 +407,23 @@ TF_Function* TF_GraphToFunction_wrapper(
                             opts, description, out_status);
 }
 
+void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
+                                    const std::vector<int64_t>& dims,
+                                    bool unknown_shape, TF_Status* status) {
+  if (unknown_shape) {
+    TF_GraphSetTensorShape(graph, output, nullptr, -1, status);
+    return;
+  }
+  TF_GraphSetTensorShape(graph, output, dims.data(), dims.size(), status);
+}
+
+std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
+                                                    TF_Output output,
+                                                    int num_dims,
+                                                    TF_Status* status) {
+  std::vector<int64_t> dims(num_dims);
+  TF_GraphGetTensorShape(graph, output, dims.data(), num_dims, status);
+  return dims;
+}
+
 }  // namespace tensorflow
