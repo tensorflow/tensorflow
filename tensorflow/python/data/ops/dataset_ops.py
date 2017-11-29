@@ -1234,13 +1234,40 @@ class ShuffleDataset(Dataset):
                input_dataset,
                buffer_size,
                seed=None,
-               reshuffle_each_iteration=None):
-    """See `Dataset.shuffle()` for details."""
+               reshuffle_each_iteration=None,
+               seed2=None):
+    """Randomly shuffles the elements of this dataset.
+
+    Args:
+      input_dataset: The input dataset.
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
+        number of elements from this dataset from which the new
+        dataset will sample.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+        random seed that will be used to create the distribution. See
+        @{tf.set_random_seed} for behavior.
+      reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
+        that the dataset should be pseudorandomly reshuffled each time it is
+        iterated over. (Defaults to `True`.)
+      seed2: (Optional.) A `tf.int64` scalar `tf.Tensor` used to avoid seed
+        collision. Users should generally not need to specify this. This is
+        supposed to be used when both the seeds for the Dataset op need to be
+        manually specified. If not None, seed must also be non-None.
+
+    Returns:
+      A `Dataset`.
+
+    Raises:
+      ValueError: if invalid arguments are provided.
+    """
     super(ShuffleDataset, self).__init__()
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    seed, seed2 = random_seed.get_seed(seed)
+    if seed2 is None:
+      seed, seed2 = random_seed.get_seed(seed)
+    elif seed is None:
+      raise ValueError("seed must be non-None if seed2 is non-None.")
     if seed is None:
       self._seed = constant_op.constant(0, dtype=dtypes.int64, name="seed")
     else:
