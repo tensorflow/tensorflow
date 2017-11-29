@@ -33,10 +33,11 @@ class DecodeBmpOp : public OpKernel {
  public:
   explicit DecodeBmpOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
-    OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3 ||
-                             channels_ == 4,
-                errors::InvalidArgument("channels must be 0, 1, 3 or 4, got ",
-                                        channels_));
+    OP_REQUIRES(
+        context,
+        channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
+        errors::InvalidArgument("channels must be 0, 1, 3 or 4, got ",
+                                channels_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -76,9 +77,13 @@ class DecodeBmpOp : public OpKernel {
     // there may be padding bytes when the width is not a multiple of 4 bytes
     // 8 * channels == bits per pixel
     const int row_size = (8 * channels_ * width + 31) / 32 * 4;
-    const int expected_file_size = header_size + abs(height) * row_size + width * channels_;
-    OP_REQUIRES(context, (expected_file_size <= input.size()), errors::InvalidArgument(
-                    "Incomplete bmp content, requires at least ", expected_file_size, " bytes, got ", input.size(), " bytes"));
+    const int expected_file_size =
+        header_size + abs(height) * row_size + width * channels_;
+    OP_REQUIRES(
+        context, (expected_file_size <= input.size()),
+        errors::InvalidArgument("Incomplete bmp content, requires at least ",
+                                expected_file_size, " bytes, got ",
+                                input.size(), " bytes"));
 
     // if height is negative, data layout is top down
     // otherwise, it's bottom up
