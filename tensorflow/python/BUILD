@@ -268,6 +268,7 @@ cc_library(
     deps = [
         ":ndarray_tensor_bridge",
         ":numpy_lib",
+        ":py_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -309,9 +310,21 @@ cc_library(
     hdrs = ["lib/core/py_seq_tensor.h"],
     deps = [
         ":numpy_lib",
+        ":py_util",
         ":safe_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
+    name = "py_util",
+    srcs = ["lib/core/py_util.cc"],
+    hdrs = ["lib/core/py_util.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:script_ops_op_lib",
         "//util/python:python_headers",
     ],
 )

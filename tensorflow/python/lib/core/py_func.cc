@@ -22,11 +22,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/py_util.h"
 #include <Python.h>
 
 namespace tensorflow {
@@ -133,48 +133,6 @@ bool IsSingleNone(PyObject* obj) {
   return item == Py_None;
 }
 
-// py.__class__.__name__
-const char* ClassName(PyObject* py) {
-/* PyPy doesn't have a separate C API for old-style classes. */
-#if PY_MAJOR_VERSION < 3 && !defined(PYPY_VERSION)
-  if (PyClass_Check(py))
-    return PyString_AS_STRING(
-        CHECK_NOTNULL(reinterpret_cast<PyClassObject*>(py)->cl_name));
-  if (PyInstance_Check(py))
-    return PyString_AS_STRING(CHECK_NOTNULL(
-        reinterpret_cast<PyInstanceObject*>(py)->in_class->cl_name));
-#endif
-  if (Py_TYPE(py) == &PyType_Type) {
-    return reinterpret_cast<PyTypeObject*>(py)->tp_name;
-  }
-  return Py_TYPE(py)->tp_name;
-}
-
-string PyExcFetch() {
-  CHECK(PyErr_Occurred()) << "Must only call PyExcFetch after an exception.";
-  PyObject* ptype;
-  PyObject* pvalue;
-  PyObject* ptraceback;
-  PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-  PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
-  string err = ClassName(ptype);
-  if (pvalue) {
-    PyObject* str = PyObject_Str(pvalue);
-    if (str) {
-#if PY_MAJOR_VERSION < 3
-      strings::StrAppend(&err, ": ", PyString_AS_STRING(str));
-#else
-      strings::StrAppend(&err, ": ", PyUnicode_AsUTF8(str));
-#endif
-      Py_DECREF(str);
-    }
-    Py_DECREF(pvalue);
-  }
-  Py_DECREF(ptype);
-  Py_XDECREF(ptraceback);
-  return err;
-}
-
 // Calls the registered py function through the trampoline.
 Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   *out_log_on_error = true;
@@ -195,18 +153,18 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     if (PyErr_Occurred()) {
       if (PyErr_ExceptionMatches(PyExc_ValueError) ||
           PyErr_ExceptionMatches(PyExc_TypeError)) {
-        return errors::InvalidArgument(PyExcFetch());
+        return errors::InvalidArgument(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
         *out_log_on_error = false;
-        return errors::OutOfRange(PyExcFetch());
+        return errors::OutOfRange(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_MemoryError)) {
-        return errors::ResourceExhausted(PyExcFetch());
+        return errors::ResourceExhausted(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_NotImplementedError)) {
-        return errors::Unimplemented(PyExcFetch());
+        return errors::Unimplemented(PyExceptionFetch());
       } else {
         // TODO(ebrevdo): Check if exception is an OpError and use the
         // OpError.error_code property to map it back in the Status.
-        return errors::Unknown(PyExcFetch());
+        return errors::Unknown(PyExceptionFetch());
       }
     } else {
       return errors::Internal("Failed to run py callback ", call->token,
