@@ -86,7 +86,7 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      std::vector<NodeBuilder::NodeOut> components;
+      std::vector<Node*> components;
       components.reserve(tensors_.size());
       for (const Tensor& t : tensors_) {
         Node* node;
