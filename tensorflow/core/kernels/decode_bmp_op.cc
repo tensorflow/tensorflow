@@ -108,25 +108,23 @@ class DecodeBmpOp : public OpKernel {
 
     const uint8* bmp_pixels = &img_bytes[header_size];
 
-    Decode(bmp_pixels, output->flat<uint8>().data(), width, abs(height),
-           channels_, top_down);
+    Decode(bmp_pixels, row_size, output->flat<uint8>().data(), width,
+           abs(height), channels_, top_down);
   }
 
-  uint8* Decode(const uint8* input, uint8* const output, const int width,
-                const int height, const int channles, bool top_down);
+  uint8* Decode(const uint8* input, const int row_size, uint8* const output,
+                const int width, const int height, const int channles,
+                bool top_down);
 
  private:
   int channels_;
 };
 REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeBmpOp);
 
-uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
-                           const int width, const int height,
-                           const int channels, bool top_down) {
-  // there may be padding bytes when the width is not a multiple of 4 bytes
-  // 8 * channels == bits per pixel
-  int row_size = (8 * channels * width + 31) / 32 * 4;
-
+uint8* DecodeBmpOp::Decode(const uint8* input, const int row_size,
+                           uint8* const output, const int width,
+                           const int height, const int channels,
+                           bool top_down) {
   for (int i = 0; i < height; i++) {
     int src_pos;
     int dst_pos;
