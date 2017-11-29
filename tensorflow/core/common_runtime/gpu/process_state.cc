@@ -185,7 +185,8 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
               << cpu_mem_limit_in_mb << " MB for ProcessState CPU allocator";
     } else {
       allocator = new PoolAllocator(
-          100 /*pool_size_limit*/, true /*auto_resize*/,
+          //100 /*pool_size_limit*/, true /*auto_resize*/,
+          30000 /*pool_size_limit*/, false /*auto_resize*/,
           new BasicCPUAllocator(), new NoopRounder, "cpu_pool");
       VLOG(2) << "Using PoolAllocator for ProcessState CPU allocator";
     }
