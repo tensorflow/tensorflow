@@ -638,7 +638,7 @@ def moments(x, axes,
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
-  Note: shift is currently not used, the true mean is computed and used.
+  Note: shift is currently not used; the true mean is computed and used.
 
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):

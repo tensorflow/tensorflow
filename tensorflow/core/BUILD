@@ -752,6 +752,7 @@ tf_cuda_library(
     name = "core_cpu",
     hdrs = [
         "common_runtime/device.h",
+        "common_runtime/device_factory.h",
         "common_runtime/optimization_registry.h",
         "common_runtime/shape_refiner.h",
         "graph/algorithm.h",

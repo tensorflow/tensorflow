@@ -70,7 +70,7 @@ REGISTER_OP("StochasticHardRoutingFunction")
       return Status::OK();
     })
     .Doc(R"doc(
-  Samples a path for each instance in `input_data` and returns the 
+  Samples a path for each instance in `input_data` and returns the
   probability of the path and the path taken.
 
   tree_depth: The depth of the decision tree.
