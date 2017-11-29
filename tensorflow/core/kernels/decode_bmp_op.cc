@@ -49,6 +49,12 @@ class DecodeBmpOp : public OpKernel {
     // Start decoding image to get shape details
     const StringPiece input = contents.scalar<string>()();
 
+    OP_REQUIRES(context, (32 <= input.size()),
+                errors::InvalidArgument("Incomplete bmp content, requires at "
+                                        "least 32 bytes to find the header "
+                                        "size, width, height, and bpp, got ",
+                                        input.size(), " bytes"));
+
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
     const int32 header_size = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 10)));
