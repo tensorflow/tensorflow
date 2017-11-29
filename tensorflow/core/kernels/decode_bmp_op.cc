@@ -73,6 +73,13 @@ class DecodeBmpOp : public OpKernel {
                 errors::InvalidArgument(
                     "Number of channels must be 1, 3 or 4, was ", channels_));
 
+    // there may be padding bytes when the width is not a multiple of 4 bytes
+    // 8 * channels == bits per pixel
+    const int row_size = (8 * channels_ * width + 31) / 32 * 4;
+    const int expected_file_size = header_size + abs(height) * row_size + width * channels_;
+    OP_REQUIRES(context, (expected_file_size <= input.size()), errors::InvalidArgument(
+                    "Incomplete bmp content, requires at least ", expected_file_size, " bytes, got ", input.size(), " bytes"));
+
     // if height is negative, data layout is top down
     // otherwise, it's bottom up
     bool top_down = (height < 0);
