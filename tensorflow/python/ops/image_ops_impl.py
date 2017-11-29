@@ -1602,9 +1602,11 @@ def non_max_suppression(boxes,
   collection of bounding boxes representing the selected boxes.  The bounding
   box coordinates corresponding to the selected indices can then be obtained
   using the `tf.gather operation`.  For example:
+    ```python
     selected_indices = tf.image.non_max_suppression(
         boxes, scores, max_output_size, iou_threshold)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
