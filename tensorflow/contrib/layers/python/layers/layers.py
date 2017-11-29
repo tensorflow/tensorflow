@@ -2651,51 +2651,54 @@ def spatial_softmax(features,
     ValueError: If unexpected data_format specified.
     ValueError: If num_channels dimension is unspecified.
   """
-  shape = array_ops.shape(features)
-  static_shape = features.shape
-  if data_format == DATA_FORMAT_NHWC:
-    height, width, num_channels = shape[1], shape[2], static_shape[3]
-  elif data_format == DATA_FORMAT_NCHW:
-    num_channels, height, width = static_shape[1], shape[2], shape[3]
-  else:
-    raise ValueError('data_format has to be either NCHW or NHWC.')
-  if num_channels.value is None:
-    raise ValueError('The num_channels dimension of the inputs to '
-                     '`spatial_softmax` should be defined. Found `None`.')
-
-  with ops.name_scope(name, 'spatial_softmax', [features]) as name:
-    # Create tensors for x and y coordinate values, scaled to range [-1, 1].
-    pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
-                                      math_ops.lin_space(-1., 1., num=width),
-                                      indexing='ij')
-    pos_x = array_ops.reshape(pos_x, [height * width])
-    pos_y = array_ops.reshape(pos_y, [height * width])
-    if temperature is None:
-      temperature_collections = utils.get_variable_collections(
-          variables_collections, 'temperature')
-      temperature = variables.model_variable(
-          'temperature',
-          shape=(),
-          dtype=dtypes.float32,
-          initializer=init_ops.ones_initializer(),
-          collections=temperature_collections,
-          trainable=trainable)
-    if data_format == 'NCHW':
-      features = array_ops.reshape(features, [-1, height * width])
+  with variable_scope.variable_scope(name, 'spatial_softmax'):  
+    shape = array_ops.shape(features)
+    static_shape = features.shape
+    if data_format == DATA_FORMAT_NHWC:
+      height, width, num_channels = shape[1], shape[2], static_shape[3]
+    elif data_format == DATA_FORMAT_NCHW:
+      num_channels, height, width = static_shape[1], shape[2], shape[3]
     else:
-      features = array_ops.reshape(
-          array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
+      raise ValueError('data_format has to be either NCHW or NHWC.')
+    if num_channels.value is None:
+      raise ValueError('The num_channels dimension of the inputs to '
+                       '`spatial_softmax` should be defined. Found `None`.')
+  
+    with ops.name_scope('spatial_softmax_op', 'spatial_softmax_op', [features]):  
+      # Create tensors for x and y coordinate values, scaled to range [-1, 1].
+      pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
+                                        math_ops.lin_space(-1., 1., num=width),
+                                        indexing='ij')
+      pos_x = array_ops.reshape(pos_x, [height * width])
+      pos_y = array_ops.reshape(pos_y, [height * width])
+      if temperature is None:
+        temperature_collections = utils.get_variable_collections(
+            variables_collections, 'temperature')
+        temperature = variables.model_variable(
+            'temperature',
+            shape=(),
+            dtype=dtypes.float32,
+            initializer=init_ops.ones_initializer(),
+            collections=temperature_collections,
+            trainable=trainable)
+      if data_format == 'NCHW':
+        features = array_ops.reshape(features, [-1, height * width])
+      else:
+        features = array_ops.reshape(
+            array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
+  
+      softmax_attention = nn.softmax(features/temperature)
+      expected_x = math_ops.reduce_sum(
+          pos_x * softmax_attention, [1], keep_dims=True)
+      expected_y = math_ops.reduce_sum(
+          pos_y * softmax_attention, [1], keep_dims=True)
+      expected_xy = array_ops.concat([expected_x, expected_y], 1)
+      feature_keypoints = array_ops.reshape(
+          expected_xy, [-1, num_channels.value * 2])
+      feature_keypoints.set_shape([None, num_channels.value * 2])
+  return feature_keypoints
 
-    softmax_attention = nn.softmax(features/temperature)
-    expected_x = math_ops.reduce_sum(
-        pos_x * softmax_attention, [1], keep_dims=True)
-    expected_y = math_ops.reduce_sum(
-        pos_y * softmax_attention, [1], keep_dims=True)
-    expected_xy = array_ops.concat([expected_x, expected_y], 1)
-    feature_keypoints = array_ops.reshape(
-        expected_xy, [-1, num_channels.value * 2])
-    feature_keypoints.set_shape([None, num_channels.value * 2])
-    return feature_keypoints
+
 
 
 def stack(inputs, layer, stack_args, **kwargs):
