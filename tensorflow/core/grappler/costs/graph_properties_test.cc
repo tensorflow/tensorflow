@@ -856,7 +856,6 @@ TEST_F(GraphPropertiesTest, FedNodes) {
                                           cluster_->GetDeviceNames());
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
-  item.feed.emplace_back("AddN", Tensor());
 
   {
     // Conservative shape analysis: the shape of fed ports should be unknown
@@ -864,17 +863,27 @@ TEST_F(GraphPropertiesTest, FedNodes) {
     Status s = properties.InferStatically(false);
     TF_CHECK_OK(s);
     for (const auto& node : item.graph.node()) {
-      if (node.name() == "AddN") {
-        const auto in_props = properties.GetInputProperties(node.name());
-        EXPECT_EQ(1, in_props.size());
-        const OpInfo::TensorProperties& in_prop = in_props[0];
-        EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+      if (node.op() == "Const") {
+        continue;
+      }
+      const auto in_props = properties.GetInputProperties(node.name());
+      EXPECT_EQ(1, in_props.size());
+      const OpInfo::TensorProperties& in_prop = in_props[0];
+      const auto out_props = properties.GetOutputProperties(node.name());
+      EXPECT_EQ(1, out_props.size());
+      const OpInfo::TensorProperties& out_prop = out_props[0];
+
+      if (node.name() == "x") {
+        // x is fed: its input should have a known shape, while its output
+        // doesn't
         EXPECT_FALSE(in_prop.shape().unknown_rank());
-        EXPECT_EQ(2, in_prop.shape().dim_size());
-        const auto out_props = properties.GetOutputProperties(node.name());
-        EXPECT_EQ(1, out_props.size());
-        EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+        EXPECT_EQ(1, in_prop.shape().dim_size());
+        EXPECT_EQ(2, in_prop.shape().dim(0).size());
+        EXPECT_TRUE(out_prop.shape().unknown_rank());
+      } else if (node.op() == "Square" || node.op() == "AddN") {
+        // These nodes are in the fanout of x: their shapes should be unknown.
         EXPECT_TRUE(in_prop.shape().unknown_rank());
+        EXPECT_TRUE(out_prop.shape().unknown_rank());
       }
     }
   }
@@ -885,7 +894,7 @@ TEST_F(GraphPropertiesTest, FedNodes) {
     Status s = properties.InferStatically(true);
     TF_CHECK_OK(s);
     for (const auto& node : item.graph.node()) {
-      if (node.name() == "AddN") {
+      if (node.op() == "Square" || node.op() == "AddN") {
         const auto in_props = properties.GetInputProperties(node.name());
         EXPECT_EQ(1, in_props.size());
         const OpInfo::TensorProperties& in_prop = in_props[0];
