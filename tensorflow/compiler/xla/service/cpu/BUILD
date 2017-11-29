@@ -250,6 +250,7 @@ cc_library(
         ":dot_op_emitter",
         ":external_constant_pool",
         ":ir_emission_utils",
+        ":ir_function",
         ":shape_partition",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:shape_util",
@@ -277,6 +278,22 @@ cc_library(
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
+    ],
+)
+
+cc_library(
+    name = "ir_function",
+    srcs = ["ir_function.cc"],
+    hdrs = ["ir_function.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:vector_support_library",
+        "@llvm//:core",
     ],
 )
 
