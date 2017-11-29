@@ -190,8 +190,7 @@ Status ConvertShapeToConstant(const string& op, const DataType& type,
   return Status::OK();
 }
 
-Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
-                                          const GraphProperties& properties) {
+Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
   // We may add some nodes to the graph to encode control dependencies: there is
   // no need to process these, so only iterate over the nodes of the input
   // graph.
@@ -283,22 +282,6 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
     }
   }
   return Status::OK();
-}
-
-bool ShapesEqual(const TensorShapeProto& shape1,
-                 const TensorShapeProto& shape2) {
-  if (shape1.unknown_rank() || shape2.unknown_rank()) {
-    return false;
-  }
-  if (shape1.dim_size() != shape2.dim_size()) {
-    return false;
-  }
-  for (int i = 0; i < shape1.dim_size(); ++i) {
-    if (shape1.dim(i).size() != shape2.dim(i).size()) {
-      return false;
-    }
-  }
-  return true;
 }
 
 namespace {
@@ -504,7 +487,7 @@ Status ConstantFolding::MaterializeReductionIndices(
 }
 
 Status ConstantFolding::MaterializeConstants(
-    const GrapplerItem& item, const GraphProperties& properties) {
+    const GraphProperties& properties) {
   const int node_count = graph_.node_size();
   for (int i = 0; i < node_count; ++i) {
     NodeDef& node = *graph_.mutable_node(i);
@@ -1171,10 +1154,10 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     // graph. That's because it's possible to feed a placeholder with a tensor
     // of any shape, which could make the static information inconsistent with
     // the shapes actually fed.
-    TF_RETURN_IF_ERROR(MaterializeShapes(item, properties));
+    TF_RETURN_IF_ERROR(MaterializeShapes(properties));
   }
   if (opt_level_ == RewriterConfig::AGGRESSIVE && s.ok()) {
-    TF_RETURN_IF_ERROR(MaterializeConstants(item, properties));
+    TF_RETURN_IF_ERROR(MaterializeConstants(properties));
   }
 
   TF_RETURN_IF_ERROR(FoldGraph(output));
