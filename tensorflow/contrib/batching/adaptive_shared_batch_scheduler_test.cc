@@ -186,6 +186,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, ObeysQueueOptions) {
     queue_options.max_enqueued_batches = 2;
     TF_ASSERT_OK(
         scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
+    EXPECT_EQ(10, queue_0->max_task_size());
     queue_options.max_batch_size = 0;
     // Queue must have max_batch_size > 0.
     EXPECT_FALSE(
