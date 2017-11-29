@@ -47,7 +47,11 @@ from tensorflow.python.training import training_util
 
 
 class Mode(object):
-  """Modes for variables replication used for forcing a particular mode."""
+  """Modes for variables replication used for forcing a particular mode.
+
+  Forcing a mode is meant for performance experimentation purposes rather than
+  for general use cases.
+  """
 
   AUTO = 0
   """Use internal heuristics for choosing the best Mode value.
