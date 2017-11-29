@@ -191,7 +191,7 @@ validation_dataset = tf.data.Dataset.range(50)
 # `output_types` and `output_shapes` properties of either `training_dataset`
 # or `validation_dataset` here, because they are compatible.
 iterator = tf.data.Iterator.from_structure(training_dataset.output_types,
-                                   training_dataset.output_shapes)
+                                           training_dataset.output_shapes)
 next_element = iterator.get_next()
 
 training_init_op = iterator.make_initializer(training_dataset)
