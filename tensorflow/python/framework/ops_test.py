@@ -1876,6 +1876,14 @@ class GraphTest(test_util.TensorFlowTestCase):
     gc.collect()
     self.assertIsNone(g_ref())
 
+  def testRunnableAfterInvalidShape(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError):
+        math_ops.add([1, 2], [1, 2, 3])
+      a = constant_op.constant(1)
+      with session.Session() as sess:
+        sess.run(a)
+
 
 @test_util.with_c_api
 class AttrScopeTest(test_util.TensorFlowTestCase):
