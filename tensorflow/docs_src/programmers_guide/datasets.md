@@ -190,8 +190,8 @@ validation_dataset = tf.data.Dataset.range(50)
 # A reinitializable iterator is defined by its structure. We could use the
 # `output_types` and `output_shapes` properties of either `training_dataset`
 # or `validation_dataset` here, because they are compatible.
-iterator = Iterator.from_structure(training_dataset.output_types,
-                                   training_dataset.output_shapes)
+iterator = tf.data.Iterator.from_structure(training_dataset.output_types,
+                                           training_dataset.output_shapes)
 next_element = iterator.get_next()
 
 training_init_op = iterator.make_initializer(training_dataset)
