@@ -83,8 +83,13 @@ class DecodeBmpOp : public OpKernel {
     // there may be padding bytes when the width is not a multiple of 4 bytes
     // 8 * channels == bits per pixel
     const int row_size = (8 * channels_ * width + 31) / 32 * 4;
-    const int expected_file_size =
-        header_size + abs(height) * row_size + width * channels_;
+
+    const int last_pixel_offset =
+        header_size + (abs(height) - 1) * row_size + (width - 1) * channels_;
+
+    // [expected file size] = [last pixel offset] + [last pixel size=channels]
+    const int expected_file_size = last_pixel_offset + channels_;
+
     OP_REQUIRES(
         context, (expected_file_size <= input.size()),
         errors::InvalidArgument("Incomplete bmp content, requires at least ",
