@@ -20,9 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import convolutional as conv_layers
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -165,6 +168,45 @@ class ConvTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(), [5, 32, width - 2])
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
+
+  def testConv1DWithCausalPadding(self):
+    x = constant_op.constant([1, 2, 3, 4], dtype=dtypes.float32)
+    x = array_ops.expand_dims(x, 0)  # Add batch dimension
+    x = array_ops.expand_dims(x, 2)  # And channel dimension
+    # Filters is 2x1x1
+    filters = np.array([2, 1], dtype=np.float32)
+    filters = filters[..., np.newaxis, np.newaxis]
+    filters = init_ops.constant_initializer(filters)
+    with self.test_session(use_gpu=test.is_gpu_available()) as sess:
+      layer = conv_layers.Conv1D(1, 2, padding="causal",
+                                 kernel_initializer=filters,
+                                 activation=None,
+                                 use_bias=False)
+      output_op = layer.apply(x)
+      reduced = array_ops.squeeze(output_op)
+
+      sess.run(variables.global_variables_initializer())
+      output = reduced.eval()
+      self.assertEqual(len(output), 4)
+      self.assertAllClose(output,
+                          [2 * 0 + 1 * 1, 2 * 1 + 1 * 2, 2 * 2 + 1 * 3, 2 * 3 + 1 * 4])
+    # dilation_rate is 2
+    with self.test_session(use_gpu=test.is_gpu_available()) as sess:
+      layer = conv_layers.Conv1D(1, 2, padding="causal", dilation_rate=2,
+                                 kernel_initializer=filters,
+                                 activation=None,
+                                 use_bias=False)
+      output_op = layer.apply(x)
+      reduced = array_ops.squeeze(output_op)
+
+      sess.run(variables.global_variables_initializer())
+      output = reduced.eval()
+      self.assertEqual(len(output), 4)
+      self.assertAllClose(output,
+                          [2 * 0 + 1 * 1, 2 * 0 + 1 * 2, 2 * 1 + 1 * 3, 2 * 2 + 1 * 4])
+
+    with self.assertRaisesRegexp(ValueError, "causal padding"):
+      conv_layers.Conv1D(x, filters, padding="causal", data_format="channels_first")
 
   def testUnknownInputChannelsConv1D(self):
     data = random_ops.random_uniform((5, 4, 7))
