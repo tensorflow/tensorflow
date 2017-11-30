@@ -26,6 +26,7 @@ NSYNC_URL="$(grep -o 'https://mirror.bazel.build/github.com/google/nsync/.*tar\.
 PROTOBUF_URL="$(grep -o 'https://mirror.bazel.build/github.com/google/protobuf/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
 RE2_URL="$(grep -o 'https://mirror.bazel.build/github.com/google/re2/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
 FFT2D_URL="$(grep -o 'http.*fft\.tgz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
+DOUBLE_CONVERSION_URL="$(grep -o "https.*google/double-conversion.*\.zip" "${BZL_FILE_PATH}" | head -n1)"
 ABSL_URL="$(grep -o 'https://github.com/abseil/abseil-cpp/.*tar.gz' "${BZL_FILE_PATH}" | head -n1)"
 
 # TODO(petewarden): Some new code in Eigen triggers a clang bug with iOS arm64,
@@ -74,6 +75,7 @@ download_and_extract "${NSYNC_URL}" "${DOWNLOADS_DIR}/nsync"
 download_and_extract "${PROTOBUF_URL}" "${DOWNLOADS_DIR}/protobuf"
 download_and_extract "${RE2_URL}" "${DOWNLOADS_DIR}/re2"
 download_and_extract "${FFT2D_URL}" "${DOWNLOADS_DIR}/fft2d"
+download_and_extract "${DOUBLE_CONVERSION_URL}" "${DOWNLOADS_DIR}/double_conversion"
 download_and_extract "${ABSL_URL}" "${DOWNLOADS_DIR}/absl"
 
 replace_by_sed 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
