@@ -107,10 +107,11 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
+
   # Create two batches of PoissonLogNormalQuadratureCompounds, one with
   # prior `loc = 0.` and another with `loc = 1.` In both cases `scale = 1.`
-  pln = ds.PoissonLogNormalQuadratureCompound(
+  pln = tfd.PoissonLogNormalQuadratureCompound(
       loc=[0., -0.5],
       scale=1.,
       quadrature_grid_and_probs=(
