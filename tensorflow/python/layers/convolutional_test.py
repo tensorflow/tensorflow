@@ -206,7 +206,7 @@ class ConvTest(test.TestCase):
                           [2 * 0 + 1 * 1, 2 * 0 + 1 * 2, 2 * 1 + 1 * 3, 2 * 2 + 1 * 4])
 
     with self.assertRaisesRegexp(ValueError, "causal padding"):
-      conv_layers.Conv1D(x, filters, padding="causal", data_format="channels_first")
+      conv_layers.Conv1D(1, 2, padding="causal", data_format="channels_first")
 
   def testUnknownInputChannelsConv1D(self):
     data = random_ops.random_uniform((5, 4, 7))
