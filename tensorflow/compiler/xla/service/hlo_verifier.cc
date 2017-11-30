@@ -75,7 +75,11 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleDot(HloInstruction* dot) override {
-    return CheckBinaryShape(dot);
+    TF_ASSIGN_OR_RETURN(const Shape expected,
+                        ShapeInference::InferDotOpShape(
+                            dot->operand(0)->shape(), dot->operand(1)->shape(),
+                            dot->dot_dimension_numbers()));
+    return CheckShape(dot, expected);
   }
 
   Status HandleConvolution(HloInstruction* convolution) override {

@@ -511,6 +511,87 @@ contracted dimensions of `lhs` and `rhs` must be of the same size. In practice,
 it can be used to perform dot products between vectors, vector/matrix
 multiplications or matrix/matrix multiplications.
 
+## DotGeneral
+
+See also
+[`ComputationBuilder::DotGeneral`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `DotGeneral(lhs, rhs, dimension_numbers)` </b>
+
+| Arguments | Type                    | Semantics
+| --------- | ----------------------- | ---------------
+| `lhs`     | `ComputationDataHandle` | array of type T
+| `rhs`     | `ComputationDataHandle` | array of type T
+| `dimension_numbers` | `DotDimensionNumbers` | array of type T
+
+As Dot, but allows contracting and batch dimension numbers to be specified for
+both the 'lhs' and 'rhs'.
+
+| DotDimensionNumbers Fields | Type                    | Semantics
+| --------- | ----------------------- | ---------------
+| 'lhs_contracting_dimensions' | repeated int64 | 'lhs' contracting dimension numbers |
+| 'rhs_contracting_dimensions' | repeated int64 | 'rhs' contracting dimension numbers |
+| 'lhs_batch_dimensions' | repeated int64 | 'lhs' batch dimension numbers |
+| 'rhs_batch_dimensions' | repeated int64 | 'rhs' batch dimension numbers |
+
+DotGeneral performs the sum of products over contracting dimensions specified
+in 'dimension_numbers'.
+
+Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
+to be the same, but must be listed in the same order in both
+'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
+
+Example with contracting dimension numbers:
+
+```
+lhs = { {1.0, 2.0, 3.0},
+        {4.0, 5.0, 6.0} }
+
+rhs = { {1.0, 1.0, 1.0},
+        {2.0, 2.0, 2.0} }
+
+DotDimensionNumbers dnums;
+dnums.add_lhs_contracting_dimensions(1);
+dnums.add_rhs_contracting_dimensions(1);
+
+DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
+                                 {15.0, 30.0} }
+```
+
+Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
+dimension number, must be listed in the same order in both arrays, and must
+have the same dimension sizes.
+
+Example with batch dimension numbers (batch size 2, 2x2 matrices):
+
+```
+lhs = { { {1.0, 2.0},
+          {3.0, 4.0} },
+        { {5.0, 6.0},
+          {7.0, 8.0} } }
+
+rhs = { { {1.0, 0.0},
+          {0.0, 1.0} },
+        { {1.0, 0.0},
+          {0.0, 1.0} } }
+
+DotDimensionNumbers dnums;
+dnums.add_lhs_contracting_dimensions(2);
+dnums.add_rhs_contracting_dimensions(1);
+dnums.add_lhs_batch_dimensions(0);
+dnums.add_rhs_batch_dimensions(0);
+
+DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
+                                   {3.0, 4.0} },
+                                 { {5.0, 6.0},
+                                   {7.0, 8.0} } }
+```
+
+| Input                               | Output            | Semantics        |
+| ----------------------------------- | ----------------- | ---------------- |
+| [b0, m, k] `dot` [b0, k, n]         | [b0, m, n]        |  batch matmul    |
+| [b0, b1, m, k] `dot` [b0, b1, k, n] | [b0, b1, m, n]    |  batch matmul    |
+
 ## Element-wise binary arithmetic operations
 
 See also

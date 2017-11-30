@@ -334,50 +334,5 @@ TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
               operands[1]->opcode() == HloOpcode::kBroadcast);
 }
 
-TEST_F(UserComputationTest, SkipDotInEliminatingImplicitBroadcast) {
-  auto debug_options = DebugOptions();
-  debug_options.set_xla_eliminate_hlo_implicit_broadcast(true);
-
-  //  %a = Param({1, 3});
-  //  %b = Param({3, 1});
-  //  %dot = Dot(%a, %b);
-  ComputationHandle handle;
-  handle.set_handle(123);
-  UserComputation computation("TheComputation", handle);
-
-  ParameterRequest a_request;
-  *a_request.mutable_shape() = ShapeUtil::MakeShape(F32, {1, 3});
-  a_request.set_name("a");
-  a_request.set_parameter(0);
-  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle a_handle,
-                          computation.AddParameterInstruction(a_request));
-
-  ParameterRequest b_request;
-  *b_request.mutable_shape() = ShapeUtil::MakeShape(F32, {3, 1});
-  b_request.set_name("b");
-  b_request.set_parameter(1);
-  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle b_handle,
-                          computation.AddParameterInstruction(b_request));
-
-  BinaryOpRequest dot;
-  dot.set_binop(BINOP_DOT);
-  *dot.mutable_lhs() = a_handle;
-  *dot.mutable_rhs() = b_handle;
-  TF_ASSERT_OK(computation.AddBinaryInstruction(dot).status());
-
-  auto hlo_resolver = [](const VersionedComputationHandle& handle) {
-    return nullptr;
-  };
-  VersionedComputationHandle latest_version = computation.GetVersionedHandle();
-
-  // Build the HLO computation.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloComputation> hlo_computation,
-      computation.BuildHloComputation(latest_version.version, hlo_resolver,
-                                      debug_options));
-
-  EXPECT_EQ(3, hlo_computation->instruction_count());
-}
-
 }  // namespace
 }  // namespace xla

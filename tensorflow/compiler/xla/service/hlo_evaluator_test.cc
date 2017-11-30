@@ -621,8 +621,11 @@ TEST_F(HloEvaluatorTest, DotRank2AndRank1) {
       b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
 
   Shape shape = ShapeUtil::MakeShape(F32, {4, 2});
-  b.AddInstruction(HloInstruction::CreateBinary(
-      shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
+                                             rhs_instruction, dot_dnums));
   auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
@@ -664,8 +667,11 @@ TEST_F(HloEvaluatorTest, DotRank1AndRank2) {
       b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
 
   Shape shape = ShapeUtil::MakeShape(F32, {2});
-  b.AddInstruction(HloInstruction::CreateBinary(
-      shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(0);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
+                                             rhs_instruction, dot_dnums));
   auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
@@ -705,8 +711,11 @@ TEST_F(HloEvaluatorTest, DotRank2AndRank2) {
       b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
 
   Shape shape = ShapeUtil::MakeShape(F32, {4, 2});
-  b.AddInstruction(HloInstruction::CreateBinary(
-      shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
+                                             rhs_instruction, dot_dnums));
   auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =

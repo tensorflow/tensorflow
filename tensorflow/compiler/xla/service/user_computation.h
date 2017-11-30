@@ -153,6 +153,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddCustomCallInstruction(
       const CustomCallRequest& custom_call_request);
 
+  // Enqueues a dot instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddDotInstruction(
+      const DotRequest& dot_request);
+
   // Enqueues a broadcast instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddBroadcastInstruction(
       const BroadcastRequest& broadcast_request);

@@ -64,9 +64,12 @@ TEST_F(TransposeFoldingTest, FoldDotTranspose) {
   HloInstruction* transpose_y =
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(F32, {3, 2}), y, {1, 0}));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {2, 2}), /*opcode=*/HloOpcode::kDot,
-      /*lhs=*/x, /*rhs=*/transpose_y));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), /*lhs=*/x,
+                                /*rhs=*/transpose_y, dot_dnums));
 
   HloModule module("test_module");
   HloComputation* entry_computation =
@@ -104,9 +107,12 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
   HloInstruction* transpose1 =
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(F32, {2, 3}), const1, {1, 0}));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {1, 3}), /*opcode=*/HloOpcode::kDot,
-      /*lhs=*/transpose0, /*rhs=*/transpose1));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {1, 3}),
+      /*lhs=*/transpose0, /*rhs=*/transpose1, dot_dnums));
 
   HloModule module("test_module");
   HloComputation* entry_computation =
@@ -169,9 +175,12 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeInWhile) {
   HloInstruction* transpose_y =
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(F32, {3, 2}), y, {1, 0}));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {2, 2}), /*opcode=*/HloOpcode::kDot,
-      /*lhs=*/x, /*rhs=*/transpose_y));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), /*lhs=*/x,
+                                /*rhs=*/transpose_y, dot_dnums));
 
   HloModule module("test_module");
   HloComputation* entry_computation =

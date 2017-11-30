@@ -498,6 +498,23 @@ message CustomCallRequest {
   Shape shape = 4;
 }
 
+message DotDimensionNumbers {
+  // The dimension numbers that represent the 'lhs' contracting dimensions.
+  repeated int64 lhs_contracting_dimensions = 1;
+  // The dimension numbers that represent the 'rhs' contracting dimensions.
+  repeated int64 rhs_contracting_dimensions = 2;
+  // The dimension numbers that represent the 'lhs' batch dimensions.
+  repeated int64 lhs_batch_dimensions = 3;
+  // The dimension numbers that represent the 'rhs' batch dimensions.
+  repeated int64 rhs_batch_dimensions = 4;
+};
+
+message DotRequest {
+  ComputationDataHandle lhs = 2;
+  ComputationDataHandle rhs = 3;
+  DotDimensionNumbers dimension_numbers = 4;
+}
+
 message MapRequest {
   repeated ComputationDataHandle operands = 2;
   ComputationHandle to_apply = 3;
@@ -732,9 +749,6 @@ enum BinaryOperation {
   BINOP_LT = 9;
   BINOP_NE = 10;
 
-  // Dot product, matrix multiply.
-  BINOP_DOT = 12;
-
   // Element-wise maximum.
   BINOP_MAX = 14;
 
@@ -885,6 +899,7 @@ message OpRequest {
     ConvolveRequest convolve_request = 8;
     CrossReplicaSumRequest cross_replica_sum_request = 9;
     CustomCallRequest custom_call_request = 10;
+    DotRequest dot_request = 43;
     DynamicSliceRequest dynamic_slice_request = 11;
     DynamicUpdateSliceRequest dynamic_update_slice_request = 12;
     GetTupleElementRequest get_tuple_element_request = 13;
@@ -914,7 +929,7 @@ message OpRequest {
     BatchNormInferenceRequest batch_norm_inference_request = 38;
     FftRequest fft_request = 41;
     ConvertRequest bitcast_convert_request = 42;
-    // Next: 43
+    // Next: 44
   }
 }
 
