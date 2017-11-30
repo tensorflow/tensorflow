@@ -99,7 +99,7 @@ void IrFunction::Initialize(const string& function_name,
   //
   //                     /---------------------------------------------\
   //   prof counters ->  | counter 0 | counter 1 | ..... | counter N-1 |
-  //  (elided for aot)   \---------------------------------------------/
+  //                     \---------------------------------------------/
 
   // Even though the type of params and temps is void** in the host's view, in
   // LLVM IR this is represented by i8*, similarly to void*. It's up to the code
