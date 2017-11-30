@@ -290,6 +290,12 @@ class Conv1D(_Conv):
                trainable=True,
                name=None,
                **kwargs):
+    if padding == "causal":
+      assert data_format == "channels_last", "causal padding only supports NTC format."
+      self._causal_padding = True
+      padding = "valid"
+    else:
+      self._causal_padding = False
     super(Convolution1D, self).__init__(
         rank=1,
         filters=filters,
@@ -309,6 +315,13 @@ class Conv1D(_Conv):
         bias_constraint=bias_constraint,
         trainable=trainable,
         name=name, **kwargs)
+
+  def __call__(self, inputs, *args, **kwargs):
+    if self._causal_padding:
+      # causal (dilated) convolution:
+      left_pad = self.dilation_rate[0] * (self.kernel_size[0] - 1)
+      inputs = array_ops.pad(inputs, [[0, 0], [left_pad, 0], [0, 0]])
+    return super(Convolution1D, self).__call__(inputs, *args, **kwargs)
 
 
 def conv1d(inputs,
