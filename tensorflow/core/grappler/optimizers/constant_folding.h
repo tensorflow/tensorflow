@@ -72,6 +72,12 @@ class ConstantFolding : public GraphOptimizer {
 
   Status FoldNode(NodeDef* node, GraphDef* output_graph);
 
+  bool IsOnes(const NodeDef& node) const;
+  bool IsZeros(const NodeDef& node) const;
+  void ReplaceAddOrMulWithIdentity(int input_to_forward, NodeDef* node);
+  Status ReplaceAddOrMulWithConstant(double value,
+                                     const TensorShapeProto& shape,
+                                     NodeDef* node);
   Status FoldGraph(GraphDef* output);
 
   bool IsSimplifiableReduction(const NodeDef& node) const;
@@ -89,12 +95,13 @@ class ConstantFolding : public GraphOptimizer {
   std::unique_ptr<DeviceBase> owned_device_;
 
   std::unique_ptr<ResourceMgr> resource_mgr_;
-  GraphDef graph_;
+  GraphDef* graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unordered_set<string> nodes_whitelist_;
   std::unordered_set<string> feed_nodes_;
   bool has_fetch_;
+  bool graph_modified_;
 };
 
 }  // end namespace grappler

@@ -30,13 +30,16 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -95,7 +98,38 @@ class DeviceSimple : public DeviceBase {
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 
+template <typename T>
+bool AllValuesAre(const TensorProto& tensor, const T& value) {
+  // TensorProto represents the content of the tensor in either <type>_val or
+  // tensor_content.
+  typename checkpoint::SaveTypeTraits<T>::RepeatedField* tensor_values =
+      checkpoint::MutableTensorProtoData<T>(const_cast<TensorProto*>(&tensor));
+  if (!tensor_values->empty()) {
+    for (const T& tensor_value : *tensor_values) {
+      if (tensor_value != value) {
+        return false;
+      }
+    }
+    return true;
+  }
+  const auto tensor_content_size = tensor.tensor_content().size();
+  if (tensor_content_size > 0) {
+    CHECK_EQ(0, tensor_content_size % sizeof(T));
+    std::vector<T> raw_values(tensor_content_size / sizeof(T));
+    port::CopyToArray(tensor.tensor_content(),
+                      reinterpret_cast<char*>(raw_values.data()));
+    for (int i = 0; i < tensor_content_size / sizeof(T); ++i) {
+      if (raw_values[i] != value) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
+
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
                                  DeviceBase* cpu_device)
     : opt_level_(opt_level), cpu_device_(cpu_device) {
@@ -202,9 +236,9 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
   // We may add some nodes to the graph to encode control dependencies: there is
   // no need to process these, so only iterate over the nodes of the input
   // graph.
-  const int node_count = graph_.node_size();
+  const int node_count = graph_->node_size();
   for (int i = 0; i < node_count; ++i) {
-    NodeDef& node = *graph_.mutable_node(i);
+    NodeDef& node = *graph_->mutable_node(i);
     const string op = node.op();
     if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN") {
       continue;
@@ -248,7 +282,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
           // cases where the shape/rank/size would have been run in
           // the original graph. Additional inputs are extra control
           string ctrl_dep =
-              AddControlDependency(node.input(0), &graph_, node_map_.get());
+              AddControlDependency(node.input(0), graph_, node_map_.get());
           node.set_input(0, ctrl_dep);
           node_map_->AddOutput(NodeName(ctrl_dep), node.name());
         } else {
@@ -263,7 +297,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
                     AddPrefixToNodeName(strings::StrCat(node.name(), "-", j),
                                         kConstantFoldingConst);
                 if (node_map_->GetNode(const_name) == nullptr) {
-                  NodeDef* added_node = graph_.add_node();
+                  NodeDef* added_node = graph_->add_node();
                   added_node->set_name(const_name);
                   added_node->set_op("Const");
                   added_node->set_device(node.device());
@@ -274,7 +308,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
                   // We add a control dependency to the original ShapeN node,
                   // so that the node will only be run if all inputs of the
                   // original ShapeN node are run.
-                  string ctrl_dep = AddControlDependency(node.name(), &graph_,
+                  string ctrl_dep = AddControlDependency(node.name(), graph_,
                                                          node_map_.get());
                   *added_node->add_input() = ctrl_dep;
                   node_map_->AddOutput(NodeName(ctrl_dep), added_node->name());
@@ -293,6 +327,25 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
 }
 
 namespace {
+bool ShapesEqual(const TensorShapeProto& shape1,
+                 const TensorShapeProto& shape2) {
+  if (shape1.unknown_rank() || shape2.unknown_rank()) {
+    return false;
+  }
+  if (shape1.dim_size() != shape2.dim_size()) {
+    return false;
+  }
+  for (int i = 0; i < shape1.dim_size(); ++i) {
+    if (shape1.dim(i).size() != shape2.dim(i).size()) {
+      return false;
+    }
+    if (shape1.dim(i).size() == -1 || shape2.dim(i).size() == -1) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
                   BCast::Vec* shape, int64* min_id) {
   if (shape_node.op() == "Shape") {
@@ -383,13 +436,13 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
           strings::StrCat(node.name(), "-", j), kConstantFoldingConst);
       out[j] = node_map_->GetNode(const_name);
       if (out[j] == nullptr) {
-        out[j] = graph_.add_node();
+        out[j] = graph_->add_node();
         Tensor value(type, TensorShape({0}));
         *out[j] = CreateNodeDef(const_name, TensorValue(&value));
         out[j]->set_device(node.device());
         node_map_->AddNode(const_name, out[j]);
         string ctrl_dep =
-            AddControlDependency(node.name(), &graph_, node_map_.get());
+            AddControlDependency(node.name(), graph_, node_map_.get());
         *out[j]->add_input() = ctrl_dep;
         node_map_->AddOutput(NodeName(ctrl_dep), const_name);
       }
@@ -470,7 +523,7 @@ Status ConstantFolding::MaterializeReductionIndices(
   if (node_map_->GetNode(const_name)) {
     return Status::OK();
   }
-  NodeDef* reduction_indices = graph_.add_node();
+  NodeDef* reduction_indices = graph_->add_node();
   Tensor value(dtype, TensorShape({rank}));
   for (int i = 0; i < rank; ++i) {
     if (dtype == DT_INT32) {
@@ -482,7 +535,7 @@ Status ConstantFolding::MaterializeReductionIndices(
   *reduction_indices = CreateNodeDef(const_name, TensorValue(&value));
   reduction_indices->set_device(node->device());
   string ctrl_dep =
-      AddControlDependency(node->input(1), &graph_, node_map_.get());
+      AddControlDependency(node->input(1), graph_, node_map_.get());
   *reduction_indices->add_input() = ctrl_dep;
   node_map_->AddNode(const_name, reduction_indices);
   node_map_->AddOutput(NodeName(ctrl_dep), const_name);
@@ -496,9 +549,9 @@ Status ConstantFolding::MaterializeReductionIndices(
 
 Status ConstantFolding::MaterializeConstants(
     const GraphProperties& properties) {
-  const int node_count = graph_.node_size();
+  const int node_count = graph_->node_size();
   for (int i = 0; i < node_count; ++i) {
-    NodeDef& node = *graph_.mutable_node(i);
+    NodeDef& node = *graph_->mutable_node(i);
     const string& op = node.op();
     if (op == "BroadcastGradientArgs") {
       TF_RETURN_IF_ERROR(MaterializeBroadcastGradientArgs(node, properties));
@@ -601,6 +654,32 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
 
   return true;
 }
+
+namespace {
+
+#define SET_TENSOR_VAL_CASE(DTYPE, TYPE)           \
+  case DTYPE:                                      \
+    t->add_##TYPE##_val(static_cast<TYPE>(value)); \
+    break;
+
+Status CreateConstantTensorAttrValue(DataType type, double value,
+                                     const TensorShapeProto& shape,
+                                     AttrValue* attr_tensor) {
+  TensorProto* t = attr_tensor->mutable_tensor();
+  *t->mutable_tensor_shape() = shape;
+  switch (type) {
+    SET_TENSOR_VAL_CASE(DT_FLOAT, float);
+    SET_TENSOR_VAL_CASE(DT_DOUBLE, double);
+    SET_TENSOR_VAL_CASE(DT_INT64, int64);
+    SET_TENSOR_VAL_CASE(DT_INT32, int);
+    default:
+      return errors::InvalidArgument("Unsupported type: ", type);
+  }
+  return Status::OK();
+}
+
+#undef SET_TENSOR_CAL_CASE
+}  // namespace
 
 // static
 NodeDef ConstantFolding::CreateNodeDef(const string& name,
@@ -945,8 +1024,8 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
 Status ConstantFolding::FoldGraph(GraphDef* output) {
   std::unordered_set<string> processed_nodes;
   std::deque<NodeDef*> queue;
-  for (int i = 0; i < graph_.node_size(); i++) {
-    auto node = graph_.mutable_node(i);
+  for (int i = 0; i < graph_->node_size(); i++) {
+    auto node = graph_->mutable_node(i);
     if (IsFoldable(*node)) {
       queue.push_back(node);
     }
@@ -985,7 +1064,7 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
   output->mutable_node()->DeleteSubrange(last + 1,
                                          output->node_size() - last - 1);
 
-  for (const auto& node : graph_.node()) {
+  for (const auto& node : graph_->node()) {
     // If no fetch nodes is provided, we conservatively
     // keep all nodes in the original graph in case users need to fetch
     // their values.
@@ -1080,6 +1159,104 @@ bool ConstantFolding::IsSimplifiableReshape(
   return shape.IsCompatibleWith(new_dims);
 }
 
+#define IS_VALUE_CASE(DTYPE, VALUE)                   \
+  case DTYPE:                                         \
+    return AllValuesAre<EnumToDataType<DTYPE>::Type>( \
+        node.attr().at("value").tensor(), EnumToDataType<DTYPE>::Type(VALUE))
+
+#define IS_ONES_CASE(TYPE) IS_VALUE_CASE(TYPE, 1)
+#define IS_ZEROS_CASE(TYPE) IS_VALUE_CASE(TYPE, 0)
+
+bool ConstantFolding::IsOnes(const NodeDef& node) const {
+  if (feed_nodes_.find(node.name()) != feed_nodes_.end()) {
+    return false;
+  }
+  if (node.op() == "OnesLike") {
+    return true;
+  }
+  if (node.op() != "Const") {
+    return false;
+  }
+  const auto dtype = node.attr().at("dtype").type();
+  switch (dtype) {
+    //    IS_ONES_CASE(DT_HALF);
+    IS_ONES_CASE(DT_FLOAT);
+    IS_ONES_CASE(DT_DOUBLE);
+    IS_ONES_CASE(DT_UINT8);
+    IS_ONES_CASE(DT_INT8);
+    IS_ONES_CASE(DT_UINT16);
+    IS_ONES_CASE(DT_INT16);
+    IS_ONES_CASE(DT_INT32);
+    IS_ONES_CASE(DT_INT64);
+    IS_ONES_CASE(DT_COMPLEX64);
+    IS_ONES_CASE(DT_COMPLEX128);
+    default:
+      LOG(ERROR) << "Unexpected type " << DataTypeString(dtype);
+      return false;
+  }
+  return false;
+}
+
+bool ConstantFolding::IsZeros(const NodeDef& node) const {
+  if (feed_nodes_.find(node.name()) != feed_nodes_.end()) {
+    return false;
+  }
+  if (node.op() == "ZerosLike") {
+    return true;
+  }
+  if (!IsConstant(node)) {
+    return false;
+  }
+  const auto dtype = node.attr().at("dtype").type();
+  switch (dtype) {
+    //    IS_ZEROS_CASE(DT_HALF);
+    IS_ZEROS_CASE(DT_FLOAT);
+    IS_ZEROS_CASE(DT_DOUBLE);
+    IS_ZEROS_CASE(DT_UINT8);
+    IS_ZEROS_CASE(DT_INT8);
+    IS_ZEROS_CASE(DT_UINT16);
+    IS_ZEROS_CASE(DT_INT16);
+    IS_ZEROS_CASE(DT_INT32);
+    IS_ZEROS_CASE(DT_INT64);
+    IS_ZEROS_CASE(DT_COMPLEX64);
+    IS_ZEROS_CASE(DT_COMPLEX128);
+    default:
+      LOG(ERROR) << "Unexpected type " << DataTypeString(dtype);
+      return false;
+  }
+  return false;
+}
+
+void ConstantFolding::ReplaceAddOrMulWithIdentity(int input_to_forward,
+                                                  NodeDef* node) {
+  node->set_op("Identity");
+  // Propagate the designated input through the identity.
+  node->mutable_input()->SwapElements(0, input_to_forward);
+  // Add all other inputs as control dependencies.
+  for (int i = 1; i < node->input_size(); ++i) {
+    node->set_input(i, AsControlDependency(node->input(i)));
+  }
+  graph_modified_ = true;
+}
+
+Status ConstantFolding::ReplaceAddOrMulWithConstant(
+    double value, const TensorShapeProto& shape, NodeDef* node) {
+  AttrValue tensor_attr;
+  TF_RETURN_IF_ERROR(CreateConstantTensorAttrValue(node->attr().at("T").type(),
+                                                   value, shape, &tensor_attr));
+  node->mutable_attr()->insert({"value", tensor_attr});
+  node->set_op("Const");
+  // Convert all inputs to control dependencies.
+  for (int i = 0; i < node->input_size(); ++i) {
+    if (IsControlInput(node->input(i))) {
+      break;
+    }
+    node->set_input(i, AsControlDependency(node->input(i)));
+  }
+  graph_modified_ = true;
+  return Status::OK();
+}
+
 Status ConstantFolding::SimplifyGraph(GraphDef* output,
                                       const GraphProperties& properties,
                                       bool use_shape_info) {
@@ -1125,6 +1302,63 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         *node.add_input() = input;
       }
     }
+
+    // Simplify multiplication by ones or zeros, and addition of zeros.
+    bool is_mul = IsMul(node);
+    bool is_add = IsAdd(node);
+    if (opt_level_ == RewriterConfig::AGGRESSIVE && use_shape_info &&
+        (is_mul || is_add) && properties.HasInputProperties(node.name()) &&
+        properties.HasOutputProperties(node.name())) {
+      const NodeDef* x = node_map_->GetNode(node.input(0));
+      const NodeDef* y = node_map_->GetNode(node.input(1));
+      if (x == nullptr || y == nullptr) {
+        return errors::InvalidArgument("Invalid inputs to node: ",
+                                       node.DebugString());
+      }
+      const TensorShapeProto& output_shape =
+          properties.GetOutputProperties(node.name())[0].shape();
+      const TensorShapeProto& x_shape =
+          properties.GetInputProperties(node.name())[0].shape();
+
+      // Simplify multiplication by or addition of zeros.
+      const bool x_is_zero = IsZeros(*x);
+      const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
+      if (x_is_zero && x_matches_output_shape) {
+        // 0 * y = 0 or 0 + y = y.
+        ReplaceAddOrMulWithIdentity(is_mul ? 0 : 1, &node);
+        continue;
+      }
+      const TensorShapeProto& y_shape =
+          properties.GetInputProperties(node.name())[1].shape();
+      const bool y_is_zero = IsZeros(*y);
+      const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
+      if (y_is_zero && y_matches_output_shape) {
+        // x * 0 = 0 or x + 0 = x.
+        ReplaceAddOrMulWithIdentity(is_mul ? 1 : 0, &node);
+        continue;
+      }
+
+      if (is_mul) {
+        // Simplify multiplication by zeros where the output shape does not
+        // match the shape of the zero input.
+        if (x_is_zero || y_is_zero) {
+          TF_RETURN_IF_ERROR(
+              ReplaceAddOrMulWithConstant(0, output_shape, &node));
+          continue;
+        }
+
+        // Simplify multiplication by ones.
+        if (IsOnes(*x) && y_matches_output_shape) {
+          // 1 * y = y.
+          ReplaceAddOrMulWithIdentity(1, &node);
+          continue;
+        } else if (IsOnes(*y) && x_matches_output_shape) {
+          // x * 1 = x.
+          ReplaceAddOrMulWithIdentity(0, &node);
+          continue;
+        }
+      }
+    }
   }
   return Status::OK();
 }
@@ -1132,7 +1366,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                             const GrapplerItem& item,
                                             GraphDef* output) {
-  node_map_.reset(new NodeMap(&graph_));
+  node_map_.reset(new NodeMap(graph_));
   nodes_whitelist_.clear();
   // Fold fetch nodes iff it has a single fanout. Note that if a fetch node
   // has a single fanout, it would be rewritten as a constant with the same
@@ -1189,13 +1423,13 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   *output = item.graph;
   int64 node_count;
   do {
-    graph_.Swap(output);
-    item_to_optimize.graph = graph_;
+    graph_modified_ = false;
+    item_to_optimize.graph.Swap(output);
+    graph_ = &item_to_optimize.graph;
     *output = GraphDef();
-    node_count = graph_.node_size();
+    node_count = graph_->node_size();
     TF_RETURN_IF_ERROR(RunOptimizationPass(cluster, item_to_optimize, output));
-  } while (output->node_size() != node_count);
-
+  } while (graph_modified_ || output->node_size() != node_count);
   *output->mutable_library() = item.graph.library();
   *output->mutable_versions() = item.graph.versions();
 
