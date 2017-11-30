@@ -251,10 +251,67 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
 
 def _ProcessNewOps(graph):
   """Processes the newly-added TF_Operations in `graph`."""
-  for c_op in c_api_util.new_tf_operations(graph):
-    graph._create_op_from_tf_operation(c_op)  # pylint: disable=protected-access
+  # Maps from a node to the names of the ops it's colocated with, if colocation
+  # is specified in the attributes.
+  colocation_pairs = {}
 
-  # TODO(skyewm): colocation logic
+  for c_op in c_api_util.new_tf_operations(graph):
+    # pylint: disable=protected-access
+    new_op = graph._create_op_from_tf_operation(c_op, compute_device=False)
+    # pylint: enable=protected-access
+
+    colocation_names = _GetColocationNames(new_op)
+    if colocation_names:
+      colocation_pairs[new_op] = colocation_names
+      # Don't apply this op's device function, since colocation constraints
+      # override device functions. Note that this op's device may still be set
+      # by the loop below.
+    else:
+      with _MaybeDevice(new_op.device):
+        graph._apply_device_functions(new_op)  # pylint: disable=protected-access
+
+  # The following loop populates the device field of ops that are colocated
+  # with another op.  This is implied by the colocation attribute, but we
+  # propagate the device field for completeness.
+  for op, coloc_op_list in colocation_pairs.items():
+    coloc_device = None
+    # Find any device in the list of colocated ops that have a device, if it
+    # exists.  We assume that if multiple ops have devices, they refer to the
+    # same device.  Otherwise, a runtime error will occur since the colocation
+    # property cannot be guaranteed.
+    #
+    # One possible improvement is to try to check for compatibility of all
+    # devices in this list at import time here, which would require
+    # implementing a compatibility function for device specs in python.
+    for coloc_op_name in coloc_op_list:
+      try:
+        coloc_op = graph._get_operation_by_name_unsafe(coloc_op_name)  # pylint: disable=protected-access
+      except KeyError:
+        raise ValueError('Specified colocation to an op that '
+                         'does not exist during import: %s in %s' % (
+                             coloc_op_name, op.name))
+      if coloc_op.device:
+        coloc_device = pydev.DeviceSpec.from_string(coloc_op.device)
+        break
+    if coloc_device:
+      op._set_device(coloc_device)  # pylint: disable=protected-access
+
+
+def _GetColocationNames(op):
+  """Returns names of the ops that `op` should be colocated with."""
+  colocation_names = []
+  try:
+    class_values = op.get_attr('_class')
+  except ValueError:
+    # No _class attr
+    return
+  for val in class_values:
+    val = compat.as_str(val)
+    if val.startswith('loc:@'):
+      colocation_node_name = val[len('loc:@'):]
+      if colocation_node_name != op.name:
+        colocation_names.append(colocation_node_name)
+  return colocation_names
 
 
 def _GatherReturnElements(requested_return_elements, graph, results):
