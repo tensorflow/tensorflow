@@ -139,6 +139,25 @@ void ExecStep::AddMemoryStats(const string& dev,
         exec_.accelerator_persistent_bytes() +
         step_stat.memory_stats().device_persistent_memory_size());
   }
+
+  // TODO(xpan): Make this more accurate:
+  // High level: Memory tracking is suspicous and requires large scale
+  // clean up.
+  // Investigte the memory usage difference between CPU/GPU with OpViewTest.
+  //
+  // 1. OpKernelConstruction::allocate_xxx is not traced. Below, we only
+  //    discuss OpKernelContext-related allocations.
+  // 2. allocate_output calls allocate_tensor, which is properly tracked in
+  //    'NodeExecStats.memory'.
+  // 3. allocate_temp is only tracked through record_xxx_temp. It appears
+  //    in 'NodeExecStats.memory_stats'.
+  // 4. allocate_persistent calls allocate_tensor, which is properly tracked
+  //    in 'NodeExecStats.memory'. However, there is no way to count it as
+  //    persistent now.
+  // 5. record_xxx_persistent is called when allocate_persistent
+  //    is not used and hence tracks some complementary bytes. It appears in
+  //    'NodeExecStats.memory_stats'. It's suspicious. But we should
+  //    use it now since it covers constant op.
   int64 residual_bytes = 0;
   int64 requested_bytes = 0;
   int64 peak_bytes = 0;
@@ -147,6 +166,15 @@ void ExecStep::AddMemoryStats(const string& dev,
     requested_bytes += mem.total_bytes();
     peak_bytes += mem.peak_bytes();
   }
+  residual_bytes +=
+      exec_.host_persistent_bytes() + exec_.accelerator_persistent_bytes();
+  requested_bytes += exec_.host_persistent_bytes() +
+                     exec_.accelerator_persistent_bytes() +
+                     exec_.host_temp_bytes() + exec_.accelerator_temp_bytes();
+  peak_bytes += exec_.host_persistent_bytes() +
+                exec_.accelerator_persistent_bytes() + exec_.host_temp_bytes() +
+                exec_.accelerator_temp_bytes();
+
   exec_.set_requested_bytes(requested_bytes);
   exec_.set_residual_bytes(residual_bytes);
   exec_.set_peak_bytes(peak_bytes);
