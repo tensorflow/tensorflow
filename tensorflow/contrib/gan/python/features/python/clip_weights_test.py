@@ -36,7 +36,7 @@ class ClipWeightsTest(test.TestCase):
         'VarTuple', ['discriminator_variables'])(self.variables)
 
   def _test_weight_clipping_helper(self, use_tuple):
-    loss = self.variables[0] * 2.0
+    loss = self.variables[0]
     opt = training.GradientDescentOptimizer(1.0)
     if use_tuple:
       opt_clip = clip_weights.weight_clip(opt, self.variables, 0.1)
