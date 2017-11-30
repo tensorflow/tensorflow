@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
@@ -1651,19 +1652,6 @@ void IrEmitter::EmitShardedVectorStore(
   }
 }
 
-namespace {
-// TODO(sanjoy): This is duplicated in tensorflow/core/lib/core/arena.cc.
-// Extract out a common implementation to tensorflow/core/lib/math/math_util.h
-uint32 GCD(uint32 x, uint32 y) {
-  while (y != 0) {
-    uint32 r = x % y;
-    x = y;
-    y = r;
-  }
-  return x;
-}
-}  // namespace
-
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
     tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function,
@@ -1686,9 +1674,9 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
       std::find(dimensions.begin(), dimensions.end(),
                 arg->shape().layout().minor_to_major(0)) != dimensions.end();
 
-  unsigned element_alignment =
-      GCD(ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
-          MinimumAlignmentForPrimitiveType(reduce->shape().element_type()));
+  unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
+      ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
+      MinimumAlignmentForPrimitiveType(reduce->shape().element_type()));
 
   if (is_reduction_over_minor_dimension) {
     // TODO(sanjoy): Implement vectorized reduction over the minor dimension.
@@ -2463,7 +2451,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                                      const llvm_ir::IrArray& source_array) {
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-  unsigned element_alignment = GCD(
+  unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
       primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type));
   llvm::Type* primitive_ptr_type = llvm::PointerType::getUnqual(
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_));
