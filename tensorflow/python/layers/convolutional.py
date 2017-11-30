@@ -240,7 +240,8 @@ class Conv1D(_Conv):
       specifying the stride length of the convolution.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"`, `"same"` or `"causal"` (case-insensitive).
+      Currently, causal padding only supports channels_last (NTC) format.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
@@ -270,6 +271,9 @@ class Conv1D(_Conv):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+
+  Raises:
+    ValueError: If data format is incompatible with causal padding.
   """
 
   def __init__(self, filters,
@@ -291,7 +295,8 @@ class Conv1D(_Conv):
                name=None,
                **kwargs):
     if padding == "causal":
-      assert data_format == "channels_last", "causal padding only supports NTC format."
+      if data_format != "channels_last":
+        raise ValueError("causal padding only supports channels_last (NTC) format.")
       self._causal_padding = True
       padding = "valid"
     else:
