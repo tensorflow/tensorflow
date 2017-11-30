@@ -188,7 +188,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                      << ", skipping this input";
           return nullptr;
         }
-        LOG(INFO) << "Will use fetch node " << name;
+        VLOG(1) << "Will use fetch node " << name;
         new_item->fetch.push_back(name);
       }
     }
