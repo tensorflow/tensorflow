@@ -761,23 +761,51 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
   bool IsNodeAfterNCHWToNHWC() const {
     std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
-    auto node = node_map_->GetNode(node_->name());
-    while (node->input_size() > 0) {
-      int data_input_pos = 0;
-      if (IsConcatV1(*node) || IsSplit(*node)) {
-        data_input_pos = 1;
-      }
-      node = node_map_->GetNode(node->input(data_input_pos));
-      if (IsNodeNCHWToNHWC(node->name())) {
+    std::deque<NodeDef*> queue;
+    auto first_node_pos = DataInputPos(*node_);
+    for (const auto& pos : first_node_pos) {
+      auto input_node = node_map_->GetNode(node_->input(pos));
+      queue.push_back(input_node);
+    }
+    // The code will exit this while loop in one iteration in most cases, as the
+    // graph is already topologically sorted.
+    while (!queue.empty()) {
+      NodeDef* current_node = queue.front();
+      queue.pop_front();
+      if (IsNodeNCHWToNHWC(current_node->name())) {
         return true;
       }
-      bool connected =
-          ops_format_agnostic.find(node->op()) != ops_format_agnostic.end();
-      if (!connected) {
-        return false;
+      // We only continue searching if the path is connected through
+      // format-agnostic nodes.
+      if (ops_format_agnostic.find(current_node->op()) !=
+          ops_format_agnostic.end()) {
+        auto current_node_pos = DataInputPos(*current_node);
+        for (const auto& pos : current_node_pos) {
+          auto input_node = node_map_->GetNode(current_node->input(pos));
+          queue.push_back(input_node);
+        }
       }
     }
     return false;
+  }
+
+ private:
+  std::vector<int> DataInputPos(const NodeDef& node) const {
+    std::vector<int> pos;
+    if (IsSplit(node)) {
+      return {1};
+    }
+    if (IsConcatV1(node)) {
+      return {1};
+    }
+    if (IsAdd(node) || IsMul(node) || IsRealDiv(node) ||
+        IsSquaredDifference(node) || IsSub(node)) {
+      return {0, 1};
+    }
+    if (node.input_size() > 0 && !IsControlInput(node.input(0))) {
+      return {0};
+    }
+    return {};
   }
 };
 
@@ -801,41 +829,48 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
  public:
   explicit BinaryOpProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {
-    is_4d_with_vector_ = Is4DOperateWithVector();
+    is_4d_with_vector_ = IsNDOperateWithMD(4, 1);
   }
 
  protected:
   bool ShouldProcess() const override {
+    // TODO(yaozhang): Support IsNDOperateWithMD(1, 4): first input is a vector
+    // and the second input is a 4D tensor; and update CustomizedProcessing()
+    // accordingly.
     return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() &&
-           (Is4DOperateWithND(4) || Is4DOperateWithScalar() ||
-            Is4DOperateWithVector()) &&
+           (IsNDOperateWithMD(4, 0) || IsNDOperateWithMD(4, 1) ||
+            IsNDOperateWithMD(4, 4) || IsNDOperateWithMD(0, 4)) &&
            IsOnGPU();
   }
 
   std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0};
-    if (Is4DOperateWithND(4)) {
+    std::vector<int> input_pos;
+    auto input0 = node_map_->GetNode(node_->input(0));
+    auto input1 = node_map_->GetNode(node_->input(1));
+    if (IsDimsFour(*input0)) {
+      input_pos.push_back(0);
+    }
+    if (IsDimsFour(*input1)) {
       input_pos.push_back(1);
     }
     return input_pos;
   }
 
-  bool Is4DOperateWithND(int n) const {
+  bool IsDimsFour(const NodeDef& node) const {
+    return NodeProcessor::IsDimsFour(node) || IsNodeNCHWToNHWC(node.name());
+  }
+
+  bool IsNDOperateWithMD(int n, int m) const {
     auto input0 = node_map_->GetNode(node_->input(0));
     auto input1 = node_map_->GetNode(node_->input(1));
     if (input0 && input1) {
-      return (IsDimsFour(*input0) || IsNodeNCHWToNHWC(input0->name())) &&
-             ((n == 4)
-                  ? (IsDimsFour(*input1) || IsNodeNCHWToNHWC(input1->name()))
-                  : IsDimsN(*input1, n));
+      bool input0_is_n = (n == 4) ? IsDimsFour(*input0) : IsDimsN(*input0, n);
+      bool input1_is_m = (m == 4) ? IsDimsFour(*input1) : IsDimsN(*input1, m);
+      return input0_is_n && input1_is_m;
     }
     return false;
   }
-
-  bool Is4DOperateWithScalar() const { return Is4DOperateWithND(0); }
-
-  bool Is4DOperateWithVector() const { return Is4DOperateWithND(1); }
 
   NodeDef* AddNodeShapeConst(const string& name, int num_channels) {
     NodeDef* node = graph_->add_node();
