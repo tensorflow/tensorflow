@@ -121,6 +121,7 @@ class ConvOp : public XlaOpKernel {
       : XlaOpKernel(ctx),
         num_spatial_dims_(num_spatial_dims),
         depthwise_(depthwise) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dilations", &dilations_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &strides_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
 
@@ -143,6 +144,23 @@ class ConvOp : public XlaOpKernel {
         ctx, strides_[batch_dim] == 1 && strides_[feature_dim] == 1,
         errors::Unimplemented("Current implementation does not yet support "
                               "strides in the batch and depth dimensions."));
+
+    OP_REQUIRES(ctx, dilations_.size() == num_dims(),
+                errors::InvalidArgument("Dilations field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+    OP_REQUIRES(
+        ctx, dilations_[batch_dim] == 1 && dilations_[feature_dim] == 1,
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
+    for (int i = 0; i < num_spatial_dims_; ++i) {
+      int input_dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
+      OP_REQUIRES(
+          ctx, dilations_[input_dim] == 1,
+          errors::Unimplemented("Current implementation does not yet support "
+                                "dilations in the ",
+                                i, "th spatial dimension."));
+    }
 
     const TensorShape input_shape = ctx->InputShape(0);
     // Input filter is of the following dimensions:
@@ -204,6 +222,7 @@ class ConvOp : public XlaOpKernel {
  protected:
   const int num_spatial_dims_;
   const bool depthwise_;
+  std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
@@ -241,6 +260,7 @@ class ConvBackpropInputOp : public XlaOpKernel {
       : XlaOpKernel(ctx),
         num_spatial_dims_(num_spatial_dims),
         depthwise_(depthwise) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dilations", &dilations_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &strides_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
     string data_format;
@@ -262,6 +282,23 @@ class ConvBackpropInputOp : public XlaOpKernel {
         ctx, strides_[batch_dim] == 1 && strides_[feature_dim] == 1,
         errors::Unimplemented("Current implementation does not yet support "
                               "strides in the batch and depth dimensions."));
+
+    OP_REQUIRES(ctx, dilations_.size() == num_dims(),
+                errors::InvalidArgument("Dilations field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+    OP_REQUIRES(
+        ctx, dilations_[batch_dim] == 1 && dilations_[feature_dim] == 1,
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
+    for (int i = 0; i < num_spatial_dims_; ++i) {
+      int input_dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
+      OP_REQUIRES(
+          ctx, dilations_[input_dim] == 1,
+          errors::Unimplemented("Current implementation does not yet support "
+                                "dilations in the ",
+                                i, "th spatial dimension."));
+    }
 
     TensorShape input_shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &input_shape));
@@ -336,6 +373,7 @@ class ConvBackpropInputOp : public XlaOpKernel {
  protected:
   const int num_spatial_dims_;
   const bool depthwise_;
+  std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
@@ -373,6 +411,7 @@ class ConvBackpropFilterOp : public XlaOpKernel {
       : XlaOpKernel(ctx),
         num_spatial_dims_(num_spatial_dims),
         depthwise_(depthwise) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dilations", &dilations_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &strides_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
     string data_format;
@@ -391,6 +430,23 @@ class ConvBackpropFilterOp : public XlaOpKernel {
         ctx, (strides_[n_dim] == 1 && strides_[c_dim] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+
+    OP_REQUIRES(ctx, dilations_.size() == num_dims(),
+                errors::InvalidArgument("Dilations field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+    OP_REQUIRES(
+        ctx, dilations_[n_dim] == 1 && dilations_[c_dim] == 1,
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
+    for (int i = 0; i < num_spatial_dims_; ++i) {
+      int input_dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
+      OP_REQUIRES(
+          ctx, dilations_[input_dim] == 1,
+          errors::Unimplemented("Current implementation does not yet support "
+                                "dilations in the ",
+                                i, "th spatial dimension."));
+    }
 
     const TensorShape activations_shape = ctx->InputShape(0);
     TensorShape filter_shape;
@@ -526,6 +582,7 @@ class ConvBackpropFilterOp : public XlaOpKernel {
  protected:
   const int num_spatial_dims_;
   const bool depthwise_;
+  std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
