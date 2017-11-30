@@ -143,6 +143,7 @@ py_test(
     size = "small",
     srcs = ["filter_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
@@ -312,6 +313,7 @@ py_test(
     size = "small",
     srcs = ["prefetch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/python:platform",
