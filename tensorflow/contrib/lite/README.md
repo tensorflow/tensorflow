@@ -94,7 +94,7 @@ Follow the instructions to build and run the demo app:
 
 1.   Follow the Building section [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/ios.md#building) to build the universal iOS library for TensorFlow Lite.
 1.   Install [CocoaPods](https://cocoapods.org/) if it wasn't installed yet: `sudo gem install cocoapods`.
-1.   Run `pod install` in `tensorflow/contrib/lite/examples/ios/camera` to generate the project file.
+1.   Run `pod install` in `tensorflow/contrib/lite/examples/ios/camera` to generate the workspace file.
 1.   Open the project by running `open tflite_camera_example.xcworkspace`, and build the app in XCode.
 
 # TensorFlow Lite Quick Start
