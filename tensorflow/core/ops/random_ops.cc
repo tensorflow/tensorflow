@@ -201,10 +201,11 @@ REGISTER_OP("Multinomial")
     .SetIsStateful()
     .Input("logits: T")
     .Input("num_samples: int32")
-    .Output("output: int64")
+    .Output("output: output_dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: realnumbertype")
+    .Attr("output_dtype: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle logits_shape;
       ShapeHandle unused;
