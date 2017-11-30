@@ -70,7 +70,7 @@ class ReferenceUtil {
   // dilation factors.
   static std::unique_ptr<Array4D<float>> ConvArray4DGeneralDimensionsDilated(
       const Array4D<float>& lhs, const Array4D<float>& rhs,
-      std::pair<int64, int64> stride, Padding padding,
+      std::pair<int64, int64> kernel_stride, Padding padding,
       std::pair<int64, int64> lhs_dilation,
       std::pair<int64, int64> rhs_dilation, ConvolutionDimensionNumbers dnums);
 
