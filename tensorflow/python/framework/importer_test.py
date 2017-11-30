@@ -642,8 +642,6 @@ class ImportGraphDefTest(test.TestCase):
           b.node_def.attr["_class"])
 
   def testColocationWithDeviceFn(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     original_graph_def = self._MakeGraphDef("""
           node { name: 'A' op: 'None' attr {
             key: '_class'
@@ -665,23 +663,17 @@ class ImportGraphDefTest(test.TestCase):
 
     with ops.Graph().as_default():
       with ops.device(CustomDeviceFn):
-        b, = importer.import_graph_def(
-            original_graph_def, return_elements=["B"], name="imported_graph")
+        a, b = importer.import_graph_def(original_graph_def,
+                                         return_elements=["A", "B"],
+                                         name="imported_graph")
+      self.assertEqual(a.device, "/device:A:0")
+      self.assertEqual(b.device, "/device:A:0")
+      self.assertEqual(a.colocation_groups(), [b"loc:@imported_graph/A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@imported_graph/A"])
 
-      self.assertProtoEqualsVersion("""
-          node { name: 'imported_graph/A' op: 'None' device: "/device:A:0"
-                attr {
-                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
-                }
-          }
-          node { name: 'imported_graph/B' op: 'None' device: "/device:A:0"
-                attr {
-                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
-          } }""", b.graph.as_graph_def())
-
-    # Test a scenario where 'A' doesn't get a device; 'A' should
-    # not have a device, but during runtime will get colocated with
-    # 'B' because of the colocation attribute.
+    # Test a scenario where 'A' doesn't get a device; 'A' should not have a
+    # device, but during runtime will get colocated with 'B' because of the
+    # colocation attribute. B's device function is still overridden by A.
     def BDeviceFn(op):
       if "B" in op.name:
         return "/device:B:0"
@@ -689,19 +681,13 @@ class ImportGraphDefTest(test.TestCase):
 
     with ops.Graph().as_default():
       with ops.device(BDeviceFn):
-        b, = importer.import_graph_def(
-            original_graph_def, return_elements=["B"], name="imported_graph")
-
-      self.assertProtoEqualsVersion("""
-          node { name: 'imported_graph/A' op: 'None'
-                attr {
-                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
-                }
-          }
-          node { name: 'imported_graph/B' op: 'None'
-                attr {
-                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
-          } }""", b.graph.as_graph_def())
+        a, b = importer.import_graph_def(original_graph_def,
+                                         return_elements=["A", "B"],
+                                         name="imported_graph")
+      self.assertEqual(a.device, "")
+      self.assertEqual(b.device, "")
+      self.assertEqual(a.colocation_groups(), [b"loc:@imported_graph/A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@imported_graph/A"])
 
     # Only A gets a device, so B inherits it implicitly.
     def ADeviceFn(op):
@@ -711,23 +697,15 @@ class ImportGraphDefTest(test.TestCase):
 
     with ops.Graph().as_default():
       with ops.device(ADeviceFn):
-        b, = importer.import_graph_def(
-            original_graph_def, return_elements=["B"], name="imported_graph")
-
-      self.assertProtoEqualsVersion("""
-          node { name: 'imported_graph/A' op: 'None' device: "/device:A:0"
-                attr {
-                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
-                }
-          }
-          node { name: 'imported_graph/B' op: 'None' device: "/device:A:0"
-                attr {
-                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
-          } }""", b.graph.as_graph_def())
+        a, b = importer.import_graph_def(original_graph_def,
+                                         return_elements=["A", "B"],
+                                         name="imported_graph")
+      self.assertEqual(a.device, "/device:A:0")
+      self.assertEqual(b.device, "/device:A:0")
+      self.assertEqual(a.colocation_groups(), [b"loc:@imported_graph/A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@imported_graph/A"])
 
   def testMultipleColocationWithDeviceFn(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     original_graph_def = self._MakeGraphDef("""
           node { name: 'A' op: 'None'}
           node { name: 'B' op: 'None'}
@@ -748,23 +726,19 @@ class ImportGraphDefTest(test.TestCase):
 
     with ops.Graph().as_default():
       with ops.device(CustomDeviceFn):
-        c, = importer.import_graph_def(
-            original_graph_def, return_elements=["C"], name="imported_graph")
-
-      self.assertProtoEqualsVersion("""
-          node { name: 'imported_graph/A' op: 'None' }
-          node { name: 'imported_graph/B' op: 'None' device: "/device:B:0" }
-          node { name: 'imported_graph/C' op: 'None' device: "/device:B:0"
-                 attr {
-                   key: '_class' value {
-                     list { s: 'loc:@imported_graph/A'
-                            s: 'loc:@imported_graph/B' }
-                   }
-                 }
-               }""", c.graph.as_graph_def())
+        a, b, c = importer.import_graph_def(original_graph_def,
+                                            return_elements=["A", "B", "C"],
+                                            name="imported_graph")
+      self.assertEqual(a.device, "")
+      self.assertEqual(b.device, "/device:B:0")
+      self.assertEqual(c.device, "/device:B:0")
+      self.assertEqual(a.colocation_groups(), [b"loc:@imported_graph/A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@imported_graph/B"])
+      self.assertEqual(c.colocation_groups(),
+                       [b"loc:@imported_graph/A", b"loc:@imported_graph/B"])
 
   def testNamePrefixColocationAttrsMultipleImport(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API: return  # TODO(skyewm): set uniquify_names
 
     original_graph_def = self._MakeGraphDef("""
           node { name: 'A' op: 'None' }
@@ -791,15 +765,19 @@ class ImportGraphDefTest(test.TestCase):
           } }""", b.graph.as_graph_def())
 
   def testNamePrefixColocationAttrsNotFound(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     original_graph_def = self._MakeGraphDef("""
           node { name: 'B' op: 'None'  attr {
             key: '_class'
             value { list { s: 'loc:@A' } }
           } }""")
+
+    if ops._USE_C_API:
+      error_msg = "Node 'B' expects to be colocated with unknown node 'A'"
+    else:
+      error_msg = "does not exist during import"
+
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "does not exist during import"):
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             original_graph_def, return_elements=["B"], name="imported_graph")
 

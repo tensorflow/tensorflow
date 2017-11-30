@@ -3102,7 +3102,7 @@ class Graph(object):
                            compute_device=compute_device)
     return ret
 
-  def _create_op_from_tf_operation(self, c_op):
+  def _create_op_from_tf_operation(self, c_op, compute_device=True):
     """Creates an `Operation` in this graph from the supplied TF_Operation.
 
     This method is like create_op() except the new Operation is constructed
@@ -3112,6 +3112,8 @@ class Graph(object):
 
     Args:
       c_op: a wrapped TF_Operation
+      compute_device: (Optional.) If True, device functions will be executed
+        to compute the device property of the Operation.
 
     Returns:
       An `Operation` object.
@@ -3122,7 +3124,7 @@ class Graph(object):
                     for output in tf_outputs)
     control_inputs = self._control_dependencies_for_inputs(input_ops)
     ret = Operation(c_op, self, control_inputs=control_inputs)
-    self._create_op_helper(ret)
+    self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
   def _create_op_helper(self, op, compute_shapes=True, compute_device=True):
