@@ -513,6 +513,7 @@ REGISTER_OP("Conv2D")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
@@ -546,7 +547,7 @@ filter: A 4-D tensor of shape
 output: A 4-D tensor. The dimension order is determined by the value of
     `data_format`, see below for details.
 strides: 1-D tensor of length 4.  The stride of the sliding window for each
-  dimension of `input`. The dimension order is determined by the value of
+    dimension of `input`. The dimension order is determined by the value of
     `data_format`, see below for details.
 padding: The type of padding algorithm to use.
 data_format: Specify the data format of the input and output data. With the
@@ -554,6 +555,11 @@ data_format: Specify the data format of the input and output data. With the
         [batch, height, width, channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, channels, height, width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 )doc");
 
 REGISTER_OP("Conv2DBackpropInput")
@@ -566,6 +572,7 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -589,10 +596,15 @@ padding: The type of padding algorithm to use.
 output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
   w.r.t. the input of the convolution.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
+  default format "NHWC", the data is stored in the order of:
+      [batch, in_height, in_width, in_channels].
+  Alternatively, the format could be "NCHW", the data storage order of:
+      [batch, in_channels, in_height, in_width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 )doc");
 
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
@@ -608,6 +620,7 @@ REGISTER_OP("Conv2DBackpropFilter")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -632,10 +645,15 @@ output: 4-D with shape
   `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
   the `filter` input of the convolution.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
+  default format "NHWC", the data is stored in the order of:
+      [batch, in_height, in_width, in_channels].
+  Alternatively, the format could be "NCHW", the data storage order of:
+      [batch, in_channels, in_height, in_width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 )doc");
 
 namespace {
@@ -823,6 +841,7 @@ REGISTER_OP("DepthwiseConv2dNative")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape)
     .Doc(R"doc(
 Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
@@ -845,7 +864,6 @@ for k in 0..in_channels-1
 
 Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
 horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
-
 strides: 1-D of length 4.  The stride of the sliding window for each dimension
   of `input`.
 padding: The type of padding algorithm to use.
@@ -854,6 +872,11 @@ data_format: Specify the data format of the input and output data. With the
         [batch, height, width, channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, channels, height, width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 )doc");
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
@@ -865,6 +888,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -892,6 +916,11 @@ data_format: Specify the data format of the input and output data. With the
         [batch, height, width, channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, channels, height, width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 output: 4-D with shape according to `data_format`.  For example, if
   `data_format` is 'NHWC', output shape is `[batch, in_height,
   in_width, in_channels]`.  Gradient w.r.t. the input of the
@@ -907,6 +936,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -935,6 +965,11 @@ data_format: Specify the data format of the input and output data. With the
         [batch, height, width, channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, channels, height, width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 output: 4-D with shape
   `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
   the `filter` input of the convolution.
@@ -949,6 +984,7 @@ REGISTER_OP("Conv3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv3DShape)
     .Doc(R"doc(
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
@@ -970,6 +1006,11 @@ data_format: The data format of the input and output data. With the
         [batch, in_depth, in_height, in_width, in_channels].
     Alternatively, the format could be "NCDHW", the data storage order is:
         [batch, in_channels, in_depth, in_height, in_width].
+dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 )doc");
 
 REGISTER_OP("Conv3DBackpropInput")
@@ -1036,6 +1077,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -1061,6 +1103,11 @@ data_format: The data format of the input and output data. With the
         [batch, in_depth, in_height, in_width, in_channels].
     Alternatively, the format could be "NCDHW", the data storage order is:
         [batch, in_channels, in_depth, in_height, in_width].
+dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 
 )doc");
 
@@ -1073,6 +1120,7 @@ REGISTER_OP("Conv3DBackpropFilterV2")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -1098,6 +1146,11 @@ data_format: The data format of the input and output data. With the
         [batch, in_depth, in_height, in_width, in_channels].
     Alternatively, the format could be "NCDHW", the data storage order is:
         [batch, in_channels, in_depth, in_height, in_width].
+dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 
 )doc");
 
@@ -2613,6 +2666,7 @@ REGISTER_OP("QuantizedConv2D")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -2641,7 +2695,11 @@ min_filter: The float value that the lowest quantized filter value represents.
 max_filter: The float value that the highest quantized filter value represents.
 min_output: The float value that the lowest quantized output value represents.
 max_output: The float value that the highest quantized output value represents.
-
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 )doc");
 
 REGISTER_OP("QuantizedMaxPool")
