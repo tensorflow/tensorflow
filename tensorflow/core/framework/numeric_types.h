@@ -121,15 +121,48 @@ struct bfloat16 {
     return static_cast<double>(float(*this));
   }
 
+  static bfloat16 epsilon() {
+    bfloat16 x;
+    x.value = 0x3c00;  // 0x1.0p-7
+    return x;
+  }
+
   uint16_t value;
 };
 
-inline bool operator==(const bfloat16 a, const bfloat16 b) {
-  return a.value == b.value;
+inline bfloat16 operator+(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) + static_cast<float>(b));
 }
-
-inline bool operator!=(const bfloat16 a, const bfloat16 b) {
-  return a.value != b.value;
+inline bfloat16 operator-(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) - static_cast<float>(b));
+}
+inline bfloat16 operator*(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) * static_cast<float>(b));
+}
+inline bfloat16 operator/(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) / static_cast<float>(b));
+}
+inline bfloat16 operator-(bfloat16 a) {
+  a.value ^= 0x8000;
+  return a;
+}
+inline bool operator<(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) < static_cast<float>(b);
+}
+inline bool operator<=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) <= static_cast<float>(b);
+}
+inline bool operator==(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) == static_cast<float>(b);
+}
+inline bool operator!=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) != static_cast<float>(b);
+}
+inline bool operator>(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) > static_cast<float>(b);
+}
+inline bool operator>=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) >= static_cast<float>(b);
 }
 
 }  // end namespace tensorflow

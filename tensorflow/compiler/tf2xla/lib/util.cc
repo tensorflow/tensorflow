@@ -40,6 +40,9 @@ xla::ComputationDataHandle FloatLiteral(xla::ComputationBuilder* builder,
     case xla::F16:
       return builder->ConstantR0<xla::half>(static_cast<xla::half>(value));
       break;
+    case xla::BF16:
+      return builder->ConstantR0<bfloat16>(static_cast<bfloat16>(value));
+      break;
     case xla::F32:
       return builder->ConstantR0<float>(static_cast<float>(value));
       break;
