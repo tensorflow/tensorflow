@@ -111,7 +111,8 @@ def input_producer(input_tensor,
                    shared_name=None,
                    summary_name=None,
                    name=None,
-                   cancel_op=None):
+                   cancel_op=None,
+                   collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Output the rows of `input_tensor` to a queue for an input pipeline.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
@@ -138,6 +139,9 @@ def input_producer(input_tensor,
       size will be generated, using this name as part of the tag.
     name: (Optional.) A name for queue.
     cancel_op: (Optional.) Cancel op for the queue
+    collection: A `GraphKey` specifying the graph collection to
+      get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
+
 
   Returns:
     A queue with the output rows.  A `QueueRunner` for the queue is
@@ -177,7 +181,7 @@ def input_producer(input_tensor,
     enq = q.enqueue_many([input_tensor])
     queue_runner.add_queue_runner(
         queue_runner.QueueRunner(
-            q, [enq], cancel_op=cancel_op))
+            q, [enq], cancel_op=cancel_op), collection)
     if summary_name is not None:
       summary.scalar(summary_name,
                      math_ops.to_float(q.size()) * (1. / capacity))
@@ -191,7 +195,8 @@ def string_input_producer(string_tensor,
                           capacity=32,
                           shared_name=None,
                           name=None,
-                          cancel_op=None):
+                          cancel_op=None,
+                          collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Output strings (e.g. filenames) to a queue for an input pipeline.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
@@ -250,11 +255,13 @@ def string_input_producer(string_tensor,
         shared_name=shared_name,
         name=name,
         summary_name="fraction_of_%d_full" % capacity,
-        cancel_op=cancel_op)
+        cancel_op=cancel_op,
+        collection=collection)
 
 
 def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
-                         capacity=32, shared_name=None, name=None):
+                         capacity=32, shared_name=None, name=None,
+                         collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Produces the integers from 0 to limit-1 in a queue.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
@@ -287,11 +294,13 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
     range_tensor = math_ops.range(limit)
     return input_producer(
         range_tensor, [], num_epochs, shuffle, seed, capacity,
-        shared_name, "fraction_of_%d_full" % capacity, name)
+        shared_name, "fraction_of_%d_full" % capacity, name,
+        collection=collection)
 
 
 def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
-                         capacity=32, shared_name=None, name=None):
+                         capacity=32, shared_name=None, name=None,
+                         collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Produces a slice of each `Tensor` in `tensor_list`.
 
   Implemented using a Queue -- a `QueueRunner` for the Queue
@@ -335,7 +344,8 @@ def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
     # everything in TensorList matches. Maybe just check the inferred shapes?
     queue = range_input_producer(range_size, num_epochs=num_epochs,
                                  shuffle=shuffle, seed=seed, capacity=capacity,
-                                 shared_name=shared_name)
+                                 shared_name=shared_name,
+                                 collection=collection)
     index = queue.dequeue()
     output = [array_ops.gather(t, index) for t in tensor_list]
     return output
@@ -684,7 +694,7 @@ def _select_which_to_enqueue(tensor_list, keep_input):
   return tensor_list
 
 
-def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
+def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input, collection):
   """Enqueue `tensor_list_list` in `queue`."""
   if enqueue_many:
     enqueue_fn = queue.enqueue_many
@@ -698,10 +708,11 @@ def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
         keep_input,
         lambda: enqueue_fn(tl),  # pylint:disable=cell-var-from-loop
         control_flow_ops.no_op) for tl in tensor_list_list]
-  queue_runner.add_queue_runner(queue_runner.QueueRunner(queue, enqueue_ops))
+  queue_runner.add_queue_runner(queue_runner.QueueRunner(queue, enqueue_ops),
+          collection)
 
 
-def _enqueue(queue, tensor_list, threads, enqueue_many, keep_input):
+def _enqueue(queue, tensor_list, threads, enqueue_many, keep_input, collection):
   """Enqueue `tensor_list` in `queue`."""
   if enqueue_many:
     enqueue_fn = queue.enqueue_many
@@ -715,7 +726,8 @@ def _enqueue(queue, tensor_list, threads, enqueue_many, keep_input):
         keep_input,
         lambda: enqueue_fn(tensor_list),
         control_flow_ops.no_op)] * threads
-  queue_runner.add_queue_runner(queue_runner.QueueRunner(queue, enqueue_ops))
+  queue_runner.add_queue_runner(queue_runner.QueueRunner(queue, enqueue_ops),
+          collection)
 
 
 def _which_queue(dynamic_pad):
@@ -726,7 +738,7 @@ def _which_queue(dynamic_pad):
 def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
            enqueue_many=False, shapes=None, dynamic_pad=False,
            allow_smaller_final_batch=False, shared_name=None,
-           name=None):
+           name=None, collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Helper function for `batch` and `maybe_batch`."""
   if context.in_eager_mode():
     raise ValueError(
@@ -744,7 +756,8 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
     # TODO(josh11b,mrry): Switch to BatchQueue once it is written.
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
-    _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
+    _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input,
+            collection)
     summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.to_float(queue.size()) * (1. / capacity))
 
@@ -764,7 +777,8 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
 # Once this is done, batch() can be written as a call to batch_join().
 def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
                 enqueue_many=False, shapes=None, dynamic_pad=False,
-                allow_smaller_final_batch=False, shared_name=None, name=None):
+                allow_smaller_final_batch=False, shared_name=None, name=None,
+                collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Helper function for `batch_join` and `maybe_batch_join`."""
   if context.in_eager_mode():
     raise ValueError(
@@ -783,7 +797,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
     # TODO(josh11b,mrry): Switch to BatchQueue once it is written.
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
-    _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
+    _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input, collection)
     summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.to_float(queue.size()) * (1. / capacity))
 
@@ -799,7 +813,8 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
 def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                    keep_input, num_threads=1, seed=None, enqueue_many=False,
                    shapes=None, allow_smaller_final_batch=False,
-                   shared_name=None, name=None):
+                   shared_name=None, name=None,
+                   collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Helper function for `shuffle_batch` and `maybe_shuffle_batch`."""
   if context.in_eager_mode():
     raise ValueError(
@@ -821,7 +836,8 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     queue = data_flow_ops.RandomShuffleQueue(
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=types, shapes=shapes, shared_name=shared_name)
-    _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
+    _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input,
+            collection)
     full = (math_ops.to_float(
         math_ops.maximum(0, queue.size() - min_after_dequeue)) *
             (1. / (capacity - min_after_dequeue)))
@@ -844,7 +860,7 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
                         min_after_dequeue, keep_input, seed=None,
                         enqueue_many=False, shapes=None,
                         allow_smaller_final_batch=False, shared_name=None,
-                        name=None):
+                        name=None, collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Helper function for `shuffle_batch_join` and `maybe_shuffle_batch_join`."""
   if context.in_eager_mode():
     raise ValueError(
@@ -863,7 +879,7 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
     queue = data_flow_ops.RandomShuffleQueue(
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=types, shapes=shapes, shared_name=shared_name)
-    _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
+    _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input, collection)
     full = (math_ops.to_float(
         math_ops.maximum(0, queue.size() - min_after_dequeue)) *
             (1. / (capacity - min_after_dequeue)))
@@ -887,7 +903,8 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
 
 def batch(tensors, batch_size, num_threads=1, capacity=32,
           enqueue_many=False, shapes=None, dynamic_pad=False,
-          allow_smaller_final_batch=False, shared_name=None, name=None):
+          allow_smaller_final_batch=False, shared_name=None, name=None,
+          collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Creates batches of tensors in `tensors`.
 
   The argument `tensors` can be a list or a dictionary of tensors.
@@ -951,6 +968,8 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
     shared_name: (Optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
+    collection: A `GraphKey` specifying the graph collection to
+      get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
   Returns:
     A list or dictionary of tensors with the same types as `tensors` (except if
@@ -981,7 +1000,8 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
 
 def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
                 enqueue_many=False, shapes=None, dynamic_pad=False,
-                allow_smaller_final_batch=False, shared_name=None, name=None):
+                allow_smaller_final_batch=False, shared_name=None, name=None,
+                collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Conditionally creates batches of tensors based on `keep_input`.
 
   See docstring in `batch` for more details.
@@ -1009,6 +1029,8 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
     shared_name: (Optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
+    collection: A `GraphKey` specifying the graph collection to
+      get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
   Returns:
     A list or dictionary of tensors with the same types as `tensors`.
@@ -1028,12 +1050,14 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
       dynamic_pad=dynamic_pad,
       allow_smaller_final_batch=allow_smaller_final_batch,
       shared_name=shared_name,
-      name=name)
+      name=name,
+      collection=collection)
 
 
 def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
                shapes=None, dynamic_pad=False, allow_smaller_final_batch=False,
-               shared_name=None, name=None):
+               shared_name=None, name=None,
+               collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Runs a list of tensors to fill a queue to create batches of examples.
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
@@ -1109,6 +1133,8 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
     shared_name: (Optional) If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
+    collection: A `GraphKey` specifying the graph collection to add
+      the queue runner to.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
   Returns:
     A list or dictionary of tensors with the same number and types as
@@ -1133,13 +1159,14 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
       dynamic_pad=dynamic_pad,
       allow_smaller_final_batch=allow_smaller_final_batch,
       shared_name=shared_name,
-      name=name)
+      name=name,
+      collection=collection)
 
 
 def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
                      enqueue_many=False, shapes=None, dynamic_pad=False,
                      allow_smaller_final_batch=False, shared_name=None,
-                     name=None):
+                     name=None, collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Runs a list of tensors to conditionally fill a queue to create batches.
 
   See docstring in `batch_join` for more details.
@@ -1166,6 +1193,8 @@ def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
     shared_name: (Optional) If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
+    collection: A `GraphKey` specifying the graph collection to add
+      the queue runner to.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
   Returns:
     A list or dictionary of tensors with the same number and types as
@@ -1185,12 +1214,14 @@ def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
       dynamic_pad=dynamic_pad,
       allow_smaller_final_batch=allow_smaller_final_batch,
       shared_name=shared_name,
-      name=name)
+      name=name,
+      collection=collection)
 
 
 def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                   num_threads=1, seed=None, enqueue_many=False, shapes=None,
-                  allow_smaller_final_batch=False, shared_name=None, name=None):
+                  allow_smaller_final_batch=False, shared_name=None, name=None,
+                  collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Creates batches by randomly shuffling tensors.
 
   This function adds the following to the current `Graph`:
@@ -1259,6 +1290,8 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     shared_name: (Optional) If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
+    collection: A `GraphKey` specifying the graph collection to
+      get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
   Returns:
     A list or dictionary of tensors with the types as `tensors`.
@@ -1284,14 +1317,15 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       shapes=shapes,
       allow_smaller_final_batch=allow_smaller_final_batch,
       shared_name=shared_name,
-      name=name)
+      name=name,
+      collection=collection)
 
 
 def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                         keep_input, num_threads=1, seed=None,
                         enqueue_many=False, shapes=None,
                         allow_smaller_final_batch=False, shared_name=None,
-                        name=None):
+                        name=None, collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Creates batches by randomly shuffling conditionally-enqueued tensors.
 
   See docstring in `shuffle_batch` for more details.
@@ -1318,6 +1352,8 @@ def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     shared_name: (Optional) If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
+    collection: A `GraphKey` specifying the graph collection to
+      get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
   Returns:
     A list or dictionary of tensors with the types as `tensors`.
@@ -1343,13 +1379,15 @@ def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       shapes=shapes,
       allow_smaller_final_batch=allow_smaller_final_batch,
       shared_name=shared_name,
-      name=name)
+      name=name,
+      collection=collection)
 
 
 def shuffle_batch_join(tensors_list, batch_size, capacity,
                        min_after_dequeue, seed=None, enqueue_many=False,
                        shapes=None, allow_smaller_final_batch=False,
-                       shared_name=None, name=None):
+                       shared_name=None, name=None,
+                       collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Create batches by randomly shuffling tensors.
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
@@ -1411,6 +1449,9 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
+    collection: A `GraphKey` specifying the graph collection to
+      get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
+
 
   Returns:
     A list or dictionary of tensors with the same number and types as
@@ -1436,14 +1477,15 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
       shapes=shapes,
       allow_smaller_final_batch=allow_smaller_final_batch,
       shared_name=shared_name,
-      name=name)
+      name=name,
+      collection=collection)
 
 
 def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
                              min_after_dequeue, keep_input, seed=None,
                              enqueue_many=False, shapes=None,
                              allow_smaller_final_batch=False, shared_name=None,
-                             name=None):
+                             name=None, collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Create batches by randomly shuffling conditionally-enqueued tensors.
 
   See docstring in `shuffle_batch_join` for more details.
@@ -1470,6 +1512,9 @@ def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
+    collection: A `GraphKey` specifying the graph collection to
+      get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
+
 
   Returns:
     A list or dictionary of tensors with the same number and types as
@@ -1495,4 +1540,5 @@ def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
       shapes=shapes,
       allow_smaller_final_batch=allow_smaller_final_batch,
       shared_name=shared_name,
-      name=name)
+      name=name,
+      collection=collection)
