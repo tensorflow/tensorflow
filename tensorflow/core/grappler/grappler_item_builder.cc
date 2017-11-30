@@ -297,7 +297,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   }
 
   for (auto& node : *new_item->graph.mutable_node()) {
-    if (IsPlaceholder(node)) {
+    if (IsPlaceholder(node) && node.op() != "PlaceholderWithDefault") {
       if (node.attr().count("dtype") == 0) {
         LOG(ERROR) << "Unknown type for placeholder " << node.name()
                    << ", skipping this input";

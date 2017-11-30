@@ -175,7 +175,7 @@ the name of a `FeatureColumn`. Each key's value is a tensor containing the
 values of that feature for all data instances. See
 @{$input_fn$Building Input Functions with tf.estimator} for a
 more comprehensive look at input functions, and `input_fn` in the
-[linear models tutorial code](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py)
+[linear models tutorial code](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py)
 for an example implementation of an input function.
 
 The input function is passed to the `train()` and `evaluate()` calls that

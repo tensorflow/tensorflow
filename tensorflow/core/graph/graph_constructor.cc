@@ -68,7 +68,8 @@ class GraphConstructor {
     Options(const GraphConstructorOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(in.allow_internal_ops),
           expect_device_spec(in.expect_device_spec),
-          importing(false) {}
+          importing(false),
+          validate_colocation_constraints(false) {}
     Options(const ImportGraphDefOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(false),
           expect_device_spec(false),
@@ -81,7 +82,8 @@ class GraphConstructor {
           control_dependencies(in.control_dependencies),
           return_tensors(in.return_tensors),
           return_nodes(in.return_nodes),
-          importing(true) {}
+          importing(true),
+          validate_colocation_constraints(in.validate_colocation_constraints) {}
 
     bool allow_internal_ops;
     bool expect_device_spec;
@@ -103,6 +105,7 @@ class GraphConstructor {
     // applicable to ConvertGraphDefToGraph as well, so make an attempt to
     // remove this.
     bool importing;
+    bool validate_colocation_constraints;
   };
 
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
@@ -238,13 +241,13 @@ class GraphConstructor {
   };
   // TODO(vrv): Profile this data structure to see if we should use an
   // alternative implementation of std::unordered_map.
-  std::unordered_map<StringPiece, NodeInfo, StringPiece::Hasher> gdef_nodes_;
+  std::unordered_map<StringPiece, NodeInfo, StringPieceHasher> gdef_nodes_;
 
   // Mapping from node name to the existing node in g_.
-  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> existing_nodes_;
+  std::unordered_map<StringPiece, Node*, StringPieceHasher> existing_nodes_;
 
   // Prefixes already used in the graph.
-  std::unordered_set<StringPiece, StringPiece::Hasher> existing_prefixes_;
+  std::unordered_set<StringPiece, StringPieceHasher> existing_prefixes_;
 
   // Imported node names that have been uniquified. The key is the original
   // name, the value is the new unique name.
@@ -444,6 +447,7 @@ Status GraphConstructor::InitFromEdges() {
   // Parse the inputs for each node.
   for (int n = 0; n < num_nodes; ++n) {
     const NodeDef& node_def = *node_defs_[n];
+    int pending_count = node_def.input_size();
     if (IsMerge(node_def)) {
       // Cycles in the graph are only allowed for while loops. A while loop is
       // identified by an edge from a NextIteration node to a Merge node. For
@@ -464,35 +468,41 @@ Status GraphConstructor::InitFromEdges() {
         }
       }
       if (has_loop_back_edge) {
-        pending_count_.push_back(num_control_edges + 1);
-      } else {
-        pending_count_.push_back(node_def.input_size());
+        pending_count = num_control_edges + 1;
       }
-    } else {
-      pending_count_.push_back(node_def.input_size());
-    }
-    if (node_def.input_size() == 0) {
-      ready_.push_back(n);
-      continue;
     }
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name = node_def.input(i);
       TensorId id(ParseTensorName(input_name));
-      auto iter = gdef_nodes_.find(id.first);
-      if (iter == gdef_nodes_.end()) {
-        return errors::InvalidArgument("Node '", node_def.name(),
-                                       "': Unknown input node '",
-                                       node_def.input(i), "'");
+      if (opts_.input_map.count(id) == 0) {
+        // If an input is not mapped, then the input should appear in the graph
+        // being imported.
+        auto iter = gdef_nodes_.find(id.first);
+        if (iter == gdef_nodes_.end()) {
+          return errors::InvalidArgument("Node '", node_def.name(),
+                                         "': Unknown input node '",
+                                         node_def.input(i), "'");
+        }
+        outputs_[iter->second.gdef_index].push_back(n);
+      } else {
+        // This input is mapped to an existing edge. Therefore this input is
+        // as good as being already processed.
+        --pending_count;
+        DCHECK_GE(pending_count, 0);
       }
-      outputs_[iter->second.gdef_index].push_back(n);
     }
+    if (pending_count == 0) {
+      ready_.push_back(n);
+    }
+    pending_count_.push_back(pending_count);
   }
   return Status::OK();
 }
 
 Status GraphConstructor::ValidateColocationConstraints(
     const NodeDef& node_def) {
-  if (!opts_.importing) return Status::OK();
+  if (!opts_.validate_colocation_constraints || !opts_.importing)
+    return Status::OK();
   const auto iter = node_def.attr().find(kColocationAttrName);
   if (iter == node_def.attr().end()) return Status::OK();
   for (const string& c : iter->second.list().s()) {
@@ -561,15 +571,36 @@ Status GraphConstructor::ValidateShape(Node* node) {
       const string& op = node->type_string();
       const std::vector<string> whitelist = {
           // To be removed after 2017/03/08.
-          "RandomShuffleQueue", "PaddingFIFOQueue", "FIFOQueue",
-          "PriorityQueue", "QueueSize", "Stack", "Barrier", "BarrierReadySize",
-          "BarrierIncompleteSize", "HashTable", "MutableHashTable",
-          "MutableHashTableOfTensors", "Mutex", "CuckooTable", "IndexTable",
-          "WholeFileReader", "TextLineReader", "FixedLengthRecordReader",
-          "TFRecordReader", "IdentityReader", "RefSwitch", "RefEnter",
-          "RefNextIteration", "RefMerge", "RefIdentity", "LMDBReader",
+          "RandomShuffleQueue",
+          "PaddingFIFOQueue",
+          "FIFOQueue",
+          "PriorityQueue",
+          "QueueSize",
+          "Stack",
+          "Barrier",
+          "BarrierReadySize",
+          "BarrierIncompleteSize",
+          "HashTable",
+          "MutableHashTable",
+          "MutableHashTableOfTensors",
+          "Mutex",
+          "CuckooTable",
+          "IndexTable",
+          "WholeFileReader",
+          "TextLineReader",
+          "FixedLengthRecordReader",
+          "TFRecordReader",
+          "IdentityReader",
+          "RefSwitch",
+          "RefEnter",
+          "RefNextIteration",
+          "RefMerge",
+          "RefIdentity",
+          "LMDBReader",
           // To be removed after 2017/04/24.
-          "ConditionalAccumulator", "SparseConditionalAccumulator", "Table",
+          "ConditionalAccumulator",
+          "SparseConditionalAccumulator",
+          "Table",
       };
       if (std::find(whitelist.begin(), whitelist.end(), op) ==
           whitelist.end()) {

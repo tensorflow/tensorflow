@@ -13,6 +13,28 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## BitcastConvertType
+
+See also
+[`ComputationBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
+operation from a data shape to a target shape. The dimensions must match, and
+the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
+via bitcast routine. Bitcast is implemented as a low-level cast, so machines
+with different floating point representations will give different results.
+
+<b> `BitcastConvertType(operand, new_element_type)` </b>
+
+Arguments          | Type                    | Semantics
+------------------ | ----------------------- | ---------------------------
+`operand`          | `ComputationDataHandle` | array of type T with dims D
+`new_element_type` | `PrimitiveType`         | type U
+
+The dimensions of the operand and the target shape must match. The bit-width of
+the source and destination element types must be equal. The source
+and destination element types must not be tuples.
+
 ## Broadcast
 
 See also
@@ -75,14 +97,14 @@ Clamps an operand to within the range between a minimum and maximum value.
 | `computation` | `Computation`           | computation of type `T_0, T_1,   |
 :               :                         : ..., T_N -> S` with N parameters :
 :               :                         : of arbitrary type                :
-| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `min`         | `ComputationDataHandle` | array of type T                  |
+| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `max`         | `ComputationDataHandle` | array of type T                  |
 
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+range.  That is, `clamp(a, x, b) =  max(min(a, x), b)`.
 
 All three arrays must be the same shape. Alternately, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -94,7 +116,7 @@ let operand: s32[3] = {-1, 5, 9};
 let min: s32 = 0;
 let max: s32 = 6;
 ==>
-Clamp(operand, min, max) = s32[3]{0, 5, 6};
+Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ```
 
 ## Collapse
@@ -234,9 +256,8 @@ Arguments          | Type                    | Semantics
 `operand`          | `ComputationDataHandle` | array of type T with dims D
 `new_element_type` | `PrimitiveType`         | type U
 
-If the dimensions of the operand and the target shape do not match, or an
-invalid conversion is requested (e.g. to/from a tuple) an error will be
-produced.
+The dimensions of the operand and the target shape must match. The source and
+destination element types must not be tuples.
 
 A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
 conversion routine such as round-to-nearest-even.
@@ -646,8 +667,8 @@ Normalizes an array across batch and spatial dimensions.
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the mean and variance
 across all the other dimensions and use the mean and variance to normalize each
-element in `operand`. If an invalid `feature_index` is passed, an error is
-produced.
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
 
 The algorithm goes as follows for each batch in `operand` \\(x\\) that
 contains `m` elements with `w` and `h` as the size of spatial dimensions (
@@ -674,7 +695,7 @@ The output type is a tuple of three ComputationDataHandles:
 | `batch_var`  | `ComputationDataHandle` | 1 dimensional array (\\(\sigma^2\\)) |
 
 The `batch_mean` and `batch_var` are moments calculated across the batch and
-spatial dimensions using the formulars above.
+spatial dimensions using the formulas above.
 
 ## BatchNormInference
 
@@ -702,8 +723,8 @@ Normalizes an array across batch and spatial dimensions.
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the mean and variance
 across all the other dimensions and use the mean and variance to normalize each
-element in `operand`. If an invalid `feature_index` is passed, an error is
-produced.
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
 
 `BatchNormInference`  is equivalent to calling `BatchNormTraining` without
 computing `mean` and `variance` for each batch. It uses the input `mean` and
@@ -742,8 +763,8 @@ Calculates gradients of batch norm.
 
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the gradients with
-respect to `operand`, `offset` and `scale` across all the other dimensions. If
-an invalid `feature_index` is passed, an error is produced.
+respect to `operand`, `offset` and `scale` across all the other dimensions. The
+`feature_index` must be a valid index for the feature dimension in `operand`.
 
 The three gradients are defined by the following formulas:
 
@@ -808,8 +829,7 @@ device, interpreting the data as the given shape and its layout, and returns a
 `ComputationDataHandle` of the data. Multiple Infeed operations are allowed in a
 computation, but there must be a total order among the Infeed operations. For
 example, two Infeeds in the code below have a total order since there is a
-dependency between the while loops. The compiler issues an error if there isn't
-a total order.
+dependency between the while loops.
 
 ```
 result1 = while (condition, init = init_value) {
@@ -899,6 +919,95 @@ are all 0. Figure below shows examples of different `edge_padding` and
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">
+</div>
+
+## Recv
+
+See also
+[`ComputationBuilder::Recv`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Recv(shape, channel_handle)` </b>
+
+| Arguments        | Type            | Semantics                            |
+| ---------------- | --------------- | ------------------------------------ |
+| `shape`          | `Shape`         | shape of the data to receive         |
+| `channel_handle` | `ChannelHandle` | unique identifier for each send/recv pair |
+
+Receives data of the given shape from a `Send` instruction in another
+computation that shares the same channel handle. Returns a
+ComputationDataHandle for the received data.
+
+The client API of `Recv` operation represents synchronous communication.
+However, the instruction is internally decomposed into 2 HLO instructions
+(`Recv` and `RecvDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+
+<b>`Recv(const Shape& shape, int64 channel_id)`</b>
+
+Allocates resources required to receive data from a `Send` instruction with the
+same channel_id. Returns a context for the allocated resources, which is used
+by a following `RecvDone` instruction to wait for the completion of the data
+transfer. The context is a tuple of {receive buffer (shape), request identifier
+(U32)} and it can only be used by a `RecvDone` instruction.
+
+<b> `RecvDone(HloInstruction context)` </b>
+
+Given a context created by a `Recv` instruction, waits for the data transfer to
+complete and returns the received data.
+
+## Send
+
+See also
+[`ComputationBuilder::Send`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Send(operand, channel_handle)` </b>
+
+| Arguments        | Type                    | Semantics                        |
+| ---------------- | ----------------------- | -------------------------------- |
+| `operand`        | `ComputationDataHandle` | data to send (array of type T)   |
+| `channel_handle` | `ChannelHandle`         | unique identifier for each send/recv pair |
+
+Sends the given operand data to a `Recv` instruction in another computation
+that shares the same channel handle. Does not return any data.
+
+Similar to the `Recv` operation, the client API of `Send` operation represents
+synchronous communication, and is internally decomposed into 2 HLO instructions
+(`Send` and `SendDone`) to enable asynchronous data transfers. See also
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+
+<b>`Send(HloInstruction operand, int64 channel_id)`</b>
+
+Initiates an asynchronous transfer of the operand to the resources allocated by
+the `Recv` instruction with the same channel id. Returns a context, which is
+used by a following `SendDone` instruction to wait for the completion of the
+data transfer. The context is a tuple of {operand (shape), request identifier
+(U32)} and it can only be used by a `SendDone` instruction.
+
+<b> `SendDone(HloInstruction context)` </b>
+
+Given a context created by a `Send` instruction, waits for the data transfer to
+complete.  The instruction does not return any data.
+
+<b> Scheduling of channel instructions </b>
+
+The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
+`Send`, `SendDone`) is as below.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:70%" src="../../images/send_recv_order.png">
+</div>
+
+* `Recv` happens before `Send`
+* `Send` happens before `RecvDone`
+* `Recv` happens before `RecvDone`
+* `Send` happens before `SendDone`
+
+When the backend compilers generate a linear schedule for each computation that
+communicates via channel instructions, there must not be cycles across the
+computations. For example, below schedules lead to deadlocks.
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/send_recv_schedule.png">
 </div>
 
 ## Reduce

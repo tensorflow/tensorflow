@@ -61,9 +61,15 @@ if ("${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
     )
   elseif ("${CMAKE_SYSTEM_NAME}X" STREQUAL "DarwinX")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/macos")
+    include_directories ("${PROJECT_SOURCE_DIR}/platform/posix")
+    # Some versions of MacOS, such as Sierra, require _DARWIN_C_SOURCE
+    # when including certin C++ standard header files, such as <mutex>.
+    add_definitions ("-D_DARWIN_C_SOURCE")
     add_compile_options ("-std=c++11")
     set (NSYNC_OS_SRC
       ${NSYNC_OS_CPP_SRC}
+      "platform/posix/src/clock_gettime.c"
+      "platform/posix/src/nsync_semaphore_mutex.c"
     )
     set (NSYNC_TEST_OS_SRC
       "platform/posix/src/start_thread.c"
@@ -138,6 +144,10 @@ if (NOT "${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
   elseif ("${CMAKE_SYSTEM_NAME}X" STREQUAL "DarwinX")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/macos")
     set (NSYNC_POSIX ON)
+    set (NSYNC_OS_EXTRA_SRC
+      "platform/posix/src/clock_gettime.c"
+      "platform/posix/src/nsync_semaphore_mutex.c"
+    )
     include_directories ("${PROJECT_SOURCE_DIR}/platform/posix")
   elseif ("${CMAKE_SYSTEM_NAME}X" STREQUAL "LinuxX")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/linux")

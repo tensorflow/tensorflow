@@ -100,6 +100,38 @@ namespace xla {
   ASSERT_EQ(expected.ShortDebugString(), actual.ShortDebugString());
 }
 
+/* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertBF16ToF32(
+    const Literal& bf16_literal) {
+  CHECK_EQ(bf16_literal.shape().element_type(), BF16);
+  Shape converted_shape = bf16_literal.shape();
+  converted_shape.set_element_type(F32);
+  auto converted = Literal::CreateFromShape(converted_shape);
+  if (!ShapeUtil::HasZeroElements(converted_shape)) {
+    std::vector<int64> index(converted_shape.dimensions_size(), 0);
+    do {
+      converted->Set<float>(
+          index, static_cast<float>(bf16_literal.Get<bfloat16>(index)));
+    } while (IndexUtil::BumpIndices(converted_shape, &index));
+  }
+  return converted;
+}
+
+/* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertF32ToBF16(
+    const Literal& f32_literal) {
+  CHECK_EQ(f32_literal.shape().element_type(), F32);
+  Shape converted_shape = f32_literal.shape();
+  converted_shape.set_element_type(BF16);
+  auto converted = Literal::CreateFromShape(converted_shape);
+  if (!ShapeUtil::HasZeroElements(converted_shape)) {
+    std::vector<int64> index(converted_shape.dimensions_size(), 0);
+    do {
+      converted->Set<bfloat16>(
+          index, static_cast<bfloat16>(f32_literal.Get<float>(index)));
+    } while (IndexUtil::BumpIndices(converted_shape, &index));
+  }
+  return converted;
+}
+
 namespace {
 
 string Hostname() {
@@ -116,16 +148,18 @@ template <typename FloatT, typename UnsignedT>
 ::testing::AssertionResult CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
   auto ulhs = tensorflow::bit_cast<UnsignedT>(lhs);
   auto urhs = tensorflow::bit_cast<UnsignedT>(rhs);
+  auto lhs_double = static_cast<double>(lhs);
+  auto rhs_double = static_cast<double>(rhs);
   if (ulhs != urhs) {
     return ::testing::AssertionFailure() << tensorflow::strings::Printf(
                "floating values are not bitwise-equal; and equality testing "
                "was requested: %s=%g=%a vs %s=%g=%a",
                tensorflow::strings::StrCat(tensorflow::strings::Hex(ulhs))
                    .c_str(),
-               lhs, lhs,
+               lhs_double, lhs_double,
                tensorflow::strings::StrCat(tensorflow::strings::Hex(urhs))
                    .c_str(),
-               rhs, rhs);
+               rhs_double, rhs_double);
   }
   return ::testing::AssertionSuccess();
 }
@@ -148,6 +182,10 @@ template <typename NativeT>
 
 // Specializations for floating types that do bitwise comparisons when equality
 // comparison is requested.
+template <>
+::testing::AssertionResult CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs) {
+  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs);
+}
 template <>
 ::testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
   return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
@@ -237,6 +275,9 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
       break;
     case U64:
       match = ExpectLiteralsEqual<uint64>(expected, actual, &multi_index, 0);
+      break;
+    case BF16:
+      match = ExpectLiteralsEqual<bfloat16>(expected, actual, &multi_index, 0);
       break;
     case F32:
       match = ExpectLiteralsEqual<float>(expected, actual, &multi_index, 0);
@@ -331,6 +372,9 @@ class NearComparator {
     multi_index_.resize(expected.shape().dimensions_size(), 0);
 
     switch (expected.shape().element_type()) {
+      case BF16:
+        ExpectLiteralsNear<bfloat16>(expected, actual, 0);
+        break;
       case F32:
         ExpectLiteralsNear<float>(expected, actual, 0);
         break;
@@ -514,6 +558,13 @@ void NearComparator::ExpectNear<complex64>(complex64 expected, complex64 actual,
   EXPECT_NEAR(expected.imag(), actual.imag(), error_.abs)
       << "expected:\n  " << expected << "\n\tvs actual:\n  " << actual << "\n"
       << message;
+}
+
+template <>
+bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
+                                                bfloat16 actual) {
+  return ExpectValuesNear(static_cast<float>(expected),
+                          static_cast<float>(actual));
 }
 
 }  // namespace

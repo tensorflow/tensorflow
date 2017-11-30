@@ -21,8 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gc
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -31,37 +29,14 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
-def assert_no_garbage_created(f):
-  """Test decorator to assert that no garbage has been created."""
-
-  def decorator(self):
-    """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
-    gc.disable()
-    previous_debug_flags = gc.get_debug()
-    gc.set_debug(gc.DEBUG_SAVEALL)
-    gc.collect()
-    previous_garbage = len(gc.garbage)
-    f(self)
-    gc.collect()
-    # This will fail if any garbage has been created, typically because of a
-    # reference cycle.
-    self.assertEqual(previous_garbage, len(gc.garbage))
-    # TODO(allenl): Figure out why this debug flag reset doesn't work. It would
-    # be nice to be able to decorate arbitrary tests in a large test suite and
-    # not hold on to every object in other tests.
-    gc.set_debug(previous_debug_flags)
-    gc.enable()
-  return decorator
-
-
 class NoReferenceCycleTests(test_util.TensorFlowTestCase):
 
-  @assert_no_garbage_created
+  @test_util.assert_no_garbage_created
   def testEagerResourceVariables(self):
     with context.eager_mode():
       resource_variable_ops.ResourceVariable(1.0, name="a")
 
-  @assert_no_garbage_created
+  @test_util.assert_no_garbage_created
   def testTensorArrays(self):
     with context.eager_mode():
       ta = tensor_array_ops.TensorArray(

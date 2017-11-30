@@ -371,6 +371,31 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that complex(real(c), imag(c)) is simplified to c.
+TEST_F(AlgebraicSimplifierTest, ComplexOfRealImagC) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape r2c64 = ShapeUtil::MakeShape(C64, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2c64, "param0"));
+  HloInstruction* real = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kReal, param0));
+  HloInstruction* imag = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kImag, param0));
+  HloInstruction* cplx = builder.AddInstruction(
+      HloInstruction::CreateBinary(r2c64, HloOpcode::kComplex, real, imag));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root, cplx);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
 // Test that real(complex(r,i)) is simplified to r.
 TEST_F(AlgebraicSimplifierTest, RealOfComplex) {
   Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
@@ -736,8 +761,10 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Divide(op::Constant(), param0));
-  EXPECT_EQ(root->operand(0)->literal().GetFirstElement<float>(), 1);
+  EXPECT_THAT(root, op::Divide(op::Broadcast(), param0));
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kBroadcast);
+  EXPECT_EQ(root->operand(0)->operand(0)->literal().GetFirstElement<float>(),
+            1);
 }
 
 TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
@@ -1597,8 +1624,11 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     ConvolutionDimensionNumbers dnums;
     std::vector<int64> in_dims;
     int in_channel_idx = -1;
-    dnums.add_spatial_dimensions(-1);  // filled in later
-    dnums.add_spatial_dimensions(-1);  // filled in later
+    // filled in later
+    dnums.add_input_spatial_dimensions(-1);
+    dnums.add_output_spatial_dimensions(-1);
+    dnums.add_input_spatial_dimensions(-1);
+    dnums.add_output_spatial_dimensions(-1);
     for (int i = 0; i < strlen(options.dim_order); ++i) {
       char ch = options.dim_order[i];
       if (ch == 'N') {
@@ -1606,10 +1636,12 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         dnums.set_output_batch_dimension(i);
         in_dims.push_back(options.in_batch);
       } else if (ch == 'H') {
-        dnums.set_spatial_dimensions(0, i);
+        dnums.set_input_spatial_dimensions(0, i);
+        dnums.set_output_spatial_dimensions(0, i);
         in_dims.push_back(options.in_height);
       } else if (ch == 'W') {
-        dnums.set_spatial_dimensions(1, i);
+        dnums.set_input_spatial_dimensions(1, i);
+        dnums.set_output_spatial_dimensions(1, i);
         in_dims.push_back(options.in_width);
       } else if (ch == 'C') {
         dnums.set_input_feature_dimension(i);

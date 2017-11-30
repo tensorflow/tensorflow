@@ -68,6 +68,9 @@ class ShapeIndex {
 
   const int64* data() const { return indices_.data(); }
 
+  int64 back() const { return indices_.back(); }
+  int64& back() { return indices_.back(); }
+
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }
 
@@ -186,6 +189,11 @@ class ShapeUtil {
   // identical. Layout is ignored. Tuple elements are compared recursively for
   // compatibility.
   static bool Compatible(const Shape& lhs, const Shape& rhs);
+
+  // Returns true if the rank and dimension sizes are identical. Element type
+  // and layout are ignored. Tuple elements are compared recursively for
+  // compatibility.
+  static bool CompatibleIgnoringElementType(const Shape& lhs, const Shape& rhs);
 
   // Returns whether the lhs and rhs shapes are identical protobufs.
   static bool Equal(const Shape& lhs, const Shape& rhs);

@@ -163,6 +163,11 @@ class Literal {
   const std::vector<complex64>& c64s() const { return c64s_; }
   std::vector<complex64>* mutable_c64s() { return &c64s_; }
 
+  int bf16s_size() const { return bf16s().size(); }
+  bfloat16 bf16s(int i) const { return bf16s_[i]; }
+  const std::vector<bfloat16>& bf16s() const { return bf16s_; }
+  std::vector<bfloat16>* mutable_bf16s() { return &bf16s_; }
+
   int tuple_literals_size() const { return tuple_literals().size(); }
   const Literal& tuple_literals(int i) const { return tuple_literals_[i]; }
   Literal* add_tuple_literals() {
@@ -450,7 +455,7 @@ class Literal {
   tensorflow::Status ValidateLiteral() const;
 
   // Returns a string representation of the literal value.
-  string ToString() const;
+  string ToString(bool print_layout = false) const;
 
   // Invokes the "per cell" callback for each element in the provided
   // literal with the element's indices and a string representation of
@@ -622,6 +627,7 @@ class Literal {
   std::vector<uint16> u16s_;
   std::vector<uint32> u32s_;
   std::vector<uint64> u64s_;
+  std::vector<bfloat16> bf16s_;
   std::vector<half> f16s_;
   std::vector<float> f32s_;
   std::vector<double> f64s_;
@@ -675,6 +681,9 @@ template <>
 tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const;
 
 template <>
+tensorflow::gtl::ArraySlice<bfloat16> Literal::GetArraySlice<bfloat16>() const;
+
+template <>
 tensorflow::gtl::ArraySlice<complex64> Literal::GetArraySlice<complex64>()
     const;
 
@@ -715,6 +724,9 @@ template <>
 tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice();
 
 template <>
+tensorflow::gtl::MutableArraySlice<bfloat16> Literal::GetMutableArraySlice();
+
+template <>
 tensorflow::gtl::MutableArraySlice<complex64> Literal::GetMutableArraySlice();
 
 template <>
@@ -746,6 +758,9 @@ void Literal::Resize<double>(int64 num_elements, double value);
 
 template <>
 void Literal::Resize<half>(int64 num_elements, half value);
+
+template <>
+void Literal::Resize<bfloat16>(int64 num_elements, bfloat16 value);
 
 template <>
 void Literal::Resize<complex64>(int64 num_elements, complex64 value);
@@ -988,6 +1003,14 @@ inline half Literal::Get<half>(
   CHECK(shape().element_type() == F16);
   int64 linear_index = LinearIndex(multi_index);
   return GetArraySlice<half>()[linear_index];
+}
+
+template <>
+inline bfloat16 Literal::Get<bfloat16>(
+    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  CHECK(shape().element_type() == BF16);
+  int64 linear_index = LinearIndex(multi_index);
+  return GetArraySlice<bfloat16>()[linear_index];
 }
 
 template <typename NativeT>

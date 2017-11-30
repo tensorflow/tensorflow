@@ -84,7 +84,7 @@ def call_logit_fn(logit_fn, features, mode, params, config):
 
   result_is_valid_dictionary = (
       isinstance(logit_fn_results, dict) and
-      all([(isinstance(k, str) and isinstance(v, ops.Tensor))
+      all([(isinstance(k, six.string_types) and isinstance(v, ops.Tensor))
            for k, v in six.iteritems(logit_fn_results)]))
   result_is_tensor = isinstance(logit_fn_results, ops.Tensor)
 

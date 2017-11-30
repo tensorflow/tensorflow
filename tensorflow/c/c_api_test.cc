@@ -287,6 +287,13 @@ TEST(CAPI, SetShape) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(-1, num_dims);
 
+  // Set the shape to be unknown, expect no change.
+  TF_GraphSetTensorShape(graph, feed_out_0, /*dims=*/nullptr, -1, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  num_dims = TF_GraphGetTensorNumDims(graph, feed_out_0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(-1, num_dims);
+
   // Set the shape to be 2 x Unknown
   int64_t dims[] = {2, -1};
   TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
@@ -315,7 +322,17 @@ TEST(CAPI, SetShape) {
   EXPECT_EQ(dims[0], returned_dims[0]);
   EXPECT_EQ(dims[1], returned_dims[1]);
 
-  // Try to set 'unknown' on the shape and see that
+  // Try to set 'unknown' with unknown rank on the shape and see that
+  // it doesn't change.
+  TF_GraphSetTensorShape(graph, feed_out_0, /*dims=*/nullptr, -1, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(2, num_dims);
+  EXPECT_EQ(2, returned_dims[0]);
+  EXPECT_EQ(3, returned_dims[1]);
+
+  // Try to set 'unknown' with same rank on the shape and see that
   // it doesn't change.
   dims[0] = -1;
   dims[1] = -1;
@@ -383,7 +400,7 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
 
   ASSERT_FALSE(GetAttrValue(feed, "missing", &attr_value, s));
-  EXPECT_EQ(string("Operation has no attr named 'missing'."),
+  EXPECT_EQ(string("Operation 'feed' has no attr named 'missing'."),
             string(TF_Message(s)));
 
   // Make a constant oper with the scalar "3".
@@ -1054,7 +1071,7 @@ class CApiColocationTest : public ::testing::Test {
         TF_OperationGetAttrMetadata(op, tensorflow::kColocationAttrName, s_);
     if (expected.empty()) {
       ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
-      EXPECT_EQ(std::string("Operation has no attr named '_class'."),
+      EXPECT_EQ(std::string("Operation 'add' has no attr named '_class'."),
                 std::string(TF_Message(s_)));
       return;
     }

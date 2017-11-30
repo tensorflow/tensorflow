@@ -58,27 +58,11 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoConvolution(
     return {};
   }
 
-  const ConvolutionDimensionNumbers& dnums =
-      convolution.convolution_dimension_numbers();
-
   TransposeFolding::OperandIndices operand_set;
   for (int64 i = 0; i < convolution.operand_count(); ++i) {
     auto& operand = *convolution.operand(i);
     if (operand.opcode() == HloOpcode::kTranspose &&
         operand.user_count() == 1) {
-      const auto& transpose_dimensions = operand.dimensions();
-      // We can transpose the LHS so long as it doesn't move around spatial
-      // dimensions because ConvolutionDimensionNumbers doesn't have different
-      // fields for input and output spatial dimensions.
-      if (i == 0 &&
-          std::any_of(dnums.spatial_dimensions().begin(),
-                      dnums.spatial_dimensions().end(),
-                      [&](const int64 spatial_dimension) {
-                        return transpose_dimensions[spatial_dimension] !=
-                               spatial_dimension;
-                      })) {
-        continue;
-      }
       operand_set.push_back(i);
     }
   }
@@ -137,7 +121,7 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
         transpose_dimensions[dnums.input_batch_dimension()]);
     new_dnums.set_input_feature_dimension(
         transpose_dimensions[dnums.input_feature_dimension()]);
-    for (const auto& spatial_dimension : dnums.spatial_dimensions()) {
+    for (const auto& spatial_dimension : dnums.input_spatial_dimensions()) {
       CHECK_EQ(spatial_dimension, transpose_dimensions[spatial_dimension]);
     }
     new_lhs = &transpose_operand;

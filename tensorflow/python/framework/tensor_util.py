@@ -286,6 +286,7 @@ _TF_TO_IS_OK = {
     dtypes.bool: [_FilterBool],
     dtypes.complex128: [_FilterComplex],
     dtypes.complex64: [_FilterComplex],
+    dtypes.float16: [_FilterFloat],
     dtypes.float32: [_FilterFloat],
     dtypes.float64: [_FilterFloat],
     dtypes.int16: [_FilterInt],
@@ -873,7 +874,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
 
   Args:
-    x: An python object to check.
+    x: A python object to check.
 
   Returns:
     `True` if `x` is a tensor, `False` if not.

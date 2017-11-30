@@ -25,10 +25,6 @@ from tensorflow.python.platform import flags
 from tensorflow.python.util.all_util import remove_undocumented
 
 
-def _benchmark_tests_can_log_memory():
-  return True
-
-
 def _usage(shorthelp):
   """Writes __main__'s docstring to stdout with some help text.
 

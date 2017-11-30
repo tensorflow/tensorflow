@@ -43,7 +43,7 @@
 # NOTES:
 # If you have the error "$'\r': command not found"
 # Please run the command below to remove trailing '\r' character that causes the error:
-#   sed -i 's/\r$//' dist_mnist_test.sh 
+#   sed -i 's/\r$//' dist_mnist_test.sh
 
 
 # Configurations

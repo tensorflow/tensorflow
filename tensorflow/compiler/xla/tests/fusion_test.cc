@@ -770,8 +770,6 @@ void BM_ParallelFusion(int num_iters) {
   auto client =
       ClientLibrary::GetOrCreateLocalClient(client_options).ValueOrDie();
 
-  auto* transfer_manager =
-      TransferManager::GetForPlatform(platform).ValueOrDie();
   int device_ordinal = client->default_device_ordinal();
 
   // Computation shape parameters.
@@ -796,29 +794,23 @@ void BM_ParallelFusion(int num_iters) {
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Transfer literals to device.
-  auto buffer0 =
-      ScopedShapedBuffer::Allocate(shape0, &allocator, /*device_ordinal=*/0)
-          .ConsumeValueOrDie();
   auto param0_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param0_dim0, param0_dim1);
-  ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *param0_literal, buffer0->mutable_buffer({})));
-
-  auto buffer1 =
-      ScopedShapedBuffer::Allocate(shape1, &allocator, /*device_ordinal=*/0)
+  std::unique_ptr<ShapedBuffer> buffer0 =
+      client->LiteralToShapedBuffer(*param0_literal, device_ordinal)
           .ConsumeValueOrDie();
+
   auto param1_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param1_dim0, param1_dim1);
-  ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *param1_literal, buffer1->mutable_buffer({})));
-
-  auto buffer2 =
-      ScopedShapedBuffer::Allocate(shape2, &allocator, /*device_ordinal=*/0)
+  std::unique_ptr<ShapedBuffer> buffer1 =
+      client->LiteralToShapedBuffer(*param1_literal, device_ordinal)
           .ConsumeValueOrDie();
+
   auto param2_literal =
       Literal::CreateR2F32Linspace(1.0, 2.0, param2_dim0, param2_dim1);
-  ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *param2_literal, buffer2->mutable_buffer({})));
+  std::unique_ptr<ShapedBuffer> buffer2 =
+      client->LiteralToShapedBuffer(*param2_literal, device_ordinal)
+          .ConsumeValueOrDie();
 
   // Build executable.
   std::unique_ptr<LocalExecutable> executable =
@@ -828,7 +820,7 @@ void BM_ParallelFusion(int num_iters) {
                     ExecutableBuildOptions())
           .ConsumeValueOrDie();
 
-  se::Stream stream(executors[client->default_device_ordinal()]);
+  se::Stream stream(executors[device_ordinal]);
   stream.Init();
 
   // Initialize thread pool.

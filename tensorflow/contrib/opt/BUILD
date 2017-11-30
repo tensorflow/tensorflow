@@ -14,11 +14,15 @@ py_library(
     name = "opt_py",
     srcs = [
         "__init__.py",
+        "python/training/addsign.py",
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/external_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
         "python/training/moving_average_optimizer.py",
+        "python/training/multitask_optimizer_wrapper.py",
         "python/training/nadam_optimizer.py",
+        "python/training/powersign.py",
+        "python/training/sign_decay.py",
         "python/training/variable_clipping_optimizer.py",
     ],
     srcs_version = "PY2AND3",
@@ -96,6 +100,23 @@ py_test(
 )
 
 py_test(
+    name = "multitask_optimizer_wrapper_test",
+    srcs = ["python/training/multitask_optimizer_wrapper_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
     name = "lazy_adam_optimizer_test",
     srcs = ["python/training/lazy_adam_optimizer_test.py"],
     srcs_version = "PY2AND3",
@@ -149,6 +170,54 @@ tf_py_test(
     ],
     tags = [
         "no_oss",  # Flaky due to port collisions
+    ],
+)
+
+py_test(
+    name = "sign_decay_test",
+    srcs = ["python/training/sign_decay_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "addsign_test",
+    srcs = ["python/training/addsign_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "powersign_test",
+    srcs = ["python/training/powersign_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 

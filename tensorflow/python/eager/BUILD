@@ -14,11 +14,16 @@ cc_library(
         "pywrap_tensor.cc",
         "pywrap_tfe_src.cc",
     ],
-    hdrs = ["pywrap_tfe.h"],
+    hdrs = [
+        "pywrap_tensor.h",
+        "pywrap_tfe.h",
+    ],
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_internal",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:lib",
         "//tensorflow/python:ndarray_tensor",
@@ -56,7 +61,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        ":memory_trace",
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
     ],
@@ -81,12 +85,6 @@ py_library(
     srcs = ["tape.py"],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
-)
-
-py_library(
-    name = "memory_trace",
-    srcs = ["memory_trace.py"],
-    srcs_version = "PY2AND3",
 )
 
 cuda_py_test(
@@ -217,6 +215,7 @@ cc_library(
         ":python_eager_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )

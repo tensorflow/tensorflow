@@ -1004,6 +1004,51 @@ TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
                              ErrorSpec(1e-6));
 }
 
+// Tests loop where the init value comes from two sources (constant and
+// parameter).
+//
+// int32 result = (0, 1);
+// while (result[0] + result[1] < 30) {
+//   result[0] = result[0] + 1;
+//   result[1] = result[1] + 1;
+// }
+TEST_F(WhileTest, WhileWithMixedTupleElements) {
+  auto result_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})});
+
+  ComputationBuilder outer(client_, "outer");
+  auto p =
+      outer.Tuple({outer.ConstantR0<int32>(0),
+                   outer.Parameter(0, ShapeUtil::MakeShape(S32, {}), "t")});
+
+  ComputationBuilder cond(client_, "cond");
+  auto params = cond.Parameter(0, result_shape, "prev");
+  auto cond_t = cond.Add(cond.GetTupleElement(params, 1),
+                         cond.GetTupleElement(params, 0));
+  cond.Lt(cond_t, cond.ConstantR0<int32>(30));
+
+  ComputationBuilder body(client_, "body");
+  auto body_t = body.Parameter(0, result_shape, "t");
+
+  auto tuple = body.Tuple(
+      {body.Add(body.GetTupleElement(params, 0), body.ConstantR0<int32>(1)),
+       body.Add(body.GetTupleElement(params, 1), body.ConstantR0<int32>(1))});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  outer.While(cond_computation, body_computation, p);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> parameter_data,
+      client_->TransferToServer(*Literal::CreateR0<int32>(1)));
+
+  auto add1 = Literal::CreateR0<int32>(15);
+  auto add2 = Literal::CreateR0<int32>(16);
+  auto expected = Literal::MakeTuple({add1.get(), add2.get()});
+  ComputeAndCompareTuple(&outer, *expected, {parameter_data.get()},
+                         ErrorSpec(1e-6));
+}
+
 // Tests nested while loops.
 //
 // int32 result = 0;

@@ -421,7 +421,7 @@ TEST_F(BigQueryTableAccessorTest, MultiplePagesTest) {
   TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
   EXPECT_EQ(3, row_id);
   EXPECT_TRUE(accessor_->Done());
-  
+
   Example expected_example;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(kTestExampleProtoWithNulls,
                                                     &expected_example));

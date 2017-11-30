@@ -86,6 +86,9 @@ class DfsHloVisitorBase {
   virtual Status HandleConvert(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleBitcastConvert(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleCopy(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -208,12 +211,15 @@ class DfsHloVisitorBase {
   virtual Status HandleReduceWindow(HloInstructionPtr hlo) = 0;
   virtual Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
   virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
+  virtual Status HandleConditional(HloInstructionPtr hlo) = 0;
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandleSend(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSend(HloInstructionPtr send) = 0;
+  virtual Status HandleSendDone(HloInstructionPtr send_done) = 0;
 
-  virtual Status HandleRecv(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRecv(HloInstructionPtr recv) = 0;
+  virtual Status HandleRecvDone(HloInstructionPtr recv_done) = 0;
 
   virtual Status HandleBatchNormTraining(HloInstructionPtr hlo) = 0;
 
