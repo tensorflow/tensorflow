@@ -45,7 +45,7 @@ if(WIN32)
       $<TARGET_FILE:tensorflow_static>
       $<TARGET_FILE:tf_protos_cc>
   )
-    
+
   set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
   set_source_files_properties(${tensorflow_deffile} PROPERTIES GENERATED TRUE)
 

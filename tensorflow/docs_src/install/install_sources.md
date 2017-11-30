@@ -138,12 +138,12 @@ The following NVIDIA <i>software</i> must be installed on your system:
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
   * The NVIDIA drivers associated with NVIDIA's Cuda Toolkit.
-  * cuDNN (>= v3). We recommend version 5.1. For details, see
+  * cuDNN (>= v3). We recommend version 6.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn),
     particularly the description of appending the appropriate pathname
     to your `LD_LIBRARY_PATH` environment variable.
 
-Finally, you must also install `libcupti` which for Cuda Toolkit >= 8.0 you do via 
+Finally, you must also install `libcupti` which for Cuda Toolkit >= 8.0 you do via
 
 <pre> $ <b>sudo apt-get install cuda-command-line-tools</b> </pre>
 

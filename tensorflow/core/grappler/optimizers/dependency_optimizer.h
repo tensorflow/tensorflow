@@ -43,23 +43,26 @@ class DependencyOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  Status OptimizeDependencies();
+
   // Returns true if it is safe to convert node to NoOp.
   bool SafeToConvertToNoOp(const NodeDef& node);
 
-  Status OptimizeDependencies(GraphDef* optimized_graph);
   // Tries to simplify the expression that roots at `node` and replaces the uses
   // of `node` to the simplified expression. Returns the name of the simplified
   // tensor (e.g. "split:1") or an empty string if no simplification is
   // performed.
-  string TryOptimizeDependencies(NodeDef* node, GraphDef* graph,
-                                 std::vector<NodeDef*>* new_nodes);
+  string TryOptimizeDependencies(NodeDef* node,
+                                 SetVector<NodeDef*>* nodes_to_simplify);
 
   bool HasOnlyControlOutputs(const NodeDef* node);
 
-  bool fetch_nodes_known_;
   RewriterConfig::Toggle opt_level_;
+
+  bool fetch_nodes_known_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
+  GraphDef* optimized_graph_;  // Not owned.
 };
 
 }  // end namespace grappler

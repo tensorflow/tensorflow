@@ -905,7 +905,7 @@ llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
 
   // If no implicit broadcast is needed for this operand, returns the target
   // index as the source index.
-  if (ShapeUtil::Compatible(operand_shape, hlo.shape())) {
+  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape())) {
     return target_index;
   }
 

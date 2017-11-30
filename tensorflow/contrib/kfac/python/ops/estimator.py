@@ -95,7 +95,7 @@ class FisherEstimator(object):
           blocks, kronecker factors, and losses associated with the
           graph.
       estimation_mode: The type of estimator to use for the Fishers.  Can be
-          'gradients', 'empirical', 'curvature_propagation', or 'exact'.
+          'gradients', 'empirical', 'curvature_prop', or 'exact'.
           (Default: 'gradients').  'gradients' is the basic estimation approach
           from the original K-FAC paper.  'empirical' computes the 'empirical'
           Fisher information matrix (which uses the data's distribution for the

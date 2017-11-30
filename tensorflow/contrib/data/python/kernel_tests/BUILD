@@ -110,6 +110,7 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
@@ -143,6 +144,7 @@ py_test(
     srcs = ["filter_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -306,6 +308,18 @@ py_test(
 )
 
 py_test(
+    name = "prefetch_dataset_op_test",
+    size = "small",
+    srcs = ["prefetch_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "range_dataset_op_test",
     size = "small",
     srcs = ["range_dataset_op_test.py"],
@@ -333,7 +347,7 @@ py_test(
 
 py_test(
     name = "reader_dataset_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["reader_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
