@@ -17,7 +17,7 @@ There are 3 ways to get the demo app to your device
 In the demo app, inference is done using the TensorFlow Lite Java API. The demo app classifies frames in real-time, displaying the top most probable classifications. It also displays the time taken to detect the object.
 
 ## Downloading the pre-built binary
-The  fastest path to trying the demo, is to download the pre-built binary
+The fastest path to trying the demo, is to download the pre-built binary
 [TfLiteCameraDemo.apk](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk)
 
 Once the apk is installed, click the app icon to start the app. The first-time the app is opened, the app asks for runtime permissions to access the device camera. The demo app opens the back-camera of the device and recognizes the objects in the camera's field of view. At the bottom of the image (or at the left of the image if the device is in landscape mode), it shows the latency of classification and the top three objects classified.
@@ -69,7 +69,7 @@ android_ndk_repository(
 
 Additional details on building with Android can be found [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/README.md).
 
-### Build the  source code
+### Build the source code
 Run bazel with the following command to build the demo.
 
 Build the demo app:
