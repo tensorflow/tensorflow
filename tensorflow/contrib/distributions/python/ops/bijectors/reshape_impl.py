@@ -63,9 +63,9 @@ class Reshape(bijector_lib.Bijector):
   Example usage:
   ```python
 
-  bs = tf.contrib.distributions.bijectors
+  tfd = tf.contrib.distributions
 
-  r = bs.Reshape(event_shape_out=[1, -1])
+  r = tfd.bijectors.Reshape(event_shape_out=[1, -1])
 
   r.forward([3., 4.])    # shape [2]
   # ==> [[3., 4.]]       # shape [1, 2]
