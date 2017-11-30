@@ -252,6 +252,10 @@ Status Literal::Copy(const Literal& src_literal,
       return *Literal::CreateR0<int32>(1);
     case S64:
       return *Literal::CreateR0<int64>(1);
+    case F16:
+      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
+    case BF16:
+      return *Literal::CreateR0<bfloat16>(static_cast<bfloat16>(1.0f));
     case F32:
       return *Literal::CreateR0<float>(1);
     case F64:
@@ -263,8 +267,6 @@ Status Literal::Copy(const Literal& src_literal,
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case F16:
-      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
     case OPAQUE:
