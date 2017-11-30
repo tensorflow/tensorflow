@@ -170,7 +170,7 @@ class ShapeUtil {
   // As above, but for program shapes, returns a string for the form:
   //
   // (param_name: f32[42x12], ...) -> f32[24x42]
-  static string HumanString(const ProgramShape& shape);
+  static string HumanString(const ProgramShape& program_shape);
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.

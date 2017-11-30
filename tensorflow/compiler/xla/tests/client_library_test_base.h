@@ -194,7 +194,7 @@ class ClientLibraryTestBase : public ::testing::Test {
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   void ComputeAndCompareTuple(
       ComputationBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec abs_error);
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
 
   // Convenience method for running a built computation and comparing the result
   // with the HloEvaluator.
