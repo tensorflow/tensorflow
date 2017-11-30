@@ -290,5 +290,32 @@ TEST_F(SummaryDbWriterTest, WriteGraph) {
   EXPECT_EQ(1LL, QueryInt("SELECT is_control FROM NodeInputs WHERE idx = 2"));
 }
 
+TEST_F(SummaryDbWriterTest, WriteScalarInt32_CoercesToInt64) {
+  TF_ASSERT_OK(CreateSummaryDbWriter(db_, "", "", "", &env_, &writer_));
+  Tensor t(DT_INT32, {});
+  t.scalar<int32>()() = -17;
+  TF_ASSERT_OK(writer_->WriteScalar(1, t, "t"));
+  TF_ASSERT_OK(writer_->Flush());
+  ASSERT_EQ(-17LL, QueryInt("SELECT tensor FROM Tensors"));
+}
+
+TEST_F(SummaryDbWriterTest, WriteScalarInt8_CoercesToInt64) {
+  TF_ASSERT_OK(CreateSummaryDbWriter(db_, "", "", "", &env_, &writer_));
+  Tensor t(DT_INT8, {});
+  t.scalar<int8>()() = static_cast<int8>(-17);
+  TF_ASSERT_OK(writer_->WriteScalar(1, t, "t"));
+  TF_ASSERT_OK(writer_->Flush());
+  ASSERT_EQ(-17LL, QueryInt("SELECT tensor FROM Tensors"));
+}
+
+TEST_F(SummaryDbWriterTest, WriteScalarUint8_CoercesToInt64) {
+  TF_ASSERT_OK(CreateSummaryDbWriter(db_, "", "", "", &env_, &writer_));
+  Tensor t(DT_UINT8, {});
+  t.scalar<uint8>()() = static_cast<uint8>(254);
+  TF_ASSERT_OK(writer_->WriteScalar(1, t, "t"));
+  TF_ASSERT_OK(writer_->Flush());
+  ASSERT_EQ(254LL, QueryInt("SELECT tensor FROM Tensors"));
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -42,15 +42,15 @@ Status WithLogBacktrace(const Status& status) {
 
 }  // namespace
 
-ScopedLoggingTimer::ScopedLoggingTimer(const string& label, int32 vlog_level)
-    : label(label), vlog_level(vlog_level) {
-  if (VLOG_IS_ON(vlog_level)) {
+ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
+    : enabled(enabled), label(label) {
+  if (enabled) {
     start_micros = tensorflow::Env::Default()->NowMicros();
   }
 }
 
 ScopedLoggingTimer::~ScopedLoggingTimer() {
-  if (VLOG_IS_ON(vlog_level)) {
+  if (enabled) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros) / 1000000.0;
 

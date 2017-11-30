@@ -52,13 +52,13 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
             example.sparse_float_features[split.feature_column()];
         // Feature id for the split when multivalent sparse float column, or 0
         // by default.
-        const int32 feature_id = split.feature_id();
+        const int32 dimension_id = split.dimension_id();
 
-        node_id =
-            !sparse_feature[feature_id].has_value() ||
-                    sparse_feature[feature_id].get_value() <= split.threshold()
-                ? split.left_id()
-                : split.right_id();
+        node_id = !sparse_feature[dimension_id].has_value() ||
+                          sparse_feature[dimension_id].get_value() <=
+                              split.threshold()
+                      ? split.left_id()
+                      : split.right_id();
         break;
       }
       case TreeNode::kSparseFloatBinarySplitDefaultRight: {
@@ -68,12 +68,12 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
             example.sparse_float_features[split.feature_column()];
         // Feature id for the split when multivalent sparse float column, or 0
         // by default.
-        const int32 feature_id = split.feature_id();
-        node_id =
-            sparse_feature[feature_id].has_value() &&
-                    sparse_feature[feature_id].get_value() <= split.threshold()
-                ? split.left_id()
-                : split.right_id();
+        const int32 dimension_id = split.dimension_id();
+        node_id = sparse_feature[dimension_id].has_value() &&
+                          sparse_feature[dimension_id].get_value() <=
+                              split.threshold()
+                      ? split.left_id()
+                      : split.right_id();
         break;
       }
       case TreeNode::kCategoricalIdBinarySplit: {

@@ -28,7 +28,6 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -369,10 +368,11 @@ class DataFeeder(object):
     if x_is_dict:
       num_samples = list(self._x.values())[0].shape[0]
     elif tensor_util.is_tensor(self._x):
-      num_samples = self._x.shape[0].value  # shape will be a Dimension, extract an int
+      num_samples = self._x.shape[
+          0].value  # shape will be a Dimension, extract an int
     else:
       num_samples = self._x.shape[0]
-      
+
     if self._shuffle:
       self.indices = self.random_state.permutation(num_samples)
     else:

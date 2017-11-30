@@ -874,11 +874,13 @@ XLA_TEST_F(LocalClientExecuteTest,
           tensorflow::ThreadOptions(), "execute_thread",
           [&] { ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {}); }));
 
-  ASSERT_IS_OK(local_client_->TransferToInfeed(
-      *Literal::CreateR1<float>({-5.0, 123.0, 42.0})));
+  ASSERT_IS_OK(local_client_->TransferToInfeedLocal(
+      *Literal::CreateR1<float>({-5.0, 123.0, 42.0}),
+      local_client_->default_device_ordinal()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          local_client_->TransferFromOutfeed(&shape));
+                          local_client_->TransferFromOutfeedLocal(
+                              shape, local_client_->default_device_ordinal()));
 
   LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, *result);
 }

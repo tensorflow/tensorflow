@@ -290,9 +290,16 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   tensorflow::gtl::FlatMap<string, HloComputation*> computation_map;
   for (const HloComputationProto& computation_proto : proto.computations()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> computation,
-                        HloComputation::CreateFromProto(
-                            module.get(), computation_proto, &computation_map));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloComputation> computation,
+        HloComputation::CreateFromProto(
+            module.get(), computation_proto, computation_map,
+            /*add_fused_computation=*/
+            [&module](std::unique_ptr<HloComputation> fused_computation) {
+              module->AddComputationInternal(std::move(fused_computation),
+                                             /*is_entry=*/false,
+                                             /*uniquify_names=*/false);
+            }));
     CHECK_NE(computation.get(), nullptr);
     TF_RET_CHECK(!ContainsKey(computation_map, computation->name()));
     string computation_name = computation->name();

@@ -190,6 +190,11 @@ class ShapeUtil {
   // compatibility.
   static bool Compatible(const Shape& lhs, const Shape& rhs);
 
+  // Returns true if the rank and dimension sizes are identical. Element type
+  // and layout are ignored. Tuple elements are compared recursively for
+  // compatibility.
+  static bool CompatibleIgnoringElementType(const Shape& lhs, const Shape& rhs);
+
   // Returns whether the lhs and rhs shapes are identical protobufs.
   static bool Equal(const Shape& lhs, const Shape& rhs);
 

@@ -51,7 +51,7 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
 
 std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
                                               Client* client) {
-  if (ShapeUtil::ByteSizeOf(shape) < (1LL << 30)) {
+  if (ShapeUtil::ByteSizeOf(shape) < (1LL << 20)) {
     StatusOr<std::unique_ptr<Literal>> literal_status = MakeFakeLiteral(shape);
     if (!literal_status.ok()) {
       // If we got an Unimplemented error, fall back to making the fake data via

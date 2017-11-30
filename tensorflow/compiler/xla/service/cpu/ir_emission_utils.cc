@@ -29,10 +29,8 @@ bool PotentiallyImplementedAsEigenConvolution(
   // The following conditions are necessary (but not sufficient) for
   // implementing `convolution` with Eigen convolution:
   // - the input and kernel have a non-zero number of elements.
-  // - the input is in NHWC or NWHC order.
-  // - the kernel is in HWIO or WHIO order.
-  // - the spatial dimensions are in the same relative order in the input,
-  //   kernel and output.
+  // - the input is in NHWC order.
+  // - the kernel is in HWIO order.
   //
   // To be sufficient, certain layout constraints need to be satisfied as well.
   const Shape& input_shape = convolution.operand(0)->shape();
@@ -51,15 +49,22 @@ bool PotentiallyImplementedAsEigenConvolution(
       convolution.convolution_dimension_numbers();
   // Only 1D and 2D convolutions are supported at the moment.
   // TODO(b/32897908): add an optimized implementation for 3D convolution.
-  if (dnums.spatial_dimensions_size() > 2) {
+  const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
+  if (num_spatial_dims > 2) {
     return false;
   }
 
-  bool input_spatial_dims_ascending = std::is_sorted(
-      dnums.spatial_dimensions().begin(), dnums.spatial_dimensions().end());
-  bool kernel_spatial_dims_ascending =
-      std::is_sorted(dnums.kernel_spatial_dimensions().begin(),
-                     dnums.kernel_spatial_dimensions().end());
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
+    if (dnums.input_spatial_dimensions(i) != i + 1) {
+      return false;
+    }
+    if (dnums.kernel_spatial_dimensions(i) != i) {
+      return false;
+    }
+    if (dnums.output_spatial_dimensions(i) != i + 1) {
+      return false;
+    }
+  }
 
   const Shape& output_shape = convolution.shape();
   return dnums.input_batch_dimension() == 0 &&
@@ -67,7 +72,6 @@ bool PotentiallyImplementedAsEigenConvolution(
          dnums.output_batch_dimension() == 0 &&
          dnums.output_feature_dimension() ==
              output_shape.dimensions_size() - 1 &&
-         input_spatial_dims_ascending == kernel_spatial_dims_ascending &&
          dnums.kernel_input_feature_dimension() ==
              kernel_shape.dimensions_size() - 2 &&
          dnums.kernel_output_feature_dimension() ==

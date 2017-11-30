@@ -276,6 +276,7 @@ py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",

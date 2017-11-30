@@ -43,24 +43,6 @@ enum class ValueType : int { kInt64 = 0, kHistogram, kString };
 // on this.
 namespace internal {
 
-// Ensures that the string is a compile-time string literal.
-class StringLiteral {
- public:
-  // We allow implicit conversions here on purpose.
-  template <int N>
-  StringLiteral(const char (&data)[N]) : literal_(data, N - 1) {}
-
-  // This ctor will be called for non-literals, causing compile-time failure.
-  template <typename NotStringLiteral>
-  StringLiteral(const NotStringLiteral& not_string_literal) = delete;
-
-  // Implicit conversion to StringPiece.
-  operator StringPiece() const { return literal_; }
-
- private:
-  const StringPiece literal_;
-};
-
 template <typename Value>
 ValueType GetValueType();
 
@@ -98,7 +80,7 @@ class AbstractMetricDef {
 
   StringPiece description() const { return description_; }
 
-  const std::vector<StringPiece> label_descriptions() const {
+  const std::vector<string>& label_descriptions() const {
     return label_descriptions_;
   }
 
@@ -106,23 +88,21 @@ class AbstractMetricDef {
   template <MetricKind kind, typename Value, int NumLabels>
   friend class MetricDef;
 
-  AbstractMetricDef(
-      const MetricKind kind, const ValueType value_type,
-      const internal::StringLiteral name,
-      const internal::StringLiteral description,
-      const std::vector<internal::StringLiteral>& label_descriptions)
+  AbstractMetricDef(const MetricKind kind, const ValueType value_type,
+                    const StringPiece name, const StringPiece description,
+                    const std::vector<string>& label_descriptions)
       : kind_(kind),
         value_type_(value_type),
-        name_(name),
-        description_(description),
-        label_descriptions_(std::vector<StringPiece>(
-            label_descriptions.begin(), label_descriptions.end())) {}
+        name_(name.ToString()),
+        description_(description.ToString()),
+        label_descriptions_(std::vector<string>(label_descriptions.begin(),
+                                                label_descriptions.end())) {}
 
   const MetricKind kind_;
   const ValueType value_type_;
-  const StringPiece name_;
-  const StringPiece description_;
-  const std::vector<StringPiece> label_descriptions_;
+  const string name_;
+  const string description_;
+  const std::vector<string> label_descriptions_;
 };
 
 // Metric definition.
@@ -130,15 +110,18 @@ class AbstractMetricDef {
 // A metric is defined by its kind, value-type, name, description and the
 // description of its labels.
 //
-// NOTE: We allow only string literals for the name, description and label
-// descriptions because these should be fixed at compile-time and shouldn't be
-// dynamic.
+// NOTE: Name, description, and label descriptions should be logically static,
+// but do not have to live for the lifetime of the MetricDef.
+//
+// By "logically static", we mean that they should never contain dynamic
+// information, but is static for the lifetime of the MetricDef, and
+// in-turn the metric; they do not need to be compile-time constants.
+// This allows for e.g. prefixed metrics in a CLIF wrapped environment.
 template <MetricKind metric_kind, typename Value, int NumLabels>
 class MetricDef : public AbstractMetricDef {
  public:
   template <typename... LabelDesc>
-  MetricDef(const internal::StringLiteral name,
-            const internal::StringLiteral description,
+  MetricDef(const StringPiece name, const StringPiece description,
             const LabelDesc&... label_descriptions)
       : AbstractMetricDef(metric_kind, internal::GetValueType<Value>(), name,
                           description, {label_descriptions...}) {

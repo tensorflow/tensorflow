@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "DeserializeSparse"
+  in_arg {
+    name: "serialized_sparse"
+    description: <<END
+The serialized `SparseTensor` objects. The last dimension
+must have 3 columns.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The `dtype` of the serialized `SparseTensor` objects.
+END
+  }
+  summary: "Deserialize `SparseTensor` objects."
+}

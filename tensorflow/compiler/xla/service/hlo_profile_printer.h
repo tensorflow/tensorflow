@@ -41,7 +41,7 @@ class HloProfilePrinter {
     float flop_count;
     float transcendental_count;
     float bytes_accessed;
-    float seconds;
+    float optimal_seconds;
 
     // The index into the profile counters array for the HloInstruction
     // corresponding to this HloInstructionInfo.

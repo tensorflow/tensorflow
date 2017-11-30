@@ -54,18 +54,21 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
                                                  std::move(other_arguments),
                                                  &captured_func));
 
-    *output = new Dataset(input, std::move(captured_func), output_types_,
-                          output_shapes_);
+    *output = new Dataset(ctx, input, func_, std::move(captured_func),
+                          output_types_, output_shapes_);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(const DatasetBase* input,
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : input_(input),
+        : GraphDatasetBase(ctx),
+          input_(input),
+          func_(func),
           captured_func_(std::move(captured_func)),
           output_types_(output_types),
           output_shapes_(output_shapes) {
@@ -90,6 +93,37 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() override { return "FlatMapDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      std::vector<NodeBuilder::NodeOut> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
+      for (const Tensor& t : captured_func_->captured_inputs()) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        other_arguments.emplace_back(node);
+        other_arguments_types.emplace_back(t.dtype());
+      }
+      AttrValue f;
+      b->BuildAttrValue(func_, &f);
+      AttrValue other_arguments_types_attr;
+      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
+          {std::make_pair(1, other_arguments)},         // Tensor list inputs.
+          {std::make_pair("f", f),
+           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+          output));
+      return Status::OK();
+    }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -102,6 +136,10 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
+          if (!input_impl_) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
           if (current_element_iterator_) {
             // We are currently precessing a mapped element, so try to get the
             // next subelement.
@@ -120,26 +158,113 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
           }
 
           // Get the next element from the input dataset.
-          std::vector<Tensor> args;
-          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &args, end_of_sequence));
+          captured_func_inputs_.clear();
+          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &captured_func_inputs_,
+                                                  end_of_sequence));
           if (*end_of_sequence) {
+            input_impl_.reset();
             return Status::OK();
           }
 
-          TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
-              ctx, args, element_index_++, dataset()->captured_func_.get(),
-              prefix(), &current_element_iterator_));
+          TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
         } while (true);
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (input_impl_) {
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("element_index"), element_index_));
+          if (current_element_iterator_) {
+            TF_RETURN_IF_ERROR(
+                writer->WriteScalar(full_name("captured_func_inputs_size"),
+                                    captured_func_inputs_.size()));
+            for (int i = 0; i < captured_func_inputs_.size(); i++) {
+              TF_RETURN_IF_ERROR(writer->WriteTensor(
+                  full_name(strings::StrCat("captured_func_inputs[", i, "]")),
+                  captured_func_inputs_[i]));
+            }
+            TF_RETURN_IF_ERROR(SaveParent(writer, current_element_iterator_));
+          } else {
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                full_name("current_element_iterator_uninitialized"), ""));
+          }
+        } else {
+          TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("exhausted"), ""));
+        }
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        input_impl_.reset();
+        element_index_ = 0;
+        current_element_iterator_.reset();
+        captured_func_inputs_.clear();
+        if (!reader->Contains(full_name("exhausted"))) {
+          input_impl_ = dataset()->input_->MakeIterator(prefix());
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          {
+            int64 temp;
+            TF_RETURN_IF_ERROR(
+                reader->ReadScalar(full_name("element_index"), &temp));
+            element_index_ = temp;
+          }
+          if (!reader->Contains(
+                  full_name("current_element_iterator_uninitialized"))) {
+            size_t captured_func_inputs_size;
+            {
+              int64 temp;
+              TF_RETURN_IF_ERROR(reader->ReadScalar(
+                  full_name("captured_func_inputs_size"), &temp));
+              captured_func_inputs_size = static_cast<size_t>(temp);
+            }
+            captured_func_inputs_.reserve(captured_func_inputs_size);
+            for (int i = 0; i < captured_func_inputs_size; i++) {
+              captured_func_inputs_.emplace_back();
+              TF_RETURN_IF_ERROR(reader->ReadTensor(
+                  full_name(strings::StrCat("captured_func_inputs[", i, "]")),
+                  &captured_func_inputs_.back()));
+            }
+            element_index_--;
+            TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
+            TF_RETURN_IF_ERROR(
+                RestoreParent(ctx, reader, current_element_iterator_));
+          }
+        }
+        return Status::OK();
+      }
+
      private:
+      Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        return dataset::MakeIteratorFromInputElement(
+            ctx, captured_func_inputs_, element_index_++,
+            dataset()->captured_func_.get(), prefix(),
+            &current_element_iterator_);
+      }
+
+      Status BuildCurrentElementIteratorLocked(OpKernelContext* ctx)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        IteratorContext::Params params;
+        params.env = ctx->env();
+        params.runner = *(ctx->runner());
+        IteratorContext iter_ctx(std::move(params));
+        return BuildCurrentElementIteratorLocked(&iter_ctx);
+      }
+
       mutex mu_;
       size_t element_index_ GUARDED_BY(mu_) = 0;
-      const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
+      std::vector<Tensor> captured_func_inputs_ GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;
+    const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;

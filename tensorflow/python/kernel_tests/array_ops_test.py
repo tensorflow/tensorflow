@@ -114,21 +114,21 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     arr = np.random.rand(*arr_shape)
     mask = make_mask(arr_shape[:ndims_mask])
     if axis is not None:
-      mask = make_mask(arr_shape[axis:ndims_mask+axis])
+      mask = make_mask(arr_shape[axis:ndims_mask + axis])
     if axis is None or axis == 0:
       masked_arr = arr[mask]
     elif axis == 1:
-      masked_arr = arr[:,mask]
+      masked_arr = arr[:, mask]
     elif axis == 2:
-      masked_arr = arr[:,:,mask]
-    with self.test_session() as sess:
+      masked_arr = arr[:, :, mask]
+    with self.test_session():
       masked_tensor = array_ops.boolean_mask(arr, mask, axis=axis)
 
       # Leading dimension size of masked_tensor is always unknown until runtime
       # since we don't how many elements will be kept.
       leading = 1 if axis is None else axis + 1
       self.assertAllEqual(masked_tensor.get_shape()[leading:],
-          masked_arr.shape[leading:])
+                          masked_arr.shape[leading:])
 
       self.assertAllClose(masked_arr, masked_tensor.eval())
 
@@ -1077,6 +1077,7 @@ class PadTest(test_util.TensorFlowTestCase):
                            [0, 0, 1, 2, 3, 0, 0],
                            [0, 0, 4, 5, 6, 0, 0],
                            [0, 0, 0, 0, 0, 0, 0]])
+
 
 class InvertPermutationTest(test_util.TensorFlowTestCase):
 

@@ -324,7 +324,8 @@ OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
       // Maxwell
       cores_per_multiprocessor = 128;
     } else {
-      // Pascal
+      // Pascal (compute capability version 6) and Volta (compute capability
+      // version 7)
       cores_per_multiprocessor = 64;
     }
     gflops = device.num_cores() * device.frequency() * 1e-3 *
@@ -509,7 +510,12 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
     bool* found_unknown_shapes) const {
   double ops = 0;
 
-  // first matrix
+  if (op_features.inputs_size() < 2) {
+    LOG(ERROR) << "Need 2 inputs but got " << op_features.inputs_size();
+    *found_unknown_shapes = true;
+    return 0;
+  }
+
   auto& a_matrix = op_features.inputs(0);
   auto& b_matrix = op_features.inputs(1);
 

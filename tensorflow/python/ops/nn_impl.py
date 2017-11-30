@@ -333,6 +333,7 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
     name: A name for this operation (optional).
+    dim: Deprecated alias for axis.
 
   Returns:
     A `Tensor` with the same shape as `x`.
@@ -637,7 +638,7 @@ def moments(x, axes,
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
-  Note: shift is currently not used, the true mean is computed and used.
+  Note: shift is currently not used; the true mean is computed and used.
 
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):

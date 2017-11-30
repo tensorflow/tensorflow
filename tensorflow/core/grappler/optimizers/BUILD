@@ -202,7 +202,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":arithmetic_optimizer",
         ":constant_folding",
         ":graph_optimizer",
         "//tensorflow/core:framework",
@@ -213,7 +212,6 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/utils:frame",
     ],
 )
 
@@ -314,6 +312,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
@@ -322,6 +321,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/costs:virtual_placer",
         "//tensorflow/core/grappler/utils:frame",
     ],
 )
@@ -338,6 +338,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )
 

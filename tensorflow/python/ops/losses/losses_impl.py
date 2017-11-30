@@ -652,7 +652,7 @@ def softmax_cross_entropy(
 
   Args:
     onehot_labels: `[batch_size, num_classes]` target one-hot-encoded labels.
-    logits: [batch_size, num_classes] logits outputs of the network .
+    logits: `[batch_size, num_classes]` logits outputs of the network .
     weights: Optional `Tensor` whose rank is either 0, or rank 1 and is
       broadcastable to the loss which is a `Tensor` of shape `[batch_size]`.
     label_smoothing: If greater than 0 then smooth the labels.

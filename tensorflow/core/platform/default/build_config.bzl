@@ -399,13 +399,13 @@ def tf_env_time_srcs():
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
-def tf_additional_gpu_tracer_srcs():
-  return ["platform/default/gpu_tracer.cc"]
+def tf_additional_device_tracer_srcs():
+  return ["platform/default/device_tracer.cc"]
 
-def tf_additional_gpu_tracer_cuda_deps():
+def tf_additional_device_tracer_cuda_deps():
   return []
 
-def tf_additional_gpu_tracer_deps():
+def tf_additional_device_tracer_deps():
   return []
 
 def tf_additional_libdevice_data():

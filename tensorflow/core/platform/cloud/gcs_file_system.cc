@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
@@ -695,6 +696,19 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                   bucket, "/", object);
+
+  if (out->size() < block_size()) {
+    // Check stat cache to see if we encountered an interrupted read.
+    FileStatistics stat;
+    if (stat_cache_->Lookup(filename, &stat)) {
+      if (offset + out->size() < stat.length) {
+        return errors::Internal(strings::Printf(
+            "File contents are inconsistent for file: %s @ %lu.",
+            filename.c_str(), offset));
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -814,53 +828,56 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
   if (!stat) {
     return errors::Internal("'stat' cannot be nullptr.");
   }
-  if (stat_cache_->Lookup(fname, stat)) {
-    if (stat->is_directory) {
-      return errors::NotFound(fname, " is a directory.");
-    } else {
-      return Status::OK();
-    }
-  }
   if (object.empty()) {
-    return errors::InvalidArgument("'object' must be a non-empty string.");
+    return errors::InvalidArgument(strings::Printf(
+        "'object' must be a non-empty string. (File: %s)", fname.c_str()));
   }
 
-  string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+  StatCache::ComputeFunc compute_func =
+      [this, &bucket, &object](const string& fname, FileStatistics* stat) {
+        string auth_token;
+        TF_RETURN_IF_ERROR(
+            AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
-  std::vector<char> output_buffer;
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
-      kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object),
-      "?fields=size%2Cupdated")));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
+        std::vector<char> output_buffer;
+        std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+        TF_RETURN_IF_ERROR(request->Init());
+        TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+            kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object),
+            "?fields=size%2Cupdated")));
+        TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+        TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
 
-  if (dns_cache_) {
-    TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(request.get()));
+        if (dns_cache_) {
+          TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(request.get()));
+        }
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
+                                        " when reading metadata of gs://",
+                                        bucket, "/", object);
+
+        StringPiece response_piece =
+            StringPiece(output_buffer.data(), output_buffer.size());
+        Json::Value root;
+        TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
+
+        // Parse file size.
+        TF_RETURN_IF_ERROR(GetInt64Value(root, "size", &(stat->length)));
+
+        // Parse file modification time.
+        string updated;
+        TF_RETURN_IF_ERROR(GetStringValue(root, "updated", &updated));
+        TF_RETURN_IF_ERROR(ParseRfc3339Time(updated, &(stat->mtime_nsec)));
+
+        stat->is_directory = false;
+        return Status::OK();
+      };
+
+  TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(fname, stat, compute_func));
+  if (stat->is_directory) {
+    return errors::NotFound(fname, " is a directory.");
+  } else {
+    return Status::OK();
   }
-
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      request->Send(), " when reading metadata of gs://", bucket, "/", object);
-
-  StringPiece response_piece =
-      StringPiece(output_buffer.data(), output_buffer.size());
-  Json::Value root;
-  TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
-
-  // Parse file size.
-  TF_RETURN_IF_ERROR(GetInt64Value(root, "size", &(stat->length)));
-
-  // Parse file modification time.
-  string updated;
-  TF_RETURN_IF_ERROR(GetStringValue(root, "updated", &updated));
-  TF_RETURN_IF_ERROR(ParseRfc3339Time(updated, &(stat->mtime_nsec)));
-
-  stat->is_directory = false;
-  stat_cache_->Insert(fname, *stat);
-
-  return Status::OK();
 }
 
 Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
@@ -892,19 +909,30 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
   if (!result) {
     return errors::Internal("'result' cannot be nullptr.");
   }
+  StatCache::ComputeFunc compute_func = [this](const string& dirname,
+                                               FileStatistics* stat) {
+    std::vector<string> children;
+    TF_RETURN_IF_ERROR(
+        GetChildrenBounded(dirname, 1, &children, true /* recursively */,
+                           true /* include_self_directory_marker */));
+    if (!children.empty()) {
+      *stat = DIRECTORY_STAT;
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument("Not a directory!");
+    }
+  };
   FileStatistics stat;
-  if (stat_cache_->Lookup(dirname, &stat)) {
+  Status s = stat_cache_->LookupOrCompute(dirname, &stat, compute_func);
+  if (s.ok()) {
     *result = stat.is_directory;
     return Status::OK();
   }
-  std::vector<string> children;
-  TF_RETURN_IF_ERROR(
-      GetChildrenBounded(dirname, 1, &children, true /* recursively */,
-                         true /* include_self_directory_marker */));
-  if ((*result = !children.empty())) {
-    stat_cache_->Insert(dirname, DIRECTORY_STAT);
+  if (errors::IsInvalidArgument(s)) {
+    *result = false;
+    return Status::OK();
   }
-  return Status::OK();
+  return s;
 }
 
 Status GcsFileSystem::GetChildren(const string& dirname,
@@ -916,33 +944,35 @@ Status GcsFileSystem::GetChildren(const string& dirname,
 
 Status GcsFileSystem::GetMatchingPaths(const string& pattern,
                                        std::vector<string>* results) {
-  if (matching_paths_cache_->Lookup(pattern, results)) {
-    return Status::OK();
-  }
-  results->clear();
-  // Find the fixed prefix by looking for the first wildcard.
-  const string& fixed_prefix =
-      pattern.substr(0, pattern.find_first_of("*?[\\"));
-  const string& dir = io::Dirname(fixed_prefix).ToString();
-  if (dir.empty()) {
-    return errors::InvalidArgument("A GCS pattern doesn't have a bucket name: ",
-                                   pattern);
-  }
-  std::vector<string> all_files;
+  MatchingPathsCache::ComputeFunc compute_func =
+      [this](const string& pattern, std::vector<string>* results) {
+        results->clear();
+        // Find the fixed prefix by looking for the first wildcard.
+        const string& fixed_prefix =
+            pattern.substr(0, pattern.find_first_of("*?[\\"));
+        const string& dir = io::Dirname(fixed_prefix).ToString();
+        if (dir.empty()) {
+          return errors::InvalidArgument(
+              "A GCS pattern doesn't have a bucket name: ", pattern);
+        }
+        std::vector<string> all_files;
+        TF_RETURN_IF_ERROR(GetChildrenBounded(
+            dir, UINT64_MAX, &all_files, true /* recursively */,
+            false /* include_self_directory_marker */));
+
+        const auto& files_and_folders = AddAllSubpaths(all_files);
+
+        // Match all obtained paths to the input pattern.
+        for (const auto& path : files_and_folders) {
+          const string& full_path = io::JoinPath(dir, path);
+          if (Env::Default()->MatchPath(full_path, pattern)) {
+            results->push_back(full_path);
+          }
+        }
+        return Status::OK();
+      };
   TF_RETURN_IF_ERROR(
-      GetChildrenBounded(dir, UINT64_MAX, &all_files, true /* recursively */,
-                         false /* include_self_directory_marker */));
-
-  const auto& files_and_folders = AddAllSubpaths(all_files);
-
-  // Match all obtained paths to the input pattern.
-  for (const auto& path : files_and_folders) {
-    const string& full_path = io::JoinPath(dir, path);
-    if (Env::Default()->MatchPath(full_path, pattern)) {
-      results->push_back(full_path);
-    }
-  }
-  matching_paths_cache_->Insert(pattern, *results);
+      matching_paths_cache_->LookupOrCompute(pattern, results, compute_func));
   return Status::OK();
 }
 

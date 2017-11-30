@@ -2,7 +2,7 @@
 
 TensorFlow was designed to be a good deep learning solution for mobile
 platforms. Currently we have two solutions for deploying machine learning
-applications on mobile and embedded devices: 
+applications on mobile and embedded devices:
 @{$mobile/mobile_intro$TensorFlow for Mobile} and @{$mobile/tflite$TensorFlow Lite}.
 
 ## TensorFlow Lite versus TensorFlow Mobile
