@@ -2258,10 +2258,6 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
       fc.categorical_column_with_vocabulary_file(
           key='aaa', vocabulary_file=self._wire_vocabulary_file_name,
-          vocabulary_size=None)
-    with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
-      fc.categorical_column_with_vocabulary_file(
-          key='aaa', vocabulary_file=self._wire_vocabulary_file_name,
           vocabulary_size=-1)
     with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
       fc.categorical_column_with_vocabulary_file(
@@ -2371,6 +2367,24 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
               values=np.array((2, -1, 0), dtype=np.int64),
               dense_shape=inputs.dense_shape),
           id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_none_vocabulary_size(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa', vocabulary_file=self._wire_vocabulary_file_name)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(self,
+                                  sparse_tensor.SparseTensorValue(
+                                      indices=inputs.indices,
+                                      values=np.array(
+                                          (2, -1, 0), dtype=np.int64),
+                                      dense_shape=inputs.dense_shape),
+                                  id_weight_pair.id_tensor.eval())
 
   def test_transform_feature(self):
     column = fc.categorical_column_with_vocabulary_file(
@@ -4161,6 +4175,38 @@ class SharedEmbeddingColumnTest(test.TestCase):
       fc_lib._shared_embedding_columns(
           [categorical_column_a, categorical_column_b], dimension=2,
           initializer='not_fn')
+
+  def test_incompatible_column_type(self):
+    categorical_column_a = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    categorical_column_b = fc.categorical_column_with_identity(
+        key='bbb', num_buckets=3)
+    categorical_column_c = fc.categorical_column_with_hash_bucket(
+        key='ccc', hash_bucket_size=3)
+    with self.assertRaisesRegexp(
+        ValueError,
+        'all categorical_columns must have the same type.*'
+        '_IdentityCategoricalColumn.*_HashedCategoricalColumn'):
+      fc_lib._shared_embedding_columns(
+          [categorical_column_a, categorical_column_b, categorical_column_c],
+          dimension=2)
+
+  def test_weighted_categorical_column_ok(self):
+    categorical_column_a = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    weighted_categorical_column_a = fc.weighted_categorical_column(
+        categorical_column_a, weight_feature_key='aaa_weights')
+    categorical_column_b = fc.categorical_column_with_identity(
+        key='bbb', num_buckets=3)
+    weighted_categorical_column_b = fc.weighted_categorical_column(
+        categorical_column_b, weight_feature_key='bbb_weights')
+    fc_lib._shared_embedding_columns(
+        [weighted_categorical_column_a, categorical_column_b], dimension=2)
+    fc_lib._shared_embedding_columns(
+        [categorical_column_a, weighted_categorical_column_b], dimension=2)
+    fc_lib._shared_embedding_columns(
+        [weighted_categorical_column_a, weighted_categorical_column_b],
+        dimension=2)
 
   def test_parse_example(self):
     a = fc.categorical_column_with_vocabulary_list(

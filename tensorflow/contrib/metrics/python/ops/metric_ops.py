@@ -927,7 +927,7 @@ def streaming_curve_points(labels=None,
       tuple.
 
   TODO(chizeng): Consider rewriting this method to make use of logic within the
-  streaming_precision_recall_at_equal_thresholds method (to improve run time).
+  precision_recall_at_equal_thresholds method (to improve run time).
   """
   with variable_scope.variable_scope(name, 'curve_points',
                                      (labels, predictions, weights)):
@@ -1196,12 +1196,12 @@ def streaming_dynamic_auc(labels,
       return auc, update_op
 
 
-def streaming_precision_recall_at_equal_thresholds(predictions,
-                                                   labels,
-                                                   num_thresholds=None,
-                                                   weights=None,
-                                                   name=None,
-                                                   use_locking=None):
+def precision_recall_at_equal_thresholds(labels,
+                                         predictions,
+                                         weights=None,
+                                         num_thresholds=None,
+                                         use_locking=None,
+                                         name=None):
   """A helper method for creating metrics related to precision-recall curves.
 
   These values are true positives, false negatives, true negatives, false
@@ -1222,20 +1222,20 @@ def streaming_precision_recall_at_equal_thresholds(predictions,
   reweight certain values, or more commonly used for masking values.
 
   Args:
+    labels: A bool `Tensor` whose shape matches `predictions`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
-    labels: A bool `Tensor` whose shape matches `predictions`.
+    weights: Optional; If provided, a `Tensor` that has the same dtype as,
+      and broadcastable to, `predictions`. This tensor is multplied by counts.
     num_thresholds: Optional; Number of thresholds, evenly distributed in
       `[0, 1]`. Should be `>= 2`. Defaults to 201. Note that the number of bins
       is 1 less than `num_thresholds`. Using an even `num_thresholds` value
       instead of an odd one may yield unfriendly edges for bins.
-    weights: Optional; If provided, a `Tensor` that has the same dtype as,
-      and broadcastable to, `predictions`. This tensor is multplied by counts.
-    name: Optional; variable_scope name. If not provided, the string
-      'precision_recall_at_equal_threshold' is used.
     use_locking: Optional; If True, the op will be protected by a lock.
       Otherwise, the behavior is undefined, but may exhibit less contention.
       Defaults to True.
+    name: Optional; variable_scope name. If not provided, the string
+      'precision_recall_at_equal_threshold' is used.
 
   Returns:
     result: A named tuple (See PrecisionRecallData within the implementation of
@@ -3301,6 +3301,7 @@ __all__ = [
     'aggregate_metric_map',
     'aggregate_metrics',
     'count',
+    'precision_recall_at_equal_thresholds',
     'recall_at_precision',
     'sparse_recall_at_top_k',
     'streaming_accuracy',

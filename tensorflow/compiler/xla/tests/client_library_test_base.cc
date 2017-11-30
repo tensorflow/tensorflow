@@ -262,20 +262,34 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
                  expected.shape().element_type() == PRED)
         << ShapeUtil::HumanString(expected.shape());
   }
+  // We allow using a float expected literal for a bfloat16 output. In this
+  // case, we need to convert the expected literal to bfloat16.
+  const Literal* expected_ptr = &expected;
+  std::unique_ptr<Literal> converted_expected;
+  Shape layout_shape;
+  if (expected.shape().element_type() == F32 && use_bfloat16_) {
+    converted_expected = LiteralTestUtil::ConvertF32ToBF16(expected);
+    expected_ptr = converted_expected.get();
+    if (shape_with_layout != nullptr) {
+      layout_shape = *shape_with_layout;
+      layout_shape.set_element_type(BF16);
+      shape_with_layout = &layout_shape;
+    }
+  }
   auto expect_equal = [&](const Literal& actual, const string& error_message) {
-    LiteralTestUtil::ExpectEqual(expected, actual, error_message);
+    LiteralTestUtil::ExpectEqual(*expected_ptr, actual, error_message);
   };
   if (execution_options_.debug_options().xla_test_all_output_layouts()) {
     return ComputeAndCompareLiteralWithAllOutputLayouts(
-        computation, expected, arguments, expect_equal);
+        computation, *expected_ptr, arguments, expect_equal);
   }
   if (execution_options_.debug_options().xla_test_all_input_layouts()) {
     return ComputeAndCompareLiteralWithAllInputLayouts(
-        computation, expected, arguments, expect_equal, shape_with_layout);
+        computation, *expected_ptr, arguments, expect_equal, shape_with_layout);
   }
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
-  LiteralTestUtil::ExpectEqual(expected, *actual);
+  LiteralTestUtil::ExpectEqual(*expected_ptr, *actual);
   return tensorflow::Status::OK();
 }
 
@@ -286,20 +300,35 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
                ShapeUtil::ElementIsComplex(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  // We allow using a float expected literal for a bfloat16 output. In this
+  // case, we need to convert the expected literal to bfloat16.
+  const Literal* expected_ptr = &expected;
+  std::unique_ptr<Literal> converted_expected;
+  Shape layout_shape;
+  if (expected.shape().element_type() == F32 && use_bfloat16_) {
+    converted_expected = LiteralTestUtil::ConvertF32ToBF16(expected);
+    expected_ptr = converted_expected.get();
+    layout_shape.set_element_type(BF16);
+    if (shape_with_layout != nullptr) {
+      layout_shape = *shape_with_layout;
+      layout_shape.set_element_type(BF16);
+      shape_with_layout = &layout_shape;
+    }
+  }
   auto expect_near = [&](const Literal& actual, const string& error_message) {
-    LiteralTestUtil::ExpectNear(expected, actual, error, error_message);
+    LiteralTestUtil::ExpectNear(*expected_ptr, actual, error, error_message);
   };
   if (execution_options_.debug_options().xla_test_all_output_layouts()) {
-    return ComputeAndCompareLiteralWithAllOutputLayouts(computation, expected,
-                                                        arguments, expect_near);
+    return ComputeAndCompareLiteralWithAllOutputLayouts(
+        computation, *expected_ptr, arguments, expect_near);
   }
   if (execution_options_.debug_options().xla_test_all_input_layouts()) {
     return ComputeAndCompareLiteralWithAllInputLayouts(
-        computation, expected, arguments, expect_near, shape_with_layout);
+        computation, *expected_ptr, arguments, expect_near, shape_with_layout);
   }
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
-  LiteralTestUtil::ExpectNear(expected, *actual, error);
+  LiteralTestUtil::ExpectNear(*expected_ptr, *actual, error);
   return tensorflow::Status::OK();
 }
 
@@ -402,8 +431,11 @@ ClientLibraryTestBase::ComputeValueAndReference(
 
 Computation ClientLibraryTestBase::CreateScalarRelu() {
   ComputationBuilder builder(client_, "relu");
-  auto z_value = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "z_value");
-  auto zero = builder.ConstantR0<float>(0.0);
+  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
+  auto z_value = builder.Parameter(0, shape, "z_value");
+  auto zero = use_bfloat16_
+                  ? builder.ConstantR0<bfloat16>(static_cast<bfloat16>(0.0f))
+                  : builder.ConstantR0<float>(0.0f);
   builder.Max(z_value, zero);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
@@ -412,8 +444,9 @@ Computation ClientLibraryTestBase::CreateScalarRelu() {
 
 Computation ClientLibraryTestBase::CreateScalarMax() {
   ComputationBuilder builder(client_, "max");
-  auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-  auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
+  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
+  auto x = builder.Parameter(0, shape, "x");
+  auto y = builder.Parameter(1, shape, "y");
   builder.Max(x, y);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
@@ -422,11 +455,12 @@ Computation ClientLibraryTestBase::CreateScalarMax() {
 
 Computation ClientLibraryTestBase::CreateScalarReluSensitivity() {
   ComputationBuilder builder(client_, "relu_sensitivity");
-  auto activation =
-      builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "activation");
-  auto backprop =
-      builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "backprop");
-  auto zero = builder.ConstantR0<float>(0.0);
+  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
+  auto activation = builder.Parameter(0, shape, "activation");
+  auto backprop = builder.Parameter(1, shape, "backprop");
+  auto zero = use_bfloat16_
+                  ? builder.ConstantR0<bfloat16>(static_cast<bfloat16>(0.0f))
+                  : builder.ConstantR0<float>(0.0f);
   auto activation_gtz = builder.Gt(activation, zero);
   builder.Select(activation_gtz, /*on_true=*/backprop, /*on_false=*/zero);
 
@@ -459,6 +493,23 @@ ClientLibraryTestBase::CreatePatternedMatrixWithZeroPadding(int rows, int cols,
     }
   }
   return array;
+}
+
+std::unique_ptr<GlobalData>
+ClientLibraryTestBase::CreateParameterAndTransferLiteral(
+    int64 parameter_number, const Literal& literal, const string& name,
+    ComputationBuilder* builder, ComputationDataHandle* data_handle) {
+  const Literal* param_literal = &literal;
+  std::unique_ptr<Literal> converted_literal;
+  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+    converted_literal = LiteralTestUtil::ConvertF32ToBF16(literal);
+    param_literal = converted_literal.get();
+  }
+  std::unique_ptr<GlobalData> data =
+      client_->TransferToServer(*param_literal).ConsumeValueOrDie();
+  *data_handle =
+      builder->Parameter(parameter_number, param_literal->shape(), name);
+  return data;
 }
 
 }  // namespace xla

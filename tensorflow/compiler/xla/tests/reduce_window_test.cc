@@ -90,6 +90,16 @@ TEST_F(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
               ::testing::HasSubstr("Want input dimensions size"));
 }
 
+// Regression test for b/68964348.
+TEST_F(ReduceWindowTest, R0ReduceWindow) {
+  auto input = builder_.ConstantR0<float>(42);
+  auto init = builder_.ConstantR0<float>(1.0);
+  builder_.ReduceWindow(input, init, CreateScalarAddComputation(F32, &builder_),
+                        /*window_dimensions=*/{},
+                        /*window_strides=*/{}, Padding::kSame);
+  ComputeAndCompareR0<float>(&builder_, 43, {}, ErrorSpec(0.00001));
+}
+
 TEST_F(ReduceWindowTest, Min3In5Stride2) {
   const auto input = builder_.ConstantR1<float>({10000, 1000, 100, 10, 1});
   ReduceWindowMin(input, {3}, {2}, Padding::kValid);

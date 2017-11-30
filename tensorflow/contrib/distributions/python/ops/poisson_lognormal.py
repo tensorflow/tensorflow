@@ -292,7 +292,7 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
     # where,
     #
     # Z|v ~ interpolate_affine[v](distribution)
-    # V ~ mixture_distrubution
+    # V ~ mixture_distribution
     #
     # thus,
     #

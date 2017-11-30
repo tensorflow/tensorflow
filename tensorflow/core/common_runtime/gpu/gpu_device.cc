@@ -561,10 +561,8 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     };
     Status s;
     for (int64 ix = 0; ix < parsed.NumElements(); ++ix) {
-      s = VariantDeviceCopy(
-          VariantDeviceCopyDirection::HOST_TO_DEVICE, from[ix],
-          &copy_variant[ix],
-          parsed.NumElements() == 1 ? std::move(copier) : copier);
+      s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE,
+                            from[ix], &copy_variant[ix], copier);
       if (!s.ok()) {
         break;
       }

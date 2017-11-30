@@ -7,7 +7,7 @@ Documentation (on Github, tensorflow.org, and anywhere else we decide to
 serve it from) is now generated from the files in
 tensorflow/docs_src/ (for tutorials and other guides) and
 TensorFlow source code (for the API reference pages). If you see a problem with
-API reference, edit the code comments in the appropriate language. If you see a 
+API reference, edit the code comments in the appropriate language. If you see a
 problem with our other docs, edit the files in docs_src.
 
 To preview the results of your changes, or generate an offline copy of
