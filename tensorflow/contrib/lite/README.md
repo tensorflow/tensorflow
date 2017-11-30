@@ -4,7 +4,7 @@ TensorFlow Lite is TensorFlow's lightweight solution for mobile and embedded dev
 TensorFlow Lite uses many techniques for achieving low latency like optimizing the kernels for specific mobile apps, pre-fused activations, quantized kernels that allow smaller and faster (fixed-point math) models, and in the future, leverage specialized machine learning hardware to get the best possible performance for a particular model on a particular device.
 
 ![image](g3doc/TFLite-Architecture.jpg)
-# Getting Started with a Demo App
+# Getting Started with an Android Demo App
 
 This section contains an example application using TensorFlow Lite for Android devices. The demo is a sample camera app that classifies images continuously using a quantized Mobilenet model. A device running Android 5.0 ( API 21) or higher is required to run the demo.
 
@@ -85,6 +85,17 @@ environment (due to a Bazel bug).
 
 ### More about the demo
 The demo is resizing each camera image frame to (224 width * 224 height) to match the  quantized Mobilenet model being used. The resized image is converted into a ByteBuffer row by row of size 1 * 224 * 224 * 3 bytes, where 1 is the number of images in a batch 224 * 224 is the width and height of the image 3 bytes represents three colors of a pixel. This demo uses the TensorFlow Lite Java inference API for models which take a single input and provide a single output. This outputs a two-dimensional array, with the first dimension being the category index and the second dimension being the confidence of classification. The Mobilenet model has 1001 unique categories and the app sorts the probabilities of all the categories and displays the top three. The Mobilenet quantized model is bundled within the assets directory of the app.
+
+# iOS Demo App
+
+Similar to the Android demo app, there's an iOS camera app that uses exactly the same model (224 * 224 quantized Mobilenet).
+
+Follow the instructions to build and run the demo app:
+
+1.   Follow the Building section [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/ios.md#building) to build the universal iOS library for TensorFlow Lite.
+1.   Install [CocoaPods](https://cocoapods.org/) if it wasn't installed yet: `sudo gem install cocoapods`.
+1.   Run `pod install` in `tensorflow/contrib/lite/examples/ios/camera` to generate the project file.
+1.   Open the project by running `open tflite_camera_example.xcworkspace`, and build the app in XCode.
 
 # TensorFlow Lite Quick Start
 
