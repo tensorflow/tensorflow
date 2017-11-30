@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_MEMORY_TYPES_H_
 #define TENSORFLOW_FRAMEWORK_MEMORY_TYPES_H_
 
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 

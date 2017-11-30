@@ -46,7 +46,7 @@ tf_module {
   }
   member_method {
     name: "is_gpu_available"
-    argspec: "args=[\'cuda_only\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'cuda_only\', \'min_cuda_compute_capability\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "main"

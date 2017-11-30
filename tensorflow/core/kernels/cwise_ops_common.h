@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -245,6 +246,25 @@ class UnaryOp : public OpKernel {
     }
     functor::UnaryFunctor<Device, Functor>()(
         ctx->eigen_device<Device>(), out->flat<Tout>(), inp.flat<Tin>());
+  }
+};
+
+template <typename Device, VariantUnaryOp OpEnum>
+class UnaryVariantOp : public OpKernel {
+ public:
+  explicit UnaryVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& inp = ctx->input(0);
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(inp.shape()),
+        errors::InvalidArgument("Non-scalar variants are not supported."));
+    const Variant& v = inp.scalar<Variant>()();
+    Variant v_out;
+    OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(ctx, OpEnum, v, &v_out));
+    Tensor out(cpu_allocator(), DT_VARIANT, TensorShape());
+    out.scalar<Variant>()() = std::move(v_out);
+    ctx->set_output(0, std::move(out));
   }
 };
 
@@ -466,6 +486,11 @@ struct ApproximateEqual<CPUDevice, T> {
   REGISTER_KERNEL_BUILDER(Name(N).Device(DEVICE_##D).TypeConstraint<T>("T"), \
                           OP<D##Device, F<T>>);
 
+#define REGISTER_VARIANT(OP, D, N, ENUM)                       \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name(N).Device(DEVICE_##D).TypeConstraint<Variant>("T"), \
+      OP<D##Device, ENUM>);
+
 // Macros to register kernels for multiple types (T0, T1, etc.)  on
 // device type "D" (CPU or GPU) for operation "N" (e.g., sqrt) using
 // the functor "F" (e.g., functor::sqrt).
@@ -473,7 +498,7 @@ struct ApproximateEqual<CPUDevice, T> {
 #if defined(__ANDROID_TYPES_SLIM__)
 // Note that __ANDROID_TYPES_SLIM__ is also checked in the cwise_ops*.cc files.
 // Normally Android TensorFlow is built with a reduced number of types (float).
-// Override on the command-line "--define ANDROID_TYPES=__ANDROID_TYPES_FULL__"
+// Override on the command-line using "--copt=-D__ANDROID_TYPES_FULL__"
 // to generate a library with full type support with a consequent increase in
 // code size.
 #define REGISTER2(OP, D, N, F, T0, T1) REGISTER(OP, D, N, F, T0)

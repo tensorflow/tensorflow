@@ -52,8 +52,16 @@ def add_check_numerics_ops():
   `check_numerics` op for all of its (`half`, `float`, or `double`) inputs
   is guaranteed to run before the `check_numerics` op on any of its outputs.
 
+  Note: This API is not compatible with the use of @{tf.cond} or
+  @{tf.while_loop}, and will raise a `ValueError` if you attempt to call it
+  in such a graph.
+
   Returns:
     A `group` op depending on all `check_numerics` ops added.
+
+  Raises:
+    ValueError: If the graph contains any numeric operations in a control flow
+      structure.
   """
   check_op = []
   # This code relies on the ordering of ops in get_operations().
@@ -63,6 +71,11 @@ def add_check_numerics_ops():
   for op in ops.get_default_graph().get_operations():
     for output in op.outputs:
       if output.dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+        if op._get_control_flow_context() is not None:  # pylint: disable=protected-access
+          raise ValueError("`tf.add_check_numerics_ops() is not compatible "
+                           "with TensorFlow control flow operations such as "
+                           "`tf.cond()` or `tf.while_loop()`.")
+
         message = op.name + ":" + str(output.value_index)
         with ops.control_dependencies(check_op):
           check_op = [array_ops.check_numerics(output, message=message)]

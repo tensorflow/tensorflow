@@ -180,6 +180,21 @@ static void ComputeXWeightsAndIndices(const ImageResizerState& resizer_state,
   }
 }
 
+static void ComputeGradientXWeightsAndIndices(
+    const ImageResizerGradientState& resizer_state,
+    std::vector<WeightsAndIndices>* x_wais) {
+  CachedInterpolationCalculator calc;
+  for (int64 x = 0; x < resizer_state.resized_width; ++x) {
+    GetWeightsAndIndices(resizer_state.width_scale, x,
+                         resizer_state.original_width, &(*x_wais)[x]);
+    auto& x_wai = (*x_wais)[x];
+    x_wai.advance = calc.Advance(x_wai.index_0, x_wai.index_1, x_wai.index_2,
+                                 x_wai.index_3);
+  }
+  // Do not scale, as we will be using these directly as tensor indices on the
+  // gradient pass.
+}
+
 template <typename T>
 static EIGEN_ALWAYS_INLINE float ComputeYInterpolation(
     int which, int channel_num, const WeightsAndIndices& y_wai,
@@ -365,6 +380,73 @@ inline void interpolate_with_caching(
   }
 }
 
+template <typename T>
+inline void ResizeBicubicGrad(typename TTypes<float, 4>::ConstTensor input_grad,
+                              const ImageResizerGradientState& resizer_state,
+                              typename TTypes<T, 4>::Tensor output_grad) {
+  // This function computes gradients for the ResizeBicubic op by iterating over
+  // the input_grad Tensor and using WeightsAndIndices to appropriately update
+  // the output gradient.
+  const float height_scale = resizer_state.height_scale;
+  const int64 original_height = resizer_state.original_height;
+  const int channels = resizer_state.channels;
+  const int64 resized_width = resizer_state.resized_width;
+  const int64 resized_height = resizer_state.resized_height;
+
+  output_grad.setZero();
+
+  std::vector<WeightsAndIndices> x_wais(resizer_state.resized_width);
+  ComputeGradientXWeightsAndIndices(resizer_state, &x_wais);
+  for (int64 b = 0; b < resizer_state.batch_size; ++b) {
+    for (int64 y = 0; y < resized_height; ++y) {
+      WeightsAndIndices y_wai;
+      GetWeightsAndIndices(height_scale, y, original_height, &y_wai);
+      for (int64 x = 0; x < resized_width; ++x) {
+        const WeightsAndIndices& x_wai = x_wais[x];
+        for (int64 c = 0; c < channels; ++c) {
+          T curr_input_grad = input_grad(b, y, x, c);
+          // row 0 of 0, 1, 2, 3
+          output_grad(b, y_wai.index_0, x_wai.index_0, c) +=
+              T(curr_input_grad * y_wai.weight_0 * x_wai.weight_0);
+          output_grad(b, y_wai.index_0, x_wai.index_1, c) +=
+              T(curr_input_grad * y_wai.weight_0 * x_wai.weight_1);
+          output_grad(b, y_wai.index_0, x_wai.index_2, c) +=
+              T(curr_input_grad * y_wai.weight_0 * x_wai.weight_2);
+          output_grad(b, y_wai.index_0, x_wai.index_3, c) +=
+              T(curr_input_grad * y_wai.weight_0 * x_wai.weight_3);
+          // row 1 of 0, 1, 2, 3
+          output_grad(b, y_wai.index_1, x_wai.index_0, c) +=
+              T(curr_input_grad * y_wai.weight_1 * x_wai.weight_0);
+          output_grad(b, y_wai.index_1, x_wai.index_1, c) +=
+              T(curr_input_grad * y_wai.weight_1 * x_wai.weight_1);
+          output_grad(b, y_wai.index_1, x_wai.index_2, c) +=
+              T(curr_input_grad * y_wai.weight_1 * x_wai.weight_2);
+          output_grad(b, y_wai.index_1, x_wai.index_3, c) +=
+              T(curr_input_grad * y_wai.weight_1 * x_wai.weight_3);
+          // row 2 of 0, 1, 2, 3
+          output_grad(b, y_wai.index_2, x_wai.index_0, c) +=
+              T(curr_input_grad * y_wai.weight_2 * x_wai.weight_0);
+          output_grad(b, y_wai.index_2, x_wai.index_1, c) +=
+              T(curr_input_grad * y_wai.weight_2 * x_wai.weight_1);
+          output_grad(b, y_wai.index_2, x_wai.index_2, c) +=
+              T(curr_input_grad * y_wai.weight_2 * x_wai.weight_2);
+          output_grad(b, y_wai.index_2, x_wai.index_3, c) +=
+              T(curr_input_grad * y_wai.weight_2 * x_wai.weight_3);
+          // row 3 of 0, 1, 2, 3
+          output_grad(b, y_wai.index_3, x_wai.index_0, c) +=
+              T(curr_input_grad * y_wai.weight_3 * x_wai.weight_0);
+          output_grad(b, y_wai.index_3, x_wai.index_1, c) +=
+              T(curr_input_grad * y_wai.weight_3 * x_wai.weight_1);
+          output_grad(b, y_wai.index_3, x_wai.index_2, c) +=
+              T(curr_input_grad * y_wai.weight_3 * x_wai.weight_2);
+          output_grad(b, y_wai.index_3, x_wai.index_3, c) +=
+              T(curr_input_grad * y_wai.weight_3 * x_wai.weight_3);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -394,6 +476,36 @@ class ResizeBicubicOp : public OpKernel {
   bool align_corners_;
 };
 
+template <typename Device, typename T>
+class ResizeBicubicOpGrad : public OpKernel {
+ public:
+  explicit ResizeBicubicOpGrad(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // Validate input.
+    // First argument is gradient with respect to resized image.
+    const Tensor& input = context->input(0);
+    const Tensor& original_image = context->input(1);
+
+    ImageResizerGradientState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input, original_image);
+
+    if (!context->status().ok()) return;
+
+    typename TTypes<float, 4>::ConstTensor input_grad =
+        input.tensor<float, 4>();
+    typename TTypes<T, 4>::Tensor output_grad = st.output->tensor<T, 4>();
+
+    ResizeBicubicGrad<T>(input_grad, st, output_grad);
+  }
+
+ private:
+  bool align_corners_;
+};
+
 #define REGISTER_KERNEL(T)                            \
   REGISTER_KERNEL_BUILDER(Name("ResizeBicubic")       \
                               .Device(DEVICE_CPU)     \
@@ -404,5 +516,15 @@ class ResizeBicubicOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
+
+#define REGISTER_GRAD_KERNEL(T)                                            \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("ResizeBicubicGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      ResizeBicubicOpGrad<CPUDevice, T>);
+
+TF_CALL_float(REGISTER_GRAD_KERNEL);
+TF_CALL_double(REGISTER_GRAD_KERNEL);
+
+#undef REGISTER_GRAD_KERNEL
 
 }  // namespace tensorflow

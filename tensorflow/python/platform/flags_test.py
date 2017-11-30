@@ -111,8 +111,8 @@ if __name__ == "__main__":
   # Test command lines
   sys.argv.extend([
       "--bool_a", "--nobool_negation", "--bool_c=True", "--bool_d=False",
-      "and_argument",
-      "--none_string_foo_required=default_val"
+      "--none_string_foo_required=default_val",
+      "and_argument"
   ])
   flags.mark_flag_as_required('string_foo_required')
   flags.mark_flags_as_required(['none_string_foo_required'])

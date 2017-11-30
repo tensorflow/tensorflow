@@ -48,6 +48,11 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
   perftools::gputools::port::StatusOr<perftools::gputools::DeviceMemory<uint8>>
   AllocateBytes(perftools::gputools::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
+    if (byte_size < 0) {
+      return perftools::gputools::port::Status{
+          perftools::gputools::port::error::INVALID_ARGUMENT,
+          "Requested negative byte size!"};
+    }
     if (byte_size > memory_limit_) {
       return perftools::gputools::port::StatusOr<
           perftools::gputools::DeviceMemory<uint8>>();
@@ -87,11 +92,11 @@ class ConvParameters {
   ConvParameters(int64 batch, int64 in_depths, const SpatialArray& in,
                  int64 out_depths, const SpatialArray& filter,
                  const SpatialArray& stride, const SpatialArray& padding,
-                 const DataType& dtype, int device_id)
+                 DataType dtype, int device_id)
       : batch_(batch),
         in_depths_(in_depths),
-        in_(in),
         out_depths_(out_depths),
+        in_(in),
         filter_(filter),
         stride_(stride),
         padding_(padding),
@@ -125,7 +130,8 @@ class ConvParameters {
         "(", str_util::Join(filter_, ", "), "), ",
         "(", str_util::Join(stride_, ", "), "), ",
         "(", str_util::Join(padding_, ", "), "), ",
-        dtype_, ", ", device_id_);
+        dtype_, ", ",
+        device_id_);
     // clang-format on
   }
 
@@ -145,26 +151,28 @@ class ConvParameters {
     }
   }
 
- private:
-  typedef std::tuple<int64, int64, SpatialArray, int64, SpatialArray,
-                     SpatialArray, SpatialArray, DataType, int>
-      ParameterDataType;
+ protected:
+  using ParameterDataType =
+      std::tuple<int64, int64, SpatialArray, int64, SpatialArray, SpatialArray,
+                 SpatialArray, DataType, int>;
 
   ParameterDataType get_data_as_tuple() const {
     return std::make_tuple(batch_, in_depths_, in_, out_depths_, filter_,
                            stride_, padding_, dtype_, device_id_);
   }
 
+  uint64 hash_code_;
+
+ private:
   int64 batch_;
   int64 in_depths_;
-  SpatialArray in_;
   int64 out_depths_;
+  SpatialArray in_;
   SpatialArray filter_;
   SpatialArray stride_;
   SpatialArray padding_;
   DataType dtype_;
   int device_id_;
-  uint64 hash_code_;
 };
 
 typedef Eigen::GpuDevice GPUDevice;

@@ -57,6 +57,11 @@ limitations under the License.
 #define IS_MOBILE_PLATFORM
 #endif
 
+// Require an outside macro to tell us if we're building for Raspberry Pi.
+#if !defined(RASPBERRY_PI)
+#define IS_MOBILE_PLATFORM
+#endif  // !defined(RASPBERRY_PI)
+
 #else
 // If no platform specified, use:
 #define PLATFORM_POSIX

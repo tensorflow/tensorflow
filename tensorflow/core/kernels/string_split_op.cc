@@ -28,9 +28,13 @@ namespace tensorflow {
 
 namespace {
 
-std::vector<string> Split(const string& str, const string& delimiter) {
+std::vector<string> Split(const string& str, const string& delimiter,
+                          const bool skipEmpty) {
   if (!delimiter.empty()) {
-    return str_util::Split(str, delimiter, str_util::SkipEmpty());
+    if (skipEmpty) {
+      return str_util::Split(str, delimiter, str_util::SkipEmpty());
+    }
+    return str_util::Split(str, delimiter);
   }
   std::vector<string> char_vector(str.size());
   for (size_t i = 0; i < str.size(); ++i) {
@@ -43,7 +47,15 @@ std::vector<string> Split(const string& str, const string& delimiter) {
 
 class StringSplitOp : public OpKernel {
  public:
-  using OpKernel::OpKernel;
+  explicit StringSplitOp(OpKernelConstruction* context)
+      : OpKernel(context), skip_empty_(true) {
+    bool skip_empty;
+    // By default skip_empty_ is true. We only get the value from attr if it is
+    // available, so that it is backward compatible.
+    if (context->GetAttr("skip_empty", &skip_empty).ok()) {
+      skip_empty_ = skip_empty;
+    }
+  }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
@@ -73,7 +85,7 @@ class StringSplitOp : public OpKernel {
     int64 max_num_entries = 0;
     std::vector<int64> num_indices(batch_size);
     for (int64 i = 0; i < batch_size; ++i) {
-      std::vector<string> parts = Split(input_vec(i), delimiter);
+      std::vector<string> parts = Split(input_vec(i), delimiter, skip_empty_);
       int64 n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;
@@ -105,6 +117,9 @@ class StringSplitOp : public OpKernel {
       }
     }
   }
+
+ private:
+  bool skip_empty_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringSplit").Device(DEVICE_CPU), StringSplitOp);

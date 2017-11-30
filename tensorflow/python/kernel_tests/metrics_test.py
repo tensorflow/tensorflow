@@ -3538,7 +3538,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       weights_queue = data_flow_ops.FIFOQueue(
           6, dtypes=dtypes_lib.float32, shapes=(1, 1))
       _enqueue_vector(sess, weights_queue, [1.0])
-      _enqueue_vector(sess, weights_queue, [1.0])
+      _enqueue_vector(sess, weights_queue, [0.5])
       _enqueue_vector(sess, weights_queue, [1.0])
       _enqueue_vector(sess, weights_queue, [0.0])
       _enqueue_vector(sess, weights_queue, [1.0])
@@ -3551,7 +3551,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       variables.local_variables_initializer().run()
       for _ in range(6):
         sess.run(update_op)
-      desired_output = np.mean([2.0 / 2.0, 1.0 / 2.0])
+      desired_output = np.mean([2.0 / 2.0, 0.5 / 1.5])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
   def testMultipleUpdatesWithMissingClass(self):
@@ -3649,6 +3649,202 @@ class MeanPerClassAccuracyTest(test.TestCase):
       self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
       desired_mean_accuracy = np.mean([2. / 2., 4. / 6.])
       self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
+
+
+class FalseNegativesAtThresholdsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.false_negatives_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0.15, 0.5, 0.85])
+    _assert_local_variables(self, ('false_negatives/false_negatives:0',))
+
+  def testUnweighted(self):
+    predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
+                                        (0.2, 0.9, 0.7, 0.6),
+                                        (0.1, 0.2, 0.4, 0.3)))
+    labels = constant_op.constant(((0, 1, 1, 0),
+                                   (1, 0, 0, 0),
+                                   (0, 0, 0, 0)))
+    fn, fn_update_op = metrics.false_negatives_at_thresholds(
+        predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual((0, 0, 0), fn.eval())
+      self.assertAllEqual((0, 2, 3), fn_update_op.eval())
+      self.assertAllEqual((0, 2, 3), fn.eval())
+
+  def testWeighted(self):
+    predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
+                                        (0.2, 0.9, 0.7, 0.6),
+                                        (0.1, 0.2, 0.4, 0.3)))
+    labels = constant_op.constant(((0, 1, 1, 0),
+                                   (1, 0, 0, 0),
+                                   (0, 0, 0, 0)))
+    fn, fn_update_op = metrics.false_negatives_at_thresholds(
+        predictions=predictions,
+        labels=labels,
+        weights=((3.0,), (5.0,), (7.0,)),
+        thresholds=[0.15, 0.5, 0.85])
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual((0.0, 0.0, 0.0), fn.eval())
+      self.assertAllEqual((0.0, 8.0, 11.0), fn_update_op.eval())
+      self.assertAllEqual((0.0, 8.0, 11.0), fn.eval())
+
+
+class FalsePositivesAtThresholdsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.false_positives_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0.15, 0.5, 0.85])
+    _assert_local_variables(self, ('false_positives/false_positives:0',))
+
+  def testUnweighted(self):
+    predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
+                                        (0.2, 0.9, 0.7, 0.6),
+                                        (0.1, 0.2, 0.4, 0.3)))
+    labels = constant_op.constant(((0, 1, 1, 0),
+                                   (1, 0, 0, 0),
+                                   (0, 0, 0, 0)))
+    fp, fp_update_op = metrics.false_positives_at_thresholds(
+        predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual((0, 0, 0), fp.eval())
+      self.assertAllEqual((7, 4, 2), fp_update_op.eval())
+      self.assertAllEqual((7, 4, 2), fp.eval())
+
+  def testWeighted(self):
+    predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
+                                        (0.2, 0.9, 0.7, 0.6),
+                                        (0.1, 0.2, 0.4, 0.3)))
+    labels = constant_op.constant(((0, 1, 1, 0),
+                                   (1, 0, 0, 0),
+                                   (0, 0, 0, 0)))
+    fp, fp_update_op = metrics.false_positives_at_thresholds(
+        predictions=predictions,
+        labels=labels,
+        weights=((1.0, 2.0, 3.0, 5.0),
+                 (7.0, 11.0, 13.0, 17.0),
+                 (19.0, 23.0, 29.0, 31.0)),
+        thresholds=[0.15, 0.5, 0.85])
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual((0.0, 0.0, 0.0), fp.eval())
+      self.assertAllEqual((125.0, 42.0, 12.0), fp_update_op.eval())
+      self.assertAllEqual((125.0, 42.0, 12.0), fp.eval())
+
+
+class TrueNegativesAtThresholdsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.true_negatives_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0.15, 0.5, 0.85])
+    _assert_local_variables(self, ('true_negatives/true_negatives:0',))
+
+  def testUnweighted(self):
+    predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
+                                        (0.2, 0.9, 0.7, 0.6),
+                                        (0.1, 0.2, 0.4, 0.3)))
+    labels = constant_op.constant(((0, 1, 1, 0),
+                                   (1, 0, 0, 0),
+                                   (0, 0, 0, 0)))
+    tn, tn_update_op = metrics.true_negatives_at_thresholds(
+        predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual((0, 0, 0), tn.eval())
+      self.assertAllEqual((2, 5, 7), tn_update_op.eval())
+      self.assertAllEqual((2, 5, 7), tn.eval())
+
+  def testWeighted(self):
+    predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
+                                        (0.2, 0.9, 0.7, 0.6),
+                                        (0.1, 0.2, 0.4, 0.3)))
+    labels = constant_op.constant(((0, 1, 1, 0),
+                                   (1, 0, 0, 0),
+                                   (0, 0, 0, 0)))
+    tn, tn_update_op = metrics.true_negatives_at_thresholds(
+        predictions=predictions,
+        labels=labels,
+        weights=((0.0, 2.0, 3.0, 5.0),),
+        thresholds=[0.15, 0.5, 0.85])
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual((0.0, 0.0, 0.0), tn.eval())
+      self.assertAllEqual((5.0, 15.0, 23.0), tn_update_op.eval())
+      self.assertAllEqual((5.0, 15.0, 23.0), tn.eval())
+
+
+class TruePositivesAtThresholdsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.true_positives_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0.15, 0.5, 0.85])
+    _assert_local_variables(self, ('true_positives/true_positives:0',))
+
+  def testUnweighted(self):
+    predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
+                                        (0.2, 0.9, 0.7, 0.6),
+                                        (0.1, 0.2, 0.4, 0.3)))
+    labels = constant_op.constant(((0, 1, 1, 0),
+                                   (1, 0, 0, 0),
+                                   (0, 0, 0, 0)))
+    tp, tp_update_op = metrics.true_positives_at_thresholds(
+        predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual((0, 0, 0), tp.eval())
+      self.assertAllEqual((3, 1, 0), tp_update_op.eval())
+      self.assertAllEqual((3, 1, 0), tp.eval())
+
+  def testWeighted(self):
+    predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
+                                        (0.2, 0.9, 0.7, 0.6),
+                                        (0.1, 0.2, 0.4, 0.3)))
+    labels = constant_op.constant(((0, 1, 1, 0),
+                                   (1, 0, 0, 0),
+                                   (0, 0, 0, 0)))
+    tp, tp_update_op = metrics.true_positives_at_thresholds(
+        predictions=predictions, labels=labels, weights=37.0,
+        thresholds=[0.15, 0.5, 0.85])
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual((0.0, 0.0, 0.0), tp.eval())
+      self.assertAllEqual((111.0, 37.0, 0.0), tp_update_op.eval())
+      self.assertAllEqual((111.0, 37.0, 0.0), tp.eval())
 
 
 if __name__ == '__main__':

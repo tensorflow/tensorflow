@@ -51,6 +51,7 @@ See the @{$python/contrib.metrics} guide.
 @@streaming_true_negatives_at_thresholds
 @@streaming_true_positives
 @@streaming_true_positives_at_thresholds
+@@sparse_recall_at_top_k
 @@auc_using_histogram
 @@accuracy
 @@aggregate_metrics
@@ -73,6 +74,7 @@ from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_map
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metrics
+from tensorflow.contrib.metrics.python.ops.metric_ops import sparse_recall_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_concat

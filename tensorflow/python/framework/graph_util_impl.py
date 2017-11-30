@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 import copy
 import re
+import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
@@ -79,7 +80,7 @@ def must_run_on_cpu(node, pin_variables_on_cpu=False):
     if dtype == dtypes.string or dtype == dtypes.int32:
       return True
 
-  if node_def.op == "DynamicStitch":
+  if node_def.op in ["DynamicStitch", "ParallelDynamicStitch"]:
     dtype = node_def.attr["T"].type
     if dtype == dtypes.int32:
       # DynamicStitch on GPU only works for int32 values.
@@ -122,6 +123,9 @@ def extract_sub_graph(graph_def, dest_nodes):
 
   if not isinstance(graph_def, graph_pb2.GraphDef):
     raise TypeError("graph_def must be a graph_pb2.GraphDef proto.")
+
+  if isinstance(dest_nodes, six.string_types):
+    raise TypeError("dest_nodes must be a list.")
 
   edges = {}  # Keyed by the dest node name.
   name_to_node_map = {}  # Keyed by node name.
@@ -221,7 +225,7 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   else:
     returned_variables = []
   found_variables = dict(zip(variable_dict_names, returned_variables))
-  logging.info("Froze %d variables." % len(returned_variables))
+  logging.info("Froze %d variables.", len(returned_variables))
 
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0

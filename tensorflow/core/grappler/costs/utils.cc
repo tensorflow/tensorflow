@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -70,11 +71,12 @@ static std::vector<TensorProto> ExtractTensors(const AttrValue& attr_value) {
   return tensors;
 }
 
+// Annotate the op_info inputs with extra information when possible (e.g. the
+// input value if it's known statically).
 static void ExtractExtraProperties(
     const NodeDef& node,
     const std::unordered_map<string, const NodeDef*>& name_to_node,
-    std::vector<OpInfo::TensorProperties>* extra_inputs,
-    protobuf::Map<string, AttrValue>* attr_map) {
+    OpInfo* op_info) {
   OpRegistry* op_registry = OpRegistry::Global();
   const OpDef* op_def = nullptr;
   auto s = op_registry->LookUpOpDef(node.op(), &op_def);
@@ -85,6 +87,9 @@ static void ExtractExtraProperties(
   for (int i = 0; i < node.input_size(); ++i) {
     const string input_name = node.input(i);
     CHECK(!input_name.empty());
+    if (IsControlInput(input_name)) {
+      continue;
+    }
     TensorId input_tensor_id = ParseTensorName(input_name);
     const string input_node_name = input_tensor_id.first.ToString();
 
@@ -92,8 +97,15 @@ static void ExtractExtraProperties(
     if (iter == name_to_node.end()) continue;
     const NodeDef* input_node = iter->second;
 
+    if (i >= op_info->inputs_size()) {
+      LOG(ERROR) << "OpInfo's inputs doesn't match the graph! OpInfo: "
+                 << op_info->DebugString()
+                 << "\nCurrent node: " << node.DebugString()
+                 << "\nInput node: " << input_node->DebugString();
+    }
+
     // The value attribute in Const input is useful for cost prediction.
-    if (input_node->op() == "Const") {
+    if (input_node->op() == "Const" && i < op_info->inputs_size()) {
       auto it = input_node->attr().find("value");
       if (it == input_node->attr().end()) continue;
 
@@ -102,11 +114,8 @@ static void ExtractExtraProperties(
       if (tensors.empty()) continue;
 
       const TensorProto& t = tensors[0];
-      OpInfo::TensorProperties input;
-      input.set_dtype(t.dtype());
-      *(input.mutable_shape()) = t.tensor_shape();
-      *(input.mutable_value()) = t;
-      extra_inputs->push_back(input);
+      OpInfo::TensorProperties* input = op_info->mutable_inputs(i);
+      *(input->mutable_value()) = t;
 
       // For filename input, the file size can also be useful.
       if (op_def && i < op_def->input_arg_size() &&
@@ -129,7 +138,7 @@ static void ExtractExtraProperties(
         AttrValue attr;
         attr.set_i(stat.length);
         string attr_key = strings::StrCat("input_", i, "_filesize");
-        (*attr_map)[attr_key] = attr;
+        (*op_info->mutable_attr())[attr_key] = attr;
       }
     }
 
@@ -140,7 +149,7 @@ static void ExtractExtraProperties(
       string new_key = strings::StrCat("parent_", i, "_op");
       AttrValue attr;
       attr.set_s(input_node->op());
-      (*attr_map)[new_key] = attr;
+      (*op_info->mutable_attr())[new_key] = attr;
       // TODO(yuefengz): Only parent node's op name is copied. Copy inputs
       // and attributes when necessary.
     }
@@ -212,14 +221,7 @@ OpInfo BuildOpInfoWithoutDevice(
   for (auto& input : inputs) {
     *op_info.add_inputs() = input;
   }
-
-  std::vector<OpInfo::TensorProperties> extra_inputs;
-  ExtractExtraProperties(node, name_to_node, &extra_inputs,
-                         op_info.mutable_attr());
-  for (auto& input : extra_inputs) {
-    *op_info.add_inputs() = input;
-  }
-
+  ExtractExtraProperties(node, name_to_node, &op_info);
   return op_info;
 }
 

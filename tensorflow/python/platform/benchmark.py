@@ -169,8 +169,8 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
 
     Args:
       iters: (optional) How many iterations were run
-      cpu_time: (optional) Total cpu time in seconds
-      wall_time: (optional) Total wall time in seconds
+      cpu_time: (optional) median or mean cpu time in seconds.
+      wall_time: (optional) median or mean wall time in seconds.
       throughput: (optional) Throughput (in MB/s)
       extras: (optional) Dict mapping string keys to additional benchmark info.
         Values may be either floats or values that are convertible to strings.

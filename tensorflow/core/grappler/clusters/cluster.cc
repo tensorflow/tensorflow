@@ -55,12 +55,16 @@ void Cluster::DisableOptimizer(bool disable) {
         options_.config.mutable_graph_options()->mutable_rewrite_options();
     rewriter_config->set_optimize_tensor_layout(false);
     rewriter_config->set_disable_model_pruning(true);
-    rewriter_config->set_constant_folding(false);
+    rewriter_config->set_constant_folding(RewriterConfig::OFF);
     rewriter_config->set_memory_optimization(RewriterConfig::NO_MEM_OPT);
     rewriter_config->mutable_auto_parallel()->set_enable(false);
     rewriter_config->clear_optimizers();
   } else {
     options->set_opt_level(OptimizerOptions::L1);
+    auto rewriter_config =
+        options_.config.mutable_graph_options()->mutable_rewrite_options();
+    rewriter_config->set_constant_folding(RewriterConfig::DEFAULT);
+    rewriter_config->set_memory_optimization(RewriterConfig::DEFAULT_MEM_OPT);
   }
 }
 

@@ -22,6 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -193,6 +194,30 @@ class OptimizerTest(test.TestCase):
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
       opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
       self.assertTrue(opt_op in ops.get_collection(ops.GraphKeys.TRAIN_OP))
+
+  def testConstraint(self):
+    constraint_01 = lambda x: clip_ops.clip_by_value(x, -0.1, 0.)
+    constraint_0 = lambda x: clip_ops.clip_by_value(x, 0., 1.)
+    with self.test_session():
+      var0 = variables.Variable([1.0, 2.0],
+                                constraint=constraint_01)
+      var1 = variables.Variable([3.0, 4.0],
+                                constraint=constraint_0)
+      cost = 5 * var0 + 3 * var1
+      global_step = variables.Variable(
+          array_ops.zeros([], dtypes.int64), name='global_step')
+      sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
+      opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
+
+      variables.global_variables_initializer().run()
+      # Fetch params to validate initial values
+      self.assertAllClose([1.0, 2.0], var0.eval())
+      self.assertAllClose([3.0, 4.0], var1.eval())
+      # Run 1 step of sgd through optimizer
+      opt_op.run()
+      # Validate updated params
+      self.assertAllClose([-0.1, -0.1], var0.eval())
+      self.assertAllClose([0., 0.], var1.eval())
 
 
 if __name__ == '__main__':

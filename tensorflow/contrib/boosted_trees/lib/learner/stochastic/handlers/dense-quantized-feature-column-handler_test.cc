@@ -51,7 +51,7 @@ class DenseQuantizedFeatureColumnHandlerTest : public ::testing::Test {
         dense_quantized_values_(test::AsTensor<int32>({1, 1, 0, 1}, {4})) {
     // Set L2 regularization.
     learner_config_.mutable_regularization()->set_l2(2.0f);
-
+    learner_config_.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
     // Create handler.
     handler_.reset(new DenseQuantizedFeatureColumnHandler(
         kClassId, kSlotId, kBatchSize, kFeatureColumn,

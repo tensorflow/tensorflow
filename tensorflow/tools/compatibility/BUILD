@@ -19,7 +19,6 @@ py_binary(
 
 py_test(
     name = "tf_upgrade_test",
-    size = "small",
     srcs = ["tf_upgrade_test.py"],
     srcs_version = "PY2AND3",
     deps = [

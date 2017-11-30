@@ -285,6 +285,41 @@ class Template(object):
     return self._variable_scope
 
   @property
+  def variable_scope_name(self):
+    """Returns the variable scope name created by this Template."""
+    if self._variable_scope:
+      name = self._variable_scope.name
+      # To prevent partial matches on the scope_name, we add '/' at the end.
+      return name if name[-1] == "/" else name + "/"
+
+  @property
+  def trainable_variables(self):
+    """Returns the list of trainable variables created by the Template."""
+    if self._variables_created:
+      return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
+                                self.variable_scope_name)
+    else:
+      return []
+
+  @property
+  def global_variables(self):
+    """Returns the list of global variables created by the Template."""
+    if self._variables_created:
+      return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
+                                self.variable_scope_name)
+    else:
+      return []
+
+  @property
+  def local_variables(self):
+    """Returns the list of global variables created by the Template."""
+    if self._variables_created:
+      return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES,
+                                self.variable_scope_name)
+    else:
+      return []
+
+  @property
   @deprecated(
       "2017-02-21", "The .var_scope property is deprecated. Please change your "
       "code to use the .variable_scope property")

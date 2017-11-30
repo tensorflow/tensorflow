@@ -157,10 +157,12 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
 Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
                              ResourceBase** resource) const {
-  mutex_lock l(mu_);
+  tf_shared_lock l(mu_);
   const Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
-    return errors::NotFound("Container ", container, " does not exist.");
+    return errors::NotFound("Container ", container,
+                            " does not exist. (Could not find resource: ",
+                            container, "/", name, ")");
   }
   auto r = gtl::FindPtrOrNull(*b, {type.hash_code(), name});
   if (r == nullptr) {

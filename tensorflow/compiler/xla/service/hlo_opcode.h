@@ -30,8 +30,9 @@ namespace xla {
 enum class HloOpcode {
   kAbs,
   kAdd,
-  kBatchNormTraining,
   kBatchNormGrad,
+  kBatchNormInference,
+  kBatchNormTraining,
   kBitcast,
   kBroadcast,
   kCall,
@@ -83,6 +84,7 @@ enum class HloOpcode {
   kReshape,
   kReverse,
   kRng,
+  kRoundNearestAfz,
   kSelect,
   kSelectAndScatter,
   kSend,

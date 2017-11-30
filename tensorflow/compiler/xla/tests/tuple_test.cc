@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -122,6 +121,17 @@ XLA_TEST_F(TupleTest, GetTupleElementWithZeroElements) {
        builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 101))});
   auto matrix_element = builder.GetTupleElement(tuple_data, 1);
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 101), {}, error_spec_);
+}
+
+XLA_TEST_F(TupleTest, GetTupleElementOfNonTupleFailsGracefully) {
+  ComputationBuilder builder(client_, TestName());
+  auto value = builder.ConstantR1<float>({4.5f});
+  builder.GetTupleElement(value, 1);
+  auto result_status = builder.Build();
+  EXPECT_FALSE(result_status.ok());
+  EXPECT_THAT(
+      result_status.status().error_message(),
+      ::testing::HasSubstr("Operand to GetTupleElement() is not a tuple"));
 }
 
 // Extracts both elements from a tuple with GetTupleElement and then adds them
@@ -283,7 +293,7 @@ XLA_TEST_F(TupleTest, TuplesInAMap) {
 
   ComputationBuilder b(client_, TestName());
   auto input = b.ConstantR1<float>({-1.0f, 1.0f, 2.1f});
-  b.Map({input}, tuple_computation);
+  b.Map({input}, tuple_computation, {0});
   ComputeAndCompareR1<float>(&b, {-99.0f, 101.0f, 214.41f}, {}, error_spec_);
 }
 
@@ -436,20 +446,3 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

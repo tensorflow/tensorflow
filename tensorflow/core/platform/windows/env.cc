@@ -59,7 +59,7 @@ class WindowsEnv : public Env {
     // versions of Windows. For that reason, we try to look it up in
     // kernel32.dll at runtime and use an alternative option if the function
     // is not available.
-    HMODULE module = GetModuleHandle("kernel32.dll");
+    HMODULE module = GetModuleHandleW(L"kernel32.dll");
     if (module != NULL) {
       auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
           module, "GetSystemTimePreciseAsFileTime");
@@ -72,7 +72,9 @@ class WindowsEnv : public Env {
   }
 
   bool MatchPath(const string& path, const string& pattern) override {
-    return PathMatchSpec(path.c_str(), pattern.c_str()) == TRUE;
+      std::wstring ws_path(WindowsFileSystem::Utf8ToWideChar(path));
+      std::wstring ws_pattern(WindowsFileSystem::Utf8ToWideChar(pattern));
+    return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
   }
 
   void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }
@@ -124,7 +126,9 @@ class WindowsEnv : public Env {
     std::string file_name = library_filename;
     std::replace(file_name.begin(), file_name.end(), '/', '\\');
 
-    HMODULE hModule = LoadLibraryEx(file_name.c_str(), NULL,
+    std::wstring ws_file_name(WindowsFileSystem::Utf8ToWideChar(file_name));
+
+    HMODULE hModule = LoadLibraryExW(ws_file_name.c_str(), NULL,
       LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!hModule) {
       return errors::NotFound(file_name + " not found");
@@ -170,6 +174,23 @@ REGISTER_FILE_SYSTEM("file", LocalWinFileSystem);
 Env* Env::Default() {
   static Env* default_env = new WindowsEnv;
   return default_env;
+}
+
+void Env::GetLocalTempDirectories(std::vector<string>* list) {
+  list->clear();
+  // On windows we'll try to find a directory in this order:
+  //   C:/Documents & Settings/whomever/TEMP (or whatever GetTempPath() is)
+  //   C:/TMP/
+  //   C:/TEMP/
+  //   C:/WINDOWS/ or C:/WINNT/
+  //   .
+  char tmp[MAX_PATH];
+  // GetTempPath can fail with either 0 or with a space requirement > bufsize.
+  // See http://msdn.microsoft.com/en-us/library/aa364992(v=vs.85).aspx
+  DWORD n = GetTempPathA(MAX_PATH, tmp);
+  if (n > 0 && n <= MAX_PATH) list->push_back(tmp);
+  list->push_back("C:\\tmp\\");
+  list->push_back("C:\\temp\\");
 }
 
 }  // namespace tensorflow

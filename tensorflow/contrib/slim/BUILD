@@ -22,7 +22,6 @@ py_library(
 
 py_test(
     name = "evaluation_test",
-    size = "small",
     srcs = ["python/slim/evaluation_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -84,9 +83,12 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:session",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/debug:debug_data",
+        "//tensorflow/python/debug:dumping_wrapper",
         "//third_party/py/numpy",
     ],
 )
@@ -165,7 +167,6 @@ py_library(
 
 py_test(
     name = "summaries_test",
-    size = "small",
     srcs = ["python/slim/summaries_test.py"],
     srcs_version = "PY2AND3",
     deps = [

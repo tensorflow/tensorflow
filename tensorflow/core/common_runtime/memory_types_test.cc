@@ -53,7 +53,7 @@ TEST(MemoryTypeChecker, Int32NotOk) {
   EXPECT_TRUE(errors::IsInternal(ValidateMemoryTypes(DEVICE_GPU, g)));
 
   // But we can insert _HostSend/_HostRecv to ensure the invariant.
-  TF_EXPECT_OK(EnsureMemoryTypes(DEVICE_GPU, "/gpu:0", g));
+  TF_EXPECT_OK(EnsureMemoryTypes(DEVICE_GPU, "/device:GPU:0", g));
   TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_GPU, g));
 #endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL

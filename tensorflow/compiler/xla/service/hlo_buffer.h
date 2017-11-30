@@ -84,29 +84,23 @@ class HloBuffer {
     return a->id() == b->id();
   }
 
-  HloBuffer(Id id) : id_(id) {}
+  HloBuffer(Id id, tensorflow::gtl::ArraySlice<const HloValue*> values)
+      : id_(id), values_(values.begin(), values.end()) {}
 
   // Return the unique identifier for this HloBuffer.
   Id id() const { return id_; }
 
-  // Add a value to the set of values held by this buffer. Also adds the
-  // HloPositions of the value to the positions vector of the buffer. If the
-  // buffer already contains this value, then this method is a nop.
-  void AddValue(const HloValue& value);
-
   // Return all values contained in this buffer.
-  const std::vector<const HloValue*>& values() const {
-    return values_.values();
-  }
+  const std::vector<const HloValue*>& values() const { return values_; }
 
   // Return the unique HLO value in the buffer. CHECK fails if the buffer does
   // not contain exactly one value.
-  const HloValue& GetUniqueValue() const { return values_.GetUniqueValue(); }
+  const HloValue& GetUniqueValue() const {
+    CHECK_EQ(values_.size(), 1);
+    return *values_[0];
+  }
 
-  // Return the positions (output of which instruction and at what index) where
-  // the buffer is used. This is exactly the union of the positions of the
-  // HloValues contained by the buffer.
-  const std::vector<HloPosition>& positions() const { return positions_; }
+  std::vector<HloPosition> ComputePositions() const;
 
   string ToString() const;
 
@@ -117,82 +111,12 @@ class HloBuffer {
   // Unique identifier for this HloBuffer.
   const Id id_;
 
-  // The set of values contained in this buffer.
-  HloValueSet values_;
-
-  // The set of positions where this buffer is used.
-  std::vector<HloPosition> positions_;
+  // The set of values contained in this buffer. Vector contains no duplicates
+  // and is sorted stably by HloValue::Id.
+  const std::vector<const HloValue*> values_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer);
-
-// A class representing the set of possible HloBuffers at a particular
-// HloPosition (shape index in the output of an instruction) in the XLA
-// graph. In most cases, the buffer set will have a single HloBuffer indicating
-// that the HloBuffer which appears at that particular position is known
-// unambiguously at compile-time.  However, tuple-shaped Select instructions can
-// introduce ambiguity as the tuple elements of the operands are passed by
-// reference into the output of the Select. For example:
-//
-//   %pred = ...
-//   %tuple0 = Tuple(%a, %b)
-//   %tuple1 = Tuple(%x, %y)
-//   %select = Select(%pred, %tuple0, %tuple1)
-//
-// In this case the HloBufferSet at HloPosition{%select, {0}} contains the
-// HloBuffer holding %a and the HloBuffer holding %x.
-class HloBufferSet {
- public:
-  HloBufferSet() = default;
-
-  // Add the given buffer to this buffer set. If the buffer already exists in
-  // the set, then this is a NOP.
-  void AddBuffer(const HloBuffer* buffer);
-
-  // Removes the given buffer from this buffer set. CHECK fails in the buffer is
-  // not contained in this set.
-  void RemoveBufferOrDie(HloBuffer::Id buffer_id);
-
-  // Returns the unique buffer in this set. CHECK fails if the set does not
-  // contain exactly one buffer.
-  const HloBuffer& GetUniqueBuffer() const {
-    CHECK_EQ(buffers_.size(), 1);
-    return *buffers_[0];
-  }
-
-  // Returns the vector of HloBuffers in the set, sorted by HloBuffer::Id.
-  const std::vector<const HloBuffer*>& buffers() const { return buffers_; }
-
-  string ToString() const;
-
- private:
-  // HloBuffers sorted by HloBuffer::Id.
-  std::vector<const HloBuffer*> buffers_;
-};
-
-std::ostream& operator<<(std::ostream& out, const HloBufferSet& buffer_set);
-
-// A class collecting the HloBuffers in the output of an HLO instruction. For
-// array-shaped instructions, an InstructionBufferSet trivially holds a single
-// HloBufferSet. Tuple-shaped InstructionBufferSets hold multiple
-// HloBufferSets.
-class InstructionBufferSet : public ShapeTree<HloBufferSet> {
- public:
-  InstructionBufferSet(const Shape& shape) : ShapeTree<HloBufferSet>(shape) {}
-
-  // Returns true if any HloBufferSet contained in this InstructionBufferSet
-  // is not a singleton.
-  bool IsAmbiguous() const;
-
-  // Returns true if any HloBuffer appears in more than one HloBufferSet
-  // contained in this InstructionBufferSet.
-  bool IsDistinct() const;
-
-  string ToString() const;
-};
-
-std::ostream& operator<<(std::ostream& out,
-                         const InstructionBufferSet& buffer_set);
 
 }  // namespace xla
 

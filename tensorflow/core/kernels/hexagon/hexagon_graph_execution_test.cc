@@ -437,7 +437,7 @@ TEST(GraphTransferer,
             << "with quantized input";
   CheckHexagonControllerVersion();
 
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
   std::vector<std::pair<string, Tensor>> inputs;
   inputs.emplace_back("Mul", Tensor(DT_QUINT8, {1, WIDTH, HEIGHT, DEPTH}));

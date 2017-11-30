@@ -117,16 +117,6 @@ class CPUAllocator : public Allocator {
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };
 
-namespace {
-Allocator* MakeCpuAllocator() {
-  Allocator* allocator = new CPUAllocator;
-  if (cpu_allocator_collect_full_stats || LogMemory::IsEnabled()) {
-    allocator = new TrackingAllocator(allocator, true);
-  }
-  return allocator;
-}
-}  // namespace
-
 Allocator* cpu_allocator() {
   static Allocator* cpu_alloc = AllocatorRegistry::Global()->GetAllocator();
   if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {

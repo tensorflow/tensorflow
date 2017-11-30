@@ -22,11 +22,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/Triple.h"
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -56,7 +57,7 @@ namespace cpu {
 // instance of llvm::TargetTransformInfo outside an LLVM pass pipeline without
 // super-ugly hacks is difficult.
 //
-// TODO(b/27457097): See if the LLVM community will be receptive to exposing an
+// TODO(b/66049221): See if the LLVM community will be receptive to exposing an
 // API that lets us directly create and use llvm::TargetTransformInfo instances
 // outside of a pass manager.
 class TargetMachineFeatures {
@@ -117,8 +118,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // not unique among already emitted functions then a suffix is appended to
   // make the name unique.
   //
-  // is_entry_computation indicates that this is the entry computation of the
-  // HLO module.
+  // 'is_top_level_computation' has the following meanings for each CPU backend:
+  // *) sequential: indicates that this is the entry computation of the HLO
+  //    module.
+  // *) parallel: indices that this is the callee of a kCall HLO in the entry
+  //    computation of the HLO module.
   //
   // If 'instruction_order' is not NULL, then the HLO instructions are emitted
   // in the given order.  In this case, 'instruction_order' must be a
@@ -126,8 +130,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // computation.
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const string& function_name_prefix,
-      bool is_entry_computation,
+      bool is_top_level_computation,
       std::vector<const HloInstruction*>* instruction_order);
+
+  llvm::IRBuilder<>* ir_builder() { return &ir_builder_; }
+
+  // Emits a call to `computation` with scalar arguments `arguments`.
+  StatusOr<llvm::Value*> EmitScalarCall(
+      PrimitiveType return_type, HloComputation* computation,
+      const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name);
 
  protected:
   //
@@ -135,7 +146,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   //
   // Default action which emits code for most operations. Operations which are
   // special in some way are handled explicitly in HandleFoo methods.
-  Status DefaultAction(HloInstruction* hlo_instruction) override;
+  Status DefaultAction(HloInstruction* hlo) override;
 
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant,
@@ -164,7 +175,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleReduceWindow(HloInstruction* reduce_window,
                             HloInstruction* operand, const Window& window,
                             HloComputation* function) override;
-  Status HandleSelectAndScatter(HloInstruction* instruction) override;
+  Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleSlice(HloInstruction* slice,
                      HloInstruction* /*operand*/) override;
@@ -191,26 +202,33 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                           tensorflow::gtl::ArraySlice<HloInstruction*> operands,
                           tensorflow::StringPiece custom_call_target) override;
   Status HandleWhile(HloInstruction* xla_while) override;
+  Status HandleConcatenate(
+      HloInstruction* concatenate,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
-  Status Postprocess(HloInstruction* visited) override;
+  Status Postprocess(HloInstruction* hlo) override;
 
  private:
   // Private helper to initialize an IR function for the computation.
-  void InitializeIrFunction(const string& function_name,
-                            bool is_entry_computation);
+  void InitializeIrFunction(const string& function_name);
 
   // Convenience function to generate a GEP into the profile counter parameter
   // which would correspond to the index for a given HLO.
   llvm::Value* GetProfileCounterFor(const HloInstruction* hlo);
 
-  // Convenience function to get the IR Value emitted previously for the given
-  // hlo. Make sure to call it only when you're certain a value *was* emitted -
-  // if not found, this will log a fatal error.
+  // Gets the IR Value emitted previously for the given hlo.
+  //
+  // Prefer calling GetIrArrayForOp if the value you're reading is a buffer,
+  // because GetIrArrayForOp annotates buffer's loads/stores with noalias
+  // metadata.
+  //
+  // Make sure to call this only when you're certain a value *was* emitted - if
+  // not found, this will log a fatal error.
   llvm::Value* GetEmittedValueFor(const HloInstruction* hlo);
 
-  // Convenience function to get an IrArray representing the given hlo.
+  // Gets an IrArray representing the given hlo.
   llvm_ir::IrArray GetIrArrayForOp(const HloInstruction* hlo);
 
   // Augments IrArray with aliasing information.
@@ -286,7 +304,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   void EmitArrayFunctionCallInto(
       llvm::Function* function,
       tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-      llvm::Value* return_value, tensorflow::StringPiece name);
+      llvm::Value* return_value_buffer, tensorflow::StringPiece name);
 
   // Array function call emitter.  Returns a Value for the function's return
   // value buffer address. The return value buffer is alloca'ed by this
@@ -308,9 +326,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // shape). The body of the inner-most loop is provided by the body_emitter
   // function.
   //
+  // desc is an optional human-readable string that's added to the loop name in
+  // IR.  Regardless of whether desc is provided, target_op->name() is included
+  // in the loop name.
+  //
   // TODO(jingyue): target_op should be a `const HloInstruction*`.
   Status EmitTargetElementLoop(
       HloInstruction* target_op,
+      const llvm_ir::ElementGenerator& element_generator);
+  Status EmitTargetElementLoop(
+      HloInstruction* target_op, tensorflow::StringPiece desc,
       const llvm_ir::ElementGenerator& element_generator);
 
   // Emit IR to perform a computation for every element in a partition/slice of
@@ -320,7 +345,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitParallelTargetElementLoop(
       const Shape& target_shape,
       const llvm_ir::ElementGenerator& element_generator,
-      llvm_ir::IrArray* target_array);
+      tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the
@@ -407,9 +432,20 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       HloInstruction* arg, tensorflow::gtl::ArraySlice<int64> dimensions,
       unsigned element_alignment);
 
-  // Name of the computation entry function. This function serves as the
-  // top-level "main" of the computation and will be invoked by the JIT.
-  string entry_function_name_;
+  // Tries to emit a fast concatenate operation using memcpy.  Returns true if
+  // successful, and false on failure.  On failure, sets "failure_reason" to a
+  // string describing why it could not emit a fast concatenate.
+  StatusOr<bool> EmitFastConcatenate(
+      HloInstruction* concatenate,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      string* failure_reason);
+
+  // Emits LLVM IR to transfer "element_count" elements of type "primitive_type"
+  // from the address "source" to the address "target".
+  void EmitTransferElements(llvm::Value* target, llvm::Value* source,
+                            int64 element_count, PrimitiveType primitive_type,
+                            const llvm_ir::IrArray& target_array,
+                            const llvm_ir::IrArray& source_array);
 
   // Assignment of the temporary buffers needed by the computation and their
   // shape information.
@@ -462,12 +498,12 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   class ProfilingState {
    public:
     ProfilingState()
-        : is_entry_computation_(false),
+        : is_top_level_computation_(false),
           use_rdtscp_(false),
           prof_counters_(nullptr) {}
-    ProfilingState(bool is_entry_computation, bool use_rdtscp,
+    ProfilingState(bool is_top_level_computation, bool use_rdtscp,
                    llvm::Argument* prof_counters)
-        : is_entry_computation_(is_entry_computation),
+        : is_top_level_computation_(is_top_level_computation),
           use_rdtscp_(use_rdtscp),
           prof_counters_(prof_counters) {}
 
@@ -492,7 +528,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
    private:
     // Is this IrEmitter for a top-level computation?
-    bool is_entry_computation_;
+    bool is_top_level_computation_;
 
     // Should we use the x86-specific rdtscp or the generic readcyclecounter
     // intrinsic?
@@ -552,7 +588,17 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                            llvm::Value* program_buffer_address);
 
+  // Returns true if the current function being emitted is called in a
+  // parallel context (returns false otherwise).
+  bool IsParallelContext() {
+    return parallel_cpu_backend_ && is_top_level_computation_;
+  }
+
   const HloModuleConfig& hlo_module_config_;
+
+  const bool parallel_cpu_backend_;
+
+  bool is_top_level_computation_;
 
   TargetMachineFeatures target_machine_features_;
 

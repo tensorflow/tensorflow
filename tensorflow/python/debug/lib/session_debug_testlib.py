@@ -33,6 +33,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -94,7 +95,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     else:
       cls._expected_partition_graph_count = 1
       cls._expected_num_devices = 1
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
   @classmethod
   def tearDownClass(cls):
@@ -242,7 +243,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       v_copy_node_def = None
       for partition_graph in run_metadata.partition_graphs:
         for node_def in partition_graph.node:
-          if debug_data.is_copy_node(node_def.name):
+          if debug_graphs.is_copy_node(node_def.name):
             if node_def.name == "__copy_u_0":
               u_copy_node_def = node_def
             elif node_def.name == "__copy_v_0":
@@ -711,7 +712,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     # Test node name list lookup of the DebugDumpDir object.
     if test_util.gpu_device_name():
       node_names = dump.nodes(
-          device_name="/job:localhost/replica:0/task:0/gpu:0")
+          device_name="/job:localhost/replica:0/task:0/device:GPU:0")
     else:
       node_names = dump.nodes()
     self.assertTrue(u_name in node_names)
@@ -1280,7 +1281,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"1 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+          r"__dbg_.:0_0_DebugNumericSummary: foo"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -1292,7 +1293,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"2 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary:"):
+          r"__dbg_.:0_0_DebugNumericSummary:"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -1304,7 +1305,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"1 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+          r"__dbg_.:0_0_DebugNumericSummary: foo"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
   def testDebugNumericSummaryMuteOnHealthyMutesOnlyHealthyTensorDumps(self):

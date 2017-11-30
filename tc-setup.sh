@@ -64,8 +64,15 @@ if [ ! -z "${install_cuda}" ]; then
         tar xvf ${DS_ROOT_TASK}/dls/${CUDNN_FILE} --strip-components=1 -C ${DS_ROOT_TASK}/DeepSpeech/CUDA/
     popd
 
-    LD_LIBRARY_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/:$LD_LIBRARY_PATH
+    LD_LIBRARY_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/:${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/stubs/:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH
+
+    # We might lack libcuda.so.1 symlink, let's fix as upstream does:
+    # https://github.com/tensorflow/tensorflow/pull/13811/files?diff=split#diff-2352449eb75e66016e97a591d3f0f43dR96
+    if [ ! -h "${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/stubs/libcuda.so.1" ]; then
+        ln -s "${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/stubs/libcuda.so" "${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/stubs/libcuda.so.1"
+    fi;
+
 else
     echo "No CUDA/CuDNN to install"
 fi

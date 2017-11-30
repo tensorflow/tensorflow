@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 #include "tensorflow/core/kernels/captured_function.h"
+#include "tensorflow/core/kernels/dataset_utils.h"
 
 namespace tensorflow {
 
@@ -29,20 +30,18 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class InterleaveDatasetOp : public OpKernel {
+class InterleaveDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit InterleaveDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
+      : UnaryDatasetOpKernel(ctx),
+        graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
-  void Compute(OpKernelContext* ctx) override {
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
     std::vector<Tensor> other_arguments;
@@ -74,16 +73,8 @@ class InterleaveDatasetOp : public OpKernel {
                                                  std::move(other_arguments),
                                                  &captured_func));
 
-    DatasetBase* dataset =
-        new Dataset(input, std::move(captured_func), cycle_length, block_length,
-                    output_types_, output_shapes_);
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(input, std::move(captured_func), cycle_length,
+                          block_length, output_types_, output_shapes_);
   }
 
  private:
@@ -104,8 +95,10 @@ class InterleaveDatasetOp : public OpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Interleave")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -120,10 +113,10 @@ class InterleaveDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()),
-            current_elements_(dataset->cycle_length_) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
+            current_elements_(params.dataset->cycle_length_) {}
 
       void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         block_index_ = 0;
@@ -137,8 +130,9 @@ class InterleaveDatasetOp : public OpKernel {
         }
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         while (!end_of_input_ || num_open_ > 0) {
           if (current_elements_[cycle_index_]) {
@@ -165,8 +159,9 @@ class InterleaveDatasetOp : public OpKernel {
             TF_RETURN_IF_ERROR(
                 input_impl_->GetNext(ctx, &args, &end_of_input_));
             if (!end_of_input_) {
-              TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                  ctx, args, &current_elements_[cycle_index_]));
+              TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
+                  ctx, args, cycle_index_, dataset()->captured_func_.get(),
+                  prefix(), &current_elements_[cycle_index_]));
               ++num_open_;
             }
           } else {
@@ -179,65 +174,6 @@ class InterleaveDatasetOp : public OpKernel {
       }
 
      private:
-      Status MakeIteratorFromInputElement(
-          IteratorContext* ctx, const std::vector<Tensor>& input_element,
-          std::unique_ptr<IteratorBase>* out_iterator) {
-        FunctionLibraryRuntime::Options opts;
-        opts.runner = ctx->runner();
-        // Choose a step ID that is guaranteed not to clash with any
-        // Session-generated step ID. DirectSession only generates
-        // non-negative step IDs (contiguous, starting from 0), and
-        // MasterSession generates 56-bit random step IDs whose MSB
-        // is always 0, so a negative random step ID should suffice.
-        opts.step_id = -std::abs(static_cast<int64>(random::New64()));
-        ScopedStepContainer step_container(
-            opts.step_id, [this, ctx](const string& name) {
-              dataset()
-                  ->captured_func_->resource_manager()
-                  ->Cleanup(name)
-                  .IgnoreError();
-            });
-        opts.step_container = &step_container;
-        std::vector<Tensor> return_values;
-        TF_RETURN_IF_ERROR(dataset()->captured_func_->Run(opts, input_element,
-                                                          &return_values));
-
-        if (!(return_values.size() == 1 &&
-              return_values[0].dtype() == DT_RESOURCE &&
-              TensorShapeUtils::IsScalar(return_values[0].shape()))) {
-          return errors::InvalidArgument(
-              "`f` must return a single scalar of dtype DT_RESOURCE.");
-        }
-
-        // Retrieve the dataset that was created in `f`.
-        DatasetBase* returned_dataset;
-        const ResourceHandle& dataset_resource =
-            return_values[0].scalar<ResourceHandle>()();
-
-        // NOTE(mrry): We cannot use the core `LookupResource()` or
-        // `DeleteResource()` functions, because we have an
-        // `IteratorContext*` and not an `OpKernelContext*`, so we
-        // replicate the necessary functionality here.
-        auto type_index = MakeTypeIndex<DatasetBase>();
-        if (type_index.hash_code() != dataset_resource.hash_code()) {
-          return errors::InvalidArgument("`f` must return a Dataset resource.");
-        }
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_func_->resource_manager()->Lookup(
-                dataset_resource.container(), dataset_resource.name(),
-                &returned_dataset));
-        core::ScopedUnref unref_dataset(returned_dataset);
-
-        // Create an iterator for the dataset that was returned by
-        // `f`. This transfers ownership of the dataset to the
-        // iterator, so we can delete it from the resource manager.
-        *out_iterator = returned_dataset->MakeIterator();
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_func_->resource_manager()->Delete<DatasetBase>(
-                dataset_resource.container(), dataset_resource.name()));
-        return Status::OK();
-      }
-
       mutex mu_;
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::vector<std::unique_ptr<IteratorBase>> current_elements_
@@ -259,7 +195,7 @@ class InterleaveDatasetOp : public OpKernel {
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  const NameAttrList* func_;
+  NameAttrList func_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("InterleaveDataset").Device(DEVICE_CPU),

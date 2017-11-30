@@ -292,6 +292,11 @@ class BundleReader {
   // the header entry in the metadata table.
   int num_shards_;
 
+  // If set to true, try reading key + ":0" whenever key is not found in the
+  // bundle. This is a temporary measure that will be removed on Jan 1st 2018.
+  // TODO(b/64763924): Remove after Jan 1st 2018.
+  bool lenient_names_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
 };
 

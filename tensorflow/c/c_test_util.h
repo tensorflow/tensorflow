@@ -33,7 +33,16 @@ typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
 // Create a tensor with values of type TF_INT8 provided by `values`.
 TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values);
 
+// Create a tensor with values of type TF_INT32 provided by `values`.
+TF_Tensor* Int32Tensor(const int64_t* dims, int num_dims,
+                       const int32_t* values);
+
+// Create 1 dimensional tensor with values from `values`
+TF_Tensor* Int32Tensor(const std::vector<int32_t>& values);
+
 TF_Tensor* Int32Tensor(int32_t v);
+
+TF_Tensor* DoubleTensor(double v);
 
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
                           const char* name = "feed");
@@ -44,15 +53,30 @@ TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
 TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,
                           const char* name = "scalar");
 
+TF_Operation* ScalarConst(double v, TF_Graph* graph, TF_Status* s,
+                          const char* name = "scalar");
+
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name = "add");
+
+TF_Operation* AddNoCheck(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                         TF_Status* s, const char* name = "add");
+
+TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
+                                    TF_Graph* graph, TF_Operation* ctrl_op,
+                                    TF_Status* s, const char* name = "add");
 
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
                   const char* name = "add");
 
-TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s);
+TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
+                  const char* name = "neg");
 
 TF_Operation* LessThan(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s);
+
+// Split `input` along the first dimention into 3 tensors
+TF_Operation* Split3(TF_Operation* input, TF_Graph* graph, TF_Status* s,
+                     const char* name = "split3");
 
 bool IsPlaceholder(const tensorflow::NodeDef& node_def);
 
@@ -66,8 +90,18 @@ bool GetGraphDef(TF_Graph* graph, tensorflow::GraphDef* graph_def);
 
 bool GetNodeDef(TF_Operation* oper, tensorflow::NodeDef* node_def);
 
+bool GetFunctionDef(TF_Function* func, tensorflow::FunctionDef* func_def);
+
 bool GetAttrValue(TF_Operation* oper, const char* attr_name,
                   tensorflow::AttrValue* attr_value, TF_Status* s);
+
+// Returns a sorted vector of std::pair<function_name, gradient_func> from
+// graph_def.library().gradient()
+std::vector<std::pair<string, string>> GetGradDefs(
+    const tensorflow::GraphDef& graph_def);
+
+// Returns a sorted vector of names contained in `grad_def`
+std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def);
 
 class CSession {
  public:

@@ -9,7 +9,7 @@
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or  implied.
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
@@ -163,7 +163,7 @@ class ResamplerTest(test.TestCase):
     data_channels = 3
     warp_width = 2
     warp_height = 6
-    batch_size = 10
+    batch_size = 3
 
     warp = _make_warp(batch_size, warp_height, warp_width, dtype.as_numpy_dtype)
     data_shape = (batch_size, data_height, data_width, data_channels)

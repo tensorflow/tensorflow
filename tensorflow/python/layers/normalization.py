@@ -24,21 +24,20 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.training import moving_averages
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import variables
-
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.training import moving_averages
 
 
 class BatchNormalization(base.Layer):
@@ -66,6 +65,14 @@ class BatchNormalization(base.Layer):
     moving_variance_initializer: Initializer for the moving variance.
     beta_regularizer: Optional regularizer for the beta weight.
     gamma_regularizer: Optional regularizer for the gamma weight.
+    beta_constraint: An optional projection function to be applied to the `beta`
+        weight after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    gamma_constraint: An optional projection function to be applied to the
+        `gamma` weight after being updated by an `Optimizer`.
     renorm: Whether to use Batch Renormalization
       (https://arxiv.org/abs/1702.03275). This adds extra variables during
       training. The inference is the same for either value of this parameter.
@@ -79,8 +86,8 @@ class BatchNormalization(base.Layer):
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `True`, use a faster, fused implementation based on
-      nn.fused_batch_norm. If `None`, use the fused implementation if possible.
+    fused: if `True`, use a faster, fused implementation if possible.
+      If `None`, use the system recommended implementation.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     name: A string, the name of the layer.
@@ -98,10 +105,12 @@ class BatchNormalization(base.Layer):
                moving_variance_initializer=init_ops.ones_initializer(),
                beta_regularizer=None,
                gamma_regularizer=None,
+               beta_constraint=None,
+               gamma_constraint=None,
                renorm=False,
                renorm_clipping=None,
                renorm_momentum=0.99,
-               fused=False,
+               fused=None,
                trainable=True,
                name=None,
                **kwargs):
@@ -118,15 +127,14 @@ class BatchNormalization(base.Layer):
     self.moving_variance_initializer = moving_variance_initializer
     self.beta_regularizer = beta_regularizer
     self.gamma_regularizer = gamma_regularizer
+    self.beta_constraint = beta_constraint
+    self.gamma_constraint = gamma_constraint
     self.renorm = renorm
+    if fused is None:
+      fused = True
+
     self.fused = fused
-    if self.fused and renorm:
-      raise ValueError(
-          'Batch renorm is currently not supported with fused batch norm.')
-    if self.fused and (beta_regularizer is not None or
-                       gamma_regularizer is not None):
-      raise ValueError('Regularizers are not currently '
-                       'supported for fused batch norm.')
+    self._bessels_correction_test_only = True
     if renorm:
       renorm_clipping = renorm_clipping or {}
       keys = ['rmax', 'rmin', 'dmax']
@@ -141,13 +149,6 @@ class BatchNormalization(base.Layer):
     if not input_shape.ndims:
       raise ValueError('Input has undefined rank:', input_shape)
     ndim = len(input_shape)
-    # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
-    # output back to its original shape accordingly.
-    if self.fused and ndim != 4:
-      raise ValueError(
-          'Only 4D inputs are currently supported with fused batch norm. '
-          'Consider reshaping the input to 4D and reshape the output back '
-          'to its original shape. Got input rank: ', ndim)
     if self.axis < 0:
       axis = ndim + self.axis
     else:
@@ -156,10 +157,12 @@ class BatchNormalization(base.Layer):
       raise ValueError('Value of `axis` argument ' + str(self.axis) +
                        ' is out of range for input with rank ' + str(ndim))
 
-    if self.fused is None:
+    if self.fused:
       # Currently fused batch norm doesn't support renorm and beta/gamma
       # regularizer; and only supports an input tensor of rank 4 and a channel
       # dimension on axis 1 and 3.
+      # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
+      # output back to its original shape accordingly.
       self.fused = not self.renorm and ndim == 4 and axis in [
           1, 3
       ] and self.beta_regularizer is None and self.gamma_regularizer is None
@@ -167,12 +170,8 @@ class BatchNormalization(base.Layer):
     if self.fused:
       if axis == 1:
         self._data_format = 'NCHW'
-      elif axis == 3:
-        self._data_format = 'NHWC'
       else:
-        raise ValueError(
-            'Only axis 1 and 3 are currently supported dimensions for '
-            'fused batch norm. Got `axis` dimension: ', axis)
+        self._data_format = 'NHWC'
 
     param_dim = input_shape[axis]
     if not param_dim.value:
@@ -181,31 +180,37 @@ class BatchNormalization(base.Layer):
     self.input_spec = base.InputSpec(ndim=ndim,
                                      axes={self.axis: param_dim.value})
 
-    if self.center:
-      self.beta = self.add_variable(name='beta',
-                                    shape=(param_dim,),
-                                    initializer=self.beta_initializer,
-                                    regularizer=self.beta_regularizer,
-                                    trainable=True)
-    else:
-      self.beta = None
-      if self.fused:
-        self._beta_const = array_ops.constant(0.0, shape=(param_dim,))
     if self.scale:
       self.gamma = self.add_variable(name='gamma',
                                      shape=(param_dim,),
                                      initializer=self.gamma_initializer,
                                      regularizer=self.gamma_regularizer,
+                                     constraint=self.gamma_constraint,
                                      trainable=True)
     else:
       self.gamma = None
       if self.fused:
         self._gamma_const = array_ops.constant(1.0, shape=(param_dim,))
 
+    if self.center:
+      self.beta = self.add_variable(name='beta',
+                                    shape=(param_dim,),
+                                    initializer=self.beta_initializer,
+                                    regularizer=self.beta_regularizer,
+                                    constraint=self.beta_constraint,
+                                    trainable=True)
+    else:
+      self.beta = None
+      if self.fused:
+        self._beta_const = array_ops.constant(0.0, shape=(param_dim,))
+
     # Disable variable partitioning when creating the moving mean and variance
-    partitioner = self._scope.partitioner
     try:
-      self._scope.set_partitioner(None)
+      if self._scope:
+        partitioner = self._scope.partitioner
+        self._scope.set_partitioner(None)
+      else:
+        partitioner = None
       self.moving_mean = self.add_variable(
           name='moving_mean',
           shape=(param_dim,),
@@ -216,6 +221,7 @@ class BatchNormalization(base.Layer):
           shape=(param_dim,),
           initializer=self.moving_variance_initializer,
           trainable=False)
+      self._one_minus_decay = 1.0 - self.momentum
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
         # These are used in training and thus are different from the moving
@@ -230,24 +236,46 @@ class BatchNormalization(base.Layer):
                                   initializer=init_ops.zeros_initializer(),
                                   trainable=False)
           return var
+
         with ops.device(None):
-          with ops.device(lambda _: self.moving_mean.device):
+          device = ((lambda _: self.moving_mean.device)
+                    if context.in_graph_mode() else self.moving_mean.device)
+          with ops.device(device):
             self.renorm_mean = _renorm_variable('renorm_mean', (param_dim,))
             self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
           # We initialize renorm_stddev to 0, and maintain the (0-initialized)
           # renorm_stddev_weight. This allows us to (1) mix the average
           # stddev with the minibatch stddev early in training, and (2) compute
           # the unbiased average stddev by dividing renorm_stddev by the weight.
-          with ops.device(lambda _: self.moving_variance.device):
+          device = ((lambda _: self.moving_variance.device)
+                    if context.in_graph_mode() else self.moving_variance.device)
+          with ops.device(device):
             self.renorm_stddev = _renorm_variable('renorm_stddev', (param_dim,))
             self.renorm_stddev_weight = _renorm_variable(
                 'renorm_stddev_weight', ())
     finally:
-      self._scope.set_partitioner(partitioner)
+      if partitioner:
+        self._scope.set_partitioner(partitioner)
     self.built = True
+
+  def _assign_moving_average(self, variable, value, one_minus_decay):
+    with ops.name_scope(None, 'AssignMovingAvg',
+                        [variable, value, one_minus_decay]) as scope:
+      with ops.colocate_with(variable):
+        update_delta = math_ops.multiply(
+            math_ops.subtract(variable.read_value(), value),
+            one_minus_decay)
+        if isinstance(variable, resource_variable_ops.ResourceVariable):
+          # state_ops.assign_sub does an extra read_variable_op after the
+          # assign. We avoid that here.
+          return gen_resource_variable_ops.assign_sub_variable_op(
+              variable.handle, update_delta, name=scope)
+        else:
+          return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
+    # TODO(reedwm): Add support for fp16 inputs.
     beta = self.beta if self.center else self._beta_const
     gamma = self.gamma if self.scale else self._gamma_const
 
@@ -272,16 +300,33 @@ class BatchNormalization(base.Layer):
 
     output, mean, variance = utils.smart_cond(
         training, _fused_batch_norm_training, _fused_batch_norm_inference)
+    if not self._bessels_correction_test_only:
+      # Remove Bessel's correction to be consistent with non-fused batch norm.
+      # Note that the variance computed by fused batch norm is
+      # with Bessel's correction.
+      sample_size = math_ops.cast(
+          array_ops.size(inputs) / array_ops.size(variance), variance.dtype)
+      factor = (sample_size - math_ops.cast(1.0, variance.dtype)) / sample_size
+      variance *= factor
 
     training_value = utils.constant_value(training)
-    if training_value is not False:
-      decay = _smart_select(training, lambda: self.momentum, lambda: 1.)
-      mean_update = moving_averages.assign_moving_average(
-          self.moving_mean, mean, decay, zero_debias=False)
-      variance_update = moving_averages.assign_moving_average(
-          self.moving_variance, variance, decay, zero_debias=False)
-      self.add_update(mean_update, inputs=inputs)
-      self.add_update(variance_update, inputs=inputs)
+    if training_value is None:
+      one_minus_decay = _smart_select(training,
+                                      lambda: self._one_minus_decay,
+                                      lambda: 0.)
+    else:
+      one_minus_decay = ops.convert_to_tensor(self._one_minus_decay)
+    if training_value or training_value is None:
+      mean_update = self._assign_moving_average(self.moving_mean, mean,
+                                                one_minus_decay)
+      variance_update = self._assign_moving_average(self.moving_variance,
+                                                    variance, one_minus_decay)
+      if context.in_graph_mode():
+        # Note that in Eager mode, the updates are already executed when running
+        # assign_moving_averages. So we do not need to put them into
+        # collections.
+        self.add_update(mean_update, inputs=inputs)
+        self.add_update(variance_update, inputs=inputs)
 
     return output
 
@@ -314,6 +359,7 @@ class BatchNormalization(base.Layer):
     r = _smart_select(training, lambda: r, lambda: array_ops.ones_like(r))
     d = _smart_select(training, lambda: d, lambda: array_ops.zeros_like(d))
     decay = _smart_select(training, lambda: self.renorm_momentum, lambda: 1.)
+
     def _update_renorm_variable(var, weight, value):
       """Updates a moving average and weight, returns the unbiased value."""
       # Update the variables without zero debiasing. The debiasing will be
@@ -397,9 +443,9 @@ class BatchNormalization(base.Layer):
           self.moving_mean, new_mean, decay, zero_debias=False)
       variance_update = moving_averages.assign_moving_average(
           self.moving_variance, new_variance, decay, zero_debias=False)
-
-      self.add_update(mean_update, inputs=inputs)
-      self.add_update(variance_update, inputs=inputs)
+      if context.in_graph_mode():
+        self.add_update(mean_update, inputs=inputs)
+        self.add_update(variance_update, inputs=inputs)
 
     else:
       mean, variance = self.moving_mean, self.moving_variance
@@ -430,6 +476,8 @@ def batch_normalization(inputs,
                         moving_variance_initializer=init_ops.ones_initializer(),
                         beta_regularizer=None,
                         gamma_regularizer=None,
+                        beta_constraint=None,
+                        gamma_constraint=None,
                         training=False,
                         trainable=True,
                         name=None,
@@ -437,7 +485,7 @@ def batch_normalization(inputs,
                         renorm=False,
                         renorm_clipping=None,
                         renorm_momentum=0.99,
-                        fused=False):
+                        fused=None):
   """Functional interface for the batch normalization layer.
 
   Reference: http://arxiv.org/abs/1502.03167
@@ -475,6 +523,14 @@ def batch_normalization(inputs,
     moving_variance_initializer: Initializer for the moving variance.
     beta_regularizer: Optional regularizer for the beta weight.
     gamma_regularizer: Optional regularizer for the gamma weight.
+    beta_constraint: An optional projection function to be applied to the `beta`
+        weight after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    gamma_constraint: An optional projection function to be applied to the
+        `gamma` weight after being updated by an `Optimizer`.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode
       (normalized with statistics of the current batch) or in inference mode
@@ -499,8 +555,8 @@ def batch_normalization(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `True`, use a faster, fused implementation based on
-      nn.fused_batch_norm. If `None`, use the fused implementation if possible.
+    fused: if `True`, use a faster, fused implementation if possible.
+      If `None`, use the system recommended implementation.
 
   Returns:
     Output tensor.
@@ -517,6 +573,8 @@ def batch_normalization(inputs,
       moving_variance_initializer=moving_variance_initializer,
       beta_regularizer=beta_regularizer,
       gamma_regularizer=gamma_regularizer,
+      beta_constraint=beta_constraint,
+      gamma_constraint=gamma_constraint,
       renorm=renorm,
       renorm_clipping=renorm_clipping,
       renorm_momentum=renorm_momentum,
@@ -532,7 +590,6 @@ def batch_normalization(inputs,
 
 BatchNorm = BatchNormalization
 batch_norm = batch_normalization
-
 
 # Helper function
 

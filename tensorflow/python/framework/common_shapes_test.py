@@ -38,6 +38,8 @@ class CommonShapesTest(test_util.TensorFlowTestCase):
         np.broadcast(zeros1, zeros2)
       with self.assertRaises(ValueError):
         np.broadcast(zeros2, zeros1)
+    self.assertFalse(common_shapes.is_broadcast_compatible(shape1, shape2))
+    self.assertFalse(common_shapes.is_broadcast_compatible(shape2, shape1))
     with self.assertRaises(ValueError):
       common_shapes.broadcast_shape(shape1, shape2)
     with self.assertRaises(ValueError):

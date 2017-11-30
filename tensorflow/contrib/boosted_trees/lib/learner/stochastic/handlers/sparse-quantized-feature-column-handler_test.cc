@@ -53,7 +53,7 @@ class SparseQuantizedFeatureColumnHandlerTest : public ::testing::Test {
         sparse_quantized_values_(test::AsTensor<int32>({1, 0, 1}, {3})) {
     // Set L2 regularization.
     learner_config_.mutable_regularization()->set_l2(2.0f);
-
+    learner_config_.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
     // Create handler.
     handler_.reset(new SparseQuantizedFeatureColumnHandler(
         kClassId, kSlotId, kBatchSize, kFeatureColumn,

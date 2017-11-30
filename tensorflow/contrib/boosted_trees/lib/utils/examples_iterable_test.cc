@@ -149,7 +149,7 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_EQ(1, example.sparse_int_features[0].size());
         EXPECT_EQ(1, example.sparse_int_features[0].count(5));
       } break;
-      default: { QCHECK(false) << "Invalid example index."; } break;
+      default: { LOG(QFATAL) << "Invalid example index."; } break;
     }
   };
 

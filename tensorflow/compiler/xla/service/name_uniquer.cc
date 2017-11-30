@@ -29,7 +29,11 @@ string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
     return root;
   } else {
     tensorflow::strings::StrAppend(&root, separator_, *count);
+    // Increment lookup under old 'root' name.
     (*count)++;
+    // Initialize count under new 'root' name.
+    count = &(generated_names_[root]);
+    *count = 1;
     return root;
   }
 }

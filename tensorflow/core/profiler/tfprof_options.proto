@@ -7,7 +7,12 @@ package tensorflow.tfprof;
 message OptionsProto {
   int64 max_depth = 1;
   int64 min_bytes = 2;
+  int64 min_peak_bytes = 19;
+  int64 min_residual_bytes = 20;
+  int64 min_output_bytes = 21;
   int64 min_micros = 3;
+  int64 min_accelerator_micros = 22;
+  int64 min_cpu_micros = 23;
   int64 min_params = 4;
   int64 min_float_ops = 5;
   int64 min_occurrence = 17;

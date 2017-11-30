@@ -74,4 +74,13 @@ void HloMatcher::DescribeTo(::std::ostream* os) const {
 }
 
 }  // namespace testing
+
+void PrintTo(const HloInstruction* inst, ::std::ostream* os) {
+  *os << (inst ? inst->ToString() : "nullptr");
+}
+
+void PrintTo(HloInstruction* inst, ::std::ostream* os) {
+  PrintTo(const_cast<const HloInstruction*>(inst), os);
+}
+
 }  // namespace xla

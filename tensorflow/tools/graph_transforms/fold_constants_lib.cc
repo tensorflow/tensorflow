@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -133,6 +134,61 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
   return Status::OK();
 }
 
+// Converts a shape inference handle to a PartialTensorShape.
+Status ShapeHandleToTensorShape(const shape_inference::ShapeHandle& handle,
+                                shape_inference::InferenceContext* context,
+                                PartialTensorShape* shape) {
+  // The default is already unknown
+  if (!context->RankKnown(handle)) return Status::OK();
+
+  std::vector<int64> dims(context->Rank(handle));
+  for (int32 i = 0; i < dims.size(); ++i) {
+    dims[i] = context->Value(context->Dim(handle, i));
+  }
+  return PartialTensorShape::MakePartialShape(dims.data(), dims.size(), shape);
+}
+
+Status ShapeForNode(const TransformFuncContext& context,
+                    const string& node_name, TensorShape* result,
+                    bool* has_shape_specified) {
+  *has_shape_specified = false;
+
+  // Check to see if we have been given a default for all placeholders.
+  if (context.params.count("type")) {
+    if (context.params.at("shape").size() != 1) {
+      return errors::InvalidArgument(
+          "You must pass no more than one default 'shape' to "
+          "fold_constants");
+    }
+    const string& shape_string = context.params.at("shape")[0];
+    TF_RETURN_IF_ERROR(TensorShapeFromString(shape_string, result));
+    *has_shape_specified = true;
+  }
+
+  // See if there's a particular type specified for this placeholder.
+  if (context.params.count("name") || context.params.count("type_for_name")) {
+    if (!context.params.count("name") ||
+        !context.params.count("type_for_name") ||
+        (context.params.at("type_for_name").size() !=
+         context.params.at("name").size())) {
+      return errors::InvalidArgument(
+          "You must pass a 'shape_for_name' arg for every 'name', e.g. "
+          "fold_constants(name=foo, shape_for_name=\"2,2,1\", name=bar, "
+          "shape_for_name=\"1\"");
+    }
+    const int name_count = context.params.at("name").size();
+    for (int i = 0; i < name_count; ++i) {
+      if (context.params.at("name")[i] == node_name) {
+        const string& shape_string = context.params.at("shape_for_name")[i];
+        TF_RETURN_IF_ERROR(TensorShapeFromString(shape_string, result));
+        *has_shape_specified = true;
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 // Converts any sub-graphs that can be resolved into constant expressions into
 // single Const ops.
 Status FoldConstants(const GraphDef& input_graph_def,
@@ -142,18 +198,55 @@ Status FoldConstants(const GraphDef& input_graph_def,
   // date and cause import errors, so clean them up first.
   GraphDef cleaned_graph_def;
   RemoveAttributes(input_graph_def, {"_output_shapes"}, &cleaned_graph_def);
+
+  // Set specified shapes.
+  for (NodeDef& node : *cleaned_graph_def.mutable_node()) {
+    TensorShape shape;
+    bool has_shape_specified;
+    TF_RETURN_IF_ERROR(
+        ShapeForNode(context, node.name(), &shape, &has_shape_specified));
+    if (has_shape_specified) {
+      SetNodeAttr("shape", shape, &node);
+    }
+  }
+
   Graph input_graph(OpRegistry::Global());
+  ShapeRefiner shape_refiner(input_graph.versions(), input_graph.op_registry());
+  shape_refiner.set_require_shape_inference_fns(true);
+  shape_refiner.set_disable_constant_propagation(false);
   ImportGraphDefOptions import_opts;
-  TF_RETURN_IF_ERROR(
-      ImportGraphDef(import_opts, cleaned_graph_def, &input_graph, nullptr));
+  TF_RETURN_IF_ERROR(ImportGraphDef(import_opts, cleaned_graph_def,
+                                    &input_graph, &shape_refiner));
   DeviceAttributes device_attributes;
   subgraph::RewriteGraphMetadata metadata;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       &input_graph, context.input_names, context.output_names, {},
       device_attributes, false /* use_function_convention */, &metadata));
-  bool was_mutated;
-  // Exclude specified nodes from constant folding.
+
   ConstantFoldingOptions cf_opts;
+
+  // Set statically inferred shapes.
+  std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+  for (const Node* const node : input_graph.nodes()) {
+    auto ctx = shape_refiner.GetContext(node);
+    if (ctx == nullptr) continue;
+
+    std::vector<PartialTensorShape>* partial_shapes = &shape_map[node->name()];
+    if (ctx->num_outputs() <= 0) continue;
+    partial_shapes->resize(ctx->num_outputs());
+
+    // Check all outputs.
+    for (const Edge* out_edge : node->out_edges()) {
+      if (out_edge->IsControlEdge()) continue;
+
+      const int output_idx = out_edge->src_output();
+      TF_RETURN_IF_ERROR(ShapeHandleToTensorShape(
+          ctx->output(output_idx), ctx, &(*partial_shapes)[output_idx]));
+    }
+  }
+  cf_opts.shape_map = &shape_map;
+
+  // Exclude specified nodes from constant folding.
   if (context.params.count("exclude_op") > 0) {
     const auto& excluded_nodes = context.params.at("exclude_op");
     const std::set<string> excluded_nodes_set(excluded_nodes.begin(),
@@ -163,6 +256,9 @@ Status FoldConstants(const GraphDef& input_graph_def,
              excluded_nodes_set.end();
     };
   }
+
+  // Constant folding.
+  bool was_mutated;
   TF_RETURN_IF_ERROR(ConstantFold(cf_opts, nullptr, Env::Default(), nullptr,
                                   &input_graph, &was_mutated));
   GraphDef folded_graph_def;

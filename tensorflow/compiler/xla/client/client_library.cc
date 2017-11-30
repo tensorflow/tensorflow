@@ -149,4 +149,12 @@ ClientLibrary::GetOrCreateCompileOnlyClient(
   return cl;
 }
 
+/* static */ void ClientLibrary::DestroyLocalInstances() {
+  ClientLibrary& client_library = Singleton();
+  tensorflow::mutex_lock lock(client_library.service_mutex_);
+
+  client_library.local_instances_.clear();
+  client_library.compile_only_instances_.clear();
+}
+
 }  // namespace xla

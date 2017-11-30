@@ -101,7 +101,7 @@ void ConcurrentSteps(const Options* opts, int session_index) {
   std::unique_ptr<Session> session(NewSession(options));
   GraphDef def = CreateGraphDef();
   if (options.target.empty()) {
-    graph::SetDefaultDevice(opts->use_gpu ? "/gpu:0" : "/cpu:0", &def);
+    graph::SetDefaultDevice(opts->use_gpu ? "/device:GPU:0" : "/cpu:0", &def);
   }
 
   TF_CHECK_OK(session->Create(def));

@@ -417,7 +417,7 @@ def separable_conv2d(input,
 
   In detail,
 
-      output[b, i, j, k] = sum_{di, dj, q, r]
+      output[b, i, j, k] = sum_{di, dj, q, r}
           input[b, strides[1] * i + di, strides[2] * j + dj, q] *
           depthwise_filter[di, dj, q, r] *
           pointwise_filter[0, 0, q * channel_multiplier + r, k]
@@ -806,10 +806,20 @@ def fused_batch_norm(
     mean = constant_op.constant([])
   if variance is None:
     variance = constant_op.constant([])
-  # Add 1e-12 to epsilon when epsilon <= 1e-5 to prevent CUDNN exception.
-  epsilon = epsilon if epsilon > 1e-5 else epsilon + 1e-12
+  # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
+  # prevent exception (see cudnn.h).
+  min_epsilon = 1.001e-5
+  epsilon = epsilon if epsilon > min_epsilon else min_epsilon
+  # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
+  # currently only use the V2 version for float16 inputs, which is not supported
+  # by the V1 version.
   # pylint: disable=protected-access
-  y, batch_mean, batch_var, _, _ = gen_nn_ops._fused_batch_norm(
+  if x.dtype == dtypes.float16:
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm_v2
+  else:
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm
+  # pylint: enable=protected-access
+  y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
       x,
       scale,
       offset,
@@ -820,7 +830,6 @@ def fused_batch_norm(
       is_training=is_training,
       name=name)
   return y, batch_mean, batch_var
-  # pylint: enable=protected-access
 
 
 def batch_norm_with_global_normalization(t,

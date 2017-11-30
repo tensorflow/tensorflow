@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -271,7 +270,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionBeforeFusion) {
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
                                    ->add_hlo_reduce_precision_options();
   *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
-      HloReducePrecisionOptions::BEFORE_OP_FUSION, 5, 10,
+      HloReducePrecisionOptions::OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
   ComputeAndCompareR1<float>(&builder, {0.0f}, {a_data.get()});
@@ -295,7 +294,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedAfterFusion) {
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
                                    ->add_hlo_reduce_precision_options();
   *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
-      HloReducePrecisionOptions::AFTER_OP_FUSION, 5, 10,
+      HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
   ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
@@ -317,28 +316,57 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedAfterFusion) {
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
                                    ->add_hlo_reduce_precision_options();
   *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
-      HloReducePrecisionOptions::AFTER_OP_FUSION, 5, 10,
+      HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kFusion; });
+
+  ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
+}
+
+XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedFusionContains) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
+  std::unique_ptr<GlobalData> a_data =
+      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+  auto a = builder.Parameter(0, a_literal->shape(), "a");
+
+  // These two operations should be fused by any reasonable backend.
+  auto abs = builder.Abs(a);
+  auto neg = builder.Neg(abs);
+
+  // Add a pass suffixing fusion nodes containing kCos operations.  This
+  // should have no effect.
+  auto reduce_precision_pass = execution_options_.mutable_debug_options()
+                                   ->add_hlo_reduce_precision_options();
+  *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kCos; });
+
+  ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
+}
+
+XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedFusionContains) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
+  std::unique_ptr<GlobalData> a_data =
+      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+  auto a = builder.Parameter(0, a_literal->shape(), "a");
+
+  // These two operations should be fused by any reasonable backend.
+  auto abs = builder.Abs(a);
+  auto neg = builder.Neg(abs);
+
+  // Add a pass suffixing fusion nodes containing kAbs operations.  This
+  // should see the kAbs operation within the above fusion node.
+  auto reduce_precision_pass = execution_options_.mutable_debug_options()
+                                   ->add_hlo_reduce_precision_options();
+  *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
   ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

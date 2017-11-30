@@ -117,6 +117,10 @@ class TrainingOpsTest(TensorFlowTestCase):
         # The calculations here really are not very precise in float16.
         self.assertAllClose(linear_update, linear.eval(), rtol=2e-2, atol=2e-2)
         self.assertAllClose(expected_out, out, rtol=2e-2, atol=2e-2)
+      elif x.dtype == np.float32:
+        # The calculations here not sufficiently precise in float32.
+        self.assertAllClose(linear_update, linear.eval(), rtol=1e-5, atol=1e-5)
+        self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
       else:
         self.assertAllClose(linear_update, linear.eval())
         self.assertAllClose(expected_out, out)

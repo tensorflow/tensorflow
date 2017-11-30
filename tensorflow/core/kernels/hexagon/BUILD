@@ -3,7 +3,6 @@
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -94,7 +93,6 @@ cc_library(
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:remote_fused_graph_ops",
-        "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ],
     alwayslink = 1,

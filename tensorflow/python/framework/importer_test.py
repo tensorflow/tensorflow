@@ -878,7 +878,7 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(c.device, c4.device)  # worker overrides ps.
 
     with ops.Graph().as_default():
-      with ops.device(device.merge_device("/gpu:0")):
+      with ops.device(device.merge_device("/device:GPU:0")):
         a5, b5, c5 = importer.import_graph_def(
             gdef, return_elements=["a", "b", "c"])
         self.assertEqual("/device:GPU:0", a5.device)

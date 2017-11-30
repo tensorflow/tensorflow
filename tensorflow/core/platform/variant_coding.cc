@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -54,6 +55,13 @@ bool DecodeVariantList(const string& in, Variant* variant_array, int64 n) {
     }
     string str(reader.data(), sizes[i]);
     if (!variant_array[i].Decode(str)) return false;
+    if (!DecodeUnaryVariant(&variant_array[i])) {
+      LOG(ERROR) << "Could not decode variant with type_name: \""
+                 << variant_array[i].TypeName()
+                 << "\".  Perhaps you forgot to register a "
+                    "decoder via REGISTER_UNARY_VARIANT_DECODE_FUNCTION?";
+      return false;
+    }
     reader.remove_prefix(sizes[i]);
   }
   return true;

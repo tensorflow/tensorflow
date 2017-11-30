@@ -17,39 +17,118 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+// A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
+// Objects of the wrapper class own a reference on an instance of `DatasetBase`,
+// and the wrapper's copy constructor and destructor take care of managing the
+// reference count.
+//
+// NOTE(mrry): This is not a feature-complete implementation of the DT_VARIANT
+// specification. In particular, we cannot currently serialize an arbitrary
+// `DatasetBase` object, so the `Encode()` and `Decode()` methods are not
+// implemented.
+class DatasetVariantWrapper {
+ public:
+  DatasetVariantWrapper() : dataset_(nullptr) {}
+
+  // Transfers ownership of `dataset` to `*this`.
+  explicit DatasetVariantWrapper(DatasetBase* dataset) : dataset_(dataset) {}
+
+  DatasetVariantWrapper(const DatasetVariantWrapper& other)
+      : dataset_(other.dataset_) {
+    if (dataset_) dataset_->Ref();
+  }
+
+  ~DatasetVariantWrapper() {
+    if (dataset_) dataset_->Unref();
+  }
+
+  DatasetBase* get() const { return dataset_; }
+
+  string TypeName() const { return "tensorflow::DatasetVariantWrapper"; }
+  string DebugString() const {
+    if (dataset_) {
+      return dataset_->DebugString();
+    } else {
+      return "<Uninitialized DatasetVariantWrapper>";
+    }
+  }
+  void Encode(VariantTensorData* data) const {
+    LOG(ERROR) << "The Encode() method is not implemented for "
+                  "DatasetVariantWrapper objects.";
+  }
+  bool Decode(const VariantTensorData& data) {
+    LOG(ERROR) << "The Decode() method is not implemented for "
+                  "DatasetVariantWrapper objects.";
+    return false;
+  }
+
+ private:
+  DatasetBase* const dataset_;  // Owns one reference.
+};
+
+}  // namespace
+
+Status GetDatasetFromVariantTensor(const Tensor& tensor,
+                                   DatasetBase** out_dataset) {
+  if (!(tensor.dtype() == DT_VARIANT ||
+        TensorShapeUtils::IsScalar(tensor.shape()))) {
+    return errors::InvalidArgument(
+        "Dataset tensor must be a scalar of dtype DT_VARIANT.");
+  }
+  const Variant& variant = tensor.scalar<Variant>()();
+  const DatasetVariantWrapper* wrapper = variant.get<DatasetVariantWrapper>();
+  if (wrapper == nullptr) {
+    return errors::InvalidArgument("Tensor must be a Dataset object.");
+  }
+  *out_dataset = wrapper->get();
+  if (*out_dataset == nullptr) {
+    return errors::Internal("Read uninitialized Dataset variant.");
+  }
+  return Status::OK();
+}
+
+Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
+  if (!(tensor->dtype() == DT_VARIANT ||
+        TensorShapeUtils::IsScalar(tensor->shape()))) {
+    return errors::InvalidArgument(
+        "Dataset tensor must be a scalar of dtype DT_VARIANT.");
+  }
+  tensor->scalar<Variant>()() = DatasetVariantWrapper(dataset);
+  return Status::OK();
+}
+
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset = nullptr;
   MakeDataset(ctx, &dataset);
   if (ctx->status().ok()) {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
   }
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
                                        DatasetBase** output) {
   DatasetBase* input;
-  OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-  core::ScopedUnref unref_input(input);
-
+  OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &input));
   MakeDataset(ctx, input, output);
 }
 
 void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
                                         DatasetBase** output) {
   DatasetBase* input;
+  OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &input));
   DatasetBase* another_input;
-  OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
   OP_REQUIRES_OK(ctx,
-                 LookupResource(ctx, HandleFromInput(ctx, 1), &another_input));
-  core::ScopedUnref unref_input(input);
-  core::ScopedUnref unref_another_input(another_input);
-
+                 GetDatasetFromVariantTensor(ctx->input(1), &another_input));
   MakeDataset(ctx, input, another_input, output);
 }
+
+const char IteratorBase::kIteratorExhausted[] = "ITERATOR_EXHAUSTED";
+const char GraphDatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
+const char GraphDatasetBase::kDatasetGraphOutputNodeKey[] =
+    "_DATASET_GRAPH_OUTPUT_NODE";
 
 }  // namespace tensorflow

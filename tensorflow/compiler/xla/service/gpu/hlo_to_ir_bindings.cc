@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -146,9 +146,8 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
     typed_ir_value =
         ir_builder_->CreateBitCast(ir_value, pointee_type->getPointerTo());
   }
-  string ir_value_name = llvm_ir::SanitizeIrName(hlo.name());
-  ir_value->setName(llvm_ir::AsStringRef(ir_value_name + ".raw"));
-  typed_ir_value->setName(llvm_ir::AsStringRef(ir_value_name + ".typed"));
+  ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "raw")));
+  typed_ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "typed")));
   return typed_ir_value;
 }
 

@@ -854,7 +854,7 @@ def monte_carlo_csiszar_f_divergence(
     f: Python `callable` representing a Csiszar-function in log-space, i.e.,
       takes `p_log_prob(q_samples) - q.log_prob(q_samples)`.
     p_log_prob: Python `callable` taking (a batch of) samples from `q` and
-      returning the the natural-log of the probability under distribution `p`.
+      returning the natural-log of the probability under distribution `p`.
       (In variational inference `p` is the joint distribution.)
     q: `tf.Distribution`-like instance; must implement:
       `reparameterization_type`, `sample(n, seed)`, and `log_prob(x)`.
@@ -946,6 +946,10 @@ def csiszar_vimco(f,
   The `Avg{h[j;i] : j}` term is a kind of "swap-out average" where the `i`-th
   element has been replaced by the leave-`i`-out Geometric-average.
 
+  This implementation prefers numerical precision over efficiency, i.e.,
+  `O(num_draws * num_batch_draws * prod(batch_shape) * prod(event_shape))`.
+  (The constant may be fairly large, perhaps around 12.)
+
   Args:
     f: Python `callable` representing a Csiszar-function in log-space.
     p_log_prob: Python `callable` representing the natural-log of the
@@ -1010,11 +1014,11 @@ def csiszar_vimco_helper(logu, name=None):
 
   Returns:
     log_avg_u: `logu.dtype` `Tensor` corresponding to the natural-log of the
-      average of `u`.
+      average of `u`. The sum of the gradient of `log_avg_u` is `1`.
     log_sooavg_u: `logu.dtype` `Tensor` characterized by the natural-log of the
       average of `u`` except that the average swaps-out `u[i]` for the
-      leave-`i`-out Geometric-average, i.e.,
-
+      leave-`i`-out Geometric-average. The mean of the gradient of
+      `log_sooavg_u` is `1`. Mathematically `log_sooavg_u` is,
       ```none
       log_sooavg_u[i] = log(Avg{h[j ; i] : j=0, ..., m-1})
       h[j ; i] = { u[j]                              j!=i
@@ -1037,15 +1041,51 @@ def csiszar_vimco_helper(logu, name=None):
     # Throughout we reduce across axis=0 since this is presumed to be iid
     # samples.
 
-    log_sum_u = math_ops.reduce_logsumexp(logu, axis=0)
+    log_max_u = math_ops.reduce_max(logu, axis=0)
+    log_sum_u_minus_log_max_u = math_ops.reduce_logsumexp(
+        logu - log_max_u, axis=0)
 
     # log_loosum_u[i] =
     # = logsumexp(logu[j] : j != i)
     # = log( exp(logsumexp(logu)) - exp(logu[i]) )
     # = log( exp(logsumexp(logu - logu[i])) exp(logu[i])  - exp(logu[i]))
     # = logu[i] + log(exp(logsumexp(logu - logu[i])) - 1)
-    # = logu[i] + softplus_inverse(logsumexp(logu - logu[i]))
-    log_loosum_u = logu + distribution_util.softplus_inverse(log_sum_u - logu)
+    # = logu[i] + log(exp(logsumexp(logu) - logu[i]) - 1)
+    # = logu[i] + softplus_inverse(logsumexp(logu) - logu[i])
+    d = log_sum_u_minus_log_max_u + (log_max_u - logu)
+    # We use `d != 0` rather than `d > 0.` because `d < 0.` should never
+    # happens; if it does we want to complain loudly (which `softplus_inverse`
+    # will).
+    d_ok = math_ops.not_equal(d, 0.)
+    safe_d = array_ops.where(d_ok, d, array_ops.ones_like(d))
+    d_ok_result = logu + distribution_util.softplus_inverse(safe_d)
+
+    inf = np.array(np.inf, dtype=logu.dtype.as_numpy_dtype)
+
+    # When not(d_ok) and is_positive_and_largest then we manually compute the
+    # log_loosum_u. (We can efficiently do this for any one point but not all,
+    # hence we still need the above calculation.) This is good because when
+    # this condition is met, we cannot use the above calculation; its -inf.
+    # We now compute the log-leave-out-max-sum, replicate it to every
+    # point and make sure to select it only when we need to.
+    is_positive_and_largest = math_ops.logical_and(
+        logu > 0.,
+        math_ops.equal(logu, log_max_u[array_ops.newaxis, ...]))
+    log_lomsum_u = math_ops.reduce_logsumexp(
+        array_ops.where(is_positive_and_largest,
+                        array_ops.fill(array_ops.shape(logu), -inf),
+                        logu),
+        axis=0, keep_dims=True)
+    log_lomsum_u = array_ops.tile(
+        log_lomsum_u,
+        multiples=1 + array_ops.pad([n-1], [[0, array_ops.rank(logu)-1]]))
+
+    d_not_ok_result = array_ops.where(
+        is_positive_and_largest,
+        log_lomsum_u,
+        array_ops.fill(array_ops.shape(d), -inf))
+
+    log_loosum_u = array_ops.where(d_ok, d_ok_result, d_not_ok_result)
 
     # The swap-one-out-sum ("soosum") is n different sums, each of which
     # replaces the i-th item with the i-th-left-out average, i.e.,
@@ -1056,4 +1096,10 @@ def csiszar_vimco_helper(logu, name=None):
         array_ops.stack([log_loosum_u, looavg_logu]),
         axis=0)
 
-    return log_sum_u - log_n, log_soosum_u - log_n
+    log_avg_u = log_sum_u_minus_log_max_u + log_max_u - log_n
+    log_sooavg_u = log_soosum_u - log_n
+
+    log_avg_u.set_shape(logu.shape.with_rank_at_least(1)[1:])
+    log_sooavg_u.set_shape(logu.shape)
+
+    return log_avg_u, log_sooavg_u

@@ -16,6 +16,9 @@ limitations under the License.
 // See docs in ../ops/math_ops.cc.
 
 #define EIGEN_USE_THREADS
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include <vector>
@@ -31,6 +34,14 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/platform/cuda.h"
+
+using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -183,6 +194,107 @@ class SegmentReductionOp : public OpKernel {
   }
 };
 
+#ifdef GOOGLE_CUDA
+//  SegmentSumGPUOp is a segment sum operator implemented for GPU only.
+//  TODO: This implementation of SegmentSumGPUOp is sometimes slower than
+//  its unsorted counterpart (mostly when problem size is small).
+//  This is due to the following two main reasons and a cost-effective way
+//  to resolve these problems is desirable.
+//  1. Sorted segment sum requires a memory transfer from device to host in
+//     order to know the size of the output dimension whereas unsorted segment
+//     sum receives the size of the output dimension as an input parameter.
+//  2. Sorted segment sum is essentially a tiled version of unsorted segment
+//     sum and therefore such optimization comes at an inherent cost. However
+//     such cost may not be justified when the problem size is small. When to
+//     use the tiled version or the untiled version depends on many factors
+//     including data alignments, ratio of calculation to memory traffic and
+//     obviously, the problem sizes.
+template <class T, class Index>
+class SegmentSumGPUOp : public AsyncOpKernel {
+ public:
+  explicit SegmentSumGPUOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    const Tensor& input = context->input(0);
+    const Tensor& segment_ids = context->input(1);
+
+    OP_REQUIRES_ASYNC(
+        context, TensorShapeUtils::IsVector(segment_ids.shape()),
+        errors::InvalidArgument("segment_ids should be a vector."), done);
+
+    const int64 num_indices = segment_ids.NumElements();
+    OP_REQUIRES_ASYNC(
+        context, num_indices == input.dim_size(0),
+        errors::InvalidArgument(
+            "segment_ids should be the same size as dimension 0 of"
+            " input."),
+        done);
+
+    if (num_indices == 0) {
+      TensorShape output_shape = input.shape();
+      output_shape.set_dim(0, 0);
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
+      done();
+      return;
+    }
+
+    perftools::gputools::DeviceMemoryBase output_rows_device(
+        const_cast<Tensor&>(segment_ids).template flat<Index>().data() +
+        (num_indices - 1));
+    ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
+
+    auto stream = context->op_device_context()->stream();
+    OP_REQUIRES_ASYNC(
+        context,
+        stream
+            ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
+                         sizeof(Index))
+            .ok(),
+        errors::Internal(
+            "SegmentSumGPUOp: failed to copy output_rows from device"),
+        done);
+
+    functor::SegmentSumFunctor<T, Index> functor_;
+    auto create_and_check_output = [context, output_rows_host, &input,
+                                    &segment_ids, &functor_, done]() {
+      // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+
+      Index output_rows = *output_rows_host.data();
+      output_rows++;
+      OP_REQUIRES_ASYNC(context, output_rows > 0,
+                        errors::InvalidArgument("segment ids must be >= 0"),
+                        done);
+
+      TensorShape output_shape = input.shape();
+      output_shape.set_dim(0, output_rows);
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
+
+      auto output_flat = output->flat_outer_dims<T>();
+      auto data_ptr = input.template flat<T>().data();
+      auto segment_flat = segment_ids.flat<Index>();
+      functor_(context, context->eigen_device<GPUDevice>(), output_rows,
+               segment_ids.shape(), segment_flat, input.NumElements(), data_ptr,
+               output_flat);
+
+      done();
+    };
+
+    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+        stream, create_and_check_output);
+  }
+};
+#endif  // GOOGLE_CUDA
+
 #define REGISTER_CPU_KERNEL_SEGMENT(name, functor, type, index_type, \
                                     default_value)                   \
   REGISTER_KERNEL_BUILDER(                                           \
@@ -226,6 +338,23 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 #undef REGISTER_COMPLEX_CPU_KERNELS
 #undef REGISTER_REAL_CPU_KERNELS_ALL
 #undef REGISTER_COMPLEX_CPU_KERNELS_ALL
+
+#if GOOGLE_CUDA
+#define REGISTER_GPU_SORTED_KERNELS(type, index_type)                  \
+  REGISTER_KERNEL_BUILDER(Name("SegmentSum")                           \
+                              .Device(DEVICE_GPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          SegmentSumGPUOp<type, index_type>)
+
+#define REGISTER_GPU_SORTED_KERNELS_ALL(type) \
+  REGISTER_GPU_SORTED_KERNELS(type, int32);   \
+  REGISTER_GPU_SORTED_KERNELS(type, int64);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SORTED_KERNELS_ALL);
+#undef REGISTER_GPU_SORTED_KERNELS
+#undef REGISTER_GPU_SORTED_KERNELS_ALL
+#endif  // GOOGLE_CUDA
 
 namespace functor {
 

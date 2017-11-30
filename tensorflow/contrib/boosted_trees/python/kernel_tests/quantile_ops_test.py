@@ -81,6 +81,48 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([1, 3, 5], dense_buckets[0].eval())
       self.assertAllEqual([2, 4, 6.], sparse_buckets[0].eval())
 
+  def testStreamingQuantileBucketsWithVaryingBatch(self):
+    """Sets up the quantile summary op test as follows.
+
+    Creates batches examples with different number of inputs in each batch.
+    The input values are dense in the range [1 ... N]
+    The data looks like this:
+    | Batch | Start | InputList
+    |   1   |   1   |  [1]
+    |   2   |   2   |  [2, 3]
+    |   3   |   4   |  [4, 5, 6]
+    |   4   |   7   |  [7, 8, 9, 10]
+    |   5   |  11   |  [11, 12, 13, 14, 15]
+    |   6   |  16   |  [16, 17, 18, 19, 20, 21]
+    """
+
+    with self.test_session() as sess:
+      accumulator = quantile_ops.QuantileAccumulator(
+          init_stamp_token=0, num_quantiles=3, epsilon=0.001, name="q1")
+      resources.initialize_resources(resources.shared_resources()).run()
+    input_column = array_ops.placeholder(dtypes.float32)
+    weights = array_ops.placeholder(dtypes.float32)
+    update = accumulator.add_summary(
+        stamp_token=0,
+        column=input_column,
+        example_weights=weights)
+
+    with self.test_session() as sess:
+      for i in range(1, 23):
+        # start = 1, 2, 4, 7, 11, 16 ... (see comment above)
+        start = int((i * (i-1) / 2) + 1)
+        sess.run(update,
+                 {input_column: range(start, start+i),
+                  weights: [1] * i})
+
+    with self.test_session() as sess:
+      sess.run(accumulator.flush(stamp_token=0, next_stamp_token=1))
+      are_ready_flush, buckets = (accumulator.get_buckets(stamp_token=1))
+      buckets, are_ready_flush = (sess.run(
+          [buckets, are_ready_flush]))
+      self.assertEqual(True, are_ready_flush)
+      self.assertAllEqual([1, 86., 170., 253.], buckets)
+
   def testStreamingQuantileBuckets(self):
     """Sets up the quantile summary op test as follows.
 
@@ -393,6 +435,29 @@ class QuantilesOpTest(test_util.TensorFlowTestCase):
       # Sparse feature 2
       self.assertAllEqual([0, 0], sparse_quantiles[2].eval())
 
+  def testBucketizeWithInputBoundaries(self):
+    with self.test_session():
+      buckets = quantile_ops.bucketize_with_input_boundaries(
+          input=[1, 2, 3, 4, 5],
+          boundaries=[3])
+      self.assertAllEqual([0, 0, 1, 1, 1], buckets.eval())
+
+  def testBucketizeWithInputBoundaries2(self):
+    with self.test_session():
+      boundaries = constant_op.constant([3], dtype=dtypes.float32)
+      buckets = quantile_ops.bucketize_with_input_boundaries(
+          input=[1, 2, 3, 4, 5],
+          boundaries=boundaries)
+      self.assertAllEqual([0, 0, 1, 1, 1], buckets.eval())
+
+  def testBucketizeWithInputBoundaries3(self):
+    with self.test_session():
+      b = array_ops.placeholder(dtypes.float32)
+      buckets = quantile_ops.bucketize_with_input_boundaries(
+          input=[1, 2, 3, 4, 5],
+          boundaries=b)
+      self.assertAllEqual([0, 1, 1, 2, 2],
+                          buckets.eval(feed_dict={b: [2, 4]}))
 
 if __name__ == "__main__":
   googletest.main()

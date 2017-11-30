@@ -43,7 +43,7 @@ MatchBackwardFilter(HloInstruction* conv) {
                       ConvolutionDimensionNumbers());
   // Step 1: match the instruction pattern without considering the paddings and
   // dimension numbers just yet. We may need some generic pattern matcher
-  // similar to external/llvm/include/llvm/IR/PatternMatch.h
+  // similar to third_party/llvm/llvm/include/llvm/IR/PatternMatch.h
   //
   // Backward filter convolution is implemented in XLA as the forward
   // convolution of padded activations and dilated gradients. Padding on
@@ -176,7 +176,7 @@ MatchBackwardFilter(HloInstruction* conv) {
     transpose =
         parent_computation->AddInstruction(HloInstruction::CreateTranspose(
             conv->shape(), conv, transpose_dimensions));
-    TF_CHECK_OK(parent_computation->ReplaceUsesOfInstruction(conv, transpose));
+    TF_CHECK_OK(conv->ReplaceAllUsesWith(transpose));
   }
 
   // Restore the dimension numbers of the backward convolution from the forward
@@ -392,9 +392,9 @@ MatchBackwardInput(HloInstruction* conv) {
 StatusOr<bool> ConvolutionFolding::Run(HloModule* module) {
   HloComputation* entry_computation = module->entry_computation();
   std::vector<HloInstruction*> convs;
-  for (const auto& hlo : entry_computation->instructions()) {
+  for (auto* hlo : entry_computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kConvolution) {
-      convs.push_back(hlo.get());
+      convs.push_back(hlo);
     }
   }
 

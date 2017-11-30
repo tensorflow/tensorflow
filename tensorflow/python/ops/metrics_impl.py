@@ -259,11 +259,10 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
     update_op: An operation that increments the confusion matrix.
   """
   # Local variable to accumulate the predictions in the confusion matrix.
-  cm_dtype = dtypes.int64 if weights is not None else dtypes.float64
   total_cm = _create_local(
       'total_confusion_matrix',
       shape=[num_classes, num_classes],
-      dtype=cm_dtype)
+      dtype=dtypes.float64)
 
   # Cast the type to int64 required by confusion_matrix_ops.
   predictions = math_ops.to_int64(predictions)
@@ -282,7 +281,7 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
 
   # Accumulate the prediction to current confusion matrix.
   current_cm = confusion_matrix.confusion_matrix(
-      labels, predictions, num_classes, weights=weights, dtype=cm_dtype)
+      labels, predictions, num_classes, weights=weights, dtype=dtypes.float64)
   update_op = state_ops.assign_add(total_cm, current_cm)
   return total_cm, update_op
 
@@ -296,7 +295,7 @@ def mean(values, weights=None, metrics_collections=None,
   returned as `mean` which is an idempotent operation that simply divides
   `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `mean`.
   `update_op` increments `total` with the reduced sum of the product of `values`
   and `weights`, and it increments `count` with the reduced sum of `weights`.
@@ -366,7 +365,7 @@ def accuracy(labels, predictions, weights=None, metrics_collections=None,
   matches `labels`. This frequency is ultimately returned as `accuracy`: an
   idempotent operation that simply divides `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `accuracy`.
   Internally, an `is_correct` operation computes a `Tensor` with elements 1.0
   where the corresponding elements of `predictions` and `labels` match and 0.0
@@ -461,12 +460,22 @@ def _confusion_matrix_at_thresholds(
   else:
     for include in includes:
       if include not in all_includes:
-        raise ValueError('Invaild key: %s.' % include)
+        raise ValueError('Invalid key: %s.' % include)
 
-  predictions, labels, weights = _remove_squeezable_dimensions(
-      predictions=math_ops.to_float(predictions),
-      labels=math_ops.cast(labels, dtype=dtypes.bool),
-      weights=weights)
+  with ops.control_dependencies([
+      check_ops.assert_greater_equal(
+          predictions,
+          math_ops.cast(0.0, dtype=predictions.dtype),
+          message='predictions must be in [0, 1]'),
+      check_ops.assert_less_equal(
+          predictions,
+          math_ops.cast(1.0, dtype=predictions.dtype),
+          message='predictions must be in [0, 1]')
+  ]):
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.to_float(predictions),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
 
   num_thresholds = len(thresholds)
 
@@ -555,7 +564,7 @@ def _confusion_matrix_at_thresholds(
 
 def auc(labels, predictions, weights=None, num_thresholds=200,
         metrics_collections=None, updates_collections=None,
-        curve='ROC', name=None):
+        curve='ROC', name=None, summation_method='trapezoidal'):
   """Computes the approximate AUC via a Riemann sum.
 
   The `auc` function creates four local variables, `true_positives`,
@@ -575,7 +584,9 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
 
   For best results, `predictions` should be distributed approximately uniformly
   in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
-  approximation may be poor if this is not the case.
+  approximation may be poor if this is not the case. Setting `summation_method`
+  to 'minoring' or 'majoring' can help quantify the error in the approximation
+  by providing lower or upper bound estimate of the AUC.
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `auc`.
@@ -597,8 +608,12 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
     updates_collections: An optional list of collections that `update_op` should
       be added to.
     curve: Specifies the name of the curve to be computed, 'ROC' [default] or
-    'PR' for the Precision-Recall-curve.
+      'PR' for the Precision-Recall-curve.
     name: An optional variable_scope name.
+    summation_method: Specifies the Riemann summation method used, 'trapezoidal'
+      [default] that applies the trapezoidal rule, 'minoring' that applies
+      left summation for increasing intervals and right summation for decreasing
+      intervals or 'majoring' that applies the opposite.
 
   Returns:
     auc: A scalar `Tensor` representing the current area-under-curve.
@@ -614,7 +629,7 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
   """
   with variable_scope.variable_scope(
       name, 'auc', (labels, predictions, weights)):
-    if curve != 'ROC' and  curve != 'PR':
+    if curve != 'ROC' and curve != 'PR':
       raise ValueError('curve must be either ROC or PR, %s unknown' %
                        (curve))
     kepsilon = 1e-7  # to account for floating point imprecisions
@@ -638,9 +653,23 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
         prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
         x = rec
         y = prec
-      return math_ops.reduce_sum(math_ops.multiply(
-          x[:num_thresholds - 1] - x[1:],
-          (y[:num_thresholds - 1] + y[1:]) / 2.), name=name)
+      if summation_method == 'trapezoidal':
+        return math_ops.reduce_sum(
+            math_ops.multiply(x[:num_thresholds - 1] - x[1:],
+                              (y[:num_thresholds - 1] + y[1:]) / 2.),
+            name=name)
+      elif summation_method == 'minoring':
+        return math_ops.reduce_sum(
+            math_ops.multiply(x[:num_thresholds - 1] - x[1:],
+                              math_ops.minimum(y[:num_thresholds - 1], y[1:])),
+            name=name)
+      elif summation_method == 'majoring':
+        return math_ops.reduce_sum(
+            math_ops.multiply(x[:num_thresholds - 1] - x[1:],
+                              math_ops.maximum(y[:num_thresholds - 1], y[1:])),
+            name=name)
+      else:
+        raise ValueError('Invalid summation_method: %s' % summation_method)
 
     # sum up the areas of all the trapeziums
     auc_value = compute_auc(
@@ -1067,7 +1096,7 @@ def mean_tensor(values, weights=None, metrics_collections=None,
   `values`. This average is ultimately returned as `mean` which is an idempotent
   operation that simply divides `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `mean`.
   `update_op` increments `total` with the reduced sum of the product of `values`
   and `weights`, and it increments `count` with the reduced sum of `weights`.
@@ -1228,11 +1257,11 @@ def _count_condition(values, weights=None, metrics_collections=None,
   return value_tensor, update_op
 
 
-def true_positives(labels, predictions, weights=None,
-                   metrics_collections=None,
-                   updates_collections=None,
-                   name=None):
-  """Sum the weights of true_positives.
+def false_negatives(labels, predictions, weights=None,
+                    metrics_collections=None,
+                    updates_collections=None,
+                    name=None):
+  """Computes the total number of false negatives.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
@@ -1255,22 +1284,69 @@ def true_positives(labels, predictions, weights=None,
     update_op: An operation that accumulates the error from a batch of data.
 
   Raises:
-    ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `weights` is not `None` and its shape doesn't match `predictions`, or if
-      either `metrics_collections` or `updates_collections` are not a list or
-      tuple.
+    ValueError: If `weights` is not `None` and its shape doesn't match `values`,
+      or if either `metrics_collections` or `updates_collections` are not a list
+      or tuple.
   """
   with variable_scope.variable_scope(
-      name, 'true_positives', (predictions, labels, weights)):
+      name, 'false_negatives', (predictions, labels, weights)):
 
     predictions, labels, weights = _remove_squeezable_dimensions(
         predictions=math_ops.cast(predictions, dtype=dtypes.bool),
         labels=math_ops.cast(labels, dtype=dtypes.bool),
         weights=weights)
-    is_true_positive = math_ops.logical_and(math_ops.equal(labels, True),
-                                            math_ops.equal(predictions, True))
-    return _count_condition(is_true_positive, weights, metrics_collections,
+    is_false_negative = math_ops.logical_and(math_ops.equal(labels, True),
+                                             math_ops.equal(predictions, False))
+    return _count_condition(is_false_negative, weights, metrics_collections,
                             updates_collections)
+
+
+def false_negatives_at_thresholds(labels, predictions, thresholds, weights=None,
+                                  metrics_collections=None,
+                                  updates_collections=None,
+                                  name=None):
+  """Computes false negatives at provided threshold values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that `false_negatives`
+      should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_negatives:  A float `Tensor` of shape `[len(thresholds)]`.
+    update_op: An operation that updates the `false_negatives` variable and
+      returns its current value.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'false_negatives',
+                                     (predictions, labels, weights)):
+    values, update_ops = _confusion_matrix_at_thresholds(
+        labels, predictions, thresholds, weights=weights, includes=('fn',))
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, values['fn'])
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_ops['fn'])
+
+    return values['fn'], update_ops['fn']
 
 
 def false_positives(labels, predictions, weights=None,
@@ -1318,6 +1394,195 @@ def false_positives(labels, predictions, weights=None,
                             updates_collections)
 
 
+def false_positives_at_thresholds(labels, predictions, thresholds, weights=None,
+                                  metrics_collections=None,
+                                  updates_collections=None,
+                                  name=None):
+  """Computes false positives at provided threshold values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that `false_positives`
+      should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_positives:  A float `Tensor` of shape `[len(thresholds)]`.
+    update_op: An operation that updates the `false_positives` variable and
+      returns its current value.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'false_positives',
+                                     (predictions, labels, weights)):
+    values, update_ops = _confusion_matrix_at_thresholds(
+        labels, predictions, thresholds, weights=weights, includes=('fp',))
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, values['fp'])
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_ops['fp'])
+
+    return values['fp'], update_ops['fp']
+
+
+def true_negatives_at_thresholds(labels, predictions, thresholds, weights=None,
+                                 metrics_collections=None,
+                                 updates_collections=None,
+                                 name=None):
+  """Computes true negatives at provided threshold values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that `true_negatives`
+      should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    true_negatives:  A float `Tensor` of shape `[len(thresholds)]`.
+    update_op: An operation that updates the `true_negatives` variable and
+      returns its current value.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'true_negatives',
+                                     (predictions, labels, weights)):
+    values, update_ops = _confusion_matrix_at_thresholds(
+        labels, predictions, thresholds, weights=weights, includes=('tn',))
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, values['tn'])
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_ops['tn'])
+
+    return values['tn'], update_ops['tn']
+
+
+def true_positives(labels, predictions, weights=None,
+                   metrics_collections=None,
+                   updates_collections=None,
+                   name=None):
+  """Sum the weights of true_positives.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that the metric
+      value variable should be added to.
+    updates_collections: An optional list of collections that the metric update
+      ops should be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    value_tensor: A `Tensor` representing the current value of the metric.
+    update_op: An operation that accumulates the error from a batch of data.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(
+      name, 'true_positives', (predictions, labels, weights)):
+
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+    is_true_positive = math_ops.logical_and(math_ops.equal(labels, True),
+                                            math_ops.equal(predictions, True))
+    return _count_condition(is_true_positive, weights, metrics_collections,
+                            updates_collections)
+
+
+def true_positives_at_thresholds(labels, predictions, thresholds, weights=None,
+                                 metrics_collections=None,
+                                 updates_collections=None,
+                                 name=None):
+  """Computes true positives at provided threshold values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that `true_positives`
+      should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    true_positives:  A float `Tensor` of shape `[len(thresholds)]`.
+    update_op: An operation that updates the `true_positives` variable and
+      returns its current value.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'true_positives',
+                                     (predictions, labels, weights)):
+    values, update_ops = _confusion_matrix_at_thresholds(
+        labels, predictions, thresholds, weights=weights, includes=('tp',))
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, values['tp'])
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_ops['tp'])
+
+    return values['tp'], update_ops['tp']
+
+
 def precision(labels, predictions, weights=None,
               metrics_collections=None, updates_collections=None,
               name=None):
@@ -1329,7 +1594,7 @@ def precision(labels, predictions, weights=None,
   operation that simply divides `true_positives` by the sum of `true_positives`
   and `false_positives`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the
   `precision`. `update_op` weights each prediction by the corresponding value in
   `weights`.
@@ -1468,50 +1733,6 @@ def precision_at_thresholds(labels, predictions, thresholds,
     return prec, update_op
 
 
-def false_negatives(labels, predictions, weights=None,
-                    metrics_collections=None,
-                    updates_collections=None,
-                    name=None):
-  """Computes the total number of false negatives.
-
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-
-  Args:
-    labels: The ground truth values, a `Tensor` whose dimensions must match
-      `predictions`. Will be cast to `bool`.
-    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
-      be cast to `bool`.
-    weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `labels` dimension).
-    metrics_collections: An optional list of collections that the metric
-      value variable should be added to.
-    updates_collections: An optional list of collections that the metric update
-      ops should be added to.
-    name: An optional variable_scope name.
-
-  Returns:
-    value_tensor: A `Tensor` representing the current value of the metric.
-    update_op: An operation that accumulates the error from a batch of data.
-
-  Raises:
-    ValueError: If `weights` is not `None` and its shape doesn't match `values`,
-      or if either `metrics_collections` or `updates_collections` are not a list
-      or tuple.
-  """
-  with variable_scope.variable_scope(
-      name, 'false_negatives', (predictions, labels, weights)):
-
-    predictions, labels, weights = _remove_squeezable_dimensions(
-        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
-        labels=math_ops.cast(labels, dtype=dtypes.bool),
-        weights=weights)
-    is_false_negative = math_ops.logical_and(math_ops.equal(labels, True),
-                                             math_ops.equal(predictions, False))
-    return _count_condition(is_false_negative, weights, metrics_collections,
-                            updates_collections)
-
-
 def recall(labels, predictions, weights=None,
            metrics_collections=None, updates_collections=None,
            name=None):
@@ -1522,7 +1743,7 @@ def recall(labels, predictions, weights=None,
   ultimately returned as `recall`, an idempotent operation that simply divides
   `true_positives` by the sum of `true_positives`  and `false_negatives`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` that updates these variables and returns the `recall`. `update_op`
   weights each prediction by the corresponding value in `weights`.
 
@@ -2453,7 +2674,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
   Returns:
     mean_average_precision: Scalar `float64` `Tensor` with the mean average
       precision values.
-    update: `Operation` that increments  variables appropriately, and whose
+    update: `Operation` that increments variables appropriately, and whose
       value matches `metric`.
   """
   with ops.name_scope(name, 'average_precision_at_top_k',
@@ -2551,7 +2772,7 @@ def sparse_average_precision_at_k(labels,
   Returns:
     mean_average_precision: Scalar `float64` `Tensor` with the mean average
       precision values.
-    update: `Operation` that increments  variables appropriately, and whose
+    update: `Operation` that increments variables appropriately, and whose
       value matches `metric`.
 
   Raises:

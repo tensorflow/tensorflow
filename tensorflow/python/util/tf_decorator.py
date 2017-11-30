@@ -23,8 +23,8 @@ often provide.
 decorator is stateless, or can capture all of the variables it needs to work
 with through lexical closure, this is the simplest option. Create your wrapper
 function as usual, but instead of returning it, return
-`tf_decorator.make_decorator(your_wrapper)`. This will attach some decorator
-introspection metadata onto your wrapper and return it.
+`tf_decorator.make_decorator(target, your_wrapper)`. This will attach some
+decorator introspection metadata onto your wrapper and return it.
 
 Example:
 
@@ -32,7 +32,7 @@ Example:
     def wrapper(*args, **kwargs):
       print('hello')
       return target(*args, **kwargs)
-    return tf_decorator.make_decorator(wrapper)
+    return tf_decorator.make_decorator(target, wrapper)
 
 2. Derive from TFDecorator. If your decorator needs to be stateful, you can
 implement it in terms of a TFDecorator. Store whatever state you need in your
@@ -60,7 +60,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools as _functools
-import inspect as _inspect
+import traceback as _traceback
 
 
 def make_decorator(target,
@@ -83,11 +83,14 @@ def make_decorator(target,
     The `decorator_func` argument with new metadata attached.
   """
   if decorator_name is None:
-    decorator_name = _inspect.stack()[1][3]  # Caller's name.
+    frame = _traceback.extract_stack(limit=2)[0]
+    # frame name is tuple[2] in python2, and object.name in python3
+    decorator_name = getattr(frame, 'name', frame[2])  # Caller's name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)
   decorator_func.__name__ = target.__name__
+  decorator_func.__module__ = target.__module__
   decorator_func.__doc__ = decorator.__doc__
   decorator_func.__wrapped__ = target
   return decorator_func

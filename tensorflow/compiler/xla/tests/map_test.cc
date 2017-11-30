@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -126,7 +125,7 @@ class MapTest : public ClientLibraryTestBase {
   Computation CreateMapPlusN(const Computation& embedded_computation, float n) {
     ComputationBuilder builder(client_, TestName());
     auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-    auto map = builder.Map({x}, embedded_computation);
+    auto map = builder.Map({x}, embedded_computation, {});
     auto constant_n = builder.ConstantR0<float>(n);
     auto add = builder.Add(map, constant_n);
     auto computation_status = builder.Build();
@@ -174,7 +173,7 @@ TEST_F(MapTest, MapEachElemPlusOneR0) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map = builder.Map({param}, CreateAdderToOne());
+  auto map = builder.Map({param}, CreateAdderToOne(), {});
 
   ComputeAndCompareR0<float>(&builder, 43.0, {param0_data.get()},
                              ErrorSpec(0.01f));
@@ -188,7 +187,7 @@ XLA_TEST_F(MapTest, MapEachElemPlusOneR1S0) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map = builder.Map({param}, CreateAdderToOne());
+  auto map = builder.Map({param}, CreateAdderToOne(), {0});
 
   ComputeAndCompareR1<float>(&builder, {}, {param0_data.get()},
                              ErrorSpec(0.01f));
@@ -203,7 +202,7 @@ TEST_F(MapTest, MapEachElemPlusOneR1S4) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map = builder.Map({param}, CreateAdderToOne());
+  auto map = builder.Map({param}, CreateAdderToOne(), {0});
 
   ComputeAndCompareR1<float>(&builder, {3.2f, 4.3f, 5.4f, 6.5f},
                              {param0_data.get()}, ErrorSpec(0.01f));
@@ -217,7 +216,7 @@ TEST_F(MapTest, MapEachF32ElementToS32Constant) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map = builder.Map({param}, CreateScalarOne<int32>());
+  auto map = builder.Map({param}, CreateScalarOne<int32>(), {0});
 
   ComputeAndCompareR1<int32>(&builder, {1, 1, 1, 1}, {param0_data.get()});
 }
@@ -230,7 +229,7 @@ TEST_F(MapTest, MapEachF32ElementToU32Constant) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map = builder.Map({param}, CreateScalarOne<uint32>());
+  auto map = builder.Map({param}, CreateScalarOne<uint32>(), {0});
 
   ComputeAndCompareR1<uint32>(&builder, {1, 1, 1, 1}, {param0_data.get()});
 }
@@ -244,7 +243,7 @@ TEST_F(MapTest, MapEachElemLongerChainR1) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map = builder.Map({param}, CreateAdderToOneTimesItself());
+  auto map = builder.Map({param}, CreateAdderToOneTimesItself(), {0});
 
   ComputeAndCompareR1<float>(
       &builder, {9.36f, 20.91f, 0.11f, 0.24f, 999000.0f, 65535.75f},
@@ -260,8 +259,8 @@ XLA_TEST_F(MapTest, MapMultipleMapsR1S0) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map1 = builder.Map({param}, CreateAdderToOne());
-  auto map2 = builder.Map({map1}, CreateMulByTwo());
+  auto map1 = builder.Map({param}, CreateAdderToOne(), {0});
+  auto map2 = builder.Map({map1}, CreateMulByTwo(), {0});
 
   ComputeAndCompareR1<float>(&builder, {}, {param0_data.get()},
                              ErrorSpec(0.01f));
@@ -277,8 +276,8 @@ TEST_F(MapTest, MapMultipleMapsR1S4) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map1 = builder.Map({param}, CreateAdderToOne());
-  auto map2 = builder.Map({map1}, CreateMulByTwo());
+  auto map1 = builder.Map({param}, CreateAdderToOne(), {0});
+  auto map2 = builder.Map({map1}, CreateMulByTwo(), {0});
 
   ComputeAndCompareR1<float>(&builder, {6.4f, 8.6f, 10.8f, 13.0f},
                              {param0_data.get()}, ErrorSpec(0.01f));
@@ -293,7 +292,7 @@ TEST_F(MapTest, MapEachElemPlusOneR2) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto map = builder.Map({param}, CreateAdderToOne());
+  auto map = builder.Map({param}, CreateAdderToOne(), {0, 1});
 
   Array2D<float> expected_array(
       {{14.25f, 15.0f}, {-6.1f, -6.2f}, {-7.8f, 9.8f}});
@@ -320,8 +319,8 @@ XLA_TEST_F(MapTest, ComplexNestedMaps) {
 
   ComputationBuilder embed4_builder(client_, "embed4");
   auto embed4_param = embed4_builder.Parameter(0, scalar_shape, "x");
-  auto embed4_map_lhs = embed4_builder.Map({embed4_param}, embed2);
-  auto embed4_map_rhs = embed4_builder.Map({embed4_param}, embed3);
+  auto embed4_map_lhs = embed4_builder.Map({embed4_param}, embed2, {});
+  auto embed4_map_rhs = embed4_builder.Map({embed4_param}, embed3, {});
   auto embed4_add = embed4_builder.Add(embed4_map_lhs, embed4_map_rhs);
   auto embed4_status = embed4_builder.Build();
   ASSERT_IS_OK(embed4_status.status());
@@ -332,8 +331,8 @@ XLA_TEST_F(MapTest, ComplexNestedMaps) {
   ComputationBuilder builder(client_, TestName());
   auto constant_42 = builder.ConstantR0<float>(42.0);
   auto constant_7 = builder.ConstantR0<float>(7.0);
-  auto map_42 = builder.Map({constant_42}, embed5);
-  auto map_7 = builder.Map({constant_7}, embed4);
+  auto map_42 = builder.Map({constant_42}, embed5, {});
+  auto map_7 = builder.Map({constant_7}, embed4, {});
   builder.Add(map_42, map_7);
 
   ComputeAndCompareR0<float>(&builder, 73.0, {}, ErrorSpec(0.01f));
@@ -356,7 +355,7 @@ TEST_F(MapTest, VersionedEmbeddedComputation) {
 
   ComputationBuilder builder(client_, TestName());
   auto constant_vector = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
-  auto map_plus_1 = builder.Map({constant_vector}, embedded_computation);
+  auto map_plus_1 = builder.Map({constant_vector}, embedded_computation, {0});
 
   // Add another Add(1) operation to the existing embedded computation. This
   // requires using the stub interface because the ComputationBuilder does not
@@ -372,7 +371,7 @@ TEST_F(MapTest, VersionedEmbeddedComputation) {
   tensorflow::Status s = client_->stub()->Op(&op_request, &response);
   ASSERT_TRUE(s.ok());
 
-  auto map_plus_2 = builder.Map({map_plus_1}, embedded_computation);
+  auto map_plus_2 = builder.Map({map_plus_1}, embedded_computation, {0});
 
   // The original vector has Add(1) applied to it with a map, followed by
   // Add(1+1) resulting in a net Add(3).
@@ -394,8 +393,8 @@ TEST_F(MapTest, MapBinaryAdder) {
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  auto map =
-      builder.Map({param0, param1}, CreateScalarAddComputation(F32, &builder));
+  auto map = builder.Map({param0, param1},
+                         CreateScalarAddComputation(F32, &builder), {0});
 
   ComputeAndCompareR1<float>(&builder, {7.3f, 7.7, 4.3f, 0},
                              {param0_data.get(), param1_data.get()},
@@ -418,8 +417,8 @@ XLA_TEST_F(MapTest, AddWithMixedLayouts) {
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  auto map =
-      builder.Map({param0, param1}, CreateScalarAddComputation(S32, &builder));
+  auto map = builder.Map({param0, param1},
+                         CreateScalarAddComputation(S32, &builder), {0, 1});
 
   Array2D<int32> expected(2, 2);
   expected(0, 0) = 11;
@@ -444,8 +443,8 @@ XLA_TEST_F(MapTest, AddR3_3x0x2) {
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  auto map =
-      builder.Map({param0, param1}, CreateScalarAddComputation(S32, &builder));
+  auto map = builder.Map({param0, param1},
+                         CreateScalarAddComputation(S32, &builder), {0, 1, 2});
 
   ComputeAndCompareR3<int32>(&builder, Array3D<int32>(3, 0, 2),
                              {param0_data.get(), param1_data.get()});
@@ -470,7 +469,7 @@ TEST_F(MapTest, MapTernaryAdder) {
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
   auto param2 = builder.Parameter(2, param2_literal->shape(), "param2");
-  auto map = builder.Map({param0, param1, param2}, CreateTernaryAdder());
+  auto map = builder.Map({param0, param1, param2}, CreateTernaryAdder(), {0});
 
   ComputeAndCompareR1<float>(
       &builder, {-2.7f, -92.3f, -895.7f, -400.0f},
@@ -482,7 +481,7 @@ TEST_F(MapTest, MapGt) {
   // Maps (x,y) -> x > y onto two R1F32 vectors.
   ComputationBuilder b(client_, TestName());
   auto gt = CreateGt();
-  b.Map({b.ConstantR1<float>({1, 20}), b.ConstantR1<float>({10, 2})}, gt);
+  b.Map({b.ConstantR1<float>({1, 20}), b.ConstantR1<float>({10, 2})}, gt, {0});
   ComputeAndCompareR1<bool>(&b, {false, true}, {});
 }
 
@@ -492,14 +491,14 @@ TEST_F(MapTest, NestedBinaryMap) {
     // max_with_square(x) = do max(x, x^2) via a map.
     ComputationBuilder b(client_, "max_with_square");
     auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-    b.Map({x, b.Mul(x, x)}, CreateMax());
+    b.Map({x, b.Mul(x, x)}, CreateMax(), {});
     auto computation_status = b.Build();
     ASSERT_IS_OK(computation_status.status());
     max_with_square = computation_status.ConsumeValueOrDie();
   }
   ComputationBuilder b(client_, TestName());
   auto input = b.ConstantR1<float>({0.1f, 0.5f, -0.5f, 1.0f, 2.0f});
-  b.Map({input}, max_with_square);
+  b.Map({input}, max_with_square, {0});
   ComputeAndCompareR1<float>(&b, {0.1f, 0.5f, 0.25f, 1.0f, 4.0f}, {});
 }
 
@@ -526,7 +525,7 @@ TEST_F(MapTest, MapOperantionWithBuildError) {
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  auto map = builder.Map({param0, param1}, error_add);
+  auto map = builder.Map({param0, param1}, error_add, {0});
 
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_TRUE(!computation_status.ok());
@@ -563,7 +562,7 @@ TEST_F(MapTestWithFullOpt, MapScalarPower) {
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  builder.Map({param0, param1}, power);
+  builder.Map({param0, param1}, power, {});
 
   ComputeAndCompareR0<float>(&builder, 32.0f,
                              {param0_data.get(), param1_data.get()},
@@ -590,7 +589,7 @@ TEST_F(MapTestWithFullOpt, MapSubtractOppositeOrder) {
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  builder.Map({param0, param1}, sub_opposite);
+  builder.Map({param0, param1}, sub_opposite, {});
 
   ComputeAndCompareR0<float>(
       &builder, 3.0f, {param0_data.get(), param1_data.get()}, ErrorSpec(0.01f));
@@ -611,7 +610,7 @@ TEST_F(MapTestWithFullOpt, MapSquare) {
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
-  builder.Map({param0}, square);
+  builder.Map({param0}, square, {});
 
   ComputeAndCompareR0<float>(&builder, 100.0f, {param0_data.get()},
                              ErrorSpec(0.01f));
@@ -619,20 +618,3 @@ TEST_F(MapTestWithFullOpt, MapSquare) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

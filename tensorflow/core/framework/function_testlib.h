@@ -30,6 +30,22 @@ namespace tensorflow {
 namespace test {
 namespace function {
 
+// A helper class to make AttrSlice from initializer lists
+class Attrs {
+ public:
+  Attrs(const std::initializer_list<  // NOLINT(runtime/explicit)
+        std::pair<string, FunctionDefHelper::AttrValueWrapper>>& attrs) {
+    for (const auto& aval : attrs) {
+      map_.insert({aval.first, aval.second.proto});
+    }
+  }
+
+  operator AttrSlice() { return AttrSlice(&map_); }  // NOLINT(runtime/explicit)
+
+ private:
+  AttrValueMap map_;
+};
+
 // Helper to construct a NodeDef.
 NodeDef NDef(
     const string& name, const string& op, gtl::ArraySlice<string> inputs,
@@ -47,6 +63,9 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 // x:T -> x * 2.
 FunctionDef XTimesTwo();
 
+// x:T -> x * 2, where x is int32.
+FunctionDef XTimesTwoInt32();
+
 // x:T -> (x * 2) * 2.
 FunctionDef XTimesFour();
 
@@ -61,6 +80,8 @@ FunctionDef NonZero();
 
 // x:T, y:T -> y:T, x:T
 FunctionDef Swap();
+
+void FunctionTestSchedClosure(std::function<void()> fn);
 
 }  // end namespace function
 }  // end namespace test

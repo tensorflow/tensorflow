@@ -64,6 +64,10 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "namespaces are given, within the global namespace."},
       {"out_object", &flags->out_object, "Output object file name."},
       {"out_header", &flags->out_header, "Output header file name."},
+      {"gen_name_to_index", &flags->gen_name_to_index,
+       "Generate name-to-index data for Lookup{Arg,Result}Index methods."},
+      {"gen_program_shape", &flags->gen_program_shape,
+       "Generate program shape data for the ProgramShape method."},
   };
   flag_list->insert(flag_list->end(), tmp.begin(), tmp.end());
 }

@@ -109,6 +109,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   }
 }
 
+/* static */ Shape LayoutUtil::GetWithDefaultLayout(const Shape& shape) {
+  Shape copy(shape);
+  LayoutUtil::SetToDefaultLayout(&copy);
+  return copy;
+}
+
 /* static */ void LayoutUtil::SetToDefaultLayout(ProgramShape* program_shape) {
   for (auto& parameter_shape : *program_shape->mutable_parameters()) {
     LayoutUtil::SetToDefaultLayout(&parameter_shape);
@@ -133,7 +139,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   } else {
     // Array shape.
     if (!shape.has_layout()) {
-      return InvalidArgument("shape does not have a layout");
+      return InvalidArgument("shape %s does not have a layout",
+                             ShapeUtil::HumanString(shape).c_str());
     }
     return ValidateLayoutForShape(shape.layout(), shape);
   }

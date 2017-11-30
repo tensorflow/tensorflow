@@ -622,7 +622,7 @@ class TransformUtilsTest : public ::testing::Test {
   }
 
   void TestRenameNodeInputsWithWildcard() {
-    auto root = tensorflow::Scope::NewRootScope();
+    auto root = tensorflow::Scope::DisabledShapeInferenceScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     const int width = 10;

@@ -56,6 +56,9 @@ void ForEach(int first, int last, const std::function<void(int)>& f) {
 FileSystem::~FileSystem() {}
 
 string FileSystem::TranslateName(const string& name) const {
+  // If the name is empty, CleanPath returns "." which is incorrect and
+  // we should return the empty path instead.
+  if (name.empty()) return name;
   return io::CleanPath(name);
 }
 

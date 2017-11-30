@@ -15,7 +15,7 @@ as regressors and classifiers:
     Construct a neural network regression model.
 *   @{tf.estimator.DNNLinearCombinedClassifier}:
     Construct a neural network and linear combined classification model.
-*   @{tf.estimator.DNNRegressor}:
+*   @{tf.estimator.DNNLinearCombinedRegressor}:
     Construct a neural network and linear combined regression model.
 
 But what if none of `tf.estimator`'s predefined model types meets your needs?

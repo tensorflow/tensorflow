@@ -53,10 +53,6 @@ TensorFlow assigns operations to devices, and the
 @{$deep_cnn$CIFAR-10 tutorial} for an example model that
 uses multiple GPUs.
 
-#### What are the different types of tensors that are available?
-
-TensorFlow supports a variety of different data types and tensor shapes. See the
-@{$dims_types$ranks, shapes, and types reference} for more details.
 
 ## Running a TensorFlow computation
 
@@ -171,7 +167,8 @@ available. These operations allow you to build sophisticated
 @{$reading_data$input pipelines}, at the cost of making the
 TensorFlow computation somewhat more complicated. See the how-to documentation
 for
-@{$reading_data#creating-threads-to-prefetch-using-queuerunner-objects$using `QueueRunner` objects to drive queues and readers}
+@{$reading_data#creating-threads-to-prefetch-using-queuerunner-objects$using
+`QueueRunner` objects to drive queues and readers}
 for more information on how to use them.
 
 ## Variables
@@ -240,11 +237,6 @@ to encode the batch size as a Python constant, but instead to use a symbolic
 * Use @{tf.reduce_mean} instead
   of `tf.reduce_sum(...) / batch_size`.
 
-* If you use
-  @{$reading_data#feeding$placeholders for feeding input},
-  you can specify a variable batch dimension by creating the placeholder with
-  [`tf.placeholder(..., shape=[None, ...])`](../api_docs/python/io_ops.md#placeholder). The
-  `None` element of the shape corresponds to a variable-sized dimension.
 
 ## TensorBoard
 
@@ -269,36 +261,33 @@ the flag --host=localhost. This should quiet any security warnings.
 
 ## Extending TensorFlow
 
-See also the how-to documentation for
+See the how-to documentation for
 @{$adding_an_op$adding a new operation to TensorFlow}.
 
 #### My data is in a custom format. How do I read it using TensorFlow?
 
-There are two main options for dealing with data in a custom format.
+There are three main options for dealing with data in a custom format.
 
-The easier option is to write parsing code in Python that transforms the data
-into a numpy array, then feed a
-@{tf.placeholder} a tensor with
-that data. See the documentation on
-@{$reading_data#feeding$using placeholders for input} for
-more details. This approach is easy to get up and running, but the parsing can
-be a performance bottleneck.
+The easiest option is to write parsing code in Python that transforms the data
+into a numpy array. Then use @{tf.data.Dataset.from_tensor_slices} to
+create an input pipeline from the in-memory data.
 
-The more efficient option is to
+If your data doesn't fit in memory, try doing the parsing in the Dataset
+pipeline. Start with an appropriate file reader, like
+@{tf.data.TextLineDataset}. Then convert the dataset by mapping
+@{tf.data.Dataset.map$mapping} appropriate operations over it.
+Prefer predefined TensorFlow operations such as @{tf.decode_raw},
+@{tf.decode_csv}, @{tf.parse_example}, or @{tf.image.decode_png}.
+
+If your data is not easily parsable with the built-in TensorFlow operations,
+consider converting it, offline, to a format that is easily parsable, such
+as ${tf.python_io.TFRecordWriter$`TFRecord`} format.
+
+The more efficient method to customize the parsing behavior is to
 @{$adding_an_op$add a new op written in C++} that parses your
-data format. The
-@{$new_data_formats$guide to handling new data formats} has
+data format. The @{$new_data_formats$guide to handling new data formats} has
 more information about the steps for doing this.
 
-#### How do I define an operation that takes a variable number of inputs?
-
-The TensorFlow op registration mechanism allows you to define inputs that are a
-single tensor, a list of tensors with the same type (for example when adding
-together a variable-length list of tensors), or a list of tensors with different
-types (for example when enqueuing a tuple of tensors to a queue).  See the
-how-to documentation for
-@{$adding_an_op#list-inputs-and-outputs$adding an op with a list of inputs or outputs}
-for more details of how to define these different input types.
 
 ## Miscellaneous
 

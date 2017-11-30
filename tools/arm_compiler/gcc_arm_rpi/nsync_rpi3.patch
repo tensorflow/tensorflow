@@ -1,0 +1,54 @@
+--- a/BUILD	2017-11-15 14:36:49.432070247 +0100
++++ b/BUILD	2017-11-15 14:34:48.254519717 +0100
+@@ -42,6 +42,11 @@
+ )
+ 
+ config_setting(
++    name = "gcc_linux_rpi",
++    values = {"cpu": "rpi-armeabi"}
++)
++
++config_setting(
+     name = "gcc_linux_ppc64",
+     values = {"cpu": "ppc"},
+ )
+@@ -109,6 +114,7 @@
+     ":gcc_linux_x86_64_1": ["-I" + pkg_path_name() + "/platform/x86_64"],
+     ":gcc_linux_x86_64_2": ["-I" + pkg_path_name() + "/platform/x86_64"],
+     ":gcc_linux_aarch64": ["-I" + pkg_path_name() + "/platform/aarch64"],
++    ":gcc_linux_rpi": ["-I" + pkg_path_name() + "/platform/arm"],
+     ":gcc_linux_ppc64": ["-I" + pkg_path_name() + "/platform/ppc64"],
+     ":gcc_linux_s390x": ["-I" + pkg_path_name() + "/platform/s390x"],
+     ":clang_macos_x86_64": ["-I" + pkg_path_name() + "/platform/x86_64"],
+@@ -138,6 +144,7 @@
+     ":gcc_linux_x86_64_1": ["-I" + pkg_path_name() + "/platform/linux"],
+     ":gcc_linux_x86_64_2": ["-I" + pkg_path_name() + "/platform/linux"],
+     ":gcc_linux_aarch64": ["-I" + pkg_path_name() + "/platform/linux"],
++    ":gcc_linux_rpi": ["-I" + pkg_path_name() + "/platform/linux"],
+     ":gcc_linux_ppc64": ["-I" + pkg_path_name() + "/platform/linux"],
+     ":gcc_linux_s390x": ["-I" + pkg_path_name() + "/platform/linux"],
+     ":clang_macos_x86_64": ["-I" + pkg_path_name() + "/platform/macos"],
+@@ -154,6 +161,7 @@
+     ":gcc_linux_x86_64_1": ["-I" + pkg_path_name() + "/platform/gcc"],
+     ":gcc_linux_x86_64_2": ["-I" + pkg_path_name() + "/platform/gcc"],
+     ":gcc_linux_aarch64": ["-I" + pkg_path_name() + "/platform/gcc"],
++    ":gcc_linux_rpi": ["-I" + pkg_path_name() + "/platform/gcc"],
+     ":gcc_linux_ppc64": ["-I" + pkg_path_name() + "/platform/gcc"],
+     ":gcc_linux_s390x": ["-I" + pkg_path_name() + "/platform/gcc"],
+     ":clang_macos_x86_64": ["-I" + pkg_path_name() + "/platform/clang"],
+@@ -337,6 +345,7 @@
+     ":gcc_linux_x86_64_1": NSYNC_SRC_LINUX,
+     ":gcc_linux_x86_64_2": NSYNC_SRC_LINUX,
+     ":gcc_linux_aarch64": NSYNC_SRC_LINUX,
++    ":gcc_linux_rpi": NSYNC_SRC_LINUX,
+     ":gcc_linux_ppc64": NSYNC_SRC_LINUX,
+     ":gcc_linux_s390x": NSYNC_SRC_LINUX,
+     ":clang_macos_x86_64": NSYNC_SRC_MACOS,
+@@ -463,6 +472,7 @@
+     ":gcc_linux_x86_64_1": NSYNC_TEST_SRC_LINUX,
+     ":gcc_linux_x86_64_2": NSYNC_TEST_SRC_LINUX,
+     ":gcc_linux_aarch64": NSYNC_TEST_SRC_LINUX,
++    ":gcc_linux_rpi": NSYNC_TEST_SRC_LINUX,
+     ":gcc_linux_ppc64": NSYNC_TEST_SRC_LINUX,
+     ":gcc_linux_s390x": NSYNC_TEST_SRC_LINUX,
+     ":clang_macos_x86_64": NSYNC_TEST_SRC_MACOS,

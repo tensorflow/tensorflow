@@ -24,12 +24,21 @@ namespace xla {
 // the module.
 class HloVerifier : public HloPassInterface {
  public:
+  explicit HloVerifier(const std::function<int64(const Shape&)>& shape_size_fn)
+      : shape_size_fn_(shape_size_fn) {}
   ~HloVerifier() override = default;
   tensorflow::StringPiece name() const override { return "verifier"; }
 
   // Note: always returns false (no instructions are ever modified by this
   // pass).
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  // CHECKs various invariants of a fusion instruction.
+  Status CheckFusionInstruction(HloInstruction* fusion) const;
+
+  // Returns the size of a Shape in bytes.
+  const std::function<int64(const Shape&)> shape_size_fn_;
 };
 
 }  // namespace xla

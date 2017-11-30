@@ -293,6 +293,40 @@ class ConvTest(test.TestCase):
     conv_layers.conv2d(images, 32, [3, 3])
     self.assertEqual(len(variables.trainable_variables()), 4)
 
+  def testConstraints(self):
+    # Conv1D
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    conv1d = conv_layers.Conv1D(2, 3,
+                                kernel_constraint=k_constraint,
+                                bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 5), seed=1)
+    conv1d(inputs)
+    self.assertEqual(conv1d.kernel_constraint, k_constraint)
+    self.assertEqual(conv1d.bias_constraint, b_constraint)
+
+    # Conv2D
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    conv2d = conv_layers.Conv2D(2, 3,
+                                kernel_constraint=k_constraint,
+                                bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 5), seed=1)
+    conv2d(inputs)
+    self.assertEqual(conv2d.kernel_constraint, k_constraint)
+    self.assertEqual(conv2d.bias_constraint, b_constraint)
+
+    # Conv3D
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    conv3d = conv_layers.Conv3D(2, 3,
+                                kernel_constraint=k_constraint,
+                                bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 3, 5), seed=1)
+    conv3d(inputs)
+    self.assertEqual(conv3d.kernel_constraint, k_constraint)
+    self.assertEqual(conv3d.bias_constraint, b_constraint)
+
 
 class SeparableConv2DTest(test.TestCase):
 
@@ -405,6 +439,31 @@ class SeparableConv2DTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, height / 2, width, 32])
 
+  def testCreateSeparableConvWithStridesChannelsFirst(self):
+    data_format = 'channels_first'
+    height, width = 6, 8
+    # Test strides tuple
+    images = random_ops.random_uniform((5, 3, height, width), seed=1)
+    layer = conv_layers.SeparableConv2D(
+        32, [3, 3], strides=(2, 2), padding='same', data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width / 2])
+
+    # Test strides integer
+    layer = conv_layers.SeparableConv2D(32, [3, 3], strides=2, padding='same',
+                                        data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width / 2])
+
+    # Test unequal strides
+    layer = conv_layers.SeparableConv2D(
+        32, [3, 3], strides=(2, 1), padding='same', data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width])
+
   def testFunctionalConv2DReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
@@ -496,6 +555,20 @@ class SeparableConv2DTest(test.TestCase):
     self.assertListEqual(layer.pointwise_kernel.get_shape().as_list(),
                          [1, 1, 4, 32])
     self.assertEqual(layer.bias, None)
+
+  def testConstraints(self):
+    d_constraint = lambda x: x / math_ops.reduce_sum(x)
+    p_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    layer = conv_layers.SeparableConv2D(2, 3,
+                                        depthwise_constraint=d_constraint,
+                                        pointwise_constraint=p_constraint,
+                                        bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 5), seed=1)
+    layer(inputs)
+    self.assertEqual(layer.depthwise_constraint, d_constraint)
+    self.assertEqual(layer.pointwise_constraint, p_constraint)
+    self.assertEqual(layer.bias_constraint, b_constraint)
 
 
 class Conv2DTransposeTest(test.TestCase):
@@ -671,6 +744,17 @@ class Conv2DTransposeTest(test.TestCase):
     conv_layers.conv2d_transpose(images, 32, [3, 3])
     self.assertEqual(len(variables.trainable_variables()), 4)
 
+  def testConstraints(self):
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    layer = conv_layers.Conv2DTranspose(2, 3,
+                                        kernel_constraint=k_constraint,
+                                        bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 5), seed=1)
+    layer(inputs)
+    self.assertEqual(layer.kernel_constraint, k_constraint)
+    self.assertEqual(layer.bias_constraint, b_constraint)
+
 
 class Conv3DTransposeTest(test.TestCase):
 
@@ -839,6 +923,17 @@ class Conv3DTransposeTest(test.TestCase):
     self.assertEqual(len(variables.trainable_variables()), 2)
     conv_layers.conv3d_transpose(volumes, 4, [3, 3, 3])
     self.assertEqual(len(variables.trainable_variables()), 4)
+
+  def testConstraints(self):
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    layer = conv_layers.Conv3DTranspose(2, 3,
+                                        kernel_constraint=k_constraint,
+                                        bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 3, 5), seed=1)
+    layer(inputs)
+    self.assertEqual(layer.kernel_constraint, k_constraint)
+    self.assertEqual(layer.bias_constraint, b_constraint)
 
 
 if __name__ == '__main__':
