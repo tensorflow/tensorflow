@@ -51,6 +51,8 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  bool IsReallyConstant(const NodeDef& node) const;
+
   Status MaterializeShapes(const GraphProperties& properties);
 
   Status MaterializeBroadcastGradientArgs(const NodeDef& node,
@@ -75,7 +77,8 @@ class ConstantFolding : public GraphOptimizer {
   bool IsSimplifiableReduction(const NodeDef& node) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
-  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
+  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties,
+                       bool use_shape_info);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* output);
@@ -90,6 +93,7 @@ class ConstantFolding : public GraphOptimizer {
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unordered_set<string> nodes_whitelist_;
+  std::unordered_set<string> feed_nodes_;
   bool has_fetch_;
 };
 
