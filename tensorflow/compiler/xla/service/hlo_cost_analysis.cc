@@ -201,10 +201,11 @@ Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& rhs_shape = dot->operand(1)->shape();
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width = lhs_shape.dimensions(ShapeUtil::Rank(lhs_shape) - 1);
-
+  int64 reduction_width =
+      lhs_shape.dimensions(dnums.lhs_contracting_dimensions(0));
   // First divide by reduction width before multiplying by rhs elements to avoid
   // overflow.
   int64 fma_count;
