@@ -362,10 +362,18 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   EXPECT_EQ(
       dnums.input_batch_dimension(),
       new_conv->convolution_dimension_numbers().input_feature_dimension());
-  EXPECT_EQ(dnums.spatial_dimensions(0),
-            new_conv->convolution_dimension_numbers().spatial_dimensions(0));
-  EXPECT_EQ(dnums.spatial_dimensions(1),
-            new_conv->convolution_dimension_numbers().spatial_dimensions(1));
+  EXPECT_EQ(
+      dnums.input_spatial_dimensions(0),
+      new_conv->convolution_dimension_numbers().input_spatial_dimensions(0));
+  EXPECT_EQ(
+      dnums.input_spatial_dimensions(1),
+      new_conv->convolution_dimension_numbers().input_spatial_dimensions(1));
+  EXPECT_EQ(
+      dnums.output_spatial_dimensions(0),
+      new_conv->convolution_dimension_numbers().output_spatial_dimensions(0));
+  EXPECT_EQ(
+      dnums.output_spatial_dimensions(1),
+      new_conv->convolution_dimension_numbers().output_spatial_dimensions(1));
 }
 
 }  // namespace
