@@ -298,6 +298,39 @@ TEST_F(LayoutOptimizerTest, Connectivity) {
   EXPECT_EQ(node_i2_output->input(0), "i1");
 }
 
+TEST_F(LayoutOptimizerTest, ConnectivityBinaryOpWithInputScalarAnd4D) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto i1 = ops::Identity(s.WithOpName("i1"), conv);
+  auto i2 = ops::Identity(s.WithOpName("i2"), i1);
+  auto scalar_sub = ops::Const(s.WithOpName("scalar_sub"), 3.0f, {});
+  auto sub = ops::Sub(s.WithOpName("sub"), scalar_sub, i2);
+  auto i3 = ops::Identity(s.WithOpName("i3"), sub);
+  auto i4 = ops::Identity(s.WithOpName("i4"), i3);
+  auto i5 = ops::Identity(s.WithOpName("i5"), i4);
+  auto scalar_mul = ops::Const(s.WithOpName("scalar_mul"), 3.0f, {});
+  auto mul = ops::Mul(s.WithOpName("mul"), scalar_mul, i5);
+  auto i6 = ops::Identity(s.WithOpName("i6"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  // Make the graph not in topological order to test the handling of multi-hop
+  // connectivity (here we say two nodes are connected if all nodes in the
+  // middle are layout agnostic). If the graph is already in topological order,
+  // the problem is easier, where layout optimizer only needs to check
+  // single-hop connectivity.
+  NodeMap node_map_original(&item.graph);
+  auto node_i1 = node_map_original.GetNode("i1");
+  auto node_mul = node_map_original.GetNode("mul");
+  node_mul->Swap(node_i1);
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map_output(&output);
+  auto mul_node = node_map_output.GetNode("mul");
+  EXPECT_EQ(mul_node->input(0), "scalar_mul");
+  EXPECT_EQ(mul_node->input(1), "i5");
+}
+
 TEST_F(LayoutOptimizerTest, PreserveFetch) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv = SimpleConv2D(&s, 3, 2, "VALID");
@@ -495,7 +528,175 @@ TEST_F(LayoutOptimizerTest, SplitNonConstDim) {
   auto split_node = node_map.GetNode("split");
   EXPECT_EQ(split_node->input(0), "i1");
   EXPECT_EQ(split_node->input(1),
-            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-split");
+            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-split-1");
+}
+
+TEST_F(LayoutOptimizerTest, SplitSamePortToMultipleInputsOfSameNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto axis = ops::Const(s.WithOpName("axis"), 3);
+  auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
+  auto concat =
+      ops::Concat(s.WithOpName("concat"), {split[1], split[1], split[1]}, axis);
+  auto o = ops::Identity(s.WithOpName("o"), concat);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto concat_node = node_map.GetNode("concat");
+  EXPECT_EQ(concat_node->input(0), "split:1");
+  EXPECT_EQ(concat_node->input(1), "split:1");
+  EXPECT_EQ(concat_node->input(2), "split:1");
+  EXPECT_EQ(concat_node->input(3), "LayoutOptimizerConcatConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerConcatConst-concat");
+  EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 1);
+}
+
+TEST_F(LayoutOptimizerTest, Concat) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto axis = ops::Const(s.WithOpName("axis"), 3);
+  auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
+  auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
+  auto o = ops::Identity(s.WithOpName("o"), concat);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto concat_node = node_map.GetNode("concat");
+  EXPECT_EQ(concat_node->input(0), "split");
+  EXPECT_EQ(concat_node->input(1), "split:1");
+  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerConcatConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerConcatConst-concat");
+  EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 1);
+}
+
+TEST_F(LayoutOptimizerTest, Sum) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto reduction_indices =
+      ops::Const(s.WithOpName("reduction_indices"), {0, 1, 2}, {3});
+  auto sum = ops::Sum(s.WithOpName("sum"), conv, reduction_indices);
+  auto o = ops::Identity(s.WithOpName("o"), sum);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  // TODO(yaozhang): enable SumProcessor with auto-tuning. Currently disabled
+  // because of the worse performance in some cases.
+  /*
+  NodeMap node_map(&output);
+  auto sum_node = node_map.GetNode("sum");
+  EXPECT_EQ(sum_node->input(0), "Conv2D");
+  EXPECT_EQ(sum_node->input(1), "LayoutOptimizer-sum-reduction_indices");
+  auto sum_const = node_map.GetNode("LayoutOptimizer-sum-reduction_indices");
+  Tensor tensor;
+  EXPECT_TRUE(
+      tensor.FromProto(sum_const->mutable_attr()->at({"value"}).tensor()));
+  Tensor tensor_expected(DT_INT32, {3});
+  test::FillValues<int>(&tensor_expected, {0, 2, 3});
+  test::ExpectTensorEqual<int>(tensor_expected, tensor);
+  */
+}
+
+TEST_F(LayoutOptimizerTest, MulScalarAnd4D) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto scalar = ops::Const(s.WithOpName("scalar"), 3.0f, {});
+  auto mul = ops::Mul(s.WithOpName("mul"), scalar, conv);
+  auto o = ops::Identity(s.WithOpName("o"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto mul_node = node_map.GetNode("mul");
+  EXPECT_EQ(mul_node->input(0), "scalar");
+  EXPECT_EQ(mul_node->input(1), "Conv2D");
+}
+
+TEST_F(LayoutOptimizerTest, Mul4DAndScalar) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto scalar = ops::Const(s.WithOpName("scalar"), 3.0f, {});
+  auto mul = ops::Mul(s.WithOpName("mul"), conv, scalar);
+  auto o = ops::Identity(s.WithOpName("o"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto mul_node = node_map.GetNode("mul");
+  EXPECT_EQ(mul_node->input(0), "Conv2D");
+  EXPECT_EQ(mul_node->input(1), "scalar");
+}
+
+TEST_F(LayoutOptimizerTest, Mul4DAnd4D) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto i = ops::Identity(s.WithOpName("i"), conv);
+  auto mul = ops::Mul(s.WithOpName("mul"), conv, i);
+  auto o = ops::Identity(s.WithOpName("o"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto mul_node = node_map.GetNode("mul");
+  EXPECT_EQ(mul_node->input(0), "Conv2D");
+  EXPECT_EQ(mul_node->input(1), "i");
+}
+
+TEST_F(LayoutOptimizerTest, Mul4DAndVector) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto vector = ops::Const(s.WithOpName("vector"), {3.0f, 7.0f}, {2});
+  auto mul = ops::Mul(s.WithOpName("mul"), conv, vector);
+  auto o = ops::Identity(s.WithOpName("o"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto mul_node = node_map.GetNode("mul");
+  EXPECT_EQ(mul_node->input(0), "Conv2D");
+  EXPECT_EQ(mul_node->input(1), "LayoutOptimizerReshapeNHWCToNCHW-mul-vector");
+  auto mul_const = node_map.GetNode("LayoutOptimizerReshapeConst-mul-vector");
+  Tensor tensor;
+  EXPECT_TRUE(
+      tensor.FromProto(mul_const->mutable_attr()->at({"value"}).tensor()));
+  Tensor tensor_expected(DT_INT32, {4});
+  test::FillValues<int>(&tensor_expected, {1, 2, 1, 1});
+  test::ExpectTensorEqual<int>(tensor_expected, tensor);
+}
+
+TEST_F(LayoutOptimizerTest, MulVectorAnd4D) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto vector = ops::Const(s.WithOpName("vector"), {3.0f, 7.0f}, {2});
+  auto mul = ops::Mul(s.WithOpName("mul"), vector, conv);
+  auto o = ops::Identity(s.WithOpName("o"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto mul_node = node_map.GetNode("mul");
+  // TODO(yaozhang): Support vector as the first input and 4d tensor as the
+  // second input for BinaryOpProcessor.
+  EXPECT_EQ(mul_node->input(0), "vector");
+  EXPECT_EQ(mul_node->input(1),
+            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-mul-1");
 }
 
 }  // namespace

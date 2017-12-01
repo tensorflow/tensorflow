@@ -77,11 +77,166 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(ConstantFoldingTest, NeutralElement) {
+  for (bool use_const : {true, false}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                                ops::Placeholder::Shape(TensorShape({1, 2})));
+    Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
+                                ops::Placeholder::Shape(TensorShape({1, 2})));
+    Output zeros =
+        !use_const ? ops::ZerosLike(s.WithOpName("zeros"), x)
+                   : ops::Const(s.WithOpName("zeros"), {0.0f, 0.0f}, {1, 2});
+    Output zeros_broadcast =
+        ops::Const(s.WithOpName("zeros_broadcast"), {0.0f}, {1, 1});
+    Output ones = !use_const
+                      ? ops::OnesLike(s.WithOpName("ones"), x)
+                      : ops::Const(s.WithOpName("ones"), {1.0f, 1.0f}, {1, 2});
+    Output mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
+    Output mul2 = ops::Mul(s.WithOpName("mul2"), zeros, y);
+    Output mul3 = ops::Mul(s.WithOpName("mul3"), x, ones);
+    Output mul4 = ops::Mul(s.WithOpName("mul4"), ones, y);
+    Output mul5 = ops::Mul(s.WithOpName("mul1"), x, zeros_broadcast);
+    Output mul6 = ops::Mul(s.WithOpName("mul2"), zeros_broadcast, y);
+    Output add1 = ops::Add(s.WithOpName("add1"), x, zeros);
+    Output add2 = ops::Add(s.WithOpName("add2"), zeros, y);
+    Output addn = ops::AddN(s, {mul1, mul2, mul3, mul4, add1, add2});
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
+                              nullptr /* cpu_device */);
+    GraphDef output;
+    Status status = optimizer.Optimize(nullptr, item, &output);
+    TF_EXPECT_OK(status);
+
+    EXPECT_EQ(14, output.node_size());
+    for (int i = 0; i < output.node_size(); ++i) {
+      const NodeDef& node = output.node(i);
+      const string& name = node.name();
+      if (name == "mul1") {
+        if (use_const) {
+          EXPECT_EQ("Const", node.op());
+          EXPECT_EQ("^x", node.input(0));
+        } else {
+          EXPECT_EQ("Identity", node.op());
+          EXPECT_EQ("zeros", node.input(0));
+          EXPECT_EQ("^x", node.input(1));
+        }
+      } else if (name == "mul2") {
+        if (use_const) {
+          EXPECT_EQ("Const", node.op());
+          EXPECT_EQ("^y", node.input(0));
+        } else {
+          EXPECT_EQ("Identity", node.op());
+          EXPECT_EQ("zeros", node.input(0));
+          EXPECT_EQ("^y", node.input(1));
+        }
+      } else if (name == "mul3") {
+        EXPECT_EQ("Identity", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^ones", node.input(1));
+      } else if (name == "mul4") {
+        EXPECT_EQ("Identity", node.op());
+        EXPECT_EQ("y", node.input(0));
+        EXPECT_EQ("^ones", node.input(1));
+      } else if (name == "mul5") {
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^x", node.input(0));
+        EXPECT_EQ("^ones", node.input(1));
+        TensorProto t = node.attr().at("value").tensor();
+        EXPECT_EQ(1, t.float_val_size());
+        EXPECT_EQ(0, t.float_val(0));
+        EXPECT_EQ(2, t.tensor_shape().dim_size());
+        EXPECT_EQ(1, t.tensor_shape().dim(0).size());
+        EXPECT_EQ(2, t.tensor_shape().dim(1).size());
+      } else if (name == "mul6") {
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^y", node.input(0));
+        EXPECT_EQ("^ones", node.input(1));
+        TensorProto t = node.attr().at("value").tensor();
+        EXPECT_EQ(1, t.float_val_size());
+        EXPECT_EQ(0, t.float_val(0));
+        EXPECT_EQ(2, t.tensor_shape().dim_size());
+        EXPECT_EQ(1, t.tensor_shape().dim(0).size());
+        EXPECT_EQ(2, t.tensor_shape().dim(1).size());
+      } else if (name == "add1") {
+        EXPECT_EQ("Identity", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
+      } else if (name == "add2") {
+        EXPECT_EQ("Identity", node.op());
+        EXPECT_EQ("y", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
+      }
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, CreateConstNodes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+#define MAKE_TEST_GRAPH(TYPE)                                               \
+  Output TYPE##_const =                                                     \
+      ops::Const(s.WithOpName(#TYPE "_const"), static_cast<TYPE>(10), {5}); \
+  Output TYPE##_mul =                                                       \
+      ops::Mul(s.WithOpName(#TYPE "_mul"), TYPE##_const, TYPE##_const);     \
+  Output TYPE##_id = ops::Identity(s.WithOpName(#TYPE "_id"), TYPE##_mul)
+
+  MAKE_TEST_GRAPH(float);
+  MAKE_TEST_GRAPH(double);
+  MAKE_TEST_GRAPH(int64);
+  MAKE_TEST_GRAPH(int32);
+  MAKE_TEST_GRAPH(int16);
+  MAKE_TEST_GRAPH(int8);
+  MAKE_TEST_GRAPH(uint8);
+#undef MAKE_TEST_GRAPH
+
+  Output bool_const = ops::Const(s.WithOpName("bool_const"), true, {5});
+  Output bool_and =
+      ops::LogicalAnd(s.WithOpName("bool_and"), bool_const, bool_const);
+  Output bool_id = ops::Identity(s.WithOpName("bool_id"), bool_and);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(24, output.node_size());
+  for (const NodeDef& node : output.node()) {
+#define CHECK_RESULT(TYPE, FIELD)                                             \
+  if (node.name() == #TYPE "_mul") {                                          \
+    EXPECT_EQ(5,                                                              \
+              node.attr().at("value").tensor().tensor_shape().dim(0).size()); \
+    EXPECT_EQ(1, node.attr().at("value").tensor().FIELD##_val_size());        \
+    EXPECT_EQ(10 * 10, node.attr().at("value").tensor().FIELD##_val(0));      \
+  }
+
+    CHECK_RESULT(float, float);
+    CHECK_RESULT(double, double);
+    CHECK_RESULT(int64, int64);
+    CHECK_RESULT(int32, int);
+    CHECK_RESULT(int16, int);
+    CHECK_RESULT(int8, int);
+    CHECK_RESULT(uint8, int);
+#undef CHECK_RESULT
+
+    if (node.name() == "bool_and") {
+      EXPECT_EQ(5,
+                node.attr().at("value").tensor().tensor_shape().dim(0).size());
+      EXPECT_EQ(1, node.attr().at("value").tensor().bool_val_size());
+      EXPECT_EQ(true && true, node.attr().at("value").tensor().bool_val(0));
+    }
+  }
+}
+
 TEST_F(ConstantFoldingTest, FoldingNodeWithTwoOutputs) {
   // Build a simple graph with a few trivially prunable ops.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("a"), 10, {3});
+  Output a = ops::Const(s.WithOpName("a"), 10, {5});
   auto b = ops::Unique(s.WithOpName("b"), {a});
   Output c = ops::Identity(s.WithOpName("c"), {b.y});
   Output d = ops::Identity(s.WithOpName("d"), {b.idx});
@@ -963,3 +1118,5 @@ TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
+
+//  LocalWords:  NewRootScope

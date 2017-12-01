@@ -181,7 +181,9 @@ Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
       // The requested offset is at or beyond the end of the file. This can
       // happen if `offset` is not block-aligned, and the read returns the last
       // block in the file, which does not extend all the way out to `offset`.
-      return errors::OutOfRange("EOF at offset ", offset);
+      return errors::OutOfRange("EOF at offset ", offset, " in file ", filename,
+                                " at position ", pos, "with data size ",
+                                data.size());
     }
     auto begin = data.begin();
     if (offset > pos) {

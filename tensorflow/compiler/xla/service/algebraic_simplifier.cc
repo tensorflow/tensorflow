@@ -597,9 +597,13 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)).
   if (lhs->IsRank2Transpose() && rhs->IsRank2Transpose()) {
-    auto new_dot = computation_->AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::PermuteDimensions({1, 0}, dot->shape()), HloOpcode::kDot,
-        rhs->mutable_operand(0), lhs->mutable_operand(0)));
+    DotDimensionNumbers dot_dimension_numbers;
+    dot_dimension_numbers.add_lhs_contracting_dimensions(1);
+    dot_dimension_numbers.add_rhs_contracting_dimensions(0);
+    auto new_dot = computation_->AddInstruction(HloInstruction::CreateDot(
+        ShapeUtil::PermuteDimensions({1, 0}, dot->shape()),
+        rhs->mutable_operand(0), lhs->mutable_operand(0),
+        dot_dimension_numbers));
     return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateTranspose(dot->shape(), new_dot, {1, 0}));
   }
@@ -1616,8 +1620,11 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
 
   auto new_lhs = add_bitcast(new_input_shape, lhs);
   auto new_rhs = add_bitcast(new_filter_shape, rhs);
-  auto dot = computation_->AddInstruction(HloInstruction::CreateBinary(
-      dot_output_shape, HloOpcode::kDot, new_lhs, new_rhs));
+  DotDimensionNumbers dot_dimension_numbers;
+  dot_dimension_numbers.add_lhs_contracting_dimensions(1);
+  dot_dimension_numbers.add_rhs_contracting_dimensions(0);
+  auto dot = computation_->AddInstruction(HloInstruction::CreateDot(
+      dot_output_shape, new_lhs, new_rhs, dot_dimension_numbers));
   return ReplaceInstruction(convolution, add_bitcast(convolution_shape, dot));
 }
 

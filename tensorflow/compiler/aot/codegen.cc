@@ -418,7 +418,7 @@ namespace xla { class ExecutableRunOptions; }
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void {{ENTRY}}(
     void* result, const xla::ExecutableRunOptions* run_options,
-    const void** args, void** temps);
+    const void** args, void** temps, tensorflow::int64* profile_counters);
 
 {{NS_START}}
 // {{CLASS}} represents a computation previously specified in a
@@ -483,7 +483,7 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
     return *kStaticData;
   }
 
-  {{CLASS}}(AllocMode alloc_mode = AllocMode::ARGS_RESULTS_AND_TEMPS)
+  {{CLASS}}(AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS)
       : XlaCompiledCpuFunction(StaticData(), alloc_mode) {}
 
   {{CLASS}}(const {{CLASS}}&) = delete;
@@ -496,8 +496,8 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
   // void set_argN_data(void* data)
   //   Sets the buffer of type T for positional argument N. May be called in
   //   any AllocMode. Must be called before Run to have an affect. Must be
-  //   called in AllocMode::RESULTS_AND_TEMPS_ONLY for each positional argument,
-  //   to set the argument buffers.
+  //   called in AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY for each positional
+  //   argument, to set the argument buffers.
   //
   // T* argN_data()
   //   Returns the buffer of type T for positional argument N.

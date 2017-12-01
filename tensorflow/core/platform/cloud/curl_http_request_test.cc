@@ -263,7 +263,6 @@ TEST(CurlHttpRequestTest, GetRequest) {
 
   std::vector<char> scratch;
   scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
-  StringPiece result;
   scratch.reserve(100);
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
@@ -594,7 +593,6 @@ TEST(CurlHttpRequestTest, ErrorReturnsNoResponse) {
 
   std::vector<char> scratch;
   scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
-  StringPiece result;
   scratch.reserve(100);
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));

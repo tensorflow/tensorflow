@@ -887,26 +887,19 @@ def _ReadGrad(_, grad):
 def _GatherGrad(op, grad):
   """Gradient for gather op."""
   # Build appropriately shaped IndexedSlices
-  # Walk graph back until the original handle is found.
-  # TODO(apassos): more robust way of getting the shape.
-  # TODO(apassos): implement this for EAGER mode.
-  if context.in_eager_mode():
-    dense_shape = gen_resource_variable_ops.variable_shape(op.inputs[0])
-    return (ops.IndexedSlices(grad,
-                              op.inputs[1],
-                              dense_shape=dense_shape),
-            None)
   handle = op.inputs[0]
-  while handle.op.type != "VarHandleOp":
-    handle = handle.op.inputs[0]
-  params_shape = ops.convert_to_tensor(
-      tensor_shape.TensorShape(handle.op.get_attr("shape")))
   indices = op.inputs[1]
+  if context.in_graph_mode():
+    # Walk graph back until the original handle is found.
+    # TODO(apassos): implement this for EAGER mode.
+    while handle.op.type != "VarHandleOp":
+      handle = handle.op.inputs[0]
+  params_shape = gen_resource_variable_ops.variable_shape(handle)
   size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
-  return [ops.IndexedSlices(values, indices, params_shape), None]
+  return (ops.IndexedSlices(values, indices, params_shape), None)
 
 
 def _to_proto_fn(v, export_scope=None):

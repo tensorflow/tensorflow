@@ -724,6 +724,38 @@ class FunctionTest(test.TestCase):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
 
+  def testCaptureInWhileLoop(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+
+      @function.Defun()
+      def Foo():
+        return control_flow_ops.while_loop(lambda i: i < 10,
+                                           lambda i: i + x,
+                                           [0])
+      y = Foo()
+
+    with self.test_session(graph=g) as sess:
+      self.assertEqual(sess.run(y), 10)
+
+  def testCaptureInCond(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+
+      @function.Defun(dtypes.bool)
+      def Foo(pred):
+        return control_flow_ops.cond(pred,
+                                     lambda: x,
+                                     lambda: x + 1)
+      y = Foo(True)
+      z = Foo(False)
+
+    with self.test_session(graph=g) as sess:
+      self.assertEqual(sess.run(y), 1)
+      self.assertEqual(sess.run(z), 2)
+
   def testStableName(self):
 
     @function.Defun()

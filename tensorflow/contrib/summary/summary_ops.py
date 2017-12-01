@@ -516,6 +516,27 @@ def import_event(tensor, name=None):
       context.context().summary_writer_resource, tensor, name=name)
 
 
+def flush(writer=None, name=None):
+  """Forces summary writer to send any buffered data to storage.
+
+  This operation blocks until that finishes.
+
+  Args:
+    writer: The @{tf.contrib.summary.SummaryWriter} resource to flush.
+      The thread default will be used if this parameter is None.
+      Otherwise a @{tf.no_op} is returned.
+    name: A name for the operation (optional).
+
+  Returns:
+    The created @{tf.Operation}.
+  """
+  if writer is None:
+    writer = context.context().summary_writer_resource
+    if writer is None:
+      return control_flow_ops.no_op()
+  return gen_summary_ops.flush_summary_writer(writer, name=name)
+
+
 def eval_dir(model_dir, name=None):
   """Construct a logdir for an eval summary writer."""
   return os.path.join(model_dir, "eval" if not name else "eval_" + name)

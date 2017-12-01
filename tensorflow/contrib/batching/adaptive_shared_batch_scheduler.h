@@ -208,6 +208,8 @@ class ASBSQueue : public BatchScheduler<TaskType> {
   // place any more tasks in this batch.
   void ReleaseBatch(const ASBSBatch<TaskType>* batch);
 
+  size_t max_task_size() const override { return options_.max_batch_size; }
+
  private:
   std::shared_ptr<AdaptiveSharedBatchScheduler<TaskType>> scheduler_;
   const QueueOptions options_;

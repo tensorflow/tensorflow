@@ -289,7 +289,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Don't try this transformation if the while loop isn't removable, since if
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
-  if (!while_op->parent()->IsRemovable(while_op)) {
+  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Can't remove dead parameters from non-removable while op.";
     return false;
   }
@@ -558,7 +558,7 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   // the loop aren't removed, just cloned and added back to the loop.
   // Nevertheless our infrastructure sees loop simplification as removal of
   // these nodes and currently doesn't allow it.
-  if (!while_op->parent()->IsRemovable(while_op)) {
+  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove while loop it is not removable: "
             << while_op->ToShortString();
     return false;
