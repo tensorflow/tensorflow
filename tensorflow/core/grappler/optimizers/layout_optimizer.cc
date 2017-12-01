@@ -1623,20 +1623,13 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   TuningConfig config;
-  config.no_gemm = false;
+  config.no_gemm = true;
+  // TODO(yaozhang): Enable tuning with various TuningConfig choices wtih
+  // the measurement-based estimator.
   status = Tune(item, graph_properties, config, output);
-  // This is based on an empirical observation that if the introduced Transpose
-  // nodes is more than 30, not using GEMM implementation would result in better
-  // performance.
-  if (status.ok() && GetNumTranspose(*output) > 30) {
-    config.no_gemm = true;
-    status = Tune(item, graph_properties, config, output);
-  }
-
   if (!status.ok()) {
     *output = item.graph;
   }
-
   return status;
 }
 
