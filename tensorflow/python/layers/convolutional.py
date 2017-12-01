@@ -273,7 +273,8 @@ class Conv1D(_Conv):
     name: A string, the name of the layer.
 
   Raises:
-    ValueError: If data format is incompatible with causal padding.
+    ValueError: If data format is incompatible with causal padding, or invalid
+      argument is given.
   """
 
   def __init__(self, filters,
@@ -322,38 +323,44 @@ class Conv1D(_Conv):
         name=name, **kwargs)
 
   def build(self, input_shape):
-    _, shape_fn = self._helper_for_causal_padding()
+    _, shape_fn = self._helper_for_preprocess()
     super(Conv1D, self).build(shape_fn(input_shape))
 
   def call(self, inputs):
-    inputs_fn, _ = self._helper_for_causal_padding()
+    inputs_fn, _ = self._helper_for_preprocess()
     return super(Conv1D, self).call(inputs_fn(inputs))
 
   def _compute_output_shape(self, input_shape):
-    _, shape_fn = self._helper_for_causal_padding()
+    _, shape_fn = self._helper_for_preprocess()
     return super(Conv1D, self)._compute_output_shape(shape_fn(input_shape))
 
-  def _helper_for_causal_padding(self):
-    """Generate the functions to handle inputs and input_shape for causal padding."""
+  def _helper_for_preprocess(self):
+    """Generate the functions to preprocess inputs and input_shape."""
     if self._causal_padding:
+      # `causal` padding: left pad on time channel.
       left_pad = int(self.dilation_rate[0] * (self.kernel_size[0] - 1))
       if left_pad <= 0:
-        raise ValueError("The left_pad must be positive.")
+        raise ValueError("The left_pad must be positive, "
+                         "while get: {}".format(left_pad))
 
       def inputs_fn(inputs):
-        # left pad for causal (dilated) convolution
+        # left pad for causal (dilated) convolution.
         return array_ops.pad(inputs, [[0, 0], [left_pad, 0], [0, 0]])
 
       def shape_fn(input_shape):
         input_shape = tensor_shape.TensorShape(input_shape)
-        assert input_shape.ndims == 3, "The rank of input_shape must be 3."
+        if input_shape.ndims != 3:
+          raise ValueError("The input_shape must be 3 dimensions, "
+                           "while get: {}".format(input_shape))
         input_list = input_shape.as_list()
+        # left pad on time channel.
         input_list[1] += left_pad
         return tensor_shape.TensorShape([tensor_shape.Dimension(d)
                                          for d in input_list])
 
       return inputs_fn, shape_fn
     else:
+      # `same` or `valid` padding: return identical inputs and input_shape.
       identity_fn = lambda x: x
       return identity_fn, identity_fn
 
