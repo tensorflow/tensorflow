@@ -562,6 +562,10 @@ add_python_module("tensorflow/contrib/pi_examples")
 add_python_module("tensorflow/contrib/pi_examples/camera")
 add_python_module("tensorflow/contrib/pi_examples/label_image")
 add_python_module("tensorflow/contrib/pi_examples/label_image/data")
+add_python_module("tensorflow/contrib/periodic_resample")
+add_python_module("tensorflow/contrib/periodic_resample/python")
+add_python_module("tensorflow/contrib/periodic_resample/python/ops")
+add_python_module("tensorflow/contrib/periodic_resample/python/kernel_tests")
 add_python_module("tensorflow/contrib/predictor")
 add_python_module("tensorflow/contrib/quantization")
 add_python_module("tensorflow/contrib/quantization/python")
@@ -817,6 +821,9 @@ GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_nccl_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nccl/ops/gen_nccl_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_periodic_resample_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/periodic_resample/python/ops/gen_periodic_resample_op.py)
+
 GENERATE_PYTHON_OP_LIB("contrib_nearest_neighbor_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nearest_neighbor/ops/gen_nearest_neighbor_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_resampler_ops"
@@ -1017,6 +1024,20 @@ target_link_libraries(pywrap_tensorflow_internal PRIVATE
 )
 
 if(WIN32)
+
+    # include contrib/periodic_resample as .so
+    #
+    set(tf_periodic_resample_srcs
+       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/kernels/periodic_resample_op.cc"
+       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/kernels/periodic_resample_op.h"
+       "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/ops/array_ops.cc"
+    )
+
+    AddUserOps(TARGET _periodic_resample_op
+        SOURCES "${tf_periodic_resample_srcs}"
+        DEPENDS pywrap_tensorflow_internal tf_python_ops
+        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/periodic_resample/python/ops/)
+
     # include contrib/nearest_neighbor as .so
     #
     set(tf_nearest_neighbor_srcs
