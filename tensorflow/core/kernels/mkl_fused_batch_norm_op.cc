@@ -922,7 +922,7 @@ class MklFusedBatchNormOp : public OpKernel {
       dst.SetUsrMem(src_md, dst_tensor);
 
       primitive bnrm_fwd_op;
-      if (is_training_)
+      if (is_training_) {
         bnrm_fwd_op = batch_normalization_forward(
                           bnrm_fwd_pd,
                           src.GetOpMem(),
@@ -930,7 +930,7 @@ class MklFusedBatchNormOp : public OpKernel {
                           dst.GetOpMem(),
                           mean_m,
                           variance_m);
-      else
+      } else {
         bnrm_fwd_op = batch_normalization_forward(
                           bnrm_fwd_pd,
                           src.GetOpMem(),
@@ -938,6 +938,7 @@ class MklFusedBatchNormOp : public OpKernel {
                           variance_m,
                           (const primitive::at) weights_m,
                           dst.GetOpMem());
+      }
       std::vector<primitive> net;
       net.push_back(bnrm_fwd_op);
       stream(stream::kind::eager).submit(net).wait();
