@@ -374,6 +374,19 @@ class Tensor(_TensorLike):
       A `TensorShape` representing the shape of this tensor.
 
     """
+    if _USE_C_API:
+      graph = self._op._graph._c_graph  # pylint: disable=protected-access
+      with errors.raise_exception_on_not_ok_status() as status:
+        num_dims = c_api.TF_GraphGetTensorNumDims(graph, self._as_tf_output(),
+                                                  status)
+      if num_dims == -1:
+        dim_list = None
+      else:
+        with errors.raise_exception_on_not_ok_status() as status:
+          dim_list = c_api.TF_GraphGetTensorShape_wrapper(
+              graph, self._as_tf_output(), num_dims, status)
+        dim_list = [None if i == -1 else i for i in dim_list]
+      return tensor_shape.TensorShape(dim_list)
     return self._shape
 
   def __iter__(self):
@@ -393,8 +406,8 @@ class Tensor(_TensorLike):
       yield self[i]
 
   def _shape_as_list(self):
-    if self._shape.ndims is not None:
-      return [dim.value for dim in self._shape.dims]
+    if self.shape.ndims is not None:
+      return [dim.value for dim in self.shape.dims]
     else:
       return None
 
@@ -410,7 +423,7 @@ class Tensor(_TensorLike):
     Returns:
       Integer rank or None
     """
-    return self._shape.ndims
+    return self.shape.ndims
 
   def get_shape(self):
     """Alias of Tensor.shape."""
@@ -441,14 +454,35 @@ class Tensor(_TensorLike):
     ```
 
     Args:
-      shape: A `TensorShape` representing the shape of this tensor.
+      shape: A `TensorShape` representing the shape of this tensor, a
+      `TensorShapeProto`, a list, a tuple, or None.
 
     Raises:
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
-    # TODO(skyewm): call C API
-    self._shape = self._shape.merge_with(shape)
+    if not _USE_C_API:
+      self._shape = self._shape.merge_with(shape)  # pylint: disable=protected-access
+      return
+    if not isinstance(shape, tensor_shape.TensorShape):
+      shape = tensor_shape.TensorShape(shape)
+    dim_list = []
+    if shape.dims is None:
+      unknown_shape = True
+    else:
+      unknown_shape = False
+      for dim in shape.dims:
+        if dim.value is None:
+          dim_list.append(-1)
+        else:
+          dim_list.append(dim.value)
+    with errors.raise_exception_on_not_ok_status() as status:
+      c_api.TF_GraphSetTensorShape_wrapper(
+          self._op._graph._c_graph,  # pylint: disable=protected-access
+          self._as_tf_output(),
+          dim_list,
+          unknown_shape,
+          status)
 
   @property
   def value_index(self):
@@ -4521,15 +4555,11 @@ def control_dependencies(control_inputs):
   See @{tf.Graph.control_dependencies}
   for more details.
 
-  When eager execution is enabled, any callable object in the `control_inputs`
-  list will be called.
-
   Args:
     control_inputs: A list of `Operation` or `Tensor` objects which
       must be executed or computed before running the operations
       defined in the context.  Can also be `None` to clear the control
-      dependencies. If eager execution is enabled, any callable object in the
-      `control_inputs` list will be called.
+      dependencies.
 
   Returns:
    A context manager that specifies control dependencies for all
@@ -4538,11 +4568,6 @@ def control_dependencies(control_inputs):
   if context.in_graph_mode():
     return get_default_graph().control_dependencies(control_inputs)
   else:
-    if control_inputs:
-      # Excute any pending callables.
-      for control in control_inputs:
-        if callable(control):
-          control()
     return _NullContextmanager()
 
 
