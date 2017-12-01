@@ -44,7 +44,8 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       CreateWorkerSessionResponse* response,
                                       StatusCallback done) {
   Status s = env_->session_mgr->CreateSession(request->session_handle(),
-                                              request->server_def());
+                                              request->server_def(),
+                                              request->isolate_session_state());
   done(s);
 }
 

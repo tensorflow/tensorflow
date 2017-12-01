@@ -184,10 +184,11 @@ class ConvOp : public XlaOpKernel {
     dims.set_input_feature_dimension(feature_dim);
     dims.set_output_feature_dimension(feature_dim);
     for (int i = 0; i < num_spatial_dims_; ++i) {
-      int input_dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
-      dims.add_spatial_dimensions(input_dim);
+      int64 dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
+      dims.add_input_spatial_dimensions(dim);
       dims.add_kernel_spatial_dimensions(i);
-      window_strides.push_back(strides_.at(input_dim));
+      dims.add_output_spatial_dimensions(dim);
+      window_strides.push_back(strides_.at(dim));
     }
     dims.set_kernel_input_feature_dimension(num_spatial_dims_);
     dims.set_kernel_output_feature_dimension(num_spatial_dims_ + 1);
@@ -302,9 +303,10 @@ class ConvBackpropInputOp : public XlaOpKernel {
     std::vector<int64> lhs_dilation(num_spatial_dims_);
     std::vector<int64> ones(num_spatial_dims_, 1);
     for (int i = 0; i < num_spatial_dims_; ++i) {
-      dnums.add_spatial_dimensions(
-          GetTensorSpatialDimIndex(num_dims(), data_format_, i));
+      int64 dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
+      dnums.add_input_spatial_dimensions(dim);
       dnums.add_kernel_spatial_dimensions(i);
+      dnums.add_output_spatial_dimensions(dim);
 
       kernel_spatial_dims[i] = i;
       padding[i] = {dims.spatial_dims[i].pad_before,
@@ -439,9 +441,10 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     std::vector<int64> ones(num_spatial_dims_, 1);
 
     for (int i = 0; i < num_spatial_dims_; ++i) {
-      int dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
-      dnums.add_spatial_dimensions(dim);
+      int64 dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
+      dnums.add_input_spatial_dimensions(dim);
       dnums.add_kernel_spatial_dimensions(dim);
+      dnums.add_output_spatial_dimensions(dim);
 
       // We will also need to pad the input with zeros such that after the
       // convolution, we get the right size for the filter.
@@ -506,7 +509,7 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     std::vector<int64> transpose_dims;
     transpose_dims.reserve(num_dims());
     for (int i = 0; i < num_spatial_dims_; ++i) {
-      transpose_dims.push_back(dnums.spatial_dimensions(i));
+      transpose_dims.push_back(dnums.output_spatial_dimensions(i));
     }
     transpose_dims.push_back(c_dim);
     transpose_dims.push_back(n_dim);

@@ -123,6 +123,13 @@ class FlatMapDatasetTest(test.TestCase):
         sess.run(get_next)
   # pylint: enable=g-long-lambda
 
+<<<<<<< HEAD
+=======
+  def testSparse(self):
+    def _map_fn(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
+>>>>>>> tensorflow_master
 
 class InterleaveDatasetTest(test.TestCase):
 

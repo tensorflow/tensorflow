@@ -330,8 +330,8 @@ When run, it produces
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
 
-Notice that the loss is a very small number (very close to zero). If you run 
-this program, your loss may not be exactly the same as the aforementioned loss 
+Notice that the loss is a very small number (very close to zero). If you run
+this program, your loss may not be exactly the same as the aforementioned loss
 because the model is initialized with pseudorandom values.
 
 This more complicated program can still be visualized in TensorBoard

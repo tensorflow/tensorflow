@@ -703,6 +703,148 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   EXPECT_EQ("float: [128,256]", PropToString(prop));
 }
 
+<<<<<<< HEAD
+=======
+TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
+  // Test graph produced in python using:
+  /*
+    @function.Defun(*[tf.float32] * 2, noinline=True)
+    def MyAdd(x, y):
+      return tf.add(x,y)
+
+    with tf.Graph().as_default():
+      x = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      y = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      z = MyAdd(x, y)
+      z = MyAdd(x, z)
+  */
+  // Check that the shape of the second MyAdd node propagates
+  // correctly.
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "simple_function.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto props = properties.GetOutputProperties("MyAdd_55e046a8_1");
+  const OpInfo::TensorProperties& prop = props[0];
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_FALSE(prop.shape().unknown_rank());
+  EXPECT_EQ(2, prop.shape().dim_size());
+  EXPECT_EQ(1, prop.shape().dim(0).size());
+  EXPECT_EQ(2, prop.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, SymbolicShapes) {
+  // Build a simple graph with placeholders of unknown dimensions. These
+  // dimensions will be encoded symbolically.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a =
+      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
+  Output b =
+      ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1})));
+  Output c = ops::Identity(s.WithOpName("c"), a);
+  Output d = ops::Identity(s.WithOpName("d"), b);
+  Output e = ops::Add(s.WithOpName("e"), c, d);
+  Output f = ops::Add(s.WithOpName("f"), a, c);
+
+  Output zero = ops::Const(s.WithOpName("zero"), 0.0f, {});
+  Output g = ops::Shape(s.WithOpName("g"), c);
+  Output h = ops::Fill(s.WithOpName("h"), g, zero);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
+  const auto shape_c = properties.GetOutputProperties("c").at(0).shape();
+  EXPECT_EQ(2, shape_a.dim_size());
+  EXPECT_EQ(shape_a.dim_size(), shape_c.dim_size());
+  EXPECT_GE(-2, shape_a.dim(0).size());
+  EXPECT_EQ(shape_a.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_GE(-2, shape_a.dim(1).size());
+  EXPECT_EQ(shape_a.dim(1).size(), shape_c.dim(1).size());
+
+  const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
+  const auto shape_d = properties.GetOutputProperties("d").at(0).shape();
+  EXPECT_EQ(1, shape_b.dim_size());
+  EXPECT_EQ(shape_b.dim_size(), shape_d.dim_size());
+  EXPECT_GE(-2, shape_b.dim(0).size());
+  EXPECT_NE(shape_a.dim(0).size(), shape_b.dim(0).size());
+  EXPECT_EQ(shape_b.dim(0).size(), shape_d.dim(0).size());
+
+  const auto shape_e = properties.GetOutputProperties("e").at(0).shape();
+  ASSERT_EQ(2, shape_e.dim_size());
+  EXPECT_EQ(shape_e.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_NE(shape_e.dim(1).size(), shape_c.dim(1).size());
+  EXPECT_NE(shape_e.dim(0).size(), shape_d.dim(0).size());
+
+  const auto shape_f = properties.GetOutputProperties("f").at(0).shape();
+  ASSERT_EQ(2, shape_f.dim_size());
+  EXPECT_EQ(shape_f.dim(0).size(), shape_a.dim(0).size());
+  EXPECT_EQ(shape_f.dim(1).size(), shape_a.dim(1).size());
+
+  const auto shape_h = properties.GetOutputProperties("h").at(0).shape();
+  ASSERT_EQ(2, shape_f.dim_size());
+  EXPECT_EQ(shape_h.dim(0).size(), shape_c.dim(0).size());
+  EXPECT_EQ(shape_h.dim(1).size(), shape_c.dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 1.0f, {1});
+  Output b = ops::Const(s.WithOpName("b"), 2.0f, {1});
+  Output c = ops::Const(s.WithOpName("c").ColocateWith(a), 3.0f, {1});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  // Create a graph with node a removed (say by some graph optimization
+  // pass), noting that node c is colocated with a. This is fine as it
+  // is in the late stage of graph execution, the colocation constraints have
+  // been validated previously and the device placement of nodes has completed.
+  GraphDef optimized_graph;
+  for (const auto& node : item.graph.node()) {
+    if (node.name() != "a") {
+      *optimized_graph.add_node() = node;
+    }
+  }
+  item.graph.Swap(&optimized_graph);
+  GraphProperties properties(item);
+  // This function should return OK, since it doesn't validate the colocation
+  // constraints internally.
+  TF_EXPECT_OK(properties.InferStatically());
+}
+
+TEST_F(GraphPropertiesTest, ShapeTracking) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a =
+      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
+  Output b =
+      ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape({-1})));
+  Output zero = ops::Const(s.WithOpName("zero"), 0.0f, {});
+  auto shp = ops::ShapeN(s.WithOpName("shapes"), {a, b});
+  Output o1 = ops::Fill(s.WithOpName("o1"), shp[0], zero);
+  Output o2 = ops::Fill(s.WithOpName("o2"), shp[1], zero);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
+  const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
+  const auto shape_o1 = properties.GetOutputProperties("o1").at(0).shape();
+  const auto shape_o2 = properties.GetOutputProperties("o2").at(0).shape();
+  EXPECT_EQ(shape_a.DebugString(), shape_o1.DebugString());
+  EXPECT_EQ(shape_b.DebugString(), shape_o2.DebugString());
+}
+
+>>>>>>> tensorflow_master
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

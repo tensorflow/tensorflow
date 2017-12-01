@@ -49,8 +49,10 @@ class ConvolutionFoldingTest : public HloTestBase {
     tf_default_dnums_for_backward_filter_.set_output_batch_dimension(3);
     tf_default_dnums_for_backward_filter_.set_input_feature_dimension(0);
     tf_default_dnums_for_backward_filter_.set_output_feature_dimension(0);
-    tf_default_dnums_for_backward_filter_.add_spatial_dimensions(1);
-    tf_default_dnums_for_backward_filter_.add_spatial_dimensions(2);
+    tf_default_dnums_for_backward_filter_.add_input_spatial_dimensions(1);
+    tf_default_dnums_for_backward_filter_.add_output_spatial_dimensions(1);
+    tf_default_dnums_for_backward_filter_.add_input_spatial_dimensions(2);
+    tf_default_dnums_for_backward_filter_.add_output_spatial_dimensions(2);
     tf_default_dnums_for_backward_filter_.set_kernel_input_feature_dimension(0);
     tf_default_dnums_for_backward_filter_.set_kernel_output_feature_dimension(
         3);
@@ -61,8 +63,10 @@ class ConvolutionFoldingTest : public HloTestBase {
     tf_default_dnums_for_backward_input_.set_output_batch_dimension(0);
     tf_default_dnums_for_backward_input_.set_input_feature_dimension(3);
     tf_default_dnums_for_backward_input_.set_output_feature_dimension(3);
-    tf_default_dnums_for_backward_input_.add_spatial_dimensions(1);
-    tf_default_dnums_for_backward_input_.add_spatial_dimensions(2);
+    tf_default_dnums_for_backward_input_.add_input_spatial_dimensions(1);
+    tf_default_dnums_for_backward_input_.add_output_spatial_dimensions(1);
+    tf_default_dnums_for_backward_input_.add_input_spatial_dimensions(2);
+    tf_default_dnums_for_backward_input_.add_output_spatial_dimensions(2);
     tf_default_dnums_for_backward_input_.set_kernel_input_feature_dimension(3);
     tf_default_dnums_for_backward_input_.set_kernel_output_feature_dimension(2);
     tf_default_dnums_for_backward_input_.add_kernel_spatial_dimensions(0);
@@ -258,8 +262,10 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveEvenPadding) {
   conv_dnums.set_output_batch_dimension(0);
   conv_dnums.set_input_feature_dimension(1);
   conv_dnums.set_output_feature_dimension(1);
-  conv_dnums.add_spatial_dimensions(2);
-  conv_dnums.add_spatial_dimensions(3);
+  conv_dnums.add_input_spatial_dimensions(2);
+  conv_dnums.add_output_spatial_dimensions(2);
+  conv_dnums.add_input_spatial_dimensions(3);
+  conv_dnums.add_output_spatial_dimensions(3);
   conv_dnums.set_kernel_input_feature_dimension(0);
   conv_dnums.set_kernel_output_feature_dimension(1);
   conv_dnums.add_kernel_spatial_dimensions(2);

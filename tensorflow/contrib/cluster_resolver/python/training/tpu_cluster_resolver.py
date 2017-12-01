@@ -80,13 +80,9 @@ class TPUClusterResolver(ClusterResolver):
         raise ImportError('googleapiclient must be installed before using the '
                           'TPU cluster resolver')
 
-      # TODO(b/67375680): Remove custom URL once TPU APIs are finalized
       self._service = discovery.build(
-          'tpu',
-          'v1',
-          credentials=self._credentials,
-          discoveryServiceUrl='https://storage.googleapis.com'
-                              '/tpu-api-definition/v1alpha1.json')
+          'tpu', 'v1alpha1',
+          credentials=self._credentials)
     else:
       self._service = service
 

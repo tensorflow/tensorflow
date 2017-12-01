@@ -125,9 +125,13 @@ class _TapeStack(threading.local):
 _tape_stack = _TapeStack()
 
 
-def push_new_tape():
+def push_new_tape(persistent=False):
   """Pushes a new tape onto the tape stack."""
+<<<<<<< HEAD
   _tape_stack.stack.append(Tape())
+=======
+  pywrap_tensorflow.TFE_Py_TapeStackPushNew(persistent)
+>>>>>>> tensorflow_master
 
 
 def watch(tensor):

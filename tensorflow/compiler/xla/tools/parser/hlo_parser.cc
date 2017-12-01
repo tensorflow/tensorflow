@@ -529,9 +529,274 @@ bool HloParser::ParseAttributeValue<HloComputation*>(HloComputation** value) {
   return true;
 }
 
+<<<<<<< HEAD
 template <>
 bool HloParser::ParseAttributeValue<int64>(int64* value) {
   return ParseInt64(value);
+=======
+// ::= '{' size stride? pad? lhs_dilate? rhs_dilate? '}'
+// The subattributes can appear in any order. 'size=' is required, others are
+// optional.
+bool HloParser::ParseWindow(Window* window) {
+  if (!ParseToken(TokKind::kLbrace, "expected '{' to start window attribute")) {
+    return false;
+  }
+
+  std::vector<int64> size;
+  std::vector<int64> stride;
+  std::vector<std::vector<int64>> pad;
+  std::vector<int64> lhs_dilate;
+  std::vector<int64> rhs_dilate;
+  while (lexer_.GetKind() != TokKind::kRbrace) {
+    string field_name;
+    if (!ParseAttributeName(&field_name)) {
+      return TokenError("expects sub-attributes in window");
+    }
+    bool ok = [&] {
+      if (field_name == "size") {
+        return ParseDxD("size", &size);
+      }
+      if (field_name == "stride") {
+        return ParseDxD("stride", &stride);
+      }
+      if (field_name == "lhs_dilate") {
+        return ParseDxD("lhs_dilate", &lhs_dilate);
+      }
+      if (field_name == "rhs_dilate") {
+        return ParseDxD("rls_dilate", &rhs_dilate);
+      }
+      if (field_name == "pad") {
+        return ParseWindowPad(&pad);
+      }
+      return TokenError(StrCat("unexpected attribute name: ", field_name));
+    }();
+    if (!ok) {
+      return false;
+    }
+  }
+
+  if (size.empty()) {
+    return TokenError(
+        "sub-attribute 'size=' is required in the window attribute");
+  }
+  if (!stride.empty() && stride.size() != size.size()) {
+    return TokenError("expects 'stride=' has the same size as 'size='");
+  }
+  if (!lhs_dilate.empty() && lhs_dilate.size() != size.size()) {
+    return TokenError("expects 'lhs_dilate=' has the same size as 'size='");
+  }
+  if (!rhs_dilate.empty() && rhs_dilate.size() != size.size()) {
+    return TokenError("expects 'rhs_dilate=' has the same size as 'size='");
+  }
+  if (!pad.empty() && pad.size() != size.size()) {
+    return TokenError("expects 'pad=' has the same size as 'size='");
+  }
+
+  for (int i = 0; i < size.size(); i++) {
+    window->add_dimensions()->set_size(size[i]);
+    if (!pad.empty()) {
+      window->mutable_dimensions(i)->set_padding_low(pad[i][0]);
+      window->mutable_dimensions(i)->set_padding_high(pad[i][1]);
+    }
+    // If some field is not present, it has the default value.
+    window->mutable_dimensions(i)->set_stride(stride.empty() ? 1 : stride[i]);
+    window->mutable_dimensions(i)->set_base_dilation(
+        lhs_dilate.empty() ? 1 : lhs_dilate[i]);
+    window->mutable_dimensions(i)->set_window_dilation(
+        rhs_dilate.empty() ? 1 : rhs_dilate[i]);
+  }
+  return ParseToken(TokKind::kRbrace, "expected '}' to end window attribute");
+}
+
+// This is the inverse of HloInstruction::ConvolutionDimensionNumbersToString.
+// The string looks like "dim_labels=0bf_0io->0bf".
+bool HloParser::ParseConvolutionDimensionNumbers(
+    ConvolutionDimensionNumbers* dnums) {
+  if (lexer_.GetKind() != TokKind::kDimLabels) {
+    return TokenError("expects dim labels pattern, e.g., 'bf0_0io->0bf'");
+  }
+  string str = lexer_.GetStrVal();
+
+  // The str is expected to have 3 items, lhs, rhs, out, and it must looks like
+  // lhs_rhs->out, that is, the first separator is "_" and the second is "->".
+  // So we replace the "->" with "_" and then split on "_".
+  str = tensorflow::str_util::StringReplace(str, /*oldsub=*/"->",
+                                            /*newsub=*/"_",
+                                            /*replace_all=*/false);
+  std::vector<string> lhs_rhs_out = Split(str, "_");
+  if (lhs_rhs_out.size() != 3) {
+    LOG(FATAL) << "expects 3 items: lhs, rhs, and output dims, but sees "
+               << str;
+  }
+
+  const int64 rank = lhs_rhs_out[0].length();
+  if (rank != lhs_rhs_out[1].length() || rank != lhs_rhs_out[2].length()) {
+    return TokenError(
+        "convolution lhs, rhs, and output must have the same rank");
+  }
+  if (rank < 2) {
+    return TokenError("convolution rank must >=2");
+  }
+
+  auto is_unique = [](string str) -> bool {
+    std::sort(str.begin(), str.end());
+    return std::unique(str.begin(), str.end()) == str.end();
+  };
+
+  // lhs
+  {
+    const string& lhs = lhs_rhs_out[0];
+    if (!is_unique(lhs)) {
+      return TokenError(
+          StrCat("expects unique lhs dimension numbers, but sees ", lhs));
+    }
+    for (int i = 0; i < rank - 2; i++) {
+      dnums->add_input_spatial_dimensions(-1);
+    }
+    for (int i = 0; i < rank; i++) {
+      char c = lhs[i];
+      if (c == 'b') {
+        dnums->set_input_batch_dimension(i);
+      } else if (c == 'f') {
+        dnums->set_input_feature_dimension(i);
+      } else if (c < '0' + rank && c >= '0') {
+        dnums->set_input_spatial_dimensions(c - '0', i);
+      } else {
+        return TokenError(
+            Printf("expects [0-%lldbf] in lhs dimension numbers", rank - 1));
+      }
+    }
+  }
+  // rhs
+  {
+    const string& rhs = lhs_rhs_out[1];
+    if (!is_unique(rhs)) {
+      return TokenError(
+          StrCat("expects unique rhs dimension numbers, but sees ", rhs));
+    }
+    for (int i = 0; i < rank - 2; i++) {
+      dnums->add_kernel_spatial_dimensions(-1);
+    }
+    for (int i = 0; i < rank; i++) {
+      char c = rhs[i];
+      if (c == 'i') {
+        dnums->set_kernel_input_feature_dimension(i);
+      } else if (c == 'o') {
+        dnums->set_kernel_output_feature_dimension(i);
+      } else if (c < '0' + rank && c >= '0') {
+        dnums->set_kernel_spatial_dimensions(c - '0', i);
+      } else {
+        return TokenError(
+            Printf("expects [0-%lldio] in rhs dimension numbers", rank - 1));
+      }
+    }
+  }
+  // output
+  {
+    const string& out = lhs_rhs_out[2];
+    if (!is_unique(out)) {
+      return TokenError(
+          StrCat("expects unique output dimension numbers, but sees ", out));
+    }
+    for (int i = 0; i < rank - 2; i++) {
+      dnums->add_output_spatial_dimensions(-1);
+    }
+    for (int i = 0; i < rank; i++) {
+      char c = out[i];
+      if (c == 'b') {
+        dnums->set_output_batch_dimension(i);
+      } else if (c == 'f') {
+        dnums->set_output_feature_dimension(i);
+      } else if (c < '0' + rank && c >= '0') {
+        dnums->set_output_spatial_dimensions(c - '0', i);
+      } else {
+        return TokenError(
+            Printf("expects [0-%lldbf] in output dimension numbers", rank - 1));
+      }
+    }
+  }
+
+  lexer_.Lex();
+  return true;
+}
+
+// ::= '{' ranges '}'
+//   ::= /*empty*/
+//   ::= range (',' range)*
+// range ::= '[' start ':' limit (':' stride)? ']'
+//
+// The slice ranges are printed as:
+//
+//  {[dim0_start:dim0_limit:dim0stride], [dim1_start:dim1_limit], ...}
+//
+// This function extracts the starts, limits, and strides as 3 vectors to the
+// result. If stride is not present, stride is 1. For example, if the slice
+// ranges is printed as:
+//
+//  {[2:3:4], [5:6:7], [8:9]}
+//
+// The the parsed result will be:
+//
+//  {/*starts=*/{2, 5, 8}, /*limits=*/{3, 6, 9}, /*strides=*/{4, 7, 1}}
+//
+bool HloParser::ParseSliceRanges(SliceRanges* result) {
+  if (!ParseToken(TokKind::kLbrace, "expects '{' to start ranges")) {
+    return false;
+  }
+  std::vector<std::vector<int64>> ranges;
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    // empty
+    return ParseToken(TokKind::kRbrace, "expects '}' to end ranges");
+  }
+  do {
+    ranges.emplace_back();
+    if (!ParseInt64List(TokKind::kLsquare, TokKind::kRsquare, TokKind::kColon,
+                        &ranges.back())) {
+      return false;
+    }
+  } while (EatIfPresent(TokKind::kComma));
+
+  for (const auto& range : ranges) {
+    if (range.size() != 2 && range.size() != 3) {
+      return TokenError(Printf(
+          "expects [start:limit:step] or [start:limit], but sees %ld elements.",
+          range.size()));
+    }
+  }
+
+  for (const auto& range : ranges) {
+    result->starts.push_back(range[0]);
+    result->limits.push_back(range[1]);
+    result->strides.push_back(range.size() == 3 ? range[2] : 1);
+  }
+  return ParseToken(TokKind::kRbrace, "expects '}' to end ranges");
+}
+
+// int64list ::= start int64_elements end
+// int64_elements
+//   ::= /*empty*/
+//   ::= int64_val (delim int64_val)*
+bool HloParser::ParseInt64List(const TokKind start, const TokKind end,
+                               const TokKind delim,
+                               std::vector<int64>* result) {
+  if (!ParseToken(start, StrCat("expects an int64 list starting with ",
+                                TokKindToString(start)))) {
+    return false;
+  }
+  if (lexer_.GetKind() == end) {
+    // empty
+  } else {
+    do {
+      int64 i;
+      if (!ParseInt64(&i)) {
+        return false;
+      }
+      result->push_back(i);
+    } while (EatIfPresent(delim));
+  }
+  return ParseToken(
+      end, StrCat("expects an int64 list to end with ", TokKindToString(end)));
+>>>>>>> tensorflow_master
 }
 
 // param_list ::= '(' param_list1 ')'

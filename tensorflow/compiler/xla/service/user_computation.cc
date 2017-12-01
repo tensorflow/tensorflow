@@ -1702,6 +1702,14 @@ void ConstantVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kBitcastConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().bitcast_convert_request();
+      PureFunctionalVisitor(session_computation, convert_request.operand(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
     case OpRequest::kWhileRequest: {
       const WhileRequest& while_request = request.request().while_request();
       ConstantVisitor(session_computation, while_request.init(), visited,

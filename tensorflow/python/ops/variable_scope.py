@@ -1177,6 +1177,63 @@ def _get_default_variable_store():
   return store
 
 
+<<<<<<< HEAD
+=======
+@tf_contextlib.contextmanager
+def with_variable_store(store):
+  store_collection = ops.get_collection_ref(_VARSTORE_KEY)
+  old = list(store_collection)
+  store_collection[:] = [store]
+  try:
+    yield
+  finally:
+    store_collection[:] = old
+
+
+class EagerVariableStore(object):
+  """Wrapper allowing functional layers to be used with eager execution.
+
+  When eager execution is enabled Variables get deleted when they go out of
+  scope, and are not stored in global collections by default. A lot of code
+  (mostly the functional layers in tf.layers) assumes that variables are kept in
+  a global list.
+
+  EagerVariableStore can be used in conjunction with this code to make it
+  eager-friendly. For example, to create a dense layer, use:
+
+  ```
+    container = tfe.EagerVariableStore()
+    for input in dataset_iterator:
+      with container.as_default():
+        x = tf.layers.dense(input, name="l1")
+    print(container.variables)  # Should print the variables used in the layer.
+  ```
+  """
+
+  def __init__(self):
+    self._store = _VariableStore()
+    self._store._store_eager_variables = True  # pylint: disable=protected-access
+
+  def as_default(self):
+    return with_variable_store(self._store)
+
+  def variables(self):
+    return sorted(self._store._vars.values(), key=lambda x: x.name)  # pylint: disable=protected-access
+
+  def trainable_variables(self):
+    # pylint: disable=protected-access
+    return sorted([x for x in self._store._vars.values() if x._trainable],
+                  key=lambda x: x.name)
+    # pylint: enable=protected-access
+
+  def non_trainable_variables(self):
+    # pylint: disable=protected-access
+    return sorted([x for x in self._store._vars.values() if not x._trainable],
+                  key=lambda x: x.name)
+    # pylint: enable=protected-access
+
+
+>>>>>>> tensorflow_master
 def get_variable(name,
                  shape=None,
                  dtype=None,

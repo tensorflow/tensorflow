@@ -37,6 +37,13 @@ bool IsReduction(const NodeDef& node);
 bool IsReshape(const NodeDef& node);
 bool IsRestore(const NodeDef& node);
 bool IsSend(const NodeDef& node);
+<<<<<<< HEAD
+=======
+bool IsSlice(const NodeDef& node);
+bool IsSplit(const NodeDef& node);
+bool IsSquaredDifference(const NodeDef& node);
+bool IsSqueeze(const NodeDef& node);
+>>>>>>> tensorflow_master
 bool IsStopGradient(const NodeDef& node);
 bool IsSwitch(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);

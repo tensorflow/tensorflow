@@ -802,3 +802,25 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://github.com/google/flatbuffers/archive/971a68110e4fc1bace10fcb6deeb189e7e1a34ce.tar.gz",
       ],
   )
+<<<<<<< HEAD
+=======
+
+  native.http_archive(
+      name = "double_conversion",
+      urls = [
+          "https://github.com/google/double-conversion/archive/5664746c5e64dc265e7fbc1a890a6698e6ad0ebb.zip",
+      ],
+      sha256 = "a0c49fb3cc8d34b2230d278a115f1bb266bcfcaae10400b84dc2a3b7dc2c8bc6",
+      strip_prefix = "double-conversion-5664746c5e64dc265e7fbc1a890a6698e6ad0ebb",
+  )
+  
+  native.new_http_archive(
+      name = "tflite_mobilenet",
+      build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+      sha256 = "23f814d1c076bdf03715dfb6cab3713aa4fbdf040fd5448c43196bd2e97a4c1b",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip",
+      ],
+  )
+>>>>>>> tensorflow_master

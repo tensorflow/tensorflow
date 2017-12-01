@@ -1395,6 +1395,59 @@ _VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/]*$")
 _VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/]*$")
 
 
+<<<<<<< HEAD
+=======
+def _create_c_op(graph, node_def, inputs, control_inputs):
+  """Creates a TF_Operation.
+
+  Args:
+    graph: a `Graph`.
+    node_def: `node_def_pb2.NodeDef` for the operation to create.
+    inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
+      `Tensor`s (corresponding to sequence inputs, e.g. "int64 * N",
+      "list(int64)"). The length of the list should be equal to the number of
+      inputs specified by this operation's op def.
+    control_inputs: A list of `Operation`s to set as control dependencies.
+
+  Returns:
+    A wrapped TF_Operation*.
+  """
+  # pylint: disable=protected-access
+  op_desc = c_api.TF_NewOperation(graph._c_graph,
+                                  compat.as_str(node_def.op),
+                                  compat.as_str(node_def.name))
+  # Add inputs
+  for op_input in inputs:
+    if isinstance(op_input, (list, tuple)):
+      c_api.TF_AddInputList(op_desc, [t._as_tf_output() for t in op_input])
+    else:
+      c_api.TF_AddInput(op_desc, op_input._as_tf_output())
+
+  # Add control inputs
+  for control_input in control_inputs:
+    c_api.TF_AddControlInput(op_desc, control_input._c_op)
+  # pylint: enable=protected-access
+
+  # Add attrs
+  for name, attr_value in node_def.attr.items():
+    serialized = attr_value.SerializeToString()
+    # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
+    # It might be worth creating a convenient way to re-use the same status.
+    with errors.raise_exception_on_not_ok_status() as status:
+      c_api.TF_SetAttrValueProto(op_desc,
+                                 compat.as_str(name), serialized, status)
+
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      c_op = c_api.TF_FinishOperation(op_desc, status)
+  except errors.InvalidArgumentError as e:
+    # Convert to ValueError for backwards compatibility.
+    raise ValueError(str(e))
+
+  return c_op
+
+
+>>>>>>> tensorflow_master
 class Operation(object):
   """Represents a graph node that performs computation on tensors.
 
@@ -2266,8 +2319,28 @@ class RegisterShape(object):
     return f
 
 
-def set_shapes_for_outputs(op):
-  """Uses the registered shape functions to set the shapes for op's outputs."""
+def _set_shapes_for_outputs_c_api(op):
+  """set_shapes_for_outputs implementation when C API is enabled."""
+  # The C API computes the shapes when the TF_Operation is created. Fetch the
+  # output shapes from the C object.
+  for output in op.outputs:
+    with errors.raise_exception_on_not_ok_status() as status:
+      # pylint: disable=protected-access
+      shape_vector, unknown_shape = c_api.TF_GraphGetTensorShapeHelper(
+          op._graph._c_graph, output._as_tf_output(), status)
+      # pylint: enable=protected-access
+    if unknown_shape:
+      output.set_shape(tensor_shape.unknown_shape())
+    elif not shape_vector:
+      output.set_shape(tensor_shape.scalar())
+    else:
+      shape_vector = [None if d == -1 else d for d in shape_vector]
+      output.set_shape(tensor_shape.TensorShape(shape_vector))
+
+
+# TODO(skyewm): remove this when _USE_C_API flag is removed.
+def _set_shapes_for_outputs(op):
+  """set_shapes_for_outputs implementation when C API is disabled."""
   try:
     shape_func = _shape_registry.lookup(op.type)
   except LookupError:
@@ -2296,6 +2369,14 @@ def set_shapes_for_outputs(op):
         (op, len(shapes), len(op.outputs), shape_func.__name__, str(shapes)))
   for output, s in zip(op.outputs, shapes):
     output.set_shape(s)
+
+
+def set_shapes_for_outputs(op):
+  """Set the shapes for op's outputs."""
+  if op._c_op:  # pylint: disable=protected-access
+    return _set_shapes_for_outputs_c_api(op)
+  else:
+    return _set_shapes_for_outputs(op)
 
 
 class OpStats(object):
@@ -2991,6 +3072,60 @@ class Graph(object):
 
     node_def = _NodeDef(op_type, name, device=None, attrs=attrs)
 
+<<<<<<< HEAD
+=======
+    input_ops = set([t.op for t in inputs])
+    control_inputs = self._control_dependencies_for_inputs(input_ops)
+    ret = Operation(
+        node_def,
+        self,
+        inputs=inputs,
+        output_types=dtypes,
+        control_inputs=control_inputs,
+        input_types=input_types,
+        original_op=self._default_original_op,
+        op_def=op_def)
+
+    self._create_op_helper(ret, compute_shapes=compute_shapes,
+                           compute_device=compute_device)
+    return ret
+
+  def _create_op_from_tf_operation(self, c_op):
+    """Creates an `Operation` in this graph from the supplied TF_Operation.
+
+    This method is like create_op() except the new Operation is constructed
+    using `c_op`. The returned Operation will have `c_op` as its _c_op
+    field. This is used to create Operation objects around TF_Operations created
+    indirectly by the C API (e.g. by TF_ImportGraphDef, TF_FinishWhile).
+
+    Args:
+      c_op: a wrapped TF_Operation
+
+    Returns:
+      An `Operation` object.
+    """
+    self._check_not_finalized()
+    tf_outputs = c_api.GetOperationInputs(c_op)
+    input_ops = set(self._get_operation_by_tf_operation(output.oper)
+                    for output in tf_outputs)
+    control_inputs = self._control_dependencies_for_inputs(input_ops)
+    ret = Operation(c_op, self, control_inputs=control_inputs)
+    self._create_op_helper(ret)
+    return ret
+
+  def _create_op_helper(self, op, compute_shapes=True, compute_device=True):
+    """Common logic for creating an op in this graph."""
+    # TODO(vrv): Instead of eagerly filling in shape property for every op, only
+    # populate the shape when requested.
+    #
+    # TODO(skyewm): unlike in the original Python implementation, the C API
+    # always computes shape information (even for function calls, which the
+    # original Python shape inference code doesn't handle). Deprecate the
+    # compute_shapes argument.
+    if op._c_op or compute_shapes:  # pylint: disable=protected-access
+      set_shapes_for_outputs(op)
+
+>>>>>>> tensorflow_master
     # Apply any additional attributes requested. Do not overwrite any existing
     # attributes.
     for key, value in self._attr_scope_map.items():
@@ -4367,11 +4502,15 @@ def control_dependencies(control_inputs):
   See @{tf.Graph.control_dependencies}
   for more details.
 
+  When eager execution is enabled, any callable object in the `control_inputs`
+  list will be called.
+
   Args:
     control_inputs: A list of `Operation` or `Tensor` objects which
       must be executed or computed before running the operations
       defined in the context.  Can also be `None` to clear the control
-      dependencies.
+      dependencies. If eager execution is enabled, any callable object in the
+      `control_inputs` list will be called.
 
   Returns:
    A context manager that specifies control dependencies for all
@@ -4380,6 +4519,11 @@ def control_dependencies(control_inputs):
   if context.in_graph_mode():
     return get_default_graph().control_dependencies(control_inputs)
   else:
+    if control_inputs:
+      # Excute any pending callables.
+      for control in control_inputs:
+        if callable(control):
+          control()
     return _NullContextmanager()
 
 

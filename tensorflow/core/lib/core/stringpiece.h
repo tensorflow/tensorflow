@@ -114,10 +114,13 @@ class StringPiece {
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 
+<<<<<<< HEAD
   struct Hasher {
     size_t operator()(StringPiece arg) const;
   };
 
+=======
+>>>>>>> tensorflow_master
   // Return a string that contains the copy of the referenced data.
   std::string ToString() const { return std::string(data_, size_); }
 

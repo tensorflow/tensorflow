@@ -32,6 +32,10 @@ from setuptools.dist import Distribution
 _VERSION = '1.4.0-rc0'
 
 REQUIRED_PACKAGES = [
+<<<<<<< HEAD
+=======
+    'absl-py',
+>>>>>>> tensorflow_master
     'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',

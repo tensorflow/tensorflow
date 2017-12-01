@@ -18,9 +18,40 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+<<<<<<< HEAD
 bool IsAddN(const NodeDef& node) {
   const auto op = node.op();
   return op == "AddN";
+=======
+bool IsAdd(const NodeDef& node) {
+  return node.op() == "Add" || node.op() == "AddV2";
+}
+
+bool IsAddN(const NodeDef& node) { return node.op() == "AddN"; }
+
+bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
+
+bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
+
+bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
+
+bool IsConcatOffset(const NodeDef& node) { return node.op() == "ConcatOffset"; }
+
+bool IsConstant(const NodeDef& node) { return node.op() == "Const"; }
+
+bool IsConv2D(const NodeDef& node) { return node.op() == "Conv2D"; }
+
+bool IsConv2DBackpropFilter(const NodeDef& node) {
+  return node.op() == "Conv2DBackpropFilter";
+}
+
+bool IsConv2DBackpropInput(const NodeDef& node) {
+  return node.op() == "Conv2DBackpropInput";
+}
+
+bool IsDepthwiseConv2dNative(const NodeDef& node) {
+  return node.op() == "DepthwiseConv2dNative";
+>>>>>>> tensorflow_master
 }
 
 bool IsConcat(const NodeDef& node) {
@@ -94,9 +125,20 @@ bool IsRestore(const NodeDef& node) {
           node.op() == "RestoreSlice");
 }
 
+<<<<<<< HEAD
 bool IsSend(const NodeDef& node) {
   const auto op = node.op();
   return op == "_Send";
+=======
+bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
+
+bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
+
+bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
+
+bool IsSquaredDifference(const NodeDef& node) {
+  return node.op() == "SquaredDifference";
+>>>>>>> tensorflow_master
 }
 
 bool IsStopGradient(const NodeDef& node) {

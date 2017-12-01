@@ -486,19 +486,147 @@ class ReferenceUtil {
   }
 
   // Returns the result of a 2D pad on an input matrix.
-  static std::unique_ptr<Array2D<float>> PadArray2D(
-      const Array2D<float>& operand, const PaddingConfig& padding,
-      const float pad);
+  template <typename NativeT>
+  static std::unique_ptr<Array2D<NativeT>> PadArray2D(
+      const Array2D<NativeT>& operand, const PaddingConfig& padding,
+      const NativeT pad) {
+    int64 in0 = operand.n1();
+    int64 high_padding0 = padding.dimensions(0).edge_padding_high();
+    int64 low_padding0 = padding.dimensions(0).edge_padding_low();
+    int64 interior_padding0 = padding.dimensions(0).interior_padding();
+    int64 out0 =
+        in0 + low_padding0 + high_padding0 + (in0 - 1) * interior_padding0;
+
+    int64 in1 = operand.n2();
+    int64 high_padding1 = padding.dimensions(1).edge_padding_high();
+    int64 low_padding1 = padding.dimensions(1).edge_padding_low();
+    int64 interior_padding1 = padding.dimensions(1).interior_padding();
+    int64 out1 =
+        in1 + low_padding1 + high_padding1 + (in1 - 1) * interior_padding1;
+
+    auto result = MakeUnique<Array2D<NativeT>>(out0, out1);
+    result->Fill(pad);
+    int64 o0 = low_padding0;
+    for (int64 i0 = 0; i0 < in0; ++i0) {
+      int64 o1 = low_padding1;
+      for (int64 i1 = 0; i1 < in1; ++i1) {
+        if (o0 >= 0 && o1 >= 0 && o0 < out0 && o1 < out1) {
+          (*result)(o0, o1) = operand(i0, i1);
+        }
+        o1 += interior_padding1 + 1;
+      }
+      o0 += interior_padding0 + 1;
+    }
+    return result;
+  }
 
   // Returns the result of a 3D pad on an input matrix.
-  static Array3D<float> PadArray3D(const Array3D<float>& operand,
-                                   const PaddingConfig& padding,
-                                   const float pad);
+  template <typename NativeT>
+  static Array3D<NativeT> PadArray3D(const Array3D<NativeT>& operand,
+                                     const PaddingConfig& padding,
+                                     const NativeT pad) {
+    CHECK_EQ(padding.dimensions_size(), 3);
+
+    const std::vector<int64> input_bounds = {operand.n1(), operand.n2(),
+                                             operand.n3()};
+    std::vector<int64> pad_low(3);
+    std::vector<int64> pad_high(3);
+    std::vector<int64> pad_interior(3);
+    std::vector<int64> output_bounds(3);
+    for (int64 i = 0; i < 3; ++i) {
+      pad_low[i] = padding.dimensions(i).edge_padding_low();
+      pad_high[i] = padding.dimensions(i).edge_padding_high();
+      CHECK_LE(0, pad_low[i]);
+      CHECK_LE(0, pad_high[i]);
+      CHECK_LE(0, padding.dimensions(i).interior_padding())
+          << "not implemented";
+      pad_interior[i] = padding.dimensions(i).interior_padding();
+
+      output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
+                         (input_bounds[i] - 1) * pad_interior[i];
+    }
+
+    Array3D<NativeT> result(output_bounds[0], output_bounds[1],
+                            output_bounds[2]);
+    std::vector<int> indices = {0, 0, 0};
+    for (indices[0] = 0; indices[0] < output_bounds[0]; ++indices[0]) {
+      for (indices[1] = 0; indices[1] < output_bounds[1]; ++indices[1]) {
+        for (indices[2] = 0; indices[2] < output_bounds[2]; ++indices[2]) {
+          NativeT* value = &result(indices[0], indices[1], indices[2]);
+          bool value_padded = false;
+          for (int i = 0; i < 3; ++i) {
+            bool in_low_padding = indices[i] < pad_low[i];
+            bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
+            if (in_low_padding || in_high_padding) {
+              *value = pad;
+              value_padded = true;
+            }
+            if (pad_interior[i] &&
+                (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
+              *value = pad;
+              value_padded = true;
+            }
+          }
+          if (value_padded) {
+            continue;
+          }
+          *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
+                           (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
+                           (indices[2] - pad_low[2]) / (pad_interior[2] + 1));
+        }
+      }
+    }
+    return result;
+  }
 
   // Returns the result of a 4D pad on an input array.
-  static Array4D<float> PadArray4D(const Array4D<float>& operand,
-                                   const PaddingConfig& padding,
-                                   const float pad);
+  template <typename NativeT>
+  static Array4D<NativeT> PadArray4D(const Array4D<NativeT>& operand,
+                                     const PaddingConfig& padding,
+                                     const NativeT pad) {
+    CHECK_EQ(padding.dimensions_size(), 4);
+
+    const std::vector<int64> input_bounds = {operand.n1(), operand.n2(),
+                                             operand.n3(), operand.n4()};
+    std::vector<int64> pad_low(4);
+    std::vector<int64> pad_high(4);
+    std::vector<int64> pad_interior(4);
+    std::vector<int64> output_bounds(4);
+    for (int64 i = 0; i < 4; ++i) {
+      pad_low[i] = padding.dimensions(i).edge_padding_low();
+      pad_high[i] = padding.dimensions(i).edge_padding_high();
+      CHECK_LE(0, padding.dimensions(i).interior_padding())
+          << "not implemented";
+      pad_interior[i] = padding.dimensions(i).interior_padding();
+
+      output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
+                         (input_bounds[i] - 1) * pad_interior[i];
+    }
+
+    Array4D<NativeT> result(output_bounds[0], output_bounds[1],
+                            output_bounds[2], output_bounds[3]);
+    result.Each(
+        [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT* value) {
+          for (int i = 0; i < 4; ++i) {
+            bool in_low_padding = indices[i] < pad_low[i];
+            bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
+            if (in_low_padding || in_high_padding) {
+              *value = pad;
+              return;
+            }
+            if (pad_interior[i] &&
+                (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
+              *value = pad;
+              return;
+            }
+          }
+          *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
+                           (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
+                           (indices[2] - pad_low[2]) / (pad_interior[2] + 1),
+                           (indices[3] - pad_low[3]) / (pad_interior[3] + 1));
+        });
+    return result;
+  }
 
   // ApplyElementwise2D(f, x, y, ...) returns the Array2D formed by running
   // f(x[i], y[i], ...) for each array element in the Array2Ds x, y, ....

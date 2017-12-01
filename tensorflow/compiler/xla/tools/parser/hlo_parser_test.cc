@@ -316,6 +316,133 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
   // printed as "300".
 }
 
+<<<<<<< HEAD
+=======
+TEST_F(HloParserTest, AttibutesAnyOrder) {
+  const string original = R"(HloModule any_order_module:
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), sharding={maximal device=1}, dim_labels=b0f_0io->b0f, window={pad=1_1 size=2}
+}
+
+)";
+  TF_EXPECT_OK(Parse(original).status());
+}
+
+TEST_F(HloParserTest, InvalidDimLabels) {
+  string prefix = R"(HloModule invalid_dim_labels_module:
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1} )";
+  string suffix = R"(
+}
+
+)";
+
+  ExpectHasSubstr(Parse(StrCat(prefix, ",dim_labels=00_01_10", suffix))
+                      .status()
+                      .error_message(),
+                  "expects dim labels pattern");
+
+  ExpectHasSubstr(Parse(StrCat(prefix, ",dim_labels=010_1100->010", suffix))
+                      .status()
+                      .error_message(),
+                  "must have the same rank");
+}
+
+TEST_F(HloParserTest, UnexpectedAttribute) {
+  const string original = R"(HloModule unexpected_attr_module:
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
+  %recv = (f32[], u32[]) recv(), channel_id=15
+  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  ROOT %constant = f32[] constant(2.1)
+  %send = (f32[], u32[]) send(f32[] %constant), channel_id=16, calls=%recv
+  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+}
+
+)";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "unexpected attribute calls");
+}
+
+TEST_F(HloParserTest, MissingAttribute) {
+  const string original = R"(HloModule missing_attr_module:
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
+  %recv = (f32[], u32[]) recv(), channel_id=15
+  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  ROOT %constant = f32[] constant(-2.1)
+  %send = (f32[], u32[]) send(f32[] %constant)
+  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+}
+
+)";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "attribute channel_id is expected but not seen");
+}
+
+TEST_F(HloParserTest, PredecessorUndefined) {
+  const string original = R"(HloModule pre_not_found_module:
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
+  %recv = (f32[], u32[]) recv(), channel_id=15
+  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  ROOT %constant = f32[] constant(2.1)
+  %send = (f32[], u32[]) send(f32[] %constant), channel_id=16, control-predecessors={%done}
+  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+}
+
+)";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "'done' is not defined");
+}
+
+TEST_F(HloParserTest, SliceAllowOmitStride1) {
+  const string original = R"(HloModule slice_module:
+
+ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
+  %p0 = f32[3,3,4,4]{3,2,1,0} parameter(0)
+  ROOT %slice = f32[3,3,2,4]{3,2,1,0} slice(f32[3,3,4,4]{3,2,1,0} %p0), slice={[0:3], [0:3], [0:4:2], [0:4]}
+}
+
+)";
+  TF_EXPECT_OK(Parse(original).status());
+}
+
+TEST_F(HloParserTest, PaddingConfigIsNotWindowPad) {
+  const string original = R"(HloModule window_pad_module:
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), dim_labels=b0f_0io->b0f, window={pad=1_1_0 size=1}
+}
+
+)";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "expects padding_low and padding_high separated by '_'");
+}
+
+TEST_F(HloParserTest, CommaBetweenSubAttributes) {
+  const string original = R"(HloModule test_comma_module:
+
+ENTRY %test_comma.v4 () -> f32[] {
+  ROOT %constant = f32[] constant(-4.2), metadata={source_line=5, op_type="::const"}
+}
+
+)";
+  TF_EXPECT_OK(Parse(original).status());
+}
+
+>>>>>>> tensorflow_master
 }  // namespace
 }  // namespace tools
 }  // namespace xla

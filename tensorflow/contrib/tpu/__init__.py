@@ -23,6 +23,7 @@
 
 @@initialize_system
 @@shutdown_system
+@@device_assignment
 @@core
 @@outside_all_rewrites
 @@replicate
@@ -33,6 +34,9 @@
 @@CrossShardOptimizer
 
 @@InfeedQueue
+
+@@DeviceAssignment
+@@Topology
 
 @@while_loop
 @@repeat
@@ -50,6 +54,8 @@ from __future__ import print_function
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.contrib.tpu.python import profiler
 from tensorflow.contrib.tpu.python.ops.tpu_ops import *
+from tensorflow.contrib.tpu.python.tpu.device_assignment import *
+from tensorflow.contrib.tpu.python.tpu.topology import *
 from tensorflow.contrib.tpu.python.tpu.tpu import *
 from tensorflow.contrib.tpu.python.tpu.tpu_config import *
 from tensorflow.contrib.tpu.python.tpu.tpu_estimator import *

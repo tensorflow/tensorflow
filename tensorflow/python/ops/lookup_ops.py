@@ -789,6 +789,25 @@ class IdTableWithHashBuckets(LookupInterface):
     with ops.name_scope(None, "init"):
       return control_flow_ops.no_op()
 
+  @property
+  def table_ref(self):
+    """Returns the table_ref of the underlying table, if one exists.
+
+    Only use the table_ref directly if you know what you are doing. The
+    table_ref does not have the "hash bucket" functionality, as that is provided
+    by this class.
+
+    One possible use of the table_ref is subtokenization, i.e. ops which
+    dynamically decompose tokens into subtokens based on the contents of the
+    table_ref.
+
+    Returns:
+      the underlying table_ref, or None if there is no underlying table
+    """
+    if self._table is not None:
+      return self._table.table_ref
+    return None
+
   def size(self, name=None):
     """Compute the number of elements in this table."""
     with ops.name_scope(name, "%s_Size" % self.name) as scope:

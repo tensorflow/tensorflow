@@ -100,6 +100,38 @@ namespace xla {
   ASSERT_EQ(expected.ShortDebugString(), actual.ShortDebugString());
 }
 
+/* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertBF16ToF32(
+    const Literal& bf16_literal) {
+  CHECK_EQ(bf16_literal.shape().element_type(), BF16);
+  Shape converted_shape = bf16_literal.shape();
+  converted_shape.set_element_type(F32);
+  auto converted = Literal::CreateFromShape(converted_shape);
+  if (!ShapeUtil::HasZeroElements(converted_shape)) {
+    std::vector<int64> index(converted_shape.dimensions_size(), 0);
+    do {
+      converted->Set<float>(
+          index, static_cast<float>(bf16_literal.Get<bfloat16>(index)));
+    } while (IndexUtil::BumpIndices(converted_shape, &index));
+  }
+  return converted;
+}
+
+/* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertF32ToBF16(
+    const Literal& f32_literal) {
+  CHECK_EQ(f32_literal.shape().element_type(), F32);
+  Shape converted_shape = f32_literal.shape();
+  converted_shape.set_element_type(BF16);
+  auto converted = Literal::CreateFromShape(converted_shape);
+  if (!ShapeUtil::HasZeroElements(converted_shape)) {
+    std::vector<int64> index(converted_shape.dimensions_size(), 0);
+    do {
+      converted->Set<bfloat16>(
+          index, static_cast<bfloat16>(f32_literal.Get<float>(index)));
+    } while (IndexUtil::BumpIndices(converted_shape, &index));
+  }
+  return converted;
+}
+
 namespace {
 
 string Hostname() {

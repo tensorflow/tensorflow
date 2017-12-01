@@ -234,3 +234,66 @@ py_test(
         "@six_archive//:six",
     ],
 )
+<<<<<<< HEAD
+=======
+
+py_library(
+    name = "replicate_model_fn",
+    srcs = [
+        "python/estimator/replicate_model_fn.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:device",
+        "//tensorflow/python:device_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:export_output",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:util",
+        "@six_archive//:six",
+    ],
+)
+
+cuda_py_test(
+    name = "replicate_model_fn_test",
+    size = "small",
+    srcs = ["python/estimator/replicate_model_fn_test.py"],
+    additional_deps = [
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:dnn",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:export_output",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:optimizers",
+        "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        ":replicate_model_fn",
+    ],
+    tags = ["multi_gpu"],
+)
+>>>>>>> tensorflow_master

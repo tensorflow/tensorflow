@@ -69,16 +69,61 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+<<<<<<< HEAD
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         while (!s.ok()) {
           out_tensors->clear();
           s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         }
+=======
+        {
+          tf_shared_lock l(mu_);
+          if (!input_impl_) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          while (!s.ok()) {
+            out_tensors->clear();
+            s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          }
+        }
+        if (*end_of_sequence) {
+          mutex_lock l(mu_);
+          input_impl_.reset();
+        }
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (input_impl_)
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        else
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("input_impls_empty"), ""));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        if (reader->Contains(full_name("input_impls_empty")))
+          input_impl_.reset();
+        else
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+>>>>>>> tensorflow_master
         return Status::OK();
       }
 
      private:
+<<<<<<< HEAD
       const std::unique_ptr<IteratorBase> input_impl_;
+=======
+      mutex mu_;
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+>>>>>>> tensorflow_master
     };
 
     const DatasetBase* const input_;

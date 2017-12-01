@@ -297,11 +297,47 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleSend(HloInstruction* send) override {
+<<<<<<< HEAD
     return tensorflow::Status::OK();
   }
 
   Status HandleRecv(HloInstruction* recv) override {
     return tensorflow::Status::OK();
+=======
+    TF_RET_CHECK(send->users().size() == 1);
+    const HloInstruction* send_done = send->users().front();
+    TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
+    TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
+    return CheckShape(
+        send, ShapeUtil::MakeTupleShape(
+                  {send->operand(0)->shape(), ShapeUtil::MakeShape(U32, {})}));
+  }
+
+  Status HandleSendDone(HloInstruction* send_done) override {
+    TF_RET_CHECK(send_done->operands().size() == 1);
+    const HloInstruction* send = send_done->operand(0);
+    TF_RET_CHECK(send->opcode() == HloOpcode::kSend);
+    TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
+    return CheckShape(send_done, ShapeUtil::MakeNil());
+  }
+
+  Status HandleRecv(HloInstruction* recv) override {
+    TF_RET_CHECK(recv->users().size() == 1);
+    const HloInstruction* recv_done = recv->users().front();
+    TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
+    TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
+    return CheckShape(recv,
+                      ShapeUtil::MakeTupleShape(
+                          {recv_done->shape(), ShapeUtil::MakeShape(U32, {})}));
+  }
+
+  Status HandleRecvDone(HloInstruction* recv_done) override {
+    TF_RET_CHECK(recv_done->operands().size() == 1);
+    const HloInstruction* recv = recv_done->operand(0);
+    TF_RET_CHECK(recv->opcode() == HloOpcode::kRecv);
+    TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
+    return CheckShape(recv_done, recv->shape().tuple_shapes(0));
+>>>>>>> tensorflow_master
   }
 
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
