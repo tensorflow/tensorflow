@@ -162,28 +162,6 @@ def mat2d_to_layer_params(vector_template, mat2d):
     return array_ops.reshape(mat2d, vector_template.shape)
 
 
-def compute_pi(left_factor, right_factor):
-  """Computes the scalar constant pi for Tikhonov regularization/damping.
-
-  pi = sqrt( (trace(A) / dim(A)) / (trace(B) / dim(B)) )
-  See section 6.3 of https://arxiv.org/pdf/1503.05671.pdf for details.
-
-  Args:
-    left_factor: The left Kronecker factor Tensor.
-    right_factor: The right Kronecker factor Tensor.
-
-  Returns:
-    The computed scalar constant pi for these Kronecker Factors (as a Tensor).
-  """
-  # Instead of dividing by the dim of the norm, we multiply by the dim of the
-  # other norm. This works out the same in the ratio.
-  left_norm = math_ops.trace(left_factor) * right_factor.get_shape().as_list()[
-      0]
-  right_norm = math_ops.trace(right_factor) * left_factor.get_shape().as_list()[
-      0]
-  return math_ops.sqrt(left_norm / right_norm)
-
-
 def posdef_inv(tensor, damping):
   """Computes the inverse of tensor + damping * identity."""
   identity = linalg_ops.eye(tensor.shape.as_list()[0], dtype=tensor.dtype)

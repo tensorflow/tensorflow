@@ -40,6 +40,21 @@ def _make_psd(dim):
   return array_ops.constant(mat)
 
 
+class UtilsTest(test.TestCase):
+
+  def testComputePiTracenorm(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      random_seed.set_random_seed(200)
+      left_factor = array_ops.diag([1., 2., 0., 1.])
+      right_factor = array_ops.ones([2., 2.])
+
+      # pi is the sqrt of the left trace norm divided by the right trace norm
+      pi = fb._compute_pi_tracenorm(left_factor, right_factor)
+
+      pi_val = sess.run(pi)
+      self.assertEqual(1., pi_val)
+
+
 class FullFBTest(test.TestCase):
 
   def testFullFBInitSingleTensor(self):

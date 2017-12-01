@@ -53,13 +53,53 @@ from tensorflow.python.ops import math_ops
 #   damping /= num_replications ** NORMALIZE_DAMPING_POWER
 NORMALIZE_DAMPING_POWER = 1.0
 
+# Methods for adjusting damping for FisherBlocks. See
+# _compute_pi_adjusted_damping() for details.
+PI_OFF_NAME = "off"
+PI_TRACENORM_NAME = "tracenorm"
+PI_TYPE = PI_TRACENORM_NAME
 
-def set_global_constants(normalize_damping_power=None):
+
+def set_global_constants(normalize_damping_power=None, pi_type=None):
   """Sets various global constants used by the classes in this module."""
   global NORMALIZE_DAMPING_POWER
+  global PI_TYPE
 
   if normalize_damping_power is not None:
     NORMALIZE_DAMPING_POWER = normalize_damping_power
+
+  if pi_type is not None:
+    PI_TYPE = pi_type
+
+
+def _compute_pi_tracenorm(left_cov, right_cov):
+  """Computes the scalar constant pi for Tikhonov regularization/damping.
+
+  pi = sqrt( (trace(A) / dim(A)) / (trace(B) / dim(B)) )
+  See section 6.3 of https://arxiv.org/pdf/1503.05671.pdf for details.
+
+  Args:
+    left_cov: The left Kronecker factor "covariance".
+    right_cov: The right Kronecker factor "covariance".
+
+  Returns:
+    The computed scalar constant pi for these Kronecker Factors (as a Tensor).
+  """
+  # Instead of dividing by the dim of the norm, we multiply by the dim of the
+  # other norm. This works out the same in the ratio.
+  left_norm = math_ops.trace(left_cov) * right_cov.shape.as_list()[0]
+  right_norm = math_ops.trace(right_cov) * left_cov.shape.as_list()[0]
+  return math_ops.sqrt(left_norm / right_norm)
+
+
+def _compute_pi_adjusted_damping(left_cov, right_cov, damping):
+
+  if PI_TYPE == PI_TRACENORM_NAME:
+    pi = _compute_pi_tracenorm(left_cov, right_cov)
+    return (damping * pi, damping / pi)
+
+  elif PI_TYPE == PI_OFF_NAME:
+    return (damping, damping)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -466,11 +506,10 @@ class KroneckerProductFB(FisherBlock):
     Args:
       damping: The base damping factor (float or Tensor) for the damped inverse.
     """
-    pi = utils.compute_pi(self._input_factor.get_cov(),
-                          self._output_factor.get_cov())
-
-    self._input_damping = (damping**0.5) * pi
-    self._output_damping = (damping**0.5) / pi
+    self._input_damping, self._output_damping = _compute_pi_adjusted_damping(
+        self._input_factor.get_cov(),
+        self._output_factor.get_cov(),
+        damping**0.5)
 
     self._input_factor.register_damped_inverse(self._input_damping)
     self._output_factor.register_damped_inverse(self._output_damping)
@@ -791,11 +830,10 @@ class FullyConnectedSeriesFB(FisherBlock):
 
     damping /= self._num_timesteps**NORMALIZE_DAMPING_POWER
 
-    pi = utils.compute_pi(self._input_factor.get_cov(),
-                          self._output_factor.get_cov())
-
-    self._damping_input = (damping**0.5) * pi
-    self._damping_output = (damping**0.5) / pi
+    self._damping_input, self._damping_output = _compute_pi_adjusted_damping(
+        self._input_factor.get_cov(),
+        self._output_factor.get_cov(),
+        damping**0.5)
 
     if self._option == SeriesFBApproximation.option1:
       self._input_factor.register_option1quants(self._damping_input)
