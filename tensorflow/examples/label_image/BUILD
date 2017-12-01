@@ -53,8 +53,8 @@ tf_cc_binary(
 
 py_binary(
     name = "label_image_py",
-    main = "label_image.py",
     srcs = ["label_image.py"],
+    main = "label_image.py",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
