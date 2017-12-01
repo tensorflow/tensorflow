@@ -90,7 +90,7 @@ The demo is resizing each camera image frame to (224 width * 224 height) to matc
 
 Similar to the Android demo app, there's an iOS camera app that uses exactly the same model (224 * 224 quantized Mobilenet).
 
-This demo app requires a camera so it doesn't work with simulators. It's needed to be executed on a real iOS device. Follow the instructions to build and run the demo app:
+This demo app requires a camera so it doesn't work with simulators. It need to be executed on a real iOS device. Follow the instructions to build and run the demo app:
 
 1.   Follow the Building section [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/ios.md#building) to build the universal iOS library for TensorFlow Lite.
 1.   Install [CocoaPods](https://cocoapods.org/) if it wasn't installed yet: `sudo gem install cocoapods`.
