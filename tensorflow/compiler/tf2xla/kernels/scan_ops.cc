@@ -35,6 +35,11 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+// TODO(phawkins): implement double-sized windowed reductions in XLA and remove
+// the type constraint.
+constexpr std::array<DataType, 3> kScanOpTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT}};
+
 class ScanOp : public XlaOpKernel {
  public:
   ScanOp(OpKernelConstruction* ctx, bool sum) : XlaOpKernel(ctx), sum_(sum) {
@@ -124,17 +129,13 @@ class CumsumOp : public ScanOp {
  public:
   explicit CumsumOp(OpKernelConstruction* ctx) : ScanOp(ctx, /*sum=*/true) {}
 };
-// TODO(phawkins): implement non-float windowed reductions in XLA and remove the
-// type constraint.
-REGISTER_XLA_OP(Name("Cumsum").TypeConstraint("T", DT_FLOAT), CumsumOp);
+REGISTER_XLA_OP(Name("Cumsum").TypeConstraint("T", kScanOpTypes), CumsumOp);
 
 class CumprodOp : public ScanOp {
  public:
   explicit CumprodOp(OpKernelConstruction* ctx) : ScanOp(ctx, /*sum=*/false) {}
 };
-// TODO(phawkins): implement non-float windowed reductions in XLA and remove the
-// type constraint.
-REGISTER_XLA_OP(Name("Cumprod").TypeConstraint("T", DT_FLOAT), CumprodOp);
+REGISTER_XLA_OP(Name("Cumprod").TypeConstraint("T", kScanOpTypes), CumprodOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

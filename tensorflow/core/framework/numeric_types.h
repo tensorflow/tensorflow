@@ -58,7 +58,7 @@ struct bfloat16 {
   explicit EIGEN_DEVICE_FUNC bfloat16(const T& val)
       : bfloat16(static_cast<float>(val)) {}
 
-  EIGEN_DEVICE_FUNC EIGEN_EXPLICIT_CAST(float) const {
+  EIGEN_DEVICE_FUNC explicit operator float() const {
     float result;
 
     uint16_t* q = reinterpret_cast<uint16_t*>(&result);
@@ -87,6 +87,10 @@ struct bfloat16 {
 
   EIGEN_DEVICE_FUNC explicit operator int() const {
     return static_cast<int>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator long() const {
+    return static_cast<long>(float(*this));
   }
 
   EIGEN_DEVICE_FUNC explicit operator char() const {
