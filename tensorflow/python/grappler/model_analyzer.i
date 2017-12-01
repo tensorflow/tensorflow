@@ -48,7 +48,7 @@ string GenerateModelReport(const tensorflow::MetaGraphDef& metagraph) {
   if (!item) {
     return "Error: failed to preprocess metagraph: check your log file for errors";
   }
-  
+
   string suffix;
   tensorflow::grappler::ModelAnalyzer analyzer(*item);
 

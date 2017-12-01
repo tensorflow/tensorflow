@@ -42,7 +42,7 @@ For example, here are the results from [AlexNet] classifying some images:
 To compare models, we examine how often the model fails to predict the
 correct answer as one of their top 5 guesses -- termed "top-5 error rate".
 [AlexNet] achieved by setting a top-5 error rate of 15.3% on the 2012
-validation data set; [Inception (GoogLeNet)] achieved 6.67%; 
+validation data set; [Inception (GoogLeNet)] achieved 6.67%;
 [BN-Inception-v2] achieved 4.9%; [Inception-v3] reaches 3.46%.
 
 > How well do humans do on ImageNet Challenge? There's a [blog post] by

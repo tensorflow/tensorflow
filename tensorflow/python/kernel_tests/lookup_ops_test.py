@@ -488,6 +488,20 @@ class IndexTableFromFile(test.TestCase):
       self.assertRaises(ValueError, table.lookup,
                         constant_op.constant(["salad", "surgery", "tarkus"]))
 
+  def test_index_table_from_file_table_ref_with_oov_buckets(self):
+    vocabulary_file = self._createVocabFile("f2i_vocab9.txt")
+    with self.test_session():
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file, num_oov_buckets=1)
+      self.assertIsNotNone(table.table_ref)
+
+  def test_index_table_from_file_table_ref_without_oov_buckets(self):
+    vocabulary_file = self._createVocabFile("f2i_vocab10.txt")
+    with self.test_session():
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file, num_oov_buckets=0)
+      self.assertIsNotNone(table.table_ref)
+
 
 class KeyValueTensorInitializerTest(test.TestCase):
 
@@ -1431,6 +1445,10 @@ class IdTableWithHashBucketsTest(test.TestCase):
             oov_buckets,
             hasher_spec=lookup_ops.StrongHashSpec([None, 2]))
 
+  def testIdTableWithHashBucketsNoInnerTable(self):
+    with self.test_session():
+      table = lookup_ops.IdTableWithHashBuckets(None, num_oov_buckets=1)
+      self.assertIsNone(table.table_ref)
 
 if __name__ == "__main__":
   test.main()

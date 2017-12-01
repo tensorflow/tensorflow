@@ -1685,7 +1685,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
           StrCat("expects unique lhs dimension numbers, but sees ", lhs));
     }
     for (int i = 0; i < rank - 2; i++) {
-      dnums->add_spatial_dimensions(-1);
+      dnums->add_input_spatial_dimensions(-1);
     }
     for (int i = 0; i < rank; i++) {
       char c = lhs[i];
@@ -1694,7 +1694,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
       } else if (c == 'f') {
         dnums->set_input_feature_dimension(i);
       } else if (c < '0' + rank && c >= '0') {
-        dnums->set_spatial_dimensions(c - '0', i);
+        dnums->set_input_spatial_dimensions(c - '0', i);
       } else {
         return TokenError(
             Printf("expects [0-%lldbf] in lhs dimension numbers", rank - 1));
@@ -1732,6 +1732,9 @@ bool HloParser::ParseConvolutionDimensionNumbers(
       return TokenError(
           StrCat("expects unique output dimension numbers, but sees ", out));
     }
+    for (int i = 0; i < rank - 2; i++) {
+      dnums->add_output_spatial_dimensions(-1);
+    }
     for (int i = 0; i < rank; i++) {
       char c = out[i];
       if (c == 'b') {
@@ -1739,11 +1742,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
       } else if (c == 'f') {
         dnums->set_output_feature_dimension(i);
       } else if (c < '0' + rank && c >= '0') {
-        if (dnums->spatial_dimensions(c - '0') != i) {
-          return TokenError(
-              "output spatial dimensions should be the same as input spatial "
-              "dimensions");
-        }
+        dnums->set_output_spatial_dimensions(c - '0', i);
       } else {
         return TokenError(
             Printf("expects [0-%lldbf] in output dimension numbers", rank - 1));

@@ -93,7 +93,10 @@ class ClusterTest(test.TestCase):
       mg = meta_graph.create_meta_graph_def(graph=g)
       grappler_item = item.Item(mg)
       device_properties = device_properties_pb2.DeviceProperties(
-          type='GPU', environment={
+          type='GPU',
+          frequency=1000,
+          num_cores=60,
+          environment={
               'architecture': '7'
           })
       named_device = device_properties_pb2.NamedDevice(

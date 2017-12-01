@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import pywrap_tensorflow as tf_opt
 from tensorflow.python.framework import errors
+from tensorflow.python.grappler import cluster as gcluster
 
 
 def OptimizeGraph(rewriter_config,
@@ -30,8 +31,9 @@ def OptimizeGraph(rewriter_config,
                   cluster=None):
   """Optimize the provided metagraph."""
   with errors.raise_exception_on_not_ok_status() as status:
-    ret_from_swig = tf_opt.TF_OptimizeGraph(None if cluster is None else
-                                            cluster.tf_cluster,
+    if cluster is None:
+      cluster = gcluster.Cluster()
+    ret_from_swig = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
                                             rewriter_config.SerializeToString(),
                                             metagraph.SerializeToString(),
                                             verbose, graph_id, status)

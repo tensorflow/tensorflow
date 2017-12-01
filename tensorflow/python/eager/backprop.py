@@ -798,13 +798,41 @@ class GradientTape(object):
   grad = g.gradient(y, [x])[0]
   assert grad.numpy() == 6.0
   ```
+
+  By default, the resources held by a GradientTape are released as soon as
+  GradientTape.gradient() method is called. However, if one need to compute
+  multiple gradients over the same computation, she can create a persistent
+  GradientTape. Persistent tapes allow multiple calls to the gradient() method
+  and release resources when the tape object is destructed.
+
+  Example usage:
+
+  ```python
+  with tfe.GradientTape(persistent=True) as g:
+    x = tf.constant(3.0)
+    g.watch(x)
+    y = x * x
+    z = y * y
+  dz_dx = g.gradient(z, [x])[0]
+  assert dz_dx.numpy() == 108.0   # 4*x^3 at x = 3
+  dy_dx = g.gradient(y, [x])[0]
+  assert dy_dx.numpy() == 6.0
+  del g  # Drop the reference to the tape
   """
 
-  def __init__(self):
+  def __init__(self, persistent=False):
+    """Creates a new GradientTape.
+
+    Args:
+      persistent: Boolean controlling whether a persistent gradient tape
+        is created. Must be True or False.
+
+    """
     self._tape = None
+    self._persistent = persistent
 
   def __enter__(self):
-    tape.push_new_tape()
+    tape.push_new_tape(persistent=self._persistent)
     return self
 
   def __exit__(self, typ, value, traceback):
@@ -838,12 +866,14 @@ class GradientTape(object):
        than once.
     """
     if self._tape is None:
-      raise RuntimeError("GradientTape.gradient can only be called once, and "
+      raise RuntimeError("GradientTape.gradient can only be called once "
+                         "on non-persistent tapes, and "
                          "only when the context manager has exited.")
     sources = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
                else x
                for x in sources]
     grad = imperative_grad.imperative_grad(
         _default_vspace, self._tape, [target], sources)
-    self._tape = None
+    if not self._persistent:
+      self._tape = None
     return grad

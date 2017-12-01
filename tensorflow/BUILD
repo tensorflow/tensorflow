@@ -562,6 +562,7 @@ filegroup(
         "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:all_files",
         "//tensorflow/contrib/tpu:all_files",
         "//tensorflow/contrib/tpu/profiler:all_files",
+        "//tensorflow/contrib/tpu/proto:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/contrib/verbs:all_files",

@@ -197,7 +197,7 @@ void CudaPlatform::UnregisterTraceListener(TraceListener* listener) {
 static void InitializeCudaPlatform() {
   // Disabling leak checking, MultiPlatformManager does not destroy its
   // registered platforms.
-  
+
   std::unique_ptr<cuda::CudaPlatform> platform(new cuda::CudaPlatform);
   SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }

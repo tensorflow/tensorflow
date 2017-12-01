@@ -314,6 +314,37 @@ class BackpropTest(test.TestCase):
         RuntimeError, 'GradientTape.gradient can only be called once'):
       g.gradient(y, [x])
 
+  def testPersistentTape(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      z = y * y
+    dz_dx = g.gradient(z, [x])[0]
+    self.assertEqual(dz_dx.numpy(), 4*3*3*3)
+    dy_dx = g.gradient(y, [x])[0]
+    self.assertEqual(dy_dx.numpy(), 2*3)
+    del g
+
+  def testPersistentNestedTape(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      with backprop.GradientTape(persistent=True) as gg:
+        gg.watch(y)
+        z = 2 * y
+      for _ in range(2):
+        inner_grad = gg.gradient(z, [y])[0]
+        self.assertEqual(inner_grad.numpy(), 2.0)
+      y += inner_grad
+      del gg
+    grad = g.gradient(y, [x])[0]
+    self.assertEqual(grad.numpy(), 6.0)
+    grad = g.gradient(z, [x])[0]
+    self.assertEqual(grad.numpy(), 12.0)
+    del g
+
   def testGradientTapeVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
     with backprop.GradientTape() as g:

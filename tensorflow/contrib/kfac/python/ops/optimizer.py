@@ -151,15 +151,23 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     return self._fisher_est.damping
 
   def minimize(self, *args, **kwargs):
-
-    if "var_list" not in kwargs:
-      kwargs["var_list"] = tf_variables.trainable_variables()
-
+    kwargs["var_list"] = kwargs.get("var_list") or self.variables
     if set(kwargs["var_list"]) != set(self.variables):
       raise ValueError("var_list doesn't match with set of Fisher-estimating "
                        "variables.")
-
     return super(KfacOptimizer, self).minimize(*args, **kwargs)
+
+  def compute_gradients(self, *args, **kwargs):
+    # args[1] could be our var_list
+    if len(args) > 1:
+      var_list = args[1]
+    else:
+      kwargs["var_list"] = kwargs.get("var_list") or self.variables
+      var_list = kwargs["var_list"]
+    if set(var_list) != set(self.variables):
+      raise ValueError("var_list doesn't match with set of Fisher-estimating "
+                       "variables.")
+    return super(KfacOptimizer, self).compute_gradients(*args, **kwargs)
 
   def apply_gradients(self, grads_and_vars, *args, **kwargs):
     """Applies gradients to variables.

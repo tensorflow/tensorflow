@@ -5,7 +5,7 @@ This page highlights TensorFlow models in real world use.
 
 ## Model zoo
 
-Please visit our collection of TensorFlow models in the 
+Please visit our collection of TensorFlow models in the
 [TensorFlow Zoo](https://github.com/tensorflow/models).
 
 If you have built a model with TensorFlow, please consider publishing it in

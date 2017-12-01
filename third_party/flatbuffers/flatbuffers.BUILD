@@ -6,8 +6,11 @@ licenses(["notice"])  # Apache 2.0
 
 FLATBUFFERS_COPTS = [
     "-fexceptions",
-    "-Wno-implicit-fallthrough",
-]
+] + select({
+    "@bazel_tools//src:windows": [],
+    "@bazel_tools//src:windows_msvc": [],
+    "//conditions:default": ["-Wno-implicit-fallthrough"],
+})
 
 # Public flatc library to compile flatbuffer files at runtime.
 cc_library(

@@ -874,7 +874,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
 
   Args:
-    x: An python object to check.
+    x: A python object to check.
 
   Returns:
     `True` if `x` is a tensor, `False` if not.

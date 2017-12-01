@@ -812,7 +812,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(ShapeUtil::SameElementType(lhs_shape, result_shape));
 
     const auto& dnums = conv->convolution_dimension_numbers();
-    const int64 num_spatial_dims = dnums.spatial_dimensions_size();
+    const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
+    CHECK_EQ(num_spatial_dims, dnums.input_spatial_dimensions_size());
     CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
     CHECK_GE(num_spatial_dims, 0);
     CHECK_EQ(window.dimensions_size(), num_spatial_dims);
@@ -877,13 +878,15 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           // Find corresponding spatial dimension index for input (lhs).
           for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
             // Spatial dimension number for input (lhs) and output.
-            const int64 spatial_dim = dnums.spatial_dimensions(ki);
+            const int64 input_spatial_dim = dnums.input_spatial_dimensions(ki);
+            const int64 output_spatial_dim =
+                dnums.output_spatial_dimensions(ki);
 
             // Calculate lhs (input) index without taking base dilation into
             // account.
             const auto& window_dim = window.dimensions(ki);
             const int64 undilated_index =
-                out_index[spatial_dim] * window_dim.stride() -
+                out_index[output_spatial_dim] * window_dim.stride() -
                 window_dim.padding_low() +
                 rhs_spatial_index[ki] * window_dim.window_dilation();
             // Skip if the lhs (input) index is to be dilated.
@@ -892,12 +895,13 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             }
 
             // Calculate the actual lhs (input) index after dilation.
-            lhs_index[spatial_dim] =
+            lhs_index[input_spatial_dim] =
                 undilated_index / window_dim.base_dilation();
 
             // Skip if input index is not in bound.
-            if (!(lhs_index[spatial_dim] >= 0 &&
-                  lhs_index[spatial_dim] < lhs_shape.dimensions(spatial_dim))) {
+            if (!(lhs_index[input_spatial_dim] >= 0 &&
+                  lhs_index[input_spatial_dim] <
+                      lhs_shape.dimensions(input_spatial_dim))) {
               goto cnt;
             }
 
