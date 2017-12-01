@@ -1711,9 +1711,8 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
       BufferAssigner::Run(
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
-          ByteSizeOf,
-          [](LogicalBuffer::Color) { return 1; })
-      .ConsumeValueOrDie();
+          ByteSizeOf, [](LogicalBuffer::Color) { return 1; })
+          .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }

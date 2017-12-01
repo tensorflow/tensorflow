@@ -53,8 +53,8 @@ cc_library(
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        "@%ws%//tensorflow:ios": [],
-        "@%ws%//tensorflow:windows": [
+        "@org_tensorflow//tensorflow:ios": [],
+        "@org_tensorflow//tensorflow:windows": [
             "-DEFAULTLIB:ws2_32.lib",
         ],
         "//conditions:default": [
