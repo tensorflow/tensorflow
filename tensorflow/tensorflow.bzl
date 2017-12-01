@@ -1197,7 +1197,7 @@ check_deps = rule(
 
 # Helper to build a dynamic library (.so) from the sources containing
 # implementations of custom ops and kernels.
-def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
+def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
   cuda_deps = [
       clean_dep("//tensorflow/core:stream_executor_headers_lib"),
       "@local_config_cuda//cuda:cuda_headers",
@@ -1226,7 +1226,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(),
-      linkopts=select({
+      linkopts=linkopts + select({
           "//conditions:default": [
               "-lm",
           ],
