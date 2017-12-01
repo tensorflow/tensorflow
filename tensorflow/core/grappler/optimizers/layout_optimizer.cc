@@ -1136,7 +1136,7 @@ class SliceProcessor : public AgnosticNodeProcessor {
       string node_name =
           AddPrefixToNodeName(base_name, kPermVecNHWCToNCHW, "-");
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "Index"));
-      AddNodePermVec(node_name, node_->input(i),
+      AddNodePermVec(node_name, node_->input(i), node_->device(),
                      node_->attr().at("Index").type(), true);
       node_map_->UpdateOutput(node_->input(i), node_->name(), node_name);
       node_map_->AddOutput(node_name, node_->name());
@@ -1194,10 +1194,12 @@ class SliceProcessor : public AgnosticNodeProcessor {
   }
 
   void AddNodePermVec(const string& node_name, const string& input_name,
-                      DataType data_type, bool NHWCToNCHW) {
+                      const string& device, DataType data_type,
+                      bool NHWCToNCHW) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(node_name, node);
     node->set_name(node_name);
+    node->set_device(device);
     *node->add_input() = input_name;
     *node->add_input() = NHWCToNCHW ? GetOrAddNodePermNHWCToNCHW()
                                     : GetOrAddNodePermNCHWToNHWC();
@@ -1215,10 +1217,6 @@ class SliceProcessor : public AgnosticNodeProcessor {
     AttrValue attr_type_params;
     attr_type_params.set_type(data_type);
     node->mutable_attr()->insert({"Tparams", attr_type_params});
-
-    AttrValue attr_validate;
-    attr_validate.set_b(true);
-    node->mutable_attr()->insert({"validate_indices", attr_validate});
   }
 };
 
@@ -1235,58 +1233,6 @@ class SliceProcessorConst : public AgnosticNodeProcessor {
     // Skip the first input, which is the data to be sliced.
     for (int i = 1; i < node_->input_size(); i++) {
       TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
-    }
-    return Status::OK();
-  }
-};
-
-// Specialized SliceProcessor, used if the second input is ConcatOffset. An
-// example use case is in the gradient computation of Concat for InceptionV3.
-class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
- public:
-  explicit SliceProcessorConcatOffset(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
-
- protected:
-  Status CustomizedProcessing() override {
-    auto maybe_concatoffset_node =
-        node_map_->GetNode(NodeName(node_->input(1)));
-    if (IsConcatOffset(*maybe_concatoffset_node)) {
-      auto maybe_axis_node =
-          node_map_->GetNode(maybe_concatoffset_node->input(0));
-      NodeDef* axis_node;
-      if (IsConstant(*maybe_axis_node)) {
-        axis_node = maybe_axis_node;
-        // A FloorMod node might be added between ConcatOffset and the concat
-        // dimension const node to handle a negative dimension index -1, meaning
-        // the last dimension, which is consistent with the python's notation
-        // for negative index.
-      } else if (IsFloorMod(*maybe_axis_node)) {
-        axis_node = node_map_->GetNode(maybe_axis_node->input(0));
-      } else {
-        return Status(error::INVALID_ARGUMENT,
-                      strings::StrCat("Expect either Const or FloorMod for the "
-                                      "input 1 of ConcatOffset"));
-      }
-      // Need to process if the channel is at dimension 3, which indicates the
-      // NHWC format is being used. As multiple Slice nodes may share the same
-      // ConcatOffset node, the NHWC to NCHW conversion may have already
-      // been performed when processing other Slice nodes.
-      TF_RETURN_IF_ERROR(HasAttribute(*axis_node, "value"));
-      int concat_dim = axis_node->attr().at("value").tensor().int_val(0);
-      if (concat_dim == -1 || concat_dim == 3) {
-        // Update the dimension order for shape input nodes. Note that the input
-        // 2 of Slice also shares one of the shape nodes.
-        for (int i = 1; i < maybe_concatoffset_node->input_size(); i++) {
-          auto shape_node =
-              node_map_->GetNode(maybe_concatoffset_node->input(i));
-          TF_RETURN_IF_ERROR(UpdateAttrValue(shape_node));
-        }
-        // Set the channel dimension to 1, as we have converted the vector
-        // element order from NHWC to NCHW.
-        axis_node->mutable_attr()->at("value").mutable_tensor()->set_int_val(0,
-                                                                             1);
-      }
     }
     return Status::OK();
   }
@@ -1496,9 +1442,7 @@ class DataLayoutOptimizer : GraphProcessor {
           } else if (IsSlice(*node)) {
             auto input1 = node_map_->GetNode(NodeName(node->input(1)));
             auto input2 = node_map_->GetNode(NodeName(node->input(2)));
-            if (IsConcatOffset(*input1)) {
-              node_processor.reset(new SliceProcessorConcatOffset(opt_cxt));
-            } else if (IsConstant(*input1) && IsConstant(*input2)) {
+            if (IsConstant(*input1) && IsConstant(*input2)) {
               node_processor.reset(new SliceProcessorConst(opt_cxt));
             } else {
               node_processor.reset(new SliceProcessor(opt_cxt));

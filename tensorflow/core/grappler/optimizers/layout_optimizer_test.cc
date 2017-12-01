@@ -44,7 +44,7 @@ class LayoutOptimizerTest : public ::testing::Test {
 
   Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
                       const string& padding, const string& device) {
-    int batch_size = 128;
+    int batch_size = 8;
     int input_height = input_size;
     int input_width = input_size;
     int input_depth = 3;
@@ -697,6 +697,76 @@ TEST_F(LayoutOptimizerTest, MulVectorAnd4D) {
   EXPECT_EQ(mul_node->input(0), "vector");
   EXPECT_EQ(mul_node->input(1),
             "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-mul-1");
+}
+
+TEST_F(LayoutOptimizerTest, SliceConst) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 5, 2, "VALID");
+  auto begin = ops::Const(s.WithOpName("begin"), {0, 2, 3, 1}, {4});
+  auto size = ops::Const(s.WithOpName("size"), {4, 1, 2, 4}, {4});
+  auto slice = ops::Slice(s.WithOpName("slice"), conv, begin, size);
+  auto o = ops::Identity(s.WithOpName("o"), slice);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto slice_node = node_map.GetNode("slice");
+  EXPECT_EQ(slice_node->input(0), "Conv2D");
+  EXPECT_EQ(slice_node->input(1), "LayoutOptimizer-slice-begin");
+  EXPECT_EQ(slice_node->input(2), "LayoutOptimizer-slice-size");
+
+  auto begin_const = node_map.GetNode("LayoutOptimizer-slice-begin");
+  Tensor begin_tensor;
+  EXPECT_TRUE(begin_tensor.FromProto(
+      begin_const->mutable_attr()->at({"value"}).tensor()));
+  Tensor begin_tensor_expected(DT_INT32, {4});
+  test::FillValues<int>(&begin_tensor_expected, {0, 1, 2, 3});
+  test::ExpectTensorEqual<int>(begin_tensor_expected, begin_tensor);
+
+  auto size_const = node_map.GetNode("LayoutOptimizer-slice-size");
+  Tensor size_tensor;
+  EXPECT_TRUE(size_tensor.FromProto(
+      size_const->mutable_attr()->at({"value"}).tensor()));
+  Tensor size_tensor_expected(DT_INT32, {4});
+  test::FillValues<int>(&size_tensor_expected, {4, 4, 1, 2});
+  test::ExpectTensorEqual<int>(size_tensor_expected, size_tensor);
+}
+
+TEST_F(LayoutOptimizerTest, SliceNonConst) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 5, 2, "VALID");
+  auto begin = ops::Const(s.WithOpName("begin"), {0, 2, 3, 1}, {4});
+  auto ibegin = ops::Identity(s.WithOpName("ibegin"), begin);
+  auto size = ops::Const(s.WithOpName("size"), {4, 1, 2, 4}, {4});
+  auto isize = ops::Identity(s.WithOpName("isize"), size);
+  auto slice = ops::Slice(s.WithOpName("slice"), conv, ibegin, isize);
+  auto o = ops::Identity(s.WithOpName("o"), slice);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto slice_node = node_map.GetNode("slice");
+  EXPECT_EQ(slice_node->input(0), "Conv2D");
+  EXPECT_EQ(slice_node->input(1),
+            "LayoutOptimizerPermVecNHWCToNCHW-slice-input1");
+  EXPECT_EQ(slice_node->input(2),
+            "LayoutOptimizerPermVecNHWCToNCHW-slice-input2");
+
+  auto perm1 =
+      node_map.GetNode("LayoutOptimizerPermVecNHWCToNCHW-slice-input1");
+  EXPECT_EQ(perm1->input(0), "ibegin");
+  EXPECT_EQ(perm1->input(1), "LayoutOptimizerPermConstNHWCToNCHW");
+  EXPECT_EQ(perm1->input(2), "LayoutOptimizerGatherAxisConst");
+
+  auto perm2 =
+      node_map.GetNode("LayoutOptimizerPermVecNHWCToNCHW-slice-input2");
+  EXPECT_EQ(perm2->input(0), "isize");
+  EXPECT_EQ(perm2->input(1), "LayoutOptimizerPermConstNHWCToNCHW");
+  EXPECT_EQ(perm2->input(2), "LayoutOptimizerGatherAxisConst");
 }
 
 }  // namespace
