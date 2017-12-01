@@ -195,6 +195,7 @@ Status CurlHttpRequest::SetUri(const string& uri) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   is_uri_set_ = true;
+  uri_ = uri;
   libcurl_->curl_easy_setopt(curl_, CURLOPT_URL, uri.c_str());
   return Status::OK();
 }
@@ -530,9 +531,9 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
 
   if (now - that->last_progress_timestamp_ > kInactivityTimeoutSeconds) {
     LOG(ERROR) << "The transmission  of request " << this_object
-               << " has been stuck at " << current_progress << " of "
-               << dltotal + ultotal << " bytes for "
-               << now - that->last_progress_timestamp_
+               << " (URI: " << that->uri_ << ") has been stuck at "
+               << current_progress << " of " << dltotal + ultotal
+               << " bytes for " << now - that->last_progress_timestamp_
                << " seconds and will be aborted.";
     return 1;  // Will abort the request.
   }

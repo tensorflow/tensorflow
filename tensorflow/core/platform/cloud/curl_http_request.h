@@ -168,6 +168,9 @@ class CurlHttpRequest : public HttpRequest {
   bool is_method_set_ = false;
   bool is_sent_ = false;
 
+  // Store the URI to help disambiguate requests when errors occur.
+  string uri_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(CurlHttpRequest);
 };
 
