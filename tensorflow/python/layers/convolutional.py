@@ -222,31 +222,6 @@ class _Conv(base.Layer):
                                       new_space)
 
 
-def _convert_input_shape_for_causal_padding(input_shape, left_pad):
-  """Correct the time channel size for causal padding.
-
-  Arguments:
-    input_shape: A 3-D `TensorShape`.
-    left_pad: The increment in the left side of time channel.
-
-  Returns:
-    A TensorShape.
-
-  Raises:
-    AssertionError: If argument is invalid.
-  """
-  input_shape = tensor_shape.TensorShape(input_shape)
-  assert input_shape.ndims == 3, "The rank of input_shape must be 3."
-  input_list = input_shape.as_list()
-
-  left_pad = int(left_pad)
-  assert left_pad > 0, "The left_pad must be positive."
-
-  input_list[1] += int(left_pad)
-  return tensor_shape.TensorShape([tensor_shape.Dimension(d)
-                                   for d in input_list])
-
-
 class Conv1D(_Conv):
   """1D convolution layer (e.g. temporal convolution).
 
@@ -347,29 +322,41 @@ class Conv1D(_Conv):
         name=name, **kwargs)
 
   def build(self, input_shape):
-    if self._causal_padding:
-      input_shape = _convert_input_shape_for_causal_padding(
-        input_shape, self._left_pad_for_causal_padding())
-    super(Conv1D, self).build(input_shape)
+    _, shape_fn = self._helper_for_causal_padding()
+    super(Conv1D, self).build(shape_fn(input_shape) or input_shape)
 
   def call(self, inputs):
-    if self._causal_padding:
-      # causal (dilated) convolution:
-      left_pad = self._left_pad_for_causal_padding()
-      inputs = array_ops.pad(inputs, [[0, 0], [left_pad, 0], [0, 0]])
-    return super(Conv1D, self).call(inputs)
+    inputs_fn, _ = self._helper_for_causal_padding()
+    return super(Conv1D, self).call(inputs_fn(inputs) or inputs)
 
   def _compute_output_shape(self, input_shape):
-    if self._causal_padding:
-      input_shape = _convert_input_shape_for_causal_padding(
-        input_shape, self._left_pad_for_causal_padding())
-    return super(Conv1D, self)._compute_output_shape(input_shape)
+    _, shape_fn = self._helper_for_causal_padding()
+    return super(Conv1D, self)._compute_output_shape(shape_fn(input_shape)
+                                                     or input_shape)
 
-  def _left_pad_for_causal_padding(self):
+  def _helper_for_causal_padding(self):
+    """Generate the functions to handle inputs and input_shape for causal padding."""
     if self._causal_padding:
-      return self.dilation_rate[0] * (self.kernel_size[0] - 1)
+      left_pad = int(self.dilation_rate[0] * (self.kernel_size[0] - 1))
+      if left_pad <= 0:
+        raise ValueError("The left_pad must be positive.")
+
+      def inputs_fn(inputs):
+        # left pad for causal (dilated) convolution
+        return array_ops.pad(inputs, [[0, 0], [left_pad, 0], [0, 0]])
+
+      def shape_fn(input_shape):
+        input_shape = tensor_shape.TensorShape(input_shape)
+        assert input_shape.ndims == 3, "The rank of input_shape must be 3."
+        input_list = input_shape.as_list()
+        input_list[1] += left_pad
+        return tensor_shape.TensorShape([tensor_shape.Dimension(d)
+                                         for d in input_list])
+
+      return inputs_fn, shape_fn
     else:
-      raise NotImplementedError("The method can only be invoked for causal padding")
+      dummy_fn = lambda _: None
+      return dummy_fn, dummy_fn
 
 
 def conv1d(inputs,
