@@ -19,8 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -59,7 +61,13 @@ def Print(input_, data, message=None, first_n=None, summarize=None,
   Returns:
     Same tensor as `input_`.
   """
-  return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
+  if input_.dtype._is_ref_dtype:  # pylint: disable=protected-access
+    helper_op = gen_logging_ops._print(constant_op.constant([]),
+                                       data, message, first_n, summarize, name)
+    with ops.control_dependencies([helper_op]):
+      return gen_array_ops._ref_identity(input_, name=name)
+  else:
+    return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
 
 
 @ops.RegisterGradient("Print")

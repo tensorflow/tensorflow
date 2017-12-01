@@ -1763,6 +1763,8 @@ py_library(
     srcs = ["ops/logging_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops_gen",
+        ":constant_op",
         ":framework_for_generated_wrappers",
         ":logging_ops_gen",
         ":util",
