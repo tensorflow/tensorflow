@@ -106,6 +106,11 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = _create_tensor(n)
     self.assertAllEqual([[1, 2], [3, 4]], t)
 
+  def testNumpyArrayDtype(self):
+    tensor = constant_op.constant([1.0, 2.0, 3.0])
+    numpy_tensor = np.asarray(tensor, dtype=np.int32)
+    self.assertAllEqual(numpy_tensor, [1, 2, 3])
+
   def testCopy(self):
     t = constant_op.constant(1.0)
     tt = copy.copy(t)
