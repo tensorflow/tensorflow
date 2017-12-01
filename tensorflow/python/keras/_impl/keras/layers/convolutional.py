@@ -136,7 +136,8 @@ class Conv1D(tf_convolutional_layers.Conv1D, Layer):
         'filters': self.filters,
         'kernel_size': self.kernel_size,
         'strides': self.strides,
-        'padding': self.padding,
+        # Hack for causal padding
+        'padding': "causal" if self._causal_padding else self.padding,
         'dilation_rate': self.dilation_rate,
         'activation': activations.serialize(self.activation),
         'use_bias': self.use_bias,
