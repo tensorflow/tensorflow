@@ -150,6 +150,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/saved_model",
         "@six_archive//:six",
     ],
 )

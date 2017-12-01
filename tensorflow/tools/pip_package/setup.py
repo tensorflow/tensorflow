@@ -33,12 +33,7 @@ _VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
     'absl-py',
-    # weakref.finalize introduced in Python 3.4
-    'backports.weakref >= 1.0rc1; python_version < "3.4"',
-    # enum module introduced in Python 3.4
-    'enum34 >= 1.1.6; python_version < "3.4"',
-    # Needed for unittest.mock in Python 2
-    'mock >= 2.0.0; python_version < "3.0"',
+    'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
@@ -57,6 +52,8 @@ if sys.version_info.major == 3:
   REQUIRED_PACKAGES.append('wheel >= 0.26')
 else:
   REQUIRED_PACKAGES.append('wheel')
+  # mock comes with unittest.mock for python3, need to install for python2
+  REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
 # tf-nightly should depend on tb-nightly
 if 'tf_nightly' in project_name:
@@ -64,6 +61,10 @@ if 'tf_nightly' in project_name:
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.5.0a0, < 1.6.0a0'
       break
+
+# weakref.finalize was introduced in Python 3.4
+if sys.version_info < (3, 4):
+  REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
