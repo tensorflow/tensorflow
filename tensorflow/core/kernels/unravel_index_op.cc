@@ -32,15 +32,15 @@ struct mod_op {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+template <typename Tidx>
 class UnravelIndexOp : public OpKernel {
  public:
   explicit UnravelIndexOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& indices_tensor = ctx->input(0);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsVector(indices_tensor.shape()) ||
-                    TensorShapeUtils::IsScalar(indices_tensor.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices_tensor.shape()) ||
+                         TensorShapeUtils::IsScalar(indices_tensor.shape()),
                 errors::InvalidArgument(
                     "The indices can only be scalar or vector, got \"",
                     indices_tensor.shape().DebugString(), "\""));
@@ -51,28 +51,30 @@ class UnravelIndexOp : public OpKernel {
         errors::InvalidArgument("The indices can only be 1-D, got \"",
                                 dims_tensor.shape().DebugString(), "\""));
 
-    auto dims = dims_tensor.vec<int32>();
+    auto dims = dims_tensor.vec<Tidx>();
 
     Eigen::array<bool, 1> reverse({true});
 
     Tensor strides_tensor;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(
-                            DT_INT32, TensorShape({dims_tensor.NumElements()}),
-                            &strides_tensor));
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_temp(DataTypeToEnum<Tidx>::value,
+                                      TensorShape({dims_tensor.NumElements()}),
+                                      &strides_tensor));
 
-    auto strides = strides_tensor.vec<int32>();
+    auto strides = strides_tensor.vec<Tidx>();
     strides = dims.reverse(reverse)
-                  .scan(0, Eigen::internal::ProdReducer<int32>(), false)
+                  .scan(0, Eigen::internal::ProdReducer<Tidx>(), false)
                   .reverse(reverse);
 
     Tensor strides_shifted_tensor;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(
-                            DT_INT32, TensorShape({dims_tensor.NumElements()}),
-                            &strides_shifted_tensor));
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_temp(DataTypeToEnum<Tidx>::value,
+                                      TensorShape({dims_tensor.NumElements()}),
+                                      &strides_shifted_tensor));
 
-    auto strides_shifted = strides_shifted_tensor.vec<int32>();
+    auto strides_shifted = strides_shifted_tensor.vec<Tidx>();
     strides_shifted = dims.reverse(reverse)
-                          .scan(0, Eigen::internal::ProdReducer<int32>(), true)
+                          .scan(0, Eigen::internal::ProdReducer<Tidx>(), true)
                           .reverse(reverse);
 
     Tensor* output_tensor = nullptr;
@@ -81,35 +83,38 @@ class UnravelIndexOp : public OpKernel {
           ctx, ctx->allocate_output(0, TensorShape({dims_tensor.NumElements()}),
                                     &output_tensor));
 
-      auto output = output_tensor->vec<int32>();
+      auto output = output_tensor->vec<Tidx>();
 
-      output = output.constant(indices_tensor.scalar<int32>()());
-      output = output.binaryExpr(strides, mod_op<int32>()) / strides_shifted;
+      output = output.constant(indices_tensor.scalar<Tidx>()());
+      output = output.binaryExpr(strides, mod_op<Tidx>()) / strides_shifted;
     } else {
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_output(0,
-                                    TensorShape({dims_tensor.NumElements(),
-                                                 indices_tensor.NumElements()}),
-                                    &output_tensor));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(
+                              0, TensorShape({dims_tensor.NumElements(),
+                                              indices_tensor.NumElements()}),
+                              &output_tensor));
 
-      auto output = output_tensor->matrix<int32>();
+      auto output = output_tensor->matrix<Tidx>();
 
       Eigen::array<int64, 2> reshape{{dims_tensor.NumElements(), 1}};
       Eigen::array<int64, 2> bcast({1, indices_tensor.NumElements()});
       Eigen::array<int64, 2> indices_reshape{{1, indices_tensor.NumElements()}};
       Eigen::array<int64, 2> indices_bcast({dims_tensor.NumElements(), 1});
 
-      output = indices_tensor.vec<int32>()
+      output = indices_tensor.vec<Tidx>()
                    .reshape(indices_reshape)
                    .broadcast(indices_bcast);
       output = output.binaryExpr(strides.reshape(reshape).broadcast(bcast),
-                                 mod_op<int32>()) /
+                                 mod_op<Tidx>()) /
                strides_shifted.reshape(reshape).broadcast(bcast);
     }
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("UnravelIndex").Device(DEVICE_CPU),
-                        UnravelIndexOp);
+#define REGISTER_KERNEL(type)                                               \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("UnravelIndex").Device(DEVICE_CPU).TypeConstraint<type>("Tidx"), \
+      UnravelIndexOp<type>);
+TF_CALL_int32(REGISTER_KERNEL) TF_CALL_int64(REGISTER_KERNEL)
+#undef REGISTER_KERNEL
 
 }  // namespace tensorflow
