@@ -323,16 +323,15 @@ class Conv1D(_Conv):
 
   def build(self, input_shape):
     _, shape_fn = self._helper_for_causal_padding()
-    super(Conv1D, self).build(shape_fn(input_shape) or input_shape)
+    super(Conv1D, self).build(shape_fn(input_shape))
 
   def call(self, inputs):
     inputs_fn, _ = self._helper_for_causal_padding()
-    return super(Conv1D, self).call(inputs_fn(inputs) or inputs)
+    return super(Conv1D, self).call(inputs_fn(inputs))
 
   def _compute_output_shape(self, input_shape):
     _, shape_fn = self._helper_for_causal_padding()
-    return super(Conv1D, self)._compute_output_shape(shape_fn(input_shape)
-                                                     or input_shape)
+    return super(Conv1D, self)._compute_output_shape(shape_fn(input_shape))
 
   def _helper_for_causal_padding(self):
     """Generate the functions to handle inputs and input_shape for causal padding."""
@@ -355,8 +354,8 @@ class Conv1D(_Conv):
 
       return inputs_fn, shape_fn
     else:
-      dummy_fn = lambda _: None
-      return dummy_fn, dummy_fn
+      identity_fn = lambda x: x
+      return identity_fn, identity_fn
 
 
 def conv1d(inputs,
