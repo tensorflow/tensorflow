@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_logging_ops import *
@@ -65,7 +66,10 @@ def Print(input_, data, message=None, first_n=None, summarize=None,
     helper_op = gen_logging_ops._print(constant_op.constant([]),
                                        data, message, first_n, summarize, name)
     with ops.control_dependencies([helper_op]):
-      return gen_array_ops._ref_identity(input_, name=name)
+      if isinstance(input_, variables.Variable):
+        return variables.Variable(variable_def=input_.to_proto())
+      else:
+        return gen_array_ops._ref_identity(input_, name=name)
   else:
     return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
 
