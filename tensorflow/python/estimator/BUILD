@@ -433,6 +433,7 @@ py_library(
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/data",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",

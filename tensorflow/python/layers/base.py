@@ -103,10 +103,16 @@ class Layer(object):
     self.built = False
     self.input_spec = None
 
+    if activity_regularizer and context.in_eager_mode():
+      raise ValueError(
+          ('Activity regularization is not supported when executing eagerly. '
+           'Got activity_regularizer=%s') % (activity_regularizer,))
     self._activity_regularizer = activity_regularizer
     self._trainable_weights = []
     self._non_trainable_weights = []
     self._updates = []
+    # When executing eagerly, _losses is a list of zero-argument lambdas which
+    # return tensors. When using graph execution, _losses is a list of ops.
     self._losses = []
     self._reuse = kwargs.get('_reuse')
     self._graph = ops.get_default_graph()
@@ -287,9 +293,22 @@ class Layer(object):
 
   @property
   def losses(self):
+    """Losses which are associated with this `Layer`.
+
+    Note that when executing eagerly, getting this property evaluates
+    regularizers. When using graph execution, variable regularization ops have
+    already been created and are simply returned here.
+
+    Returns:
+      A list of tensors.
+    """
     if context.in_eager_mode():
-      raise RuntimeError('Layer.losses not supported in Eager mode.')
-    return self._losses
+      # _losses may only contain variable regularization losses when executing
+      # eagerly, and they have been saved as lambdas to be executed when
+      # requested.
+      return [regularizer() for regularizer in self._losses]
+    else:
+      return self._losses
 
   def add_loss(self, losses, inputs=None):
     """Add loss tensor(s), potentially dependent on layer inputs.
@@ -302,6 +321,11 @@ class Layer(object):
 
     The `get_losses_for` method allows to retrieve the losses relevant to a
     specific set of inputs.
+
+    Note that `add_loss` is not supported when executing eagerly. Instead,
+    variable regularizers may be added through `add_variable`. Activity
+    regularization is not supported directly (but such losses may be returned
+    from `Layer.call()`).
 
     Arguments:
       losses: Loss tensor, or list/tuple of tensors.
@@ -462,16 +486,8 @@ class Layer(object):
     Raises:
       RuntimeError: If called in Eager mode with regularizers.
     """
-    # Note that we currently don't support variable regularization in Eager
-    # mode. An alternative is for users to directly compute these losses before
-    # performing a backward pass.
     if context.in_graph_mode():
       existing_variables = set(tf_variables.global_variables())
-    else:
-      existing_variables = []
-      if regularizer is not None:
-        raise RuntimeError('Variable regularization not supported in Eager '
-                           'mode.')
     if dtype is None:
       dtype = self.dtype or dtypes.float32
 
@@ -486,28 +502,39 @@ class Layer(object):
                                    constraint=constraint,
                                    trainable=trainable and self.trainable,
                                    partitioner=partitioner)
-        if (context.in_graph_mode() and trainable and self.trainable
-            and variable not in tf_variables.trainable_variables()):
-          # A custom getter / variable scope overrode the trainable flag.
-          trainable = False
-        if variable in existing_variables:
-          return variable
-        if regularizer:
-          # To match the behavior of tf.get_variable(), we only
-          # apply regularization if the variable is newly created.
-          if isinstance(variable, tf_variables.PartitionedVariable):
-            for v in variable:
-              with ops.colocate_with(v.op):
+        if context.in_graph_mode():
+          if (trainable and self.trainable
+              and variable not in tf_variables.trainable_variables()):
+            # A custom getter / variable scope overrode the trainable flag.
+            trainable = False
+          if variable in existing_variables:
+            return variable
+          if regularizer:
+            # To match the behavior of tf.get_variable(), we only
+            # apply regularization if the variable is newly created.
+            if isinstance(variable, tf_variables.PartitionedVariable):
+              for v in variable:
+                with ops.colocate_with(v.op):
+                  with ops.name_scope(name + '/Regularizer'):
+                    regularization = regularizer(v)
+                if regularization is not None:
+                  self.add_loss(regularization)
+            else:
+              with ops.colocate_with(variable.op):
                 with ops.name_scope(name + '/Regularizer'):
-                  regularization = regularizer(v)
+                  regularization = regularizer(variable)
               if regularization is not None:
                 self.add_loss(regularization)
-          else:
-            with ops.colocate_with(variable.op):
-              with ops.name_scope(name + '/Regularizer'):
-                regularization = regularizer(variable)
-            if regularization is not None:
-              self.add_loss(regularization)
+        elif regularizer:
+          if isinstance(variable, tf_variables.PartitionedVariable):
+            raise RuntimeError(
+                'Partitioned variable regularization is not yet supported when '
+                'executing eagerly. File a feature request is this is '
+                'important to you.')
+          # Save a zero-argument lambda which runs the regularizer on the
+          # variable, to be executed when `Layer.losses` is requested. This
+          # makes losses responsive to variable updates when executing eagerly.
+          self._losses.append(lambda: regularizer(variable))
     if trainable:
       self._trainable_weights.append(variable)
     else:

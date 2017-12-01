@@ -176,10 +176,6 @@ bool HloComputation::IsRemovable(const HloInstruction* instruction) {
     return false;
   }
 
-  if (instruction->HasSideEffect()) {
-    return false;
-  }
-
   return true;
 }
 
@@ -207,7 +203,8 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     worklist.pop();
 
     if (removed.count(item) != 0 || item->user_count() != 0 ||
-        item == root_instruction() || !IsRemovable(item)) {
+        item == root_instruction() || !IsRemovable(item) ||
+        item->HasSideEffect()) {
       continue;
     }
     for (int i = 0; i < item->operand_count(); ++i) {

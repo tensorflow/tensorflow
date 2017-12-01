@@ -35,6 +35,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
@@ -4794,6 +4795,16 @@ def enable_eager_execution(config=None, device_policy=None):
      or if trying to create a context with nontrivial options which differ
      from those of the existing context.
   """
+  if config is not None and not isinstance(config, config_pb2.ConfigProto):
+    raise TypeError(
+        "config must be a tf.ConfigProto, but got %s" % type(config))
+  if device_policy not in (None, context.DEVICE_PLACEMENT_EXPLICIT,
+                           context.DEVICE_PLACEMENT_WARN,
+                           context.DEVICE_PLACEMENT_SILENT):
+    raise ValueError(
+        "device_policy must be one of None, tfe.DEVICE_PLACEMENT_EXPLICIT, "
+        "tfe.DEVICE_PLACEMENT_WARN, tfe.DEVICE_PLACEMENT_SILENT"
+    )
   # pylint: disable=protected-access
   if context._default_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (

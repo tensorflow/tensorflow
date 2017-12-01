@@ -27,7 +27,7 @@ ModelAnalyzer::ModelAnalyzer(const GrapplerItem& item) : item_(item) {}
 
 Status ModelAnalyzer::GenerateReport(std::ostream& os) {
   GraphProperties properties(item_);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
+  TF_RETURN_IF_ERROR(properties.InferStatically(false));
 
   for (const auto& node : item_.MainOpsFanin()) {
     PrintNodeInfo(node, properties, os);

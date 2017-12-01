@@ -61,6 +61,15 @@ XLA_TEST_F(Bfloat16Test, ScalarOperation) {
                                 error_spec_);
 }
 
+XLA_TEST_F(Bfloat16Test, LogOperation) {
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(4.0f));
+  builder.Log(x);
+
+  ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(1.387f), {},
+                                error_spec_);
+}
+
 XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
   ComputationBuilder builder(client_, TestName());
   builder.Neg(builder.ConstantR0<bfloat16>(static_cast<bfloat16>(2.1f)));

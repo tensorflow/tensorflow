@@ -1620,7 +1620,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   virtual_placer_.reset(new VirtualPlacer(cluster));
   nodes_to_preserve_ = item.NodesToPreserve();
   GraphProperties graph_properties(item);
-  auto status = graph_properties.InferStatically();
+  auto status = graph_properties.InferStatically(false);
   if (!status.ok()) {
     *output = item.graph;
     return status;
