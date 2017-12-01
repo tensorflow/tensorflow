@@ -79,13 +79,24 @@ class PrintGradientTest(test.TestCase):
     self.assertAllEqual(wxg, wxpg)
 
   def testPrintVariable(self):
+    # Variable
     v = variables.Variable([[99], [22]])
-    p = logging_ops.Print(v, [v])
-    self.assertTrue(isinstance(p, type(v)))
-    self.assertEqual(p.dtype, v.dtype)
+    pv = logging_ops.Print(v, [v])
+    self.assertTrue(isinstance(pv, type(v)))
+    self.assertEqual(pv.dtype, v.dtype)
     with self.test_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      self.assertAllEqual(p.eval(), v.eval())
+      sess.run(v.initializer)
+      self.assertAllEqual(pv.eval(), v.eval())
+
+    # mutable tensor
+    v = variables.Variable([17])
+    m = v.op.outputs[0]
+    pm = logging_ops.Print(m, [m])
+    self.assertTrue(isinstance(pm, type(m)))
+    self.assertEqual(pm.dtype, m.dtype)
+    with self.test_session() as sess:
+      sess.run(v.initializer)
+      self.assertAllEqual(sess.run(pm), sess.run(m))
 
 
 if __name__ == "__main__":
