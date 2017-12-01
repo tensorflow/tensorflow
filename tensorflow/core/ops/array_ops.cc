@@ -336,17 +336,14 @@ REGISTER_OP("Unpack")
     });
 
 REGISTER_OP("UnravelIndex")
-    .Input("indices: int32")
-    .Input("dims: int32")
-    .Output("output: int32")
-    .SetShapeFn([](InferenceContext* c) {
-      return Status::OK();
-    })
+    .Input("indices: Tidx")
+    .Input("dims: Tidx")
+    .Output("output: Tidx")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
     .Doc(R"doc(
 Converts a flat index or array of flat indices into a tuple of coordinate
 arrays.
-
-This is equivalent to numpy.unravel_index
 
 indices: An 0-D or 1-D `int` Tensor whose elements are indices into the
   flattened version of an array of dimensions dims.
@@ -354,6 +351,10 @@ dims: An 1-D `int` Tensor. The shape of the array to use for unraveling
   indices.
 output: An 2-D (or 1-D if indices is 0-D) tensor where each row has the
   same shape as the indices array.
+
+@compatibility(numpy)
+Equivalent to np.unravel_index
+@end_compatibility
 )doc");
 
 // --------------------------------------------------------------------------
