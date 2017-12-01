@@ -19,8 +19,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:reader_base",
         "//tensorflow/core/kernels:bounds_check_lib",
+        "//tensorflow/core/kernels:dataset",
         "//third_party/eigen3",
         "@kafka//:kafka",
     ],
@@ -37,7 +37,7 @@ tf_gen_op_wrapper_py(
     name = "gen_kafka_ops",
     out = "python/ops/gen_kafka_ops.py",
     require_shape_functions = True,
-    deps = [":kafka_ops_op_lib", ":kafka_kernels"],
+    deps = [":kafka_ops_op_lib"],
 )
 
 py_library(
@@ -57,6 +57,9 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:readers",
     ],
 )
 

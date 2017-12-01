@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,30 +20,25 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_OP("KafkaDataset")
-    .Output("reader_handle: Ref(string)")
-    .Attr("container: string = ''")
-    .Attr("shared_name: string = ''")
-    .Attr("servers: string")
-    .Attr("group: string")
-    .Attr("eof: bool")
-    .Attr("timeout: int")
+    .Input("topics: string")
+    .Input("servers: string")
+    .Input("group: string")
+    .Input("eof: bool")
+    .Input("timeout: int64")
+    .Output("handle: variant")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Vector(2));
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-A Reader that outputs the lines of a file delimited by '\n'.
+Creates a dataset that emits the messages of one or more Kafka topics.
 
-reader_handle: The handle to reference the Reader.
-container: If non-empty, this reader is placed in the given container.
-  Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-  with this shared_name. Otherwise, the node name is used instead.
-servers: The list of bootstrap servers, separated by ','.
+topics: A `tf.string` tensor containing one or more subscriptions,
+  in the format of [topic:partition:offset:length],
+  by default length is -1 for unlimited.
+servers: A list of bootstrap servers.
 group: The consumer group id.
 eof: If True, the kafka reader will stop on EOF.
-timeout: The timeout value for the Kafka Consumer to wait (in millisecond).
+timeout: The timeout value for the Kafka Consumer to wait
+  (in millisecond).
 )doc");
 
 }  // namespace tensorflow
