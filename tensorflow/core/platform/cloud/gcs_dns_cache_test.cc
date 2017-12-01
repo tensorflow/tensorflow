@@ -64,11 +64,6 @@ class TestHttpRequest : public HttpRequest {
   Status Send() override { return Status::OK(); }
   string EscapeString(const string& str) override { return ""; }
 
-  Status SetTimeouts(uint32 connection, uint32 inactivity,
-                     uint32 total) override {
-    return Status::OK();
-  }
-
   std::map<string, string> resolve_overrides_;
 };
 
