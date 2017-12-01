@@ -1238,8 +1238,8 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
       name=name + "_check_deps",
       deps=deps + if_cuda(cuda_deps),
       disallowed_deps=[
-          # clean_dep("//tensorflow/core:framework"),
-          # clean_dep("//tensorflow/core:lib")
+          clean_dep("//tensorflow/core:framework"),
+          clean_dep("//tensorflow/core:lib")
       ])
   tf_cc_shared_object(
       name=name,

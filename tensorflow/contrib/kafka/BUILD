@@ -6,29 +6,14 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-tf_custom_op_library(
-    name = "python/ops/_kafka_ops.so",
-    srcs = [
-        "kernels/kafka_reader_ops.cc",
-        "ops/kafka_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/core:reader_base",
-        "//tensorflow/core/kernels:bounds_check_lib",
-        "@kafka//:kafka",
-    ],
-)
 
 tf_kernel_library(
     name = "kafka_kernels",
-    srcs = ["kernels/kafka_reader_ops.cc"],
+    srcs = ["kernels/kafka_dataset_ops.cc"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
@@ -49,27 +34,21 @@ tf_gen_op_libs(
 )
 
 tf_gen_op_wrapper_py(
-    name = "kafka_ops",
-    deps = [":kafka_ops_op_lib"],
+    name = "gen_kafka_ops",
+    out = "python/ops/gen_kafka_ops.py",
+    require_shape_functions = True,
+    deps = [":kafka_ops_op_lib", ":kafka_kernels"],
 )
 
-tf_custom_op_py_library(
+py_library(
     name = "kafka",
     srcs = [
         "__init__.py",
-        "python/ops/kafka_reader_ops.py",
-    ],
-    dso = [
-        ":python/ops/_kafka_ops.so",
-    ],
-    kernels = [
-        ":kafka_kernels",
-        ":kafka_ops_op_lib",
+        "python/ops/kafka_dataset_ops.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
     deps = [
-        ":kafka_ops",
+        ":gen_kafka_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",

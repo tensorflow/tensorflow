@@ -29,11 +29,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-class KafkaReader : public ReaderBase {
+class KafkaDataset : public ReaderBase {
  public:
-  KafkaReader(const string& servers, const string& group, const bool eof,
+  KafkaDataset(const string& servers, const string& group, const bool eof,
               const int timeout, const string& name)
-      : ReaderBase(strings::StrCat("KafkaReader '", name, "'")),
+      : ReaderBase(strings::StrCat("KafkaDataset '", name, "'")),
         servers_(servers),
         group_(group),
         eof_(eof),
@@ -171,9 +171,9 @@ class KafkaReader : public ReaderBase {
   int64 offset_;
 };
 
-class KafkaReaderOp : public ReaderOpKernel {
+class KafkaDatasetOp : public ReaderOpKernel {
  public:
-  explicit KafkaReaderOp(OpKernelConstruction* context)
+  explicit KafkaDatasetOp(OpKernelConstruction* context)
       : ReaderOpKernel(context) {
     std::string servers;
     OP_REQUIRES_OK(context, context->GetAttr("servers", &servers));
@@ -187,11 +187,11 @@ class KafkaReaderOp : public ReaderOpKernel {
                 errors::InvalidArgument(
                     "Timeout value should be large than 0, got ", timeout));
     SetReaderFactory([this, servers, group, eof, timeout]() {
-      return new KafkaReader(servers, group, eof, timeout, name());
+      return new KafkaDataset(servers, group, eof, timeout, name());
     });
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("KafkaReader").Device(DEVICE_CPU), KafkaReaderOp);
+REGISTER_KERNEL_BUILDER(Name("KafkaDataset").Device(DEVICE_CPU), KafkaDatasetOp);
 
 }  // namespace tensorflow

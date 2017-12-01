@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Kafka reader."""
+"""Kafka Dataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.kafka.ops import gen_kafka_ops
+from tensorflow.contrib.kafka.python.ops import gen_kafka_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
@@ -25,10 +25,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import resource_loader
 
 
-_kafka_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_kafka_ops.so"))
-
-class KafkaReader(io_ops.ReaderBase):
+class KafkaDataset(io_ops.ReaderBase):
   """A Kafka Reader that outputs the message.
 
   See ReaderBase for supported methods.
@@ -41,13 +38,11 @@ class KafkaReader(io_ops.ReaderBase):
     Args:
       servers: A list of bootstrap servers.
       group: The consumer group id.
-      eof: If True, the kafka reader will stop on EOF.
+      eof: If True, the kafka dataset will stop on EOF.
       timeout: The timeout value for the Kafka Consumer to wait
                (in millisecond).
       name: A name for the operation (optional).
     """
-    rr = gen_kafka_ops.kafka_reader(servers=servers, group=group, eof=eof,
+    rr = gen_kafka_ops.kafka_dataset(servers=servers, group=group, eof=eof,
                                     timeout=timeout, name=name)
-    super(KafkaReader, self).__init__(rr)
-
-ops.RegisterShape("KafkaReader")(common_shapes.call_cpp_shape_fn)
+    super(KafkaDataset, self).__init__(rr)

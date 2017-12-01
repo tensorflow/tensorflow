@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 # ==============================================================================
-"""Tests for KafkaReader."""
+"""Tests for KafkaDataset."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.kafka.python.ops import kafka_reader_ops
+from tensorflow.contrib.kafka.python.ops import kafka_dataset_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import queue_runner_impl
 
-class KafkaReaderTest(test.TestCase):
+class KafkaDatasetTest(test.TestCase):
 
   def setUp(self):
     # The Kafka server has to be setup before the test
@@ -42,7 +42,7 @@ class KafkaReaderTest(test.TestCase):
 
   def testBasic(self):
     filename_queue = input_lib.string_input_producer(["test:0:0:10"])
-    reader = kafka_reader_ops.KafkaReader(group="test", eof=True)
+    reader = kafka_dataset_ops.KafkaDataset(group="test", eof=True)
     key, value = reader.read(filename_queue)
     with self.test_session() as sess:
       coord = coordinator.Coordinator()

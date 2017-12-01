@@ -12,21 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Kafka reader.
+"""Kafka Dataset.
 
-@@KafkaReader
+@@KafkaDataset
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.kafka.python.ops.kafka_reader_ops import KafkaReader
+from tensorflow.contrib.kafka.python.ops.kafka_dataset_ops import KafkaDataset
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    "KafkaReader",
+    "KafkaDataset",
 ]
 
 remove_undocumented(__name__)

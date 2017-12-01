@@ -491,6 +491,14 @@ def tf_additional_core_deps():
       "//conditions:default": [],
   })
 
+def tf_additional_kafka_kernel_deps():
+  return select({
+      "//conditions:default": [
+        "//tensorflow/contrib/kafka:kafka_kernels",
+        "//tensorflow/contrib/kafka:kafka_ops_op_lib",
+      ],
+  })
+
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_op_deps():
   return select({
