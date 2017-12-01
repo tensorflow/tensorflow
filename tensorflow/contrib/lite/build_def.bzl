@@ -89,6 +89,7 @@ def tflite_jni_linkopts():
   return tflite_jni_linkopts_unstripped() + select({
       "//tensorflow:android": [
           "-s",  # Omit symbol table.
+          "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
       ],
       "//conditions:default": [],
   })
