@@ -229,11 +229,13 @@ class ShapeInference {
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
       const ProgramShape& to_apply);
 
- private:
   // Helper that infers the shape produced by performing a dot operation with
   // the given LHS and RHS shapes.
-  static StatusOr<Shape> InferDotOpShape(const Shape& lhs, const Shape& rhs);
+  static StatusOr<Shape> InferDotOpShape(
+      const Shape& lhs, const Shape& rhs,
+      const DotDimensionNumbers& dimension_numbers);
 
+ private:
   // Helper that infers the shape produced by performing an element-wise binary
   // operation with the given LHS and RHS shapes.
   // Note: By "element-wise" we mean operations that look at a single element in

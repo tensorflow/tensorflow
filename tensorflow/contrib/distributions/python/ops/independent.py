@@ -68,11 +68,11 @@ class Independent(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Make independent distribution from a 2-batch Normal.
-  ind = ds.Independent(
-      distribution=ds.Normal(loc=[-1., 1], scale=[0.1, 0.5]),
+  ind = tfd.Independent(
+      distribution=tfd.Normal(loc=[-1., 1], scale=[0.1, 0.5]),
       reinterpreted_batch_ndims=1)
 
   # All batch dims have been "absorbed" into event dims.
@@ -80,8 +80,8 @@ class Independent(distribution_lib.Distribution):
   ind.event_shape  # ==> [2]
 
   # Make independent distribution from a 2-batch bivariate Normal.
-  ind = ds.Independent(
-      distribution=ds.MultivariateNormalDiag(
+  ind = tfd.Independent(
+      distribution=tfd.MultivariateNormalDiag(
           loc=[[-1., 1], [1, -1]],
           scale_identity_multiplier=[1., 0.5]),
       reinterpreted_batch_ndims=1)

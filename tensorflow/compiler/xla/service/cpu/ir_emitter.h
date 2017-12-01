@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/external_constant_pool.h"
+#include "tensorflow/compiler/xla/service/cpu/ir_function.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -233,13 +235,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Convenience function to get the IR type matching the given shape.
   llvm::Type* IrShapeType(const Shape& shape);
 
-  // Returns an array of compute function parameter types.
-  std::vector<llvm::Type*> GetComputeFunctionParams();
-
-  // Get the llvm::Value* that represents the "retval" argument of the
-  // computation function being emitted by this emitter.
-  llvm::Argument* GetResultArgument();
-
   // Get the llvm::Value* that represents the "prof_counters" argument of the
   // computation function being emitted by this emitter.
   llvm::Argument* GetProfileCountersArgument();
@@ -251,11 +246,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Get the llvm::Value* that represents the "temps" argument of the
   // computation function being emitted by this emitter.
   llvm::Value* GetTempBuffersArgument();
-
-  // Emit ir to read and return the ir value for the dynamic loop bound at
-  // 'offset' from the "dynamic_loop_bounds" argument of the computation
-  // function being emitted by this emitter.
-  llvm::Value* GetDynamicLoopBound(const int64 offset);
 
   // Emits code that computes the address of the given temporary buffer to the
   // function. target_shape is the shape of this temporary buffer.
@@ -345,15 +335,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitTargetElementLoop(
       HloInstruction* target_op, tensorflow::StringPiece desc,
       const llvm_ir::ElementGenerator& element_generator);
-
-  // Emit IR to perform a computation for every element in a partition/slice of
-  // 'target_shape'. The loop bounds for the outer-dimension partitions are
-  // passed into the compute function as a runtime argument (accessible from
-  // GetDynamicLoopBound).
-  Status EmitParallelTargetElementLoop(
-      const Shape& target_shape,
-      const llvm_ir::ElementGenerator& element_generator,
-      tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the
@@ -476,8 +457,10 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       thread_local_buffers_;
 
   // The following fields track the IR emission state. According to LLVM memory
-  // management rules, their memory is owned by the module.
-  llvm::Function* compute_function_;
+  // management rules, their memory is owned by the module (Note that IrFunction
+  // creates the encapsulated llvm::Function s.t. it is added to the llvm
+  // module's function list).
+  std::unique_ptr<IrFunction> compute_function_;
   llvm::IRBuilder<> ir_builder_;
 
   // Maps HLOs to their index into the profile counter array.
@@ -490,7 +473,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm_ir::AliasAnalysis alias_analysis_;
 
   // The number of root instruction outer dimensions used in parallel loop
-  // emission (EmitParallelTargetElementLoop).
+  // emission (ParallelLoopEmitter).
   int64 num_dynamic_loop_bounds_ = 0;
 
   // Returns whether the given instruction should be emitted as a parallel loop.

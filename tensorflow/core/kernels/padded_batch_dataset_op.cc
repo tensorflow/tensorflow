@@ -242,7 +242,7 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
       Node* batch_size = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
 
-      std::vector<NodeBuilder::NodeOut> padded_shapes;
+      std::vector<Node*> padded_shapes;
       padded_shapes.reserve(padded_shapes_.size());
       for (int i = 0; i < padded_shapes_.size(); i++) {
         Node* node;
@@ -254,7 +254,7 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
         padded_shapes.emplace_back(node);
       }
 
-      std::vector<NodeBuilder::NodeOut> padding_values;
+      std::vector<Node*> padding_values;
       padding_values.reserve(padding_values_.size());
       for (const Tensor& t : padding_values_) {
         Node* node;

@@ -50,7 +50,7 @@ GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
 # to protect against crashes. However, it breaks some dependent targets because
 # it forces us to depend on an external py_binary. The experimental API doesn't
 # have that drawback.
-EXPERIMENTAL_USE_TOCO_API_DIRECTLY = True
+EXPERIMENTAL_USE_TOCO_API_DIRECTLY = False
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has

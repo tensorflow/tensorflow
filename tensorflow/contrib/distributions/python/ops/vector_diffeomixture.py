@@ -188,8 +188,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
-  la = tf.linalg
+  tfd = tf.contrib.distributions
 
   # Create two batches of VectorDiffeomixtures, one with mix_loc=[0.] and
   # another with mix_loc=[1]. In both cases, `K=2` and the affine
@@ -197,20 +196,20 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   # k=0: loc=zeros(dims)  scale=LinearOperatorScaledIdentity
   # k=1: loc=[2.]*dims    scale=LinOpDiag
   dims = 5
-  vdm = ds.VectorDiffeomixture(
+  vdm = tfd.VectorDiffeomixture(
       mix_loc=[[0.], [1]],
       mix_scale=[1.],
-      distribution=ds.Normal(loc=0., scale=1.),
+      distribution=tfd.Normal(loc=0., scale=1.),
       loc=[
           None,  # Equivalent to `np.zeros(dims, dtype=np.float32)`.
           np.float32([2.]*dims),
       ],
       scale=[
-          la.LinearOperatorScaledIdentity(
+          tf.linalg.LinearOperatorScaledIdentity(
             num_rows=dims,
             multiplier=np.float32(1.1),
             is_positive_definite=True),
-          la.LinearOperatorDiag(
+          tf.linalg.LinearOperatorDiag(
             diag=np.linspace(2.5, 3.5, dims, dtype=np.float32),
             is_positive_definite=True),
       ],

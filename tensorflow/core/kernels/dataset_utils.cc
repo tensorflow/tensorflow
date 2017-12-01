@@ -32,7 +32,7 @@ Status MakeIteratorFromInputElement(
   // is always 0, so a negative random step ID should suffice.
   opts.step_id = CapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
-      opts.step_id, [captured_func, ctx](const string& name) {
+      opts.step_id, [captured_func](const string& name) {
         captured_func->resource_manager()->Cleanup(name).IgnoreError();
       });
   opts.step_container = &step_container;

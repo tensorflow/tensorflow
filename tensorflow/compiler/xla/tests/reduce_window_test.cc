@@ -962,68 +962,114 @@ struct R1ReduceWindowTestData {
   int64 base_bounds[1];
   int64 window_bounds[1];
   int64 strides[1];
-  Padding padding;
+  int64 pad_low[1];
+  int64 pad_high[1];
   Reducer reducer;
 } kR1TestCases[] = {
     {/*base_bounds=*/{1}, /*window_bounds=*/{1},
      /*strides=*/{1},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/{xla::MakePadding({1}, {1}, {1}, Padding::kValid)[0].first},
+     /*pad_high=*/{xla::MakePadding({1}, {1}, {1}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
     {/*base_bounds=*/{3}, /*window_bounds=*/{3},
      /*strides=*/{1},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/{xla::MakePadding({3}, {3}, {1}, Padding::kValid)[0].first},
+     /*pad_high=*/{xla::MakePadding({3}, {3}, {1}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
     {/*base_bounds=*/{3}, /*window_bounds=*/{2},
      /*strides=*/{1},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/{xla::MakePadding({3}, {2}, {1}, Padding::kValid)[0].first},
+     /*pad_high=*/{xla::MakePadding({3}, {2}, {1}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
     {/*base_bounds=*/{5}, /*window_bounds=*/{1},
      /*strides=*/{1},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kMax},
+     /*pad_low=*/{xla::MakePadding({5}, {1}, {1}, Padding::kValid)[0].first},
+     /*pad_high=*/{xla::MakePadding({5}, {1}, {1}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kMax},
 
     {/*base_bounds=*/{16}, /*window_bounds=*/{4},
      /*strides=*/{4},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kMax},
+     /*pad_low=*/{xla::MakePadding({16}, {4}, {4}, Padding::kValid)[0].first},
+     /*pad_high=*/{xla::MakePadding({16}, {4}, {4}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kMax},
 
     {/*base_bounds=*/{16}, /*window_bounds=*/{4},
      /*strides=*/{3},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/{xla::MakePadding({16}, {4}, {3}, Padding::kValid)[0].first},
+     /*pad_high=*/{xla::MakePadding({16}, {4}, {3}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
-    {/*base_bounds=*/{128 * 2}, /*window_bounds=*/{30},
+    {/*base_bounds=*/{128 * 2},
+     /*window_bounds=*/{30},
      /*strides=*/{27},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/
+     {xla::MakePadding({128 * 2}, {30}, {27}, Padding::kValid)[0].first},
+     /*pad_high=*/
+     {xla::MakePadding({128 * 2}, {30}, {27}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
-    {/*base_bounds=*/{128 * 17}, /*window_bounds=*/{7},
+    {/*base_bounds=*/{128 * 17},
+     /*window_bounds=*/{7},
      /*strides=*/{64},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/
+     {xla::MakePadding({128 * 17}, {7}, {64}, Padding::kValid)[0].first},
+     /*pad_high=*/
+     {xla::MakePadding({128 * 17}, {7}, {64}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
-    {/*base_bounds=*/{128 * 2}, /*window_bounds=*/{32},
+    {/*base_bounds=*/{128 * 2},
+     /*window_bounds=*/{32},
      /*strides=*/{56},
-     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/
+     {xla::MakePadding({128 * 2}, {32}, {56}, Padding::kValid)[0].first},
+     /*pad_high=*/
+     {xla::MakePadding({128 * 2}, {32}, {56}, Padding::kValid)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
     {/*base_bounds=*/{3}, /*window_bounds=*/{2},
      /*strides=*/{1},
-     /*padding=*/Padding::kSame, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/{xla::MakePadding({3}, {2}, {1}, Padding::kSame)[0].first},
+     /*pad_high=*/{xla::MakePadding({3}, {2}, {1}, Padding::kSame)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
     {/*base_bounds=*/{5}, /*window_bounds=*/{3},
      /*strides=*/{2},
-     /*padding=*/Padding::kSame, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/{xla::MakePadding({5}, {3}, {2}, Padding::kSame)[0].first},
+     /*pad_high=*/{xla::MakePadding({5}, {3}, {2}, Padding::kSame)[0].second},
+     /*reducer=*/Reducer::kAdd},
 
     {/*base_bounds=*/{16}, /*window_bounds=*/{4},
      /*strides=*/{3},
-     /*padding=*/Padding::kSame, /*reducer=*/Reducer::kAdd},
+     /*pad_low=*/{xla::MakePadding({16}, {4}, {3}, Padding::kSame)[0].first},
+     /*pad_high=*/{xla::MakePadding({16}, {4}, {3}, Padding::kSame)[0].second},
+     /*reducer=*/Reducer::kAdd},
+
+    {/*base_bounds=*/{5}, /*window_bounds=*/{5},
+     /*strides=*/{1},
+     /*pad_low=*/{0},
+     /*pad_high=*/{5},
+     /*reducer=*/Reducer::kAdd},
+
+    {/*base_bounds=*/{5}, /*window_bounds=*/{5},
+     /*strides=*/{1},
+     /*pad_low=*/{5},
+     /*pad_high=*/{0},
+     /*reducer=*/Reducer::kAdd},
 };
 
 string R1ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<R1ReduceWindowTestData>& data) {
   string str = tensorflow::strings::StrCat(
-      "base_bounds_",
-      tensorflow::str_util::Join(data.param.base_bounds, "x"),  //
+      "base_bounds_", tensorflow::str_util::Join(data.param.base_bounds, "x"),
       "__window_bounds_",
-      tensorflow::str_util::Join(data.param.window_bounds, "x"),              //
-      "__strides_", tensorflow::str_util::Join(data.param.strides, "x"),      //
-      "__padding_", data.param.padding == Padding::kSame ? "same" : "valid",  //
-      "__reducer_", data.param.reducer == kAdd ? "add" : "max");
+      tensorflow::str_util::Join(data.param.window_bounds, "x"), "__strides_",
+      tensorflow::str_util::Join(data.param.strides, "x"), "__pad_low_",
+      tensorflow::str_util::Join(data.param.pad_low, "x"), "__pad_high_",
+      tensorflow::str_util::Join(data.param.pad_high, "x"), "__reducer_",
+      data.param.reducer == kAdd ? "add" : "max");
   return str;
 }
 
@@ -1044,15 +1090,18 @@ TEST_P(R1ReduceWindowTest, DoIt) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_arg,
                           client_->TransferToServer(*input_literal));
 
+  std::vector<std::pair<int64, int64>> padding(1);
+  padding[0] = {param.pad_low[0], param.pad_high[0]};
+
   auto computation = param.reducer == kAdd
                          ? CreateScalarAddComputation(F32, &b)
                          : CreateScalarMaxComputation(F32, &b);
-  b.ReduceWindow(/*operand=*/
-                 b.Parameter(0, input_literal->shape(), "p0"),
-                 /*init_value=*/b.ConstantR0<float>(kInitValue),
-                 /*computation=*/computation,
-                 /*window_dimensions=*/param.window_bounds,
-                 /*window_strides=*/param.strides, /*padding=*/param.padding);
+  b.ReduceWindowWithGeneralPadding(
+      /*operand=*/b.Parameter(0, input_literal->shape(), "p0"),
+      /*init_value=*/b.ConstantR0<float>(kInitValue),
+      /*computation=*/computation,
+      /*window_dimensions=*/param.window_bounds,
+      /*window_strides=*/param.strides, /*padding=*/padding);
 
   auto reduce_func = param.reducer == kAdd
                          ? +[](float a, float b) { return a + b; }
@@ -1062,7 +1111,8 @@ TEST_P(R1ReduceWindowTest, DoIt) {
       /*init=*/kInitValue,
       /*reduce_func=*/reduce_func,
       /*window=*/param.window_bounds,
-      /*stride=*/param.strides, /*padding=*/param.padding);
+      /*stride=*/param.strides,
+      /*padding=*/padding);
 
   ComputeAndCompareR1<float>(&b, tensorflow::gtl::ArraySlice<float>(*expected),
                              {input_arg.get()}, ErrorSpec(1e-3, 1e-3));

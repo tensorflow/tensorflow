@@ -561,5 +561,25 @@ TEST_F(DotOperationTest, TransposeFolding) {
   }
 }
 
+XLA_TEST_F(DotOperationTest, DotGeneralUnimplemented) {
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR3FromArray3D<float>(
+      {{{1.0, 2.0}, {3.0, 4.0}}, {{5.0, 6.0}, {7.0, 8.0}}});
+  auto rhs = builder.ConstantR3FromArray3D<float>(
+      {{{1.0, 0.0}, {0.0, 1.0}}, {{0.0, 1.0}, {1.0, 0.0}}});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  builder.DotGeneral(lhs, rhs, dot_dnums);
+
+  auto status = Execute(&builder, {}).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::HasSubstr("Dot with batch dimensions not implemented."));
+}
+
 }  // namespace
 }  // namespace xla

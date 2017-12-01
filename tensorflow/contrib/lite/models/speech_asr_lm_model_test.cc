@@ -59,10 +59,10 @@ static void ClearLstmStates(Interpreter* interpreter) {
          interpreter->tensor(kLstmLayer3CellStateTensor)->bytes);
 }
 
-TEST(SpeechTerseLm, EndToEndTest) {
+TEST(SpeechAsrLm, EndToEndTest) {
   // Read the model.
   string tflite_file_path =
-      file::JoinPath(TestDataPath(), "speech_terse_lm_model.tflite");
+      file::JoinPath(TestDataPath(), "speech_asr_lm_model.tflite");
   auto model = FlatBufferModel::BuildFromFile(tflite_file_path.c_str());
   CHECK(model) << "Failed to mmap model " << tflite_file_path;
 
@@ -76,13 +76,13 @@ TEST(SpeechTerseLm, EndToEndTest) {
   // Load the input frames.
   Frames input_frames;
   const string input_file_path =
-      file::JoinPath(TestDataPath(), "speech_terse_lm_model_in.csv");
+      file::JoinPath(TestDataPath(), "speech_asr_lm_model_in.csv");
   ReadFrames(input_file_path, &input_frames);
 
   // Load the golden output results.
   Frames output_frames;
   const string output_file_path =
-      file::JoinPath(TestDataPath(), "speech_terse_lm_model_out.csv");
+      file::JoinPath(TestDataPath(), "speech_asr_lm_model_out.csv");
   ReadFrames(output_file_path, &output_frames);
 
   CHECK_EQ(interpreter->tensor(kModelInput1Tensor)->dims->size, 1);

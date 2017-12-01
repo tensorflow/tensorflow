@@ -65,6 +65,7 @@ class DecodeBmpOpTest(test.TestCase):
       decoded = decode.eval()
       self.assertAllEqual(decoded, img_bytes)
 
+
   def testGrayscale(self):
     img_bytes = [[[255], [0]], [[255], [0]]]
     encoded_bytes = [
@@ -148,6 +149,7 @@ class DecodeBmpOpTest(test.TestCase):
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
           "requires at least 68 bytes, got 62 bytes"):
         decoded = decode.eval()
+
 
 if __name__ == "__main__":
   test.main()

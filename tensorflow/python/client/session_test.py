@@ -28,6 +28,8 @@ import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -1740,6 +1742,137 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testAddFunctionToGrpcSession(self):
     server = server_lib.Server.create_local_server()
     self.runTestAddFunctionToSession(server.target)
+
+
+class GraphMutationTest(test_util.TensorFlowTestCase):
+
+  def testUpdateInputAfterRunning(self):
+    with ops.Graph().as_default() as g:
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(2.0)
+      c = a + b
+
+    with session.Session(graph=g) as sess:
+      self.assertAllEqual(3.0, sess.run(c))
+      c.op._update_input(1, a)  # pylint: disable=protected-access
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          'add.*was changed by updating input tensor after it was run'):
+        sess.run(c)
+
+      # Check that running the graph with a new session is fine
+      with session.Session(graph=g) as sess2:
+        self.assertAllEqual(2.0, sess2.run(c))
+
+  def testSetDeviceAfterRunning(self):
+    with ops.Graph().as_default() as g:
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(2.0)
+      c = a + b
+
+    with session.Session(graph=g) as sess:
+      self.assertAllEqual(3.0, sess.run(c))
+      c.op._set_device('/cpu:0')  # pylint: disable=protected-access
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          'add.*was changed by setting device after it was run'):
+        sess.run(c)
+
+  def testSetAttrAfterRunning(self):
+    with ops.Graph().as_default() as g:
+      a = constant_op.constant(1.0, dtype=dtypes.float32)
+      b = math_ops.cast(a, dtypes.float64)
+
+    with session.Session(graph=g) as sess:
+      self.assertAllEqual(1.0, sess.run(b))
+      b.op._set_attr('DstT',
+                     attr_value_pb2.AttrValue(type=types_pb2.DT_FLOAT))
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          'Cast.*was changed by setting attribute after it was run'):
+        sess.run(b)
+
+  def testRunModifyRun(self):
+    with ops.Graph().as_default() as g:
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(2.0)
+      c = a + b
+
+      with session.Session(graph=g) as sess:
+        self.assertAllEqual(3.0, sess.run(c))
+
+        d = b + c
+        d.op._update_input(0, a)  # pylint: disable=protected-access
+        self.assertAllEqual(3.0, sess.run(c))
+        self.assertAllEqual(4.0, sess.run(d))
+
+  def testRunModifyRunTwoSessions(self):
+    with ops.Graph().as_default() as g:
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(2.0)
+      c = a + b
+
+      with session.Session(graph=g) as sess1:
+        with session.Session(graph=g) as sess2:
+          self.assertAllEqual(3.0, sess1.run(c))
+          self.assertAllEqual(3.0, sess2.run(c))
+
+          d = b + c
+          d.op._update_input(0, a)  # pylint: disable=protected-access
+          self.assertAllEqual(3.0, sess2.run(c))
+          self.assertAllEqual(4.0, sess2.run(d))
+
+          d.op._update_input(0, b)  # pylint: disable=protected-access
+          self.assertAllEqual(3.0, sess1.run(c))
+          self.assertAllEqual(5.0, sess1.run(d))
+
+          with self.assertRaisesRegexp(
+              errors.FailedPreconditionError,
+              'add.*was changed by updating input tensor after it was run'):
+            sess2.run(c)
+
+  def testTwoSessionsOneRunBeforeModification(self):
+    with ops.Graph().as_default() as g, ops.device('/cpu:0'):
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(2.0)
+      c = a + b
+
+    with session.Session(graph=g) as sess1:
+      with session.Session(graph=g) as sess2:
+        sess1.run(c)
+
+        c.op._set_device('/cpu:0')  # pylint: disable=protected-access
+
+        with self.assertRaisesRegexp(
+            errors.FailedPreconditionError,
+            'add.*was changed by setting device after it was run'):
+          sess1.run(c)
+
+        # sess2 was not run before modification
+        self.assertAllEqual(3.0, sess2.run(c))
+
+  def testTwoSessionsBothRunBeforeModification(self):
+    with ops.Graph().as_default() as g, ops.device('/cpu:0'):
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(2.0)
+      c = a + b
+
+    with session.Session(graph=g) as sess1:
+      with session.Session(graph=g) as sess2:
+        sess1.run(c)
+        sess2.run(c)
+
+        c.op._set_device('/cpu:0')  # pylint: disable=protected-access
+
+        with self.assertRaisesRegexp(
+            errors.FailedPreconditionError,
+            'add.*was changed by setting device after it was run'):
+          sess1.run(c)
+
+        with self.assertRaisesRegexp(
+            errors.FailedPreconditionError,
+            'add.*was changed by setting device after it was run'):
+          sess2.run(c)
 
 
 if __name__ == '__main__':

@@ -160,6 +160,12 @@ class HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
+  // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
+  // dimensions specified in 'dimension_numbers'.
+  static std::unique_ptr<HloInstruction> CreateDot(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dimension_numbers);
+
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
@@ -915,6 +921,15 @@ class HloInstruction {
   // Returns the dump string of the convolution dimension numbers.
   string ConvolutionDimensionNumbersToString() const;
 
+  // Returns data on the dimension numbers used for a dot operation.
+  const DotDimensionNumbers& dot_dimension_numbers() const {
+    CHECK(dot_dimension_numbers_ != nullptr);
+    return *dot_dimension_numbers_;
+  }
+
+  // Returns the dump string of the dot dimension numbers.
+  string DotDimensionNumbersToString() const;
+
   // Returns the random distribution for this rng node.
   //
   // Precondition: opcode() == HloOpcode::kRng
@@ -1172,6 +1187,9 @@ class HloInstruction {
 
   // Describes the dimension numbers used for a convolution.
   std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
+
+  // Describes the dimension numbers used for a dot.
+  std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
 
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;

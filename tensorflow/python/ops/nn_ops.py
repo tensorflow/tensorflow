@@ -1205,13 +1205,14 @@ def conv2d_transpose(value,
       raise ValueError("padding must be either VALID or SAME:"
                        " {}".format(padding))
 
-    return gen_nn_ops.conv2d_backprop_input(input_sizes=output_shape_,
-                                            filter=filter,
-                                            out_backprop=value,
-                                            strides=strides,
-                                            padding=padding,
-                                            data_format=data_format,
-                                            name=name)
+    return gen_nn_ops.conv2d_backprop_input(
+        input_sizes=output_shape_,
+        filter=filter,
+        out_backprop=value,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        name=name)
 
 
 def atrous_conv2d_transpose(value,
@@ -1343,12 +1344,13 @@ def atrous_conv2d_transpose(value,
                    (in_width + pad_right_extra) // rate,
                    output_shape[3]]
 
-    value = gen_nn_ops.conv2d_backprop_input(input_sizes=input_sizes,
-                                             filter=filters,
-                                             out_backprop=value,
-                                             strides=[1, 1, 1, 1],
-                                             padding="VALID",
-                                             data_format="NHWC")
+    value = gen_nn_ops.conv2d_backprop_input(
+        input_sizes=input_sizes,
+        filter=filters,
+        out_backprop=value,
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        data_format="NHWC")
 
     # The crops argument to batch_to_space includes both padding components.
     batch_to_space_crop = [[pad_top, pad_bottom + pad_bottom_extra],

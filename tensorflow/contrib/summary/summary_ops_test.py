@@ -108,6 +108,33 @@ class TargetTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
+  def testMaxQueue(self):
+    logs = tempfile.mkdtemp()
+    with summary_ops.create_summary_file_writer(
+        logs, max_queue=2, flush_millis=999999,
+        name='lol').as_default(), summary_ops.always_record_summaries():
+      get_total = lambda: len(summary_test_util.events_from_logdir(logs))
+      # Note: First tf.Event is always file_version.
+      self.assertEqual(1, get_total())
+      summary_ops.scalar('scalar', 2.0, step=1)
+      self.assertEqual(1, get_total())
+      summary_ops.scalar('scalar', 2.0, step=2)
+      self.assertEqual(3, get_total())
+
+  def testFlush(self):
+    logs = tempfile.mkdtemp()
+    with summary_ops.create_summary_file_writer(
+        logs, max_queue=999999, flush_millis=999999,
+        name='lol').as_default(), summary_ops.always_record_summaries():
+      get_total = lambda: len(summary_test_util.events_from_logdir(logs))
+      # Note: First tf.Event is always file_version.
+      self.assertEqual(1, get_total())
+      summary_ops.scalar('scalar', 2.0, step=1)
+      summary_ops.scalar('scalar', 2.0, step=2)
+      self.assertEqual(1, get_total())
+      summary_ops.flush()
+      self.assertEqual(3, get_total())
+
 
 class DbTest(summary_test_util.SummaryDbTest):
 
