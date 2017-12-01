@@ -19,13 +19,17 @@ from __future__ import print_function
 
 from collections import namedtuple
 import threading
+import time
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -33,6 +37,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
@@ -279,8 +284,9 @@ class MapDatasetTest(test.TestCase):
     with self.test_session() as sess:
       sess.run(table.init)
       sess.run(init_op)
-      sess.run(get_next)
-      sess.run(get_next)
+
+      print(sess.run(get_next))
+      print(sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -541,21 +547,15 @@ class MapDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-<<<<<<< HEAD
-=======
   def assertSparseValuesEqual(self, a, b):
     self.assertAllEqual(a.indices, b.indices)
     self.assertAllEqual(a.values, b.values)
     self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testSparse(self):
-
     def _sparse(i):
-      return sparse_tensor.SparseTensorValue(
-          indices=np.array([[0, 0]]),
-          values=(i * np.array([1])),
-          dense_shape=np.array([1, 1]))
-
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1])
     iterator = (dataset_ops.Dataset.range(10)
                 .map(_sparse)
                 .make_initializable_iterator())
@@ -566,26 +566,24 @@ class MapDatasetTest(test.TestCase):
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[i], dense_shape=[1, 1])
         self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
-        self.assertSparseValuesEqual(actual, _sparse(i))
+        self.assertSparseValuesEqual(actual, expected.eval())
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
   def testSparseChain(self):
-
     def _sparse(i):
-      return sparse_tensor.SparseTensorValue(
-          indices=np.array([[0, 0]]),
-          values=(i * np.array([1])),
-          dense_shape=np.array([1, 1]))
-
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1])
     def _check(i):
-      self.assertTrue(sparse_tensor.is_sparse(i))
+      self.assertTrue(isinstance(i, sparse_tensor.SparseTensor))
       return sparse_ops.sparse_concat(0, [i, i])
 
-    iterator = (
-        dataset_ops.Dataset.range(10).map(_sparse).map(_check)
-        .make_initializable_iterator())
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_sparse).map(_check)
+                .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -593,8 +591,10 @@ class MapDatasetTest(test.TestCase):
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0], [1, 0]], values=[i, i], dense_shape=[2, 1])
         self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
-        self.assertSparseValuesEqual(actual, _check(_sparse(i)).eval())
+        self.assertSparseValuesEqual(actual, expected.eval())
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -656,7 +656,6 @@ class MapDatasetBenchmark(test.Benchmark):
               iters=1000, wall_time=median_wall_time,
               name="benchmark_map_dataset_fan_out_%d" % fan_out)
 
->>>>>>> tensorflow_master
 
 if __name__ == "__main__":
   test.main()

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -54,7 +55,8 @@ class GraphPropertiesTest : public ::testing::Test {
     } else {
       strings::StrAppend(&s, "[");
       for (int i = 0; i < p.shape().dim_size(); ++i) {
-        strings::StrAppend(&s, i == 0 ? "" : ",", p.shape().dim(i).size());
+        strings::StrAppend(&s, i == 0 ? "" : ",",
+                           std::max<int64>(p.shape().dim(i).size(), -1));
       }
       strings::StrAppend(&s, "]");
     }
@@ -294,10 +296,9 @@ TEST_F(GraphPropertiesTest, Queues) {
   ASSERT_EQ(1, props2.size());
   EXPECT_EQ("float: [3,7]", PropToString(props2[0]));
 
-  // The dequeue3 op shape is unknown.
   const auto props3 = properties.GetOutputProperties("Dequeue3");
   ASSERT_EQ(1, props3.size());
-  EXPECT_EQ("float: ?", PropToString(props3[0]));
+  EXPECT_EQ("float: [3,7]", PropToString(props3[0]));
 
   // The dequeue3 op shape is unknown. The square2 op shape is known. Verify
   // that we merge the 2 properly to determine the shape of the data coming out
@@ -361,7 +362,7 @@ TEST_F(GraphPropertiesTest, WhileLoop) {
   /*
      with tf.Graph().as_default():
        i0 = tf.constant(0)
-       m0 = tf.ones([2, 2])
+       m0 = tf.placeholder([-1, 2])
        c = lambda i, m: i < 10
        b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
        r = tf.while_loop(
@@ -386,6 +387,14 @@ TEST_F(GraphPropertiesTest, WhileLoop) {
     EXPECT_EQ(DT_FLOAT, prop.dtype());
     EXPECT_EQ("float: [-1,2]", PropToString(prop));
   }
+
+  // The loop outputs batch dim should be different from the input batch dim
+  // since we concatenated along the batch dim.
+  auto shape_in = properties.GetOutputProperties("ones").at(0).shape();
+  auto shape_out = properties.GetOutputProperties("while/Exit_1").at(0).shape();
+  EXPECT_GE(-2, shape_in.dim(0).size());
+  EXPECT_GE(-2, shape_out.dim(0).size());
+  EXPECT_NE(shape_in.dim(0).size(), shape_out.dim(0).size());
 }
 
 TEST_F(GraphPropertiesTest, NestedLoop) {
@@ -676,8 +685,8 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
 
 TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output var =
-      ops::Variable(s.WithOpName("var"), TensorShape(), DataType::DT_FLOAT);
+  Output var = ops::Variable(s.WithOpName("var"), PartialTensorShape(),
+                             DataType::DT_FLOAT);
   Output var2 = ops::Variable(s.WithOpName("var2"), TensorShape({128, 256}),
                               DataType::DT_FLOAT);
   Output filename =
@@ -703,8 +712,6 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   EXPECT_EQ("float: [128,256]", PropToString(prop));
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   // Test graph produced in python using:
   /*
@@ -818,33 +825,6 @@ TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {
   TF_EXPECT_OK(properties.InferStatically());
 }
 
-TEST_F(GraphPropertiesTest, ShapeTracking) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output a =
-      ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
-                       ops::Placeholder::Shape(PartialTensorShape({-1, -1})));
-  Output b =
-      ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
-                       ops::Placeholder::Shape(PartialTensorShape({-1})));
-  Output zero = ops::Const(s.WithOpName("zero"), 0.0f, {});
-  auto shp = ops::ShapeN(s.WithOpName("shapes"), {a, b});
-  Output o1 = ops::Fill(s.WithOpName("o1"), shp[0], zero);
-  Output o2 = ops::Fill(s.WithOpName("o2"), shp[1], zero);
-
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
-  const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
-  const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
-  const auto shape_o1 = properties.GetOutputProperties("o1").at(0).shape();
-  const auto shape_o2 = properties.GetOutputProperties("o2").at(0).shape();
-  EXPECT_EQ(shape_a.DebugString(), shape_o1.DebugString());
-  EXPECT_EQ(shape_b.DebugString(), shape_o2.DebugString());
-}
-
->>>>>>> tensorflow_master
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import device_properties_pb2
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import cluster
@@ -82,8 +83,6 @@ class ClusterTest(test.TestCase):
         live_tensors = snapshot[1]
         self.assertEqual(15, len(live_tensors))
 
-<<<<<<< HEAD
-=======
   def testVirtualCluster(self):
     with ops.Graph().as_default() as g:
       a = random_ops.random_uniform(shape=())
@@ -94,10 +93,7 @@ class ClusterTest(test.TestCase):
       mg = meta_graph.create_meta_graph_def(graph=g)
       grappler_item = item.Item(mg)
       device_properties = device_properties_pb2.DeviceProperties(
-          type='GPU',
-          frequency=1000,
-          num_cores=60,
-          environment={
+          type='GPU', environment={
               'architecture': '7'
           })
       named_device = device_properties_pb2.NamedDevice(
@@ -107,7 +103,6 @@ class ClusterTest(test.TestCase):
       self.assertGreater(run_time, 0)
       self.assertEqual(len(op_perfs), 15)
 
->>>>>>> tensorflow_master
 
 if __name__ == '__main__':
   test.main()

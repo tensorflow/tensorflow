@@ -13,13 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <thread>
+
 #include "tensorflow/python/eager/pywrap_tfe.h"
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/eager/pywrap_tensor.h"
 
 using tensorflow::string;
 
@@ -440,8 +445,6 @@ void TFE_DeleteContextCapsule(PyObject* context) {
   TF_DeleteStatus(status);
 }
 
-<<<<<<< HEAD
-=======
 static tensorflow::int64 MakeInt(PyObject* integer) {
 #if PY_MAJOR_VERSION >= 3
   return PyLong_AsLong(integer);
@@ -466,8 +469,7 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
 class GradientTape
     : public tensorflow::eager::GradientTape<PyObject, PyObject> {
  public:
-  explicit GradientTape(bool persistent)
-      : tensorflow::eager::GradientTape<PyObject, PyObject>(persistent) {}
+  GradientTape() {}
 
   void WatchVariable(PyObject* v) {
     watched_variables_.insert(v);
@@ -491,11 +493,10 @@ class GradientTape
   std::unordered_set<PyObject*> watched_variables_;
 };
 
->>>>>>> tensorflow_master
 typedef struct {
   PyObject_HEAD
       /* Type-specific fields go here. */
-      tensorflow::eager::GradientTape* tape;
+      GradientTape* tape;
 } TFE_Py_Tape;
 
 static void TFE_Py_Tape_Delete(PyObject* tape) {
@@ -526,9 +527,6 @@ static PyTypeObject TFE_Py_Tape_Type = {
     "TFE_Py_Tape objects",                        /* tp_doc */
 };
 
-<<<<<<< HEAD
-PyObject* TFE_Py_NewTape() {
-=======
 // xcode 7 doesn't define thread_local, so for compatibility we implement our
 // own. TODO(apassos) remove once we can deprecate xcode 7.
 #ifndef __APPLE__
@@ -559,16 +557,11 @@ std::vector<TFE_Py_Tape*>* GetTapeStack() {
 }
 #endif
 
-void TFE_Py_TapeStackPushNew(PyObject* persistent) {
->>>>>>> tensorflow_master
+void TFE_Py_TapeStackPushNew() {
   TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
-  if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return nullptr;
+  if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return;
   TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
-<<<<<<< HEAD
-  tape->tape = new tensorflow::eager::GradientTape();
-  return reinterpret_cast<PyObject*>(tape);
-=======
-  tape->tape = new GradientTape(persistent == Py_True);
+  tape->tape = new GradientTape();
   GetTapeStack()->push_back(tape);
 }
 
@@ -582,15 +575,17 @@ PyObject* TFE_Py_TapeStackIsEmpty() {
     Py_RETURN_TRUE;
   }
   Py_RETURN_FALSE;
->>>>>>> tensorflow_master
 }
 
-static tensorflow::int64 MakeInt(PyObject* integer) {
-#if PY_MAJOR_VERSION >= 3
-  return PyLong_AsLong(integer);
-#else
-  return PyInt_AsLong(integer);
-#endif
+PyObject* TFE_Py_TapeStackPop() {
+  auto* stack = GetTapeStack();
+  if (stack->empty()) {
+    PyErr_SetString(PyExc_RuntimeError, "tape stack is empty.");
+    return nullptr;
+  }
+  TFE_Py_Tape* top = stack->back();
+  stack->pop_back();
+  return reinterpret_cast<PyObject*>(top);
 }
 
 static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
@@ -617,23 +612,54 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
   return tensor_ids;
 }
 
-PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors) {
-  TFE_Py_Tape* tape = reinterpret_cast<TFE_Py_Tape*>(py_tape);
-  return PyBool_FromLong(tape->tape->ShouldRecord(MakeIntList(tensors)));
+PyObject* TFE_Py_TapeStackShouldRecord(PyObject* tensors) {
+  if (tensors == Py_None) {
+    Py_RETURN_FALSE;
+  }
+  auto* stack = GetTapeStack();
+  if (stack->empty()) {
+    Py_RETURN_FALSE;
+  }
+  PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
+  if (seq == nullptr) {
+    return nullptr;
+  }
+  int len = PySequence_Fast_GET_SIZE(seq);
+  // TODO(apassos) consider not building a list and changing the API to check
+  // each tensor individually.
+  std::vector<tensorflow::int64> tensor_ids;
+  tensor_ids.reserve(len);
+  for (int i = 0; i < len; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
+    tensor_ids.push_back(FastTensorId(item));
+  }
+  Py_DECREF(seq);
+  for (TFE_Py_Tape* tape : *stack) {
+    if (tape->tape->ShouldRecord(tensor_ids)) {
+      Py_RETURN_TRUE;
+    }
+  }
+  Py_RETURN_FALSE;
 }
 
-void TFE_Py_TapeWatch(PyObject* tape, tensorflow::int64 tensor_id) {
-  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->Watch(tensor_id);
+void TFE_Py_TapeStackWatch(PyObject* tensor) {
+  tensorflow::int64 tensor_id = FastTensorId(tensor);
+  if (PyErr_Occurred()) {
+    return;
+  }
+  for (TFE_Py_Tape* tape : *GetTapeStack()) {
+    tape->tape->Watch(tensor_id);
+  }
 }
 
-// TODO(apassos) have a fast path for eager tensors here which gets information
-// from the handle instead of from the python object, and use this only for the
-// case of graph tensors.
 static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
-  PyObject* id_field = PyObject_GetAttrString(tensor, "_id");
-  tensorflow::int64 id = MakeInt(id_field);
-  Py_DECREF(id_field);
-  if (PyErr_Occurred() != nullptr) {
+  if (EagerTensor_CheckExact(tensor)) {
+    TFE_TensorHandle* t = EagerTensor_Handle(tensor);
+    tensorflow::int64 id = EagerTensor_id(tensor);
+    return tensorflow::eager::TapeTensor{id, t->t.dtype(), t->t.shape()};
+  }
+  tensorflow::int64 id = FastTensorId(tensor);
+  if (PyErr_Occurred()) {
     return tensorflow::eager::TapeTensor{
         id, static_cast<tensorflow::DataType>(0), tensorflow::TensorShape({})};
   }
@@ -666,13 +692,6 @@ static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
   return tensorflow::eager::TapeTensor{id, dtype, shape};
 }
 
-<<<<<<< HEAD
-void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
-                                PyObject* output_tensors,
-                                PyObject* input_tensor_ids,
-                                PyObject* backward_function) {
-  std::vector<tensorflow::int64> input_ids = MakeIntList(input_tensor_ids);
-=======
 std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
   PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
   if (seq == nullptr) {
@@ -685,7 +704,6 @@ std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
     PyObject* tensor = PySequence_Fast_GET_ITEM(seq, i);
     list.push_back(FastTensorId(tensor));
     if (PyErr_Occurred()) {
-      Py_DECREF(seq);
       return list;
     }
   }
@@ -719,7 +737,6 @@ void TFE_Py_TapeStackRecordOperation(PyObject* op_type,
     return;
   }
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(input_tensors);
->>>>>>> tensorflow_master
   std::vector<tensorflow::eager::TapeTensor> output_info;
   PyObject* seq = PySequence_Fast(output_tensors,
                                   "expected a sequence of integer tensor ids");
@@ -734,81 +751,145 @@ void TFE_Py_TapeStackRecordOperation(PyObject* op_type,
     }
   }
   Py_DECREF(seq);
-  Py_INCREF(backward_function);
-  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->RecordOperation(
-      PyBytes_AsString(op_type), output_info, input_ids, backward_function,
-      [backward_function]() { Py_DECREF(backward_function); });
-}
-
-void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id) {
-  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->DeleteTrace(tensor_id);
-}
-
-// TODO(apassos) when backprop.py moves to C most of this exporting logic can
-// disappear.
-PyObject* TFE_Py_TapeExport(PyObject* tape) {
-  std::pair<tensorflow::eager::TensorTape, tensorflow::eager::OpTape> exported =
-      reinterpret_cast<TFE_Py_Tape*>(tape)->tape->Export();
-  PyObject* tensor_tape = PyDict_New();
-  for (const auto& pair : exported.first) {
-    PyObject* tid = PyLong_FromLong(pair.first);
-    PyObject* opid = PyLong_FromLong(pair.second);
-    PyDict_SetItem(tensor_tape, tid, opid);
-    Py_DECREF(tid);
-    Py_DECREF(opid);
+  string op_type_str;
+  if (PyBytes_Check(op_type)) {
+    op_type_str = PyBytes_AsString(op_type);
+  } else if (PyUnicode_Check(op_type)) {
+#if PY_MAJOR_VERSION >= 3
+    op_type_str = PyUnicode_AsUTF8(op_type);
+#else
+    PyObject* py_str = PyUnicode_AsUTF8String(op_type);
+    if (py_str == nullptr) return;
+    op_type_str = PyBytes_AS_STRING(py_str);
+    Py_DECREF(py_str);
+#endif
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, "op_type should be a string.");
+    return;
   }
 
-  PyObject* op_tape = PyDict_New();
-  for (const auto& pair : exported.second) {
-    PyObject* opid = PyLong_FromLong(pair.first);
-    const auto& entry = pair.second;
-    PyObject* op_type = PyBytes_FromString(entry.op_type.c_str());
-    PyObject* output_ids = PyList_New(entry.output_tensor_info.size());
-    for (int i = 0; i < entry.output_tensor_info.size(); ++i) {
-      PyObject* tid = PyLong_FromLong(entry.output_tensor_info[i].id);
-      PyList_SET_ITEM(output_ids, i, tid);
+  for (TFE_Py_Tape* tape : *stack) {
+    Py_INCREF(backward_function);
+    tape->tape->RecordOperation(
+        op_type_str, output_info, input_ids, backward_function,
+        [backward_function]() { Py_DECREF(backward_function); });
+  }
+}
+
+void TFE_Py_TapeStackDeleteTrace(tensorflow::int64 tensor_id) {
+  for (TFE_Py_Tape* tape : *GetTapeStack()) {
+    tape->tape->DeleteTrace(tensor_id);
+  }
+}
+
+class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
+ public:
+  explicit PyVSpace(PyObject* py_vspace) : py_vspace_(py_vspace) {}
+
+  tensorflow::Status Initialize() {
+    num_elements_ = PyObject_GetAttrString(py_vspace_, "num_elements_fn");
+    if (num_elements_ == nullptr) {
+      return tensorflow::errors::InvalidArgument("invalid vspace");
     }
-    PyObject* input_ids = PyList_New(entry.input_tensor_id.size());
-    for (int i = 0; i < entry.input_tensor_id.size(); ++i) {
-      PyObject* tid = PyLong_FromLong(entry.input_tensor_id[i]);
-      PyList_SET_ITEM(input_ids, i, tid);
+    aggregate_fn_ = PyObject_GetAttrString(py_vspace_, "aggregate_fn");
+    if (aggregate_fn_ == nullptr) {
+      return tensorflow::errors::InvalidArgument("invalid vspace");
     }
-    PyObject* backward_function =
-        reinterpret_cast<PyObject*>(entry.backward_function);
-    PyObject* output_shape_and_dtype =
-        PyList_New(entry.output_tensor_info.size());
-    for (int i = 0; i < entry.output_tensor_info.size(); ++i) {
-      const tensorflow::TensorShape& shape = entry.output_tensor_info[i].shape;
-      PyObject* shape_list = PyList_New(shape.dims());
-      for (int j = 0; j < shape.dims(); ++j) {
-        PyList_SET_ITEM(shape_list, j, PyLong_FromLong(shape.dim_size(j)));
+    zeros_ = PyObject_GetAttrString(py_vspace_, "zeros");
+    if (zeros_ == nullptr) {
+      return tensorflow::errors::InvalidArgument("invalid vspace");
+    }
+    ones_ =
+        PyObject_GetAttrString(reinterpret_cast<PyObject*>(py_vspace_), "ones");
+    if (ones_ == nullptr) {
+      return tensorflow::errors::InvalidArgument("invalid vspace");
+    }
+    return tensorflow::Status::OK();
+  }
+
+  ~PyVSpace() override {
+    Py_XDECREF(num_elements_);
+    Py_XDECREF(aggregate_fn_);
+    Py_XDECREF(zeros_);
+    Py_XDECREF(ones_);
+  }
+
+  tensorflow::int64 NumElements(PyObject* tensor) const final {
+    PyObject* arglist =
+        Py_BuildValue("(O)", reinterpret_cast<PyObject*>(tensor));
+    PyObject* result = PyEval_CallObject(num_elements_, arglist);
+    tensorflow::int64 r = MakeInt(result);
+    Py_DECREF(result);
+    Py_DECREF(arglist);
+    return r;
+  }
+
+  PyObject* AggregateGradients(
+      tensorflow::gtl::ArraySlice<PyObject*> gradient_tensors) const final {
+    PyObject* list = PyList_New(gradient_tensors.size());
+    for (int i = 0; i < gradient_tensors.size(); ++i) {
+      // Note: stealing a reference to the gradient tensors.
+      CHECK(gradient_tensors[i] != nullptr);
+      CHECK(gradient_tensors[i] != Py_None);
+      PyList_SET_ITEM(list, i,
+                      reinterpret_cast<PyObject*>(gradient_tensors[i]));
+    }
+    PyObject* arglist = Py_BuildValue("(O)", list);
+    CHECK(arglist != nullptr);
+    PyObject* result = PyEval_CallObject(aggregate_fn_, arglist);
+    Py_DECREF(arglist);
+    Py_DECREF(list);
+    return result;
+  }
+
+  PyObject* Zeros(tensorflow::TensorShape shape,
+                  tensorflow::DataType dtype) const final {
+    PyObject* py_shape = PyTuple_New(shape.dims());
+    for (int i = 0; i < shape.dims(); ++i) {
+      PyTuple_SET_ITEM(py_shape, i, PyLong_FromLong(shape.dim_size(i)));
+    }
+    PyObject* py_dtype = PyLong_FromLong(static_cast<int>(dtype));
+    PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
+    PyObject* result = PyEval_CallObject(zeros_, arg_list);
+    Py_DECREF(arg_list);
+    Py_DECREF(py_dtype);
+    Py_DECREF(py_shape);
+    return reinterpret_cast<PyObject*>(result);
+  }
+
+  PyObject* Ones(tensorflow::TensorShape shape,
+                 tensorflow::DataType dtype) const final {
+    PyObject* py_shape = PyTuple_New(shape.dims());
+    for (int i = 0; i < shape.dims(); ++i) {
+      PyTuple_SET_ITEM(py_shape, i, PyLong_FromLong(shape.dim_size(i)));
+    }
+    PyObject* py_dtype = PyLong_FromLong(static_cast<int>(dtype));
+    PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
+    PyObject* result = PyEval_CallObject(ones_, arg_list);
+    Py_DECREF(arg_list);
+    Py_DECREF(py_dtype);
+    Py_DECREF(py_shape);
+    return result;
+  }
+
+  tensorflow::Status CallBackwardFunction(
+      PyObject* backward_function,
+      tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
+      std::vector<PyObject*>* result) const final {
+    PyObject* grads = PyTuple_New(output_gradients.size());
+    for (int i = 0; i < output_gradients.size(); ++i) {
+      if (output_gradients[i] == nullptr) {
+        Py_INCREF(Py_None);
+        PyTuple_SET_ITEM(grads, i, Py_None);
+      } else {
+        PyTuple_SET_ITEM(grads, i,
+                         reinterpret_cast<PyObject*>(output_gradients[i]));
       }
-      PyObject* type_enum = PyLong_FromLong(entry.output_tensor_info[i].dtype);
-      PyObject* tuple = PyTuple_Pack(2, shape_list, type_enum);
-      Py_DECREF(shape_list);
-      Py_DECREF(type_enum);
-      PyList_SET_ITEM(output_shape_and_dtype, i, tuple);
     }
-<<<<<<< HEAD
-    PyObject* opinfo = PyTuple_Pack(5, op_type, output_ids, input_ids,
-                                    backward_function, output_shape_and_dtype);
-    Py_DECREF(op_type);
-    Py_DECREF(output_ids);
-    Py_DECREF(input_ids);
-    Py_DECREF(backward_function);
-    Py_DECREF(output_shape_and_dtype);
-    PyDict_SetItem(op_tape, opid, opinfo);
-    Py_DECREF(opid);
-    Py_DECREF(opinfo);
-  }
-  PyObject* retval = PyTuple_Pack(2, tensor_tape, op_tape);
-  Py_DECREF(tensor_tape);
-  Py_DECREF(op_tape);
-  return retval;
-=======
     PyObject* py_result = PyEval_CallObject(
         reinterpret_cast<PyObject*>(backward_function), grads);
     Py_DECREF(grads);
+    Py_DECREF(backward_function);
     if (py_result == nullptr) {
       return tensorflow::errors::Internal("gradient function threw exceptions");
     }
@@ -834,10 +915,6 @@ PyObject* TFE_Py_TapeExport(PyObject* tape) {
     Py_DECREF(seq);
     Py_DECREF(py_result);
     return tensorflow::Status::OK();
-  }
-
-  void ReleaseBackwardFunction(PyObject* backward_function) const final {
-    Py_DECREF(backward_function);
   }
 
   void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }
@@ -920,5 +997,4 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
   }
   Py_INCREF(Py_None);
   return Py_None;
->>>>>>> tensorflow_master
 }

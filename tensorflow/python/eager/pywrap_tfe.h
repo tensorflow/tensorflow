@@ -81,34 +81,14 @@ bool EagerTensor_CheckExact(const PyObject* o);
 PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
-TFE_TensorHandle* EagerTensorHandle(const PyObject* o);
+TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 
 // Creates the `EagerTensor` class by subclassing `base_class` and returns the
 // newly created type, or nullptr on error.
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
 
-<<<<<<< HEAD
-PyObject* TFE_Py_NewTape();
-PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors);
-void TFE_Py_TapeWatch(PyObject* tape, tensorflow::int64 tensor_id);
-void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id);
-
-// Records an operation in the gradient tape. `tape` should point to an object
-// returned by TFE_Py_NewTape. op_type is a string for the operation type, used
-// in the backprop code. output_tensors should be a list of python ops.Tensor
-// objects. input_tensor_ids should be a list of python integers with the ids of
-// the input tensors of the recorded operation. backward_function should be the
-// function to be called during backprop to, given the gradients of the output
-// tensors, produce the gradients of the input tensors.
-void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
-                                PyObject* output_tensors,
-                                PyObject* input_tensor_ids,
-                                PyObject* backward_function);
-PyObject* TFE_Py_TapeExport(PyObject* tape);
-=======
 // Pushes a new tape into the thread-local stack.
-// `persistent` must be a PyBool_Type, i.e either Py_True or Py_False
-void TFE_Py_TapeStackPushNew(PyObject* persistent);
+void TFE_Py_TapeStackPushNew();
 
 // Pops the tape from the top of the stack and returns it.
 PyObject* TFE_Py_TapeStackPop();
@@ -162,6 +142,5 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 // REQUIRES: `slice_dim` is non-negative and smaller than the rank of all
 //   tensors in `tensor_list`.
 PyObject* TFE_Py_TensorShapeSlice(PyObject* tensor_list, int slice_dim);
->>>>>>> tensorflow_master
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

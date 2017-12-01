@@ -32,13 +32,14 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(input);
+    *output = new Dataset(ctx, input);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    explicit Dataset(const DatasetBase* input) : input_(input) {
+    explicit Dataset(OpKernelContext* ctx, const DatasetBase* input)
+        : GraphDatasetBase(ctx), input_(input) {
       input_->Ref();
     }
 
@@ -59,6 +60,15 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() override { return "IgnoreErrorsDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
+      return Status::OK();
+    }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -69,27 +79,16 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-<<<<<<< HEAD
+        if (!input_impl_) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         while (!s.ok()) {
           out_tensors->clear();
           s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         }
-=======
-        {
-          tf_shared_lock l(mu_);
-          if (!input_impl_) {
-            *end_of_sequence = true;
-            return Status::OK();
-          }
-          Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-          while (!s.ok()) {
-            out_tensors->clear();
-            s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-          }
-        }
         if (*end_of_sequence) {
-          mutex_lock l(mu_);
           input_impl_.reset();
         }
         return Status::OK();
@@ -97,7 +96,6 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
         if (input_impl_)
           TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
         else
@@ -108,22 +106,15 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
       Status RestoreInternal(OpKernelContext* ctx,
                              IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
         if (reader->Contains(full_name("input_impls_empty")))
           input_impl_.reset();
         else
           TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
->>>>>>> tensorflow_master
         return Status::OK();
       }
 
      private:
-<<<<<<< HEAD
-      const std::unique_ptr<IteratorBase> input_impl_;
-=======
-      mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
->>>>>>> tensorflow_master
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* const input_;

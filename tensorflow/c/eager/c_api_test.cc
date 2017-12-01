@@ -295,8 +295,6 @@ TEST(CAPI, Execute) {
   TF_DeleteStatus(status);
 }
 
-<<<<<<< HEAD
-=======
 TEST(CAPI, Function) {
   // First create a simple identity function.
   TF_Graph* function_graph = TF_NewGraph();
@@ -327,8 +325,7 @@ TEST(CAPI, Function) {
   ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
   TF_DeleteFunction(fn);
 
-  TF_Tensor* t =
-      TF_AllocateTensor(TF_INT32, nullptr, 0, 1 * sizeof(tensorflow::int32));
+  TF_Tensor* t = TF_AllocateTensor(TF_INT32, nullptr, 0, 1);
   *reinterpret_cast<tensorflow::int32*>(TF_TensorData(t)) = 42;
   TFE_TensorHandle* h = TFE_NewTensorHandle(t, status);
   ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
@@ -358,7 +355,6 @@ TEST(CAPI, Function) {
   TF_DeleteStatus(status);
 }
 
->>>>>>> tensorflow_master
 string MatMulFunction() {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(

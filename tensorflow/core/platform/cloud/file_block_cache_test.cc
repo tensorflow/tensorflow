@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -435,8 +436,6 @@ TEST(FileBlockCacheTest, ParallelReads) {
   // executed, or 10 seconds have passed).
 }
 
-<<<<<<< HEAD
-=======
 TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
   // Concurrent reads to the same file blocks should be de-duplicated.
   const size_t block_size = 16;
@@ -462,7 +461,7 @@ TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
         TF_EXPECT_OK(cache.Read("", 0, block_size / 2, &out));
         EXPECT_EQ(out.size(), block_size / 2);
       }));
-  EXPECT_TRUE(WaitForNotificationWithTimeout(&notification, 10000))
+  EXPECT_TRUE(WaitForNotificationWithTimeout(&notification, 1000))
       << "Timeout waiting for concurrent thread to start.";
   std::vector<char> out;
   TF_EXPECT_OK(cache.Read("", block_size / 2, block_size / 2, &out));
@@ -471,6 +470,5 @@ TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
   EXPECT_EQ(1, num_requests);
 }
 
->>>>>>> tensorflow_master
 }  // namespace
 }  // namespace tensorflow

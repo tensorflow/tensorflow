@@ -22,20 +22,22 @@ import math
 import threading
 import time
 
+import numpy as np
 from six.moves import zip_longest
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
-<<<<<<< HEAD
-=======
 class InterleaveDatasetTest(test.TestCase):
 
   def _interleave(self, lists, cycle_length, block_length):
@@ -185,9 +187,8 @@ class InterleaveDatasetTest(test.TestCase):
         sess.run(next_element)
 
   def testSparse(self):
-
     def _map_fn(i):
-      return sparse_tensor.SparseTensorValue(
+      return sparse_tensor.SparseTensor(
           indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
 
     def _interleave_fn(x):
@@ -250,7 +251,6 @@ class InterleaveDatasetSeriazationTest(
     # pylint: enable=g-long-lambda
 
 
->>>>>>> tensorflow_master
 class ParallelInterleaveDatasetTest(test.TestCase):
 
   def setUp(self):
@@ -763,6 +763,32 @@ class ParallelInterleaveDatasetTest(test.TestCase):
 
   def testTooManyReadersSloppy(self):
     self._testTooManyReaders(sloppy=True)
+
+  def testSparse(self):
+    def _map_fn(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
+
+    def _interleave_fn(x):
+      return dataset_ops.Dataset.from_tensor_slices(
+          sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
+
+    dataset = dataset_ops.Dataset.range(10).map(_map_fn)
+    iterator = dataset.apply(
+        interleave_ops.parallel_interleave(
+            _interleave_fn, cycle_length=1)).make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        for j in range(2):
+          expected = [i, 0] if j % 2 == 0 else [0, -i]
+          self.assertAllEqual(expected, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()

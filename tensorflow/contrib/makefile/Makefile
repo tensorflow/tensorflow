@@ -11,6 +11,8 @@
 # the first for the host (the machine you're compiling on) and the second for
 # the target (the machine you want the program to run on).
 
+SHELL := /bin/bash
+
 # Host compilation settings
 
 # Find where we're running from, so we can store generated files here.
@@ -63,6 +65,8 @@ else
 	endif
 endif
 
+HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
+
 # Where compiled objects are stored.
 HOST_OBJDIR := $(MAKEFILE_DIR)/gen/host_obj/
 HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
@@ -85,7 +89,6 @@ HOST_INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
--I$(MAKEFILE_DIR)/downloads/double_conversion \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -122,9 +125,7 @@ PROTO_TEXT := $(HOST_BINDIR)proto_text
 # The list of dependencies is derived from the Bazel build file by running
 # the gen_file_lists.sh script on a system with a working Bazel setup.
 PROTO_TEXT_CC_FILES := $(shell cat $(MAKEFILE_DIR)/proto_text_cc_files.txt)
-PROTO_TEXT_PB_CC_LIST := \
-	$(shell cat $(MAKEFILE_DIR)/proto_text_pb_cc_files.txt) \
-	$(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc)
+PROTO_TEXT_PB_CC_LIST := $(shell cat $(MAKEFILE_DIR)/proto_text_pb_cc_files.txt)
 PROTO_TEXT_PB_H_LIST := $(shell cat $(MAKEFILE_DIR)/proto_text_pb_h_files.txt)
 
 # Locations of the intermediate files proto_text generates.
@@ -170,7 +171,6 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
--I$(MAKEFILE_DIR)/downloads/double_conversion \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -239,49 +239,94 @@ ifeq ($(TARGET),ANDROID)
 # NDK_ROOT=/path/to/your/ndk
 # You need to have an Android version of the protobuf libraries compiled to link
 # in. The compile_android_protobuf.sh script may help.
-# TODO(satok): Support all CPU architectures (Currently only armv7 is supported)
 
-	OS_PATH :=
+	ANDROID_HOST_OS_ARCH :=
 	ifeq ($(HOST_OS),LINUX)
-		OS_PATH=linux
+		ANDROID_HOST_OS_ARCH=linux
 	endif
 	ifeq ($(HOST_OS),OSX)
-		OS_PATH=darwin
+		ANDROID_HOST_OS_ARCH=darwin
 	endif
 	ifeq ($(HOST_OS),WINDOWS)
     $(error "windows is not supported.")
 	endif
 
+	ifeq ($(HOST_ARCH),x86_32)
+		ANDROID_HOST_OS_ARCH := $(ANDROID_HOST_OS_ARCH)-x86
+	else
+		ANDROID_HOST_OS_ARCH := $(ANDROID_HOST_OS_ARCH)-$(HOST_ARCH)
+	endif
+    
+	ifndef ANDROID_ARCH
+		ANDROID_ARCH := armeabi-v7a
+	endif
+
+	ifeq ($(ANDROID_ARCH),arm64-v8a)
+		TOOLCHAIN := aarch64-linux-android-4.9
+		SYSROOT_ARCH := arm64
+		BIN_PREFIX := aarch64-linux-android
+		MARCH_OPTION :=
+	endif
+	ifeq ($(ANDROID_ARCH),armeabi)
+		TOOLCHAIN := arm-linux-androideabi-4.9
+		SYSROOT_ARCH := arm
+		BIN_PREFIX := arm-linux-androideabi
+		MARCH_OPTION :=
+	endif
+	ifeq ($(ANDROID_ARCH),armeabi-v7a)
+		TOOLCHAIN := arm-linux-androideabi-4.9
+		SYSROOT_ARCH := arm
+		BIN_PREFIX := arm-linux-androideabi
+		MARCH_OPTION := -march=armv7-a -mfloat-abi=softfp -mfpu=neon
+	endif
+	ifeq ($(ANDROID_ARCH),mips)
+		TOOLCHAIN := mipsel-linux-android-4.9
+		SYSROOT_ARCH := mips
+		BIN_PREFIX := mipsel-linux-android
+		MARCH_OPTION :=
+	endif
+	ifeq ($(ANDROID_ARCH),mips64)
+		TOOLCHAIN := mips64el-linux-android-4.9
+		SYSROOT_ARCH := mips64
+		BIN_PREFIX := mips64el-linux-android
+		MARCH_OPTION :=
+	endif
+	ifeq ($(ANDROID_ARCH),x86)
+		TOOLCHAIN := x86-4.9
+		SYSROOT_ARCH := x86
+		BIN_PREFIX := i686-linux-android
+		MARCH_OPTION :=
+	endif
+	ifeq ($(ANDROID_ARCH),x86_64)
+		TOOLCHAIN := x86_64-4.9
+		SYSROOT_ARCH := x86_64
+		BIN_PREFIX := x86-64-linux-android
+		MARCH_OPTION :=
+	endif
+    
 	ifndef NDK_ROOT
     $(error "NDK_ROOT is not defined.")
 	endif
-	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-g++
-	CC := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-gcc
+	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-g++
+	CC := $(CC_PREFIX) $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-gcc
 	CXXFLAGS +=\
---sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
+--sysroot $(NDK_ROOT)/platforms/android-21/arch-$(SYSROOT_ARCH) \
 -Wno-narrowing \
 -fomit-frame-pointer \
--march=armv7-a \
--mfloat-abi=softfp \
--mfpu=neon \
--fPIE
+$(MARCH_OPTION) \
+-fPIE \
+-fPIC
 	INCLUDES = \
 -I$(NDK_ROOT)/sources/android/support/include \
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \
--I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/armeabi/include \
+-I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/$(ANDROID_ARCH)/include \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
-<<<<<<< HEAD
--I$(MAKEFILE_DIR)/gen/protobuf/include \
-=======
--I$(MAKEFILE_DIR)/downloads/double_conversion \
--I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(MAKEFILE_DIR)/gen/protobuf_android/$(ANDROID_ARCH)/include \
->>>>>>> tensorflow_master
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 
@@ -292,19 +337,20 @@ $(TARGET_NSYNC_LIB) \
 -llog \
 -lz \
 -lm \
--ldl
+-ldl \
+-latomic
 
-	LD := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/arm-linux-androideabi/bin/ld
+	LD := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/$(BIN_PREFIX)/bin/ld
 
 	LDFLAGS := \
--march=armv7-a \
--L$(MAKEFILE_DIR)/gen/protobuf/lib \
--L$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/armeabi-v7a \
+$(MARCH_OPTION) \
+-L$(MAKEFILE_DIR)/gen/protobuf_android/$(ANDROID_ARCH)/lib \
+-L$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/$(ANDROID_ARCH) \
 -fPIE \
 -pie \
 -v
 
-	AR := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-ar
+	AR := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-ar
 	ARFLAGS := r
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
 
@@ -328,6 +374,11 @@ $(TARGET_NSYNC_LIB) \
 	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
 		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
 	endif
+	
+	OBJDIR := $(OBJDIR)android_$(ANDROID_ARCH)/
+	LIBDIR := $(LIBDIR)android_$(ANDROID_ARCH)/
+	BINDIR := $(BINDIR)android_$(ANDROID_ARCH)/
+	DEPDIR := $(DEPDIR)android_$(ANDROID_ARCH)/
 
 endif  # ANDROID
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
@@ -492,7 +543,6 @@ $(wildcard tensorflow/core/platform/*/*.cc) \
 $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
-$(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -671,12 +721,12 @@ clean:
 # Gets rid of all generated files except protobuf libs generated
 # before calling make.  This allows users not to recompile proto libs everytime.
 clean_except_protobuf_libs:
-	find $(MAKEFILE_DIR)/gen -mindepth 1 -maxdepth 1 ! -name "protobuf" ! -name "protobuf-host" -exec rm -r "{}" \;
+	find $(MAKEFILE_DIR)/gen -mindepth 1 -maxdepth 1 ! -name "protobuf*" -exec rm -r "{}" \;
 	rm -rf tensorflow/core/util/version_info.cc
 
 # Gets rid of target files only, leaving the host alone. Also leaves the lib
 # directory untouched deliberately, so we can persist multiple architectures
-# across builds for iOS.
+# across builds for iOS and Android.
 cleantarget:
 	rm -rf $(OBJDIR)
 	rm -rf $(BINDIR)
