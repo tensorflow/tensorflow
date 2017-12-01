@@ -85,10 +85,7 @@ class SparseMatMulOp : public MatMulOp {
   ~SparseMatMulOp() override = default;
 };
 
-REGISTER_XLA_OP(Name("SparseMatMul")
-                    .TypeConstraint("Ta", kFloatTypes)
-                    .TypeConstraint("Tb", kFloatTypes),
-                SparseMatMulOp);
+REGISTER_XLA_OP(Name("SparseMatMul"), SparseMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow
