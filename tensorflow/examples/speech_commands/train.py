@@ -160,7 +160,7 @@ def main(_):
   evaluation_step = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
   tf.summary.scalar('accuracy', evaluation_step)
 
-  global_step = tf.contrib.framework.get_or_create_global_step()
+  global_step = tf.train.get_or_create_global_step()
   increment_global_step = tf.assign(global_step, global_step + 1)
 
   saver = tf.train.Saver(tf.global_variables())
