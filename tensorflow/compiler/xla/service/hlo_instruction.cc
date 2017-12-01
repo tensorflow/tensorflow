@@ -2060,6 +2060,14 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
     extra.push_back(
         StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }
+  if (opcode() == HloOpcode::kRng) {
+    extra.push_back(
+        StrCat("distribution=", RandomDistributionToString(distribution_)));
+  }
+  if (opcode() == HloOpcode::kReducePrecision) {
+    extra.push_back(StrCat("exponent_bits=", exponent_bits_));
+    extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
+  }
   return extra;
 }
 
@@ -3027,6 +3035,28 @@ string OpMetadataToString(const OpMetadata& metadata) {
     result.push_back(StrCat("source_line=", metadata.source_line()));
   }
   return Join(result, " ");
+}
+
+string RandomDistributionToString(const RandomDistribution& distribution) {
+  return tensorflow::str_util::Lowercase(RandomDistribution_Name(distribution));
+}
+
+StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
+  static std::unordered_map<string, RandomDistribution>* map = [] {
+    static auto* map = new std::unordered_map<string, RandomDistribution>;
+    for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
+      if (RandomDistribution_IsValid(i)) {
+        auto value = static_cast<RandomDistribution>(i);
+        (*map)[RandomDistributionToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(tensorflow::str_util::Lowercase(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown distribution");
+  }
+  return found->second;
 }
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {

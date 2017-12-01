@@ -1285,9 +1285,12 @@ string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
 
-// Custom stringification functions for protos that live inside HloInstruction.
+// Custom (de)stringification functions for protos that live inside
+// HloInstruction.
 string PaddingConfigToString(const PaddingConfig& padding);
 string OpMetadataToString(const OpMetadata& metadata);
+string RandomDistributionToString(const RandomDistribution& distribution);
+StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
