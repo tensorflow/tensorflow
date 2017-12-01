@@ -828,6 +828,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
+  native.http_archive(
+      name = "double_conversion",
+      urls = [
+          "https://github.com/google/double-conversion/archive/5664746c5e64dc265e7fbc1a890a6698e6ad0ebb.zip",
+      ],
+      sha256 = "a0c49fb3cc8d34b2230d278a115f1bb266bcfcaae10400b84dc2a3b7dc2c8bc6",
+      strip_prefix = "double-conversion-5664746c5e64dc265e7fbc1a890a6698e6ad0ebb",
+  )
+  
   native.new_http_archive(
       name = "tflite_mobilenet",
       build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),

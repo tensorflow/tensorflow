@@ -320,9 +320,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter3x3in2x2Padded) {
   Array4D<float> input_array(1, 1, 2, 2, {1, 2, 3, 4});
   auto input = builder.ConstantR4FromArray4D<float>(input_array);
 
-  const Array4D<float> filter_array(1, 1, 3, 3, {10000, 0, 1000,  // row 0
-                                                 0, 100, 0,       // row 1
-                                                 10, 0, 1});      // row 2
+  const Array4D<float> filter_array(1, 1, 3, 3,
+                                    {10000, 0, 1000,  // row 0
+                                     0, 100, 0,       // row 1
+                                     10, 0, 1});      // row 2
   auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
 
   builder.Conv(input, filter, {1, 1}, Padding::kSame);
@@ -472,7 +473,9 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x2x2Input3x1x2x2) {
   builder.Conv(input, filter, {1, 1}, Padding::kValid);
 
   std::vector<float> expected_data = {
-      23, 33, 43,
+      23,
+      33,
+      43,
   };
   Array4D<float> expected(bs, 1, 1, 1, expected_data);
   ComputeAndCompareR4<float>(&builder, expected, {}, error_spec_);
@@ -669,10 +672,11 @@ XLA_TEST_F(ConvolutionVariantsTest, FlatLhsDilation) {
   std::iota(input_data.begin(), input_data.end(), 1.0);
   Array4D<float> input_array(1, 1, 3, 4, input_data);
 
-  Array4D<float> filter_array(1, 1, 4, 3, {100, 10, 1,  //
-                                           200, 20, 2,  //
-                                           300, 30, 3,  //
-                                           400, 40, 4});
+  Array4D<float> filter_array(1, 1, 4, 3,
+                              {100, 10, 1,  //
+                               200, 20, 2,  //
+                               300, 30, 3,  //
+                               400, 40, 4});
   auto input = builder.ConstantR4FromArray4D<float>(input_array);
   auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
   builder.ConvGeneralDilated(
@@ -681,9 +685,10 @@ XLA_TEST_F(ConvolutionVariantsTest, FlatLhsDilation) {
       /*rhs_dilation=*/{},
       ComputationBuilder::CreateDefaultConvDimensionNumbers());
 
-  Array4D<float> expected(1, 1, 3, 5, {204, 40, 406, 60, 608,       //
-                                       1518, 180, 1821, 210, 2124,  //
-                                       4146, 460, 4651, 510, 5156});
+  Array4D<float> expected(1, 1, 3, 5,
+                          {204, 40, 406, 60, 608,       //
+                           1518, 180, 1821, 210, 2124,  //
+                           4146, 460, 4651, 510, 5156});
   ComputeAndCompareR4<float>(&builder, expected, {}, error_spec_);
 }
 
@@ -926,7 +931,8 @@ XLA_TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x1x1_Filter16x16x1x1) {
   ComputeAndCompareR4<float>(&builder, *expected, {}, error_spec_);
 }
 
-XLA_TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x16x16_Filter16x16x16x16) {
+XLA_TEST_F(ConvolutionVariantsTest,
+           RandomData_Input16x16x16x16_Filter16x16x16x16) {
   constexpr int bs = 16;
   constexpr int iz = 16;
   constexpr int oz = 16;
@@ -976,8 +982,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x2x1x1Input1x2x3x1GeneralPadding) {
   // NHWC input format.
   dnums.set_input_batch_dimension(0);
   dnums.set_output_batch_dimension(0);
-  dnums.add_spatial_dimensions(1);
-  dnums.add_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
   dnums.set_input_feature_dimension(3);
   dnums.set_output_feature_dimension(3);
 
@@ -1018,8 +1026,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1GeneralPadding) {
   // NHWC input format.
   dnums.set_input_batch_dimension(0);
   dnums.set_output_batch_dimension(0);
-  dnums.add_spatial_dimensions(1);
-  dnums.add_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
   dnums.set_input_feature_dimension(3);
   dnums.set_output_feature_dimension(3);
 
@@ -1060,8 +1070,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1NoPadding) {
   // NHWC input format.
   dnums.set_input_batch_dimension(0);
   dnums.set_output_batch_dimension(0);
-  dnums.add_spatial_dimensions(1);
-  dnums.add_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
   dnums.set_input_feature_dimension(3);
   dnums.set_output_feature_dimension(3);
 
@@ -1099,8 +1111,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x2x3Input1x2x3x2NoPadding) {
   // NHWC input format.
   dnums.set_input_batch_dimension(0);
   dnums.set_output_batch_dimension(0);
-  dnums.add_spatial_dimensions(1);
-  dnums.add_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
   dnums.set_input_feature_dimension(3);
   dnums.set_output_feature_dimension(3);
 
@@ -1131,7 +1145,8 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x2x3Input1x2x3x2NoPadding) {
 //   Conv([1,2,3], Reverse([5,6]), padding_low=1)
 // into
 //   BackwardInputConv([1,2,3], [5,6], padding_low=0, padding_high=1)
-XLA_TEST_F(ConvolutionVariantsTest, BackwardInputLowPaddingLessThanHighPadding) {
+XLA_TEST_F(ConvolutionVariantsTest,
+           BackwardInputLowPaddingLessThanHighPadding) {
   ComputationBuilder builder(client_, TestName());
 
   auto gradients = builder.ConstantR4FromArray4D<float>(
@@ -1149,7 +1164,8 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardInputLowPaddingLessThanHighPadding) 
 //   Conv([1], Reverse([1,10,100]), padding_high=3, base_dilation=3)
 // into
 //   BackwardInputConv([1], [1,10,100], stride=3, padding=(2,1))
-XLA_TEST_F(ConvolutionVariantsTest, BackwardInputLowPaddingGreaterThanHighPadding) {
+XLA_TEST_F(ConvolutionVariantsTest,
+           BackwardInputLowPaddingGreaterThanHighPadding) {
   ComputationBuilder builder(client_, TestName());
 
   auto gradients = builder.ConstantR4FromArray4D<float>(
@@ -1206,7 +1222,8 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardInputWithNegativePaddingHigh) {
   ComputeAndCompareR4<float>(&builder, {{{{12, 23, 30, 0}}}}, {}, error_spec_);
 }
 
-XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterLowPaddingLessThanHighPadding) {
+XLA_TEST_F(ConvolutionVariantsTest,
+           BackwardFilterLowPaddingLessThanHighPadding) {
   ComputationBuilder builder(client_, TestName());
 
   // activations:      1,2,3,4  ---pad--> 0,1,2,3,4,0,0
@@ -1230,7 +1247,7 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterLowPaddingLessThanHighPadding)
 }
 
 XLA_TEST_F(ConvolutionVariantsTest,
-       BackwardFilterLowPaddingGreaterThanHighPadding) {
+           BackwardFilterLowPaddingGreaterThanHighPadding) {
   ComputationBuilder builder(client_, TestName());
 
   // activations:      1,2,3,4  ---pad--> 0,0,1,2,3,4

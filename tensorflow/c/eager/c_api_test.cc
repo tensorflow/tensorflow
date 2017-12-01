@@ -325,7 +325,8 @@ TEST(CAPI, Function) {
   ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
   TF_DeleteFunction(fn);
 
-  TF_Tensor* t = TF_AllocateTensor(TF_INT32, nullptr, 0, 1);
+  TF_Tensor* t =
+      TF_AllocateTensor(TF_INT32, nullptr, 0, 1 * sizeof(tensorflow::int32));
   *reinterpret_cast<tensorflow::int32*>(TF_TensorData(t)) = 42;
   TFE_TensorHandle* h = TFE_NewTensorHandle(t, status);
   ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);

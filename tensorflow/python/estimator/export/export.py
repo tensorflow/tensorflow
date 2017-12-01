@@ -191,7 +191,8 @@ def build_all_signature_defs(receiver_tensors,
   if not isinstance(receiver_tensors, dict):
     receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
   if export_outputs is None or not isinstance(export_outputs, dict):
-    raise ValueError('export_outputs must be a dict.')
+    raise ValueError('export_outputs must be a dict and not'
+                     '{}'.format(type(export_outputs)))
 
   signature_def_map = {}
   excluded_signatures = {}

@@ -100,7 +100,7 @@ bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kConvolution) {
     const ConvolutionDimensionNumbers& dnums =
         hlo.convolution_dimension_numbers();
-    if (dnums.spatial_dimensions_size() > 3) {
+    if (dnums.input_spatial_dimensions_size() > 3) {
       return false;
     }
 

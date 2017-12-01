@@ -131,7 +131,7 @@ class Device : public DeviceBase {
   OpSegment* op_segment() { return &op_seg_; }
 
   // Returns the resource manager associated w/ this device.
-  ResourceMgr* resource_manager() { return rmgr_; }
+  virtual ResourceMgr* resource_manager() { return rmgr_; }
 
   // Summarizes the status of this Device, for debugging.
   string DebugString() const { return ProtoDebugString(device_attributes_); }

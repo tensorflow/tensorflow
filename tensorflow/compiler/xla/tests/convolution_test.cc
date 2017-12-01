@@ -370,9 +370,12 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
-    dnums.add_spatial_dimensions(2);
-    dnums.add_spatial_dimensions(3);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(2);
+    dnums.add_output_spatial_dimensions(2);
+    dnums.add_input_spatial_dimensions(3);
+    dnums.add_output_spatial_dimensions(3);
     dnums.set_input_feature_dimension(4);
     dnums.set_output_feature_dimension(4);
     dnums.add_kernel_spatial_dimensions(0);
@@ -423,8 +426,10 @@ XLA_TEST_F(ConvolutionTest, Convolve2D_1x3x3x5_3x3x5x5_Valid) {
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
-    dnums.add_spatial_dimensions(2);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(2);
+    dnums.add_output_spatial_dimensions(2);
     dnums.set_input_feature_dimension(3);
     dnums.set_output_feature_dimension(3);
     dnums.add_kernel_spatial_dimensions(0);
@@ -538,7 +543,8 @@ XLA_TEST_P(Convolve1D1WindowTest, Convolve1D1Window) {
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
     dnums.set_input_feature_dimension(2);
     dnums.set_output_feature_dimension(2);
     dnums.add_kernel_spatial_dimensions(0);
