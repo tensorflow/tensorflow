@@ -540,9 +540,7 @@ class ConvBackpropFilterOp : public XlaOpKernel {
 
     // Swap n_dim and c_dim in the activations.
     dnums.set_input_batch_dimension(c_dim);
-    dnums.set_output_batch_dimension(c_dim);
     dnums.set_input_feature_dimension(n_dim);
-    dnums.set_output_feature_dimension(n_dim);
 
     // The gradients become the RHS of the convolution.
     // The gradients have shape [batch, out_rows, out_cols, ..., out_depth]
@@ -554,11 +552,17 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     std::vector<int64> rhs_dilation(num_spatial_dims_);
     std::vector<int64> ones(num_spatial_dims_, 1);
 
+    // Tensorflow filter shape is [ H, W, ..., inC, outC ].
+    for (int i = 0; i < num_spatial_dims_; ++i) {
+      dnums.add_output_spatial_dimensions(i);
+    }
+    dnums.set_output_batch_dimension(num_spatial_dims_);
+    dnums.set_output_feature_dimension(num_spatial_dims_ + 1);
+
     for (int i = 0; i < num_spatial_dims_; ++i) {
       int64 dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
       dnums.add_input_spatial_dimensions(dim);
       dnums.add_kernel_spatial_dimensions(dim);
-      dnums.add_output_spatial_dimensions(dim);
 
       // We will also need to pad the input with zeros such that after the
       // convolution, we get the right size for the filter.
@@ -615,26 +619,11 @@ class ConvBackpropFilterOp : public XlaOpKernel {
                               /*window_strides=*/ones, padding,
                               /*lhs_dilation=*/ones, rhs_dilation, dnums);
 
-    // The layout of filter_backprop will match the layout of
-    // padded_activations
-    // and so will have layout: [out_feature, h, w, ..., in_feature]
-    // Tensorflow filter shape is [ H, W, ..., inC, outC ], so we transpose the
-    // output.
-    std::vector<int64> transpose_dims;
-    transpose_dims.reserve(num_dims());
-    for (int i = 0; i < num_spatial_dims_; ++i) {
-      transpose_dims.push_back(dnums.output_spatial_dimensions(i));
-    }
-    transpose_dims.push_back(c_dim);
-    transpose_dims.push_back(n_dim);
-    xla::ComputationDataHandle filter_backprop_reshaped =
-        b->Transpose(filter_backprop, transpose_dims);
-
     if (depthwise_) {
-      filter_backprop_reshaped = ContractFilterForDepthwiseBackprop(
-          ctx, filter_shape, ctx->input_type(0), filter_backprop_reshaped, b);
+      filter_backprop = ContractFilterForDepthwiseBackprop(
+          ctx, filter_shape, ctx->input_type(0), filter_backprop, b);
     }
-    ctx->SetOutput(0, filter_backprop_reshaped);
+    ctx->SetOutput(0, filter_backprop);
   }
 
  protected:
