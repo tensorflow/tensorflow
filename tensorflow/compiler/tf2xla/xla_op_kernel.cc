@@ -346,9 +346,9 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
 }
 
 void XlaOpKernelContext::SetInvalidOutput(int index) {
-  const TensorShape shape;
   Tensor* output = nullptr;
-  OP_REQUIRES_OK(context_, context_->allocate_output(index, shape, &output));
+  OP_REQUIRES_OK(context_,
+                 context_->allocate_output(index, TensorShape({}), &output));
   XlaExpression* expression = CastExpressionFromUninitializedTensor(output);
   xla::ComputationDataHandle handle;
   handle.set_handle(0);

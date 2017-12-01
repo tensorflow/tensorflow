@@ -187,6 +187,7 @@ tf_cc_test(
     srcs = ["generated_examples_zip_test.cc"],
     data = [":optest"],
     shard_count = 10,
+    tags = ["no_oss"],
     deps = [
         ":parse_testdata_lib",
         "//tensorflow/contrib/lite:builtin_op_data",

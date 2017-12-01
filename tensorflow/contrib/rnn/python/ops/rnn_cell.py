@@ -114,7 +114,6 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
   The class uses optional peep-hole connections, and an optional projection
   layer.
-
   Layer normalization implementation is based on:
 
     https://arxiv.org/abs/1607.06450.

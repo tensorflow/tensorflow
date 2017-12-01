@@ -2583,8 +2583,13 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "batch_matmul_op",
+    srcs = [] + if_mkl([
+        "mkl_batch_matmul_op.cc",
+    ]),
     prefix = "batch_matmul_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 tf_kernel_library(
@@ -6325,11 +6330,11 @@ cc_library(
     srcs = ["summary_interface.cc"],
     hdrs = ["summary_interface.h"],
     deps = [
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ptr_util",
     ],
 )
 

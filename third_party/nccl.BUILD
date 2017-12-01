@@ -55,7 +55,7 @@ cc_library(
         ],
         "@org_tensorflow//tensorflow:ios": [],
         "@org_tensorflow//tensorflow:windows": [
-            "ws2_32.lib",
+            "-DEFAULTLIB:ws2_32.lib",
         ],
         "//conditions:default": [
             "-lrt",

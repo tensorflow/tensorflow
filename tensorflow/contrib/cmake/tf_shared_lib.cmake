@@ -95,10 +95,18 @@ if(WIN32)
   add_dependencies(tensorflow tensorflow_static)
 endif(WIN32)
 
-install(TARGETS tensorflow
+target_include_directories(tensorflow PUBLIC 
+    $<INSTALL_INTERFACE:include/>
+    $<INSTALL_INTERFACE:include/external/nsync/public>)
+
+install(TARGETS tensorflow EXPORT tensorflow_export
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
+        
+install(EXPORT tensorflow_export
+        FILE TensorflowConfig.cmake
+        DESTINATION lib/cmake)
 
 # install necessary headers
 # tensorflow headers

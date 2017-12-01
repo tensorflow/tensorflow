@@ -5,7 +5,7 @@ tell apart a lion and a jaguar, read a sign, or recognize a human's face.
 But these are actually hard problems to solve with a computer: they only
 seem easy because our brains are incredibly good at understanding images.
 
-In the last few years the field of machine learning has made tremendous
+In the last few years, the field of machine learning has made tremendous
 progress on addressing these difficult problems. In particular, we've
 found that a kind of model called a deep
 [convolutional neural network](https://colah.github.io/posts/2014-07-Conv-Nets-Modular/)

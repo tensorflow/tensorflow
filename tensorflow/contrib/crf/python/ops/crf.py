@@ -420,7 +420,7 @@ class CrfDecodeBackwardRnnCell(rnn_cell.RNNCell):
     """Initialize the CrfDecodeBackwardRnnCell.
 
     Args:
-      num_tags: The number of tags.
+      num_tags: An integer. The number of tags.
     """
     self._num_tags = num_tags
 

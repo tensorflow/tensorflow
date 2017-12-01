@@ -3341,6 +3341,7 @@ py_test(
     tags = [
         "no_gpu",
         "no_oss",
+        "no_pip",
         "no_pip_gpu",
         "notap",
     ],
@@ -3387,6 +3388,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
+        "no_windows",
     ],
     deps = [
         ":array_ops",

@@ -20,7 +20,7 @@ def if_mkl(if_true, if_false = []):
 
     """
     return select({
-        "//third_party/mkl:using_mkl": if_true,
+        str(Label("//third_party/mkl:using_mkl")): if_true,
         "//conditions:default": if_false
     })
 
