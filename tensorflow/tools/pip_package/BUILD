@@ -156,7 +156,6 @@ sh_binary(
             "//tensorflow/contrib/data/python/ops:prefetching_py",
             "//tensorflow/contrib/eager/python/examples:examples_pip",
             "//tensorflow/contrib/eager/python:evaluator",
-            "//tensorflow/contrib/eager/python:summary_writer",
             "//tensorflow/contrib/gan:gan",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
             "//tensorflow/contrib/keras:keras",
