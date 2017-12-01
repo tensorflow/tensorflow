@@ -335,6 +335,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
@@ -372,6 +373,7 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:tensorflow_opensource",
     ],
 )
@@ -415,6 +417,7 @@ cc_library(
         ":worker_env",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
