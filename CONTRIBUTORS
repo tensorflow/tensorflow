@@ -1,0 +1,69 @@
+# People who have agreed to one of the CLAs and can contribute patches.
+# The AUTHORS file lists the copyright holders; this file
+# lists people. For example, Google employees are listed here
+# but not in AUTHORS, because Google holds the copyright.
+#
+# https://developers.google.com/open-source/cla/individual
+# https://developers.google.com/open-source/cla/corporate
+#
+# Names should be added to this file as:
+#     Name <email address>
+#
+# If you have contributed a few PRs, feel free to send a PR adding yourself here.
+
+Illia Polosukhin <illia.polosukhin@gmail.com>
+Yuan Tang <terrytangyuan@gmail.com>
+Shanqing Cai <cais@google.com>
+Gunhan Gulsoy <gunan@google.com>
+Illia Polosukhin <ilblackdragon@gmail.com>
+Dandelion Mané <danmane@gmail.com>
+Asim Shankar <asimshankar@gmail.com>
+Andrew Harp <andrew.harp@gmail.com>
+Jonathan Hseu <vomjom@vomjom.net>
+Jianwei Xie <xiejw@google.com>
+Daniel Smilkov <dsmilkov@gmail.com>
+Geoffrey Irving <irving@naml.us>
+Pete Warden <petewarden@google.com>
+Justine Tunney <jart@google.com>
+Yong Tang <yong.tang.github@outlook.com>
+Yifei Feng <yifeif@google.com>
+Zongheng Yang <zongheng.y@gmail.com>
+Andrew Selle <aselle@andyselle.com>
+Yuan Yu <yuanbyu@gmail.com>
+Joshua V. Dillon <jvdillon@gmail.com>
+Amit Patankar <amitpatankar@google.com>
+Luke Iwanski <luke@codeplay.com>
+Mark Daoust <markdaoust@google.com>
+Charles Nicholson <nicholsonc@google.com>
+Manjunath Kudlur <manjunath@cerebras.net>
+Rohan Jain <rohanj@google.com>
+Nikhil Thorat <nsthorat@google.com>
+Olivia <nolivia@umich.edu>
+Brennan Saeta <brennan.saeta@gmail.com>
+David Andersen <dave.andersen@gmail.com>
+RJ Skerry-Ryan <rryan@alum.mit.edu>
+Eli Bendersky <eliben@gmail.com>
+Jan Prach <jendap@gmail.com>
+François Chollet <francois.chollet@gmail.com>
+Yan Facai <facai.yan@gmail.com>
+Sanjoy Das <sanjoy@playingwithpointers.com>
+Vincent Vanhoucke <vanhoucke@google.com>
+Renato Utsch <renatoutsch@gmail.com>
+Igor <isaprykin@google.com>
+Neal Wu <neal@nealwu.com>
+Alan Yee <alyee@ucsd.edu>
+Taehoon Lee <me@taehoonlee.com>
+Kiril Gorovoy <kgorovoy@google.com>
+Yangzihao Wang <yangzihao@google.com>
+Michael Case <mikecase@google.com>
+Jingyue Wu <wujingyue@gmail.com>
+Guenther Schmuelling <guschmue@microsoft.com>
+Dongjoon Hyun <dongjoon@apache.org>
+Yaroslav Bulatov <yaroslavvb@gmail.com>
+Robin Richtsfeld <robin.richtsfeld@gmail.com>
+Toby Boyd <tobyboyd@google.com>
+Fabrizio Milo <mistobaan@gmail.com>
+Ali Siddiqui <alinsiddiqui@gmail.com>
+Akshay Agrawal <akshaykagrawal7@gmail.com>
+Frank Chen <frankchn@google.com>
+Changming Sun <chasun@microsoft.com>
