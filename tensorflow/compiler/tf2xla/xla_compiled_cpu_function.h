@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILED_CPU_FUNCTION_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILED_CPU_FUNCTION_H_
 
-#include <functional>
+#include <cassert>
 #include <string>
 
 #include "tensorflow/compiler/tf2xla/xla_local_runtime_context.h"
@@ -27,6 +27,7 @@ limitations under the License.
 // never use this functionality.
 namespace xla {
 class ProgramShape;
+class HloProfilePrinter;
 }
 
 namespace tensorflow {
@@ -48,12 +49,10 @@ namespace tensorflow {
 class XlaCompiledCpuFunction {
  public:
   // Type of the raw function, produced by either JIT or AOT.
-  //
-  // TODO(toddw): Add support for hlo profiling, and replace std::function with
-  // a raw function pointer, for some codesize savings.
-  using RawFunction = std::function<void(
-      void* result, const xla::ExecutableRunOptions* run_options,
-      const void** args, void** temps)>;
+  using RawFunction = void (*)(void* result,
+                               const xla::ExecutableRunOptions* run_options,
+                               const void** args, void** temps,
+                               int64* profile_counters);
 
   // StaticData represents the state necessary to run an XLA-compiled
   // function. For JIT this is backed by data in XlaJitCompiledCpuFunction; for
@@ -81,21 +80,29 @@ class XlaCompiledCpuFunction {
 
     // [Optional] Arg and result shapes.
     const xla::ProgramShape* program_shape = nullptr;
+
+    // [Optional] Profile printer.  Null if profiling is disabled.
+    const xla::HloProfilePrinter* hlo_profile_printer = nullptr;
+
+    // [Optional] The number of profile counters expected in the profile counter
+    // buffer by the generated code and hlo_profile_printer.  0 if profiling is
+    // disabled.
+    int64 profile_counters_size = 0;
   };
 
   // AllocMode controls the buffer allocation mode.
   enum class AllocMode {
-    // Allocate all buffers - args, results and temps.
-    ARGS_RESULTS_AND_TEMPS,
+    // Allocate all buffers - args, results, profile and temps.
+    ARGS_RESULTS_PROFILES_AND_TEMPS,
 
-    // Only allocate result and temp buffers.
+    // Only allocate result, profile and temp buffers.
     // Use set_arg_data to set argument buffers before Run is called.
-    RESULTS_AND_TEMPS_ONLY,
+    RESULTS_PROFILES_AND_TEMPS_ONLY,
   };
 
   XlaCompiledCpuFunction(
       const StaticData& static_data,
-      AllocMode alloc_mode = AllocMode::ARGS_RESULTS_AND_TEMPS);
+      AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS);
   virtual ~XlaCompiledCpuFunction();
 
   XlaCompiledCpuFunction(const XlaCompiledCpuFunction&) = delete;
@@ -113,7 +120,7 @@ class XlaCompiledCpuFunction {
     context_.error = false;
     context_.error_msg.clear();
     raw_function_(temps_[result_index_], &run_options_,
-                  const_cast<const void**>(args_), temps_);
+                  const_cast<const void**>(args_), temps_, profile_counters_);
     return !context_.error;
   }
 
@@ -162,6 +169,16 @@ class XlaCompiledCpuFunction {
     return static_cast<const void* const*>(temps_[result_index_]);
   }
 
+  // Profile counters for this XLA computation.
+  //
+  // When Hlo profiling is enabled (`hlo_profiling_enabled()` return true in
+  // this case) these counters are non-null and are automatically populated by
+  // `Run`.  The counters can then be pretty-printed using
+  // `hlo_profile_printer()`.
+  //
+  // When Hlo profiling is disabled, this accessor returns null.
+  const int64* profile_counters() const { return profile_counters_; }
+
   // Returns the buffer for the positional result at the given `index`.
   void* result_data(size_t index) { return results()[index]; }
   const void* result_data(size_t index) const { return results()[index]; }
@@ -195,6 +212,12 @@ class XlaCompiledCpuFunction {
   // program shape isn't available.
   const xla::ProgramShape* ProgramShape() const { return program_shape_; }
 
+  bool hlo_profiling_enabled() const { return hlo_profile_printer_ != nullptr; }
+  const xla::HloProfilePrinter& hlo_profile_printer() const {
+    assert(hlo_profiling_enabled());
+    return *hlo_profile_printer_;
+  }
+
  private:
   const RawFunction raw_function_;
   const size_t result_index_;
@@ -208,6 +231,9 @@ class XlaCompiledCpuFunction {
   void* alloc_args_ = nullptr;
   void* alloc_temps_ = nullptr;
 
+  // Backing memory for profiling counters.
+  int64* profile_counters_ = nullptr;
+
   // Options and context passed to the compiled function.
   xla::ExecutableRunOptions run_options_;
   tensorflow::XlaLocalRuntimeContext context_;
@@ -216,6 +242,7 @@ class XlaCompiledCpuFunction {
   const char** arg_names_ = nullptr;
   const char** result_names_ = nullptr;
   const xla::ProgramShape* program_shape_ = nullptr;
+  const xla::HloProfilePrinter* hlo_profile_printer_ = nullptr;
 };
 
 }  // namespace tensorflow

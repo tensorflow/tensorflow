@@ -383,12 +383,11 @@ void TF_Reset_Helper(const TF_SessionOptions* opt, const char** containers,
 // be less than the total node count.
 Status ValidateNoCycles(const Graph& g) {
   // TODO(nolivia): check this on a subset of the graph instead of all of it.
-  int total_num_nodes = g.num_node_ids();
   // A node is ready when all of its inputs have been visited.
   std::vector<const Node*> ready;
-  std::vector<int> pending_count(total_num_nodes, 0);
+  std::vector<int> pending_count(g.num_node_ids(), 0);
 
-  for (int i = 0; i < total_num_nodes; ++i) {
+  for (int i = 0; i < g.num_node_ids(); ++i) {
     const Node* n = g.FindNodeId(i);
     if (n == nullptr) continue;
     pending_count[i] = n->in_edges().size();
@@ -421,7 +420,7 @@ Status ValidateNoCycles(const Graph& g) {
     }
   }
 
-  if (processed < total_num_nodes) {
+  if (processed < g.num_nodes()) {
     std::vector<string> nodes_in_cycle;
     for (int i = 0; i < pending_count.size() && nodes_in_cycle.size() < 3;
          ++i) {
@@ -430,7 +429,7 @@ Status ValidateNoCycles(const Graph& g) {
       }
     }
     return errors::InvalidArgument(
-        "Graph is invalid, contains a cycle with ", total_num_nodes - processed,
+        "Graph is invalid, contains a cycle with ", g.num_nodes() - processed,
         " nodes, including: ", str_util::Join(nodes_in_cycle, ", "));
   }
   return Status::OK();
@@ -623,6 +622,23 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
     tensorflow::port::Free(data);
   };
   return Status::OK();
+}
+
+void RecordMutation(TF_Graph* graph, const TF_Operation& op,
+                    const char* mutation_type)
+    EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+  // If any session has already run this node_id, mark this session as
+  // unrunnable.
+  for (auto it : graph->sessions) {
+    if (it.first->last_num_graph_nodes > op.node.id()) {
+      it.second = FailedPrecondition(
+          "Operation '", op.node.DebugString(), "' was changed by ",
+          mutation_type,
+          " after it was run by a session. Nodes can be mutated "
+          "only before they are executed by a session. Either don't modify "
+          "nodes after running them or create a new session.");
+    }
+  }
 }
 
 // Helpers for loading a TensorFlow plugin (a .so file).
@@ -1745,7 +1761,6 @@ void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,
 TF_Graph::TF_Graph()
     : graph(tensorflow::OpRegistry::Global()),
       refiner(graph.versions().producer(), graph.op_registry()),
-      num_sessions(0),
       delete_requested(false),
       parent(nullptr),
       parent_inputs(nullptr) {}
@@ -1755,7 +1770,7 @@ TF_Graph* TF_NewGraph() { return new TF_Graph; }
 void TF_DeleteGraph(TF_Graph* g) {
   g->mu.lock();
   g->delete_requested = true;
-  const bool del = g->num_sessions == 0;
+  const bool del = g->sessions.empty();
   g->mu.unlock();
   if (del) delete g;
 }
@@ -2325,11 +2340,12 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
   Session* session;
   status->status = NewSession(opt->options, &session);
   if (status->status.ok()) {
+    TF_Session* new_session = new TF_Session(session, graph);
     if (graph != nullptr) {
       mutex_lock l(graph->mu);
-      graph->num_sessions += 1;
+      graph->sessions[new_session] = Status::OK();
     }
-    return new TF_Session(session, graph);
+    return new_session;
   } else {
     DCHECK_EQ(nullptr, session);
     return nullptr;
@@ -2393,7 +2409,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
 
   TF_Session* session = new TF_Session(bundle.session.release(), graph);
 
-  graph->num_sessions += 1;
+  graph->sessions[session] = Status::OK();
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
 #endif  // __ANDROID__
@@ -2408,8 +2424,8 @@ void TF_DeleteSession(TF_Session* s, TF_Status* status) {
   TF_Graph* const graph = s->graph;
   if (graph != nullptr) {
     graph->mu.lock();
-    graph->num_sessions -= 1;
-    const bool del = graph->delete_requested && graph->num_sessions == 0;
+    graph->sessions.erase(s);
+    const bool del = graph->delete_requested && graph->sessions.empty();
     graph->mu.unlock();
     if (del) delete graph;
   }
@@ -2425,6 +2441,13 @@ static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
     mutex_lock session_lock(session->mu);
     session->graph->mu.lock();
     const Graph& graph = session->graph->graph;
+
+    status->status = session->graph->sessions[session];
+    if (!status->status.ok()) {
+      session->graph->mu.unlock();
+      return false;
+    }
+
     const auto num_nodes = graph.num_node_ids();
     if (session->last_num_graph_nodes < num_nodes) {
       status->status = tensorflow::ValidateNoCycles(session->graph->graph);

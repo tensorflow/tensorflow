@@ -2138,8 +2138,10 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, r1f32, "x"));
   HloInstruction* y =
       builder.AddInstruction(HloInstruction::CreateParameter(1, r1f32, "y"));
-  builder.AddInstruction(
-      HloInstruction::CreateBinary(r1f32, HloOpcode::kDot, x, y));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(HloInstruction::CreateDot(r1f32, x, y, dot_dnums));
   std::unique_ptr<HloComputation> dot_computation(builder.Build());
 
   HloComputation::Builder call_builder(TestName() + ".Call");

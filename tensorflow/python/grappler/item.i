@@ -120,7 +120,7 @@ static PyObject* TF_GetOpProperties(GItem item) {
     Py_RETURN_NONE;
   }
   tensorflow::grappler::GraphProperties properties(*item);
-  tensorflow::Status status = properties.InferStatically();
+  tensorflow::Status status = properties.InferStatically(false);
   if (!status.ok()) {
     Py_RETURN_NONE;
   }

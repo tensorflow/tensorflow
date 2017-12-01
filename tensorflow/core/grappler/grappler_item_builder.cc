@@ -173,7 +173,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                  << ", skipping this input.";
       return nullptr;
     }
-    LOG(INFO) << "Will use feed node " << feed_name;
+    VLOG(1) << "Will use feed node " << feed_name;
     new_item->feed.emplace_back(feed_name, Tensor());
   }
 
@@ -188,7 +188,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                      << ", skipping this input";
           return nullptr;
         }
-        LOG(INFO) << "Will use fetch node " << name;
+        VLOG(1) << "Will use fetch node " << name;
         new_item->fetch.push_back(name);
       }
     }

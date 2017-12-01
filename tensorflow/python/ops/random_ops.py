@@ -316,7 +316,7 @@ def random_crop(value, size, seed=None, name=None):
     return array_ops.slice(value, offset, size, name=name)
 
 
-def multinomial(logits, num_samples, seed=None, name=None):
+def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   """Draws samples from a multinomial distribution.
 
   Example:
@@ -336,6 +336,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
       @{tf.set_random_seed}
       for behavior.
     name: Optional name for the operation.
+    output_dtype: integer type to use for the output. Defaults to int64.
 
   Returns:
     The drawn samples of shape `[batch_size, num_samples]`.
@@ -344,7 +345,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
     logits = ops.convert_to_tensor(logits, name="logits")
     seed1, seed2 = random_seed.get_seed(seed)
     return gen_random_ops.multinomial(
-        logits, num_samples, seed=seed1, seed2=seed2)
+        logits, num_samples, seed=seed1, seed2=seed2, output_dtype=output_dtype)
 
 
 ops.NotDifferentiable("Multinomial")

@@ -102,6 +102,10 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
   auto& convolution = *pair.first;
   auto& operand_indices = pair.second;
 
+  if (operand_indices.empty()) {
+    return false;
+  }
+
   const ConvolutionDimensionNumbers& dnums =
       convolution.convolution_dimension_numbers();
   ConvolutionDimensionNumbers new_dnums = dnums;
@@ -121,8 +125,9 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
         transpose_dimensions[dnums.input_batch_dimension()]);
     new_dnums.set_input_feature_dimension(
         transpose_dimensions[dnums.input_feature_dimension()]);
-    for (const auto& spatial_dimension : dnums.input_spatial_dimensions()) {
-      CHECK_EQ(spatial_dimension, transpose_dimensions[spatial_dimension]);
+    for (auto& input_spatial_dimension :
+         *new_dnums.mutable_input_spatial_dimensions()) {
+      input_spatial_dimension = transpose_dimensions[input_spatial_dimension];
     }
     new_lhs = &transpose_operand;
   } else {

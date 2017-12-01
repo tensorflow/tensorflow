@@ -90,21 +90,6 @@ xla::StatusOr<size_t> ComputeResultIndex(
   return result_slice.index();
 }
 
-// Adapt ComputeFunctionType, which includes a final profile_counters arg, to
-// RawFunction, which doesn't include that final arg.
-//
-// TODO(toddw): Change RawFunction and AOT to also pass the final
-// profile_counters arg, and remove this adapter.
-XlaCompiledCpuFunction::RawFunction RawFunctionAdapter(
-    xla::cpu::CpuExecutable::ComputeFunctionType compute_function) {
-  return [compute_function](void* result,
-                            const xla::ExecutableRunOptions* run_options,
-                            const void** args, void** temps) {
-    return compute_function(result, run_options, args, temps,
-                            /*profile_counters=*/nullptr);
-  };
-}
-
 // Collect names from `entries`, where T is one of tf2xla::{Feed,Fetch}. We hold
 // the actual strings in nonempty_names, and hold arrays of pointers in
 // name_ptrs, terminated by a nullptr entry.
@@ -177,7 +162,7 @@ XlaJitCompiledCpuFunction::Compile(
   const xla::cpu::CpuExecutable* cpu_executable =
       static_cast<xla::cpu::CpuExecutable*>(executable->executable());
   XlaCompiledCpuFunction::RawFunction raw_function =
-      RawFunctionAdapter(cpu_executable->compute_function());
+      cpu_executable->compute_function();
   const xla::BufferAssignment& buffer_assignment =
       cpu_executable->buffer_assignment();
 
@@ -211,6 +196,14 @@ XlaJitCompiledCpuFunction::Compile(
   jit->static_data_.arg_names = jit->arg_names_.data();
   jit->static_data_.result_names = jit->result_names_.data();
   jit->static_data_.program_shape = jit->program_shape_.get();
+
+  if (cpu_executable->hlo_profiling_enabled()) {
+    jit->static_data_.hlo_profile_printer =
+        &cpu_executable->hlo_profile_printer();
+    jit->static_data_.profile_counters_size =
+        cpu_executable->hlo_profile_printer().profile_counters_size();
+  }
+
   return std::move(jit_unique_ptr);
 }
 

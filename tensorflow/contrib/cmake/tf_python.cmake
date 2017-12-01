@@ -899,6 +899,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_util.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_util.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/safe_ptr.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/safe_ptr.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_reader.h"

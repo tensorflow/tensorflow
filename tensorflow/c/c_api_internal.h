@@ -81,12 +81,20 @@ struct TF_Graph {
   std::unordered_map<tensorflow::string, tensorflow::Node*> name_map
       GUARDED_BY(mu);
 
-  // TF_Graph may only / must be deleted when
-  //   num_sessions == 0 && delete_requested == true
-
-  // num_sessions incremented by TF_NewSession, and decremented by
+  // The keys of this map are all the active sessions using this graph.
+  // Each value is the current "runnability" status of the corresponding
+  // session. Under normal conditions all statuses are Status::OK(), but
+  // if some operation is mutated after it was run by a session (this
+  // is detected in RecordMutation function), that session is no longer
+  // safe to run. Its status will contain the error that will be returned
+  // to the user, should she try running this session.
+  //
+  // Sessions are added to this map in TF_NewSession, and removed in
   // TF_DeleteSession.
-  int num_sessions GUARDED_BY(mu);
+  // TF_Graph may only / must be deleted when
+  //   sessions.size() == 0 && delete_requested == true
+  tensorflow::gtl::FlatMap<TF_Session*, tensorflow::Status> sessions
+      GUARDED_BY(mu);
   bool delete_requested GUARDED_BY(mu);  // set true by TF_DeleteGraph
 
   // Used to link graphs contained in TF_WhileParams to the parent graph that
@@ -166,6 +174,9 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
 
 Status MessageToBuffer(const tensorflow::protobuf::Message& in, TF_Buffer* out);
+
+void RecordMutation(TF_Graph* graph, const TF_Operation& op,
+                    const char* mutation_type);
 
 }  // end namespace tensorflow
 

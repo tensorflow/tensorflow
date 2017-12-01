@@ -14,10 +14,10 @@
 
 #import "RunModelViewController.h"
 
-#include <fstream>
-#include <iostream>
 #include <pthread.h>
 #include <unistd.h>
+#include <fstream>
+#include <iostream>
 #include <queue>
 #include <sstream>
 #include <string>
@@ -30,7 +30,11 @@
 #include "ios_image_load.h"
 
 #define LOG(x) std::cerr
-#define CHECK(x) if (!(x)) { LOG(ERROR) << #x << "failed"; exit(1); }
+#define CHECK(x)                  \
+  if (!(x)) {                     \
+    LOG(ERROR) << #x << "failed"; \
+    exit(1);                      \
+  }
 
 NSString* RunInferenceOnImage();
 
@@ -49,15 +53,12 @@ NSString* RunInferenceOnImage();
 
 // Returns the top N confidence values over threshold in the provided vector,
 // sorted by confidence in descending order.
-static void GetTopN(
-    const float* prediction,
-    const int prediction_size,
-    const int num_results, const float threshold,
-    std::vector<std::pair<float, int> >* top_results) {
+static void GetTopN(const float* prediction, const int prediction_size, const int num_results,
+                    const float threshold, std::vector<std::pair<float, int> >* top_results) {
   // Will contain top N results in ascending order.
-  std::priority_queue<std::pair<float, int>,
-      std::vector<std::pair<float, int> >,
-      std::greater<std::pair<float, int> > > top_result_pq;
+  std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int> >,
+                      std::greater<std::pair<float, int> > >
+      top_result_pq;
 
   const long count = prediction_size;
   for (int i = 0; i < count; ++i) {
@@ -88,8 +89,8 @@ static void GetTopN(
 NSString* FilePathForResourceName(NSString* name, NSString* extension) {
   NSString* file_path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
   if (file_path == NULL) {
-    LOG(FATAL) << "Couldn't find '" << [name UTF8String] << "."
-	       << [extension UTF8String] << "' in bundle.";
+    LOG(FATAL) << "Couldn't find '" << [name UTF8String] << "." << [extension UTF8String]
+               << "' in bundle.";
   }
   return file_path;
 }
@@ -102,7 +103,8 @@ NSString* RunInferenceOnImage() {
 
   NSString* graph_path = FilePathForResourceName(@"mobilenet_v1_1.0_224", @"tflite");
 
-  std::unique_ptr<tflite::FlatBufferModel> model(tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]));
+  std::unique_ptr<tflite::FlatBufferModel> model(
+      tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]));
   if (!model) {
     LOG(FATAL) << "Failed to mmap model " << graph;
   }
@@ -143,7 +145,7 @@ NSString* RunInferenceOnImage() {
   std::ifstream t;
   t.open([labels_path UTF8String]);
   std::string line;
-  while(t){
+  while (t) {
     std::getline(t, line);
     label_strings.push_back(line);
   }
@@ -154,7 +156,8 @@ NSString* RunInferenceOnImage() {
   int image_width;
   int image_height;
   int image_channels;
-  std::vector<uint8_t> image_data = LoadImageFromFile([image_path UTF8String], &image_width, &image_height, &image_channels);
+  std::vector<uint8_t> image_data =
+      LoadImageFromFile([image_path UTF8String], &image_width, &image_height, &image_channels);
   const int wanted_width = 224;
   const int wanted_height = 224;
   const int wanted_channels = 3;
@@ -212,8 +215,7 @@ NSString* RunInferenceOnImage() {
 
   std::string predictions = ss.str();
   NSString* result = @"";
-  result = [NSString stringWithFormat: @"%@ - %s", result,
-            predictions.c_str()];
-  
+  result = [NSString stringWithFormat:@"%@ - %s", result, predictions.c_str()];
+
   return result;
 }

@@ -308,6 +308,12 @@ class Template(object):
       return name if name[-1] == "/" else name + "/"
 
   @property
+  def variables(self):
+    """Returns the list of global and local variables created by the Template.
+    """
+    return self.global_variables + self.local_variables
+
+  @property
   def trainable_variables(self):
     """Returns the list of trainable variables created by the Template."""
     if self._variables_created:
@@ -315,6 +321,14 @@ class Template(object):
                                 self.variable_scope_name)
     else:
       return []
+
+  @property
+  def non_trainable_variables(self):
+    """Returns the list of non-trainable variables created by the Template."""
+    # TODO(apassos) Make sure it matches Eager when using local variables.
+    global_variables = self.global_variables
+    trainable_variables = set(self.trainable_variables)
+    return [x for x in global_variables if x not in trainable_variables]
 
   @property
   def global_variables(self):
@@ -333,6 +347,21 @@ class Template(object):
                                 self.variable_scope_name)
     else:
       return []
+
+  @property
+  def weights(self):
+    """List of weights/variables created by the Template."""
+    return self.variables
+
+  @property
+  def trainable_weights(self):
+    """List of trainable weights/variables created by the Template."""
+    return self.trainable_variables
+
+  @property
+  def non_trainable_weights(self):
+    """List of non-trainable weights/variables created by the Template."""
+    return self.non_trainable_variables
 
   @property
   @deprecated(
@@ -501,7 +530,7 @@ class EagerTemplate(Template):
 
   @property
   def variables(self):
-    """Returns the list of trainable variables created by the Template."""
+    """Returns the list of variables created by the Template."""
     # Currently there is no local variable in Eager mode.
     return self._eager_variable_store.variables()
 
@@ -510,6 +539,12 @@ class EagerTemplate(Template):
     """Returns the list of trainable variables created by the Template."""
     # Currently there is no local variable in Eager mode.
     return self._eager_variable_store.trainable_variables()
+
+  @property
+  def non_trainable_variables(self):
+    """Returns the list of non-trainable variables created by the Template."""
+    # Currently there is no local variable in Eager mode.
+    return self._eager_variable_store.non_trainable_variables()
 
   @property
   def global_variables(self):

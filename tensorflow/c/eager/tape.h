@@ -161,7 +161,7 @@ class GradientTape {
   // the tape refer to it); to aid in tape garbage collection.
   std::unordered_map<int64, int64> tensor_usage_;
 
-  // If true, all activations are deleted in the first call to ComputeGradient.
+  // If false, all activations are deleted in the first call to ComputeGradient.
   // Else, only when this is destructed.
   bool persistent_;
 };

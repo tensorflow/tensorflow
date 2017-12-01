@@ -100,7 +100,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
       DataTypeVector other_arguments_types(
           captured_func_->captured_inputs().size());
-      std::vector<NodeBuilder::NodeOut> other_arguments(
+      std::vector<Node*> other_arguments(
           captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
@@ -146,7 +146,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         FunctionLibraryRuntime::Options opts;
         opts.step_id = CapturedFunction::generate_step_id();
         ScopedStepContainer step_container(
-            opts.step_id, [this, ctx](const string& name) {
+            opts.step_id, [this](const string& name) {
               dataset()
                   ->captured_func_->resource_manager()
                   ->Cleanup(name)

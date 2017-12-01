@@ -169,7 +169,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               opts.step_id = CapturedFunction::generate_step_id();
               opts.runner = ctx->runner();
               ScopedStepContainer step_container(
-                  opts.step_id, [this, ctx](const string& name) {
+                  opts.step_id, [this](const string& name) {
                     dataset()
                         ->captured_key_func_->resource_manager()
                         ->Cleanup(name)
@@ -198,7 +198,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 opts2.step_id = CapturedFunction::generate_step_id();
                 opts2.runner = ctx->runner();
                 ScopedStepContainer step_container2(
-                    opts2.step_id, [this, ctx](const string& name) {
+                    opts2.step_id, [this](const string& name) {
                       dataset()
                           ->captured_window_size_func_->resource_manager()
                           ->Cleanup(name)
@@ -257,7 +257,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         opts.step_id = CapturedFunction::generate_step_id();
         opts.runner = ctx->runner();
         ScopedStepContainer step_container(
-            opts.step_id, [this, ctx](const string& name) {
+            opts.step_id, [this](const string& name) {
               dataset()
                   ->captured_reduce_func_->resource_manager()
                   ->Cleanup(name)

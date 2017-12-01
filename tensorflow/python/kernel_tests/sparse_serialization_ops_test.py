@@ -254,8 +254,8 @@ class SerializeSparseTest(test.TestCase):
           serialized_concat, dtype=dtypes.int32)
 
       with self.assertRaisesOpError(
-          r"Inconsistent rank across SparseTensors: rank prior to "
-          r"SparseTensor\[1\] was: 3 but rank of SparseTensor\[1\] is: 4"):
+          r"Inconsistent shape across SparseTensors: rank prior to "
+          r"SparseTensor\[1\] was: 2 but rank of SparseTensor\[1\] is: 3"):
         sess.run(sp_deserialized,
                  {sp_input0: input0_val,
                   sp_input1: input1_val})

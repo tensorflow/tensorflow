@@ -1067,6 +1067,10 @@ FunctionalizeCond::CreateCorrespondingMergeCluster(Cluster* switch_cluster) {
       enqueue_or_update_merge(out);
     }
   }
+  // Return if there are no merge nodes.
+  if (merges.empty()) {
+    return gtl::nullopt;
+  }
   auto it = merges.begin();
   Cluster* merge_cluster = *it;
   for (++it; it != merges.end(); ++it) {
