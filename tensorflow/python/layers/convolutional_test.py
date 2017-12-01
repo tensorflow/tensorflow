@@ -205,8 +205,16 @@ class ConvTest(test.TestCase):
       self.assertAllClose(output,
                           [2 * 0 + 1 * 1, 2 * 0 + 1 * 2, 2 * 1 + 1 * 3, 2 * 2 + 1 * 4])
 
-    with self.assertRaisesRegexp(ValueError, "causal padding"):
-      conv_layers.Conv1D(x, filters, padding="causal", data_format="channels_first")
+    # incompatible data_format.
+    with self.assertRaisesRegexp(ValueError, "NTC"):
+      conv_layers.Conv1D(1, 2, padding="causal", data_format="channels_first")
+    # invalid dilation_rate.
+    with self.assertRaisesRegexp(ValueError, "positive"):
+      conv_layers.Conv1D(1, 2, padding="causal", dilation_rate=-1).apply(x)
+    # invalid inputs.
+    with self.assertRaisesRegexp(ValueError, "3 dimensions"):
+      x_4d = array_ops.expand_dims(x, 3)
+      conv_layers.Conv1D(1, 2, padding="causal").build(x_4d.shape)
 
   def testUnknownInputChannelsConv1D(self):
     data = random_ops.random_uniform((5, 4, 7))
