@@ -67,7 +67,6 @@ cc_library(
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
         "//tensorflow/compiler/aot:runtime",
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
     ],
@@ -356,13 +355,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-cc_library(
-    name = "xla_local_runtime_context",
-    hdrs = ["xla_local_runtime_context.h"],
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core:framework_lite"],
 )
 
 cc_library(

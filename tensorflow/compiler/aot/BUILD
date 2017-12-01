@@ -24,7 +24,6 @@ tf_cc_test(
     srcs = ["runtime_test.cc"],
     deps = [
         ":runtime",
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
