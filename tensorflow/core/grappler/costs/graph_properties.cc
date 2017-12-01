@@ -265,6 +265,79 @@ bool IsEnterWithQueue(const Node& node) {
   return false;
 }
 
+bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {
+  if (proto.unknown_rank()) {
+    return true;
+  }
+  for (const auto& dim : proto.dim()) {
+    if (dim.size() < 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void VerboseLogUnknownDimensionSources(
+    const Graph& graph,
+    const std::map<string, std::vector<OpInfo::TensorProperties>>&
+        input_properties_map,
+    const std::map<string, std::vector<OpInfo::TensorProperties>>&
+        output_properties_map) {
+  if (!VLOG_IS_ON(2)) {
+    return;
+  }
+
+  VLOG(2) << "Nodes with known inputs, but with unknown output dimensions:";
+
+  // Find all nodes in the graph for which we
+  // do not have any unknown dimensions in their inputs, but
+  // we have some unknown dimensions in their outputs.
+  for (const Node* const node : graph.nodes()) {
+    if (node->num_outputs() == 0) {
+      continue;
+    }
+
+    const auto& input_properties = input_properties_map.at(node->name());
+    const auto& output_properties = output_properties_map.at(node->name());
+
+    bool has_unknown_inputs = false;
+    for (int i = 0; i < node->num_inputs(); ++i) {
+      if (HasAnyUnknownDimensions(input_properties[i].shape())) {
+        has_unknown_inputs = true;
+        break;
+      }
+    }
+
+    if (has_unknown_inputs) {
+      continue;
+    }
+
+    for (int i = 0; i < node->num_outputs(); ++i) {
+      if (HasAnyUnknownDimensions(output_properties[i].shape())) {
+        string inputs = "input_shapes=[";
+        for (int i = 0; i < node->num_inputs(); ++i) {
+          inputs +=
+              PartialTensorShape::DebugString(input_properties[i].shape());
+        }
+        inputs += "]";
+
+        string outputs = "output_shapes=[";
+        for (int i = 0; i < node->num_outputs(); ++i) {
+          outputs +=
+              PartialTensorShape::DebugString(output_properties[i].shape());
+        }
+        outputs += "]";
+
+        VLOG(2) << "Node: " << node->name() << ", Op: " << node->def().op()
+                << ", " << inputs << ", " << outputs;
+
+        // don't log again for this node
+        break;
+      }
+    }
+  }
+}
+
 }  // namespace
 
 // Queue of nodes to process. Nodes can be enqueued in any order, but will be
@@ -999,6 +1072,10 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
       }
     }
   }
+
+  // Help trace the unknown dimensions to their origins.
+  VerboseLogUnknownDimensionSources(graph, input_properties_,
+                                    output_properties_);
 
   return Status::OK();
 }
