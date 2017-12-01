@@ -247,9 +247,9 @@ def main(_):
 
   log_dir = os.path.join(FLAGS.dir, "summaries")
   tf.gfile.MakeDirs(log_dir)
-  train_summary_writer = tf.contrib.summary.create_summary_file_writer(
+  train_summary_writer = tf.contrib.summary.create_file_writer(
       os.path.join(log_dir, "train"), flush_millis=10000)
-  test_summary_writer = tf.contrib.summary.create_summary_file_writer(
+  test_summary_writer = tf.contrib.summary.create_file_writer(
       os.path.join(log_dir, "eval"), flush_millis=10000, name="eval")
 
   with tf.device(device):

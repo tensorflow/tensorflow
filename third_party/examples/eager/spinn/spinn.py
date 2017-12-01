@@ -567,7 +567,7 @@ def train_spinn(embed, train_data, dev_data, test_data, config):
       "{:>6.0f} {:>5.0f} {:>9.0f} {:>5.0f}/{:<5.0f} {:>7.0f}% {:>8.6f} "
       "{:8.6f} {:12.4f} {:12.4f}")
 
-  summary_writer = tf.contrib.summary.create_summary_file_writer(
+  summary_writer = tf.contrib.summary.create_file_writer(
       config.logdir, flush_millis=10000)
   train_len = train_data.num_batches(config.batch_size)
   with tf.device(device), \
