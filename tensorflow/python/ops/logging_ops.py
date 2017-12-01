@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_logging_ops import *
@@ -59,12 +60,20 @@ def Print(input_, data, message=None, first_n=None, summarize=None,
   Returns:
     Same tensor as `input_`.
   """
-  return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
+  if isinstance(input_, variables.Variable):
+    return gen_logging_ops._print_ref(input_, data, message, first_n, summarize, name)
+  else:
+    return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
 
 
 @ops.RegisterGradient("Print")
 def _PrintGrad(op, *grad):
   return list(grad) + [None] * (len(op.inputs) - 1)
+
+
+@ops.RegisterGradient("PrintRef")
+def _PrintRefGrad(op, *grad):
+  return _PrintGrad(op, *grad)
 
 
 def _Collect(val, collections, default_collections):

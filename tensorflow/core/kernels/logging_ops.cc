@@ -88,5 +88,6 @@ class PrintOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Print").Device(DEVICE_CPU), PrintOp);
+REGISTER_KERNEL_BUILDER(Name("PrintRef").Device(DEVICE_CPU), PrintOp);
 
 }  // end namespace tensorflow

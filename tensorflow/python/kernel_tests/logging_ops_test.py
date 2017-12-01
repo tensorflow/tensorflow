@@ -25,6 +25,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -76,6 +77,15 @@ class PrintGradientTest(test.TestCase):
       wxg = wx_grad.eval()
       wxpg = wx_print_grad.eval()
     self.assertAllEqual(wxg, wxpg)
+
+  def testPrintVariable(self):
+    v = variables.Variable([99])
+    p = logging_ops.Print(v, [v])
+    self.assertTrue(isinstance(p, ops.Tensor))
+    self.assertEqual(p.dtype, v.dtype)
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      self.assertAllEqual(p.eval(), v.eval())
 
 
 if __name__ == "__main__":

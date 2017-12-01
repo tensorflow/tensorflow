@@ -37,29 +37,33 @@ data: The tensors to print out when condition is false.
 summarize: Print this many entries of each tensor.
 )doc");
 
-REGISTER_OP("Print")
-    .Input("input: T")
-    .Input("data: U")
-    .Output("output: T")
-    .SetIsStateful()
-    .Attr("T: type")
-    .Attr("U: list(type) >= 0")
-    .Attr("message: string = ''")
-    .Attr("first_n: int = -1")
-    .Attr("summarize: int = 3")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Prints a list of tensors.
-
-Passes `input` through to `output` and prints `data` when evaluating.
-
-input: The tensor passed to `output`
-data: A list of tensors to print out when op is evaluated.
-output:= The unmodified `input` tensor
-message: A string, prefix of the error message.
-first_n: Only log `first_n` number of times. -1 disables logging.
-summarize: Only print this many entries of each tensor.
-)doc");
+#define REGISTER_PRINT_OP(NAME, DTYPE)  \
+REGISTER_OP(NAME) \
+    .Input("input: " DTYPE) \
+    .Input("data: U") \
+    .Output("output: " DTYPE) \
+    .SetIsStateful() \
+    .Attr("T: type") \
+    .Attr("U: list(type) >= 0") \
+    .Attr("message: string = ''") \
+    .Attr("first_n: int = -1") \
+    .Attr("summarize: int = 3") \
+    .SetShapeFn(shape_inference::UnchangedShape) \
+    .Doc("doc(\n\
+Prints a list of tensors.\n\
+\n\
+Passes `input` through to `output` and prints `data` when evaluating.\n\
+\n\
+input: The tensor passed to `output`\n\
+data: A list of tensors to print out when op is evaluated.\n\
+output:= The unmodified `input` tensor\n\
+message: A string, prefix of the error message.\n\
+first_n: Only log `first_n` number of times. -1 disables logging.\n\
+summarize: Only print this many entries of each tensor.\n\
+)doc")
+REGISTER_PRINT_OP("Print", "T");
+REGISTER_PRINT_OP("PrintRef", "Ref(T)");
+#undef REGISTER_PRINT_OP
 
 // ----------------------------------------------------------------------------
 // Operators that deal with SummaryProtos (encoded as DT_STRING tensors) as

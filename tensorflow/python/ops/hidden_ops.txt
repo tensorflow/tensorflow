@@ -237,6 +237,7 @@ HistogramSummary
 ImageSummary
 MergeSummary
 Print
+PrintRef
 ScalarSummary
 TensorSummary
 TensorSummaryV2
