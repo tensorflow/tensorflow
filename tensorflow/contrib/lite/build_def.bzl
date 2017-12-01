@@ -223,11 +223,12 @@ def gen_selected_ops(name, model):
   """
   out = name + "_registration.cc"
   tool = "//tensorflow/contrib/lite/tools:generate_op_registrations"
+  tflite_path = "//tensorflow/contrib/lite"
   native.genrule(
       name = name,
       srcs = [model],
       outs = [out],
-      cmd = ("$(location %s) --input_model=$(location %s) --output_registration=$(location %s)")
-      % (tool, model, out),
+      cmd = ("$(location %s) --input_model=$(location %s) --output_registration=$(location %s) --tflite_path=%s")
+      % (tool, model, out, tflite_path[2:]),
       tools = [tool],
   )
