@@ -15,7 +15,6 @@ limitations under the License.
 
 %include "tensorflow/python/lib/core/strings.i"
 %include "tensorflow/python/platform/base.i"
-%include "cluster.i"
 
 %typemap(in) const tensorflow::MetaGraphDef& (tensorflow::MetaGraphDef temp) {
   char* c_string;
@@ -43,8 +42,8 @@ limitations under the License.
 %}
 
 %{
-string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool per_node_report,
-                          GCluster cluster) {
+string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool
+per_node_report, tensorflow::grappler::Cluster* cluster) {
   tensorflow::grappler::ItemConfig cfg;
   cfg.apply_optimizations = false;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> item =
@@ -54,7 +53,7 @@ string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool per_no
   }
 
   string suffix;
-  tensorflow::grappler::CostAnalyzer analyzer(*item, cluster.get(), suffix);
+  tensorflow::grappler::CostAnalyzer analyzer(*item, cluster, suffix);
 
   std::stringstream os;
   analyzer.GenerateReport(os, per_node_report);
@@ -63,5 +62,5 @@ string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool per_no
 
 %}
 
-string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool per_node_report,
-                          GCluster cluster);
+string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool
+                          per_node_report, tensorflow::grappler::Cluster* cluster);

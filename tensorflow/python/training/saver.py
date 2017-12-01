@@ -503,13 +503,11 @@ class BaseSaverBuilder(object):
     return sorted(per_device.items(), key=lambda t: t[0])
 
   @staticmethod
-  def OpListToDict(op_list, convert_variable_to_tensor=True):
+  def OpListToDict(op_list):
     """Create a dictionary of names to operation lists.
 
     Args:
       op_list: A list, tuple, or set of Variables or SaveableObjects.
-      convert_variable_to_tensor: Whether or not to convert single Variables
-        with no slice info into Tensors.
 
     Returns:
       A dictionary of names to the operations that must be saved under
@@ -548,10 +546,9 @@ class BaseSaverBuilder(object):
           names_to_saveables[name] = [var]
       else:
         if context.in_graph_mode():
-          if convert_variable_to_tensor:
-            var = ops.internal_convert_to_tensor(var, as_ref=True)
-            if not BaseSaverBuilder._IsVariable(var):
-              raise TypeError("Variable to save is not a Variable: %s" % var)
+          var = ops.internal_convert_to_tensor(var, as_ref=True)
+          if not BaseSaverBuilder._IsVariable(var):
+            raise TypeError("Variable to save is not a Variable: %s" % var)
           if var.op.type == "ReadVariableOp":
             name = var.op.inputs[0].op.name
           else:

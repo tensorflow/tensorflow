@@ -328,10 +328,9 @@ class RemoteCallOp : public AsyncOpKernel {
     lib->Run(opts, handle, args, rets, [rets, done, ctx](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
-      } else {
-        for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, (*rets)[i]);
-        }
+      }
+      for (size_t i = 0; i < rets->size(); ++i) {
+        ctx->set_output(i, (*rets)[i]);
       }
       delete rets;
       done();

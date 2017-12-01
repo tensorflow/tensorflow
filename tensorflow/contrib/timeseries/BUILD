@@ -14,8 +14,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/timeseries/python/timeseries:estimators",
+        "//tensorflow/contrib/timeseries/python/timeseries:feature_keys",
+        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
         "//tensorflow/contrib/timeseries/python/timeseries:py_init",
-        "//tensorflow/python:util",
+        "//tensorflow/contrib/timeseries/python/timeseries:saved_model_utils",
     ],
 )
 

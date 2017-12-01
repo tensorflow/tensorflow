@@ -39,7 +39,6 @@ tf_cuda_library(
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
-    visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api",
         ":runtime",
@@ -106,6 +105,7 @@ tf_cc_test(
 
 cc_library(
     name = "tape",
+    srcs = ["tape.cc"],
     hdrs = ["tape.h"],
     visibility = ["//tensorflow:internal"],
     deps = [

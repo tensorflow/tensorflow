@@ -85,8 +85,6 @@ class TrackingAllocator : public Allocator {
   // deallocated. After this call completes and all allocated pointers
   // have been deallocated the wrapper will delete itself.
   gtl::InlinedVector<AllocRecord, 4> GetRecordsAndUnRef();
-  // Returns a copy of allocation records collected so far.
-  gtl::InlinedVector<AllocRecord, 4> GetCurrentRecords();
 
  protected:
   ~TrackingAllocator() override {}

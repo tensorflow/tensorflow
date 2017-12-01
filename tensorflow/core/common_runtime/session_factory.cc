@@ -29,7 +29,7 @@ namespace tensorflow {
 namespace {
 
 static mutex* get_session_factory_lock() {
-  static mutex session_factory_lock(LINKER_INITIALIZED);
+  static mutex session_factory_lock;
   return &session_factory_lock;
 }
 

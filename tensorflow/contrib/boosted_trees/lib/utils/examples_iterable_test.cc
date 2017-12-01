@@ -194,7 +194,6 @@ TEST_F(ExamplesIterableTest, Iterate) {
       {dense_float_tensor}, {sparse_float_tensor1, sparse_float_tensor2},
       {sparse_int_tensor1, sparse_int_tensor2}, 0, 8);
   int64 example_idx = 0;
-
   for (const auto& example : full_iterable) {
     validate_example_features(example_idx, example);
     ++example_idx;

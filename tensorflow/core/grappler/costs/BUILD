@@ -100,7 +100,6 @@ tf_cc_test(
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
     deps = [
         ":graph_memory",
-        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",

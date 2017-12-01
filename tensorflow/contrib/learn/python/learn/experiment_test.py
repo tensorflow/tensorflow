@@ -232,19 +232,14 @@ class ExperimentTest(test.TestCase):
 
   def test_train(self):
     for est in self._estimators_for_tests():
-      if isinstance(est, core_estimator.Estimator):
-        eval_metrics = None
-        saving_listeners = 'saving_listeners'
-      else:
-        eval_metrics = 'eval_metrics'
-        saving_listeners = None
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
       ex = experiment.Experiment(
           est,
           train_input_fn='train_input',
           train_steps='train_steps',
           eval_input_fn='eval_input',
-          eval_metrics=eval_metrics,
-          saving_listeners=saving_listeners)
+          eval_metrics=eval_metrics)
       fit_args = ex.train(delay_secs=0)
       self.assertEqual(1, est.fit_count)
       self.assertIn(('max_steps', 'train_steps'), fit_args)
@@ -680,12 +675,8 @@ class ExperimentTest(test.TestCase):
 
   def test_continuous_train_and_eval(self):
     for est in self._estimators_for_tests(eval_dict={'global_step': 100}):
-      if isinstance(est, core_estimator.Estimator):
-        eval_metrics = None
-        saving_listeners = 'saving_listeners'
-      else:
-        eval_metrics = 'eval_metrics'
-        saving_listeners = None
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
       noop_hook = _NoopHook()
       export_strategy = saved_model_export_utils.make_export_strategy(
           est,
@@ -699,8 +690,7 @@ class ExperimentTest(test.TestCase):
           eval_hooks=[noop_hook],
           train_steps=100,
           eval_steps=100,
-          export_strategies=export_strategy,
-          saving_listeners=saving_listeners)
+          export_strategies=export_strategy)
       ex.continuous_train_and_eval()
       self.assertEqual(1, est.fit_count)
       self.assertEqual(1, est.eval_count)
@@ -752,10 +742,9 @@ class ExperimentTest(test.TestCase):
     ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
     mock_estimator.train.assert_called_once_with(
         input_fn='train_input',
-        steps=int(total_steps / 10),
+        steps=int(total_steps/10),
         max_steps=test.mock.ANY,
-        hooks=test.mock.ANY,
-        saving_listeners=test.mock.ANY)
+        hooks=test.mock.ANY)
 
   def test_continuous_train_and_eval_with_steps_per_iteration_from_user(self):
     mock_estimator = test.mock.Mock(core_estimator.Estimator)
@@ -779,8 +768,7 @@ class ExperimentTest(test.TestCase):
         input_fn='train_input',
         steps=1234,
         max_steps=test.mock.ANY,
-        hooks=test.mock.ANY,
-        saving_listeners=test.mock.ANY)
+        hooks=test.mock.ANY)
 
   def test_continuous_train_and_eval_with_default_steps_per_iteration(self):
     mock_estimator = test.mock.Mock(core_estimator.Estimator)
@@ -803,8 +791,7 @@ class ExperimentTest(test.TestCase):
         input_fn='train_input',
         steps=1000,
         max_steps=test.mock.ANY,
-        hooks=test.mock.ANY,
-        saving_listeners=test.mock.ANY)
+        hooks=test.mock.ANY)
 
   def test_continuous_train_and_eval_with_invalid_predicate_fn(self):
     for est in self._estimators_for_tests():
@@ -870,19 +857,11 @@ class ExperimentTest(test.TestCase):
           est,
           None if isinstance(est, core_estimator.Estimator) else 'export_input',
           exports_to_keep=None)
-      if isinstance(est, core_estimator.Estimator):
-        eval_metrics = None
-        saving_listeners = 'saving_listeners'
-      else:
-        eval_metrics = 'eval_metrics'
-        saving_listeners = None
       ex = experiment.Experiment(
           est,
           train_input_fn='train_input',
           eval_input_fn='eval_input',
-          export_strategies=(exp_strategy,),
-          eval_metrics=eval_metrics,
-          saving_listeners=saving_listeners)
+          export_strategies=(exp_strategy,))
       ex.test()
       self.assertEqual(1, est.fit_count)
       self.assertEqual(1, est.eval_count)

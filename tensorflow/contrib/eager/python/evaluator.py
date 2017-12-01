@@ -22,7 +22,6 @@ import six
 
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.contrib.eager.python import metrics
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import errors_impl
@@ -37,7 +36,7 @@ class Evaluator(object):
     evaluator = my_model.evaluator() # or MyEvaluator(my_model)
     for example_batch in ...:
       evaluator(example_batch)
-    results = evaluator.all_metric_results(optional_summary_logdir)
+    results = evaluator.all_metric_results(optional_summary_writer)
 
   Or, if you are getting your examples from a tf.data.Dataset, you can use
   the evaluate_on_dataset() method.
@@ -95,31 +94,8 @@ class Evaluator(object):
                          "eager execution is enabled.")
     return control_flow_ops.group([m.init_variables() for _, m in self.metrics])
 
-  def all_metric_results(self, summary_logdir=None):
-    """Computes results for all contained metrics.
-
-    Args:
-      summary_logdir: An optional string. If specified, metric results
-        will be written as summaries to this directory.
-
-    Returns:
-      A `dict` mapping string names to tensors.
-    """
-    if summary_logdir is None:
-      with summary_ops.never_record_summaries():
-        return self._all_metric_results()
-    else:
-      def f():
-        with summary_ops.create_summary_file_writer(
-            summary_logdir).as_default(), summary_ops.always_record_summaries():
-          return self._all_metric_results()
-      if context.in_eager_mode():
-        return f()
-      else:
-        return function.defun(f)()
-
-  def _all_metric_results(self):
-    """Implementation of `all_metric_results` in the summary context."""
+  def all_metric_results(self):  # TODO(josh11b): Add optional summary_writer.
+    """Returns dict mapping metric name -> value."""
     results = {}
     for name, metric in six.iteritems(self._metrics):
       results[name] = metric.result()
@@ -134,9 +110,7 @@ class Evaluator(object):
     Args:
       dataset: Dataset object with the input data to evaluate on.
       *args:
-      **kwargs: Optional additional arguments to __call__(), except
-        `summary_logdir`: if specified, metrics will be written as summaries
-        to this directory.
+      **kwargs: Optional additional arguments to __call__().
 
     Returns:
       @compatibility(eager)
@@ -157,17 +131,17 @@ class Evaluator(object):
       ```
       @end_compatibility
     """
-    summary_logdir = kwargs.pop("summary_logdir", None)
+    # TODO(josh11b): Add optional summary_writer.
     if context.in_graph_mode():
       call_op = self.__call__(dataset.make_one_shot_iterator().get_next(),
                               *args, **kwargs)
       init_op = self.init_variables()
-      results_op = self.all_metric_results(summary_logdir)
+      results_op = self.all_metric_results()
       return (init_op, call_op, results_op)
     # Eager case
     for example in datasets.Iterator(dataset):
       self.__call__(example, *args, **kwargs)
-    return self.all_metric_results(summary_logdir)
+    return self.all_metric_results()
 
   @staticmethod
   def run_evaluation(init_op, call_op, results_op, sess=None):

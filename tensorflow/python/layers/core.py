@@ -234,7 +234,15 @@ def dense(
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Dense` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Dense instead.')
   layer = Dense(units,
                 activation=activation,
                 use_bias=use_bias,
@@ -286,19 +294,11 @@ class Dropout(base.Layer):
     self.noise_shape = noise_shape
     self.seed = seed
 
-  def _get_noise_shape(self, inputs):
+  def _get_noise_shape(self, _):
     # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
     # which will override `self.noise_shape`, and allows for custom noise
     # shapes with dynamically sized inputs.
-    if self.noise_shape is None:
-      return self.noise_shape
-
-    symbolic_shape = array_ops.shape(inputs)
-    noise_shape = [
-        symbolic_shape[axis] if shape is None else shape
-        for axis, shape in enumerate(self.noise_shape)
-    ]
-    return noise_shape
+    return self.noise_shape
 
   def call(self, inputs, training=False):
 
@@ -347,7 +347,15 @@ def dropout(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Dropout` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Dropout instead.')
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
 

@@ -26,14 +26,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "llvm/CodeGen/TargetRegisterInfo.h"
-#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -76,16 +76,14 @@ namespace cpu {
 IrEmitter::IrEmitter(
     const HloModule& hlo_module, const BufferAssignment& assignment,
     llvm::Module* llvm_module,
-    std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
-    tensorflow::gtl::optional<size_t> entry_computation_profile_idx,
+    const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx,
     llvm::TargetMachine* target_machine,
     ExternalConstantPool* external_constant_pool)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
       ir_builder_(llvm_module->getContext()),
-      hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
-      entry_computation_profile_idx_(std::move(entry_computation_profile_idx)),
+      hlo_to_profile_idx_(hlo_to_profile_idx),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       parallel_cpu_backend_(
@@ -216,7 +214,9 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
   if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
   }
-  (++arg_iter)->setName("prof_counters");
+  if (hlo_to_profile_idx_) {
+    (++arg_iter)->setName("prof_counters");
+  }
 
   // We know a-priori that the function arguments are guaranteed to point to
   // disjoint objects.
@@ -262,9 +262,9 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleConstant(HloInstruction* constant) {
+Status IrEmitter::HandleConstant(HloInstruction* constant,
+                                 const Literal& literal) {
   VLOG(2) << "HandleConstant: " << constant->ToString();
-  const Literal& literal = constant->literal();
   llvm::GlobalVariable* global_for_const;
 
   // We avoid creating large constants in the LLVM IR since LLVM is not
@@ -392,12 +392,12 @@ void IrEmitter::AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
   }
 }
 
-Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
+Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element,
+                                        HloInstruction* operand) {
   // A tuple is an array of pointers, one for each operand. Each pointer points
   // to the output buffer of its corresponding operand. A GetTupleElement
   // instruction forwards a pointer to the tuple element buffer at the given
   // index.
-  auto operand = get_tuple_element->operand(0);
   const Shape& shape = get_tuple_element->shape();
   emitted_value_[get_tuple_element] = llvm_ir::EmitGetTupleElement(
       shape, get_tuple_element->tuple_index(), MinimumAlignmentForShape(shape),
@@ -405,10 +405,9 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleSelect(HloInstruction* select) {
-  auto pred = select->operand(0);
-  auto on_true = select->operand(1);
-  auto on_false = select->operand(2);
+Status IrEmitter::HandleSelect(HloInstruction* select, HloInstruction* pred,
+                               HloInstruction* on_true,
+                               HloInstruction* on_false) {
   TF_RET_CHECK(pred->shape().element_type() == PRED);
 
   if (ShapeUtil::IsTuple(select->shape())) {
@@ -572,24 +571,27 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleSort(HloInstruction* sort) {
+Status IrEmitter::HandleSort(HloInstruction* sort, HloInstruction* operand) {
   // TODO(b/26783907): Implement sort on CPU.
   return Unimplemented("Sort is not supported on CPU (b/26783907).");
 }
 
-Status IrEmitter::HandleTuple(HloInstruction* tuple) {
+Status IrEmitter::HandleTuple(
+    HloInstruction* tuple,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple));
   std::vector<llvm::Value*> base_ptrs;
-  for (auto operand : tuple->operands()) {
+  for (auto operand : operands) {
     base_ptrs.push_back(GetEmittedValueFor(operand));
   }
   llvm_ir::EmitTuple(GetIrArrayFor(tuple), base_ptrs, &ir_builder_, module_);
   return Status::OK();
 }
 
-Status IrEmitter::HandleMap(HloInstruction* map) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(map->operands());
-  HloComputation* function = map->to_apply();
+Status IrEmitter::HandleMap(
+    HloInstruction* map, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloComputation* function,
+    tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/) {
   // The called computation should have been emitted previously.
   llvm::Function* mapped_ir_function = FindOrDie(emitted_functions_, function);
 
@@ -606,10 +608,10 @@ Status IrEmitter::HandleMap(HloInstruction* map) {
   });
 }
 
-Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
-  auto operand = reduce_window->operand(0);
-  const Window& window = reduce_window->window();
-  HloComputation* function = reduce_window->to_apply();
+Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window,
+                                     HloInstruction* operand,
+                                     const Window& window,
+                                     HloComputation* function) {
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*reduce_window, /*operands=*/{operand},
       /*supported_types=*/{F32}));
@@ -795,7 +797,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // operand index is within the bounds. The unsigned comparison includes
   // checking whether the operand index >= 0.
   llvm_ir::IrArray::Index operand_index(source_index.size());
-  llvm::Value* in_bounds_condition = ir_builder_.getTrue();
+  llvm::Value* in_bounds_condition = ir_builder_.getInt1(true);
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* strided_index = ir_builder_.CreateNSWMul(
         source_index[i], ir_builder_.getInt64(window.dimensions(i).stride()));
@@ -892,9 +894,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleDot(HloInstruction* dot) {
-  auto lhs = dot->operand(0);
-  auto rhs = dot->operand(1);
+Status IrEmitter::HandleDot(HloInstruction* dot, HloInstruction* lhs,
+                            HloInstruction* rhs) {
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
       /*supported_types=*/{F32, F64, C64}));
@@ -920,10 +921,9 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       hlo_module_config_);
 }
 
-Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
-  auto lhs = convolution->operand(0);
-  auto rhs = convolution->operand(1);
-  const auto& window = convolution->window();
+Status IrEmitter::HandleConvolution(HloInstruction* convolution,
+                                    HloInstruction* lhs, HloInstruction* rhs,
+                                    const Window& window) {
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
       /*supported_types=*/{F32, C64}));
@@ -1145,7 +1145,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
           return ir_builder_.CreateICmpEQ(remainder, ir_builder_.getInt64(0));
         };
 
-        llvm::Value* in_bounds_condition = ir_builder_.getInt1(true);
+        llvm::Value* in_bounds_condition = nullptr;
         for (int i = 0; i < num_spatial_dims; ++i) {
           llvm::ConstantInt* input_bound =
               ir_builder_.getInt64(window_util::DilatedBound(
@@ -1158,7 +1158,9 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
           llvm::Value* dim_ok =
               ir_builder_.CreateAnd(dim_in_bound, dim_not_in_hole);
           in_bounds_condition =
-              ir_builder_.CreateAnd(in_bounds_condition, dim_ok);
+              in_bounds_condition
+                  ? ir_builder_.CreateAnd(in_bounds_condition, dim_ok)
+                  : dim_ok;
         }
 
         // Now we need to map the dilated base coordinates back to the actual
@@ -1903,11 +1905,10 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   return true;
 }
 
-Status IrEmitter::HandleReduce(HloInstruction* reduce) {
-  auto arg = reduce->mutable_operand(0);
-  auto init_value = reduce->mutable_operand(1);
-  tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
-  HloComputation* function = reduce->to_apply();
+Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
+                               HloInstruction* init_value,
+                               tensorflow::gtl::ArraySlice<int64> dimensions,
+                               HloComputation* function) {
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
     TF_ASSIGN_OR_RETURN(
@@ -1986,14 +1987,9 @@ Status IrEmitter::HandleSend(HloInstruction* send) {
   return Unimplemented("Send is not implemented on CPU. See b/33942983.");
 }
 
-Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
-  // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Send-done is not implemented on CPU. See b/33942983.");
-}
-
-Status IrEmitter::HandleSlice(HloInstruction* slice) {
+Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
   VLOG(2) << "HandleSlice: " << slice->ToString();
-  auto operand = slice->operand(0);
+
   // The code below emits a sequential loop nest. For the parallel backend, use
   // EmitParallelTargetElementLoop() which respects dynamic loop bounds.
   if (ShouldEmitParallelLoopFor(*slice)) {
@@ -2126,17 +2122,20 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice) {
+Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
+                                     HloInstruction* operand,
+                                     HloInstruction* /*start_indices*/) {
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_slice));
-    return EmitMemcpy(*dynamic_slice->operand(0), *dynamic_slice);
+    return EmitMemcpy(*operand, *dynamic_slice);
   }
   return DefaultAction(dynamic_slice);
 }
 
-Status IrEmitter::HandleDynamicUpdateSlice(
-    HloInstruction* dynamic_update_slice) {
-  auto update = dynamic_update_slice->operand(1);
+Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
+                                           HloInstruction* operand,
+                                           HloInstruction* update,
+                                           HloInstruction* start_indices) {
   if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
     return EmitMemcpy(*update, *dynamic_update_slice);
@@ -2154,11 +2153,6 @@ Status IrEmitter::HandleDynamicUpdateSlice(
 Status IrEmitter::HandleRecv(HloInstruction* recv) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Recv is not implemented on CPU. See b/33942983.");
-}
-
-Status IrEmitter::HandleRecvDone(HloInstruction* recv_done) {
-  // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Recv-done is not implemented on CPU. See b/33942983.");
 }
 
 Status IrEmitter::HandlePad(HloInstruction* pad) {
@@ -2316,10 +2310,10 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(
-      custom_call->operands());
-  tensorflow::StringPiece custom_call_target(custom_call->custom_call_target());
+Status IrEmitter::HandleCustomCall(
+    HloInstruction* custom_call,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    tensorflow::StringPiece custom_call_target) {
   llvm::Type* i8_ptr_type = ir_builder_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
@@ -2589,9 +2583,9 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
   }
 }
 
-Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(
-      concatenate->operands());
+Status IrEmitter::HandleConcatenate(
+    HloInstruction* concatenate,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   string failure_reason;
   TF_ASSIGN_OR_RETURN(
       bool successful,
@@ -2618,55 +2612,51 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   llvm::Value* root_value = GetEmittedValueFor(root);
   VLOG(2) << "  value: " << llvm_ir::DumpToString(*root_value);
 
-  llvm::Value* prof_counter = [&]() {
-    // For the parallel cpu backend, we record the total for each embedded
-    // computation callee with its caller kCall HLO.
-    if (parallel_cpu_backend_ && is_top_level_computation_) {
-      auto* computation = root->parent();
-      auto* entry_computation = computation->parent()->entry_computation();
-      if (computation != entry_computation) {
-        for (HloInstruction* instruction : entry_computation->instructions()) {
-          if (instruction->opcode() == HloOpcode::kCall &&
-              instruction->to_apply()->root_instruction() == root) {
-            return GetProfileCounterFor(*instruction);
-          }
+  // For the parallel cpu backend, we record the total for each embedded
+  // computation callee with its caller kCall HLO.
+  HloInstruction* hlo_to_lookup = nullptr;
+  if (parallel_cpu_backend_ && is_top_level_computation_) {
+    auto* computation = root->parent();
+    auto* entry_computation = computation->parent()->entry_computation();
+    if (computation != entry_computation) {
+      for (HloInstruction* instruction : entry_computation->instructions()) {
+        if (instruction->opcode() == HloOpcode::kCall &&
+            instruction->to_apply()->root_instruction() == root) {
+          hlo_to_lookup = instruction;
+          break;
         }
       }
     }
-
-    // Otherwise we record the total computation cycles in a dedicated slot for
-    // the entry computation.
-    return GetProfileCounterForEntryComputation();
-  }();
-
-  if (prof_counter) {
+  }
+  if (auto* prof_counter = GetProfileCounterFor(hlo_to_lookup)) {
     profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
   }
+
   ir_builder_.CreateRetVoid();
   return Status::OK();
 }
 
-llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction& hlo) {
-  auto it = hlo_to_profile_idx_.find(&hlo);
-  if (it == hlo_to_profile_idx_.end()) {
+llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction* hlo) {
+  string counter_name;
+  size_t prof_counter_idx;
+  if (!hlo_to_profile_idx_) {
     return nullptr;
   }
+  if (hlo) {
+    auto it = hlo_to_profile_idx_->find(hlo);
+    if (it == hlo_to_profile_idx_->end()) {
+      return nullptr;
+    }
 
-  size_t prof_counter_idx = it->second;
-  string counter_name = IrName("prof_counter", hlo.name());
+    prof_counter_idx = it->second;
+    counter_name = IrName("prof_counter", hlo->name());
+  } else {
+    prof_counter_idx = hlo_to_profile_idx_->size();
+    counter_name = "prof_counter.computation";
+  }
   return ir_builder_.CreateGEP(GetProfileCountersArgument(),
                                ir_builder_.getInt64(prof_counter_idx),
                                AsStringRef(counter_name));
-}
-
-llvm::Value* IrEmitter::GetProfileCounterForEntryComputation() {
-  if (entry_computation_profile_idx_) {
-    return ir_builder_.CreateGEP(
-        GetProfileCountersArgument(),
-        ir_builder_.getInt64(*entry_computation_profile_idx_),
-        "prof_counter.computation");
-  }
-  return nullptr;
 }
 
 void IrEmitter::ProfilingState::UpdateProfileCounter(
@@ -2740,14 +2730,14 @@ void IrEmitter::ProfilingState::RecordCompleteComputation(
 
 Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
-  if (hlo_to_profile_idx_.count(hlo)) {
+  if (hlo_to_profile_idx_ && hlo_to_profile_idx_->count(hlo)) {
     profiling_state_.RecordCycleStart(&ir_builder_, hlo);
   }
   return Status::OK();
 }
 
 Status IrEmitter::Postprocess(HloInstruction* hlo) {
-  if (auto* prof_counter = GetProfileCounterFor(*hlo)) {
+  if (auto* prof_counter = GetProfileCounterFor(hlo)) {
     profiling_state_.RecordCycleDelta(&ir_builder_, hlo, prof_counter);
   }
   return Status::OK();
@@ -2792,7 +2782,9 @@ std::vector<llvm::Type*> IrEmitter::GetComputeFunctionParams() {
   if (num_dynamic_loop_bounds_ > 0) {
     compute_function_params.push_back(i64_ptr_type);
   }
-  compute_function_params.push_back(i64_ptr_type);
+  if (hlo_to_profile_idx_) {
+    compute_function_params.push_back(i64_ptr_type);
+  }
   return compute_function_params;
 }
 
@@ -2802,7 +2794,7 @@ llvm::Argument* IrEmitter::GetResultArgument() {
 
 llvm::Argument* IrEmitter::GetProfileCountersArgument() {
   const int64 arg_index = num_dynamic_loop_bounds_ > 0 ? 5 : 4;
-  return GetArg(compute_function_, arg_index);
+  return hlo_to_profile_idx_ ? GetArg(compute_function_, arg_index) : nullptr;
 }
 
 llvm::Value* IrEmitter::GetTempBuffersArgument() {

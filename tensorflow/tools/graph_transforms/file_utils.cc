@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/file_utils.h"
 
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace graph_transforms {

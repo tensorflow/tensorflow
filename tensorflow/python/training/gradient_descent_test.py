@@ -39,8 +39,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        optimizer = gradient_descent.GradientDescentOptimizer(3.0)
-        sgd_op = optimizer.apply_gradients(
+        sgd_op = gradient_descent.GradientDescentOptimizer(3.0).apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
@@ -53,7 +52,6 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            var0.eval())
         self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                            var1.eval())
-        self.assertEqual(0, len(optimizer.variables()))
 
   def testBasicResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:

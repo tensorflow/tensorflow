@@ -284,16 +284,11 @@ class DepthToSpaceTest(test.TestCase):
 class DepthToSpaceGradientTest(test.TestCase):
 
   # Check the gradients.
-  def _checkGrad(self, x, block_size, data_format):
-    # NCHW is implemented for only GPU.
-    if data_format == "NCHW" and not test.is_gpu_available():
-      return
-
+  def _checkGrad(self, x, block_size):
     assert 4 == x.ndim
     with self.test_session(use_gpu=True):
       tf_x = ops.convert_to_tensor(x)
-      tf_y = array_ops.depth_to_space(tf_x, block_size, data_format=data_format)
-
+      tf_y = array_ops.depth_to_space(tf_x, block_size)
       epsilon = 1e-2
       ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
           tf_x,
@@ -302,32 +297,28 @@ class DepthToSpaceGradientTest(test.TestCase):
           tf_y.get_shape().as_list(),
           x_init_value=x,
           delta=epsilon)
-      self.assertAllClose(x_jacob_t, x_jacob_n, rtol=1e-2, atol=epsilon)
+
+    self.assertAllClose(x_jacob_t, x_jacob_n, rtol=1e-2, atol=epsilon)
 
   # Tests a gradient for depth_to_space of x which is a four dimensional
   # tensor of shape [b, h, w, d * block_size * block_size].
-  def _compare(self, b, h, w, d, block_size, data_format):
+  def _compare(self, b, h, w, d, block_size):
     block_size_sq = block_size * block_size
-    data = np.random.normal(0, 1, b * h * w * d * block_size_sq).astype(
-        np.float32)
-    if data_format == "NHWC":
-      x = data.reshape([b, h, w, d * block_size_sq])
-    else:
-      x = data.reshape([b, d * block_size_sq, h, w])
+    x = np.random.normal(
+        0, 1, b * h * w * d * block_size_sq).astype(np.float32).reshape(
+            [b, h, w, d * block_size_sq])
 
-    self._checkGrad(x, block_size, data_format)
+    self._checkGrad(x, block_size)
 
   # Don't use very large numbers as dimensions here, as the result is tensor
   # with cartesian product of the dimensions.
   def testSmall(self):
     block_size = 2
-    self._compare(3, 2, 5, 3, block_size, "NHWC")
-    self._compare(3, 2, 5, 3, block_size, "NCHW")
+    self._compare(3, 2, 5, 3, block_size)
 
   def testSmall2(self):
     block_size = 3
-    self._compare(1, 2, 3, 2, block_size, "NHWC")
-    self._compare(1, 2, 3, 2, block_size, "NCHW")
+    self._compare(1, 2, 3, 2, block_size)
 
 
 if __name__ == "__main__":

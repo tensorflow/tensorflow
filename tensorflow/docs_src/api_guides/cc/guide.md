@@ -1,12 +1,4 @@
 # C++ API
-
-Note: By default [tensorflow.org](http://tensorflow.org) shows docs for the
-most recent stable version. The instructions in this doc require building from
-source. You will probably want to build from the `master` version of tensorflow.
-You should, as a result, be sure you are following the
-[`master` version of this doc](https://www.tensorflow.org/versions/master/api_guides/cc/guide),
-in case there have been any changes.
-
 [TOC]
 
 TensorFlow's C++ API provides mechanisms for constructing and executing a data
@@ -56,9 +48,7 @@ TensorFlow
 `BUILD` file in the same directory with the following contents:
 
 ```python
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-
-tf_cc_binary(
+cc_binary(
     name = "example",
     srcs = ["example.cc"],
     deps = [
@@ -69,10 +59,8 @@ tf_cc_binary(
 )
 ```
 
-Use `tf_cc_binary` rather than Bazel's native `cc_binary` to link in necessary
-symbols from `libtensorflow_framework.so`. You should be able to build and run
-the example using the following command (be sure to run `./configure` in your
-build sandbox first):
+You should be able to build and run the example using the following command
+(be sure to run `./configure` in your build sandbox first):
 
 ```shell
 bazel run -c opt //tensorflow/cc/example:example

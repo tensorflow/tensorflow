@@ -27,6 +27,7 @@ EIGEN_RESTRICTED_DEPS = [
     "Eigen/SparseLU",
 ]
 
+# Note: unsupported/Eigen is unsupported and might go away at any time.
 EIGEN_FILES = [
     "Eigen/**",
     "unsupported/Eigen/CXX11/**",
@@ -36,7 +37,6 @@ EIGEN_FILES = [
     "unsupported/Eigen/src/KroneckerProduct/**",
     "unsupported/Eigen/MatrixFunctions",
     "unsupported/Eigen/SpecialFunctions",
-    "unsupported/Eigen/src/MatrixFunctions/**",
     "unsupported/Eigen/src/SpecialFunctions/**",
 ]
 

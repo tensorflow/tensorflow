@@ -55,7 +55,6 @@ bool IsReshape(const NodeDef& node);
 bool IsRestore(const NodeDef& node);
 bool IsSend(const NodeDef& node);
 bool IsSlice(const NodeDef& node);
-bool IsSplit(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);
 bool IsStopGradient(const NodeDef& node);

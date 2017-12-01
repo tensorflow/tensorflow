@@ -236,6 +236,12 @@ class XlaCompiler {
     // to the computation.
     bool allow_cpu_custom_calls = false;
 
+    // If 'local_executable_has_hybrid_result', the top-level pointers of the
+    // result tuple of compiled programs are stored in host memory and the
+    // nested buffers in device memory, otherwise the whole result tuple is
+    // stored in device memory.
+    bool local_executable_has_hybrid_result = false;
+
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
     // device is created, and can be used to create metadata objects
@@ -249,7 +255,8 @@ class XlaCompiler {
 
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,
-                         std::vector<Argument> args, CompilationResult* result);
+                         const std::vector<Argument>& args,
+                         CompilationResult* result);
 
   // Compiles a tensorflow::Graph into an xla::Computation.
   // Similar to CompileFunction, but takes a Graph as input rather than a

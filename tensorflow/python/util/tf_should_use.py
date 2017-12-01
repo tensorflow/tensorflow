@@ -22,7 +22,6 @@ import types
 
 import six  # pylint: disable=unused-import
 
-from tensorflow.python.eager import context
 from tensorflow.python.util import tf_decorator
 # pylint: enable=g-bad-import-order,g-import-not-at-top
 
@@ -31,8 +30,6 @@ from tensorflow.python.util import tf_decorator
 # This function / class remains since the API is public (mark_used()).
 def _add_should_use_warning(x, fatal_error=False):
   """Wraps object x so that if it is never used, a warning is logged.
-
-  Does nothing when executing eagerly.
 
   Args:
     x: Python object.
@@ -44,13 +41,12 @@ def _add_should_use_warning(x, fatal_error=False):
     and is a very shallow wrapper for `x` which logs access into `x`.
   """
   del fatal_error
-  if x is None or x == []:  # pylint: disable=g-explicit-bool-comparison
+  if x is None:  # special corner case where x is None
     return x
 
-  if context.in_eager_mode():
-    # Typically not needed when executing eagerly (the main use case is for ops
-    # which need to be incorporated into the graph), and even the no-op wrapper
-    # creates reference cycles which require garbage collection.
+  # TODO(apassos) we don't have an easier way to check because importing context
+  # or ops here would create a BUILD dependency cycle.
+  if type(x).__name__ == 'EagerTensor':
     return x
 
   def override_method(method):
@@ -106,8 +102,6 @@ def should_use_result(fn):
   - `t != 0`.  In this case, comparison is done on types / ids.
   - `isinstance(t, tf.Tensor)`.  Similar to above.
 
-  Does nothing when executing eagerly.
-
   Args:
     fn: The function to wrap.
 
@@ -141,8 +135,6 @@ def must_use_result_or_fatal(fn):
 
   - `t != 0`.  In this case, comparison is done on types / ids.
   - `isinstance(t, tf.Tensor)`.  Similar to above.
-
-  Does nothing when executing eagerly.
 
   Args:
     fn: The function to wrap.

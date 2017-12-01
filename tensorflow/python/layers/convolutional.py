@@ -386,7 +386,15 @@ def conv1d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv1D` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv1D instead.')
   layer = Conv1D(
       filters=filters,
       kernel_size=kernel_size,
@@ -589,7 +597,15 @@ def conv2d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv2D` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv2D instead.')
   layer = Conv2D(
       filters=filters,
       kernel_size=kernel_size,
@@ -794,7 +810,15 @@ def conv3d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv3D` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv3D instead.')
   layer = Conv3D(
       filters=filters,
       kernel_size=kernel_size,
@@ -813,7 +837,6 @@ def conv3d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -920,7 +943,6 @@ class SeparableConv2D(Conv2D):
         trainable=trainable,
         name=name,
         **kwargs)
-    self.data_format = data_format
     self.depth_multiplier = depth_multiplier
     self.depthwise_initializer = depthwise_initializer
     self.pointwise_initializer = pointwise_initializer
@@ -1118,7 +1140,15 @@ def separable_conv2d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.SeparableConv2d` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.SeparableConv2D instead.')
   layer = SeparableConv2D(
       filters=filters,
       kernel_size=kernel_size,
@@ -1232,7 +1262,9 @@ class Conv2DTranspose(Conv2D):
 
   def build(self, input_shape):
     if len(input_shape) != 4:
-      raise ValueError('Inputs should have rank 4. Received input shape: ' + str(input_shape))
+      raise ValueError('Inputs should have rank ' +
+                       str(4) +
+                       'Received input shape:', str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
@@ -1414,7 +1446,15 @@ def conv2d_transpose(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv2DTranspose` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv2DTranspose instead.')
   layer = Conv2DTranspose(
       filters=filters,
       kernel_size=kernel_size,
@@ -1728,7 +1768,15 @@ def conv3d_transpose(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv3DTranspose` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv3DTranspose instead.')
   layer = Conv3DTranspose(
       filters=filters,
       kernel_size=kernel_size,
@@ -1746,7 +1794,6 @@ def conv3d_transpose(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

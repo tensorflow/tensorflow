@@ -98,7 +98,7 @@ TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
     }
   } else {
     for (int i = 0; i < shape.dim_size(); i++) {
-      if (shape.dim(i).size() < 0) {
+      if (shape.dim(i).size() == -1) {
         *found_unknown_shapes = true;
         VLOG(2) << "Use minimum dim size 1 because the shape is unknown.";
         // The size of each dimension is at least 1, if unknown.
@@ -324,8 +324,7 @@ OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
       // Maxwell
       cores_per_multiprocessor = 128;
     } else {
-      // Pascal (compute capability version 6) and Volta (compute capability
-      // version 7)
+      // Pascal
       cores_per_multiprocessor = 64;
     }
     gflops = device.num_cores() * device.frequency() * 1e-3 *

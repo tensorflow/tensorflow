@@ -42,7 +42,6 @@ py_library(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:weights_broadcast_ops",
     ],
 )
 

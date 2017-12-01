@@ -56,3 +56,4 @@ test text_classification_builtin_rnn_model --test_with_fake_data
 test text_classification_character_cnn --test_with_fake_data
 test text_classification_character_rnn --test_with_fake_data
 test text_classification_cnn --test_with_fake_data
+test wide_n_deep_tutorial

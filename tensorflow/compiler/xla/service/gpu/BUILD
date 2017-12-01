@@ -343,16 +343,15 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "gpu_copy_insertion",
-    srcs = ["gpu_copy_insertion.cc"],
-    hdrs = ["gpu_copy_insertion.h"],
+    name = "copy_insertion",
+    srcs = ["copy_insertion.cc"],
+    hdrs = ["copy_insertion.h"],
     deps = [
         ":ir_emission_utils",
-        "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
-        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:logical_buffer",
+        "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
         "//tensorflow/core:lib",
     ],
 )
@@ -428,8 +427,8 @@ cc_library(
     hdrs = ["gpu_compiler.h"],
     deps = [
         ":convolution_folding",
+        ":copy_insertion",
         ":fusion_merger",
-        ":gpu_copy_insertion",
         ":gpu_executable",
         ":hlo_schedule",
         ":instruction_fusion",
@@ -466,12 +465,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
-        "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:core",
         "@llvm//:support",
@@ -575,14 +572,11 @@ tf_cc_test(
     deps = [
         ":instruction_fusion",
         ":while_transformer",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:copy_insertion",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
     ],
 )
 

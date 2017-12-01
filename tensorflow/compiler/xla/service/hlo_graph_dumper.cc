@@ -312,11 +312,11 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
-               const DebugOptions& debug_options, bool show_metadata,
+               bool show_addresses, bool show_metadata,
                const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
         label_(label.ToString()),
-        debug_options_(debug_options),
+        show_addresses_(show_addresses),
         show_metadata_(show_metadata),
         profile_(profile),
         filter_(std::move(filter)) {}
@@ -382,7 +382,7 @@ class HloDotDumper {
 
   const HloComputation* computation_;  // never null
   const string label_;                 // overall name for the graph
-  const DebugOptions& debug_options_;
+  const bool show_addresses_;
   const bool show_metadata_;
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
@@ -414,11 +414,6 @@ class HloDotDumper {
   // appears before both the inner computation and the destination node are
   // defined.
   std::vector<string> edges_;
-
-  // When coloring by sharding information, we track the sharding string
-  // representation to color association, by round-robin the color schemes.
-  std::unordered_map<string, ColorScheme> sharding_colors_;
-  int64 next_shard_color_ = 0;
 };
 
 string HloDotDumper::Dump() {
@@ -739,16 +734,15 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   string trivial_subcomputation = GetInstructionTrivialComputationStr(instr);
   AddInstructionIncomingEdges(instr);
 
-  if (!debug_options_.xla_hlo_graph_sharding_color()) {
-    // Override the node's styling if it should be (de-)emphasized.
-    if (filter_.Deemphasized(instr)) {
-      color = kDashedBorder;
-    }
-    if (filter_.Highlight(instr)) {
-      node_shape = "diamond";
-      color = kDarkRed;
-    }
+  // Override the node's styling if it should be (de-)emphasized.
+  if (filter_.Deemphasized(instr)) {
+    color = kDashedBorder;
   }
+  if (filter_.Highlight(instr)) {
+    node_shape = "diamond";
+    color = kDarkRed;
+  }
+
   // Build the text that will be displayed inside the node.
   string node_body = node_label;
   for (const string& s :
@@ -767,22 +761,12 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
 string HloDotDumper::GetInstructionNodeInlinedOperands(
     const HloInstruction* instr) {
   auto stringify_constant = [](const HloInstruction* constant) {
-    const auto& shape = constant->shape();
-
-    // Print the literal value of constants with <= K elements.
-    optional<int64> elem_count;
-    if (!ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)) {
-      elem_count = 1;
-      for (int64 dim : shape.dimensions()) {
-        *elem_count *= dim;
-      }
-    }
-    if (elem_count.has_value() && *elem_count <= 8) {
-      return Printf("%s (%s)", constant->literal().ToString(),
+    if (ShapeUtil::IsEffectiveScalar(constant->shape())) {
+      auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
+          constant->shape(), /*linear_index=*/0);
+      return Printf("%s (%s)", constant->literal().GetAsString(elem_idx),
                     ShapeUtil::HumanString(constant->shape()));
     }
-
-    // Otherwise, print e.g. "%constant.42 (s32[100])".
     string constant_name;
     if (tensorflow::StringPiece(constant->name()).starts_with("%constant")) {
       constant_name = constant->name();
@@ -833,20 +817,6 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 }
 
 ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
-  if (debug_options_.xla_hlo_graph_sharding_color()) {
-    if (!instr->has_sharding()) {
-      return kDashedBorder;
-    }
-    string shard_str = instr->sharding().ToString();
-    auto it = sharding_colors_.find(shard_str);
-    if (it != sharding_colors_.end()) {
-      return it->second;
-    }
-    ColorScheme color = static_cast<ColorScheme>(
-        kBlue + (next_shard_color_++ % (kDashedBorder - kBlue)));
-    sharding_colors_.emplace(shard_str, color);
-    return color;
-  }
   const auto kParameterColor = kOrange;
 
   // Special case: If this instruction has a parameter merged into it, paint it
@@ -864,10 +834,9 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   // (eg, parameter).
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
-    case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
-    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kComplex:
@@ -880,22 +849,22 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGe:
     case HloOpcode::kGt:
     case HloOpcode::kImag:
+    case HloOpcode::kIndex:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
+    case HloOpcode::kAnd:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
-    case HloOpcode::kRng:
-    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -905,6 +874,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
+    case HloOpcode::kRng:
       // De-emphasize scalar-shaped elementwise ops -- they're generally
       // uninteresting.
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
@@ -912,9 +882,9 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       }
       return kYellow;
     case HloOpcode::kBitcast:
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kTrace:
     case HloOpcode::kTuple:
+    case HloOpcode::kTrace:
+    case HloOpcode::kGetTupleElement:
       return kWhite;
     case HloOpcode::kBroadcast:
       // De-emphasize nodes which broadcast a scalar within a fusion node --
@@ -953,28 +923,25 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kRed;
     case HloOpcode::kParameter:
       return kParameterColor;
-    case HloOpcode::kBatchNormGrad:
-    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormGrad:
     case HloOpcode::kReduce:
-    case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kReduceWindow:
       return kPurple;
-    case HloOpcode::kFusion:
     case HloOpcode::kMap:
+    case HloOpcode::kFusion:
       return kGray;
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
+    case HloOpcode::kCrossReplicaSum:
       return kBrown;
-    case HloOpcode::kCall:
-    case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
+    case HloOpcode::kCall:
       return kDarkGreen;
     case HloOpcode::kConstant:
       LOG(FATAL) << "Constants don't get their own nodes in the graph.";
@@ -1003,13 +970,10 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
           .starts_with(StrCat("%", HloOpcodeString(instr->opcode())))) {
     return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
-  string extended_opcode =
-      StrCat(HloOpcodeString(instr->opcode()),
-             instr->opcode() != HloOpcode::kFusion
-                 ? ""
-                 : StrCat(":", xla::ToString(instr->fusion_kind())));
+
   // If the name does not contain the opcode, render both.
-  return Printf("<b>%s</b><br/>%s", HtmlLikeStringSanitize(extended_opcode),
+  return Printf("<b>%s</b><br/>%s",
+                HtmlLikeStringSanitize(instr->ExtendedOpcodeStr()),
                 HtmlLikeStringSanitize(instr->name()));
 }
 
@@ -1064,9 +1028,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
                    ? ""
                    : StrCat("stride=", VectorString(instr->slice_strides()));
       case HloOpcode::kSend:
-      case HloOpcode::kSendDone:
       case HloOpcode::kRecv:
-      case HloOpcode::kRecvDone:
         return StrCat("channel_id=", instr->channel_id());
       default:
         return "";
@@ -1077,8 +1039,8 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   if (!opcode_specific_info.empty()) {
     lines.push_back(opcode_specific_info);
   }
-  if (instr->has_sharding()) {
-    lines.push_back(StrCat("sharding=", instr->sharding().ToString()));
+  if (instr->device_assignment().has_device()) {
+    lines.push_back(StrCat("device=", instr->device_assignment().device()));
   }
   // Show the shape and layout of the instruction, unless it's an inlined fusion
   // node -- there the shape and layout is present in the output node.
@@ -1104,11 +1066,12 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     }
     lines.push_back(instr_shape);
   }
-  if (debug_options_.xla_hlo_graph_addresses()) {
+
+  if (show_addresses_) {
     lines.push_back(Printf("[%p]", instr));
   }
   if (profile_ != nullptr) {
-    double hlo_cycles_executed = profile_->GetCyclesTakenBy(*instr);
+    double hlo_cycles_executed = profile_->GetProfileResult(*instr);
     double total_cycles_executed =
         profile_->total_cycles_executed(*instr->parent());
     if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
@@ -1201,35 +1164,69 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
   return instr;
 }
 
-class GraphRendererRegistry {
- public:
-  void AddRenderer(GraphRendererInterface* graph_renderer) {
-    tensorflow::mutex_lock lock(mu_);
-    graph_renderer_ = graph_renderer;
-  }
+tensorflow::mutex& RendererMutex() {
+  static tensorflow::mutex* mu = new tensorflow::mutex;
+  return *mu;
+}
 
-  GraphRendererInterface* GetDefaultRenderer() {
-    tensorflow::mutex_lock lock(mu_);
-    return graph_renderer_;
-  }
+std::map<int, GraphRendererInterface*>* GraphRenderers() {
+  static auto* graph_renderers = new std::map<int, GraphRendererInterface*>();
+  return graph_renderers;
+}
 
-  static GraphRendererRegistry* Default() {
-    static GraphRendererRegistry* registry = new GraphRendererRegistry();
-    return registry;
-  }
-
- private:
-  tensorflow::mutex mu_;
-  GraphRendererInterface* graph_renderer_ = nullptr;
-};
+GraphRendererInterface* GetGraphRenderer() {
+  tensorflow::mutex_lock lock(RendererMutex());
+  auto* graph_renderers = GraphRenderers();
+  auto it = graph_renderers->rbegin();
+  CHECK(it != graph_renderers->rend()) << "No registered graph dumpers";
+  return it->second;
+}
 
 }  // namespace
 
-Registrar::Registrar(GraphRendererInterface* dumper) {
-  GraphRendererRegistry::Default()->AddRenderer(dumper);
+Registrar::Registrar(GraphRendererInterface* dumper, int priority) {
+  tensorflow::mutex_lock lock(RendererMutex());
+  auto* graph_renderers = GraphRenderers();
+  graph_renderers->emplace(priority, dumper);
 }
 
 namespace {
+
+class FileGraphRenderer : public GraphRendererInterface {
+ public:
+  string RenderGraph(const string& graph, GraphKind graph_kind,
+                     const DebugOptions& debug_options) override {
+    static std::atomic<int> output_num(0);
+    string file_extension;
+    switch (graph_kind) {
+      case DOT_GRAPH:
+        file_extension = ".dot";
+        break;
+      case TF_GRAPHDEF:
+        file_extension = ".pbtxt";
+        break;
+    }
+    string path =
+        JoinPath(debug_options.xla_hlo_graph_path(),
+                 StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
+    auto status = Status::OK();
+    int fd = mkstemps(&path[0], file_extension.length());
+    if (fd < 0) {
+      status =
+          Status(tensorflow::error::Code::UNKNOWN,
+                 StrCat("Failed to create temporary file to dump HLO graph: ",
+                        strerror(errno)));
+    } else {
+      status = tensorflow::WriteStringToFile(tensorflow::Env::Default(), path,
+                                             graph);
+      close(fd);
+    }
+    if (!status.ok()) {
+      LOG(WARNING) << "Saving HLO graph failed: " << status;
+    }
+    return path;
+  }
+};
 
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
@@ -1293,9 +1290,7 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
 
   auto is_displayed = [&](const HloInstruction* instr) {
     // Constants are displayed inline with their users; they're never omitted.
-    // Nodes in subcomputations are always shown.
-    return nodes.count(instr) > 0 || instr->opcode() == HloOpcode::kConstant ||
-           instr->parent() != root->parent();
+    return nodes.count(instr) > 0 || instr->opcode() == HloOpcode::kConstant;
   };
 
   // Make a second pass over 'nodes' to fix up the NodeFilterResults now that we
@@ -1340,54 +1335,7 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
   });
 }
 
-string SaveGraph(const string& graph,
-                 GraphRendererInterface::GraphKind graph_kind,
-                 const string& dest_path) {
-  static std::atomic<int> output_num(0);
-  string file_extension;
-  switch (graph_kind) {
-    case GraphRendererInterface::DOT_GRAPH:
-      file_extension = ".dot";
-      break;
-    case GraphRendererInterface::TF_GRAPHDEF:
-      file_extension = ".pbtxt";
-      break;
-  }
-  string path = JoinPath(
-      dest_path, StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
-  auto status = Status::OK();
-  int fd = mkstemps(&path[0], file_extension.length());
-  if (fd < 0) {
-    status =
-        Status(tensorflow::error::Code::UNKNOWN,
-               StrCat("Failed to create temporary file to dump HLO graph: ",
-                      strerror(errno)));
-  } else {
-    status =
-        tensorflow::WriteStringToFile(tensorflow::Env::Default(), path, graph);
-    close(fd);
-  }
-  if (!status.ok()) {
-    LOG(WARNING) << "Saving HLO graph failed: " << status;
-  }
-  return path;
-}
-
-string ExportGraph(const string& graph,
-                   GraphRendererInterface::GraphKind graph_kind,
-                   const DebugOptions& debug_options) {
-  string path = debug_options.xla_hlo_graph_path();
-  if (!path.empty()) {
-    return SaveGraph(graph, graph_kind, path);
-  } else {
-    auto graph_renderer =
-        GraphRendererRegistry::Default()->GetDefaultRenderer();
-    CHECK(graph_renderer != nullptr)
-        << "No registered renderer for the HLO graph. "
-           "Use --xla_hlo_graph_path=PATH to export to local file system";
-    return graph_renderer->RenderGraph(graph, graph_kind, debug_options);
-  }
-}
+XLA_REGISTER_GRAPH_RENDERER(FileGraphRenderer, 0);
 
 }  // namespace
 
@@ -1395,22 +1343,27 @@ string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile,
                  bool show_metadata) {
-  GraphRendererInterface::GraphKind graph_kind;
   string graph;
+  string graph_url;
   if (debug_options.xla_hlo_dump_as_graphdef()) {
-    HloTfGraphBuilder builder(debug_options);
+    HloTfGraphBuilder builder;
     TF_CHECK_OK(builder.AddComputation(computation));
     CHECK(tensorflow::protobuf::TextFormat::PrintToString(builder.GetGraphDef(),
                                                           &graph));
-    graph_kind = GraphRendererInterface::TF_GRAPHDEF;
+    // TODO(b/37198616): Use the default registered renderers when all
+    // renderers support rendering GraphDefs. Always dump GraphDefs to files
+    // for now.
+    graph_url = FileGraphRenderer().RenderGraph(
+        graph, GraphRendererInterface::TF_GRAPHDEF, debug_options);
   } else {
-    graph = HloDotDumper(&computation, label, debug_options, show_metadata,
-                         hlo_execution_profile, NodeFilter())
-                .Dump();
-    graph_kind = GraphRendererInterface::DOT_GRAPH;
+    graph =
+        HloDotDumper(&computation, label,
+                     /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
+                     show_metadata, hlo_execution_profile, NodeFilter())
+            .Dump();
+    graph_url = GetGraphRenderer()->RenderGraph(
+        graph, GraphRendererInterface::DOT_GRAPH, debug_options);
   }
-
-  string graph_url = ExportGraph(graph, graph_kind, debug_options);
   LOG(INFO) << "computation " << computation.name() << " [" << label
             << "]: " << graph_url;
   return graph_url;
@@ -1423,10 +1376,12 @@ string DumpNeighborhoodAround(const HloInstruction& node, int radius,
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
   NodeFilter filter = MakeNodeFilter(&node, radius);
   string graph =
-      HloDotDumper(node.parent(), label, debug_options, show_metadata,
-                   /*profile=*/nullptr, filter)
+      HloDotDumper(node.parent(), label,
+                   /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
+                   show_metadata, /*profile=*/nullptr, filter)
           .Dump();
-  return ExportGraph(graph, GraphRendererInterface::DOT_GRAPH, debug_options);
+  return GetGraphRenderer()->RenderGraph(
+      graph, GraphRendererInterface::DOT_GRAPH, debug_options);
 }
 
 void DumpText(const HloModule& module, const string& label,
@@ -1437,8 +1392,7 @@ void DumpText(const HloModule& module, const string& label,
   string filename =
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
-  TF_CHECK_OK(WriteStringToFile(
-      env, path, module.ToString(/*include_large_constants=*/true)));
+  TF_CHECK_OK(WriteStringToFile(env, path, module.ToString()));
   LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
 }
 

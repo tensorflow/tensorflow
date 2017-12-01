@@ -23,23 +23,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
-// Gather fusion instructions from 'instruction' into 'fusion_instructions'.
-void GatherFusionInstructions(
-    HloInstruction* instruction,
-    std::vector<HloInstruction*>* fusion_instructions) {
-  CHECK_EQ(HloOpcode::kFusion, instruction->opcode());
-  for (auto* fused : instruction->fused_instructions()) {
-    if (fused->opcode() == HloOpcode::kFusion) {
-      GatherFusionInstructions(fused, fusion_instructions);
-    }
-  }
-  fusion_instructions->push_back(instruction);
-}
-
-}  // namespace
-
 /* static */ StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
 LogicalBufferAnalysis::Run(const HloModule* module) {
   std::unique_ptr<LogicalBufferAnalysis> analysis(
@@ -58,18 +41,14 @@ Status LogicalBufferAnalysis::Analyze() {
   // We filter out fusion computations, and get to them through fusion
   // instructions. This is because it's possible to have orphaned (unreachable)
   // fusion computations, and we don't want to try to assign buffers to those.
-  std::vector<HloInstruction*> fusion_instructions;
   for (auto* computation : module_->MakeNonfusionComputations()) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kFusion) {
         continue;
       }
-      GatherFusionInstructions(instruction, &fusion_instructions);
+      TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
     }
-  }
-  for (auto* instruction : fusion_instructions) {
-    TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
   }
   return Status::OK();
 }
@@ -107,7 +86,8 @@ Status LogicalBufferAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
+Status LogicalBufferAnalysis::HandleGetTupleElement(
+    HloInstruction* get_tuple_element, HloInstruction* operand) {
   // GetTupleElement does not create buffers.
   return Status::OK();
 }
@@ -119,34 +99,24 @@ Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
+Status LogicalBufferAnalysis::HandleBitcast(HloInstruction* bitcast) {
   // A kBitcast instruction aliases its operand. That is, the buffer of its
   // result *is* the buffer of its operand.
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction*) {
-  // RecvDone doesn't create a new buffer but rather aliases its input (Recv)
-  // tuple element at {0} to its output.
-  return Status::OK();
-}
-
-Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
-  // Send creates new buffers for the top-level tuple and the context (tuple
-  // element at {1}). Tuple element at {0} is an alias of the Send operand, so
-  // we don't need to create a new Logical Buffer for that.
-  NewLogicalBuffer(send, /*index=*/{});
-  NewLogicalBuffer(send, /*index=*/{1});
-  return Status::OK();
-}
-
-Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
+Status LogicalBufferAnalysis::HandleTuple(
+    HloInstruction* tuple,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select) {
+Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select,
+                                           HloInstruction* /*pred*/,
+                                           HloInstruction* on_true,
+                                           HloInstruction* on_false) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
   NewLogicalBuffer(select, /*index=*/{});

@@ -39,7 +39,7 @@ bool ConsumeDotSeparatedIdentifiers(StringPiece* s, const string& prefix,
   for (i = 0; i < s->size() && IsDotOrIdentifierChar((*s)[i]); ++i) {
     // Intentionally empty
   }
-  *val = StringPiece(s->data(), i);
+  val->set(s->data(), i);
   s->remove_prefix(i);
   return i > 0;
 }

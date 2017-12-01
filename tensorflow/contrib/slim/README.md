@@ -237,7 +237,7 @@ One way to reduce this code duplication would be via a `for` loop:
 ```python
 net = ...
 for i in range(3):
-  net = slim.conv2d(net, 256, [3, 3], scope='conv3_%d' % (i+1))
+  net = slim.conv2d(net, 256, [3, 3], scope='conv3_' % (i+1))
 net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
@@ -441,8 +441,7 @@ module. Consider the simple case where we want to train the VGG network:
 
 ```python
 import tensorflow as tf
-import tensorflow.contrib.slim.nets as nets
-vgg = nets.vgg
+vgg = tf.contrib.slim.nets.vgg
 
 # Load the images and labels.
 images, labels = ...
@@ -560,10 +559,9 @@ examine the following sample of training the VGG network:
 
 ```python
 import tensorflow as tf
-import tensorflow.contrib.slim.nets as nets
 
 slim = tf.contrib.slim
-vgg = nets.vgg
+vgg = tf.contrib.slim.nets.vgg
 
 ...
 
@@ -811,10 +809,9 @@ Putting it all together:
 
 ```python
 import tensorflow as tf
-import tensorflow.contrib.slim.nets as nets
 
 slim = tf.contrib.slim
-vgg = nets.vgg
+vgg = tf.contrib.slim.nets.vgg
 
 
 # Load the data

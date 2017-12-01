@@ -33,9 +33,9 @@ class Tape(object):
     return pywrap_tensorflow.TFE_Py_TapeWatchedVariables(self._tape)
 
 
-def push_new_tape(persistent=False):
+def push_new_tape():
   """Pushes a new tape onto the tape stack."""
-  pywrap_tensorflow.TFE_Py_TapeStackPushNew(persistent)
+  pywrap_tensorflow.TFE_Py_TapeStackPushNew()
 
 
 def watch(tensor):

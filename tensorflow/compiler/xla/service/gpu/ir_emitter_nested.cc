@@ -115,8 +115,7 @@ Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
 Status IrEmitterNested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
-  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo),
-                              &ir_builder_)
+  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo), &ir_builder_)
       .EmitLoop();
 }
 

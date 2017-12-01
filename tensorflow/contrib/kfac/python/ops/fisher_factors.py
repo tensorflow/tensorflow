@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import contextlib
 
 import numpy as np
 import six
@@ -51,22 +50,7 @@ EIGENVALUE_DECOMPOSITION_THRESHOLD = 2
 EIGENVALUE_CLIPPING_THRESHOLD = 0.0
 
 
-@contextlib.contextmanager
-def _maybe_colocate_with(op, colocate_cov_ops_with_inputs):
-  """Context to colocate with `op` if `colocate_cov_ops_with_inputs`."""
-  if colocate_cov_ops_with_inputs:
-    if isinstance(op, (list, tuple)):
-      with tf_ops.colocate_with(op[0]):
-        yield
-    else:
-      with tf_ops.colocate_with(op):
-        yield
-  else:
-    yield
-
-
-def set_global_constants(init_covariances_at_zero=None,
-                         zero_debias=None,
+def set_global_constants(init_covariances_at_zero=None, zero_debias=None,
                          eigenvalue_decomposition_threshold=None,
                          eigenvalue_clipping_threshold=None):
   """Sets various global constants used by the classes in this module."""
@@ -372,21 +356,12 @@ class FullFactor(InverseProvidingFactor):
   to any type of parameter in principle, but has very high variance.
   """
 
-  def __init__(self,
-               params_grads,
-               batch_size,
-               colocate_cov_ops_with_inputs=False):
+  def __init__(self, params_grads, batch_size):
     self._batch_size = batch_size
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
     self._orig_params_grads_name = scope_string_from_params(
         [params_grads, self._batch_size])
-    params_grads_flat = []
-    for params_grad in params_grads:
-      with _maybe_colocate_with(params_grad,
-                                self._colocate_cov_ops_with_inputs):
-        col = utils.tensors_to_column(params_grad)
-        params_grads_flat.append(col)
-    self._params_grads_flat = tuple(params_grads_flat)
+    self._params_grads_flat = tuple(
+        utils.tensors_to_column(params_grad) for params_grad in params_grads)
     super(FullFactor, self).__init__()
 
   @property
@@ -404,11 +379,9 @@ class FullFactor(InverseProvidingFactor):
 
   def _compute_new_cov(self, idx=0):
     # This will be a very basic rank 1 estimate
-    with _maybe_colocate_with(self._params_grads_flat[idx],
-                              self._colocate_cov_ops_with_inputs):
-      return ((self._params_grads_flat[idx] * array_ops.transpose(
-          self._params_grads_flat[idx])) / math_ops.cast(
-              self._batch_size, self._params_grads_flat[idx].dtype))
+    return ((self._params_grads_flat[idx] * array_ops.transpose(
+        self._params_grads_flat[idx])) / math_ops.cast(
+            self._batch_size, self._params_grads_flat[idx].dtype))
 
 
 class DiagonalFactor(FisherFactor):
@@ -429,19 +402,10 @@ class NaiveDiagonalFactor(DiagonalFactor):
   to any type of parameter in principle, but has very high variance.
   """
 
-  def __init__(self,
-               params_grads,
-               batch_size,
-               colocate_cov_ops_with_inputs=False):
+  def __init__(self, params_grads, batch_size):
     self._batch_size = batch_size
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
-    params_grads_flat = []
-    for params_grad in params_grads:
-      with _maybe_colocate_with(params_grad,
-                                self._colocate_cov_ops_with_inputs):
-        col = utils.tensors_to_column(params_grad)
-        params_grads_flat.append(col)
-    self._params_grads = tuple(params_grads_flat)
+    self._params_grads = tuple(
+        utils.tensors_to_column(params_grad) for params_grad in params_grads)
     self._orig_params_grads_name = scope_string_from_params(
         [self._params_grads, self._batch_size])
     super(NaiveDiagonalFactor, self).__init__()
@@ -459,10 +423,8 @@ class NaiveDiagonalFactor(DiagonalFactor):
     return len(self._params_grads)
 
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._params_grads[idx],
-                              self._colocate_cov_ops_with_inputs):
-      return (math_ops.square(self._params_grads[idx]) / math_ops.cast(
-          self._batch_size, self._params_grads[idx].dtype))
+    return (math_ops.square(self._params_grads[idx]) / math_ops.cast(
+        self._batch_size, self._params_grads[idx].dtype))
 
 
 class FullyConnectedDiagonalFactor(DiagonalFactor):
@@ -478,11 +440,7 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
 
   # TODO(jamesmartens): add units tests for this class
 
-  def __init__(self,
-               inputs,
-               outputs_grads,
-               has_bias=False,
-               colocate_cov_ops_with_inputs=False):
+  def __init__(self, inputs, outputs_grads, has_bias=False):
     """Instantiate FullyConnectedDiagonalFactor.
 
     Args:
@@ -491,11 +449,8 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
       outputs_grads: List of Tensors of shape [batch_size, output_size].
         Gradient of loss with respect to layer's preactivations.
       has_bias: bool. If True, append '1' to each input.
-      colocate_cov_ops_with_inputs: Whether to colocate cov_update ops with
-          their inputs.
     """
     self._outputs_grads = outputs_grads
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
     self._batch_size = array_ops.shape(inputs)[0]
     self._orig_tensors_name = scope_string_from_params((inputs,) +
                                                        tuple(outputs_grads))
@@ -503,10 +458,9 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     # Note that we precompute the required operations on the inputs since the
     # inputs don't change with the 'idx' argument to _compute_new_cov.  (Only
     # the target entry of _outputs_grads changes with idx.)
-    with _maybe_colocate_with(inputs, self._colocate_cov_ops_with_inputs):
-      if has_bias:
-        inputs = _append_homog(inputs)
-      self._squared_inputs = math_ops.square(inputs)
+    if has_bias:
+      inputs = _append_homog(inputs)
+    self._squared_inputs = math_ops.square(inputs)
 
     super(FullyConnectedDiagonalFactor, self).__init__()
 
@@ -527,14 +481,12 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     # square of an outer product is the outer-product of the entry-wise squares.
     # The gradient is the outer product of the input and the output gradients,
     # so we just square both and then take their outer-product.
-    with _maybe_colocate_with(self._squared_inputs,
-                              self._colocate_cov_ops_with_inputs):
-      new_cov = math_ops.matmul(
-          self._squared_inputs,
-          math_ops.square(self._outputs_grads[idx]),
-          transpose_a=True)
-      new_cov /= math_ops.cast(self._batch_size, new_cov.dtype)
-      return new_cov
+    new_cov = math_ops.matmul(
+        self._squared_inputs,
+        math_ops.square(self._outputs_grads[idx]),
+        transpose_a=True)
+    new_cov /= math_ops.cast(self._batch_size, new_cov.dtype)
+    return new_cov
 
 
 class ConvDiagonalFactor(DiagonalFactor):
@@ -542,14 +494,8 @@ class ConvDiagonalFactor(DiagonalFactor):
 
   # TODO(jamesmartens): add units tests for this class
 
-  def __init__(self,
-               inputs,
-               outputs_grads,
-               filter_shape,
-               strides,
-               padding,
-               has_bias=False,
-               colocate_cov_ops_with_inputs=False):
+  def __init__(self, inputs, outputs_grads, filter_shape, strides, padding,
+               has_bias=False):
     """Creates a ConvDiagonalFactor object.
 
     Args:
@@ -564,13 +510,10 @@ class ConvDiagonalFactor(DiagonalFactor):
       padding: The padding in this layer (1-D of Tensor length 4).
       has_bias: Python bool. If True, the layer is assumed to have a bias
         parameter in addition to its filter parameter.
-      colocate_cov_ops_with_inputs: Whether to colocate cov_update ops with
-          their inputs.
     """
     self._filter_shape = filter_shape
     self._has_bias = has_bias
     self._outputs_grads = outputs_grads
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
 
     self._orig_tensors_name = scope_string_from_name((inputs,)
                                                      + tuple(outputs_grads))
@@ -578,19 +521,18 @@ class ConvDiagonalFactor(DiagonalFactor):
     # Note that we precompute the required operations on the inputs since the
     # inputs don't change with the 'idx' argument to _compute_new_cov.  (Only
     # the target entry of _outputs_grads changes with idx.)
-    with _maybe_colocate_with(inputs, self._colocate_cov_ops_with_inputs):
-      filter_height, filter_width, _, _ = self._filter_shape
-      patches = array_ops.extract_image_patches(
-          inputs,
-          ksizes=[1, filter_height, filter_width, 1],
-          strides=strides,
-          rates=[1, 1, 1, 1],
-          padding=padding)
+    filter_height, filter_width, _, _ = self._filter_shape
+    patches = array_ops.extract_image_patches(
+        inputs,
+        ksizes=[1, filter_height, filter_width, 1],
+        strides=strides,
+        rates=[1, 1, 1, 1],
+        padding=padding)
 
-      if has_bias:
-        patches = _append_homog(patches)
+    if has_bias:
+      patches = _append_homog(patches)
 
-      self._patches = patches
+    self._patches = patches
 
     super(ConvDiagonalFactor, self).__init__()
 
@@ -609,15 +551,13 @@ class ConvDiagonalFactor(DiagonalFactor):
     return len(self._outputs_grads)
 
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._outputs_grads[idx],
-                              self._colocate_cov_ops_with_inputs):
-      outputs_grad = self._outputs_grads[idx]
-      batch_size = array_ops.shape(self._patches)[0]
+    outputs_grad = self._outputs_grads[idx]
+    batch_size = array_ops.shape(self._patches)[0]
 
-      new_cov = self._convdiag_sum_of_squares(self._patches, outputs_grad)
-      new_cov /= math_ops.cast(batch_size, new_cov.dtype)
+    new_cov = self._convdiag_sum_of_squares(self._patches, outputs_grad)
+    new_cov /= math_ops.cast(batch_size, new_cov.dtype)
 
-      return new_cov
+    return new_cov
 
   def _convdiag_sum_of_squares(self, patches, outputs_grad):
     # This computes the sum of the squares of the per-training-case "gradients".
@@ -632,10 +572,7 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
   """Kronecker factor for the input or output side of a fully-connected layer.
   """
 
-  def __init__(self,
-               tensors,
-               has_bias=False,
-               colocate_cov_ops_with_inputs=False):
+  def __init__(self, tensors, has_bias=False):
     """Instantiate FullyConnectedKroneckerFactor.
 
     Args:
@@ -643,14 +580,11 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
         layer's inputs or its output's gradients.
       has_bias: bool. If True, assume this factor is for the layer's inputs and
         append '1' to each row.
-      colocate_cov_ops_with_inputs: Whether to colocate cov_update ops with
-          their inputs.
     """
     # The tensor argument is either a tensor of input activations or a tensor of
     # output pre-activation gradients.
     self._has_bias = has_bias
     self._tensors = tensors
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
     super(FullyConnectedKroneckerFactor, self).__init__()
 
   @property
@@ -668,51 +602,21 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
     return len(self._tensors)
 
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._tensors[idx],
-                              self._colocate_cov_ops_with_inputs):
-      tensor = self._tensors[idx]
-      if self._has_bias:
-        tensor = _append_homog(tensor)
-      return _compute_cov(tensor)
+    tensor = self._tensors[idx]
+    if self._has_bias:
+      tensor = _append_homog(tensor)
+    return _compute_cov(tensor)
 
 
 class ConvInputKroneckerFactor(InverseProvidingFactor):
-  r"""Kronecker factor for the input side of a convolutional layer.
+  """Kronecker factor for the input side of a convolutional layer."""
 
-  Estimates E[ a a^T ] where a is the inputs to a convolutional layer given
-  example x. Expectation is taken over all examples and locations.
-
-  Equivalent to \Omega in https://arxiv.org/abs/1602.01407 for details. See
-  Section 3.1 Estimating the factors.
-  """
-
-  def __init__(self,
-               inputs,
-               filter_shape,
-               strides,
-               padding,
-               has_bias=False,
-               colocate_cov_ops_with_inputs=False):
-    """Initializes ConvInputKroneckerFactor.
-
-    Args:
-      inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
-        to layer.
-      filter_shape: 1-D Tensor of length 4. Contains [kernel_height,
-        kernel_width, in_channels, out_channels].
-      strides: 1-D Tensor of length 4. Contains [batch_stride, height_stride,
-        width_stride, in_channel_stride].
-      padding: str. Padding method for layer. "SAME" or "VALID".
-      has_bias: bool. If True, append 1 to in_channel.
-      colocate_cov_ops_with_inputs: Whether to colocate cov_update ops with
-          their inputs.
-    """
+  def __init__(self, inputs, filter_shape, strides, padding, has_bias=False):
     self._filter_shape = filter_shape
     self._strides = strides
     self._padding = padding
     self._has_bias = has_bias
     self._inputs = inputs
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
     super(ConvInputKroneckerFactor, self).__init__()
 
   @property
@@ -737,47 +641,29 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
       raise ValueError("ConvInputKroneckerFactor only supports idx = 0")
 
     # TODO(jamesmartens): factor this patches stuff out into a utility function
-    with _maybe_colocate_with(self._inputs, self._colocate_cov_ops_with_inputs):
-      filter_height, filter_width, in_channels, _ = self._filter_shape
-      patches = array_ops.extract_image_patches(
-          self._inputs,
-          ksizes=[1, filter_height, filter_width, 1],
-          strides=self._strides,
-          rates=[1, 1, 1, 1],
-          padding=self._padding)
+    filter_height, filter_width, in_channels, _ = self._filter_shape
+    patches = array_ops.extract_image_patches(
+        self._inputs,
+        ksizes=[1, filter_height, filter_width, 1],
+        strides=self._strides,
+        rates=[1, 1, 1, 1],
+        padding=self._padding)
 
-      flatten_size = (filter_height * filter_width * in_channels)
-      patches_flat = array_ops.reshape(patches, [-1, flatten_size])
+    flatten_size = (filter_height * filter_width * in_channels)
+    patches_flat = array_ops.reshape(patches, [-1, flatten_size])
 
-      if self._has_bias:
-        patches_flat = _append_homog(patches_flat)
+    if self._has_bias:
+      patches_flat = _append_homog(patches_flat)
 
-      return _compute_cov(patches_flat)
+    return _compute_cov(patches_flat)
 
 
 class ConvOutputKroneckerFactor(InverseProvidingFactor):
-  r"""Kronecker factor for the output side of a convolutional layer.
+  """Kronecker factor for the output side of a convolutional layer."""
 
-  Estimates E[ ds ds^T ] where s is the preactivations of a convolutional layer
-  given example x and ds = (d / d s) log(p(y|x, w)). Expectation is taken over
-  all examples and locations.
-
-  Equivalent to \Gamma in https://arxiv.org/abs/1602.01407 for details. See
-  Section 3.1 Estimating the factors.
-  """
-
-  def __init__(self, outputs_grads, colocate_cov_ops_with_inputs=False):
-    """Initializes ConvOutputKroneckerFactor.
-
-    Args:
-      outputs_grads: list of Tensors. Each Tensor is of shape
-          [batch_size, height, width, out_channels].
-      colocate_cov_ops_with_inputs: Whether to colocate cov_update ops with
-          their inputs.
-    """
+  def __init__(self, outputs_grads):
     self._out_channels = outputs_grads[0].shape.as_list()[3]
     self._outputs_grads = outputs_grads
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
     super(ConvOutputKroneckerFactor, self).__init__()
 
   @property
@@ -794,8 +680,6 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     return len(self._outputs_grads)
 
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._outputs_grads[idx],
-                              self._colocate_cov_ops_with_inputs):
-      reshaped_tensor = array_ops.reshape(self._outputs_grads[idx],
-                                          [-1, self._out_channels])
-      return _compute_cov(reshaped_tensor)
+    reshaped_tensor = array_ops.reshape(self._outputs_grads[idx],
+                                        [-1, self._out_channels])
+    return _compute_cov(reshaped_tensor)

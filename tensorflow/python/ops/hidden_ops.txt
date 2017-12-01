@@ -223,7 +223,6 @@ BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
 LogMatrixDeterminant
-MatrixExponential
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -245,7 +244,6 @@ TensorSummaryV2
 Abs
 AccumulateNV2
 AddN
-AddV2
 All
 Any
 BatchMatMul
@@ -354,7 +352,6 @@ DestroyTemporaryVariable
 AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
-DeserializeSparse
 DeserializeManySparse
 SerializeManySparse
 SerializeSparse

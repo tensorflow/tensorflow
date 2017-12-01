@@ -170,7 +170,6 @@ cc_library(
         ":computation",
         ":global_data",
         ":padding",
-        "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",

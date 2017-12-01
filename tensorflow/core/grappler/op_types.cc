@@ -24,9 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-bool IsAdd(const NodeDef& node) {
-  return node.op() == "Add" || node.op() == "AddV2";
-}
+bool IsAdd(const NodeDef& node) { return node.op() == "Add"; }
 
 bool IsAddN(const NodeDef& node) { return node.op() == "AddN"; }
 
@@ -134,8 +132,6 @@ bool IsRestore(const NodeDef& node) {
 bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
 
 bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
-
-bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
 
 bool IsSquaredDifference(const NodeDef& node) {
   return node.op() == "SquaredDifference";

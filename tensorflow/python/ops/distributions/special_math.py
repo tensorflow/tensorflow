@@ -198,10 +198,9 @@ def _ndtri(p):
   # Write in an arbitrary value in place of 0 for p since 0 will cause NaNs
   # later on. The result from the computation when p == 0 is not used so any
   # number that doesn't result in NaNs is fine.
-  one_half = constant_op.constant(0.5, dtype=p.dtype)
   sanitized_mcp = array_ops.where(
       maybe_complement_p <= 0.,
-      array_ops.fill(array_ops.shape(p), one_half),
+      constant_op.constant(0.5, dtype=p.dtype, shape=p.shape),
       maybe_complement_p)
 
   # Compute x for p > exp(-2): x/sqrt(2pi) = w + w**3 P0(w**2)/Q0(w**2).
@@ -228,8 +227,7 @@ def _ndtri(p):
                       array_ops.where(z >= 8.0, x_for_small_p, x_otherwise))
 
   x = array_ops.where(p > 1. - np.exp(-2.), x, -x)
-  infinity_scalar = constant_op.constant(np.inf, dtype=p.dtype)
-  infinity = array_ops.fill(array_ops.shape(p), infinity_scalar)
+  infinity = constant_op.constant(np.inf, dtype=x.dtype, shape=x.shape)
   x_nan_replaced = array_ops.where(
       p <= 0.0, -infinity, array_ops.where(p >= 1.0, infinity, x))
   return x_nan_replaced

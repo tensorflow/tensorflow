@@ -12,7 +12,6 @@ cc_library(
     srcs = ["sqlite.cc"],
     hdrs = ["sqlite.h"],
     deps = [
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
         "@sqlite_archive//:sqlite",
     ],

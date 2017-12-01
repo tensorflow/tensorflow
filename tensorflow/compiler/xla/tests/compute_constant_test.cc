@@ -71,27 +71,24 @@ class ComputeConstantTest : public ::testing::Test {
 
   StatusOr<std::unique_ptr<Literal>> ComputeConstantLiteral(
       Client* client, const ComputationDataHandle& operand,
-      ComputationBuilder* builder, Layout* output_layout = nullptr,
-      tensorflow::gtl::ArraySlice<Literal> parameters = {}) {
-    TF_ASSIGN_OR_RETURN(auto computed, builder->ComputeConstant(
-                                           operand, output_layout, parameters));
+      ComputationBuilder* builder, Layout* output_layout = nullptr) {
+    TF_ASSIGN_OR_RETURN(auto computed,
+                        builder->ComputeConstant(operand, output_layout));
     return std::move(computed);
   }
 
   template <class Scalar>
-  StatusOr<Scalar> ComputeConstantScalar(
-      Client* client, const ComputationDataHandle& operand,
-      ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<Literal> parameters = {}) {
-    TF_ASSIGN_OR_RETURN(
-        auto literal,
-        ComputeConstantLiteral(client, operand, builder, nullptr, parameters));
+  StatusOr<Scalar> ComputeConstantScalar(Client* client,
+                                         const ComputationDataHandle& operand,
+                                         ComputationBuilder* builder) {
+    TF_ASSIGN_OR_RETURN(auto literal,
+                        ComputeConstantLiteral(client, operand, builder));
     return literal->Get<Scalar>({});
   }
 
   bool IsConstant(const ComputationDataHandle& operand,
-                  ComputationBuilder* builder, int64 num_parameters = 0) {
-    StatusOr<bool> result = builder->IsConstant(operand, num_parameters);
+                  ComputationBuilder* builder) {
+    StatusOr<bool> result = builder->IsConstant(operand);
     EXPECT_TRUE(result.ok()) << result.status();
     return result.ok() ? result.ValueOrDie() : false;
   }
@@ -141,25 +138,7 @@ TEST_F(ComputeConstantTest, ScalarRng) {
   }
 }
 
-TEST_F(ComputeConstantTest, Param) {
-  for (ClientType client_type : client_types) {
-    Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
-    auto param = b.Parameter(0, ShapeUtil::MakeShape(F32, {}), "lhs");
-    auto computation = b.Add(param, b.ConstantR0<float>(1.5f));
-
-    std::vector<Literal> arguments;
-    arguments.emplace_back(*Literal::CreateR0(42.5f));
-    EXPECT_TRUE(IsConstant(computation, &b, arguments.size()));
-
-    auto value =
-        ComputeConstantScalar<float>(client, computation, &b, arguments);
-    ASSERT_TRUE(value.ok()) << value.status();
-    EXPECT_EQ(value.ValueOrDie(), 44.0f);
-  }
-}
-
-TEST_F(ComputeConstantTest, DirectParamMissing) {
+TEST_F(ComputeConstantTest, DirectParam) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     ComputationBuilder b(client, TestName());
@@ -173,7 +152,7 @@ TEST_F(ComputeConstantTest, DirectParamMissing) {
   }
 }
 
-TEST_F(ComputeConstantTest, IndirectParamMissing) {
+TEST_F(ComputeConstantTest, IndirectParam) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     ComputationBuilder b(client, TestName());
@@ -264,8 +243,8 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
       ASSERT_TRUE(computed.ok()) << computed.status();
 
       std::unique_ptr<Literal> expected_literal =
-          Literal::CreateR2WithLayout<int32>({{11, 22}, {33, 44}},
-                                             LayoutUtil::MakeLayout(layout));
+          test_utils::CreateR2LiteralWithLayout<int32>({{11, 22}, {33, 44}},
+                                                       layout);
       LiteralTestUtil::AssertEqualShapesAndLayouts(
           expected_literal->shape(), computed.ValueOrDie()->shape());
       LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());

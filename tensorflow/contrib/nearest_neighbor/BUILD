@@ -41,14 +41,18 @@ tf_gen_op_wrapper_py(
 tf_custom_op_py_library(
     name = "nearest_neighbor_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
-    dso = [":python/ops/_nearest_neighbor_ops.so"],
-    kernels = [":nearest_neighbor_ops_kernels"],
+    dso = [
+        ":python/ops/_nearest_neighbor_ops.so",
+    ],
+    kernels = [
+        ":nearest_neighbor_ops_kernels",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":nearest_neighbor_ops_pywrapper",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
     ],
 )
 
@@ -66,7 +70,9 @@ tf_kernel_library(
 
 cc_library(
     name = "heap",
-    hdrs = ["kernels/heap.h"],
+    hdrs = [
+        "kernels/heap.h",
+    ],
 )
 
 tf_cc_test(
@@ -75,14 +81,17 @@ tf_cc_test(
     srcs = ["kernels/heap_test.cc"],
     deps = [
         ":heap",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core:testlib",
     ],
 )
 
 cc_library(
     name = "hyperplane_lsh_probes",
-    hdrs = ["kernels/hyperplane_lsh_probes.h"],
+    hdrs = [
+        "kernels/hyperplane_lsh_probes.h",
+    ],
     deps = [
         ":heap",
         "//third_party/eigen3",
@@ -98,7 +107,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
     ],
 )
 

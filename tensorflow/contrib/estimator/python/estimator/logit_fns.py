@@ -39,8 +39,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.python.estimator import util
 from tensorflow.python.estimator.canned import dnn as dnn_core
 from tensorflow.python.estimator.canned import linear as linear_core
@@ -69,8 +67,7 @@ def call_logit_fn(logit_fn, features, mode, params, config):
     A logit Tensor, the output of logit_fn.
 
   Raises:
-    ValueError: if logit_fn does not return a Tensor or a dictionary mapping
-      strings to Tensors.
+    ValueError: if logit_fn does not return a Tensor.
   """
   logit_fn_args = util.fn_args(logit_fn)
   kwargs = {}
@@ -82,15 +79,7 @@ def call_logit_fn(logit_fn, features, mode, params, config):
     kwargs['config'] = config
   logit_fn_results = logit_fn(features=features, **kwargs)
 
-  result_is_valid_dictionary = (
-      isinstance(logit_fn_results, dict) and
-      all([(isinstance(k, six.string_types) and isinstance(v, ops.Tensor))
-           for k, v in six.iteritems(logit_fn_results)]))
-  result_is_tensor = isinstance(logit_fn_results, ops.Tensor)
-
-  if not (result_is_valid_dictionary or result_is_tensor):
-    raise ValueError('logit_fn should return a Tensor or a dictionary mapping '
-                     'strings to Tensors.  logit_fn returned: %s' %
-                     logit_fn_results)
+  if not isinstance(logit_fn_results, ops.Tensor):
+    raise ValueError('model_fn should return a Tensor.')
 
   return logit_fn_results

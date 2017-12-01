@@ -42,8 +42,7 @@ namespace sep = ::perftools::gputools::interpreter;
 
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<const HloModule> hlo_module)
-    : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,
-                 /*hlo_profile_index_map=*/nullptr) {}
+    : Executable(std::move(hlo_module)) {}
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
@@ -90,7 +89,7 @@ StatusOr<se::DeviceMemoryBase> InterpreterExecutable::ExecuteOnStream(
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  const HloComputation* computation = module().entry_computation();
+  HloComputation* computation = module().entry_computation();
   if (computation->num_parameters() != arguments.size()) {
     return tensorflow::errors::Internal(
         "Mismatch between argument count and graph parameter count.");
@@ -155,6 +154,11 @@ StatusOr<se::DeviceMemoryBase> InterpreterExecutable::ExecuteAsyncOnStream(
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+}
+
+std::unique_ptr<HloCostAnalysis> InterpreterExecutable::CreateCostAnalysis()
+    const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace interpreter

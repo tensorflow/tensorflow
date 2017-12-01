@@ -25,10 +25,7 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
-        ":predictor_factories",
-        "//tensorflow/python:util",
-    ],
+    deps = [":predictor_factories"],
 )
 
 py_library(
@@ -61,6 +58,7 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
     ],
 )
 
@@ -165,5 +163,5 @@ py_test(
 filegroup(
     name = "test_export_dir",
     srcs = glob(["test_export_dir/**/*"]),
-    tags = ["no_pip"],
+    tags = ["nopip"],
 )

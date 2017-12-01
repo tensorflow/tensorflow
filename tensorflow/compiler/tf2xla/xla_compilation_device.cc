@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/core/common_runtime/local_device.h"
@@ -78,8 +77,7 @@ XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
     : LocalDevice(
           options,
           Device::BuildDeviceAttributes(
-              strings::StrCat("/device:", type.type(), ":0"), type,
-              Bytes(256 << 20), DeviceLocality(),
+              "", type, Bytes(256 << 20), DeviceLocality(),
               strings::StrCat("device: XLA compilation device ", type.type()))),
       allocator_(new XlaCompilationAllocator()) {}
 
@@ -99,19 +97,26 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   metadata.set_op_name(op_kernel->name());
   b->SetOpMetadata(metadata);
 
-  auto sharding_parse_result = ParseShardingFromDevice(
-      op_kernel->requested_device(), std::numeric_limits<int>::max());
-  OP_REQUIRES_OK(context, sharding_parse_result.status());
-  tensorflow::gtl::optional<xla::OpSharding> op_sharding =
-      sharding_parse_result.ValueOrDie();
+  DeviceNameUtils::ParsedName parsed;
+  OP_REQUIRES(
+      context,
+      DeviceNameUtils::ParseFullName(op_kernel->requested_device(), &parsed),
+      errors::Internal("Unable to parse device name: ",
+                       op_kernel->requested_device()));
+  xla::OpDeviceAssignment assignment;
+  // If no device ID assignment is found, XLA is free to use whatever device it
+  // wants. In practice this usually has the effect of placing things on
+  // device 0.
+  if (parsed.has_id) {
+    assignment.set_has_device(true);
+    assignment.set_device(parsed.id);
+  }
+  b->SetDeviceAssignment(assignment);
 
-  // If no sharding metadata is found, XLA is free to use whatever device it
-  // wants. In practice this usually has the effect of placing things on device
-  // 0.
-  xla::ScopedShardingAssignment assign_sharding(b, op_sharding);
   op_kernel->Compute(context);
 
   b->ClearOpMetadata();
+  b->ClearDeviceAssignment();
   VLOG(4) << "Done";
 }
 

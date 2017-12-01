@@ -577,7 +577,6 @@ class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
                               .TypeConstraint<int32>("S"), \
                           CudnnRNNParamsSizeOp<GPUDevice, T, int32>);
 
-TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_GPU
@@ -712,7 +711,6 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
                               .HostMemory("input_size")     \
                               .TypeConstraint<T>("T"),      \
                           CudnnRNNParamsToCanonical<GPUDevice, T>);
-TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_GPU
@@ -759,9 +757,7 @@ class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
                               .HostMemory("input_size")     \
                               .TypeConstraint<T>("T"),      \
                           CudnnRNNCanonicalToParams<GPUDevice, T>);
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU) TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // Run the forward operation of the RNN model.
@@ -910,7 +906,6 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       Name("CudnnRNN").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       CudnnRNNForwardOp<GPUDevice, T>);
 
-TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_GPU
@@ -1130,7 +1125,6 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       Name("CudnnRNNBackprop").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       CudnnRNNBackwardOp<GPUDevice, T>);
 
-TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_GPU

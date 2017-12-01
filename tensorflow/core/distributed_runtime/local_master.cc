@@ -159,7 +159,7 @@ Status LocalMaster::Reset(CallOptions* call_options,
 
 namespace {
 mutex* get_local_master_registry_lock() {
-  static mutex local_master_registry_lock(LINKER_INITIALIZED);
+  static mutex local_master_registry_lock;
   return &local_master_registry_lock;
 }
 

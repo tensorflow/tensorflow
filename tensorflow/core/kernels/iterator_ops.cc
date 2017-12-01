@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/dataset.h"
+
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/iterator.pb.h"
@@ -20,9 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/kernels/dataset.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/kernels/stats_aggregator.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -79,12 +79,10 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 class IteratorResource : public ResourceBase {
  public:
   IteratorResource(const DataTypeVector& output_dtypes,
-                   const std::vector<PartialTensorShape>& output_shapes,
-                   const int graph_def_version)
+                   const std::vector<PartialTensorShape>& output_shapes)
       : iterator_(nullptr),
         output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes),
-        graph_def_version_(graph_def_version) {}
+        output_shapes_(output_shapes) {}
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) {
@@ -99,10 +97,10 @@ class IteratorResource : public ResourceBase {
     }
   }
 
-  Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) {
+  Status Save(IteratorStateWriter* writer) {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
     if (captured_iterator) {
-      return captured_iterator->Save(ctx, writer);
+      return captured_iterator->Save(writer);
     } else {
       return errors::FailedPrecondition(
           "Save() failed because the iterator has not been initialized. "
@@ -127,21 +125,8 @@ class IteratorResource : public ResourceBase {
     TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
     std::vector<Tensor> outputs;
     GraphRunner graph_runner(ctx->env());
-
-    // Build a new FLR that knows about the functions in the graph.
-    std::unique_ptr<FunctionLibraryDefinition> flib_def(
-        new FunctionLibraryDefinition(
-            *ctx->function_library()->GetFunctionLibraryDefinition()));
-    TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
-    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-        new ProcessFunctionLibraryRuntime(nullptr, ctx->env(),
-                                          graph_def_version_, flib_def.get(),
-                                          {}, nullptr));
-    FunctionLibraryRuntime* lib =
-        pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
-
-    TF_RETURN_IF_ERROR(
-        graph_runner.Run(&graph, lib, {}, {output_node}, &outputs));
+    TF_RETURN_IF_ERROR(graph_runner.Run(&graph, ctx->function_library(), {},
+                                        {output_node}, &outputs));
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
     TF_RETURN_IF_ERROR(set_iterator(dataset->MakeIterator("Iterator")));
@@ -169,16 +154,6 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
-  void set_stats_aggregator(std::shared_ptr<StatsAggregator> stats_aggregator) {
-    mutex_lock l(mu_);
-    stats_aggregator_ = std::move(stats_aggregator);
-  }
-
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    tf_shared_lock l(mu_);
-    return stats_aggregator_;
-  }
-
   string DebugString() override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
@@ -189,11 +164,8 @@ class IteratorResource : public ResourceBase {
 
  private:
   std::shared_ptr<IteratorBase> iterator_;
-  mutex mu_;
-  std::shared_ptr<StatsAggregator> stats_aggregator_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
-  const int graph_def_version_;
 };
 
 // Helper class for reading data from a VariantTensorData object.
@@ -214,10 +186,6 @@ class VariantTensorDataReader : public IteratorStateReader {
 
   Status ReadScalar(StringPiece key, string* val) override {
     return ReadScalarInternal(key, val);
-  }
-
-  Status ReadTensor(StringPiece key, Tensor* val) override {
-    return ReadTensorInternal(key, val);
   }
 
   bool Contains(StringPiece key) override {
@@ -249,14 +217,6 @@ class VariantTensorDataReader : public IteratorStateReader {
     return Status::OK();
   }
 
-  Status ReadTensorInternal(StringPiece key, Tensor* val) {
-    if (map_.find(key.ToString()) == map_.end()) {
-      return errors::NotFound(key);
-    }
-    *val = data_->tensors(map_[key.ToString()]);
-    return Status::OK();
-  }
-
   std::map<string, size_t> map_;
   const VariantTensorData* data_;  // Not owned.
   Status status_;
@@ -268,16 +228,12 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   // Does not take ownership of data.
   explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
 
-  Status WriteScalar(StringPiece key, const int64 val) override {
+  Status WriteScalar(StringPiece key, const int64& val) override {
     return WriteScalarInternal(key, val);
   }
 
   Status WriteScalar(StringPiece key, const string& val) override {
     return WriteScalarInternal(key, val);
-  }
-
-  Status WriteTensor(StringPiece key, const Tensor& val) override {
-    return WriteTensorInternal(key, val);
   }
 
   // Writes the metadata to `data_`.
@@ -293,19 +249,15 @@ class VariantTensorDataWriter : public IteratorStateWriter {
  private:
   template <typename T>
   Status WriteScalarInternal(StringPiece key, const T& val) {
-    Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
-    val_t.scalar<T>()() = val;
-    return WriteTensorInternal(key, val_t);
-  }
-
-  Status WriteTensorInternal(StringPiece key, const Tensor& val) {
     // Write key to the metadata proto. This gets written to `data_`
     // when `Flush()` is called. We do this lazily to avoid multiple
     // serialization calls.
     metadata_proto_.add_keys(key.ToString());
 
     // Update tensors.
-    *(data_->add_tensors()) = val;
+    Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+    val_t.scalar<T>()() = val;
+    *(data_->add_tensors()) = std::move(val_t);
     return Status::OK();
   }
 
@@ -347,12 +299,11 @@ class IteratorStateVariant {
   }
   // Initializes this object with the current state of the iterator so
   // that it can be written on the next call to Encode().
-  Status InitializeFromIterator(OpKernelContext* ctx,
-                                IteratorResource* iterator_resource) {
+  Status InitializeFromIterator(IteratorResource* iterator_resource) {
     data_.reset(new VariantTensorData());
     data_->set_type_name(TypeName());
     VariantTensorDataWriter writer(data_.get());
-    TF_RETURN_IF_ERROR(iterator_resource->Save(ctx, &writer));
+    TF_RETURN_IF_ERROR(iterator_resource->Save(&writer));
     TF_RETURN_IF_ERROR(writer.Flush());
     return Status::OK();
   }
@@ -404,8 +355,7 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
 class IteratorHandleOp : public ResourceOpKernel<IteratorResource> {
  public:
   explicit IteratorHandleOp(OpKernelConstruction* ctx)
-      : ResourceOpKernel<IteratorResource>(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
+      : ResourceOpKernel<IteratorResource>(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -413,8 +363,7 @@ class IteratorHandleOp : public ResourceOpKernel<IteratorResource> {
  private:
   Status CreateResource(IteratorResource** ret) override
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    *ret = new IteratorResource(output_dtypes_, output_shapes_,
-                                graph_def_version_);
+    *ret = new IteratorResource(output_dtypes_, output_shapes_);
     return Status::OK();
   }
 
@@ -429,7 +378,6 @@ class IteratorHandleOp : public ResourceOpKernel<IteratorResource> {
  private:
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
-  const int graph_def_version_;
 };
 
 class MakeIteratorOp : public OpKernel {
@@ -459,6 +407,8 @@ class ToSingleElementOp : public OpKernel {
 
     IteratorContext::Params params;
     params.env = ctx->env();
+    params.step_id = ctx->step_id();
+    params.resource_manager = ctx->resource_manager();
     params.runner = *(ctx->runner());
     IteratorContext iter_ctx(std::move(params));
 
@@ -492,8 +442,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
             ctx->env(), ThreadOptions(),
             strings::StrCat("one_shot_iterator_initialization_thread_",
                             SanitizeThreadSuffix(name())),
-            1 /* num_threads */, false /* low_latency_hint */)),
-        graph_def_version_(ctx->graph_def_version())
+            1 /* num_threads */, false /* low_latency_hint */))
 
   {
     string shared_name;
@@ -577,8 +526,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
         ctx->resource_manager()->LookupOrCreate<IteratorResource>(
             cinfo->container(), cinfo->name(), iterator,
             [this](IteratorResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-              *ret = new IteratorResource(output_dtypes_, output_shapes_,
-                                          graph_def_version_);
+              *ret = new IteratorResource(output_dtypes_, output_shapes_);
               return Status::OK();
             }));
 
@@ -636,7 +584,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     return Status::OK();
   }
 
-  void ProduceOutput(OpKernelContext* ctx, const DoneCallback& done) {
+  void ProduceOutput(OpKernelContext* ctx, DoneCallback done) {
     Tensor* handle;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, TensorShape({}), &handle),
                          done);
@@ -668,7 +616,6 @@ class OneShotIteratorOp : public AsyncOpKernel {
   Status initialization_status_ GUARDED_BY(mu_);
   std::vector<std::pair<OpKernelContext*, DoneCallback>> done_callbacks_
       GUARDED_BY(mu_);
-  const int graph_def_version_;
 };
 
 class IteratorGetNextOp : public AsyncOpKernel {
@@ -697,9 +644,8 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
       IteratorContext::Params params;
       params.env = ctx->env();
-      params.stats_aggregator_getter = [iterator]() {
-        return iterator->stats_aggregator();
-      };
+      params.step_id = ctx->step_id();
+      params.resource_manager = ctx->resource_manager();
       params.runner = *(ctx->runner());
       IteratorContext iter_ctx(std::move(params));
 
@@ -821,11 +767,11 @@ class SerializeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-    core::ScopedUnref unref_iterator(iterator_resource);
+    iterator_resource->Unref();
     Tensor* variant_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &variant_t));
     IteratorStateVariant v;
-    OP_REQUIRES_OK(ctx, v.InitializeFromIterator(ctx, iterator_resource));
+    OP_REQUIRES_OK(ctx, v.InitializeFromIterator(iterator_resource));
     variant_t->scalar<Variant>()() = v;
   }
 };
@@ -851,31 +797,6 @@ class DeserializeIteratorOp : public OpKernel {
   }
 };
 
-class IteratorSetStatsAggregatorOp : public OpKernel {
- public:
-  explicit IteratorSetStatsAggregatorOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    IteratorResource* iterator_resource;
-    OP_REQUIRES_OK(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-    core::ScopedUnref unref_iterator(iterator_resource);
-
-    StatsAggregatorResource* stats_aggregator_resource;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1),
-                                       &stats_aggregator_resource));
-    core::ScopedUnref unref_stats_aggregator(stats_aggregator_resource);
-    // TODO(mrry): Consider allowing multiple StatsAggregator ops to
-    // subscribe to updates, and/or unsubscribing.
-    OP_REQUIRES(ctx, !iterator_resource->stats_aggregator(),
-                errors::FailedPrecondition(
-                    "Iterator already associated with a StatsAggregator"));
-    iterator_resource->set_stats_aggregator(
-        stats_aggregator_resource->stats_aggregator());
-  }
-};
-
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
@@ -893,8 +814,6 @@ REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorSetStatsAggregator").Device(DEVICE_CPU),
-                        IteratorSetStatsAggregatorOp);
 
 }  // namespace
 

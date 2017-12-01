@@ -25,6 +25,7 @@
 @@shutdown_system
 @@device_assignment
 @@core
+@@outside_all_rewrites
 @@replicate
 @@shard
 @@batch_parallel

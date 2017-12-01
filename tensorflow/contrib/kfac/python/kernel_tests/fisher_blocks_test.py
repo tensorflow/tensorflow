@@ -46,8 +46,7 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.FullFB(lc.LayerCollection(), params, 32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -55,8 +54,7 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.FullFB(lc.LayerCollection(), params, 32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -64,8 +62,7 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.FullFB(lc.LayerCollection(), params, 32)
 
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors(grads, 0.5)
@@ -74,8 +71,7 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.FullFB(lc.LayerCollection(), params, 32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors((grads,), 0.5)
 
@@ -92,8 +88,7 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = array_ops.constant([[1.], [2.]])
-      block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.FullFB(lc.LayerCollection(), params, 32)
       grads = params**2
       block.instantiate_factors((grads,), 0.5)
 
@@ -110,8 +105,7 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.FullFB(lc.LayerCollection(), params, 32)
       grads = (array_ops.constant([2., 3.]), array_ops.constant(4.))
       damping = 0.5
       block.instantiate_factors((grads,), damping)
@@ -137,8 +131,7 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -146,8 +139,7 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -155,8 +147,7 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
 
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors(grads, 0.5)
@@ -165,8 +156,7 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors((grads,), 0.5)
 
@@ -183,8 +173,7 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = array_ops.constant([[1.], [2.]])
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
       grads = params**2
       block.instantiate_factors((grads,), 0.5)
 
@@ -200,8 +189,7 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       damping = 0.5
       block.instantiate_factors((grads,), damping)
@@ -664,10 +652,10 @@ class ConvKFCBasicFBTest(test.TestCase):
         params = array_ops.constant(params)
       inputs = random_ops.random_normal((2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, [1, 1, 1], 'SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
+                                [1, 1, 1], 'SAME')
 
-      self.assertAllEqual([outputs], block.tensors_to_compute_grads())
+      self.assertAllEqual(outputs, block.tensors_to_compute_grads())
 
   def testConvKFCBasicFBInitParamsParamsTuple(self):
     self._testConvKFCBasicFBInitParams([np.array([1., 2.]), np.array(3.)])
@@ -681,11 +669,10 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = random_ops.random_normal((2, 2, 2, 2))
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
-                                'SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
+                                (1, 1, 1, 1), 'SAME')
       grads = outputs**2
-      block.instantiate_factors(([grads],), 0.5)
+      block.instantiate_factors((grads,), 0.5)
 
       # Make sure our inverse is something other than the identity.
       sess.run(tf_variables.global_variables_initializer())
@@ -707,12 +694,11 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = random_ops.random_normal((2, 2, 2, 2))
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
-                                'SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
+                                (1, 1, 1, 1), 'SAME')
       self.assertFalse(block._has_bias)
       grads = outputs**2
-      block.instantiate_factors(([grads],), 0.5)
+      block.instantiate_factors((grads,), 0.5)
 
       # Make sure our inverse is something other than the identity.
       sess.run(tf_variables.global_variables_initializer())
@@ -730,12 +716,11 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = [random_ops.random_normal((2, 2, 2, 2))]
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
-                                'SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
+                                (1, 1, 1, 1), 'SAME')
       self.assertTrue(block._has_bias)
       grads = outputs**2
-      block.instantiate_factors(([grads],), 0.5)
+      block.instantiate_factors((grads,), 0.5)
 
       # Make sure our inverse is something other than the identity.
       sess.run(tf_variables.global_variables_initializer())
@@ -753,12 +738,11 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = array_ops.zeros((2, 2, 2, 2))
       inputs = array_ops.zeros((2, 2, 2, 2))
       outputs = array_ops.zeros((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
-                                'SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
+                                (1, 1, 1, 1), 'SAME')
       grads = outputs**2
       damping = 0.  # This test is only valid without damping.
-      block.instantiate_factors(([grads],), damping)
+      block.instantiate_factors((grads,), damping)
 
       sess.run(state_ops.assign(block._input_factor._cov, _make_psd(8)))
       sess.run(state_ops.assign(block._output_factor._cov, _make_psd(2)))

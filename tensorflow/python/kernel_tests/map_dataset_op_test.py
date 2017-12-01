@@ -284,8 +284,9 @@ class MapDatasetTest(test.TestCase):
     with self.test_session() as sess:
       sess.run(table.init)
       sess.run(init_op)
-      sess.run(get_next)
-      sess.run(get_next)
+
+      print(sess.run(get_next))
+      print(sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -552,13 +553,9 @@ class MapDatasetTest(test.TestCase):
     self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testSparse(self):
-
     def _sparse(i):
-      return sparse_tensor.SparseTensorValue(
-          indices=np.array([[0, 0]]),
-          values=(i * np.array([1])),
-          dense_shape=np.array([1, 1]))
-
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1])
     iterator = (dataset_ops.Dataset.range(10)
                 .map(_sparse)
                 .make_initializable_iterator())
@@ -569,26 +566,24 @@ class MapDatasetTest(test.TestCase):
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[i], dense_shape=[1, 1])
         self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
-        self.assertSparseValuesEqual(actual, _sparse(i))
+        self.assertSparseValuesEqual(actual, expected.eval())
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
   def testSparseChain(self):
-
     def _sparse(i):
-      return sparse_tensor.SparseTensorValue(
-          indices=np.array([[0, 0]]),
-          values=(i * np.array([1])),
-          dense_shape=np.array([1, 1]))
-
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1])
     def _check(i):
-      self.assertTrue(sparse_tensor.is_sparse(i))
+      self.assertTrue(isinstance(i, sparse_tensor.SparseTensor))
       return sparse_ops.sparse_concat(0, [i, i])
 
-    iterator = (
-        dataset_ops.Dataset.range(10).map(_sparse).map(_check)
-        .make_initializable_iterator())
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_sparse).map(_check)
+                .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -596,8 +591,10 @@ class MapDatasetTest(test.TestCase):
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
+        expected = sparse_tensor.SparseTensor(
+            indices=[[0, 0], [1, 0]], values=[i, i], dense_shape=[2, 1])
         self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
-        self.assertSparseValuesEqual(actual, _check(_sparse(i)).eval())
+        self.assertSparseValuesEqual(actual, expected.eval())
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

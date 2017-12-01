@@ -21,7 +21,7 @@ node {
 }
 node {
   name: "ones"
-  op: "PlaceholderV2"
+  op: "Const"
   attr {
     key: "dtype"
     value {
@@ -29,15 +29,19 @@ node {
     }
   }
   attr {
-    key: "shape"
+    key: "value"
     value {
-      shape {
-        dim {
-          size: -1
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 2
+          }
         }
-        dim {
-          size: 2
-        }
+        float_val: 1.0
       }
     }
   }

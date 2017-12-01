@@ -31,7 +31,6 @@ class ShapeRefinerTest;
 
 namespace grappler {
 class GraphProperties;
-class SymbolicShapeManager;
 }
 
 namespace shape_inference {
@@ -56,14 +55,13 @@ class Dimension {
 class DimensionHandle {
  public:
   DimensionHandle() {}
-  bool SameHandle(DimensionHandle d) const { return ptr_ == d.ptr_; }
-  std::size_t Handle() const { return reinterpret_cast<std::size_t>(ptr_); }
 
  private:
   DimensionHandle(const Dimension* dim) { ptr_ = dim; }
 
-  const Dimension* operator->() const { return ptr_; }
+  const Dimension* operator->() { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
+  bool SameHandle(DimensionHandle d) const { return ptr_ == d.ptr_; }
 
   const Dimension* ptr_ = nullptr;
 
@@ -73,8 +71,6 @@ class DimensionHandle {
   friend class ShapeInferenceTestutil;
   friend class ::tensorflow::ShapeRefinerTest;
   friend class ShapeManager;
-  friend class ::tensorflow::grappler::GraphProperties;
-  friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   // Intentionally copyable.
 };
@@ -91,7 +87,6 @@ class Shape {
 
   friend class InferenceContext;
   friend class ShapeManager;
-  friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Shape);
 };
@@ -99,13 +94,12 @@ class Shape {
 class ShapeHandle {
  public:
   ShapeHandle() {}
-  bool SameHandle(ShapeHandle s) const { return ptr_ == s.ptr_; }
-  std::size_t Handle() const { return reinterpret_cast<std::size_t>(ptr_); }
 
  private:
   ShapeHandle(const Shape* shape) { ptr_ = shape; }
-  const Shape* operator->() const { return ptr_; }
+  const Shape* operator->() { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
+  bool SameHandle(ShapeHandle s) const { return ptr_ == s.ptr_; }
 
   const Shape* ptr_ = nullptr;
 
@@ -114,7 +108,6 @@ class ShapeHandle {
   friend class ShapeInferenceTestutil;
   friend class ::tensorflow::ShapeRefinerTest;
   friend class ShapeManager;
-  friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   // Intentionally copyable.
 };
@@ -237,19 +230,24 @@ class InferenceContext {
   // - For any one dimension, if the values for that dimension in both shapes
   //   are known, then the values must match.
   // - If one shape has equal or more information than the other shape in every
-  //   dimension, the new shape will become the shape with more information.
+  //   dimension, the shape with more information will be returned. Otherwise a
+  //   new shape holding the combined information of the input shapes will be
+  //   returned.
   // - Example: merging [2,?] and [?,2] results in [2,2]
   // - Example: [2,2] cannot be merged with [1,2]
   //
   // This requires idx to be in the [0, num_inputs) range. If the merge is
-  // successful, return true. Return false otherwise.
+  // successful and the new shape differs from the old one, store the new shape
+  // and return true. Return false otherwise.
   bool MergeInput(int idx, ShapeHandle shape) {
     ShapeHandle new_shape;
-    if (!Merge(inputs_[idx], shape, &new_shape).ok()) return false;
+    if (!Merge(inputs_[idx], shape, &new_shape).ok() ||
+        inputs_[idx].SameHandle(new_shape)) {
+      return false;
+    }
     inputs_[idx] = new_shape;
     return true;
   }
-
   // Relax the stored shape of the input in position idx with <shape> according
   // to the following rules:
   //
@@ -336,28 +334,22 @@ class InferenceContext {
     if (s->rank_ == kUnknownRank) {
       return UnknownDim();
     }
-    return DimKnownRank(s, idx);
-  }
-  // As above, but asserts that the rank of the shape is known.
-  static DimensionHandle DimKnownRank(ShapeHandle s, int64 idx) {
-    CHECK_NE(s->rank_, kUnknownRank);
     if (idx < 0) {
       return s->dims_[s->dims_.size() + idx];
     }
     return s->dims_[idx];
   }
-
-  static int32 Rank(ShapeHandle s) {
+  int32 Rank(ShapeHandle s) const {
     DCHECK(s.IsSet());
     return s.IsSet() ? s->rank_ : kUnknownRank;
   }
-  static bool RankKnown(ShapeHandle s) {
+  bool RankKnown(ShapeHandle s) const {
     return (s.IsSet() && (Rank(s) != kUnknownRank));
   }
-  static inline int64 Value(DimensionOrConstant d) {
+  inline int64 Value(DimensionOrConstant d) const {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
-  static inline bool ValueKnown(DimensionOrConstant d) {
+  inline bool ValueKnown(DimensionOrConstant d) const {
     return Value(d) != kUnknownDim;
   }
 
@@ -609,14 +601,6 @@ class InferenceContext {
 
   int graph_def_version() const { return graph_def_version_; }
 
-  const std::vector<std::pair<ShapeHandle, ShapeHandle>>& MergedShapes() const {
-    return merged_shapes_;
-  }
-  const std::vector<std::pair<DimensionHandle, DimensionHandle>>& MergedDims()
-      const {
-    return merged_dims_;
-  }
-
  private:
   // Creates and stores shapes for use in InferenceContext.
   class ShapeManager {
@@ -678,17 +662,14 @@ class InferenceContext {
   // Adds additional context to the given status.
   Status AttachContext(const Status& status);
 
-  // Relaxes an existing value <d_old> with a new value <d_new> and returns the
-  // relaxed dimension in <*out>. If <d_old> and <d_new> have incompatible
-  // values, returns an error.
+  // Relaxes <d0> and <d1> and returns the relaxed dimension in <*out>. If <d0>
+  // and <d1> have incompatible values, returns an error.
   //
-  // Note that <*out> may be set to <d_old> or <d_new>.
-  void Relax(DimensionHandle d_old, DimensionHandle d_new,
-             DimensionHandle* out);
-  // Relaxes an existing shape <s_old> with a new shape <s_new> and returns the
-  // relaxed shape in <*out>. See 'RelaxInput' function for full details and
-  // examples.
-  void Relax(ShapeHandle s_old, ShapeHandle s_new, ShapeHandle* out);
+  // Note that <*out> may be set to <d0> or <d1>.
+  void Relax(DimensionHandle d0, DimensionHandle d1, DimensionHandle* out);
+  // Relaxes <s0> and <s1> and returns the relaxed shape in <*out>. See
+  // 'RelaxInput' function for full details and examples.
+  void Relax(ShapeHandle s0, ShapeHandle s1, ShapeHandle* out);
 
   // Used to implement MergeInputHandleShapesAndTypes and
   // MergeOutputHandleShapesAndTypes.
@@ -700,12 +681,6 @@ class InferenceContext {
   bool RelaxHandleShapesAndMergeTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
       std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
-
-  // Forget all the previous merged shapes and dims.
-  void ForgetMerges() {
-    merged_shapes_.clear();
-    merged_dims_.clear();
-  }
 
   ShapeManager shape_manager_;
 
@@ -741,13 +716,6 @@ class InferenceContext {
   // An error set during construction. TODO(cwhipkey): remove when test
   // constructor is removed.
   Status construction_status_;
-
-  // Pair of shape or dim handles that are equivalent, ie that represent the
-  // same underlying shape of dimension. Note that for each pair at least one of
-  // the handles must contain an unknown shape, since we don't keep track of
-  // known shapes or dims here.
-  std::vector<std::pair<ShapeHandle, ShapeHandle>> merged_shapes_;
-  std::vector<std::pair<DimensionHandle, DimensionHandle>> merged_dims_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
 };

@@ -84,32 +84,15 @@ inline int hex_digit_to_int(char c) {
   return x & 0xf;
 }
 
-bool CUnescapeInternal(StringPiece source, string* dest,
+bool CUnescapeInternal(StringPiece source, char* dest,
                        string::size_type* dest_len, string* error) {
+  char* d = dest;
   const char* p = source.data();
   const char* end = source.end();
   const char* last_byte = end - 1;
 
-  // We are going to write the result to dest with its iterator. If our string
-  // implementation uses copy-on-write, this will trigger a copy-on-write of
-  // dest's buffer; that is, dest will be assigned a new buffer.
-  //
-  // Note that the following way is NOT a legal way to modify a string's
-  // content:
-  //
-  //  char* d = const_cast<char*>(dest->data());
-  //
-  // This won't trigger copy-on-write of the string, and so is dangerous when
-  // the buffer is shared.
-  auto d = dest->begin();
-
   // Small optimization for case where source = dest and there's no escaping
-  if (source.data() == dest->data()) {
-    while (p < end && *p != '\\') {
-      p++;
-      d++;
-    }
-  }
+  while (p == d && p < end && *p != '\\') p++, d++;
 
   while (p < end) {
     if (*p != '\\') {
@@ -209,7 +192,7 @@ bool CUnescapeInternal(StringPiece source, string* dest,
       p++;  // read past letter we escaped
     }
   }
-  *dest_len = d - dest->begin();
+  *dest_len = d - dest;
   return true;
 }
 
@@ -232,7 +215,8 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
 bool CUnescape(StringPiece source, string* dest, string* error) {
   dest->resize(source.size());
   string::size_type dest_size;
-  if (!CUnescapeInternal(source, dest, &dest_size, error)) {
+  if (!CUnescapeInternal(source, const_cast<char*>(dest->data()), &dest_size,
+                         error)) {
     return false;
   }
   dest->erase(dest_size);
@@ -423,11 +407,11 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   }
   const size_t n = p - s->data();
   if (n > 0) {
-    *val = StringPiece(s->data(), n);
+    val->set(s->data(), n);
     s->remove_prefix(n);
     return true;
   } else {
-    *val = StringPiece();
+    val->clear();
     return false;
   }
 }

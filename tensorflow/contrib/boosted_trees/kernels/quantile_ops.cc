@@ -50,7 +50,6 @@ const char* const kAreBucketsReadyName = "are_buckets_ready";
 const char* const kNumSparseFeaturesName = "num_sparse_features";
 const char* const kSparseBucketsName = "sparse_buckets";
 const char* const kSparseValuesName = "sparse_values";
-const char* const kSparseIndicesName = "sparse_indices";
 const char* const kSparseStreamsStateName = "sparse_streams_state";
 const char* const kSparseSummariesName = "sparse_summaries";
 const char* const kSparseConfigName = "sparse_config";
@@ -86,23 +85,9 @@ std::vector<float> GetBuckets(const int32 feature,
   return buckets_vector;
 }
 
-int32 GetFeatureDimension(const int32 feature_index, const int64 instance,
-                          const OpInputList* const indices_list) {
-  if (indices_list != nullptr) {
-    // Sparse multidimensional.
-    return (*indices_list)[feature_index].matrix<int64>()(instance, 1);
-  }
-  // No indices, assume one-dimensional tensor.
-  return 0;
-}
-
-// Allows quantization for each of multiple dimensions of a sparse feature.
-void QuantizeFeatures(
-    const string& output_name, const OpInputList& values_list,
-    const OpInputList& buckets_list,
-    const OpInputList* const
-        indices_list /** Optional, provide for sparse features **/,
-    OpKernelContext* const context) {
+void QuantizeFeatures(const string& output_name, const OpInputList& values_list,
+                      const OpInputList& buckets_list,
+                      OpKernelContext* const context) {
   if (values_list.size() == 0) {
     return;
   }
@@ -115,13 +100,10 @@ void QuantizeFeatures(
     const int64 num_values = values_tensor.dim_size(0);
 
     Tensor* output_t = nullptr;
-    // Output will have bucket id and dimension of the features for that bucket.
     OP_REQUIRES_OK(
-        context, output_list.allocate(feature_index,
-                                      TensorShape({num_values, 2}), &output_t));
-
-    auto output = output_t->matrix<int32>();
-
+        context, output_list.allocate(feature_index, TensorShape({num_values}),
+                                      &output_t));
+    TTypes<int32>::Vec output = output_t->vec<int32>();
     const std::vector<float>& buckets_vector =
         GetBuckets(feature_index, buckets_list);
     auto flat_values = values_tensor.flat<float>();
@@ -134,11 +116,7 @@ void QuantizeFeatures(
       }
       const int32 bucket =
           static_cast<int32>(bucket_iter - buckets_vector.begin());
-      // Bucket id.
-      output(instance, 0) = bucket;
-      // Dimension.
-      output(instance, 1) =
-          GetFeatureDimension(feature_index, instance, indices_list);
+      output(instance) = bucket;
     }
   }
 }
@@ -873,11 +851,6 @@ class QuantilesOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list(kSparseValuesName,
                                        &sparse_float_feature_values_list));
-
-    OpInputList sparse_float_indices_list;
-    OP_REQUIRES_OK(context, context->input_list(kSparseIndicesName,
-                                                &sparse_float_indices_list));
-
     OpInputList sparse_buckets_list;
     OP_REQUIRES_OK(
         context, context->input_list(kSparseBucketsName, &sparse_buckets_list));
@@ -892,10 +865,10 @@ class QuantilesOp : public OpKernel {
 
     // Quantize the feature values
     QuantizeFeatures(kDenseOutputTensorName, dense_float_features_list,
-                     dense_buckets_list, nullptr, context);
+                     dense_buckets_list, context);
 
     QuantizeFeatures(kSparseOutputTensorName, sparse_float_feature_values_list,
-                     sparse_buckets_list, &sparse_float_indices_list, context);
+                     sparse_buckets_list, context);
   }
 };
 

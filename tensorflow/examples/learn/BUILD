@@ -114,6 +114,13 @@ py_binary(
 )
 
 py_binary(
+    name = "wide_n_deep_tutorial",
+    srcs = ["wide_n_deep_tutorial.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_binary(
     name = "mnist",
     srcs = ["mnist.py"],
     srcs_version = "PY2AND3",
@@ -146,6 +153,7 @@ sh_test(
         ":text_classification_character_cnn",
         ":text_classification_character_rnn",
         ":text_classification_cnn",
+        ":wide_n_deep_tutorial",
     ],
     tags = [
         "manual",

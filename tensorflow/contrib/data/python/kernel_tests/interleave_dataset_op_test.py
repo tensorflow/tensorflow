@@ -187,9 +187,8 @@ class InterleaveDatasetTest(test.TestCase):
         sess.run(next_element)
 
   def testSparse(self):
-
     def _map_fn(i):
-      return sparse_tensor.SparseTensorValue(
+      return sparse_tensor.SparseTensor(
           indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
 
     def _interleave_fn(x):

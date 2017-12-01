@@ -17,5 +17,3 @@ def xla_proto_library(name, srcs=[], deps=[], visibility=None, testonly=0):
                    protoc="@protobuf_archive//:protoc",
                    testonly=testonly,
                    visibility=visibility,)
-
-ORC_JIT_MEMORY_MAPPER_TARGETS = []

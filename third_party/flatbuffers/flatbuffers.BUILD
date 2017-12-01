@@ -107,10 +107,6 @@ cc_binary(
         "grpc/",
         "include/",
     ],
-    linkopts = [
-        "-lm",
-        "-ldl",
-    ],
     deps = [
         ":flatc_library",
     ],

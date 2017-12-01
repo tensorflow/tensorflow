@@ -53,7 +53,6 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],

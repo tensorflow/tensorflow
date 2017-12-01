@@ -78,8 +78,7 @@ TEST_F(IdentifyFramesTest, NestedLoop) {
   *graph.add_node() = CreateNode("17", {"16"});
 
   std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
+  int num_frames = IdentifyFrames(graph, &frames);
   std::unordered_map<string, std::vector<int>> expected = {
       {"0", {}},      {"1", {0}},     {"2", {0}},     {"3", {0}},
       {"4", {0}},     {"5", {0}},     {"6", {0}},     {"7", {0, 1}},
@@ -109,8 +108,7 @@ TEST_F(IdentifyFramesTest, MultipleInputsToEnter) {
   *graph.add_node() = CreateNode("3", "Exit", {"2"});
 
   std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
+  int num_frames = IdentifyFrames(graph, &frames);
   std::unordered_map<string, std::vector<int>> expected = {
       {"0", {}}, {"1", {}}, {"2", {0}}, {"3", {0}}};
   EXPECT_EQ(num_frames, 1);
@@ -137,8 +135,7 @@ TEST_F(IdentifyFramesTest, ExitOutput) {
   *graph.add_node() = CreateNode("4", {"2", "3"});
 
   std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
+  int num_frames = IdentifyFrames(graph, &frames);
   std::unordered_map<string, std::vector<int>> expected = {
       {"0", {}}, {"1", {0}}, {"2", {0}}, {"3", {}}, {"4", {}}};
   EXPECT_EQ(num_frames, 1);
@@ -170,8 +167,7 @@ TEST_F(IdentifyFramesTest, MultipleEnterNodes) {
   *graph.add_node() = CreateNode("9", "Exit", {"7"});
 
   std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
+  int num_frames = IdentifyFrames(graph, &frames);
   std::unordered_map<string, std::vector<int>> expected = {
       {"0", {}}, {"1", {0}}, {"2", {0}}, {"3", {0}}, {"4", {0}},
       {"5", {}}, {"6", {0}}, {"7", {0}}, {"8", {0}}, {"9", {0}}};

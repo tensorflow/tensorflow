@@ -70,7 +70,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import python_io
@@ -153,11 +152,6 @@ class ReaderBase(object):
   contains the work units and the Reader dequeues from the queue when
   it is asked to produce a record (via Read()) but it has finished the
   last work unit.
-
-  @compatibility(eager)
-  Readers are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self, reader_ref, supports_serialize=False):
@@ -167,15 +161,7 @@ class ReaderBase(object):
       reader_ref: The operation that implements the reader.
       supports_serialize: True if the reader implementation can
         serialize its state.
-
-    Raises:
-      RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
-      raise RuntimeError(
-          "Readers are not supported when eager execution is enabled. "
-          "Instead, please use tf.data to get data into your model.")
-
     self._reader_ref = reader_ref
     self._supports_serialize = supports_serialize
 
@@ -361,11 +347,6 @@ class WholeFileReader(ReaderBase):
   be a filename (key) and the contents of that file (value).
 
   See ReaderBase for supported methods.
-
-  @compatibility(eager)
-  Readers are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self, name=None):
@@ -386,11 +367,6 @@ class TextLineReader(ReaderBase):
 
   Newlines are stripped from the output.
   See ReaderBase for supported methods.
-
-  @compatibility(eager)
-  Readers are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
   # TODO(josh11b): Support serializing and restoring state.
 
@@ -414,11 +390,6 @@ class FixedLengthRecordReader(ReaderBase):
   """A Reader that outputs fixed-length records from a file.
 
   See ReaderBase for supported methods.
-
-  @compatibility(eager)
-  Readers are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
   # TODO(josh11b): Support serializing and restoring state.
 
@@ -456,11 +427,6 @@ class TFRecordReader(ReaderBase):
   """A Reader that outputs the records from a TFRecords file.
 
   See ReaderBase for supported methods.
-
-  @compatibility(eager)
-  Readers are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
   # TODO(josh11b): Support serializing and restoring state.
 
@@ -486,11 +452,6 @@ class LMDBReader(ReaderBase):
   """A Reader that outputs the records from a LMDB file.
 
   See ReaderBase for supported methods.
-
-  @compatibility(eager)
-  Readers are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
   def __init__(self, name=None, options=None):
     """Create a LMDBReader.
@@ -513,11 +474,6 @@ class IdentityReader(ReaderBase):
   work string and output (work, work).
 
   See ReaderBase for supported methods.
-
-  @compatibility(eager)
-  Readers are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self, name=None):

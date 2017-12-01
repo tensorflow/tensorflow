@@ -1,0 +1,609 @@
+op {
+  graph_op_name: "Qr"
+  endpoint {
+    name: "Qr"
+  }
+  summary: "Computes the QR decompositions of one or more matrices."
+  description: <<END
+Computes the QR decomposition of each inner matrix in `tensor` such that
+`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
+
+```python
+# a is a tensor.
+# q is a tensor of orthonormal matrices.
+# r is a tensor of upper triangular matrices.
+q, r = qr(a)
+q_full, r_full = qr(a, full_matrices=True)
+```
+END
+}
+op {
+  graph_op_name: "QuantizeAndDequantize"
+  endpoint {
+    name: "QuantizeAndDequantize"
+  }
+  summary: "Use QuantizeAndDequantizeV2 instead."
+}
+op {
+  graph_op_name: "QuantizeAndDequantizeV2"
+  endpoint {
+    name: "QuantizeAndDequantizeV2"
+  }
+  summary: "Quantizes then dequantizes a tensor."
+  description: <<END
+This op simulates the precision loss from the quantized forward pass by:
+1. Quantizing the tensor to fixed point numbers, which should match the target
+   quantization method when it is used in inference.
+2. Dequantizing it back to floating point numbers for the following ops, most
+   likely matmul.
+
+There are different ways to quantize. This version does not use the full range
+of the output type, choosing to elide the lowest possible value for symmetry
+(e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit
+quantization), so that 0.0 maps to 0.
+
+To perform this op, we first find the range of values in our tensor. The range
+we use is always centered on 0, so we find m such that
+
+1. m = max(abs(input_min), abs(input_max)) if range_given is true,
+2. m = max(abs(min_elem(input)), abs(max_elem(input))) otherwise.
+
+Our input tensor range is then [-m, m].
+
+Next, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].
+If signed_input is true, this is
+
+  [min_fixed, max_fixed ] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].
+
+Otherwise, if signed_input is false, the fixed-point range is
+
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].
+
+From this we compute our scaling factor, s:
+
+  s = (max_fixed - min_fixed) / (2 * m).
+
+Now we can quantize and dequantize the elements of our tensor.  An element e
+is transformed into e':
+
+  e' = (e * s).round_to_nearest() / s.
+
+Note that we have a different number of buckets in the signed vs. unsigned
+cases.  For example, if num_bits == 8, we get 254 buckets in the signed case
+vs. 255 in the unsigned case.
+
+For example, suppose num_bits = 8 and m = 1.  Then
+
+  [min_fixed, max_fixed] = [-127, 127], and
+  s = (127 + 127) / 2 = 127.
+
+Given the vector {-1, -0.5, 0, 0.3}, this is quantized to
+{-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}.
+END
+}
+op {
+  graph_op_name: "QuantizeAndDequantizeV3"
+  endpoint {
+    name: "QuantizeAndDequantizeV3"
+  }
+  summary: "Quantizes then dequantizes a tensor."
+  description: <<END
+This is almost identical to QuantizeAndDequantizeV2, except that num_bits is a
+tensor, so its value can change during training.
+END
+}
+op {
+  graph_op_name: "QuantizeDownAndShrinkRange"
+  endpoint {
+    name: "QuantizeDownAndShrinkRange"
+  }
+  summary: "Convert the quantized \'input\' tensor into a lower-precision \'output\', using the"
+  description: <<END
+actual distribution of the values to maximize the usage of the lower bit depth
+and adjusting the output min and max ranges accordingly.
+
+[input_min, input_max] are scalar floats that specify the range for the float
+interpretation of the 'input' data. For example, if input_min is -1.0f and
+input_max is 1.0f, and we are dealing with quint16 quantized data, then a 0
+value in the 16-bit data should be interpreted as -1.0f, and a 65535 means 1.0f.
+
+This operator tries to squeeze as much precision as possible into an output with
+a lower bit depth by calculating the actual min and max values found in the
+data. For example, maybe that quint16 input has no values lower than 16,384 and
+none higher than 49,152. That means only half the range is actually needed, all
+the float interpretations are between -0.5f and 0.5f, so if we want to compress
+the data into a quint8 output, we can use that range rather than the theoretical
+-1.0f to 1.0f that is suggested by the input min and max.
+
+In practice, this is most useful for taking output from operations like
+QuantizedMatMul that can produce higher bit-depth outputs than their inputs and
+may have large potential output ranges, but in practice have a distribution of
+input values that only uses a small fraction of the possible range. By feeding
+that output into this operator, we can reduce it from 32 bits down to 8 with
+minimal loss of accuracy.
+END
+}
+op {
+  graph_op_name: "QuantizeV2"
+  endpoint {
+    name: "QuantizeV2"
+  }
+  summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
+  description: <<END
+[min_range, max_range] are scalar floats that specify the range for
+the 'input' data. The 'mode' attribute controls exactly which calculations are
+used to convert the float values to their quantized equivalents.
+
+In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
+
+```
+out[i] = (in[i] - min_range) * range(T) / (max_range - min_range)
+if T == qint8, out[i] -= (range(T) + 1) / 2.0
+```
+here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
+
+*MIN_COMBINED Mode Example*
+
+Assume the input is type float and has a possible range of [0.0, 6.0] and the
+output type is quint8 ([0, 255]). The min_range and max_range values should be
+specified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each
+value of the input by 255/6 and cast to quint8.
+
+If the output type was qint8 ([-128, 127]), the operation will additionally
+subtract each value by 128 prior to casting, so that the range of values aligns
+with the range of qint8.
+
+If the mode is 'MIN_FIRST', then this approach is used:
+
+```
+number_of_steps = 1 << (# of bits in T)
+range_adjust = number_of_steps / (number_of_steps - 1)
+range = (range_max - range_min) * range_adjust
+range_scale = number_of_steps / range
+quantized = round(input * range_scale) - round(range_min * range_scale) +
+  numeric_limits<T>::min()
+quantized = max(quantized, numeric_limits<T>::min())
+quantized = min(quantized, numeric_limits<T>::max())
+```
+
+The biggest difference between this and MIN_COMBINED is that the minimum range
+is rounded first, before it's subtracted from the rounded value. With
+MIN_COMBINED, a small bias is introduced where repeated iterations of quantizing
+and dequantizing will introduce a larger and larger error.
+
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, we do not use the full range of the output type,
+choosing to elide the lowest possible value for symmetry (e.g., output range is
+-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+0.
+
+We first find the range of values in our tensor. The
+range we use is always centered on 0, so we find m such that
+```c++
+  m = max(abs(input_min), abs(input_max))
+```
+
+Our input tensor range is then `[-m, m]`.
+
+Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+If T is signed, this is
+```
+  num_bits = sizeof(T) * 8
+  [min_fixed, max_fixed] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+```
+
+Otherwise, if T is unsigned, the fixed-point range is
+```
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+```
+
+From this we compute our scaling factor, s:
+```c++
+  s = (max_fixed - min_fixed) / (2 * m)
+```
+
+Now we can quantize the elements of our tensor:
+```c++
+result = (input * s).round_to_nearest()
+```
+
+One thing to watch out for is that the operator may choose to adjust the
+requested minimum and maximum values slightly during the quantization process,
+so you should always use the output ports as the range for further calculations.
+For example, if the requested minimum and maximum values are close to equal,
+they will be separated by a small epsilon value to prevent ill-formed quantized
+buffers from being created. Otherwise, you can end up with buffers where all the
+quantized values map to the same float value, which causes problems for
+operations that have to perform further calculations on them.
+END
+}
+op {
+  graph_op_name: "QuantizedAdd"
+  endpoint {
+    name: "QuantizedAdd"
+  }
+  summary: "Returns x + y element-wise, working on quantized buffers."
+}
+op {
+  graph_op_name: "QuantizedAvgPool"
+  endpoint {
+    name: "QuantizedAvgPool"
+  }
+  summary: "Produces the average pool of the input tensor for quantized types."
+}
+op {
+  graph_op_name: "QuantizedBatchNormWithGlobalNormalization"
+  endpoint {
+    name: "QuantizedBatchNormWithGlobalNormalization"
+  }
+  summary: "Quantized Batch normalization."
+  description: <<END
+This op is deprecated and will be removed in the future. Prefer
+`tf.nn.batch_normalization`.
+END
+}
+op {
+  graph_op_name: "QuantizedBiasAdd"
+  endpoint {
+    name: "QuantizedBiasAdd"
+  }
+  summary: "Adds Tensor \'bias\' to Tensor \'input\' for Quantized types."
+  description: <<END
+Broadcasts the values of bias on dimensions 0..N-2 of 'input'.
+END
+}
+op {
+  graph_op_name: "QuantizedConcat"
+  endpoint {
+    name: "QuantizedConcat"
+  }
+  summary: "Concatenates quantized tensors along one dimension."
+}
+op {
+  graph_op_name: "QuantizedConv2D"
+  endpoint {
+    name: "QuantizedConv2D"
+  }
+  summary: "Computes a 2D convolution given quantized 4D input and filter tensors."
+  description: <<END
+The inputs are quantized tensors where the lowest value represents the real
+number of the associated minimum, and the highest represents the maximum.
+This means that you can only interpret the quantized output in the same way, by
+taking the returned minimum and maximum values into account.
+END
+}
+op {
+  graph_op_name: "QuantizedInstanceNorm"
+  endpoint {
+    name: "QuantizedInstanceNorm"
+  }
+  summary: "Quantized Instance normalization."
+}
+op {
+  graph_op_name: "QuantizedMatMul"
+  endpoint {
+    name: "QuantizedMatMul"
+  }
+  summary: "Perform a quantized matrix multiplication of  `a` by the matrix `b`."
+  description: <<END
+The inputs must be two-dimensional matrices and the inner dimension of
+`a` (after being transposed if `transpose_a` is non-zero) must match the
+outer dimension of `b` (after being transposed if `transposed_b` is
+non-zero).
+END
+}
+op {
+  graph_op_name: "QuantizedMaxPool"
+  endpoint {
+    name: "QuantizedMaxPool"
+  }
+  summary: "Produces the max pool of the input tensor for quantized types."
+}
+op {
+  graph_op_name: "QuantizedMul"
+  endpoint {
+    name: "QuantizedMul"
+  }
+  summary: "Returns x * y element-wise, working on quantized buffers."
+}
+op {
+  graph_op_name: "QuantizedRelu"
+  endpoint {
+    name: "QuantizedRelu"
+  }
+  summary: "Computes Quantized Rectified Linear: `max(features, 0)`"
+}
+op {
+  graph_op_name: "QuantizedRelu6"
+  endpoint {
+    name: "QuantizedRelu6"
+  }
+  summary: "Computes Quantized Rectified Linear 6: `min(max(features, 0), 6)`"
+}
+op {
+  graph_op_name: "QuantizedReluX"
+  endpoint {
+    name: "QuantizedReluX"
+  }
+  summary: "Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`"
+}
+op {
+  graph_op_name: "QuantizedReshape"
+  endpoint {
+    name: "QuantizedReshape"
+  }
+  summary: "Reshapes a quantized tensor as per the Reshape op."
+  description: <<END
+```
+END
+}
+op {
+  graph_op_name: "QuantizedResizeBilinear"
+  endpoint {
+    name: "QuantizedResizeBilinear"
+  }
+  summary: "Resize quantized `images` to `size` using quantized bilinear interpolation."
+  description: <<END
+Input images and output images must be quantized types.
+END
+}
+op {
+  graph_op_name: "QueueClose"
+  endpoint {
+    name: "QueueClose"
+  }
+  summary: "Closes the given queue."
+  description: <<END
+This operation signals that no more elements will be enqueued in the
+given queue. Subsequent Enqueue(Many) operations will fail.
+Subsequent Dequeue(Many) operations will continue to succeed if
+sufficient elements remain in the queue. Subsequent Dequeue(Many)
+operations that would block will fail immediately.
+END
+}
+op {
+  graph_op_name: "QueueCloseV2"
+  endpoint {
+    name: "QueueCloseV2"
+  }
+  summary: "Closes the given queue."
+  description: <<END
+This operation signals that no more elements will be enqueued in the
+given queue. Subsequent Enqueue(Many) operations will fail.
+Subsequent Dequeue(Many) operations will continue to succeed if
+sufficient elements remain in the queue. Subsequent Dequeue(Many)
+operations that would block will fail immediately.
+END
+}
+op {
+  graph_op_name: "QueueDequeue"
+  endpoint {
+    name: "QueueDequeue"
+  }
+  summary: "Dequeues a tuple of one or more tensors from the given queue."
+  description: <<END
+This operation has k outputs, where k is the number of components
+in the tuples stored in the given queue, and output i is the ith
+component of the dequeued tuple.
+
+N.B. If the queue is empty, this operation will block until an element
+has been dequeued (or 'timeout_ms' elapses, if specified).
+END
+}
+op {
+  graph_op_name: "QueueDequeueMany"
+  endpoint {
+    name: "QueueDequeueMany"
+  }
+  summary: "Dequeues `n` tuples of one or more tensors from the given queue."
+  description: <<END
+If the queue is closed and there are fewer than `n` elements, then an
+OutOfRange error is returned.
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size `n` in the 0th dimension.
+
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
+component of the dequeued tuple.
+
+N.B. If the queue is empty, this operation will block until `n` elements
+have been dequeued (or 'timeout_ms' elapses, if specified).
+END
+}
+op {
+  graph_op_name: "QueueDequeueManyV2"
+  endpoint {
+    name: "QueueDequeueManyV2"
+  }
+  summary: "Dequeues `n` tuples of one or more tensors from the given queue."
+  description: <<END
+If the queue is closed and there are fewer than `n` elements, then an
+OutOfRange error is returned.
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size `n` in the 0th dimension.
+
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
+component of the dequeued tuple.
+
+N.B. If the queue is empty, this operation will block until `n` elements
+have been dequeued (or 'timeout_ms' elapses, if specified).
+END
+}
+op {
+  graph_op_name: "QueueDequeueUpTo"
+  endpoint {
+    name: "QueueDequeueUpTo"
+  }
+  summary: "Dequeues `n` tuples of one or more tensors from the given queue."
+  description: <<END
+This operation is not supported by all queues.  If a queue does not support
+DequeueUpTo, then an Unimplemented error is returned.
+
+If the queue is closed and there are more than 0 but less than `n`
+elements remaining, then instead of returning an OutOfRange error like
+QueueDequeueMany, less than `n` elements are returned immediately.  If
+the queue is closed and there are 0 elements left in the queue, then
+an OutOfRange error is returned just like in QueueDequeueMany.
+Otherwise the behavior is identical to QueueDequeueMany:
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size `n` in the 0th dimension.
+
+This operation has k outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
+component of the dequeued tuple.
+END
+}
+op {
+  graph_op_name: "QueueDequeueUpToV2"
+  endpoint {
+    name: "QueueDequeueUpToV2"
+  }
+  summary: "Dequeues `n` tuples of one or more tensors from the given queue."
+  description: <<END
+This operation is not supported by all queues.  If a queue does not support
+DequeueUpTo, then an Unimplemented error is returned.
+
+If the queue is closed and there are more than 0 but less than `n`
+elements remaining, then instead of returning an OutOfRange error like
+QueueDequeueMany, less than `n` elements are returned immediately.  If
+the queue is closed and there are 0 elements left in the queue, then
+an OutOfRange error is returned just like in QueueDequeueMany.
+Otherwise the behavior is identical to QueueDequeueMany:
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size n in the 0th dimension.
+
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
+component of the dequeued tuple.
+END
+}
+op {
+  graph_op_name: "QueueDequeueV2"
+  endpoint {
+    name: "QueueDequeueV2"
+  }
+  summary: "Dequeues a tuple of one or more tensors from the given queue."
+  description: <<END
+This operation has k outputs, where k is the number of components
+in the tuples stored in the given queue, and output i is the ith
+component of the dequeued tuple.
+
+N.B. If the queue is empty, this operation will block until an element
+has been dequeued (or 'timeout_ms' elapses, if specified).
+END
+}
+op {
+  graph_op_name: "QueueEnqueue"
+  endpoint {
+    name: "QueueEnqueue"
+  }
+  summary: "Enqueues a tuple of one or more tensors in the given queue."
+  description: <<END
+The components input has k elements, which correspond to the components of
+tuples stored in the given queue.
+
+N.B. If the queue is full, this operation will block until the given
+element has been enqueued (or 'timeout_ms' elapses, if specified).
+END
+}
+op {
+  graph_op_name: "QueueEnqueueMany"
+  endpoint {
+    name: "QueueEnqueueMany"
+  }
+  summary: "Enqueues zero or more tuples of one or more tensors in the given queue."
+  description: <<END
+This operation slices each component tensor along the 0th dimension to
+make multiple queue elements. All of the tuple components must have the
+same size in the 0th dimension.
+
+The components input has k elements, which correspond to the components of
+tuples stored in the given queue.
+
+N.B. If the queue is full, this operation will block until the given
+elements have been enqueued (or 'timeout_ms' elapses, if specified).
+END
+}
+op {
+  graph_op_name: "QueueEnqueueManyV2"
+  endpoint {
+    name: "QueueEnqueueManyV2"
+  }
+  summary: "Enqueues zero or more tuples of one or more tensors in the given queue."
+  description: <<END
+This operation slices each component tensor along the 0th dimension to
+make multiple queue elements. All of the tuple components must have the
+same size in the 0th dimension.
+
+The components input has k elements, which correspond to the components of
+tuples stored in the given queue.
+
+N.B. If the queue is full, this operation will block until the given
+elements have been enqueued (or 'timeout_ms' elapses, if specified).
+END
+}
+op {
+  graph_op_name: "QueueEnqueueV2"
+  endpoint {
+    name: "QueueEnqueueV2"
+  }
+  summary: "Enqueues a tuple of one or more tensors in the given queue."
+  description: <<END
+The components input has k elements, which correspond to the components of
+tuples stored in the given queue.
+
+N.B. If the queue is full, this operation will block until the given
+element has been enqueued (or 'timeout_ms' elapses, if specified).
+END
+}
+op {
+  graph_op_name: "QueueIsClosed"
+  endpoint {
+    name: "QueueIsClosed"
+  }
+  summary: "Returns true if queue is closed."
+  description: <<END
+This operation returns true if the queue is closed and false if the queue
+is open.
+END
+}
+op {
+  graph_op_name: "QueueIsClosedV2"
+  endpoint {
+    name: "QueueIsClosedV2"
+  }
+  summary: "Returns true if queue is closed."
+  description: <<END
+This operation returns true if the queue is closed and false if the queue
+is open.
+END
+}
+op {
+  graph_op_name: "QueueSize"
+  endpoint {
+    name: "QueueSize"
+  }
+  summary: "Computes the number of elements in the given queue."
+}
+op {
+  graph_op_name: "QueueSizeV2"
+  endpoint {
+    name: "QueueSizeV2"
+  }
+  summary: "Computes the number of elements in the given queue."
+}

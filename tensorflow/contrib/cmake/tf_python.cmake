@@ -225,7 +225,6 @@ add_python_module("tensorflow/python/grappler")
 add_python_module("tensorflow/python/keras")
 add_python_module("tensorflow/python/keras/activations")
 add_python_module("tensorflow/python/keras/applications")
-add_python_module("tensorflow/python/keras/applications/inception_resnet_v2")
 add_python_module("tensorflow/python/keras/applications/inception_v3")
 add_python_module("tensorflow/python/keras/applications/mobilenet")
 add_python_module("tensorflow/python/keras/applications/resnet50")
@@ -239,7 +238,6 @@ add_python_module("tensorflow/python/keras/datasets")
 add_python_module("tensorflow/python/keras/datasets/boston_housing")
 add_python_module("tensorflow/python/keras/datasets/cifar10")
 add_python_module("tensorflow/python/keras/datasets/cifar100")
-add_python_module("tensorflow/python/keras/datasets/fashion_mnist")
 add_python_module("tensorflow/python/keras/datasets/imdb")
 add_python_module("tensorflow/python/keras/datasets/mnist")
 add_python_module("tensorflow/python/keras/datasets/reuters")
@@ -337,7 +335,6 @@ add_python_module("tensorflow/contrib/cudnn_rnn/kernels")
 add_python_module("tensorflow/contrib/cudnn_rnn/ops")
 add_python_module("tensorflow/contrib/cudnn_rnn/python")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/kernel_tests")
-add_python_module("tensorflow/contrib/cudnn_rnn/python/layers")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/ops")
 add_python_module("tensorflow/contrib/data")
 add_python_module("tensorflow/contrib/data/python")
@@ -501,19 +498,6 @@ add_python_module("tensorflow/contrib/linear_optimizer/kernels/g3doc")
 add_python_module("tensorflow/contrib/linear_optimizer/python")
 add_python_module("tensorflow/contrib/linear_optimizer/python/kernel_tests")
 add_python_module("tensorflow/contrib/linear_optimizer/python/ops")
-add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite")
-add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python")
-add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E touch
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/__init__.py")
-add_custom_command(
-    TARGET tf_python_copy_scripts_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E touch
-    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/lite.py)
 add_python_module("tensorflow/contrib/lookup")
 add_python_module("tensorflow/contrib/losses")
 add_python_module("tensorflow/contrib/losses/python")
@@ -535,11 +519,6 @@ add_python_module("tensorflow/contrib/metrics/python")
 add_python_module("tensorflow/contrib/metrics/python/kernel_tests")
 add_python_module("tensorflow/contrib/metrics/python/metrics")
 add_python_module("tensorflow/contrib/metrics/python/ops")
-add_python_module("tensorflow/contrib/model_pruning")
-add_python_module("tensorflow/contrib/model_pruning/examples")
-add_python_module("tensorflow/contrib/model_pruning/examples/cifar10")
-add_python_module("tensorflow/contrib/model_pruning/python")
-add_python_module("tensorflow/contrib/model_pruning/python/layers")
 add_python_module("tensorflow/contrib/ndlstm")
 add_python_module("tensorflow/contrib/ndlstm/python")
 add_python_module("tensorflow/contrib/nn")
@@ -716,9 +695,6 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
       set(require_shape_fn 1)
     endif()
 
-    get_filename_component(GENERATE_PYTHON_OP_LIB_MKDIRPATH ${GENERATE_PYTHON_OP_LIB_DESTINATION} PATH)
-    file(MAKE_DIRECTORY ${GENERATE_PYTHON_OP_LIB_MKDIRPATH})
-
     # Create a C++ executable that links in the appropriate op
     # registrations and generates Python wrapper code based on the
     # registered ops.
@@ -747,7 +723,6 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
         ${GENERATE_PYTHON_OP_LIB_DESTINATION} PARENT_SCOPE)
 endfunction()
 
-GENERATE_PYTHON_OP_LIB("audio_ops")
 GENERATE_PYTHON_OP_LIB("array_ops")
 GENERATE_PYTHON_OP_LIB("bitwise_ops")
 GENERATE_PYTHON_OP_LIB("math_ops")
@@ -795,8 +770,6 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_cudnn_rnn_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cudnn_rnn/ops/gen_cudnn_rnn_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_data_prefetching_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_prefetching_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_clustering_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
@@ -992,7 +965,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
-    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<$<BOOL:${BOOL_WIN32}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
     ${pywrap_tensorflow_deffile}
 )
@@ -1068,23 +1041,25 @@ if(WIN32)
         DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/python/ops/)
 endif(WIN32)
 
-# include contrib/seq2seq as .so
-#
-set(tf_beam_search_srcs
-    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.h"
-    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc"
-)
+if(WIN32)
+    # include contrib/seq2seq as .so
+    #
+    set(tf_beam_search_srcs
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.h"
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc"
+    )
 
-set(tf_beam_search_gpu_srcs
-    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops_gpu.cu.cc"
-)
+    set(tf_beam_search_gpu_srcs
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops_gpu.cu.cc"
+    )
 
-AddUserOps(TARGET _beam_search_ops
-    SOURCES "${tf_beam_search_srcs}"
-    GPUSOURCES ${tf_beam_search_gpu_srcs}
-    DEPENDS pywrap_tensorflow_internal tf_python_ops
-    DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/python/ops/)
+    AddUserOps(TARGET _beam_search_ops
+        SOURCES "${tf_beam_search_srcs}"
+        GPUSOURCES ${tf_beam_search_gpu_srcs}
+        DEPENDS pywrap_tensorflow_internal tf_python_ops
+        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/python/ops/)
+endif(WIN32)
 
 ############################################################
 # Build a PIP package containing the TensorFlow runtime.

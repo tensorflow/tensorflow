@@ -28,12 +28,7 @@ namespace xla {
 namespace tools {
 
 // The api of the hlo parser. Given a string in the HloModule::ToString()
-// format, parses the string and creates a HloModule with the given config.
-StatusOr<std::unique_ptr<HloModule>> Parse(tensorflow::StringPiece str,
-                                           const HloModuleConfig& config);
-
-// The api of the hlo parser. Given a string in the HloModule::ToString()
-// format, parses the string and creates a HloModule with default config.
+// format, returns the parsed HloModule.
 StatusOr<std::unique_ptr<HloModule>> Parse(tensorflow::StringPiece str);
 
 }  // namespace tools

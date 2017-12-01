@@ -184,7 +184,8 @@ class LayerCollection(object):
   def default_generic_approximation(self):
     return self._default_generic_approximation
 
-  def set_default_generic_approximation(self, value):
+  @default_generic_approximation.setter
+  def default_generic_approximation(self, value):
     if value not in _GENERIC_APPROX_TO_BLOCK_TYPES:
       raise ValueError(
           "{} is not a valid approximation for generic variables.".format(
@@ -195,7 +196,8 @@ class LayerCollection(object):
   def default_fully_connected_approximation(self):
     return self._default_fully_connected_approximation
 
-  def set_default_fully_connected_approximation(self, value):
+  @default_fully_connected_approximation.setter
+  def default_fully_connected_approximation(self, value):
     if value not in _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES:
       raise ValueError(
           "{} is not a valid approximation for fully connected layers.".format(
@@ -206,7 +208,8 @@ class LayerCollection(object):
   def default_conv2d_approximation(self):
     return self._default_convolution_2d_approximation
 
-  def set_default_conv2d_approximation(self, value):
+  @default_conv2d_approximation.setter
+  def default_conv2d_approximation(self, value):
     if value not in _CONV2D_APPROX_TO_BLOCK_TYPES:
       raise ValueError(
           "{} is not a valid approximation for 2d convolutional layers.".format(

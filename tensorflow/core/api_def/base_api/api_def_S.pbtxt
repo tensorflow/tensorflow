@@ -1,0 +1,2678 @@
+op {
+  graph_op_name: "SampleDistortedBoundingBox"
+  endpoint {
+    name: "SampleDistortedBoundingBox"
+  }
+  summary: "Generate a single randomly distorted bounding box for an image."
+  description: <<END
+Bounding box annotations are often supplied in addition to ground-truth labels
+in image recognition or object localization tasks. A common technique for
+training such a system is to randomly distort an image while preserving
+its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+localization of an object, i.e. bounding box, given an `image_size`,
+`bounding_boxes` and a series of constraints.
+
+The output of this Op is a single bounding box that may be used to crop the
+original image. The output is returned as 3 tensors: `begin`, `size` and
+`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
+what the bounding box looks like.
+
+Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
+bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+height of the underlying image.
+
+For example,
+
+```python
+    # Generate a single distorted bounding box.
+    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+        tf.shape(image),
+        bounding_boxes=bounding_boxes)
+
+    # Draw the bounding box in an image summary.
+    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                  bbox_for_draw)
+    tf.image_summary('images_with_box', image_with_box)
+
+    # Employ the bounding box to distort the image.
+    distorted_image = tf.slice(image, begin, size)
+```
+
+Note that if no bounding box information is available, setting
+`use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+false and no bounding boxes are supplied, an error is raised.
+END
+}
+op {
+  graph_op_name: "SampleDistortedBoundingBoxV2"
+  endpoint {
+    name: "SampleDistortedBoundingBoxV2"
+  }
+  summary: "Generate a single randomly distorted bounding box for an image."
+  description: <<END
+Bounding box annotations are often supplied in addition to ground-truth labels
+in image recognition or object localization tasks. A common technique for
+training such a system is to randomly distort an image while preserving
+its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+localization of an object, i.e. bounding box, given an `image_size`,
+`bounding_boxes` and a series of constraints.
+
+The output of this Op is a single bounding box that may be used to crop the
+original image. The output is returned as 3 tensors: `begin`, `size` and
+`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
+what the bounding box looks like.
+
+Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
+bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+height of the underlying image.
+
+For example,
+
+```python
+    # Generate a single distorted bounding box.
+    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+        tf.shape(image),
+        bounding_boxes=bounding_boxes)
+
+    # Draw the bounding box in an image summary.
+    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                  bbox_for_draw)
+    tf.image_summary('images_with_box', image_with_box)
+
+    # Employ the bounding box to distort the image.
+    distorted_image = tf.slice(image, begin, size)
+```
+
+Note that if no bounding box information is available, setting
+`use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+false and no bounding boxes are supplied, an error is raised.
+END
+}
+op {
+  graph_op_name: "Save"
+  endpoint {
+    name: "Save"
+  }
+  summary: "Saves the input tensors to disk."
+  description: <<END
+The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
+is written to `filename` with name `tensor_names[i]`.
+
+See also `SaveSlices`.
+END
+}
+op {
+  graph_op_name: "SaveIterator"
+  endpoint {
+    name: "SaveIterator"
+  }
+  summary: "Saves the state of the `iterator` at `path`."
+  description: <<END
+This state can be restored using "RestoreIterator".
+END
+}
+op {
+  graph_op_name: "SaveSlices"
+  endpoint {
+    name: "SaveSlices"
+  }
+  summary: "Saves input tensors slices to disk."
+  description: <<END
+This is like `Save` except that tensors can be listed in the saved file as being
+a slice of a larger tensor.  `shapes_and_slices` specifies the shape of the
+larger tensor and the slice that this tensor covers. `shapes_and_slices` must
+have as many elements as `tensor_names`.
+
+Elements of the `shapes_and_slices` input must either be:
+
+*  The empty string, in which case the corresponding tensor is
+   saved normally.
+*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the
+   `dimI` are the dimensions of the larger tensor and `slice-spec`
+   specifies what part is covered by the tensor to save.
+
+`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`
+where each `sliceI` is either:
+
+*  The string `-` meaning that the slice covers all indices of this dimension
+*  `start,length` where `start` and `length` are integers.  In that
+   case the slice covers `length` indices starting at `start`.
+
+See also `Save`.
+END
+}
+op {
+  graph_op_name: "SaveV2"
+  endpoint {
+    name: "SaveV2"
+  }
+  summary: "Saves tensors in V2 checkpoint format."
+  description: <<END
+By default, saves the named tensors in full.  If the caller wishes to save
+specific slices of full tensors, "shape_and_slices" should be non-empty strings
+and correspondingly well-formed.
+END
+}
+op {
+  graph_op_name: "ScalarSummary"
+  endpoint {
+    name: "ScalarSummary"
+  }
+  summary: "Outputs a `Summary` protocol buffer with scalar values."
+  description: <<END
+The input `tags` and `values` must have the same shape.  The generated summary
+has a summary value for each tag-value pair in `tags` and `values`.
+END
+}
+op {
+  graph_op_name: "ScatterAdd"
+  endpoint {
+    name: "ScatterAdd"
+  }
+  summary: "Adds sparse updates to a variable reference."
+  description: <<END
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] += updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] += updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions add.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "ScatterDiv"
+  endpoint {
+    name: "ScatterDiv"
+  }
+  summary: "Divides a variable reference by sparse updates."
+  description: <<END
+This operation computes
+
+```python
+    # Scalar indices
+    ref[indices, ...] /= updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] /= updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]
+```
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions divide.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+END
+}
+op {
+  graph_op_name: "ScatterMul"
+  endpoint {
+    name: "ScatterMul"
+  }
+  summary: "Multiplies sparse updates into a variable reference."
+  description: <<END
+This operation computes
+
+```python
+    # Scalar indices
+    ref[indices, ...] *= updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] *= updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]
+```
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions multiply.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+END
+}
+op {
+  graph_op_name: "ScatterNd"
+  endpoint {
+    name: "ScatterNd"
+  }
+  summary: "Scatter `updates` into a new (initially zero) tensor according to `indices`."
+  description: <<END
+Creates a new tensor by applying sparse `updates` to individual
+values or slices within a zero tensor of the given `shape` according to
+indices.  This operator is the inverse of the @{tf.gather_nd} operator which
+extracts values or slices from a given tensor.
+
+**WARNING**: The order in which updates are applied is nondeterministic, so the
+output will be nondeterministic if `indices` contains duplicates.
+
+`indices` is an integer tensor containing indices into a new tensor of shape
+`shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+
+    indices.shape[-1] <= shape.rank
+
+The last dimension of `indices` corresponds to indices into elements
+(if `indices.shape[-1] = shape.rank`) or slices
+(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+`shape`.  `updates` is a tensor with shape
+
+    indices.shape[:-1] + shape[indices.shape[-1]:]
+
+The simplest form of scatter is to insert individual elements in a tensor by
+index. For example, say we want to insert 4 scattered elements in a rank-1
+tensor with 8 elements.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+```python
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    shape = tf.constant([8])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    with tf.Session() as sess:
+      print(sess.run(scatter))
+```
+
+The resulting tensor would look like this:
+
+    [0, 11, 0, 10, 9, 0, 0, 12]
+
+We can also, insert entire slices of a higher rank tensor all at once. For
+example, if we wanted to insert two slices in the first dimension of a
+rank-3 tensor with two matrices of new values.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+```python
+    indices = tf.constant([[0], [2]])
+    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]],
+                           [[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]]])
+    shape = tf.constant([4, 4, 4])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    with tf.Session() as sess:
+      print(sess.run(scatter))
+```
+
+The resulting tensor would look like this:
+
+    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+END
+}
+op {
+  graph_op_name: "ScatterNdAdd"
+  endpoint {
+    name: "ScatterNdAdd"
+  }
+  summary: "Applies sparse addition between `updates` and individual values or slices"
+  description: <<END
+within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to add 4 scattered elements to a rank-1 tensor to 8
+elements. In Python, that addition would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    add = tf.scatter_nd_add(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(add)
+
+The resulting update to ref would look like this:
+
+    [1, 13, 3, 14, 14, 6, 7, 20]
+
+See @{tf.scatter_nd} for more details about how to make updates to
+slices.
+END
+}
+op {
+  graph_op_name: "ScatterNdNonAliasingAdd"
+  endpoint {
+    name: "ScatterNdNonAliasingAdd"
+  }
+  summary: "Applies sparse addition to `input` using individual values or slices"
+  description: <<END
+from `updates` according to indices `indices`.  The updates are non-aliasing:
+`input` is only modified in-place if no other operations will use it.
+Otherwise, a copy of `input` is made.  This operation has a gradient with
+respect to both `input` and `updates`.
+
+`input` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `input`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or `(P-K)`-dimensional slices
+(if `K < P`) along the `K`th dimension of `input`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, input.shape[K], ..., input.shape[P-1]].
+```
+
+For example, say we want to add 4 scattered elements to a rank-1 tensor to 8
+elements. In Python, that addition would look like this:
+
+    input = tf.constant([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    output = tf.scatter_nd_non_aliasing_add(input, indices, updates)
+    with tf.Session() as sess:
+      print(sess.run(output))
+
+The resulting value `output` would look like this:
+
+    [1, 13, 3, 14, 14, 6, 7, 20]
+
+See @{tf.scatter_nd} for more details about how to make updates to slices.
+END
+}
+op {
+  graph_op_name: "ScatterNdSub"
+  endpoint {
+    name: "ScatterNdSub"
+  }
+  summary: "Applies sparse subtraction between `updates` and individual values or slices"
+  description: <<END
+within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to subtract 4 scattered elements from a rank-1 tensor
+with 8 elements. In Python, that subtraction would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    sub = tf.scatter_nd_sub(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(sub)
+
+The resulting update to ref would look like this:
+
+    [1, -9, 3, -6, -4, 6, 7, -4]
+
+See @{tf.scatter_nd} for more details about how to make updates to
+slices.
+END
+}
+op {
+  graph_op_name: "ScatterNdUpdate"
+  endpoint {
+    name: "ScatterNdUpdate"
+  }
+  summary: "Applies sparse `updates` to individual values or slices within a given"
+  description: <<END
+variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to update 4 scattered elements to a rank-1 tensor to
+8 elements. In Python, that update would look like this:
+
+```python
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1] ,[7]])
+    updates = tf.constant([9, 10, 11, 12])
+    update = tf.scatter_nd_update(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(update)
+```
+
+The resulting update to ref would look like this:
+
+    [1, 11, 3, 10, 9, 6, 7, 12]
+
+See @{tf.scatter_nd} for more details about how to make updates to
+slices.
+END
+}
+op {
+  graph_op_name: "ScatterSub"
+  endpoint {
+    name: "ScatterSub"
+  }
+  summary: "Subtracts sparse updates to a variable reference."
+  description: <<END
+```python
+    # Scalar indices
+    ref[indices, ...] -= updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] -= updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] -= updates[i, ..., j, ...]
+```
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their (negated) contributions add.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterSub.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "ScatterUpdate"
+  endpoint {
+    name: "ScatterUpdate"
+  }
+  summary: "Applies sparse updates to a variable reference."
+  description: <<END
+This operation computes
+
+```python
+    # Scalar indices
+    ref[indices, ...] = updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] = updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+```
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+If values in `ref` is to be updated more than once, because there are
+duplicate entries in `indices`, the order at which the updates happen
+for each value is undefined.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterUpdate.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "SdcaFprint"
+  endpoint {
+    name: "SdcaFprint"
+  }
+  summary: "Computes fingerprints of the input strings."
+}
+op {
+  graph_op_name: "SdcaOptimizer"
+  endpoint {
+    name: "SdcaOptimizer"
+  }
+  summary: "Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for"
+  description: <<END
+linear models with L1 + L2 regularization. As global optimization objective is
+strongly-convex, the optimizer optimizes the dual objective at each step. The
+optimizer applies each update one example at a time. Examples are sampled
+uniformly, and the optimizer is learning rate free and enjoys linear convergence
+rate.
+
+[Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>
+Shai Shalev-Shwartz, Tong Zhang. 2012
+
+$$Loss Objective = \sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$
+
+[Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>
+Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,
+Peter Richtarik, Martin Takac. 2015
+
+[Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>
+Dominik Csiba, Zheng Qu, Peter Richtarik. 2015
+END
+}
+op {
+  graph_op_name: "SdcaShrinkL1"
+  endpoint {
+    name: "SdcaShrinkL1"
+  }
+  summary: "Applies L1 regularization shrink step on the parameters."
+}
+op {
+  graph_op_name: "SegmentMax"
+  endpoint {
+    name: "SegmentMax"
+  }
+  summary: "Computes the maximum along segments of a tensor."
+  description: <<END
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
+
+Computes a tensor such that
+\\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+that `segment_ids[j] == i`.
+
+If the max is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "SegmentMean"
+  endpoint {
+    name: "SegmentMean"
+  }
+  summary: "Computes the mean along segments of a tensor."
+  description: <<END
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
+
+Computes a tensor such that
+\\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
+over `j` such that `segment_ids[j] == i` and `N` is the total number of
+values summed.
+
+If the mean is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "SegmentMin"
+  endpoint {
+    name: "SegmentMin"
+  }
+  summary: "Computes the minimum along segments of a tensor."
+  description: <<END
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
+
+Computes a tensor such that
+\\(output_i = \min_j(data_j)\\) where `min` is over `j` such
+that `segment_ids[j] == i`.
+
+If the min is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "SegmentProd"
+  endpoint {
+    name: "SegmentProd"
+  }
+  summary: "Computes the product along segments of a tensor."
+  description: <<END
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
+
+Computes a tensor such that
+\\(output_i = \prod_j data_j\\) where the product is over `j` such
+that `segment_ids[j] == i`.
+
+If the product is empty for a given segment ID `i`, `output[i] = 1`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "SegmentSum"
+  endpoint {
+    name: "SegmentSum"
+  }
+  summary: "Computes the sum along segments of a tensor."
+  description: <<END
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
+
+Computes a tensor such that
+\\(output_i = \sum_j data_j\\) where sum is over `j` such
+that `segment_ids[j] == i`.
+
+If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "Select"
+  endpoint {
+    name: "Select"
+  }
+  summary: "Selects elements from `t` or `e`, depending on `condition`."
+  description: <<END
+The `t`, and `e` tensors must all have the same shape, and the
+output will also have that shape.
+
+The `condition` tensor must be a scalar if `t` and `e` are scalars.
+If `t` and `e` are vectors or higher rank, then `condition` must be either a
+scalar, a vector with size matching the first dimension of `t`, or must have
+the same shape as `t`.
+
+The `condition` tensor acts as a mask that chooses, based on the value at each
+element, whether the corresponding element / row in the output should be
+taken from `t` (if true) or `e` (if false).
+
+If `condition` is a vector and `t` and `e` are higher rank matrices, then
+it chooses which row (outer dimension) to copy from `t` and `e`.
+If `condition` has the same shape as `t` and `e`, then it chooses which
+element to copy from `t` and `e`.
+
+For example:
+
+```python
+# 'condition' tensor is [[True,  False]
+#                        [False, True]]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e)  # => [[1, 6], [7, 4]]
+
+
+# 'condition' tensor is [True, False]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e) ==> [[1, 2],
+                             [7, 8]]
+
+```
+END
+}
+op {
+  graph_op_name: "SelfAdjointEig"
+  endpoint {
+    name: "SelfAdjointEig"
+  }
+  summary: "Computes the Eigen Decomposition of a batch of square self-adjoint matrices."
+  description: <<END
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices, with the same constraints as the single matrix
+SelfAdjointEig.
+
+The result is a [..., M+1, M] matrix with [..., 0,:] containing the
+eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
+END
+}
+op {
+  graph_op_name: "SelfAdjointEigV2"
+  endpoint {
+    name: "SelfAdjointEigV2"
+  }
+  summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
+  description: <<END
+Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
+`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
+
+```python
+# a is a tensor.
+# e is a tensor of eigenvalues.
+# v is a tensor of eigenvectors.
+e, v = self_adjoint_eig(a)
+e = self_adjoint_eig(a, compute_v=False)
+```
+END
+}
+op {
+  graph_op_name: "Selu"
+  endpoint {
+    name: "Selu"
+  }
+  summary: "Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`"
+  description: <<END
+if < 0, `scale * features` otherwise.
+
+See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+END
+}
+op {
+  graph_op_name: "SeluGrad"
+  endpoint {
+    name: "SeluGrad"
+  }
+  summary: "Computes gradients for the scaled exponential linear (Selu) operation."
+}
+op {
+  graph_op_name: "SerializeManySparse"
+  endpoint {
+    name: "SerializeManySparse"
+  }
+  summary: "Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`."
+  description: <<END
+The `SparseTensor` must have rank `R` greater than 1, and the first dimension
+is treated as the minibatch dimension.  Elements of the `SparseTensor`
+must be sorted in increasing order of this first dimension.  The serialized
+`SparseTensor` objects going into each row of `serialized_sparse` will have
+rank `R-1`.
+
+The minibatch size `N` is extracted from `sparse_shape[0]`.
+END
+}
+op {
+  graph_op_name: "SerializeSparse"
+  endpoint {
+    name: "SerializeSparse"
+  }
+  summary: "Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object."
+}
+op {
+  graph_op_name: "SerializeTensor"
+  endpoint {
+    name: "SerializeTensor"
+  }
+  summary: "Transforms a Tensor into a serialized TensorProto proto."
+}
+op {
+  graph_op_name: "SetSize"
+  endpoint {
+    name: "SetSize"
+  }
+  summary: "Number of unique elements along last dimension of input `set`."
+  description: <<END
+Input `set` is a `SparseTensor` represented by `set_indices`, `set_values`,
+and `set_shape`. The last dimension contains values in a set, duplicates are
+allowed but ignored.
+
+If `validate_indices` is `True`, this op validates the order and range of `set`
+indices.
+END
+}
+op {
+  graph_op_name: "Shape"
+  endpoint {
+    name: "Shape"
+  }
+  summary: "Returns the shape of a tensor."
+  description: <<END
+This operation returns a 1-D integer tensor representing the shape of `input`.
+
+For example:
+
+```
+# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+shape(t) ==> [2, 2, 3]
+```
+END
+}
+op {
+  graph_op_name: "ShapeN"
+  endpoint {
+    name: "ShapeN"
+  }
+  summary: "Returns shape of tensors."
+  description: <<END
+This operation returns N 1-D integer tensors representing shape of `input[i]s`.
+END
+}
+op {
+  graph_op_name: "ShardedFilename"
+  endpoint {
+    name: "ShardedFilename"
+  }
+  summary: "Generate a sharded filename. The filename is printf formatted as"
+  description: <<END
+   %s-%05d-of-%05d, basename, shard, num_shards.
+END
+}
+op {
+  graph_op_name: "ShardedFilespec"
+  endpoint {
+    name: "ShardedFilespec"
+  }
+  summary: "Generate a glob pattern matching all sharded file names."
+}
+op {
+  graph_op_name: "ShuffleDataset"
+  endpoint {
+    name: "ShuffleDataset"
+  }
+  summary: "Creates a dataset that shuffles elements from `input_dataset` pseudorandomly."
+}
+op {
+  graph_op_name: "Sigmoid"
+  endpoint {
+    name: "Sigmoid"
+  }
+  summary: "Computes sigmoid of `x` element-wise."
+  description: <<END
+Specifically, `y = 1 / (1 + exp(-x))`.
+END
+}
+op {
+  graph_op_name: "SigmoidGrad"
+  endpoint {
+    name: "SigmoidGrad"
+  }
+  summary: "Computes the gradient of the sigmoid of `x` wrt its input."
+  description: <<END
+Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
+`dy` is the corresponding input gradient.
+END
+}
+op {
+  graph_op_name: "Sign"
+  endpoint {
+    name: "Sign"
+  }
+  summary: "Returns an element-wise indication of the sign of a number."
+  description: <<END
+`y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+
+For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
+END
+}
+op {
+  graph_op_name: "Sin"
+  endpoint {
+    name: "Sin"
+  }
+  summary: "Computes sin of x element-wise."
+}
+op {
+  graph_op_name: "Sinh"
+  endpoint {
+    name: "Sinh"
+  }
+  summary: "Computes hyperbolic sine of x element-wise."
+}
+op {
+  graph_op_name: "Size"
+  endpoint {
+    name: "Size"
+  }
+  summary: "Returns the size of a tensor."
+  description: <<END
+This operation returns an integer representing the number of elements in
+`input`.
+
+For example:
+
+```
+# 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
+size(t) ==> 12
+```
+END
+}
+op {
+  graph_op_name: "SkipDataset"
+  endpoint {
+    name: "SkipDataset"
+  }
+  summary: "Creates a dataset that skips `count` elements from the `input_dataset`."
+}
+op {
+  graph_op_name: "Skipgram"
+  endpoint {
+    name: "Skipgram"
+  }
+  summary: "Parses a text file and creates a batch of examples."
+}
+op {
+  graph_op_name: "Slice"
+  endpoint {
+    name: "Slice"
+  }
+  summary: "Return a slice from \'input\'."
+  description: <<END
+The output tensor is a tensor with dimensions described by 'size'
+whose values are extracted from 'input' starting at the offsets in
+'begin'.
+
+*Requirements*:
+  0 <= begin[i] <= begin[i] + size[i] <= Di  for i in [0, n)
+END
+}
+op {
+  graph_op_name: "SloppyInterleaveDataset"
+  endpoint {
+    name: "SloppyInterleaveDataset"
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  description: <<END
+The resulting dataset is similar to the `InterleaveDataset`, with the exception
+that if retrieving the next value from a dataset would cause the requester to
+block, it will skip that input dataset. This dataset is especially useful
+when loading data from a variable-latency datastores (e.g. HDFS, GCS), as it
+allows the training step to proceed so long as some data is available.
+
+!! WARNING !! This dataset is not deterministic!
+END
+}
+op {
+  graph_op_name: "Softmax"
+  endpoint {
+    name: "Softmax"
+  }
+  summary: "Computes softmax activations."
+  description: <<END
+For each batch `i` and class `j` we have
+
+    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
+END
+}
+op {
+  graph_op_name: "SoftmaxCrossEntropyWithLogits"
+  endpoint {
+    name: "SoftmaxCrossEntropyWithLogits"
+  }
+  summary: "Computes softmax cross entropy cost and gradients to backpropagate."
+  description: <<END
+Inputs are the logits, not probabilities.
+END
+}
+op {
+  graph_op_name: "Softplus"
+  endpoint {
+    name: "Softplus"
+  }
+  summary: "Computes softplus: `log(exp(features) + 1)`."
+}
+op {
+  graph_op_name: "SoftplusGrad"
+  endpoint {
+    name: "SoftplusGrad"
+  }
+  summary: "Computes softplus gradients for a softplus operation."
+}
+op {
+  graph_op_name: "Softsign"
+  endpoint {
+    name: "Softsign"
+  }
+  summary: "Computes softsign: `features / (abs(features) + 1)`."
+}
+op {
+  graph_op_name: "SoftsignGrad"
+  endpoint {
+    name: "SoftsignGrad"
+  }
+  summary: "Computes softsign gradients for a softsign operation."
+}
+op {
+  graph_op_name: "SpaceToBatch"
+  endpoint {
+    name: "SpaceToBatch"
+  }
+  summary: "SpaceToBatch for 4-D tensors of type T."
+  description: <<END
+This is a legacy version of the more general SpaceToBatchND.
+
+Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
+More specifically, this op outputs a copy of the input tensor where values from
+the `height` and `width` dimensions are moved to the `batch` dimension. After
+the zero-padding, both `height` and `width` of the input must be divisible by the
+block size.
+END
+}
+op {
+  graph_op_name: "SpaceToBatchND"
+  endpoint {
+    name: "SpaceToBatchND"
+  }
+  summary: "SpaceToBatch for N-D tensors of type T."
+  description: <<END
+This operation divides "spatial" dimensions `[1, ..., M]` of the input into a
+grid of blocks of shape `block_shape`, and interleaves these blocks with the
+"batch" dimension (0) such that in the output, the spatial dimensions
+`[1, ..., M]` correspond to the position within the grid, and the batch
+dimension combines both the position within a spatial block and the original
+batch position.  Prior to division into blocks, the spatial dimensions of the
+input are optionally zero padded according to `paddings`.  See below for a
+precise description.
+END
+}
+op {
+  graph_op_name: "SpaceToDepth"
+  endpoint {
+    name: "SpaceToDepth"
+  }
+  summary: "SpaceToDepth for tensors of type T."
+  description: <<END
+Rearranges blocks of spatial data, into depth. More specifically,
+this op outputs a copy of the input tensor where values from the `height`
+and `width` dimensions are moved to the `depth` dimension.
+The attr `block_size` indicates the input block size.
+
+  * Non-overlapping blocks of size `block_size x block size` are rearranged
+    into depth at each location.
+  * The depth of the output tensor is `block_size * block_size * input_depth`.
+  * The Y, X coordinates within each block of the input become the high order
+    component of the output channel index.
+  * The input tensor's height and width must be divisible by block_size.
+
+The `data_format` attr specifies the layout of the input and output tensors
+with the following options:
+  "NHWC": `[ batch, height, width, channels ]`
+  "NCHW": `[ batch, channels, height, width ]`
+  "NCHW_VECT_C":
+      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+
+It is useful to consider the operation as transforming a 6-D Tensor.
+e.g. for data_format = NHWC,
+     Each element in the input tensor can be specified via 6 coordinates,
+     ordered by decreasing memory layout significance as:
+     n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates
+                        within the output image, bX, bY means coordinates
+                        within the input block, iC means input channels).
+     The output would be a transpose to the following layout:
+     n,oY,oX,bY,bX,iC
+
+This operation is useful for resizing the activations between convolutions
+(but keeping all data), e.g. instead of pooling. It is also useful for training
+purely convolutional models.
+
+For example, given an input of shape `[1, 2, 2, 1]`, data_format = "NHWC" and
+block_size = 2:
+
+```
+x = [[[[1], [2]],
+      [[3], [4]]]]
+```
+
+This operation will output a tensor of shape `[1, 1, 1, 4]`:
+
+```
+[[[[1, 2, 3, 4]]]]
+```
+
+Here, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,
+the corresponding output will have a single element (i.e. width and height are
+both 1) and will have a depth of 4 channels (1 * block_size * block_size).
+The output element shape is `[1, 1, 4]`.
+
+For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
+
+```
+x = [[[[1, 2, 3], [4, 5, 6]],
+      [[7, 8, 9], [10, 11, 12]]]]
+```
+
+This operation, for block_size of 2, will return the following tensor of shape
+`[1, 1, 1, 12]`
+
+```
+[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+```
+
+Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
+
+```
+x = [[[[1],   [2],  [5],  [6]],
+      [[3],   [4],  [7],  [8]],
+      [[9],  [10], [13],  [14]],
+      [[11], [12], [15],  [16]]]]
+```
+
+the operator will return the following tensor of shape `[1 2 2 4]`:
+
+```
+x = [[[[1, 2, 3, 4],
+       [5, 6, 7, 8]],
+      [[9, 10, 11, 12],
+       [13, 14, 15, 16]]]]
+```
+END
+}
+op {
+  graph_op_name: "SparseAccumulatorApplyGradient"
+  endpoint {
+    name: "SparseAccumulatorApplyGradient"
+  }
+  summary: "Applies a sparse gradient to a given accumulator."
+  description: <<END
+Does not add if local_step is smaller than the accumulator's
+global_step.
+END
+}
+op {
+  graph_op_name: "SparseAccumulatorTakeGradient"
+  endpoint {
+    name: "SparseAccumulatorTakeGradient"
+  }
+  summary: "Extracts the average sparse gradient in a SparseConditionalAccumulator."
+  description: <<END
+The op will blocks until sufficient (i.e., more than num_required)
+gradients have been accumulated. If the accumulator has already
+aggregated more than num_required gradients, it will return its
+average of the accumulated gradients.  Also automatically increments
+the recorded global_step in the accumulator by 1, and resets the
+aggregate to 0.
+END
+}
+op {
+  graph_op_name: "SparseAdd"
+  endpoint {
+    name: "SparseAdd"
+  }
+  summary: "Adds two `SparseTensor` objects to produce another `SparseTensor`."
+  description: <<END
+The input `SparseTensor` objects' indices are assumed ordered in standard
+lexicographic order.  If this is not the case, before this step run
+`SparseReorder` to restore index ordering.
+
+By default, if two values sum to zero at some index, the output `SparseTensor`
+would still include that particular location in its index, storing a zero in the
+corresponding value slot.  To override this, callers can specify `thresh`,
+indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+corresponding value and index would then not be included.  In particular,
+`thresh == 0` (default) means everything is kept and actual thresholding happens
+only for a positive value.
+
+In the following shapes, `nnz` is the count after taking `thresh` into account.
+END
+}
+op {
+  graph_op_name: "SparseAddGrad"
+  endpoint {
+    name: "SparseAddGrad"
+  }
+  summary: "The gradient operator for the SparseAdd op."
+  description: <<END
+The SparseAdd op calculates A + B, where A, B, and the sum are all represented
+as `SparseTensor` objects.  This op takes in the upstream gradient w.r.t.
+non-empty values of the sum, and outputs the gradients w.r.t. the non-empty
+values of A and B.
+END
+}
+op {
+  graph_op_name: "SparseApplyAdadelta"
+  endpoint {
+    name: "SparseApplyAdadelta"
+  }
+  summary: "var: Should be from a Variable()."
+}
+op {
+  graph_op_name: "SparseApplyAdagrad"
+  endpoint {
+    name: "SparseApplyAdagrad"
+  }
+  summary: "Update relevant entries in \'*var\' and \'*accum\' according to the adagrad scheme."
+  description: <<END
+That is for rows we have grad for, we update var and accum as follows:
+accum += grad * grad
+var -= lr * grad * (1 / sqrt(accum))
+END
+}
+op {
+  graph_op_name: "SparseApplyAdagradDA"
+  endpoint {
+    name: "SparseApplyAdagradDA"
+  }
+  summary: "Update entries in \'*var\' and \'*accum\' according to the proximal adagrad scheme."
+}
+op {
+  graph_op_name: "SparseApplyCenteredRMSProp"
+  endpoint {
+    name: "SparseApplyCenteredRMSProp"
+  }
+  summary: "Update \'*var\' according to the centered RMSProp algorithm."
+  description: <<END
+The centered RMSProp algorithm uses an estimate of the centered second moment
+(i.e., the variance) for normalization, as opposed to regular RMSProp, which
+uses the (uncentered) second moment. This often helps with training, but is
+slightly more expensive in terms of computation and memory.
+
+Note that in dense implementation of this algorithm, mg, ms, and mom will
+update even if the grad is zero, but in this sparse implementation, mg, ms,
+and mom will not update in iterations during which the grad is zero.
+
+mean_square = decay * mean_square + (1-decay) * gradient ** 2
+mean_grad = decay * mean_grad + (1-decay) * gradient
+Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
+
+ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
+var <- var - mom
+END
+}
+op {
+  graph_op_name: "SparseApplyFtrl"
+  endpoint {
+    name: "SparseApplyFtrl"
+  }
+  summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
+  description: <<END
+That is for rows we have grad for, we update var, accum and linear as follows:
+accum_new = accum + grad * grad
+linear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+END
+}
+op {
+  graph_op_name: "SparseApplyFtrlV2"
+  endpoint {
+    name: "SparseApplyFtrlV2"
+  }
+  summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
+  description: <<END
+That is for rows we have grad for, we update var, accum and linear as follows:
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+END
+}
+op {
+  graph_op_name: "SparseApplyMomentum"
+  endpoint {
+    name: "SparseApplyMomentum"
+  }
+  summary: "Update relevant entries in \'*var\' and \'*accum\' according to the momentum scheme."
+  description: <<END
+Set use_nesterov = True if you want to use Nesterov momentum.
+
+That is for rows we have grad for, we update var and accum as follows:
+
+accum = accum * momentum + grad
+var -= lr * accum
+END
+}
+op {
+  graph_op_name: "SparseApplyProximalAdagrad"
+  endpoint {
+    name: "SparseApplyProximalAdagrad"
+  }
+  summary: "Sparse update entries in \'*var\' and \'*accum\' according to FOBOS algorithm."
+  description: <<END
+That is for rows we have grad for, we update var and accum as follows:
+accum += grad * grad
+prox_v = var
+prox_v -= lr * grad * (1 / sqrt(accum))
+var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
+END
+}
+op {
+  graph_op_name: "SparseApplyProximalGradientDescent"
+  endpoint {
+    name: "SparseApplyProximalGradientDescent"
+  }
+  summary: "Sparse update \'*var\' as FOBOS algorithm with fixed learning rate."
+  description: <<END
+That is for rows we have grad for, we update var as follows:
+prox_v = var - alpha * grad
+var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
+END
+}
+op {
+  graph_op_name: "SparseApplyRMSProp"
+  endpoint {
+    name: "SparseApplyRMSProp"
+  }
+  summary: "Update \'*var\' according to the RMSProp algorithm."
+  description: <<END
+Note that in dense implementation of this algorithm, ms and mom will
+update even if the grad is zero, but in this sparse implementation, ms
+and mom will not update in iterations during which the grad is zero.
+
+mean_square = decay * mean_square + (1-decay) * gradient ** 2
+Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
+
+ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
+var <- var - mom
+END
+}
+op {
+  graph_op_name: "SparseConcat"
+  endpoint {
+    name: "SparseConcat"
+  }
+  summary: "Concatenates a list of `SparseTensor` along the specified dimension."
+  description: <<END
+Concatenation is with respect to the dense versions of these sparse tensors.
+It is assumed that each input is a `SparseTensor` whose elements are ordered
+along increasing dimension number.
+
+All inputs' shapes must match, except for the concat dimension.  The
+`indices`, `values`, and `shapes` lists must have the same length.
+
+The output shape is identical to the inputs', except along the concat
+dimension, where it is the sum of the inputs' sizes along that dimension.
+
+The output elements will be resorted to preserve the sort order along
+increasing dimension number.
+
+This op runs in `O(M log M)` time, where `M` is the total number of non-empty
+values across all inputs. This is due to the need for an internal sort in
+order to concatenate efficiently across an arbitrary dimension.
+
+For example, if `concat_dim = 1` and the inputs are
+
+    sp_inputs[0]: shape = [2, 3]
+    [0, 2]: "a"
+    [1, 0]: "b"
+    [1, 1]: "c"
+
+    sp_inputs[1]: shape = [2, 4]
+    [0, 1]: "d"
+    [0, 2]: "e"
+
+then the output will be
+
+    shape = [2, 7]
+    [0, 2]: "a"
+    [0, 4]: "d"
+    [0, 5]: "e"
+    [1, 0]: "b"
+    [1, 1]: "c"
+
+Graphically this is equivalent to doing
+
+    [    a] concat [  d e  ] = [    a   d e  ]
+    [b c  ]        [       ]   [b c          ]
+END
+}
+op {
+  graph_op_name: "SparseConditionalAccumulator"
+  endpoint {
+    name: "SparseConditionalAccumulator"
+  }
+  summary: "A conditional accumulator for aggregating sparse gradients."
+  description: <<END
+The accumulator accepts gradients marked with local_step greater or
+equal to the most recent global_step known to the accumulator. The
+average can be extracted from the accumulator, provided sufficient
+gradients have been accumulated. Extracting the average automatically
+resets the aggregate to 0, and increments the global_step recorded by
+the accumulator.
+END
+}
+op {
+  graph_op_name: "SparseCross"
+  endpoint {
+    name: "SparseCross"
+  }
+  summary: "Generates sparse cross from a list of sparse and dense tensors."
+  description: <<END
+The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each
+representing features of one feature column. It outputs a 2D `SparseTensor` with
+the batchwise crosses of these features.
+
+For example, if the inputs are
+
+    inputs[0]: SparseTensor with shape = [2, 2]
+    [0, 0]: "a"
+    [1, 0]: "b"
+    [1, 1]: "c"
+
+    inputs[1]: SparseTensor with shape = [2, 1]
+    [0, 0]: "d"
+    [1, 0]: "e"
+
+    inputs[2]: Tensor [["f"], ["g"]]
+
+then the output will be
+
+    shape = [2, 2]
+    [0, 0]: "a_X_d_X_f"
+    [1, 0]: "b_X_e_X_g"
+    [1, 1]: "c_X_e_X_g"
+
+if hashed_output=true then the output will be
+
+    shape = [2, 2]
+    [0, 0]: FingerprintCat64(
+                Fingerprint64("f"), FingerprintCat64(
+                    Fingerprint64("d"), Fingerprint64("a")))
+    [1, 0]: FingerprintCat64(
+                Fingerprint64("g"), FingerprintCat64(
+                    Fingerprint64("e"), Fingerprint64("b")))
+    [1, 1]: FingerprintCat64(
+                Fingerprint64("g"), FingerprintCat64(
+                    Fingerprint64("e"), Fingerprint64("c")))
+END
+}
+op {
+  graph_op_name: "SparseDenseCwiseAdd"
+  endpoint {
+    name: "SparseDenseCwiseAdd"
+  }
+  summary: "Adds up a SparseTensor and a dense Tensor, using these special rules:"
+  description: <<END
+(1) Broadcasts the dense side to have the same shape as the sparse side, if
+    eligible;
+(2) Then, only the dense values pointed to by the indices of the SparseTensor
+    participate in the cwise addition.
+
+By these rules, the result is a logical SparseTensor with exactly the same
+indices and shape, but possibly with different non-zero values.  The output of
+this Op is the resultant non-zero values.
+END
+}
+op {
+  graph_op_name: "SparseDenseCwiseDiv"
+  endpoint {
+    name: "SparseDenseCwiseDiv"
+  }
+  summary: "Component-wise divides a SparseTensor by a dense Tensor."
+  description: <<END
+*Limitation*: this Op only broadcasts the dense side to the sparse side, but not
+the other direction.
+END
+}
+op {
+  graph_op_name: "SparseDenseCwiseMul"
+  endpoint {
+    name: "SparseDenseCwiseMul"
+  }
+  summary: "Component-wise multiplies a SparseTensor by a dense Tensor."
+  description: <<END
+The output locations corresponding to the implicitly zero elements in the sparse
+tensor will be zero (i.e., will not take up storage space), regardless of the
+contents of the dense tensor (even if it's +/-INF and that INF*0 == NaN).
+
+*Limitation*: this Op only broadcasts the dense side to the sparse side, but not
+the other direction.
+END
+}
+op {
+  graph_op_name: "SparseFillEmptyRows"
+  endpoint {
+    name: "SparseFillEmptyRows"
+  }
+  summary: "Fills empty rows in the input 2-D `SparseTensor` with a default value."
+  description: <<END
+The input `SparseTensor` is represented via the tuple of inputs
+(`indices`, `values`, `dense_shape`).  The output `SparseTensor` has the
+same `dense_shape` but with indices `output_indices` and values
+`output_values`.
+
+This op inserts a single entry for every row that doesn't have any values.
+The index is created as `[row, 0, ..., 0]` and the inserted value
+is `default_value`.
+
+For example, suppose `sp_input` has shape `[5, 6]` and non-empty values:
+
+    [0, 1]: a
+    [0, 3]: b
+    [2, 0]: c
+    [3, 1]: d
+
+Rows 1 and 4 are empty, so the output will be of shape `[5, 6]` with values:
+
+    [0, 1]: a
+    [0, 3]: b
+    [1, 0]: default_value
+    [2, 0]: c
+    [3, 1]: d
+    [4, 0]: default_value
+
+The output `SparseTensor` will be in row-major order and will have the
+same shape as the input.
+
+This op also returns an indicator vector shaped `[dense_shape[0]]` such that
+
+    empty_row_indicator[i] = True iff row i was an empty row.
+
+And a reverse index map vector shaped `[indices.shape[0]]` that is used during
+backpropagation,
+
+    reverse_index_map[j] = out_j s.t. indices[j, :] == output_indices[out_j, :]
+END
+}
+op {
+  graph_op_name: "SparseFillEmptyRowsGrad"
+  endpoint {
+    name: "SparseFillEmptyRowsGrad"
+  }
+  summary: "The gradient of SparseFillEmptyRows."
+  description: <<END
+Takes vectors reverse_index_map, shaped `[N]`, and grad_values,
+shaped `[N_full]`, where `N_full >= N` and copies data into either
+`d_values` or `d_default_value`.  Here `d_values` is shaped `[N]` and
+`d_default_value` is a scalar.
+
+  d_values[j] = grad_values[reverse_index_map[j]]
+  d_default_value = sum_{k : 0 .. N_full - 1} (
+     grad_values[k] * 1{k not in reverse_index_map})
+END
+}
+op {
+  graph_op_name: "SparseMatMul"
+  endpoint {
+    name: "SparseMatMul"
+  }
+  summary: "Multiply matrix \"a\" by matrix \"b\"."
+  description: <<END
+The inputs must be two-dimensional matrices and the inner dimension of "a" must
+match the outer dimension of "b". This op is optimized for the case where at
+least one of "a" or "b" is sparse. The breakeven for using this versus a dense
+matrix multiply on one platform was 30% zero values in the sparse matrix.
+
+The gradient computation of this operation will only take advantage of sparsity
+in the input gradient when that gradient comes from a Relu.
+END
+}
+op {
+  graph_op_name: "SparseReduceMax"
+  endpoint {
+    name: "SparseReduceMax"
+  }
+  summary: "Computes the max of elements across dimensions of a SparseTensor."
+  description: <<END
+This Op takes a SparseTensor and is the sparse counterpart to
+`tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
+instead of a sparse one.
+
+Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+with length 1.
+
+If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+with a single element is returned.  Additionally, the axes can be negative,
+which are interpreted according to the indexing rules in Python.
+END
+}
+op {
+  graph_op_name: "SparseReduceMaxSparse"
+  endpoint {
+    name: "SparseReduceMaxSparse"
+  }
+  summary: "Computes the max of elements across dimensions of a SparseTensor."
+  description: <<END
+This Op takes a SparseTensor and is the sparse counterpart to
+`tf.reduce_max()`.  In contrast to SparseReduceMax, this Op returns a
+SparseTensor.
+
+Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+with length 1.
+
+If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+with a single element is returned.  Additionally, the axes can be negative,
+which are interpreted according to the indexing rules in Python.
+END
+}
+op {
+  graph_op_name: "SparseReduceSum"
+  endpoint {
+    name: "SparseReduceSum"
+  }
+  summary: "Computes the sum of elements across dimensions of a SparseTensor."
+  description: <<END
+This Op takes a SparseTensor and is the sparse counterpart to
+`tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`
+instead of a sparse one.
+
+Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+with length 1.
+
+If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+with a single element is returned.  Additionally, the axes can be negative,
+which are interpreted according to the indexing rules in Python.
+END
+}
+op {
+  graph_op_name: "SparseReduceSumSparse"
+  endpoint {
+    name: "SparseReduceSumSparse"
+  }
+  summary: "Computes the sum of elements across dimensions of a SparseTensor."
+  description: <<END
+This Op takes a SparseTensor and is the sparse counterpart to
+`tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a
+SparseTensor.
+
+Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+with length 1.
+
+If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+with a single element is returned.  Additionally, the axes can be negative,
+which are interpreted according to the indexing rules in Python.
+END
+}
+op {
+  graph_op_name: "SparseReorder"
+  endpoint {
+    name: "SparseReorder"
+  }
+  summary: "Reorders a SparseTensor into the canonical, row-major ordering."
+  description: <<END
+Note that by convention, all sparse ops preserve the canonical ordering along
+increasing dimension number. The only time ordering can be violated is during
+manual manipulation of the indices and values vectors to add entries.
+
+Reordering does not affect the shape of the SparseTensor.
+
+If the tensor has rank `R` and `N` non-empty values, `input_indices` has
+shape `[N, R]`, input_values has length `N`, and input_shape has length `R`.
+END
+}
+op {
+  graph_op_name: "SparseReshape"
+  endpoint {
+    name: "SparseReshape"
+  }
+  summary: "Reshapes a SparseTensor to represent values in a new dense shape."
+  description: <<END
+This operation has the same semantics as reshape on the represented dense
+tensor.  The `input_indices` are recomputed based on the requested `new_shape`.
+
+If one component of `new_shape` is the special value -1, the size of that
+dimension is computed so that the total dense size remains constant.  At
+most one component of `new_shape` can be -1.  The number of dense elements
+implied by `new_shape` must be the same as the number of dense elements
+originally implied by `input_shape`.
+
+Reshaping does not affect the order of values in the SparseTensor.
+
+If the input tensor has rank `R_in` and `N` non-empty values, and `new_shape`
+has length `R_out`, then `input_indices` has shape `[N, R_in]`,
+`input_shape` has length `R_in`, `output_indices` has shape `[N, R_out]`, and
+`output_shape` has length `R_out`.
+END
+}
+op {
+  graph_op_name: "SparseSegmentMean"
+  endpoint {
+    name: "SparseSegmentMean"
+  }
+  summary: "Computes the mean along sparse segments of a tensor."
+  description: <<END
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
+
+Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+dimension, selecting a subset of dimension 0, specified by `indices`.
+END
+}
+op {
+  graph_op_name: "SparseSegmentMeanGrad"
+  endpoint {
+    name: "SparseSegmentMeanGrad"
+  }
+  summary: "Computes gradients for SparseSegmentMean."
+  description: <<END
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+END
+}
+op {
+  graph_op_name: "SparseSegmentSqrtN"
+  endpoint {
+    name: "SparseSegmentSqrtN"
+  }
+  summary: "Computes the sum along sparse segments of a tensor divided by the sqrt of N."
+  description: <<END
+N is the size of the segment being reduced.
+
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
+END
+}
+op {
+  graph_op_name: "SparseSegmentSqrtNGrad"
+  endpoint {
+    name: "SparseSegmentSqrtNGrad"
+  }
+  summary: "Computes gradients for SparseSegmentSqrtN."
+  description: <<END
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+END
+}
+op {
+  graph_op_name: "SparseSegmentSum"
+  endpoint {
+    name: "SparseSegmentSum"
+  }
+  summary: "Computes the sum along sparse segments of a tensor."
+  description: <<END
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
+
+Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
+dimension, selecting a subset of dimension 0, specified by `indices`.
+
+For example:
+
+```python
+c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+
+# Select two rows, one segment.
+tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
+# => [[0 0 0 0]]
+
+# Select two rows, two segment.
+tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
+# => [[ 1  2  3  4]
+#     [-1 -2 -3 -4]]
+
+# Select all rows, two segments.
+tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
+# => [[0 0 0 0]
+#     [5 6 7 8]]
+
+# Which is equivalent to:
+tf.segment_sum(c, tf.constant([0, 0, 1]))
+```
+END
+}
+op {
+  graph_op_name: "SparseSlice"
+  endpoint {
+    name: "SparseSlice"
+  }
+  summary: "Slice a `SparseTensor` based on the `start` and `size`."
+  description: <<END
+For example, if the input is
+
+    input_tensor = shape = [2, 7]
+    [    a   d e  ]
+    [b c          ]
+
+Graphically the output tensors are:
+
+    sparse_slice([0, 0], [2, 4]) = shape = [2, 4]
+    [    a  ]
+    [b c    ]
+
+    sparse_slice([0, 4], [2, 3]) = shape = [2, 3]
+    [ d e  ]
+    [      ]
+END
+}
+op {
+  graph_op_name: "SparseSoftmax"
+  endpoint {
+    name: "SparseSoftmax"
+  }
+  summary: "Applies softmax to a batched N-D `SparseTensor`."
+  description: <<END
+The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
+(where `N >= 2`), and with indices sorted in the canonical lexicographic order.
+
+This op is equivalent to applying the normal `tf.nn.softmax()` to each innermost
+logical submatrix with shape `[B, C]`, but with the catch that *the implicitly
+zero elements do not participate*.  Specifically, the algorithm is equivalent
+to the following:
+
+  (1) Applies `tf.nn.softmax()` to a densified view of each innermost submatrix
+      with shape `[B, C]`, along the size-C dimension;
+  (2) Masks out the original implicitly-zero locations;
+  (3) Renormalizes the remaining elements.
+
+Hence, the `SparseTensor` result has exactly the same non-zero indices and
+shape.
+END
+}
+op {
+  graph_op_name: "SparseSoftmaxCrossEntropyWithLogits"
+  endpoint {
+    name: "SparseSoftmaxCrossEntropyWithLogits"
+  }
+  summary: "Computes softmax cross entropy cost and gradients to backpropagate."
+  description: <<END
+Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
+a matrix of label probabilities, but rather a single label per row
+of features.  This label is considered to have probability 1.0 for the
+given row.
+
+Inputs are the logits, not probabilities.
+END
+}
+op {
+  graph_op_name: "SparseSparseMaximum"
+  endpoint {
+    name: "SparseSparseMaximum"
+  }
+  summary: "Returns the element-wise max of two SparseTensors."
+  description: <<END
+Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+END
+}
+op {
+  graph_op_name: "SparseSparseMinimum"
+  endpoint {
+    name: "SparseSparseMinimum"
+  }
+  summary: "Returns the element-wise min of two SparseTensors."
+  description: <<END
+Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+END
+}
+op {
+  graph_op_name: "SparseSplit"
+  endpoint {
+    name: "SparseSplit"
+  }
+  summary: "Split a `SparseTensor` into `num_split` tensors along one dimension."
+  description: <<END
+If the `shape[split_dim]` is not an integer multiple of `num_split`. Slices
+`[0 : shape[split_dim] % num_split]` gets one extra dimension.
+For example, if `split_dim = 1` and `num_split = 2` and the input is
+
+    input_tensor = shape = [2, 7]
+    [    a   d e  ]
+    [b c          ]
+
+Graphically the output tensors are:
+
+    output_tensor[0] = shape = [2, 4]
+    [    a  ]
+    [b c    ]
+
+    output_tensor[1] = shape = [2, 3]
+    [ d e  ]
+    [      ]
+END
+}
+op {
+  graph_op_name: "SparseTensorDenseAdd"
+  endpoint {
+    name: "SparseTensorDenseAdd"
+  }
+  summary: "Adds up a `SparseTensor` and a dense `Tensor`, producing a dense `Tensor`."
+  description: <<END
+This Op does not require `a_indices` be sorted in standard lexicographic order.
+END
+}
+op {
+  graph_op_name: "SparseTensorDenseMatMul"
+  endpoint {
+    name: "SparseTensorDenseMatMul"
+  }
+  summary: "Multiply SparseTensor (of rank 2) \"A\" by dense matrix \"B\"."
+  description: <<END
+No validity checking is performed on the indices of A.  However, the following
+input format is recommended for optimal behavior:
+
+if adjoint_a == false:
+  A should be sorted in lexicographically increasing order.  Use SparseReorder
+  if you're not sure.
+if adjoint_a == true:
+  A should be sorted in order of increasing dimension 1 (i.e., "column major"
+  order instead of "row major" order).
+END
+}
+op {
+  graph_op_name: "SparseTensorSliceDataset"
+  endpoint {
+    name: "SparseTensorSliceDataset"
+  }
+  summary: "Creates a dataset that splits a SparseTensor into elements row-wise."
+}
+op {
+  graph_op_name: "SparseToDense"
+  endpoint {
+    name: "SparseToDense"
+  }
+  summary: "Converts a sparse representation into a dense tensor."
+  description: <<END
+Builds an array `dense` with shape `output_shape` such that
+
+```
+# If sparse_indices is scalar
+dense[i] = (i == sparse_indices ? sparse_values : default_value)
+
+# If sparse_indices is a vector, then for each i
+dense[sparse_indices[i]] = sparse_values[i]
+
+# If sparse_indices is an n by d matrix, then for each i in [0, n)
+dense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]
+```
+
+All other values in `dense` are set to `default_value`.  If `sparse_values` is a
+scalar, all sparse indices are set to this single value.
+
+Indices should be sorted in lexicographic order, and indices must not
+contain any repeats. If `validate_indices` is true, these properties
+are checked during execution.
+END
+}
+op {
+  graph_op_name: "SparseToSparseSetOperation"
+  endpoint {
+    name: "SparseToSparseSetOperation"
+  }
+  summary: "Applies set operation along last dimension of 2 `SparseTensor` inputs."
+  description: <<END
+See SetOperationOp::SetOperationFromContext for values of `set_operation`.
+
+If `validate_indices` is `True`, `SparseToSparseSetOperation` validates the
+order and range of `set1` and `set2` indices.
+
+Input `set1` is a `SparseTensor` represented by `set1_indices`, `set1_values`,
+and `set1_shape`. For `set1` ranked `n`, 1st `n-1` dimensions must be the same
+as `set2`. Dimension `n` contains values in a set, duplicates are allowed but
+ignored.
+
+Input `set2` is a `SparseTensor` represented by `set2_indices`, `set2_values`,
+and `set2_shape`. For `set2` ranked `n`, 1st `n-1` dimensions must be the same
+as `set1`. Dimension `n` contains values in a set, duplicates are allowed but
+ignored.
+
+If `validate_indices` is `True`, this op validates the order and range of `set1`
+and `set2` indices.
+
+Output `result` is a `SparseTensor` represented by `result_indices`,
+`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this
+has rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`
+dimension contains the result of `set_operation` applied to the corresponding
+`[0...n-1]` dimension of `set`.
+END
+}
+op {
+  graph_op_name: "Split"
+  endpoint {
+    name: "Split"
+  }
+  summary: "Splits a tensor into `num_split` tensors along one dimension."
+}
+op {
+  graph_op_name: "SplitV"
+  endpoint {
+    name: "SplitV"
+  }
+  summary: "Splits a tensor into `num_split` tensors along one dimension."
+}
+op {
+  graph_op_name: "SqlDataset"
+  endpoint {
+    name: "SqlDataset"
+  }
+  summary: "Creates a dataset that executes a SQL query and emits rows of the result set."
+}
+op {
+  graph_op_name: "Sqrt"
+  endpoint {
+    name: "Sqrt"
+  }
+  summary: "Computes square root of x element-wise."
+  description: <<END
+I.e., \\(y = \sqrt{x} = x^{1/2}\\).
+END
+}
+op {
+  graph_op_name: "SqrtGrad"
+  endpoint {
+    name: "SqrtGrad"
+  }
+  summary: "Computes the gradient for the sqrt of `x` wrt its input."
+  description: <<END
+Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
+is the corresponding input gradient.
+END
+}
+op {
+  graph_op_name: "Square"
+  endpoint {
+    name: "Square"
+  }
+  summary: "Computes square of x element-wise."
+  description: <<END
+I.e., \\(y = x * x = x^2\\).
+END
+}
+op {
+  graph_op_name: "SquaredDifference"
+  endpoint {
+    name: "SquaredDifference"
+  }
+  summary: "Returns (x - y)(x - y) element-wise."
+  description: <<END
+*NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "Squeeze"
+  endpoint {
+    name: "Squeeze"
+  }
+  summary: "Removes dimensions of size 1 from the shape of a tensor."
+  description: <<END
+Given a tensor `input`, this operation returns a tensor of the same type with
+all dimensions of size 1 removed. If you don't want to remove all size 1
+dimensions, you can remove specific size 1 dimensions by specifying
+`squeeze_dims`.
+
+For example:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t)) ==> [2, 3]
+```
+
+Or, to remove specific size 1 dimensions:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
+```
+END
+}
+op {
+  graph_op_name: "Stack"
+  endpoint {
+    name: "Stack"
+  }
+  summary: "Deprecated, use StackV2."
+}
+op {
+  graph_op_name: "StackClose"
+  endpoint {
+    name: "StackClose"
+  }
+  summary: "Deprecated, use StackCloseV2."
+}
+op {
+  graph_op_name: "StackCloseV2"
+  endpoint {
+    name: "StackCloseV2"
+  }
+  summary: "Delete the stack from its resource container."
+}
+op {
+  graph_op_name: "StackPop"
+  endpoint {
+    name: "StackPop"
+  }
+  summary: "Deprecated, use StackPopV2."
+}
+op {
+  graph_op_name: "StackPopV2"
+  endpoint {
+    name: "StackPopV2"
+  }
+  summary: "Pop the element at the top of the stack."
+}
+op {
+  graph_op_name: "StackPush"
+  endpoint {
+    name: "StackPush"
+  }
+  summary: "Deprecated, use StackPushV2."
+}
+op {
+  graph_op_name: "StackPushV2"
+  endpoint {
+    name: "StackPushV2"
+  }
+  summary: "Push an element onto the stack."
+}
+op {
+  graph_op_name: "StackV2"
+  endpoint {
+    name: "StackV2"
+  }
+  summary: "A stack that produces elements in first-in last-out order."
+}
+op {
+  graph_op_name: "Stage"
+  endpoint {
+    name: "Stage"
+  }
+  summary: "Stage values similar to a lightweight Enqueue."
+  description: <<END
+The basic functionality of this Op is similar to a queue with many
+fewer capabilities and options.  This Op is optimized for performance.
+END
+}
+op {
+  graph_op_name: "StageClear"
+  endpoint {
+    name: "StageClear"
+  }
+  summary: "Op removes all elements in the underlying container."
+}
+op {
+  graph_op_name: "StagePeek"
+  endpoint {
+    name: "StagePeek"
+  }
+  summary: "Op peeks at the values at the specified index.  If the"
+  description: <<END
+underlying container does not contain sufficient elements
+this op will block until it does.   This Op is optimized for
+performance.
+END
+}
+op {
+  graph_op_name: "StageSize"
+  endpoint {
+    name: "StageSize"
+  }
+  summary: "Op returns the number of elements in the underlying container."
+}
+op {
+  graph_op_name: "StatelessRandomNormal"
+  endpoint {
+    name: "StatelessRandomNormal"
+  }
+  summary: "Outputs deterministic pseudorandom values from a normal distribution."
+  description: <<END
+The generated values will have mean 0 and standard deviation 1.
+
+The outputs are a deterministic function of `shape` and `seed`.
+END
+}
+op {
+  graph_op_name: "StatelessRandomUniform"
+  endpoint {
+    name: "StatelessRandomUniform"
+  }
+  summary: "Outputs deterministic pseudorandom random values from a uniform distribution."
+  description: <<END
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
+
+The outputs are a deterministic function of `shape` and `seed`.
+END
+}
+op {
+  graph_op_name: "StatelessTruncatedNormal"
+  endpoint {
+    name: "StatelessTruncatedNormal"
+  }
+  summary: "Outputs deterministic pseudorandom values from a truncated normal distribution."
+  description: <<END
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+
+The outputs are a deterministic function of `shape` and `seed`.
+END
+}
+op {
+  graph_op_name: "StopGradient"
+  endpoint {
+    name: "StopGradient"
+  }
+  summary: "Stops gradient computation."
+  description: <<END
+When executed in a graph, this op outputs its input tensor as-is.
+
+When building ops to compute gradients, this op prevents the contribution of
+its inputs to be taken into account.  Normally, the gradient generator adds ops
+to a graph to compute the derivatives of a specified 'loss' by recursively
+finding out inputs that contributed to its computation.  If you insert this op
+in the graph it inputs are masked from the gradient generator.  They are not
+taken into account for computing gradients.
+
+This is useful any time you want to compute a value with TensorFlow but need
+to pretend that the value was a constant. Some examples include:
+
+*  The *EM* algorithm where the *M-step* should not involve backpropagation
+   through the output of the *E-step*.
+*  Contrastive divergence training of Boltzmann machines where, when
+   differentiating the energy function, the training must not backpropagate
+   through the graph that generated the samples from the model.
+*  Adversarial training, where no backprop should happen through the adversarial
+   example generation process.
+END
+}
+op {
+  graph_op_name: "StridedSlice"
+  endpoint {
+    name: "StridedSlice"
+  }
+  summary: "Return a strided slice from `input`."
+  description: <<END
+Note, most python users will want to use the Python `Tensor.__getitem__`
+or `Variable.__getitem__` rather than this op directly.
+
+The goal of this op is to produce a new tensor with a subset of
+the elements from the `n` dimensional `input` tensor. The subset is chosen using
+a sequence of `m` sparse range specifications encoded into the arguments
+of this function. Note, in some cases
+`m` could be equal to `n`, but this need not be the case. Each
+range specification entry can be one of the following:
+
+- An ellipsis (...). Ellipses are used to imply zero or more
+  dimensions of full-dimension selection and are produced using
+  `ellipsis_mask`. For example, `foo[...]` is the identity slice.
+
+- A new axis. This is used to insert a new shape=1 dimension and is
+  produced using `new_axis_mask`. For example, `foo[:, ...]` where
+  `foo` is shape `(3, 4)` produces a `(1, 3, 4)` tensor.
+
+
+- A range `begin:end:stride`. This is used to specify how much to choose from
+  a given dimension. `stride` can be any integer but 0.  `begin` is an integer
+  which represents the index of the first value to select while `end` represents
+  the index of the last value to select. The number of values selected in each
+  dimension is `end - begin` if `stride > 0` and `begin - end` if `stride < 0`.
+  `begin` and `end` can be negative where `-1` is the last element, `-2` is
+  the second to last. `begin_mask` controls whether to replace the explicitly
+  given `begin` with an implicit effective value of `0` if `stride > 0` and
+  `-1` if `stride < 0`. `end_mask` is analogous but produces the number
+  required to create the largest open interval. For example, given a shape
+  `(3,)` tensor `foo[:]`, the effective `begin` and `end` are `0` and `3`. Do
+  not assume this is equivalent to `foo[0:-1]` which has an effective `begin`
+  and `end` of `0` and `2`. Another example is `foo[-2::-1]` which reverses the
+  first dimension of a tensor while dropping the last two (in the original
+  order elements). For example `foo = [1,2,3,4]; foo[-2::-1]` is `[4,3]`.
+
+- A single index. This is used to keep only elements that have a given
+  index. For example (`foo[2, :]` on a shape `(5,6)` tensor produces a
+  shape `(6,)` tensor. This is encoded in `begin` and `end` and
+  `shrink_axis_mask`.
+
+Each conceptual range specification is encoded in the op's argument. This
+encoding is best understand by considering a non-trivial example. In
+particular,
+`foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as
+
+```
+begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
+end = [2, 4, x, x, -3, x]
+strides = [1, 1, x, x, -1, 1]
+begin_mask = 1<<4 | 1 << 5 = 48
+end_mask = 1<<5 = 32
+ellipsis_mask = 1<<3 = 8
+new_axis_mask = 1<<2 4
+shrink_axis_mask = 1<<0
+```
+
+In this case if `foo.shape` is (5, 5, 5, 5, 5, 5) the final shape of
+the slice becomes (2, 1, 5, 5, 2, 5).
+Let us walk step by step through each argument specification.
+
+1.  The first argument in the example slice is turned into `begin = 1` and
+`end = begin + 1 = 2`. To disambiguate from the original spec `2:4` we
+also set the appropriate bit in `shrink_axis_mask`.
+
+2. `2:4` is contributes 2, 4, 1 to begin, end, and stride. All masks have
+zero bits contributed.
+
+3. None is a synonym for `tf.newaxis`. This means insert a dimension of size 1
+dimension in the final shape. Dummy values are contributed to begin,
+end and stride, while the new_axis_mask bit is set.
+
+4. `...` grab the full ranges from as many dimensions as needed to
+fully specify a slice for every dimension of the input shape.
+
+5. `:-3:-1` shows the use of negative indices. A negative index `i` associated
+with a dimension that has shape `s` is converted to a positive index
+`s + i`. So `-1` becomes `s-1` (i.e. the last element). This conversion
+is done internally so begin, end and strides receive x, -3, and -1.
+The appropriate begin_mask bit is set to indicate the start range is the
+full range (ignoring the x).
+
+6. `:` indicates that the entire contents of the corresponding dimension
+is selected. This is equivalent to `::` or `0::1`. begin, end, and strides
+receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
+`end_mask` are also set.
+
+*Requirements*:
+  `0 != strides[i] for i in [0, m)`
+  `ellipsis_mask must be a power of two (only one ellipsis)`
+END
+}
+op {
+  graph_op_name: "StridedSliceAssign"
+  endpoint {
+    name: "StridedSliceAssign"
+  }
+  summary: "Assign `value` to the sliced l-value reference of `ref`."
+  description: <<END
+The values of `value` are assigned to the positions in the variable
+`ref` that are selected by the slice parameters. The slice parameters
+`begin, `end`, `strides`, etc. work exactly as in `StridedSlice`.
+
+NOTE this op currently does not support broadcasting and so `value`'s
+shape must be exactly the shape produced by the slice of `ref`.
+END
+}
+op {
+  graph_op_name: "StridedSliceGrad"
+  endpoint {
+    name: "StridedSliceGrad"
+  }
+  summary: "Returns the gradient of `StridedSlice`."
+  description: <<END
+Since `StridedSlice` cuts out pieces of its `input` which is size
+`shape`, its gradient will have the same shape (which is passed here
+as `shape`). The gradient will be zero in any element that the slice
+does not select.
+
+Arguments are the same as StridedSliceGrad with the exception that
+`dy` is the input gradient to be propagated and `shape` is the
+shape of `StridedSlice`'s `input`.
+END
+}
+op {
+  graph_op_name: "StringJoin"
+  endpoint {
+    name: "StringJoin"
+  }
+  summary: "Joins the strings in the given list of string tensors into one tensor;"
+  description: <<END
+with the given separator (default is an empty separator).
+END
+}
+op {
+  graph_op_name: "StringSplit"
+  endpoint {
+    name: "StringSplit"
+  }
+  summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
+  description: <<END
+Let N be the size of source (typically N will be the batch size). Split each
+element of `input` based on `delimiter` and return a `SparseTensor`
+containing the splitted tokens. Empty tokens are ignored.
+
+`delimiter` can be empty, or a string of split characters. If `delimiter` is an
+ empty string, each element of `input` is split into individual single-byte
+ character strings, including splitting of UTF-8 multibyte sequences. Otherwise
+ every character of `delimiter` is a potential split point.
+
+For example:
+  N = 2, input[0] is 'hello world' and input[1] is 'a b c', then the output
+  will be
+
+  indices = [0, 0;
+             0, 1;
+             1, 0;
+             1, 1;
+             1, 2]
+  shape = [2, 3]
+  values = ['hello', 'world', 'a', 'b', 'c']
+END
+}
+op {
+  graph_op_name: "StringToHashBucket"
+  endpoint {
+    name: "StringToHashBucket"
+  }
+  summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
+  description: <<END
+The hash function is deterministic on the content of the string within the
+process.
+
+Note that the hash function may change from time to time.
+This functionality will be deprecated and it's recommended to use
+`tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
+END
+}
+op {
+  graph_op_name: "StringToHashBucketFast"
+  endpoint {
+    name: "StringToHashBucketFast"
+  }
+  summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
+  description: <<END
+The hash function is deterministic on the content of the string within the
+process and will never change. However, it is not suitable for cryptography.
+This function may be used when CPU time is scarce and inputs are trusted or
+unimportant. There is a risk of adversaries constructing inputs that all hash
+to the same bucket. To prevent this problem, use a strong hash function with
+`tf.string_to_hash_bucket_strong`.
+END
+}
+op {
+  graph_op_name: "StringToHashBucketStrong"
+  endpoint {
+    name: "StringToHashBucketStrong"
+  }
+  summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
+  description: <<END
+The hash function is deterministic on the content of the string within the
+process. The hash function is a keyed hash function, where attribute `key`
+defines the key of the hash function. `key` is an array of 2 elements.
+
+A strong hash is important when inputs may be malicious, e.g. URLs with
+additional components. Adversaries could try to make their inputs hash to the
+same bucket for a denial-of-service attack or to skew the results. A strong
+hash prevents this by making it difficult, if not infeasible, to compute inputs
+that hash to the same bucket. This comes at a cost of roughly 4x higher compute
+time than `tf.string_to_hash_bucket_fast`.
+END
+}
+op {
+  graph_op_name: "StringToNumber"
+  endpoint {
+    name: "StringToNumber"
+  }
+  summary: "Converts each string in the input Tensor to the specified numeric type."
+  description: <<END
+(Note that int32 overflow results in an error while float overflow
+results in a rounded value.)
+END
+}
+op {
+  graph_op_name: "Sub"
+  endpoint {
+    name: "Sub"
+  }
+  summary: "Returns x - y element-wise."
+  description: <<END
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "Substr"
+  endpoint {
+    name: "Substr"
+  }
+  summary: "Return substrings from `Tensor` of strings."
+  description: <<END
+For each string in the input `Tensor`, creates a substring starting at index
+`pos` with a total length of `len`.
+
+If `len` defines a substring that would extend beyond the length of the input
+string, then as many characters as possible are used.
+
+If `pos` is negative or specifies a character index larger than any of the input
+strings, then an `InvalidArgumentError` is thrown.
+
+`pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
+Op creation.
+
+*NOTE*: `Substr` supports broadcasting up to two dimensions. More about
+broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+---
+
+Examples
+
+Using scalar `pos` and `len`:
+
+```python
+input = [b'Hello', b'World']
+position = 1
+length = 3
+
+output = [b'ell', b'orl']
+```
+
+Using `pos` and `len` with same shape as `input`:
+
+```python
+input = [[b'ten', b'eleven', b'twelve'],
+         [b'thirteen', b'fourteen', b'fifteen'],
+         [b'sixteen', b'seventeen', b'eighteen']]
+position = [[1, 2, 3],
+            [1, 2, 3],
+            [1, 2, 3]]
+length =   [[2, 3, 4],
+            [4, 3, 2],
+            [5, 5, 5]]
+
+output = [[b'en', b'eve', b'lve'],
+          [b'hirt', b'urt', b'te'],
+          [b'ixtee', b'vente', b'hteen']]
+```
+
+Broadcasting `pos` and `len` onto `input`:
+
+```
+input = [[b'ten', b'eleven', b'twelve'],
+         [b'thirteen', b'fourteen', b'fifteen'],
+         [b'sixteen', b'seventeen', b'eighteen'],
+         [b'nineteen', b'twenty', b'twentyone']]
+position = [1, 2, 3]
+length =   [1, 2, 3]
+
+output = [[b'e', b'ev', b'lve'],
+          [b'h', b'ur', b'tee'],
+          [b'i', b've', b'hte'],
+          [b'i', b'en', b'nty']]
+```
+
+Broadcasting `input` onto `pos` and `len`:
+
+```
+input = b'thirteen'
+position = [1, 5, 7]
+length =   [3, 2, 1]
+
+output = [b'hir', b'ee', b'n']
+```
+END
+}
+op {
+  graph_op_name: "Sum"
+  endpoint {
+    name: "Sum"
+  }
+  summary: "Computes the sum of elements across dimensions of a tensor."
+  description: <<END
+Reduces `input` along the dimensions given in `reduction_indices`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+END
+}
+op {
+  graph_op_name: "Svd"
+  endpoint {
+    name: "Svd"
+  }
+  summary: "Computes the singular value decompositions of one or more matrices."
+  description: <<END
+Computes the SVD of each inner matrix in `input` such that
+`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`
+
+```python
+# a is a tensor containing a batch of matrices.
+# s is a tensor of singular values for each matrix.
+# u is the tensor containing of left singular vectors for each matrix.
+# v is the tensor containing of right singular vectors for each matrix.
+s, u, v = svd(a)
+s, _, _ = svd(a, compute_uv=False)
+```
+END
+}
+op {
+  graph_op_name: "Switch"
+  endpoint {
+    name: "Switch"
+  }
+  summary: "Forwards `data` to the output port determined by `pred`."
+  description: <<END
+If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,
+the data goes to `output_false`.
+
+See also `RefSwitch` and `Merge`.
+END
+}
+op {
+  graph_op_name: "SymbolicGradient"
+  endpoint {
+    name: "SymbolicGradient"
+  }
+  summary: "Computes the gradient function for function f via backpropagation."
+}

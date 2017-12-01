@@ -22,7 +22,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
         "//third_party/py/numpy",
     ],
 )
@@ -51,7 +50,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
     ],
 )
 

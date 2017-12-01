@@ -4,12 +4,6 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_custom_op_library",
-    "tf_gen_op_libs",
-)
-
 py_library(
     name = "data",
     srcs = ["__init__.py"],
@@ -24,22 +18,10 @@ py_library(
     ],
 )
 
-tf_custom_op_library(
-    name = "_prefetching_ops.so",
-    srcs = ["ops/prefetching_ops.cc"],
-    deps = ["//tensorflow/contrib/data/kernels:prefetching_kernels"],
-)
-
-tf_gen_op_libs(
-    op_lib_names = ["prefetching_ops"],
-)
-
 filegroup(
     name = "all_files",
     srcs = glob(
-        include = [
-            "**/*",
-        ],
+        ["**/*"],
         exclude = [
             "**/METADATA",
             "**/OWNERS",

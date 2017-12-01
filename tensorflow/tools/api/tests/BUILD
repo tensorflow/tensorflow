@@ -20,7 +20,6 @@ py_test(
         ":convert_from_multiline",
         "//tensorflow/core:base_api_def",
         "//tensorflow/core:python_api_def",
-        "//tensorflow/python:hidden_ops",
         "//tensorflow/tools/api/golden:api_golden",
         "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
         "//tensorflow/tools/api/tests:README.txt",

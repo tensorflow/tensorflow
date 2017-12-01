@@ -33,197 +33,201 @@ class HloComputation;
 class HloInstruction;
 
 // DfsHloVisitor with default action based on the HloInstruction being visited.
-// Users should not use this class directly, but use the type aliases
-// DfsHloVisitorWithDefault/ConstDfsHloVisitorWithDefault instead.
-template <typename HloInstructionPtr>
-class DfsHloVisitorWithDefaultBase
-    : public DfsHloVisitorBase<HloInstructionPtr> {
+class DfsHloVisitorWithDefault : public DfsHloVisitor {
  public:
-  DfsHloVisitorWithDefaultBase() {}
-  ~DfsHloVisitorWithDefaultBase() override {}
+  DfsHloVisitorWithDefault() {}
+  ~DfsHloVisitorWithDefault() override {}
 
   // Default action performed on HloInstruction.
-  virtual Status DefaultAction(HloInstructionPtr hlo_instruction) = 0;
+  virtual Status DefaultAction(HloInstruction* hlo_instruction) = 0;
 
-  Status HandleElementwiseUnary(HloInstructionPtr hlo) override {
+  Status HandleElementwiseUnary(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleElementwiseBinary(HloInstructionPtr hlo) override {
-    return DefaultAction(hlo);
-  }
-
-  Status HandleBatchNormTraining(HloInstructionPtr hlo) override {
+  Status HandleElementwiseBinary(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }
 
-  Status HandleBatchNormInference(HloInstructionPtr hlo) override {
+  Status HandleBatchNormTraining(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }
 
-  Status HandleBatchNormGrad(HloInstructionPtr hlo) override {
+  Status HandleBatchNormInference(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }
 
-  Status HandleClamp(HloInstructionPtr clamp) override {
+  Status HandleBatchNormGrad(HloInstruction* hlo) override {
+    return DefaultAction(hlo);
+  }
+
+  Status HandleClamp(HloInstruction* clamp, HloInstruction* /*min*/,
+                     HloInstruction* /*arg*/,
+                     HloInstruction* /*max*/) override {
     return DefaultAction(clamp);
   }
-  Status HandleConcatenate(HloInstructionPtr concatenate) override {
+  Status HandleConcatenate(
+      HloInstruction* concatenate,
+      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
     return DefaultAction(concatenate);
   }
-  Status HandleConvert(HloInstructionPtr convert) override {
+  Status HandleConvert(HloInstruction* convert) override {
     return DefaultAction(convert);
   }
-  Status HandleCopy(HloInstructionPtr copy) override {
+  Status HandleCopy(HloInstruction* copy) override {
     return DefaultAction(copy);
   }
-  Status HandleSelect(HloInstructionPtr select) override {
+  Status HandleSelect(HloInstruction* select, HloInstruction* /*pred*/,
+                      HloInstruction* /*on_true*/,
+                      HloInstruction* /*on_false*/) override {
     return DefaultAction(select);
   }
-  Status HandleDot(HloInstructionPtr dot) override {
+  Status HandleDot(HloInstruction* dot, HloInstruction* /*lhs*/,
+                   HloInstruction* /*rhs*/) override {
     return DefaultAction(dot);
   }
-  Status HandleConvolution(HloInstructionPtr convolution) override {
+  Status HandleConvolution(HloInstruction* convolution, HloInstruction* /*lhs*/,
+                           HloInstruction* /*rhs*/,
+                           const Window& /*window*/) override {
     return DefaultAction(convolution);
   }
-  Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
+  Status HandleCrossReplicaSum(HloInstruction* crs) override {
     return DefaultAction(crs);
   }
-  Status HandleCompare(HloInstructionPtr compare) override {
+  Status HandleCompare(HloInstruction* compare, HloOpcode /*opcode*/,
+                       HloInstruction* /*lhs*/,
+                       HloInstruction* /*rhs*/) override {
     return DefaultAction(compare);
   }
-  Status HandleRng(HloInstructionPtr random) override {
+  Status HandleRng(HloInstruction* random,
+                   RandomDistribution /*distribution*/) override {
     return DefaultAction(random);
   }
-  Status HandleInfeed(HloInstructionPtr infeed) override {
+  Status HandleInfeed(HloInstruction* infeed) override {
     return DefaultAction(infeed);
   }
-  Status HandleOutfeed(HloInstructionPtr outfeed) override {
+  Status HandleOutfeed(HloInstruction* outfeed) override {
     return DefaultAction(outfeed);
   }
-  Status HandleReverse(HloInstructionPtr reverse) override {
+  Status HandleReverse(HloInstruction* reverse,
+                       HloInstruction* /*operand*/) override {
     return DefaultAction(reverse);
   }
-  Status HandleSort(HloInstructionPtr sort) override {
+  Status HandleSort(HloInstruction* sort,
+                    HloInstruction* /*operand*/) override {
     return DefaultAction(sort);
   }
-  Status HandleConstant(HloInstructionPtr constant) override {
+  Status HandleConstant(HloInstruction* constant,
+                        const Literal& /*literal*/) override {
     return DefaultAction(constant);
   }
-  Status HandleGetTupleElement(HloInstructionPtr get_tuple_element) override {
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
+                               HloInstruction* /*operand*/) override {
     return DefaultAction(get_tuple_element);
   }
-  Status HandleParameter(HloInstructionPtr parameter) override {
+  Status HandleParameter(HloInstruction* parameter) override {
     return DefaultAction(parameter);
   }
-  Status HandleFusion(HloInstructionPtr fusion) override {
+  Status HandleFusion(HloInstruction* fusion) override {
     return DefaultAction(fusion);
   }
-  Status HandleCall(HloInstructionPtr call) override {
+  Status HandleCall(HloInstruction* call) override {
     return DefaultAction(call);
   }
-  Status HandleCustomCall(HloInstructionPtr custom_call) override {
+  Status HandleCustomCall(
+      HloInstruction* custom_call,
+      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/,
+      tensorflow::StringPiece /*custom_call_target*/) override {
     return DefaultAction(custom_call);
   }
-  Status HandleSlice(HloInstructionPtr slice) override {
+  Status HandleSlice(HloInstruction* slice,
+                     HloInstruction* /*operand*/) override {
     return DefaultAction(slice);
   }
-  Status HandleDynamicSlice(HloInstructionPtr dynamic_slice) override {
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* /*operand*/,
+                            HloInstruction* /*start_indices*/) override {
     return DefaultAction(dynamic_slice);
   }
-  Status HandleDynamicUpdateSlice(
-      HloInstructionPtr dynamic_update_slice) override {
+  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
+                                  HloInstruction* /*operand*/,
+                                  HloInstruction* /*update*/,
+                                  HloInstruction* /*start_indices*/) override {
     return DefaultAction(dynamic_update_slice);
   }
-  Status HandleTuple(HloInstructionPtr tuple) override {
+  Status HandleTuple(
+      HloInstruction* tuple,
+      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
     return DefaultAction(tuple);
   }
-  Status HandleMap(HloInstructionPtr map) override {
+  Status HandleMap(
+      HloInstruction* map,
+      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/,
+      HloComputation* /*function*/,
+      tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/)
+      override {
     return DefaultAction(map);
   }
-  Status HandleReduce(HloInstructionPtr reduce) override {
+  Status HandleReduce(HloInstruction* reduce, HloInstruction* /*arg*/,
+                      HloInstruction* /*init_value*/,
+                      tensorflow::gtl::ArraySlice<int64> /*dimensions*/,
+                      HloComputation* /*function*/) override {
     return DefaultAction(reduce);
   }
-  Status HandleReduceWindow(HloInstructionPtr reduce_window) override {
+  Status HandleReduceWindow(HloInstruction* reduce_window,
+                            HloInstruction* /*operand*/,
+                            const Window& /*window*/,
+                            HloComputation* /*function*/) override {
     return DefaultAction(reduce_window);
   }
-  Status HandleSelectAndScatter(HloInstructionPtr select_and_scatter) override {
+  Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override {
     return DefaultAction(select_and_scatter);
   }
-  Status HandleBitcast(HloInstructionPtr bitcast) override {
+  Status HandleBitcast(HloInstruction* bitcast) override {
     return DefaultAction(bitcast);
   }
-  Status HandleBroadcast(HloInstructionPtr broadcast) override {
+  Status HandleBroadcast(HloInstruction* broadcast) override {
     return DefaultAction(broadcast);
   }
-  Status HandlePad(HloInstructionPtr pad) override {
-    return DefaultAction(pad);
-  }
-  Status HandleReshape(HloInstructionPtr reshape) override {
+  Status HandlePad(HloInstruction* pad) override { return DefaultAction(pad); }
+  Status HandleReshape(HloInstruction* reshape) override {
     return DefaultAction(reshape);
   }
-  Status HandleTranspose(HloInstructionPtr transpose) override {
+  Status HandleTranspose(HloInstruction* transpose) override {
     return DefaultAction(transpose);
   }
-  Status HandleWhile(HloInstructionPtr xla_while) override {
+  Status HandleWhile(HloInstruction* xla_while) override {
     return DefaultAction(xla_while);
   }
-  Status HandleConditional(HloInstructionPtr conditional) override {
-    return DefaultAction(conditional);
-  }
-  Status HandleRecv(HloInstructionPtr recv) override {
-    return DefaultAction(recv);
-  }
-  Status HandleRecvDone(HloInstructionPtr recv_done) override {
-    return DefaultAction(recv_done);
-  }
-  Status HandleSend(HloInstructionPtr send) override {
+  Status HandleSend(HloInstruction* send) override {
     return DefaultAction(send);
   }
-  Status HandleSendDone(HloInstructionPtr send_done) override {
-    return DefaultAction(send_done);
+  Status HandleRecv(HloInstruction* recv) override {
+    return DefaultAction(recv);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".
-  Status FinishVisit(HloInstructionPtr /*root*/) override {
-    return Status::OK();
-  }
+  Status FinishVisit(HloInstruction* /*root*/) override { return Status::OK(); }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorWithDefaultBase);
+  TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorWithDefault);
 };
 
-// Users should use these type aliases which are only two valid instantiations.
-using DfsHloVisitorWithDefault = DfsHloVisitorWithDefaultBase<HloInstruction*>;
-using ConstDfsHloVisitorWithDefault =
-    DfsHloVisitorWithDefaultBase<const HloInstruction*>;
-
-// (Const)FunctionVisitor lets you transform an
-// std::function<Status((const) HloInstruction*)> into a (Const)DfsHloVisitor.
-//
-// This is useful if you have code that needs to handle visitors in the form of
-// both std::function and DfsHloVisitor.  You can wrap the function in a
-// FunctionVisitor and then treat it like any other DfsHloVisitor.
-template <typename HloInstructionPtr>
-class FunctionVisitorBase
-    : public DfsHloVisitorWithDefaultBase<HloInstructionPtr> {
+// Helper class for Accept(VisitorFunction) which visits instructions in DFS
+// order calling the given function at each instruction.
+class FunctionVisitor : public DfsHloVisitorWithDefault {
  public:
-  explicit FunctionVisitorBase(
-      std::function<Status(HloInstructionPtr)> visitor_func)
+  using VisitorFunction = std::function<Status(HloInstruction*)>;
+  explicit FunctionVisitor(VisitorFunction visitor_func)
       : visitor_func_(std::move(visitor_func)) {}
 
-  Status DefaultAction(HloInstructionPtr hlo_instruction) override {
+  Status DefaultAction(HloInstruction* hlo_instruction) override {
     return visitor_func_(hlo_instruction);
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionVisitorBase);
-
-  std::function<Status(HloInstructionPtr)> visitor_func_;
+  VisitorFunction visitor_func_;
 };
-
-using FunctionVisitor = FunctionVisitorBase<HloInstruction*>;
-using ConstFunctionVisitor = FunctionVisitorBase<const HloInstruction*>;
 
 }  // namespace xla
 

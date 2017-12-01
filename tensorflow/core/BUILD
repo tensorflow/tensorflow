@@ -127,9 +127,9 @@ load(
     "tf_additional_verbs_lib_defines",
     "tf_additional_mpi_lib_defines",
     "tf_additional_gdr_lib_defines",
-    "tf_additional_device_tracer_srcs",
-    "tf_additional_device_tracer_deps",
-    "tf_additional_device_tracer_cuda_deps",
+    "tf_additional_gpu_tracer_srcs",
+    "tf_additional_gpu_tracer_deps",
+    "tf_additional_gpu_tracer_cuda_deps",
     "tf_pyclif_proto_library",
     "tf_jspb_proto_library",
     "tf_nano_proto_library",
@@ -249,14 +249,6 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-# Minimal lib to detect plafrom
-cc_library(
-    name = "lib_platform",
-    hdrs = [
-        "platform/platform.h",
-    ],
-)
-
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on lib/platformlib.
 cc_library(
@@ -322,7 +314,6 @@ cc_library(
         "lib/io/table_options.h",
         "lib/math/math_util.h",
         "lib/monitoring/counter.h",
-        "lib/monitoring/gauge.h",
         "lib/monitoring/sampler.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
@@ -457,7 +448,6 @@ tf_cuda_library(
         "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
-        "util/ptr_util.h",
         "util/reffed_status_callback.h",
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
@@ -494,11 +484,6 @@ cc_library(
         ":framework_lite",
         ":lib",
     ],
-)
-
-cc_library(
-    name = "ptr_util",
-    hdrs = ["util/ptr_util.h"],
 )
 
 cc_library(
@@ -1407,7 +1392,6 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/monitoring/collection_registry.h",
     "lib/monitoring/metric_def.h",
     "lib/monitoring/mobile_counter.h",
-    "lib/monitoring/mobile_gauge.h",
     "lib/monitoring/mobile_sampler.h",
     "lib/png/png_io.h",
     "lib/random/random.h",
@@ -1429,19 +1413,16 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/tracing.h",
 ]
 
-# Replicated for lib_internal and lib_internal_impl.
-LIB_INTERNAL_DEFINES = (tf_additional_lib_defines() + [
-                            "TF_USE_SNAPPY",
-                        ] + tf_additional_verbs_lib_defines() +
-                        tf_additional_mpi_lib_defines() +
-                        tf_additional_gdr_lib_defines())
-
 cc_library(
     name = "lib_internal",
     srcs = LIB_INTERNAL_PRIVATE_HEADERS,
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
-    defines = LIB_INTERNAL_DEFINES,
+    defines = tf_additional_lib_defines() + [
+                  "TF_USE_SNAPPY",
+              ] + tf_additional_verbs_lib_defines() +
+              tf_additional_mpi_lib_defines() +
+              tf_additional_gdr_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
@@ -1474,7 +1455,7 @@ cc_library(
             "lib/jpeg/**/*",
             "platform/**/env_time.cc",
             "platform/**/cuda_libdevice_path.cc",
-            "platform/**/device_tracer.cc",
+            "platform/**/gpu_tracer.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
         ],
@@ -1485,7 +1466,7 @@ cc_library(
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
-            "platform/**/device_tracer.cc",
+            "platform/**/gpu_tracer.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
         ] +
@@ -1495,7 +1476,6 @@ cc_library(
     ),
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
-    defines = LIB_INTERNAL_DEFINES,
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
@@ -2099,9 +2079,12 @@ tf_cuda_library(
         "util/env_var.h",
     ],
     copts = tf_copts(),
+    cuda_deps = [
+        ":gpu_tracer",
+    ],
+    linkstatic = 1,
     deps = [
         ":core_cpu_internal",
-        ":device_tracer",
         ":framework",
         ":lib",
         ":lib_internal",
@@ -2133,18 +2116,18 @@ cc_library(
 )
 
 tf_cuda_library(
-    name = "device_tracer",
-    srcs = tf_additional_device_tracer_srcs(),
+    name = "gpu_tracer",
+    srcs = tf_additional_gpu_tracer_srcs(),
     hdrs = [
-        "platform/device_tracer.h",
+        "platform/gpu_tracer.h",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_gpu_tracer_cuda_deps(),
     deps = [
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
-    ] + tf_additional_device_tracer_deps(),
+    ] + tf_additional_gpu_tracer_deps(),
 )
 
 GPU_RUNTIME_HEADERS = [
@@ -2382,7 +2365,6 @@ tf_cc_tests(
         "lib/math/math_util_test.cc",
         "lib/monitoring/collection_registry_test.cc",
         "lib/monitoring/counter_test.cc",
-        "lib/monitoring/gauge_test.cc",
         "lib/monitoring/metric_def_test.cc",
         "lib/monitoring/sampler_test.cc",
         "lib/random/distribution_sampler_test.cc",
@@ -2724,7 +2706,6 @@ tf_cc_test_mkl(
     srcs = [
         "graph/mkl_layout_pass_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
-        "util/mkl_util_test.cc",
     ],
     linkstatic = 1,
     deps = [
@@ -3383,7 +3364,7 @@ tf_cc_test(
 
 filegroup(
     name = "base_api_def",
-    srcs = glob(["api_def/base_api/*"]),
+    data = glob(["api_def/base_api/*"]),
 )
 
 filegroup(
@@ -3397,6 +3378,10 @@ tf_cc_test(
     data = [
         ":base_api_def",
         "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
     deps = [
         ":framework",
@@ -3413,9 +3398,9 @@ tf_cc_test(
 )
 
 tf_cc_test_gpu(
-    name = "device_tracer_test",
+    name = "gpu_tracer_test",
     size = "small",
-    srcs = ["platform/device_tracer_test.cc"],
+    srcs = ["platform/gpu_tracer_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
@@ -3423,12 +3408,12 @@ tf_cc_test_gpu(
         ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
-        ":device_tracer",
         ":direct_session",
         ":direct_session_internal",
         ":framework",
         ":framework_internal",
         ":gpu_runtime",
+        ":gpu_tracer",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",

@@ -47,7 +47,9 @@ REGISTER_OP("BuildDenseInequalitySplits")
       ShapeHandle partition_ids_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &partition_ids_shape));
       ShapeHandle bucket_ids_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &bucket_ids_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &bucket_ids_shape));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
+                                  c->Dim(bucket_ids_shape, 0), &unused_dim));
       ShapeHandle gradients_shape;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 1, &gradients_shape));
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
@@ -69,7 +71,7 @@ Find the split that has the best gain for the accumulated stats.
 num_minibatches: A scalar, the number of times per example gradients & hessians
     were accumulated. The stats are divided by this to get per example stats.
 partition_ids: A rank 1 tensor of partition IDs.
-bucket_ids: A rank 2 tensor of buckets IDs and dimensions.
+bucket_ids: A rank 1 tensor of buckets IDs.
 gradients: A rank 1 tensor of gradients.
 hessians: A rank 1 tensor of hessians.
 bucket_boundaries: A rank 1 tensor, thresholds that were used for bucketization.
@@ -106,7 +108,9 @@ REGISTER_OP("BuildSparseInequalitySplits")
       ShapeHandle partition_ids_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &partition_ids_shape));
       ShapeHandle bucket_ids_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &bucket_ids_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &bucket_ids_shape));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
+                                  c->Dim(bucket_ids_shape, 0), &unused_dim));
       ShapeHandle gradients_shape;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 1, &gradients_shape));
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
@@ -123,13 +127,12 @@ REGISTER_OP("BuildSparseInequalitySplits")
       return Status::OK();
     })
     .Doc(R"doc(
-Find the split that has the best gain for the accumulated stats for a particular
-feature column.
+Find the split that has the best gain for the accumulated stats.
 
 num_minibatches: A scalar, the number of times per example gradients & hessians
     were accumulated. The stats are divided by this to get per example stats.
-partition_ids: A rank 2 tensor of partition IDs for each dimension of feature column.
-bucket_ids: A rank 2 tensor of buckets IDs and dimensions.
+partition_ids: A rank 1 tensor of partition IDs.
+bucket_ids: A rank 1 tensor of buckets IDs.
 gradients: A rank 1 tensor of gradients.
 hessians: A rank 1 tensor of hessians.
 bucket_boundaries: A rank 1 tensor, thresholds that were used for bucketization.
@@ -165,7 +168,9 @@ REGISTER_OP("BuildCategoricalEqualitySplits")
       ShapeHandle partition_ids_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &partition_ids_shape));
       ShapeHandle bucket_ids_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &bucket_ids_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &bucket_ids_shape));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
+                                  c->Dim(bucket_ids_shape, 0), &unused_dim));
       ShapeHandle gradients_shape;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 1, &gradients_shape));
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
@@ -185,7 +190,7 @@ Find the split that has the best gain for the accumulated stats.
 num_minibatches: A scalar, the number of times per example gradients & hessians
     were accumulated. The stats are divided by this to get per example stats.
 partition_ids: A rank 1 tensor of partition IDs.
-feature_ids: A rank 2 tensor of feature IDs and dimensions.
+feature_ids: A rank 1 tensor of feature IDs.
 gradients: A rank 1 tensor of gradients.
 hessians: A rank 1 tensor of hessians.
 output_partition_ids: A rank 1 tensor, the partition IDs that we created splits

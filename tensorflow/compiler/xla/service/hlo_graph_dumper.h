@@ -84,10 +84,11 @@ void DumpText(const HloModule& module, const string& label,
 
 // Internal implementation details below this point.
 
-// Class that registers a graph renderer.
+// Class that registers a graph renderer. Higher-priority renders are chosen
+// first.
 class Registrar {
  public:
-  Registrar(GraphRendererInterface* dumper);
+  Registrar(GraphRendererInterface* dumper, int priority);
 };
 
 #define XLA_INTERNAL_REGISTER_GRAPH_RENDERER(factory, ctr, ...)   \

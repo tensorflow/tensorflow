@@ -88,8 +88,7 @@ TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
 
 // Pushes a new tape into the thread-local stack.
-// `persistent` must be a PyBool_Type, i.e either Py_True or Py_False
-void TFE_Py_TapeStackPushNew(PyObject* persistent);
+void TFE_Py_TapeStackPushNew();
 
 // Pops the tape from the top of the stack and returns it.
 PyObject* TFE_Py_TapeStackPop();

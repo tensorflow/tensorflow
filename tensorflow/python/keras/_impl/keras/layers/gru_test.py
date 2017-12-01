@@ -156,10 +156,8 @@ class GRULayerTest(test.TestCase):
           activity_regularizer='l1')
       layer.build((None, None, 2))
       self.assertEqual(len(layer.losses), 3)
-
-      x = keras.backend.variable(np.ones((2, 3, 2)))
-      layer(x)
-      self.assertEqual(len(layer.get_losses_for(x)), 1)
+      layer(keras.backend.variable(np.ones((2, 3, 2))))
+      self.assertEqual(len(layer.losses), 4)
 
   def test_constraints_GRU(self):
     embedding_dim = 4
@@ -177,9 +175,9 @@ class GRULayerTest(test.TestCase):
           recurrent_constraint=r_constraint,
           bias_constraint=b_constraint)
       layer.build((None, None, embedding_dim))
-      self.assertEqual(layer.cell.kernel.constraint, k_constraint)
-      self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
-      self.assertEqual(layer.cell.bias.constraint, b_constraint)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.recurrent_kernel.constraint, r_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_with_masking_layer_GRU(self):
     layer_class = keras.layers.GRU

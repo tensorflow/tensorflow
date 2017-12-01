@@ -17,12 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
-#include "tensorflow/compiler/xla/service/hlo_verifier.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -36,6 +33,8 @@ class WhileTransformerTest : public HloTestBase {
       : module_(CreateNewModule()),
         induction_variable_shape_(ShapeUtil::MakeShape(S32, {})),
         data_shape_(ShapeUtil::MakeShape(F32, {8})),
+        loop_state_shape_(ShapeUtil::MakeTupleShape(
+            {induction_variable_shape_, data_shape_})),
         condition_result_shape_(ShapeUtil::MakeShape(PRED, {})) {}
 
   std::unique_ptr<HloComputation> BuildConditionComputation(
@@ -43,8 +42,8 @@ class WhileTransformerTest : public HloTestBase {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
         HloInstruction::CreateConstant(Literal::CreateR0<int32>(limit)));
-    auto loop_state = builder.AddInstruction(HloInstruction::CreateParameter(
-        0, GetLoopStateShape(tuple_index), "loop_state"));
+    auto loop_state = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
     auto induction_variable =
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             limit_const->shape(), loop_state, tuple_index));
@@ -59,8 +58,8 @@ class WhileTransformerTest : public HloTestBase {
       const int64 increment) {
     auto builder = HloComputation::Builder(TestName() + ".Body");
     // Create param instruction to access loop state.
-    auto loop_state = builder.AddInstruction(HloInstruction::CreateParameter(
-        0, GetLoopStateShape(ind_var_tuple_index), "loop_state"));
+    auto loop_state = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
     // Update the induction variable GTE(ind_var_tuple_index).
     auto induction_variable =
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -74,7 +73,7 @@ class WhileTransformerTest : public HloTestBase {
         data_shape_, loop_state, data_tuple_index));
     // Use 'induction_variable' in computation with no path to output tuple.
     auto update = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, induction_variable, {}));
+        HloInstruction::CreateBroadcast(data_shape_, induction_variable, {8}));
     auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, data, update));
     // Create output Tuple.
@@ -99,9 +98,8 @@ class WhileTransformerTest : public HloTestBase {
                   HloInstruction::CreateTuple({induction_var_init, data_init}))
             : builder.AddInstruction(
                   HloInstruction::CreateTuple({data_init, induction_var_init}));
-    auto while_hlo = builder.AddInstruction(
-        HloInstruction::CreateWhile(GetLoopStateShape(ind_var_tuple_index),
-                                    condition, body, loop_state_init));
+    auto while_hlo = builder.AddInstruction(HloInstruction::CreateWhile(
+        loop_state_shape_, condition, body, loop_state_init));
     module_->AddEntryComputation(builder.Build());
     return while_hlo;
   }
@@ -117,34 +115,18 @@ class WhileTransformerTest : public HloTestBase {
   }
 
   void RunCopyInsertionPass() {
-    HloVerifier verifier([](const Shape& shape) {
-      return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
-    });
-    TF_ASSERT_OK(verifier.Run(module_.get()).status());
     CopyInsertion copy_insertion;
-    TF_ASSERT_OK(copy_insertion.Run(module_.get()).status());
-  }
-
-  Shape GetLoopStateShape(const int64 ind_var_tuple_index) {
-    if (ind_var_tuple_index == 0) {
-      return ShapeUtil::MakeTupleShape(
-          {induction_variable_shape_, data_shape_});
-    } else {
-      return ShapeUtil::MakeTupleShape(
-          {data_shape_, induction_variable_shape_});
-    }
+    EXPECT_IS_OK(copy_insertion.Run(module_.get()).status());
   }
 
   std::unique_ptr<HloModule> module_;
   Shape induction_variable_shape_;
   Shape data_shape_;
+  Shape loop_state_shape_;
   Shape condition_result_shape_;
 };
 
-// TODO(b/68830972): The while transformer is far too fragile. It patterns
-// matches the exact expressions of opcodes. Re-enable when transformation is
-// more general
-TEST_F(WhileTransformerTest, DISABLED_InductionVariableAtTupleElement0) {
+TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
   // Build computation with induction variable at tuple element 0.
   auto condition =
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 10));
@@ -155,16 +137,13 @@ TEST_F(WhileTransformerTest, DISABLED_InductionVariableAtTupleElement0) {
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  TF_ASSERT_OK(result.status());
+  ASSERT_TRUE(result.ok());
   // Check results.
   EXPECT_THAT(result.ConsumeValueOrDie(),
               Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
 }
 
-// TODO(b/68830972): The while transformer is far too fragile. It patterns
-// matches the exact expressions of opcodes. Re-enable when transformation is
-// more general
-TEST_F(WhileTransformerTest, DISABLED_InductionVariableAtTupleElement1) {
+TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
   // Build computation with induction variable at tuple element 1.
   auto condition =
       module_->AddEmbeddedComputation(BuildConditionComputation(1, 10));
@@ -175,16 +154,13 @@ TEST_F(WhileTransformerTest, DISABLED_InductionVariableAtTupleElement1) {
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  TF_ASSERT_OK(result.status());
+  ASSERT_TRUE(result.ok());
   // Check results.
   EXPECT_THAT(result.ConsumeValueOrDie(),
               Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
 }
 
-// TODO(b/68830972): The while transformer is far too fragile. It patterns
-// matches the exact expressions of opcodes. Re-enable when transformation is
-// more general
-TEST_F(WhileTransformerTest, DISABLED_InvalidLoopLimit) {
+TEST_F(WhileTransformerTest, InvalidLoopLimit) {
   // Build computation with invalid loop limit.
   auto condition =
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 5));
@@ -200,10 +176,7 @@ TEST_F(WhileTransformerTest, DISABLED_InvalidLoopLimit) {
               HasSubstr("Loop start must be less than loop limit."));
 }
 
-// TODO(b/68830972): The while transformer is far too fragile. It patterns
-// matches the exact expressions of opcodes. Re-enable when transformation is
-// more general
-TEST_F(WhileTransformerTest, DISABLED_InvalidLoopIncrement) {
+TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
   // Build computation with invalid loop increment.
   auto condition =
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 10));

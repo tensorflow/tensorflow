@@ -1,0 +1,195 @@
+op {
+  graph_op_name: "OneHot"
+  endpoint {
+    name: "OneHot"
+  }
+  summary: "Returns a one-hot tensor."
+  description: <<END
+The locations represented by indices in `indices` take value `on_value`,
+while all other locations take value `off_value`.
+
+If the input `indices` is rank `N`, the output will have rank `N+1`,
+The new axis is created at dimension `axis` (default: the new axis is
+appended at the end).
+
+If `indices` is a scalar the output shape will be a vector of length `depth`.
+
+If `indices` is a vector of length `features`, the output shape will be:
+```
+  features x depth if axis == -1
+  depth x features if axis == 0
+```
+
+If `indices` is a matrix (batch) with shape `[batch, features]`,
+the output shape will be:
+```
+  batch x features x depth if axis == -1
+  batch x depth x features if axis == 1
+  depth x batch x features if axis == 0
+```
+
+
+Examples
+=========
+
+Suppose that
+
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 5.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[4 x 3]`:
+
+    ```output =
+      [5.0 0.0 0.0]  // one_hot(0)
+      [0.0 0.0 5.0]  // one_hot(2)
+      [0.0 0.0 0.0]  // one_hot(-1)
+      [0.0 5.0 0.0]  // one_hot(1)
+    ```
+
+Suppose that
+
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 0.0
+  off_value = 3.0
+  axis = 0
+```
+
+Then output is `[3 x 4]`:
+
+    ```output =
+      [0.0 3.0 3.0 3.0]
+      [3.0 3.0 3.0 0.0]
+      [3.0 3.0 3.0 3.0]
+      [3.0 0.0 3.0 3.0]
+    //  ^                one_hot(0)
+    //      ^            one_hot(2)
+    //          ^        one_hot(-1)
+    //              ^    one_hot(1)
+    ```
+Suppose that
+
+```
+  indices = [[0, 2], [1, -1]]
+  depth = 3
+  on_value = 1.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[2 x 2 x 3]`:
+
+    ```output =
+      [
+        [1.0, 0.0, 0.0]  // one_hot(0)
+        [0.0, 0.0, 1.0]  // one_hot(2)
+      ][
+        [0.0, 1.0, 0.0]  // one_hot(1)
+        [0.0, 0.0, 0.0]  // one_hot(-1)
+      ]```
+END
+}
+op {
+  graph_op_name: "OneShotIterator"
+  endpoint {
+    name: "OneShotIterator"
+  }
+  summary: "Makes a \"one-shot\" iterator that can be iterated only once."
+  description: <<END
+A one-shot iterator bundles the logic for defining the dataset and
+the state of the iterator in a single op, which allows simple input
+pipelines to be defined without an additional initialization
+("MakeIterator") step.
+
+One-shot iterators have the following limitations:
+
+* They do not support parameterization: all logic for creating the underlying
+  dataset must be bundled in the `dataset_factory` function.
+* They are not resettable. Once a one-shot iterator reaches the end of its
+  underlying dataset, subsequent "IteratorGetNext" operations on that
+  iterator will always produce an `OutOfRange` error.
+
+For greater flexibility, use "Iterator" and "MakeIterator" to define
+an iterator using an arbitrary subgraph, which may capture tensors
+(including fed values) as parameters, and which may be reset multiple
+times by rerunning "MakeIterator".
+END
+}
+op {
+  graph_op_name: "OnesLike"
+  endpoint {
+    name: "OnesLike"
+  }
+  summary: "Returns a tensor of ones with the same shape and type as x."
+}
+op {
+  graph_op_name: "OrderedMapClear"
+  endpoint {
+    name: "OrderedMapClear"
+  }
+  summary: "Op removes all elements in the underlying container."
+}
+op {
+  graph_op_name: "OrderedMapIncompleteSize"
+  endpoint {
+    name: "OrderedMapIncompleteSize"
+  }
+  summary: "Op returns the number of incomplete elements in the underlying container."
+}
+op {
+  graph_op_name: "OrderedMapPeek"
+  endpoint {
+    name: "OrderedMapPeek"
+  }
+  summary: "Op peeks at the values at the specified key.  If the"
+  description: <<END
+underlying container does not contain this key
+this op will block until it does.   This Op is optimized for
+performance.
+END
+}
+op {
+  graph_op_name: "OrderedMapSize"
+  endpoint {
+    name: "OrderedMapSize"
+  }
+  summary: "Op returns the number of elements in the underlying container."
+}
+op {
+  graph_op_name: "OrderedMapStage"
+  endpoint {
+    name: "OrderedMapStage"
+  }
+  summary: "Stage (key, values) in the underlying container which behaves like a ordered"
+  description: <<END
+associative container.   Elements are ordered by key.
+END
+}
+op {
+  graph_op_name: "OrderedMapUnstage"
+  endpoint {
+    name: "OrderedMapUnstage"
+  }
+  summary: "Op removes and returns the values associated with the key"
+  description: <<END
+from the underlying container.   If the underlying container
+does not contain this key, the op will block until it does.
+END
+}
+op {
+  graph_op_name: "OrderedMapUnstageNoKey"
+  endpoint {
+    name: "OrderedMapUnstageNoKey"
+  }
+  summary: "Op removes and returns the (key, value) element with the smallest"
+  description: <<END
+key from the underlying container.   If the underlying container
+does not contain elements, the op will block until it does.
+END
+}

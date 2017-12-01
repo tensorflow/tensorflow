@@ -15,7 +15,6 @@ limitations under the License.
 
 
 %include "tensorflow/python/platform/base.i"
-%include "cluster.i"
 
 %typemap(in) const tensorflow::MetaGraphDef& (tensorflow::MetaGraphDef temp) {
   char* c_string;
@@ -93,7 +92,7 @@ void DetectDevices(std::unordered_map<string, tensorflow::DeviceProperties>* dev
 }
 
 PyObject* TF_OptimizeGraph(
-      GCluster cluster,
+      tensorflow::grappler::Cluster* cluster,
       const tensorflow::RewriterConfig& rewriter_config,
       const tensorflow::MetaGraphDef& metagraph,
       bool verbose, const string& graph_id, TF_Status* out_status) {
@@ -103,10 +102,17 @@ PyObject* TF_OptimizeGraph(
     std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
         tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph, item_config);
 
+    std::unique_ptr<tensorflow::grappler::VirtualCluster> virtual_cluster;
+    if (cluster == nullptr) {
+      std::unordered_map<string, tensorflow::DeviceProperties> device_map;
+      DetectDevices(&device_map);
+      virtual_cluster.reset(new tensorflow::grappler::VirtualCluster(device_map));
+      cluster = virtual_cluster.get();
+    }
     tensorflow::DeviceBase* cpu_device = nullptr;
     tensorflow::GraphDef out_graph;
     tensorflow::grappler::MetaOptimizer optimizer(cpu_device, rewriter_config);
-    tensorflow::Status status = optimizer.Optimize(cluster.get(), *grappler_item, &out_graph);
+    tensorflow::Status status = optimizer.Optimize(cluster, *grappler_item, &out_graph);
     if (verbose) {
       optimizer.PrintResult();
     }
@@ -121,7 +127,7 @@ PyObject* TF_OptimizeGraph(
 
 // Wrap this function
 PyObject* TF_OptimizeGraph(
-    GCluster cluster,
+    tensorflow::grappler::Cluster* cluster,
     const tensorflow::RewriterConfig& rewriter_config,
     const tensorflow::MetaGraphDef& metagraph, bool verbose,
     const string& graph_id, TF_Status* out_status);

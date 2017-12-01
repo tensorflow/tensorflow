@@ -370,7 +370,7 @@ void NcclManager::AddParticipant(int num_devices, const string& key,
 }
 
 void NcclManager::RunCollective(const string& key, Collective* collective) {
-  static mutex collective_mu(LINKER_INITIALIZED);
+  static mutex collective_mu;
 
   auto* communicator = GetCommunicator(collective);
   collective->communicator = communicator;

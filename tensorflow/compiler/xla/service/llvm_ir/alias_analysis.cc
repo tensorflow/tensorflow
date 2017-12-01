@@ -83,7 +83,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       if (std::find(parameter_instructions.begin(),
                     parameter_instructions.end(),
                     &hlo) != parameter_instructions.end()) {
-        array->MarkInvariantOverWholeProgram(context_);
+        array->AddInvariantLoad(llvm::MDNode::get(*context_, /*MDs=*/{}));
       }
     }
   }

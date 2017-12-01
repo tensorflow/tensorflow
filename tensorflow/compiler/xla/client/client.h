@@ -67,15 +67,6 @@ class Client {
     std::vector<GlobalData*> arguments;
     ExecutionOptions execution_options;
     ExecutionProfile* execution_profile;
-
-    ComputationInstance(const Computation& computation,
-                        std::vector<GlobalData*> arguments,
-                        ExecutionOptions execution_options,
-                        ExecutionProfile* execution_profile)
-        : computation(computation),
-          arguments(std::move(arguments)),
-          execution_options(execution_options),
-          execution_profile(execution_profile) {}
   };
 
   // Executes a list ComputationInstances and returns global data produced from
@@ -142,7 +133,7 @@ class Client {
 
   // Returns a vector of global data handles that point to the tuple elements.
   StatusOr<std::vector<std::unique_ptr<GlobalData>>> DeconstructTuple(
-      const GlobalData& data);
+      const GlobalData& computation);
 
   // Retrieves the statistics of the given computation.
   StatusOr<ComputationStats> GetComputationStats(

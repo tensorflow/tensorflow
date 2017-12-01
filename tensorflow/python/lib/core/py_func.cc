@@ -32,7 +32,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static mutex mu(LINKER_INITIALIZED);
+static mutex mu;
 static PyObject* py_trampoline GUARDED_BY(mu) = nullptr;
 
 // Returns the py_trampoline that is used to pass the control to the
@@ -176,8 +176,7 @@ string PyExcFetch() {
 }
 
 // Calls the registered py function through the trampoline.
-Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
-  *out_log_on_error = true;
+Status DoCallPyFunc(PyCall* call) {
   PyObject* trampoline = GetPyTrampoline();
   if (trampoline == nullptr) {
     return errors::InvalidArgument(
@@ -197,7 +196,6 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
           PyErr_ExceptionMatches(PyExc_TypeError)) {
         return errors::InvalidArgument(PyExcFetch());
       } else if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
-        *out_log_on_error = false;
         return errors::OutOfRange(PyExcFetch());
       } else if (PyErr_ExceptionMatches(PyExc_MemoryError)) {
         return errors::ResourceExhausted(PyExcFetch());
@@ -428,19 +426,11 @@ class PyFuncOp : public OpKernel {
 
     PyGILState_STATE py_threadstate;
     py_threadstate = PyGILState_Ensure();
-    bool log_on_error;
-    Status s = DoCallPyFunc(&call, &log_on_error);
+    Status s = DoCallPyFunc(&call);
     PyGILState_Release(py_threadstate);
 
     // Ensures that GIL is released even when !s.ok().
-    if (!s.ok()) {
-      if (log_on_error) {
-        ctx->CtxFailureWithWarning(s);
-      } else {
-        ctx->CtxFailure(s);
-      }
-      return;
-    }
+    OP_REQUIRES_OK(ctx, s);
 
     OP_REQUIRES(ctx, static_cast<int32>(call.out.size()) == ctx->num_outputs(),
                 errors::InvalidArgument(token_, " returns ", call.out.size(),

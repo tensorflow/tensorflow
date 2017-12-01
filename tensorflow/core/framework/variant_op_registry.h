@@ -145,8 +145,9 @@ class UnaryVariantOpRegistry {
   static std::unordered_set<string>* PersistentStringStorage();
 
  private:
-  std::unordered_map<StringPiece, VariantShapeFn, StringPieceHasher> shape_fns;
-  std::unordered_map<StringPiece, VariantDecodeFn, StringPieceHasher>
+  std::unordered_map<StringPiece, VariantShapeFn, StringPiece::Hasher>
+      shape_fns;
+  std::unordered_map<StringPiece, VariantDecodeFn, StringPiece::Hasher>
       decode_fns;
 
   // Map std::pair<Direction, type_name> to function.
@@ -158,7 +159,7 @@ class UnaryVariantOpRegistry {
       ret = Hash64Combine(ret, sp_hasher_(std::get<1>(x)));
       return ret;
     }
-    StringPieceHasher sp_hasher_;
+    StringPiece::Hasher sp_hasher_;
   };
 
   std::unordered_map<std::pair<VariantDeviceCopyDirection, StringPiece>,
@@ -176,7 +177,7 @@ class UnaryVariantOpRegistry {
       ret = Hash64Combine(ret, sp_hasher_(std::get<2>(x)));
       return ret;
     }
-    StringPieceHasher sp_hasher_;
+    StringPiece::Hasher sp_hasher_;
   };
   std::unordered_map<std::tuple<VariantUnaryOp, StringPiece, StringPiece>,
                      VariantUnaryOpFn, TupleHash>
