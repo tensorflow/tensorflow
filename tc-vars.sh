@@ -44,14 +44,11 @@ export PATH
 
 if [ "${OS}" = "Linux" ]; then
     export LD_LIBRARY_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/:${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/stubs/:$LD_LIBRARY_PATH
-    export PYTHON_BIN_PATH=${DS_ROOT_TASK}/DeepSpeech/tf-venv/bin/python
-    export PYTHONPATH=${DS_ROOT_TASK}/DeepSpeech/tf-venv/lib/python2.7/site-packages
-elif [ "${OS}" = "Darwin" ]; then
-    export PYENV_VERSION=2.7.13
-    export PYENV_ROOT=${DS_ROOT_TASK}/pyenv/
-    export PYTHON_BIN_PATH=${PYENV_ROOT}/versions/${PYENV_VERSION}/envs/tf-venv/bin/python
-    export PYTHONPATH=${PYENV_ROOT}/versions/${PYENV_VERSION}/envs/tf-venv/lib/python2.7/site-packages
 fi;
+
+export TF_VENV=tf-venv
+export PYENV_ROOT=${DS_ROOT_TASK}/pyenv/
+export PATH="${PYENV_ROOT}/bin:$PATH"
 
 export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
