@@ -37,13 +37,14 @@ class FakeHttpRequest : public CurlHttpRequest {
  public:
   /// Return the response for the given request.
   FakeHttpRequest(const string& request, const string& response)
-      : FakeHttpRequest(request, response, Status::OK(), nullptr, {}, 200) {}
+      : FakeHttpRequest(request, response, Status::OK(), nullptr, {}, 200, {}) {
+  }
 
   /// Return the response with headers for the given request.
   FakeHttpRequest(const string& request, const string& response,
                   const std::map<string, string>& response_headers)
       : FakeHttpRequest(request, response, Status::OK(), nullptr,
-                        response_headers, 200) {}
+                        response_headers, 200, {}) {}
 
   /// \brief Return the response for the request and capture the POST body.
   ///
@@ -51,13 +52,13 @@ class FakeHttpRequest : public CurlHttpRequest {
   FakeHttpRequest(const string& request, const string& response,
                   string* captured_post_body)
       : FakeHttpRequest(request, response, Status::OK(), captured_post_body, {},
-                        200) {}
+                        200, {}) {}
 
   /// \brief Return the response and the status for the given request.
   FakeHttpRequest(const string& request, const string& response,
                   Status response_status, uint64 response_code)
       : FakeHttpRequest(request, response, response_status, nullptr, {},
-                        response_code) {}
+                        response_code, {}) {}
 
   /// \brief Return the response and the status for the given request
   ///  and capture the POST body.
@@ -66,13 +67,15 @@ class FakeHttpRequest : public CurlHttpRequest {
   FakeHttpRequest(const string& request, const string& response,
                   Status response_status, string* captured_post_body,
                   const std::map<string, string>& response_headers,
-                  uint64 response_code)
+                  uint64 response_code,
+                  absl::optional<std::tuple<uint32, uint32, uint32>> timeouts)
       : expected_request_(request),
         response_(response),
         response_status_(response_status),
         captured_post_body_(captured_post_body),
         response_headers_(response_headers),
-        response_code_(response_code) {}
+        response_code_(response_code),
+        timeouts_(timeouts) {}
 
   Status Init() override { return Status::OK(); }
   Status SetUri(const string& uri) override {
@@ -160,6 +163,13 @@ class FakeHttpRequest : public CurlHttpRequest {
 
   virtual uint64 GetResponseCode() const override { return response_code_; }
 
+  Status SetTimeouts(uint32 connection, uint32 inactivity,
+                     uint32 total) override {
+    actual_request_ += strings::StrCat("Timeouts: ", connection, " ",
+                                       inactivity, " ", total, "\n");
+    return Status::OK();
+  }
+
  private:
   std::vector<char>* buffer_ = nullptr;
   string expected_request_;
@@ -169,6 +179,7 @@ class FakeHttpRequest : public CurlHttpRequest {
   string* captured_post_body_ = nullptr;
   std::map<string, string> response_headers_;
   uint64 response_code_ = 0;
+  absl::optional<std::tuple<uint32, uint32, uint32>> timeouts_;
 };
 
 /// Fake HttpRequest factory for testing.

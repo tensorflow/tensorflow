@@ -120,6 +120,9 @@ class CurlHttpRequest : public HttpRequest {
   // Url encodes str and returns a new string.
   string EscapeString(const string& str) override;
 
+  Status SetTimeouts(uint32 connection, uint32 inactivity,
+                     uint32 total) override;
+
  private:
   /// A write callback in the form which can be accepted by libcurl.
   static size_t WriteCallback(const void* ptr, size_t size, size_t nmemb,
@@ -161,6 +164,15 @@ class CurlHttpRequest : public HttpRequest {
   uint64 last_progress_timestamp_ = 0;
   // The last progress in terms of bytes transmitted.
   curl_off_t last_progress_bytes_ = 0;
+
+  // The maximum period of request inactivity.
+  uint32 inactivity_timeout_secs_ = 60;  // 1 minute
+
+  // Timeout for the connection phase.
+  uint32 connect_timeout_secs_ = 120;  // 2 minutes
+
+  // Tiemout for the whole request. Set only to prevent hanging indefinitely.
+  uint32 request_timeout_secs_ = 3600;  // 1 hour
 
   // Members to enforce the usage flow.
   bool is_initialized_ = false;
