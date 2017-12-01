@@ -50,6 +50,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
     ],
 )

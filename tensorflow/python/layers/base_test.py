@@ -88,6 +88,11 @@ class BaseLayerTest(test.TestCase):
           regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
 
+  def testNoEagerActivityRegularizer(self):
+    with context.eager_mode():
+      with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
+        core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
+
   def testGetVariable(self):
     with self.test_session():
 

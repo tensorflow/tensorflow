@@ -179,12 +179,11 @@ def _ProcessInputMapParam(input_map):
 
 def _ProcessReturnElementsParam(return_elements):
   """Type-checks and possibly canonicalizes `return_elements`."""
-  if return_elements is not None:
-    return_elements = tuple(return_elements)
-    if not all(isinstance(x, compat.bytes_or_text_types)
-               for x in return_elements):
-      raise TypeError('return_elements must be a list of strings.')
-  return return_elements
+  if return_elements is None: return None
+  if not all(isinstance(x, compat.bytes_or_text_types)
+             for x in return_elements):
+    raise TypeError('return_elements must be a list of strings.')
+  return tuple(compat.as_str(x) for x in return_elements)
 
 
 def _FindAttrInOpDef(attr_name, op_def):
@@ -194,16 +193,60 @@ def _FindAttrInOpDef(attr_name, op_def):
   return None
 
 
-def _PopulateTFImportGraphDefOptions(options, prefix, return_elements):
+def _ConvertInputMapValues(name, input_map):
+  """Ensures all input map values are tensors.
+
+  This should be called from inside the import name scope.
+
+  Args:
+    name: the `name` argument passed to import_graph_def
+    input_map: the `input_map` argument passed to import_graph_def.
+
+  Returns:
+    An possibly-updated version of `input_map`.
+
+  Raises:
+    ValueError: if input map values cannot be converted due to empty name scope.
+  """
+  if not all(isinstance(v, ops.Tensor) for v in input_map.values()):
+    if name == '':  # pylint: disable=g-explicit-bool-comparison
+      raise ValueError(
+          'tf.import_graph_def() requires a non-empty `name` if `input_map` '
+          'contains non-Tensor values. Try calling tf.convert_to_tensor() on '
+          '`input_map` values before calling tf.import_graph_def().')
+    with ops.name_scope('_inputs'):
+      input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
+  return input_map
+
+
+def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
+                                     return_elements):
   """Populates the TF_ImportGraphDefOptions `options`."""
   c_api.TF_ImportGraphDefOptionsSetPrefix(options, prefix)
 
+  for input_src, input_dst in input_map.items():
+    input_src = compat.as_str(input_src)
+    if input_src.startswith('^'):
+      src_name = compat.as_bytes(input_src[1:])
+      dst_op = input_dst._as_tf_output().oper  # pylint: disable=protected-access
+      c_api.TF_ImportGraphDefOptionsRemapControlDependency(options, src_name,
+                                                           dst_op)
+    else:
+      src_name, src_idx = _ParseTensorName(input_src)
+      src_name = compat.as_str(src_name)
+      dst_output = input_dst._as_tf_output()  # pylint: disable=protected-access
+      c_api.TF_ImportGraphDefOptionsAddInputMapping(options, src_name,
+                                                    src_idx, dst_output)
   for name in return_elements or []:
     if ':' in name:
       op_name, index = _ParseTensorName(name)
+      op_name = compat.as_str(op_name)
       c_api.TF_ImportGraphDefOptionsAddReturnOutput(options, op_name, index)
     else:
-      c_api.TF_ImportGraphDefOptionsAddReturnOperation(options, name)
+      c_api.TF_ImportGraphDefOptionsAddReturnOperation(options,
+                                                       compat.as_str(name))
+
+  # TODO(skyewm): control dependencies
 
 
 def _ProcessNewOps(graph):
@@ -312,16 +355,26 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       else:
         prefix = ''
 
+      # Generate any input map tensors inside name scope
+      input_map = _ConvertInputMapValues(name, input_map)
+
     scoped_options = c_api_util.ScopedTFImportGraphDefOptions()
     options = scoped_options.options
-    _PopulateTFImportGraphDefOptions(options, prefix, return_elements)
+    _PopulateTFImportGraphDefOptions(options, prefix, input_map,
+                                     return_elements)
 
     with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
-      with errors.raise_exception_on_not_ok_status() as status:
-        results = c_api.TF_GraphImportGraphDefWithResults(
-            graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          results = c_api.TF_GraphImportGraphDefWithResults(
+              graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
+      except errors.InvalidArgumentError as e:
+        # Convert to ValueError for backwards compatibility.
+        raise ValueError(str(e))
 
     _ProcessNewOps(graph)
+
+    # TODO(skyewm): error if unused input map key
 
     if return_elements is None:
       return None
@@ -359,16 +412,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       # more nuanced.
       g.graph_def_versions.CopyFrom(graph_def.versions)
 
-      if not all(isinstance(v, ops.Tensor) for v in input_map.values()):
-        if not scope:
-          # The caller must have passed `name=''`.
-          raise ValueError(
-              'tf.import_graph_def() requires a non-empty `name` if `input_map`'
-              ' contains non-Tensor values. Try calling tf.convert_to_tensor() '
-              'on `input_map` values before calling tf.import_graph_def().')
-        with ops.name_scope('_inputs'):
-          input_map = {k: ops.convert_to_tensor(v)
-                       for k, v in input_map.items()}
+      input_map = _ConvertInputMapValues(name, input_map)
 
       # NOTE(mrry): We do this in two passes, because there may be a cycle in
       # `graph_def`.

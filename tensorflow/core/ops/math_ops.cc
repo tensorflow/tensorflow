@@ -1811,10 +1811,11 @@ output: Has same shape as data, except for dimension 0 which
 REGISTER_OP("UnsortedSegmentSum")
     .Input("data: T")
     .Input("segment_ids: Tindices")
-    .Input("num_segments: int32")
+    .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(UnsortedSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
@@ -1849,10 +1850,11 @@ output: Has same shape as data, except for the first `segment_ids.rank`
 REGISTER_OP("UnsortedSegmentMax")
     .Input("data: T")
     .Input("segment_ids: Tindices")
-    .Input("num_segments: int32")
+    .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(UnsortedSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the Max along segments of a tensor.

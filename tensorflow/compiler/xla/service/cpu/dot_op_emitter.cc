@@ -518,9 +518,7 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
 bool DotOpEmitter::ShapesAreLegalForRuntimeDot() const { return true; }
 
 bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
-  if (dot_.shape().dimensions_size() != 2 ||
-      ProfitableToImplementDotInUntiledLlvmIr(dot_) ==
-          DotInLlvmIrProfitable::kYes) {
+  if (dot_.shape().dimensions_size() != 2) {
     return false;
   }
 
@@ -977,9 +975,7 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
       return false;
     }
 
-    if (ProfitableToImplementDotInUntiledLlvmIr(hlo) ==
-            DotInLlvmIrProfitable::kYes ||
-        ProfitableToImplementDotInTiledLlvmIr(hlo)) {
+    if (ProfitableToImplementDotInTiledLlvmIr(hlo)) {
       return false;
     }
 
@@ -1010,46 +1006,11 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
   return false;
 }
 
-DotInLlvmIrProfitable ProfitableToImplementDotInUntiledLlvmIr(
-    const HloInstruction& dot) {
-  if (dot.opcode() == HloOpcode::kDot && dot.shape().dimensions_size() == 2) {
-    const Shape& result_shape = dot.shape();
-    // kReductionDimensionThresholdBytes was chosen to be 1/4 of a typical L1
-    // cache line size, so that we can have the reduction dimension of both the
-    // LHS and RHS matrices and still have some space "left over".  This needs
-    // to be tuned further.
-    const int64 kReductionDimensionThresholdBytes = 8 * 1024;
-    const bool single_threaded_eigen =
-        !dot.GetModule()->config().debug_options().xla_cpu_multi_thread_eigen();
-
-    // This is the point at which it is better to call into Eigen and shard the
-    // dot across multiple worker threads.  This is a rough estimate by running
-    // a matmult benchmark on my local machine, and it can be tuned further.
-    const int64 kMaxSingleThreadedFlops = 16 * 1024;
-
-    const int64 M = result_shape.dimensions(0);
-    const int64 N = result_shape.dimensions(1);
-    const int64 K = dot.operand(1)->shape().dimensions(0);
-    const int64 primitive_type_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(result_shape.element_type());
-    if (M == 1 &&
-        K * primitive_type_size <= kReductionDimensionThresholdBytes &&
-        (single_threaded_eigen || M * K * N <= kMaxSingleThreadedFlops)) {
-      // Heuristics:
-      //
-      //  - Look for a configuration where we will likely be able to keep LHS in
-      //    L1 and do a cache-optimal traversal of RHS.
-      //
-      //  - Bail out on matrices that are large enough that Eigen can profitably
-      //    shard the computation across multiple cores.  This only applies when
-      //    multi-threading is enabled.
-      return LayoutUtil::IsMonotonicWithDim0Major(
-                 dot.operand(1)->shape().layout())
-                 ? DotInLlvmIrProfitable::kWithColumnMajorRhs
-                 : DotInLlvmIrProfitable::kYes;
-    }
-  }
-  return DotInLlvmIrProfitable::kNo;
+// For vector-matrix dot products, it is always profitable to make the Rhs
+// column major.
+bool ProfitableToMakeDotRhsColumnMajor(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kDot &&
+         hlo.shape().dimensions_size() == 2 && hlo.shape().dimensions(0) == 1;
 }
 
 bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot) {

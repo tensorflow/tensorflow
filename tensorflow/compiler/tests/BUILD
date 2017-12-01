@@ -417,6 +417,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "scan_ops_test",
+    size = "small",
+    srcs = ["scan_ops_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "segment_reduction_ops_test",
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],

@@ -1163,7 +1163,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   Status s = errors::Unknown(
       "The graph properties are needed but were not initialized");
   if (needs_shapes) {
-    s = properties.InferStatically();
+    s = properties.InferStatically(false);
   }
 
   if (!has_feed && s.ok()) {

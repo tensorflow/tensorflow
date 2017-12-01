@@ -102,6 +102,11 @@ class XlaContext : public ResourceBase {
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
 
+  // Get an XLA lambda to compute Mul. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMul(const DataType type);
+
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
 
@@ -154,6 +159,9 @@ class XlaContext : public ResourceBase {
 
   // Cached computation to compute Sum of two elements, specialized by type.
   ComputationMap add_func_;
+
+  // Cached computation to compute Mul of two elements, specialized by type.
+  ComputationMap mul_func_;
 
   // Cached computation to compute Sigmoid of an element, specialized by type.
   ComputationMap sigmoid_func_;

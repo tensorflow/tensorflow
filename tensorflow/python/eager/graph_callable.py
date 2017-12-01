@@ -296,6 +296,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # Call the function again, now replacing usages of variables with
       # placeholders. This assumes the variable capturing scope created above
       # knows about all variables.
+      tmp_graph.clear_resource_control_flow_state()
       with variable_captures.capturing_scope(), function.capture_tensors(
           captures):
         captured_outputs = func(*func_inputs)

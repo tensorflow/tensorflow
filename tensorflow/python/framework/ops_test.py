@@ -1537,7 +1537,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
       self.assertEqual(future.calls, 1)
     else:
       a = constant_op.constant(1.0)
-      b = future
+      b = future()
       with ops.control_dependencies([a, b]):
         c = constant_op.constant(3.0)
       self.assertEqual(future.calls, 1)
@@ -1875,6 +1875,14 @@ class GraphTest(test_util.TensorFlowTestCase):
     del sess
     gc.collect()
     self.assertIsNone(g_ref())
+
+  def testRunnableAfterInvalidShape(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError):
+        math_ops.add([1, 2], [1, 2, 3])
+      a = constant_op.constant(1)
+      with session.Session() as sess:
+        sess.run(a)
 
 
 @test_util.with_c_api
@@ -2394,6 +2402,13 @@ class InputTypesTest(test_util.TensorFlowTestCase):
       self.assertEqual([dtypes.double, dtypes.double], z.op._input_types)
       self.assertEqual([dtypes.double, dtypes.double], z.op._input_dtypes)
       # pylint: enable=protected-access
+
+  def testBadArgumentsToEnableEagerExecution(self):
+    with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):
+      ops.enable_eager_execution(context.DEVICE_PLACEMENT_SILENT)
+    with self.assertRaisesRegexp(ValueError, "device_policy must be one of"):
+      c = config_pb2.ConfigProto()
+      ops.enable_eager_execution(c, c)
 
 
 if __name__ == "__main__":

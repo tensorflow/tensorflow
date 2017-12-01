@@ -676,6 +676,7 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python:resource_variable_ops",
     ],
     tags = ["noasan"],  # http://b/32635055
 )

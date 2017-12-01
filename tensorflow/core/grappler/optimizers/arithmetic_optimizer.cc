@@ -1067,7 +1067,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   if (opt_level_ == RewriterConfig::AGGRESSIVE) {
     graph_properties_.reset(new GraphProperties(item));
     // Shapes are only needed in aggressive mode.
-    TF_RETURN_IF_ERROR(graph_properties_->InferStatically());
+    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(false));
     TF_RETURN_IF_ERROR(
         graph_properties_->AnnotateOutputShapes(optimized_graph_));
   }
