@@ -657,9 +657,9 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
 
 namespace {
 
-#define SET_TENSOR_VAL_CASE(DTYPE, TYPE)           \
+#define SET_TENSOR_VAL_CASE(DTYPE, TYPE, NAME)     \
   case DTYPE:                                      \
-    t->add_##TYPE##_val(static_cast<TYPE>(value)); \
+    t->add_##NAME##_val(static_cast<TYPE>(value)); \
     break;
 
 Status CreateConstantTensorAttrValue(DataType type, double value,
@@ -668,10 +668,14 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
   TensorProto* t = attr_tensor->mutable_tensor();
   *t->mutable_tensor_shape() = shape;
   switch (type) {
-    SET_TENSOR_VAL_CASE(DT_FLOAT, float);
-    SET_TENSOR_VAL_CASE(DT_DOUBLE, double);
-    SET_TENSOR_VAL_CASE(DT_INT64, int64);
-    SET_TENSOR_VAL_CASE(DT_INT32, int);
+    SET_TENSOR_VAL_CASE(DT_FLOAT, float, float);
+    SET_TENSOR_VAL_CASE(DT_DOUBLE, double, double);
+    SET_TENSOR_VAL_CASE(DT_INT64, int64, int64);
+    SET_TENSOR_VAL_CASE(DT_INT32, int32, int);
+    SET_TENSOR_VAL_CASE(DT_INT16, int32, int);
+    SET_TENSOR_VAL_CASE(DT_INT8, int32, int);
+    SET_TENSOR_VAL_CASE(DT_UINT8, int32, int);
+    SET_TENSOR_VAL_CASE(DT_BOOL, bool, bool);
     default:
       return errors::InvalidArgument("Unsupported type: ", type);
   }
@@ -721,6 +725,14 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
       POPULATE_TENSOR_PROTO(tensor, t, int64, int64)
     } else if (tensor->dtype() == DT_INT32) {
       POPULATE_TENSOR_PROTO(tensor, t, int32, int)
+    } else if (tensor->dtype() == DT_INT16) {
+      POPULATE_TENSOR_PROTO(tensor, t, int16, int)
+    } else if (tensor->dtype() == DT_INT8) {
+      POPULATE_TENSOR_PROTO(tensor, t, int8, int)
+    } else if (tensor->dtype() == DT_UINT8) {
+      POPULATE_TENSOR_PROTO(tensor, t, uint8, int)
+    } else if (tensor->dtype() == DT_BOOL) {
+      POPULATE_TENSOR_PROTO(tensor, t, bool, bool)
     }
   }
   if (optimized) {

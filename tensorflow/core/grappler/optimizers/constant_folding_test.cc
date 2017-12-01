@@ -173,11 +173,70 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
   }
 }
 
+TEST_F(ConstantFoldingTest, CreateConstNodes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+#define MAKE_TEST_GRAPH(TYPE)                                               \
+  Output TYPE##_const =                                                     \
+      ops::Const(s.WithOpName(#TYPE "_const"), static_cast<TYPE>(10), {5}); \
+  Output TYPE##_mul =                                                       \
+      ops::Mul(s.WithOpName(#TYPE "_mul"), TYPE##_const, TYPE##_const);     \
+  Output TYPE##_id = ops::Identity(s.WithOpName(#TYPE "_id"), TYPE##_mul)
+
+  MAKE_TEST_GRAPH(float);
+  MAKE_TEST_GRAPH(double);
+  MAKE_TEST_GRAPH(int64);
+  MAKE_TEST_GRAPH(int32);
+  MAKE_TEST_GRAPH(int16);
+  MAKE_TEST_GRAPH(int8);
+  MAKE_TEST_GRAPH(uint8);
+#undef MAKE_TEST_GRAPH
+
+  Output bool_const = ops::Const(s.WithOpName("bool_const"), true, {5});
+  Output bool_and =
+      ops::LogicalAnd(s.WithOpName("bool_and"), bool_const, bool_const);
+  Output bool_id = ops::Identity(s.WithOpName("bool_id"), bool_and);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(24, output.node_size());
+  for (const NodeDef& node : output.node()) {
+#define CHECK_RESULT(TYPE, FIELD)                                             \
+  if (node.name() == #TYPE "_mul") {                                          \
+    EXPECT_EQ(5,                                                              \
+              node.attr().at("value").tensor().tensor_shape().dim(0).size()); \
+    EXPECT_EQ(1, node.attr().at("value").tensor().FIELD##_val_size());        \
+    EXPECT_EQ(10 * 10, node.attr().at("value").tensor().FIELD##_val(0));      \
+  }
+
+    CHECK_RESULT(float, float);
+    CHECK_RESULT(double, double);
+    CHECK_RESULT(int64, int64);
+    CHECK_RESULT(int32, int);
+    CHECK_RESULT(int16, int);
+    CHECK_RESULT(int8, int);
+    CHECK_RESULT(uint8, int);
+#undef CHECK_RESULT
+
+    if (node.name() == "bool_and") {
+      EXPECT_EQ(5,
+                node.attr().at("value").tensor().tensor_shape().dim(0).size());
+      EXPECT_EQ(1, node.attr().at("value").tensor().bool_val_size());
+      EXPECT_EQ(true && true, node.attr().at("value").tensor().bool_val(0));
+    }
+  }
+}
+
 TEST_F(ConstantFoldingTest, FoldingNodeWithTwoOutputs) {
   // Build a simple graph with a few trivially prunable ops.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("a"), 10, {3});
+  Output a = ops::Const(s.WithOpName("a"), 10, {5});
   auto b = ops::Unique(s.WithOpName("b"), {a});
   Output c = ops::Identity(s.WithOpName("c"), {b.y});
   Output d = ops::Identity(s.WithOpName("d"), {b.idx});
@@ -1059,3 +1118,5 @@ TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
+
+//  LocalWords:  NewRootScope
