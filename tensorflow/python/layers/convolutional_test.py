@@ -209,7 +209,7 @@ class ConvTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'NTC'):
       conv_layers.Conv1D(1, 2, padding='causal', data_format='channels_first')
     # invalid dilation_rate.
-    with self.assertRaisesRegexp(ValueError, 'positive'):
+    with self.assertRaisesRegexp(ValueError, 'nonnegative'):
       conv_layers.Conv1D(1, 2, padding='causal', dilation_rate=-1).apply(x)
     # invalid inputs.
     with self.assertRaisesRegexp(ValueError, '3 dimensions'):
