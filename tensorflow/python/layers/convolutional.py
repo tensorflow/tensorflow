@@ -122,8 +122,8 @@ class _Conv(base.Layer):
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(ndim=self.rank + 2)
 
-  # TODO(fchollet): Remove it when causal padding is supported by nn_ops.convolution.
   def _get_padding(self):
+    """The private method is only declared for Conv1D to support causal padding."""
     return self.padding
 
   def build(self, input_shape):
@@ -226,6 +226,51 @@ class _Conv(base.Layer):
                                       new_space)
 
 
+def _helper_for_causal_padding(dilation_rate, kernel_size):
+  """Generate the functions to preprocess inputs and input_shape for causal padding.
+
+  Arguments:
+    dilation_rate: An integer, specifying the dilation rate to use for dilated convolution.
+    kernel_size: An integer, specifying the length of the convolution window.
+
+  Returns:
+    (inputs_fn, shape_fn, padding_fn): Functions for preprocessing.
+
+  Raises:
+    ValueError: If invalid argument is given.
+  """
+  # The left pad on time channel.
+  left_pad = int(dilation_rate * (kernel_size - 1))
+  if left_pad < 0:
+    raise ValueError('The left_pad must be nonnegative. Received: '
+                     '{} = dilation_rate {} * (kernel_size {} - 1)'.format(
+                     left_pad, dilation_rate, kernel_size))
+
+  def inputs_fn(inputs):
+    # Padding on the left side of time channel.
+    return array_ops.pad(inputs, [[0, 0], [left_pad, 0], [0, 0]])
+
+  def shape_fn(input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    if input_shape.ndims != 3:
+      raise ValueError('The input_shape must be 3 dimensions. '
+                       'Received: {}'.format(input_shape))
+    input_list = input_shape.as_list()
+    # Padding on the left side of time channel.
+    input_list[1] += left_pad
+    return tensor_shape.TensorShape([tensor_shape.Dimension(d)
+                                     for d in input_list])
+
+  def padding_fn(padding):
+    # Use valid convolution after left padding.
+    if padding == 'causal':
+      return 'valid'
+    else:
+      raise ValueError("padding must be `causal`. Received: {}".format(padding))
+
+  return inputs_fn, shape_fn, padding_fn
+
+
 class Conv1D(_Conv):
   """1D convolution layer (e.g. temporal convolution).
 
@@ -318,50 +363,33 @@ class Conv1D(_Conv):
         bias_constraint=bias_constraint,
         trainable=trainable,
         name=name, **kwargs)
-    if self.padding == 'causal' and self.data_format != 'channels_last':
-        raise ValueError('causal padding only supports channels_last (NTC) format.')
+    if self.padding == 'causal':
+        if self.data_format != 'channels_last':
+          raise ValueError('causal padding only supports channels_last (NTC) format.')
+        # Left pad for `causal` padding.
+        self._inputs_fn, self._shape_fn, self._padding_fn = _helper_for_causal_padding(
+            self.dilation_rate[0], self.kernel_size[0])
+    else:
+        # Keep original value for `same` and `valid` padding.
+        identity_fn = lambda x: x
+        self._inputs_fn = identity_fn
+        self._shape_fn = identity_fn
+        self._padding_fn = identity_fn
+
+  def _get_padding(self):
+    return self._padding_fn(self.padding)
 
   def build(self, input_shape):
-    _, shape_fn = self._helper_for_preprocess()
-    super(Conv1D, self).build(shape_fn(input_shape))
+    input_shape = self._shape_fn(input_shape)
+    super(Conv1D, self).build(input_shape)
 
   def call(self, inputs):
-    inputs_fn, _ = self._helper_for_preprocess()
-    return super(Conv1D, self).call(inputs_fn(inputs))
+    inputs = self._inputs_fn(inputs)
+    return super(Conv1D, self).call(inputs)
 
   def _compute_output_shape(self, input_shape):
-    _, shape_fn = self._helper_for_preprocess()
-    return super(Conv1D, self)._compute_output_shape(shape_fn(input_shape))
-
-  def _helper_for_preprocess(self):
-    """Generate the functions to preprocess inputs and input_shape."""
-    if self._causal_padding:
-      # `causal` padding: left pad on time channel.
-      left_pad = int(self.dilation_rate[0] * (self.kernel_size[0] - 1))
-      if left_pad <= 0:
-        raise ValueError('The left_pad must be positive, '
-                         'while get: {}'.format(left_pad))
-
-      def inputs_fn(inputs):
-        # left pad for causal (dilated) convolution.
-        return array_ops.pad(inputs, [[0, 0], [left_pad, 0], [0, 0]])
-
-      def shape_fn(input_shape):
-        input_shape = tensor_shape.TensorShape(input_shape)
-        if input_shape.ndims != 3:
-          raise ValueError('The input_shape must be 3 dimensions, '
-                           'while get: {}'.format(input_shape))
-        input_list = input_shape.as_list()
-        # left pad on time channel.
-        input_list[1] += left_pad
-        return tensor_shape.TensorShape([tensor_shape.Dimension(d)
-                                         for d in input_list])
-
-      return inputs_fn, shape_fn
-    else:
-      # `same` or `valid` padding: return identical inputs and input_shape.
-      identity_fn = lambda x: x
-      return identity_fn, identity_fn
+    input_shape = self._shape_fn(input_shape)
+    return super(Conv1D, self)._compute_output_shape(input_shape)
 
 
 def conv1d(inputs,
