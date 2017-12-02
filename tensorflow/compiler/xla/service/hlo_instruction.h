@@ -427,7 +427,7 @@ class HloInstruction {
   Status RemoveControlDependencyTo(HloInstruction* instruction);
 
   // Returns the set of control predecessors (successors) of this
-  // instruction. Control predecessors (sucessors) must execute before (after)
+  // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
   const std::vector<HloInstruction*>& control_predecessors() const {
     return control_predecessors_;
