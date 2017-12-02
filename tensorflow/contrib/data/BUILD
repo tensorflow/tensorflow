@@ -18,6 +18,7 @@ py_library(
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:readers",
+        "//tensorflow/contrib/data/python/ops:shuffle_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",

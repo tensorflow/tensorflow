@@ -90,8 +90,9 @@ class GetPlaceholdersTest(test.TestCase):
     with ops.Graph().as_default() as g:
       placeholders = [array_ops.placeholder(dtypes.float32) for _ in range(5)]
       results = graph_util.get_placeholders(g)
-      self.assertEqual(sorted(placeholders, key=lambda x: x._id),  # pylint: disable=protected-access
-                       sorted(results, key=lambda x: x._id))  # pylint: disable=protected-access
+      self.assertEqual(
+          sorted(placeholders, key=lambda x: x._id),  # pylint: disable=protected-access
+          sorted(results, key=lambda x: x._id))  # pylint: disable=protected-access
 
 
 if __name__ == '__main__':

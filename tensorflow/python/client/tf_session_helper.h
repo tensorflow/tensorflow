@@ -168,6 +168,20 @@ TF_Function* TF_GraphToFunction_wrapper(
     const std::vector<TF_Output>& inputs, const std::vector<TF_Output>& outputs,
     const NameVector& output_names, const TF_FunctionOptions* opts,
     const char* description, TF_Status* out_status);
+
+// Set the shape of output. If unknown is true, `num_dims` must be set to
+// -1 and `dims` is set to nullptr.
+void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
+                                    const std::vector<int64_t>& dims,
+                                    bool unknown_shape, TF_Status* status);
+
+// Return the shape of output. `num_dims` should be the output of
+// TF_GraphGetTensorNumDims. If `num_dims = -1`, this should not be called.
+std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
+                                                    TF_Output output,
+                                                    int num_dims,
+                                                    TF_Status* status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_

@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
@@ -42,6 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/cpu/ir_function.h"
+#include "tensorflow/compiler/xla/service/cpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
@@ -124,131 +127,27 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   } else {
     TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, *instruction_order));
   }
-  InsertOrDie(&emitted_functions_, computation, compute_function_);
-
-  return compute_function_;
-}
-
-static llvm::Argument* GetArg(llvm::Function* f, int idx) {
-  llvm::Function::arg_iterator arg_iter = f->arg_begin();
-  std::advance(arg_iter, idx);
-  return &*arg_iter;
+  llvm::Function* ir_function = compute_function_->function();
+  InsertOrDie(&emitted_functions_, computation, ir_function);
+  // Delete 'compute_function', finalizing 'ir_function' and restoring caller
+  // IR insert point.
+  compute_function_.reset();
+  return ir_function;
 }
 
 void IrEmitter::InitializeIrFunction(const string& function_name) {
-  // The function signature is:
-  //   void function(i8* retval, i8* run_options, i8** params, i8** temps,
-  //                 i64* dynamic_loop_bounds, i64* prof_counters)
-  //
-  // retval: points to the returned value.
-  // params: address of an array with pointers to parameters.
-  // temps: address of an array with pointers to temporary buffers.
-  //
-  // Therefore, the generated function's signature (FunctionType) is statically
-  // determined - parameter unpacking is done in code generated into the
-  // function, rather than by a prologue dictated by the platform ABI.
-  //
-  //                      /--------------\
-  //   retval ----------> | return value |
-  //                      \--------------/
-  //
-  //                      /-------------------------------\
-  //   run_options -----> | xla::ExecutableRunOptions |
-  //                      \-------------------------------/
-  //
-  //                     /---------------------------------------------\
-  //   params -------->  |  param 0  |  param 1  | ..... |  param N-1  |
-  //                     |   addr    |   addr    |       |   addr      |
-  //                     \---------------------------------------------/
-  //                          |           |                   |
-  //                          |           |                   |
-  //                          V           V                   V
-  //                     /---------\  /---------\         /-----------\
-  //                     | param 0 |  | param 1 |         | param N-1 |
-  //                     \---------/  \---------/         \-----------/
-  //
-  //                     /---------------------------------------------\
-  //   temps --------->  |  temp  0  |  temp  1  | ..... |  temp  N-1  |
-  //                     |   addr    |   addr    |       |   addr      |
-  //                     \---------------------------------------------/
-  //                          |           |                   |
-  //                          |           |                   |
-  //                          V           V                   V
-  //                     /---------\  /---------\         /-----------\
-  //                     | temp  0 |  | temp  1 |         | temp  N-1 |
-  //                     \---------/  \---------/         \-----------/
-  //
-  //                        /--------------------------------------------\
-  // dynamic loop bounds -> | outer_dim0_start | outer_dim0_limit | .....|
-  //  (elided for aot)      \--------------------------------------------/
-  //
-  //                     /---------------------------------------------\
-  //   prof counters ->  | counter 0 | counter 1 | ..... | counter N-1 |
-  //  (elided for aot)   \---------------------------------------------/
-
-  // Even though the type of params and temps is void** in the host's view, in
-  // LLVM IR this is represented by i8*, similarly to void*. It's up to the code
-  // to use GEPs to unravel the indirection layers.
-  llvm::FunctionType* compute_function_type = llvm::FunctionType::get(
-      /*Result=*/llvm::Type::getVoidTy(module_->getContext()),
-      /*Params=*/GetComputeFunctionParams(),
-      /*isVarArg=*/false);
-
   // Functions with local linkage get an inlining bonus.  Because we know
   // a-priori that embedded functions (non-entry functions) will not have its
   // name resolved, give it local linkage.
   llvm::Function::LinkageTypes linkage =
       is_top_level_computation_ ? llvm::GlobalValue::ExternalLinkage
                                 : llvm::GlobalValue::InternalLinkage;
-  compute_function_ =
-      llvm::Function::Create(/*Ty=*/compute_function_type,
-                             /*Linkage=*/linkage,
-                             /*Name=*/AsStringRef(function_name),
-                             /*Module=*/module_);
-  compute_function_->setCallingConv(llvm::CallingConv::C);
-
-  // Set meaningful names for the function's arguments: useful for debugging.
-  llvm::Function::arg_iterator arg_iter = compute_function_->arg_begin();
-  arg_iter->setName("retval");
-  (++arg_iter)->setName("run_options");
-  (++arg_iter)->setName("params");
-  (++arg_iter)->setName("temps");
-  if (num_dynamic_loop_bounds_ > 0) {
-    (++arg_iter)->setName("dynamic_loop_bounds");
-  }
-  (++arg_iter)->setName("prof_counters");
-
-  // We know a-priori that the function arguments are guaranteed to point to
-  // disjoint objects.
-  llvm::Argument* retval = GetResultArgument();
-  for (llvm::Argument& argument : compute_function_->args()) {
-    // However, the return buffer aliases the temporaries and thus cannot be
-    // marked noalias.
-    if (&argument == retval) {
-      continue;
-    }
-    compute_function_->addAttribute(argument.getArgNo() + 1,
-                                    llvm::Attribute::NoAlias);
-  }
-
-  // Add the optize attribute to the function if optimizing for size. This
-  // controls internal behavior of some optimization passes (e.g. loop
-  // unrolling).
-  if (options::OptimizeForSizeRequested(hlo_module_config_)) {
-    compute_function_->addFnAttr(llvm::Attribute::OptimizeForSize);
-  }
-
-  if (hlo_module_config_.debug_options().xla_enable_fast_math()) {
-    compute_function_->addFnAttr("unsafe-fp-math", "true");
-    compute_function_->addFnAttr("no-infs-fp-math", "true");
-    compute_function_->addFnAttr("no-nans-fp-math", "true");
-    compute_function_->addFnAttr("no-signed-zeros-fp-math", "true");
-  }
-
-  ir_builder_.SetInsertPoint(llvm::BasicBlock::Create(
-      /*Context=*/module_->getContext(),
-      /*Name=*/"entry",
-      /*Parent=*/compute_function_));
+  // Create and initialize new IrFunction.
+  compute_function_.reset(
+      new IrFunction(function_name, linkage,
+                     options::OptimizeForSizeRequested(hlo_module_config_),
+                     hlo_module_config_.debug_options().xla_enable_fast_math(),
+                     module_, &ir_builder_, num_dynamic_loop_bounds_));
 }
 
 IrEmitter::~IrEmitter() {}
@@ -898,6 +797,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
       /*supported_types=*/{F32, F64, C64}));
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
+  if (dnums.lhs_batch_dimensions_size() > 0 ||
+      dnums.rhs_batch_dimensions_size() > 0) {
+    return Unimplemented("Dot with batch dimensions not implemented.");
+  }
 
   llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
   llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
@@ -1452,7 +1356,7 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   //
   // Where Param is the actual element type of the underlying buffer (for
   // example, float for an XLA F32 element type).
-  llvm::Argument* params = GetArg(compute_function_, 2);
+  llvm::Argument* params = compute_function_->parameters_arg();
   llvm::Value* param_address_offset =
       llvm_ir::EmitBufferIndexingGEP(params, param_number, &ir_builder_);
   llvm::LoadInst* param_address_untyped =
@@ -1590,7 +1494,7 @@ IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
   // Here we assume that the largest register is a vector register.
   int max_vector_register_size_in_bytes =
       target_machine_features_.largest_register_size_in_bytes(
-          compute_function_);
+          compute_function_->function());
 
   int vector_register_size_in_elements =
       max_vector_register_size_in_bytes /
@@ -1748,19 +1652,6 @@ void IrEmitter::EmitShardedVectorStore(
   }
 }
 
-namespace {
-// TODO(sanjoy): This is duplicated in tensorflow/core/lib/core/arena.cc.
-// Extract out a common implementation to tensorflow/core/lib/math/math_util.h
-uint32 GCD(uint32 x, uint32 y) {
-  while (y != 0) {
-    uint32 r = x % y;
-    x = y;
-    y = r;
-  }
-  return x;
-}
-}  // namespace
-
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
     tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function,
@@ -1783,9 +1674,9 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
       std::find(dimensions.begin(), dimensions.end(),
                 arg->shape().layout().minor_to_major(0)) != dimensions.end();
 
-  unsigned element_alignment =
-      GCD(ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
-          MinimumAlignmentForPrimitiveType(reduce->shape().element_type()));
+  unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
+      ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
+      MinimumAlignmentForPrimitiveType(reduce->shape().element_type()));
 
   if (is_reduction_over_minor_dimension) {
     // TODO(sanjoy): Implement vectorized reduction over the minor dimension.
@@ -1995,7 +1886,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   VLOG(2) << "HandleSlice: " << slice->ToString();
   auto operand = slice->operand(0);
   // The code below emits a sequential loop nest. For the parallel backend, use
-  // EmitParallelTargetElementLoop() which respects dynamic loop bounds.
+  // ParallelLoopEmitter which respects dynamic loop bounds.
   if (ShouldEmitParallelLoopFor(*slice)) {
     return DefaultAction(slice);
   }
@@ -2410,7 +2301,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   // Terminates the current block with a branch to a while header.
   llvm::BasicBlock* header_bb = llvm::BasicBlock::Create(
       module_->getContext(), AsStringRef(IrName(xla_while, "header")),
-      compute_function_);
+      compute_function_->function());
   ir_builder_.CreateBr(header_bb);
   ir_builder_.SetInsertPoint(header_bb);
 
@@ -2427,7 +2318,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   // Branches to the body or to the while exit depending on the condition.
   llvm::BasicBlock* body_bb = llvm::BasicBlock::Create(
       module_->getContext(), AsStringRef(IrName(xla_while, "body")),
-      compute_function_);
+      compute_function_->function());
   llvm::BasicBlock* exit_bb = llvm::BasicBlock::Create(
       module_->getContext(), AsStringRef(IrName(xla_while, "exit")));
   ir_builder_.CreateCondBr(while_predicate, body_bb, exit_bb);
@@ -2442,7 +2333,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   ir_builder_.CreateBr(header_bb);
 
   // Adds the exit block to the function and sets the insert point there.
-  compute_function_->getBasicBlockList().push_back(exit_bb);
+  compute_function_->function()->getBasicBlockList().push_back(exit_bb);
   ir_builder_.SetInsertPoint(exit_bb);
 
   return Status::OK();
@@ -2560,7 +2451,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                                      const llvm_ir::IrArray& source_array) {
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-  unsigned element_alignment = GCD(
+  unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
       primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type));
   llvm::Type* primitive_ptr_type = llvm::PointerType::getUnqual(
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_));
@@ -2642,7 +2533,6 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   if (prof_counter) {
     profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
   }
-  ir_builder_.CreateRetVoid();
   return Status::OK();
 }
 
@@ -2783,43 +2673,16 @@ llvm::Type* IrEmitter::IrShapeType(const Shape& shape) {
   return llvm_ir::ShapeToIrType(shape, module_);
 }
 
-std::vector<llvm::Type*> IrEmitter::GetComputeFunctionParams() {
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
-  llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
-  llvm::Type* i64_ptr_type = llvm::Type::getInt64PtrTy(module_->getContext());
-  std::vector<llvm::Type*> compute_function_params(
-      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
-  if (num_dynamic_loop_bounds_ > 0) {
-    compute_function_params.push_back(i64_ptr_type);
-  }
-  compute_function_params.push_back(i64_ptr_type);
-  return compute_function_params;
-}
-
-llvm::Argument* IrEmitter::GetResultArgument() {
-  return GetArg(compute_function_, 0);
-}
-
 llvm::Argument* IrEmitter::GetProfileCountersArgument() {
-  const int64 arg_index = num_dynamic_loop_bounds_ > 0 ? 5 : 4;
-  return GetArg(compute_function_, arg_index);
+  return compute_function_->profile_counters_arg();
 }
 
 llvm::Value* IrEmitter::GetTempBuffersArgument() {
-  return GetArg(compute_function_, 3);
-}
-
-llvm::Value* IrEmitter::GetDynamicLoopBound(const int64 offset) {
-  CHECK_GT(num_dynamic_loop_bounds_, 0);
-  CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
-  llvm::Argument* loop_bounds_arg = GetArg(compute_function_, 4);
-  string name = tensorflow::strings::StrCat("dynamic_loop_bound_", offset);
-  return ir_builder_.CreateLoad(ir_builder_.CreateGEP(
-      loop_bounds_arg, ir_builder_.getInt64(offset), AsStringRef(name)));
+  return compute_function_->temp_buffers_arg();
 }
 
 llvm::Value* IrEmitter::GetExecutableRunOptionsArgument() {
-  return GetArg(compute_function_, 1);
+  return compute_function_->exec_run_options_arg();
 }
 
 llvm::Value* IrEmitter::EmitTempBufferPointer(
@@ -2965,7 +2828,8 @@ Status IrEmitter::EmitParallelForkJoin(
   HloInstruction* root = computation->root_instruction();
 
   // Build ParallelForkJoin function type.
-  std::vector<llvm::Type*> compute_function_params = GetComputeFunctionParams();
+  std::vector<llvm::Type*> compute_function_params =
+      compute_function_->GetComputeFunctionParams();
   // Number of parallel compute functions.
   compute_function_params.push_back(ir_builder_.getInt32Ty());
   // Array of partitions. There is an array element for each
@@ -3066,7 +2930,7 @@ Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   if (op == op->parent()->root_instruction()) {
     // For the root node, we write directly to the output buffer of the
     // function.
-    llvm::Argument* retval = GetResultArgument();
+    llvm::Argument* retval = compute_function_->result_arg();
     if (!ShapeUtil::IsNil(target_shape)) {
       llvm::AttrBuilder attr_builder;
       attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
@@ -3127,68 +2991,25 @@ Status IrEmitter::EmitTargetElementLoop(
 
   } else {
     if (ShouldEmitParallelLoopFor(*target_op)) {
-      TF_RETURN_IF_ERROR(EmitParallelTargetElementLoop(
-          target_shape, element_generator, IrName(target_op), &target_array));
+      // Emit code to read dynamic loop bounds from compute function argument.
+      ParallelLoopEmitter::LoopBounds dynamic_loop_bounds(
+          num_dynamic_loop_bounds_);
+      for (int i = 0; i < num_dynamic_loop_bounds_; ++i) {
+        dynamic_loop_bounds[i].first =
+            compute_function_->GetDynamicLoopBound(i * 2 + 0);
+        dynamic_loop_bounds[i].second =
+            compute_function_->GetDynamicLoopBound(i * 2 + 1);
+      }
+      // Emit parallel loop with dynamic loop bounds for most-major dimensions.
+      TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, target_array,
+                                             &dynamic_loop_bounds, &ir_builder_)
+                             .EmitLoop(IrName(target_op)));
     } else {
       TF_RETURN_IF_ERROR(
           llvm_ir::LoopEmitter(element_generator, target_array, &ir_builder_)
               .EmitLoop(IrName(target_op)));
     }
   }
-  return Status::OK();
-}
-
-Status IrEmitter::EmitParallelTargetElementLoop(
-    const Shape& target_shape,
-    const llvm_ir::ElementGenerator& element_generator,
-    tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array) {
-  CHECK(!ShapeUtil::IsTuple(target_shape));
-  CHECK(!ShapeUtil::IsScalar(target_shape));
-
-  // Emit code to read dynamic loop bounds from function argument 4.
-  std::vector<llvm::Value*> dynamic_loop_bounds(2 * num_dynamic_loop_bounds_);
-  for (int i = 0; i < 2 * num_dynamic_loop_bounds_; ++i) {
-    dynamic_loop_bounds[i] = GetDynamicLoopBound(i);
-  }
-
-  llvm_ir::ForLoopNest loop_nest(loop_name, &ir_builder_);
-  const int64 num_dims = target_shape.dimensions_size();
-  llvm_ir::IrArray::Index array_index(num_dims);
-
-  // Add loops from outer-most to inner-most dimensions.
-  for (int i = target_shape.layout().minor_to_major_size() - 1; i >= 0; --i) {
-    const int64 dimension = target_shape.layout().minor_to_major(i);
-    const int bounds_index = num_dims - 1 - i;
-    if (bounds_index < num_dynamic_loop_bounds_) {
-      // Emit dynamic loop bounds for this dimension. Dynamic loop bounds
-      // are read from ir function dynamic loop bounds argument.
-      llvm::Value* start_index = dynamic_loop_bounds[bounds_index * 2 + 0];
-      llvm::Value* end_index = dynamic_loop_bounds[bounds_index * 2 + 1];
-
-      std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
-          /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension),
-          start_index, end_index);
-      array_index[dimension] = loop->GetIndVarValue();
-    } else {
-      // Emit static loop bounds for this dimension.
-      std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
-          /*start_index=*/0,
-          /*end_index=*/target_shape.dimensions(dimension),
-          /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension));
-      array_index[dimension] = loop->GetIndVarValue();
-    }
-  }
-  // Point IR builder at inner loop BB.
-  SetToFirstInsertPoint(loop_nest.GetInnerLoopBodyBasicBlock(), &ir_builder_);
-
-  // Emit loop body.
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
-                      element_generator(array_index));
-  target_array->EmitWriteArrayElement(array_index, target_element,
-                                      &ir_builder_);
-  // Point IR builder at outer loop exit BB.
-  SetToFirstInsertPoint(loop_nest.GetOuterLoopExitBasicBlock(), &ir_builder_);
-
   return Status::OK();
 }
 

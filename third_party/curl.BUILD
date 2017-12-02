@@ -6,7 +6,7 @@ licenses(["notice"])  # MIT/X derivative license
 exports_files(["COPYING"])
 
 CURL_WIN_COPTS = [
-    "/I%prefix%/curl/lib",
+    "/Iexternal/curl/lib",
     "/DHAVE_CONFIG_H",
     "/DCURL_DISABLE_FTP",
     "/DCURL_DISABLE_NTLM",
@@ -251,7 +251,7 @@ cc_library(
         "@org_tensorflow//tensorflow:windows": CURL_WIN_COPTS,
         "@org_tensorflow//tensorflow:windows_msvc": CURL_WIN_COPTS,
         "//conditions:default": [
-            "-I%prefix%/curl/lib",
+            "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_FTP",
@@ -312,7 +312,7 @@ cc_library(
 )
 
 CURL_BIN_WIN_COPTS = [
-    "/I%prefix%/curl/lib",
+    "/Iexternal/curl/lib",
     "/DHAVE_CONFIG_H",
     "/DCURL_DISABLE_LIBCURL_OPTION",
 ]
@@ -409,7 +409,7 @@ cc_binary(
         "@org_tensorflow//tensorflow:windows": CURL_BIN_WIN_COPTS,
         "@org_tensorflow//tensorflow:windows_msvc": CURL_BIN_WIN_COPTS,
         "//conditions:default": [
-            "-I%prefix%/curl/lib",
+            "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_LIBCURL_OPTION",

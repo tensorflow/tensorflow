@@ -540,7 +540,7 @@ def _ensure_unique_tensor_objects(parameter_positions, args):
     if i in parameter_positions:
       tid = ops.tensor_id(t)
       if tid in s:
-        args[i] = args[i]._dup()  # pylint: disable=protected-access
+        args[i] = gen_array_ops.identity(args[i])
       else:
         s.add(tid)
   return args

@@ -109,7 +109,8 @@ std::unique_ptr<HloProfilePrinter> CreateHloProfilePrinter(
   };
 
   return MakeUnique<HloProfilePrinter>(
-      computation_infos, hlo_profile_index_map.computation_count(), deleter);
+      computation_infos, hlo_profile_index_map.computation_count(),
+      /*profile_counters_size=*/max_profile_index, deleter);
 }
 
 HloExecutionProfile::HloExecutionProfile(

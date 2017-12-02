@@ -40,9 +40,9 @@ class Permute(bijector_lib.Bijector):
   """Permutes the rightmost dimension of a `Tensor`.
 
   ```python
-  bs = tf.contrib.distributions.bijectors
+  tfd = tf.contrib.distributions
 
-  reverse = bs.Permute(permutation=[2, 1, 0])
+  reverse = tfd.bijectors.Permute(permutation=[2, 1, 0])
 
   reverse.forward([-1., 0., 1.])
   # ==> [1., 0., -1]

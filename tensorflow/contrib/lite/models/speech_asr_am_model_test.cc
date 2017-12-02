@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Unit test for speech TERSE AM model using TFLite Ops.
+// Unit test for speech ASR AM model using TFLite Ops.
 
 #include <string.h>
 
@@ -45,10 +45,10 @@ constexpr int kLstmLayer5OutputStateTensor = 103;
 constexpr int kLstmLayer5CellStateTensor = 104;
 constexpr int kModelOutputTensor = 109;
 
-TEST(SpeechTerseAm, RandomIOTest) {
+TEST(SpeechAsrAm, RandomIOTest) {
   // Read the model.
   string tflite_file_path =
-      file::JoinPath(TestDataPath(), "speech_terse_am_model.tflite");
+      file::JoinPath(TestDataPath(), "speech_asr_am_model.tflite");
   auto model = FlatBufferModel::BuildFromFile(tflite_file_path.c_str());
   CHECK(model) << "Failed to mmap model " << tflite_file_path;
 
@@ -62,13 +62,13 @@ TEST(SpeechTerseAm, RandomIOTest) {
   // Load the input frames.
   Frames input_frames;
   const string input_file_path =
-      file::JoinPath(TestDataPath(), "speech_terse_am_model_in.csv");
+      file::JoinPath(TestDataPath(), "speech_asr_am_model_in.csv");
   ReadFrames(input_file_path, &input_frames);
 
   // Load the golden output results.
   Frames output_frames;
   const string output_file_path =
-      file::JoinPath(TestDataPath(), "speech_terse_am_model_out.csv");
+      file::JoinPath(TestDataPath(), "speech_asr_am_model_out.csv");
   ReadFrames(output_file_path, &output_frames);
 
   const int speech_batch_size =

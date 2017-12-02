@@ -86,8 +86,29 @@ class GaugeCell<int64> {
   TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
 };
 
+// Explicit specialization of GaugeCell<bool>. Compared to the primary
+// template, it uses atomic values as opposed to mutex. This class is
+// thread-safe.
+template <>
+class GaugeCell<bool> {
+ public:
+  explicit GaugeCell(bool value) : value_(value) {}
+  ~GaugeCell() {}
+
+  // Atomically sets the value.
+  void Set(bool value);
+
+  // Retrieves the current value.
+  bool value() const;
+
+ private:
+  std::atomic<bool> value_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
+};
+
 // A stateful class for updating a gauge-like metric. Allowed ValueType are
-// int64 and string.
+// int64, string and bool.
 //
 // This class encapsulates a set of values (or a single value for a label-less
 // metric). Each value is identified by a tuple of labels. The class allows the
@@ -117,6 +138,9 @@ class Gauge {
   //
   // auto* integer_gauge = Gauge<int64, 0>::New("/tensorflow/integer_gauge",
   //   "Integer gauge")
+  //
+  // auto* bool_gauge = Gauge<bool, 0>::New("/tensorflow/bool_gauge",
+  //   "Bool gauge")
   template <typename... MetricDefArgs>
   static Gauge* New(MetricDefArgs&&... metric_def_args);
 
@@ -172,12 +196,17 @@ inline void GaugeCell<int64>::Set(int64 value) { value_ = value; }
 
 inline int64 GaugeCell<int64>::value() const { return value_; }
 
+inline void GaugeCell<bool>::Set(bool value) { value_ = value; }
+
+inline bool GaugeCell<bool>::value() const { return value_; }
+
 template <typename ValueType, int NumLabels>
 template <typename... MetricDefArgs>
 Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
   static_assert(std::is_same<ValueType, int64>::value ||
-                    std::is_same<ValueType, string>::value,
+                    std::is_same<ValueType, string>::value ||
+                    std::is_same<ValueType, bool>::value,
                 "Gauge only allows int64 and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
