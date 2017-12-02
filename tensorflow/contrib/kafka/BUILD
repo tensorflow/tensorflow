@@ -47,6 +47,7 @@ py_library(
         "python/ops/kafka_dataset_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":gen_kafka_ops",
         "//tensorflow/contrib/util:util_py",
