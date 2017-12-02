@@ -122,6 +122,10 @@ class _Conv(base.Layer):
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(ndim=self.rank + 2)
 
+  # TODO(fchollet): Remove it when causal padding is supported by nn_ops.convolution.
+  def _get_padding(self):
+    return self.padding
+
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if self.data_format == 'channels_first':
@@ -158,7 +162,7 @@ class _Conv(base.Layer):
         filter_shape=self.kernel.get_shape(),
         dilation_rate=self.dilation_rate,
         strides=self.strides,
-        padding=self.padding.upper(),
+        padding=self._get_padding().upper(),
         data_format=utils.convert_data_format(self.data_format,
                                               self.rank + 2))
     self.built = True
@@ -201,7 +205,7 @@ class _Conv(base.Layer):
         new_dim = utils.conv_output_length(
             space[i],
             self.kernel_size[i],
-            padding=self.padding,
+            padding=self._get_padding(),
             stride=self.strides[i],
             dilation=self.dilation_rate[i])
         new_space.append(new_dim)
@@ -214,7 +218,7 @@ class _Conv(base.Layer):
         new_dim = utils.conv_output_length(
             space[i],
             self.kernel_size[i],
-            padding=self.padding,
+            padding=self._get_padding(),
             stride=self.strides[i],
             dilation=self.dilation_rate[i])
         new_space.append(new_dim)
@@ -295,13 +299,6 @@ class Conv1D(_Conv):
                trainable=True,
                name=None,
                **kwargs):
-    if padding == 'causal':
-      if data_format != 'channels_last':
-        raise ValueError('causal padding only supports channels_last (NTC) format.')
-      self._causal_padding = True
-      padding = 'valid'
-    else:
-      self._causal_padding = False
     super(Conv1D, self).__init__(
         rank=1,
         filters=filters,
@@ -321,6 +318,8 @@ class Conv1D(_Conv):
         bias_constraint=bias_constraint,
         trainable=trainable,
         name=name, **kwargs)
+    if self.padding == 'causal' and self.data_format != 'channels_last':
+        raise ValueError('causal padding only supports channels_last (NTC) format.')
 
   def build(self, input_shape):
     _, shape_fn = self._helper_for_preprocess()
