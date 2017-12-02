@@ -295,11 +295,11 @@ class Conv1D(_Conv):
                trainable=True,
                name=None,
                **kwargs):
-    if padding == "causal":
-      if data_format != "channels_last":
-        raise ValueError("causal padding only supports channels_last (NTC) format.")
+    if padding == 'causal':
+      if data_format != 'channels_last':
+        raise ValueError('causal padding only supports channels_last (NTC) format.')
       self._causal_padding = True
-      padding = "valid"
+      padding = 'valid'
     else:
       self._causal_padding = False
     super(Conv1D, self).__init__(
@@ -340,8 +340,8 @@ class Conv1D(_Conv):
       # `causal` padding: left pad on time channel.
       left_pad = int(self.dilation_rate[0] * (self.kernel_size[0] - 1))
       if left_pad <= 0:
-        raise ValueError("The left_pad must be positive, "
-                         "while get: {}".format(left_pad))
+        raise ValueError('The left_pad must be positive, '
+                         'while get: {}'.format(left_pad))
 
       def inputs_fn(inputs):
         # left pad for causal (dilated) convolution.
@@ -350,8 +350,8 @@ class Conv1D(_Conv):
       def shape_fn(input_shape):
         input_shape = tensor_shape.TensorShape(input_shape)
         if input_shape.ndims != 3:
-          raise ValueError("The input_shape must be 3 dimensions, "
-                           "while get: {}".format(input_shape))
+          raise ValueError('The input_shape must be 3 dimensions, '
+                           'while get: {}'.format(input_shape))
         input_list = input_shape.as_list()
         # left pad on time channel.
         input_list[1] += left_pad

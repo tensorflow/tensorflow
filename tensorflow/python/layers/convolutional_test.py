@@ -178,7 +178,7 @@ class ConvTest(test.TestCase):
     filters = filters[..., np.newaxis, np.newaxis]
     filters = init_ops.constant_initializer(filters)
     with self.test_session(use_gpu=test.is_gpu_available()) as sess:
-      layer = conv_layers.Conv1D(1, 2, padding="causal",
+      layer = conv_layers.Conv1D(1, 2, padding='causal',
                                  kernel_initializer=filters,
                                  activation=None,
                                  use_bias=False)
@@ -192,7 +192,7 @@ class ConvTest(test.TestCase):
                           [2 * 0 + 1 * 1, 2 * 1 + 1 * 2, 2 * 2 + 1 * 3, 2 * 3 + 1 * 4])
     # dilation_rate is 2
     with self.test_session(use_gpu=test.is_gpu_available()) as sess:
-      layer = conv_layers.Conv1D(1, 2, padding="causal", dilation_rate=2,
+      layer = conv_layers.Conv1D(1, 2, padding='causal', dilation_rate=2,
                                  kernel_initializer=filters,
                                  activation=None,
                                  use_bias=False)
@@ -206,15 +206,15 @@ class ConvTest(test.TestCase):
                           [2 * 0 + 1 * 1, 2 * 0 + 1 * 2, 2 * 1 + 1 * 3, 2 * 2 + 1 * 4])
 
     # incompatible data_format.
-    with self.assertRaisesRegexp(ValueError, "NTC"):
-      conv_layers.Conv1D(1, 2, padding="causal", data_format="channels_first")
+    with self.assertRaisesRegexp(ValueError, 'NTC'):
+      conv_layers.Conv1D(1, 2, padding='causal', data_format='channels_first')
     # invalid dilation_rate.
-    with self.assertRaisesRegexp(ValueError, "positive"):
-      conv_layers.Conv1D(1, 2, padding="causal", dilation_rate=-1).apply(x)
+    with self.assertRaisesRegexp(ValueError, 'positive'):
+      conv_layers.Conv1D(1, 2, padding='causal', dilation_rate=-1).apply(x)
     # invalid inputs.
-    with self.assertRaisesRegexp(ValueError, "3 dimensions"):
+    with self.assertRaisesRegexp(ValueError, '3 dimensions'):
       x_4d = array_ops.expand_dims(x, 3)
-      conv_layers.Conv1D(1, 2, padding="causal").build(x_4d.shape)
+      conv_layers.Conv1D(1, 2, padding='causal').build(x_4d.shape)
 
   def testUnknownInputChannelsConv1D(self):
     data = random_ops.random_uniform((5, 4, 7))
