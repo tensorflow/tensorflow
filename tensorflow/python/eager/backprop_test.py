@@ -214,6 +214,19 @@ class BackpropTest(test.TestCase):
 
     self.assertAllEqual(gradgrad(constant_op.constant(0.0))[0], 1.0)
 
+  def testStopGradient(self):
+    grad = backprop.gradients_function(
+        lambda x: array_ops.stop_gradient(math_ops.argmax(x)))
+    self.assertAllEqual(grad([0.0])[0], None)
+
+  def testArgmax(self):
+    def argmax(x):
+      i = math_ops.argmax(x)
+      return array_ops.stop_gradient(i)
+
+    grad = backprop.gradients_function(argmax)
+    self.assertAllEqual(grad([0.0])[0], None)
+
   def testGPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
