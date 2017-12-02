@@ -445,9 +445,9 @@ TEST_F(LayoutOptimizerTest, SplitDimC) {
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   auto split_node = node_map.GetNode("split");
-  EXPECT_EQ(split_node->input(0), "LayoutOptimizerSplitConst-split");
+  EXPECT_EQ(split_node->input(0), "LayoutOptimizerDimConst-split");
   EXPECT_EQ(split_node->input(1), "Conv2D");
-  auto split_const = node_map.GetNode("LayoutOptimizerSplitConst-split");
+  auto split_const = node_map.GetNode("LayoutOptimizerDimConst-split");
   EXPECT_EQ(split_const->op(), "Const");
   EXPECT_EQ(split_const->attr().at({"value"}).tensor().int_val(0), 1);
 }
@@ -465,9 +465,9 @@ TEST_F(LayoutOptimizerTest, SplitDimH) {
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   auto split_node = node_map.GetNode("split");
-  EXPECT_EQ(split_node->input(0), "LayoutOptimizerSplitConst-split");
+  EXPECT_EQ(split_node->input(0), "LayoutOptimizerDimConst-split");
   EXPECT_EQ(split_node->input(1), "Conv2D");
-  auto split_const = node_map.GetNode("LayoutOptimizerSplitConst-split");
+  auto split_const = node_map.GetNode("LayoutOptimizerDimConst-split");
   EXPECT_EQ(split_const->op(), "Const");
   EXPECT_EQ(split_const->attr().at({"value"}).tensor().int_val(0), 2);
 }
@@ -485,9 +485,9 @@ TEST_F(LayoutOptimizerTest, SplitDimW) {
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   auto split_node = node_map.GetNode("split");
-  EXPECT_EQ(split_node->input(0), "LayoutOptimizerSplitConst-split");
+  EXPECT_EQ(split_node->input(0), "LayoutOptimizerDimConst-split");
   EXPECT_EQ(split_node->input(1), "Conv2D");
-  auto split_const = node_map.GetNode("LayoutOptimizerSplitConst-split");
+  auto split_const = node_map.GetNode("LayoutOptimizerDimConst-split");
   EXPECT_EQ(split_const->op(), "Const");
   EXPECT_EQ(split_const->attr().at({"value"}).tensor().int_val(0), 3);
 }
@@ -505,9 +505,9 @@ TEST_F(LayoutOptimizerTest, SplitDimN) {
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   auto split_node = node_map.GetNode("split");
-  EXPECT_EQ(split_node->input(0), "LayoutOptimizerSplitConst-split");
+  EXPECT_EQ(split_node->input(0), "LayoutOptimizerDimConst-split");
   EXPECT_EQ(split_node->input(1), "Conv2D");
-  auto split_const = node_map.GetNode("LayoutOptimizerSplitConst-split");
+  auto split_const = node_map.GetNode("LayoutOptimizerDimConst-split");
   EXPECT_EQ(split_const->op(), "Const");
   EXPECT_EQ(split_const->attr().at({"value"}).tensor().int_val(0), 0);
 }
@@ -549,12 +549,75 @@ TEST_F(LayoutOptimizerTest, SplitSamePortToMultipleInputsOfSameNode) {
   EXPECT_EQ(concat_node->input(0), "split:1");
   EXPECT_EQ(concat_node->input(1), "split:1");
   EXPECT_EQ(concat_node->input(2), "split:1");
-  EXPECT_EQ(concat_node->input(3), "LayoutOptimizerConcatConst-concat");
-  auto concat_dim = node_map.GetNode("LayoutOptimizerConcatConst-concat");
+  EXPECT_EQ(concat_node->input(3), "LayoutOptimizerDimConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerDimConst-concat");
   EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 1);
 }
 
-TEST_F(LayoutOptimizerTest, Concat) {
+TEST_F(LayoutOptimizerTest, ConcatDimH) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto axis = ops::Const(s.WithOpName("axis"), 1);
+  auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
+  auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
+  auto o = ops::Identity(s.WithOpName("o"), concat);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto concat_node = node_map.GetNode("concat");
+  EXPECT_EQ(concat_node->input(0), "split");
+  EXPECT_EQ(concat_node->input(1), "split:1");
+  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerDimConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerDimConst-concat");
+  EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 2);
+}
+
+TEST_F(LayoutOptimizerTest, ConcatDimW) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto axis = ops::Const(s.WithOpName("axis"), 2);
+  auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
+  auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
+  auto o = ops::Identity(s.WithOpName("o"), concat);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto concat_node = node_map.GetNode("concat");
+  EXPECT_EQ(concat_node->input(0), "split");
+  EXPECT_EQ(concat_node->input(1), "split:1");
+  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerDimConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerDimConst-concat");
+  EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 3);
+}
+
+TEST_F(LayoutOptimizerTest, ConcatDimN) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto axis = ops::Const(s.WithOpName("axis"), 0);
+  auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
+  auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
+  auto o = ops::Identity(s.WithOpName("o"), concat);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto concat_node = node_map.GetNode("concat");
+  EXPECT_EQ(concat_node->input(0), "split");
+  EXPECT_EQ(concat_node->input(1), "split:1");
+  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerDimConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerDimConst-concat");
+  EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 0);
+}
+
+TEST_F(LayoutOptimizerTest, ConcatDimC) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv = SimpleConv2D(&s, 3, 2, "VALID");
   auto axis = ops::Const(s.WithOpName("axis"), 3);
@@ -570,8 +633,8 @@ TEST_F(LayoutOptimizerTest, Concat) {
   auto concat_node = node_map.GetNode("concat");
   EXPECT_EQ(concat_node->input(0), "split");
   EXPECT_EQ(concat_node->input(1), "split:1");
-  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerConcatConst-concat");
-  auto concat_dim = node_map.GetNode("LayoutOptimizerConcatConst-concat");
+  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerDimConst-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerDimConst-concat");
   EXPECT_EQ(concat_dim->attr().at({"value"}).tensor().int_val(0), 1);
 }
 

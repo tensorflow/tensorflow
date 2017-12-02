@@ -36,8 +36,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-const char kConcatConst[] = "LayoutOptimizerConcatConst";
-const char kSplitConst[] = "LayoutOptimizerSplitConst";
+const char kDimConst[] = "LayoutOptimizerDimConst";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
 const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
@@ -954,8 +953,7 @@ class ConcatProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && IsAlongDimC() && IsOnGPU();
+    return AgnosticNodeProcessor::ShouldProcess() && DimSupported();
   }
 
   std::vector<int> GetInputPos() const override {
@@ -970,40 +968,51 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    string concat_const_name = AddNodeConcatConst()->name();
-    node_map_->AddOutput(concat_const_name, node_->name());
-    *node_->mutable_input(axis_node_pos_) = concat_const_name;
+    string dim_const_name = AddNodeDimConst()->name();
+    node_map_->AddOutput(dim_const_name, node_->name());
+    *node_->mutable_input(axis_node_pos_) = dim_const_name;
     return Status::OK();
-  }
-
-  bool IsAlongDimC() const {
-    auto axis_node = node_map_->GetNode(node_->input(axis_node_pos_));
-    if (!IsConstant(*axis_node)) {
-      return false;
-    }
-    if (axis_node->attr().find("value") != axis_node->attr().end()) {
-      auto tensor = axis_node->attr().at({"value"}).tensor();
-      if (tensor.tensor_shape().dim_size() == 0 && tensor.int_val_size() == 1) {
-        return tensor.int_val(0) == 3;
-      }
-    }
-    return false;
   }
 
   int axis_node_pos_;
 
  private:
-  NodeDef* AddNodeConcatConst() {
-    auto axis_node = node_map_->GetNode(node_->input(axis_node_pos_));
+  bool DimSupported() const {
+    auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
+    // TODO(yaozhang): Support non-constant axis node.
+    if (!IsConstant(*dim_node)) {
+      return false;
+    }
+    if (HasAttribute(*dim_node, "value").ok()) {
+      auto tensor = dim_node->attr().at({"value"}).tensor();
+      if (tensor.tensor_shape().dim_size() == 0 && tensor.int_val_size() == 1) {
+        if (tensor.int_val(0) < 4 && tensor.int_val(0) >= -4) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  NodeDef* AddNodeDimConst() {
+    auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
+    auto tensor = dim_node->attr().at({"value"}).tensor();
+    int value = tensor.int_val(0);
+    value = (value >= 0) ? value : value + 4;
+    if (value == 1 || value == 2) {
+      value = value + 1;
+    } else if (value == 3) {
+      value = 1;
+    }
     // We created a copy of the node, so that we don't modify the original node,
     // which might be used elsewhere. Note that this copy also copies the
     // control dependency input in the case this node is inside a loop,
     // to ensure added_node is in the same frame with node_.
-    auto added_node = graph_->add_node();
-    *added_node = *axis_node;
-    added_node->set_name(strings::StrCat(kConcatConst, "-", node_->name()));
-    added_node->mutable_attr()->at({"value"}).mutable_tensor()->set_int_val(0,
-                                                                            1);
+    NodeDef* added_node = graph_->add_node();
+    *added_node = *dim_node;
+    added_node->set_name(strings::StrCat(kDimConst, "-", node_->name()));
+    added_node->mutable_attr()->at({"value"}).mutable_tensor()->set_int_val(
+        0, value);
     return added_node;
   }
 };
@@ -1039,16 +1048,14 @@ class PadProcessor : public AgnosticNodeProcessor {
   }
 };
 
-class SplitProcessor : public AgnosticNodeProcessor {
+class SplitProcessor : public ConcatProcessor {
  public:
   explicit SplitProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
-
- protected:
-  bool ShouldProcess() const override {
-    return AgnosticNodeProcessor::ShouldProcess() && SplitSupported();
+      : ConcatProcessor(opt_cxt) {
+    axis_node_pos_ = 0;
   }
 
+ protected:
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos = {1};
     return input_pos;
@@ -1062,52 +1069,6 @@ class SplitProcessor : public AgnosticNodeProcessor {
       }
     }
     return output_pos;
-  }
-
-  Status CustomizedProcessing() override {
-    string split_const_name = AddNodeSplitConst()->name();
-    node_map_->AddOutput(split_const_name, node_->name());
-    *node_->mutable_input(0) = split_const_name;
-    return Status::OK();
-  }
-
- private:
-  bool SplitSupported() const {
-    auto dim_node = node_map_->GetNode(node_->input(0));
-    if (!IsConstant(*dim_node)) {
-      return false;
-    }
-    if (HasAttribute(*dim_node, "value").ok()) {
-      auto tensor = dim_node->attr().at({"value"}).tensor();
-      if (tensor.tensor_shape().dim_size() == 0 && tensor.int_val_size() == 1) {
-        if (tensor.int_val(0) < 4 && tensor.int_val(0) >= -4) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  NodeDef* AddNodeSplitConst() {
-    auto dim_node = node_map_->GetNode(node_->input(0));
-    auto tensor = dim_node->attr().at({"value"}).tensor();
-    int value = tensor.int_val(0);
-    value = (value >= 0) ? value : value + 4;
-    if (value == 1 || value == 2) {
-      value = value + 1;
-    } else if (value == 3) {
-      value = 1;
-    }
-    // We created a copy of the node, so that we don't modify the original node,
-    // which might be used elsewhere. Note that this copy also copies the
-    // control dependency input in the case this node is inside a loop,
-    // to ensure added_node is in the same frame with node_.
-    NodeDef* added_node = graph_->add_node();
-    *added_node = *dim_node;
-    added_node->set_name(strings::StrCat(kSplitConst, "-", node_->name()));
-    added_node->mutable_attr()->at({"value"}).mutable_tensor()->set_int_val(
-        0, value);
-    return added_node;
   }
 };
 
