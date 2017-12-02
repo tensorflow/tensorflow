@@ -552,8 +552,16 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   Executor* exec;
   TF_RETURN_IF_ERROR(NewLocalExecutor(params, g.release(), &exec));
 
-  (*item)->graph = graph;
-  (*item)->exec = exec;
+  {
+    // Guard item since it is already inserted in items_.
+    mutex_lock l(mu_);
+    if ((*item)->exec) {
+      delete exec;
+    } else {
+      (*item)->graph = graph;
+      (*item)->exec = exec;
+    }
+  }
   return Status::OK();
 }
 
@@ -572,16 +580,7 @@ Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
   }
   // NOTE: We need to call CreateItem out of mu_ because creating an
   // executor needs to call CreateKernel.
-  TF_RETURN_IF_ERROR(CreateItem(handle, item));
-
-  {
-    mutex_lock l(mu_);
-    if (items_[local_handle] == nullptr) {
-      // Insert *item in items_.
-      items_.insert({local_handle, *item});
-    }
-  }
-  return Status::OK();
+  return CreateItem(handle, item);
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
