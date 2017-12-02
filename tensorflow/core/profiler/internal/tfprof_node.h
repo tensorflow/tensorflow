@@ -593,16 +593,10 @@ class TFGraphNode {
   int64 accelerator_persistent_bytes() const {
     int64 persistent_bytes = 0;
     for (const auto& exec : execs_) {
-      persistent_bytes += exec.second.accelerator_persistent_bytes();
+      persistent_bytes = std::max(persistent_bytes,
+                                  exec.second.accelerator_persistent_bytes());
     }
     return persistent_bytes;
-  }
-  int64 host_persistent_bytes(int64 step) const {
-    auto exec = execs_.find(step);
-    if (exec == execs_.end()) {
-      return 0;
-    }
-    return exec->second.host_persistent_bytes();
   }
   const std::map<int32, std::pair<int64, uint64>>& output_memory(
       int64 step) const {

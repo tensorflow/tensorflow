@@ -1360,10 +1360,13 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
       HloInstruction::CreateParameter(1, shape_3x4, "param_b"));
   auto param_c = builder.AddInstruction(
       HloInstruction::CreateParameter(2, shape_4x4, "param_c"));
-  auto dot_ab = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape_2x4, HloOpcode::kDot, param_a, param_b));
-  auto dot_bc = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape_3x4, HloOpcode::kDot, param_b, param_c));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot_ab = builder.AddInstruction(
+      HloInstruction::CreateDot(shape_2x4, param_a, param_b, dot_dnums));
+  auto dot_bc = builder.AddInstruction(
+      HloInstruction::CreateDot(shape_3x4, param_b, param_c, dot_dnums));
   builder.AddInstruction(
       HloInstruction::CreateConcatenate(shape_5x4, {dot_ab, dot_bc}, 1));
 
@@ -1708,9 +1711,8 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
       BufferAssigner::Run(
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
-          ByteSizeOf,
-          [](LogicalBuffer::Color) { return 1; })
-      .ConsumeValueOrDie();
+          ByteSizeOf, [](LogicalBuffer::Color) { return 1; })
+          .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }

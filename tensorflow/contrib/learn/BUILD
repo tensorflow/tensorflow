@@ -461,6 +461,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/state_saving_rnn_estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",

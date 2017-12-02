@@ -3332,11 +3332,18 @@ class SeparableConv2dTest(test.TestCase):
         batch, height, width = 4, 10, 12
         kernel_dim, stride = 3, 2
         images = random_ops.random_uniform((batch, 3, height, width), seed=1)
-        output = layers_lib.separable_conv2d(images, num_outputs=num_filters, kernel_size=[kernel_dim, kernel_dim],
-                                             depth_multiplier=2, stride=stride, padding='VALID', data_format='NCHW')
-        self.assertListEqual(
-            output.get_shape().as_list(), [batch, correct_output_filters,
-                                           (height - kernel_dim + 1) // stride, (width - kernel_dim + 1) // stride])
+        output = layers_lib.separable_conv2d(
+            images,
+            num_outputs=num_filters,
+            kernel_size=[kernel_dim, kernel_dim],
+            depth_multiplier=2,
+            stride=stride,
+            padding='VALID',
+            data_format='NCHW')
+        self.assertListEqual(output.get_shape().as_list(), [
+            batch, correct_output_filters, (height - kernel_dim + 1) // stride,
+            (width - kernel_dim + 1) // stride
+        ])
 
 
 class ScaleGradientTests(test.TestCase):

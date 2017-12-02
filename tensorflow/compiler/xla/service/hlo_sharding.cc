@@ -246,7 +246,8 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   // The tile rank must be the same as the input rank.
   if (ShapeUtil::Rank(shape) != ShapeUtil::Rank(tile_shape_)) {
     return tensorflow::errors::InvalidArgument(
-        "Tile rank is different to the input rank");
+        "Tile rank is different to the input rank. sharding=", ToString(),
+        ", input_shape=", ShapeUtil::HumanString(shape));
   }
 
   // The tile shape must not be the same as the input shape without maximal_

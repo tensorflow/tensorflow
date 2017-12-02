@@ -52,7 +52,6 @@ _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
 USE_DEFAULT = object()
 
 
-# TODO(touts): Share that with the Supervisor.
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
 

@@ -48,7 +48,9 @@ class AbsoluteValue(bijector.Bijector):
 
 
   ```python
-  abs = ds.bijectors.AbsoluteValue()
+  tfd = tf.contrib.distributions
+
+  abs = tfd.bijectors.AbsoluteValue()
 
   abs.forward([-1., 0., 1.])
   ==> [1., 0.,  1.]

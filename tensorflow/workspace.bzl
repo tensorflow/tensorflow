@@ -332,11 +332,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "nsync",
       urls = [
-          "https://mirror.bazel.build/github.com/google/nsync/archive/93815892dddafe9146a5f7e7042281d59d0f4323.tar.gz",
-          "https://github.com/google/nsync/archive/93815892dddafe9146a5f7e7042281d59d0f4323.tar.gz",
+          "https://mirror.bazel.build/github.com/google/nsync/archive/8502189abfa44c249c01c2cad64e6ed660a9a668.tar.gz",
+          "https://github.com/google/nsync/archive/8502189abfa44c249c01c2cad64e6ed660a9a668.tar.gz",
       ],
-      sha256 = "e3bd4555415ace511338fc27e595351738eea4e9006f1612b76c82914770716b",
-      strip_prefix = "nsync-93815892dddafe9146a5f7e7042281d59d0f4323",
+      sha256 = "51f81ff4202bbb820cdbedc061bd2eb6765f2b5c06489e7a8694bedac329e8f8",
+      strip_prefix = "nsync-8502189abfa44c249c01c2cad64e6ed660a9a668",
   )
 
   tf_http_archive(
@@ -419,11 +419,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/8d26b8bee4d8e7230870a600bc968c7ee8cf6f67.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/8d26b8bee4d8e7230870a600bc968c7ee8cf6f67.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9ab4c272cb604a7f947865428c4ef2169fee2100.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/9ab4c272cb604a7f947865428c4ef2169fee2100.tar.gz",
       ],
-      sha256 = "ff5ddbe5af5e264426c8d489e7fddfc5ad7e0975f19cefe9db8c0a5d0faeb23e",
-      strip_prefix = "llvm-8d26b8bee4d8e7230870a600bc968c7ee8cf6f67",
+      sha256 = "1b1b7d3800a94ca2302e3dd670dbe84238749583027883784b55297059d83da8",
+      strip_prefix = "llvm-9ab4c272cb604a7f947865428c4ef2169fee2100",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

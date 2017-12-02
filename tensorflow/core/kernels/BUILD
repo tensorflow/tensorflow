@@ -3923,7 +3923,11 @@ tf_kernel_library(
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
     ],
-    deps = STATE_DEPS + [":dense_update_functor"],
+    deps = STATE_DEPS + [
+        ":dense_update_functor",
+        ":training_op_helpers",
+        ":variable_ops",
+    ],
 )
 
 tf_kernel_library(
@@ -5833,11 +5837,11 @@ cc_library(
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -6125,6 +6129,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "random_dataset_op",
+    srcs = ["random_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "range_dataset_op",
     srcs = ["range_dataset_op.cc"],
     deps = [
@@ -6291,6 +6307,7 @@ tf_kernel_library(
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
+        ":random_dataset_op",
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",

@@ -178,6 +178,20 @@ const xla::Computation* XlaContext::GetOrCreateAdd(const DataType type) {
   });
 }
 
+const xla::Computation* XlaContext::GetOrCreateMul(const DataType type) {
+  return LookupOrCreate(type, &mul_func_, [this, type] {
+    const string type_string = DataTypeString(type);
+    VLOG(1) << "Building Mul() for " << type_string;
+    xla::ComputationBuilder b(builder()->client(), "mul<" + type_string + ">");
+    xla::PrimitiveType xla_type;
+    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    b.Mul(x, y);
+    return b.Build().ConsumeValueOrDie();
+  });
+}
+
 const xla::Computation* XlaContext::LookupOrCreate(
     DataType type, ComputationMap* out,
     const std::function<xla::Computation()>& create) {

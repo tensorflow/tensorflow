@@ -118,6 +118,38 @@ class KernelSupportLibrary {
           const std::function<void()>& true_block_generator,
           const std::function<void()>& false_block_generator = []() {});
 
+  using ArgumentVector = tensorflow::gtl::ArraySlice<llvm::Value*>;
+
+  // Generates the following control flow structure:
+  //
+  //  define @`kernel_name`(arg0, arg1, ... arg`arguments.size()`) {
+  //    kernel_body_generator({arg0, arg1, ... arg`arguments.size()`});
+  //  }
+  //
+  //  ...
+  //  call @`kernel_name`(arguments[0], arguments[1] ...)
+  //  ...
+  //
+  // If a function called `kernel_name` is already present in the module then
+  // that function is re-used.  In that sense we're using the llvm::Module as a
+  // cache of outlined kernels, keyed by function name.
+  static void EmitAndCallOutlinedKernel(
+      llvm::IRBuilder<>* ir_builder, tensorflow::StringPiece kernel_name,
+      ArgumentVector arguments,
+      const std::function<void(ArgumentVector)>& kernel_body_generator);
+
+  // Thin wrapper around the more general EmitAndCallOutlinedKernel above.
+  static void EmitAndCallOutlinedKernel(
+      llvm::IRBuilder<>* ir_builder, tensorflow::StringPiece kernel_name,
+      llvm::Value* arg0, llvm::Value* arg1, llvm::Value* arg2,
+      const std::function<void(llvm::Value*, llvm::Value*, llvm::Value*)>&
+          kernel_body_generator) {
+    EmitAndCallOutlinedKernel(
+        ir_builder, kernel_name, {arg0, arg1, arg2}, [&](ArgumentVector args) {
+          kernel_body_generator(args[0], args[1], args[2]);
+        });
+  }
+
  private:
   llvm::IRBuilder<>* ir_builder_;
   bool prevent_unrolling_;

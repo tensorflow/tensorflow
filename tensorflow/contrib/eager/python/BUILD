@@ -232,6 +232,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":network",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",

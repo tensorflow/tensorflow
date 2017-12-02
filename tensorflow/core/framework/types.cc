@@ -206,18 +206,18 @@ string DataTypeSliceString(const DataTypeSlice types) {
 }
 
 DataTypeVector AllTypes() {
-  return {DT_FLOAT,   DT_DOUBLE, DT_INT32,  DT_UINT8,     DT_INT16,
-          DT_UINT16,  DT_INT8,   DT_STRING, DT_COMPLEX64, DT_COMPLEX128,
-          DT_INT64,   DT_BOOL,   DT_QINT8,  DT_QUINT8,    DT_QINT16,
-          DT_QUINT16, DT_QINT32, DT_HALF,   DT_RESOURCE,  DT_VARIANT,
-          DT_UINT32,  DT_UINT64};
+  return {DT_FLOAT,   DT_DOUBLE, DT_INT32,   DT_UINT8,     DT_INT16,
+          DT_UINT16,  DT_INT8,   DT_STRING,  DT_COMPLEX64, DT_COMPLEX128,
+          DT_INT64,   DT_BOOL,   DT_QINT8,   DT_QUINT8,    DT_QINT16,
+          DT_QUINT16, DT_QINT32, DT_HALF,    DT_RESOURCE,  DT_VARIANT,
+          DT_UINT32,  DT_UINT64, DT_BFLOAT16};
 }
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
 
 DataTypeVector RealNumberTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,  DT_UINT8, DT_INT16,
-          DT_INT8,  DT_UINT16, DT_HALF,  DT_UINT32, DT_UINT64};
+  return {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,  DT_UINT8,  DT_INT16,
+          DT_INT8,  DT_UINT16, DT_HALF,  DT_UINT32, DT_UINT64, DT_BFLOAT16};
 }
 
 DataTypeVector QuantizedTypes() {
@@ -227,14 +227,14 @@ DataTypeVector QuantizedTypes() {
 DataTypeVector RealAndQuantizedTypes() {
   return {DT_FLOAT,  DT_DOUBLE,  DT_INT32,  DT_INT64, DT_UINT8,
           DT_UINT16, DT_UINT16,  DT_INT8,   DT_QINT8, DT_QUINT8,
-          DT_QINT16, DT_QUINT16, DT_QINT32, DT_HALF};
+          DT_QINT16, DT_QUINT16, DT_QINT32, DT_HALF,  DT_BFLOAT16};
 }
 
 DataTypeVector NumberTypes() {
-  return {DT_FLOAT,     DT_DOUBLE,     DT_INT64,  DT_INT32,
-          DT_UINT8,     DT_UINT16,     DT_INT16,  DT_INT8,
-          DT_COMPLEX64, DT_COMPLEX128, DT_QINT8,  DT_QUINT8,
-          DT_QINT32,    DT_HALF,       DT_UINT32, DT_UINT64};
+  return {DT_FLOAT,  DT_DOUBLE,  DT_INT64,  DT_INT32,     DT_UINT8,
+          DT_UINT16, DT_INT16,   DT_INT8,   DT_COMPLEX64, DT_COMPLEX128,
+          DT_QINT8,  DT_QUINT8,  DT_QINT32, DT_HALF,      DT_UINT32,
+          DT_UINT64, DT_BFLOAT16};
 }
 
 #elif defined(__ANDROID_TYPES_FULL__)
