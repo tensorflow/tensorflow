@@ -224,14 +224,14 @@ cc_library(
         "lib/wildcard.h",
         "lib/x509asn1.h",
     ] + select({
-        "@%ws%//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:darwin": [
             "lib/vtls/darwinssl.c",
         ],
-        "@%ws%//tensorflow:ios": [
+        "@org_tensorflow//tensorflow:ios": [
             "lib/vtls/darwinssl.c",
         ],
-        "@%ws%//tensorflow:windows": CURL_WIN_SRCS,
-        "@%ws%//tensorflow:windows_msvc": CURL_WIN_SRCS,
+        "@org_tensorflow//tensorflow:windows": CURL_WIN_SRCS,
+        "@org_tensorflow//tensorflow:windows_msvc": CURL_WIN_SRCS,
         "//conditions:default": [
             "lib/vtls/openssl.c",
         ],
@@ -248,8 +248,8 @@ cc_library(
         "include/curl/typecheck-gcc.h",
     ],
     copts = select({
-        "@%ws%//tensorflow:windows": CURL_WIN_COPTS,
-        "@%ws%//tensorflow:windows_msvc": CURL_WIN_COPTS,
+        "@org_tensorflow//tensorflow:windows": CURL_WIN_COPTS,
+        "@org_tensorflow//tensorflow:windows_msvc": CURL_WIN_COPTS,
         "//conditions:default": [
             "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
@@ -261,14 +261,14 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        "@%ws%//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:darwin": [
             "-fno-constant-cfstrings",
         ],
-        "@%ws%//tensorflow:windows": [
+        "@org_tensorflow//tensorflow:windows": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
-        "@%ws%//tensorflow:windows_msvc": [
+        "@org_tensorflow//tensorflow:windows_msvc": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
@@ -278,20 +278,20 @@ cc_library(
     }),
     includes = ["include"],
     linkopts = select({
-        "@%ws%//tensorflow:android": [
+        "@org_tensorflow//tensorflow:android": [
             "-pie",
         ],
-        "@%ws%//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:darwin": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        "@%ws%//tensorflow:ios": [],
-        "@%ws%//tensorflow:windows": [
+        "@org_tensorflow//tensorflow:ios": [],
+        "@org_tensorflow//tensorflow:windows": [
             "-Wl,ws2_32.lib",
         ],
-        "@%ws%//tensorflow:windows_msvc": [
+        "@org_tensorflow//tensorflow:windows_msvc": [
             "-Wl,ws2_32.lib",
         ],
         "//conditions:default": [
@@ -302,9 +302,9 @@ cc_library(
     deps = [
         "@zlib_archive//:zlib",
     ] + select({
-        "@%ws%//tensorflow:ios": [],
-        "@%ws%//tensorflow:windows": [],
-        "@%ws%//tensorflow:windows_msvc": [],
+        "@org_tensorflow//tensorflow:ios": [],
+        "@org_tensorflow//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "@boringssl//:ssl",
         ],
@@ -406,8 +406,8 @@ cc_binary(
         "src/tool_xattr.h",
     ],
     copts = select({
-        "@%ws%//tensorflow:windows": CURL_BIN_WIN_COPTS,
-        "@%ws%//tensorflow:windows_msvc": CURL_BIN_WIN_COPTS,
+        "@org_tensorflow//tensorflow:windows": CURL_BIN_WIN_COPTS,
+        "@org_tensorflow//tensorflow:windows_msvc": CURL_BIN_WIN_COPTS,
         "//conditions:default": [
             "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
