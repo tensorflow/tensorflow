@@ -122,8 +122,14 @@ class _Conv(base.Layer):
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(ndim=self.rank + 2)
 
+  # TODO(fchollet): Remove it when nn_ops.convolution supports causal padding.
   def _get_padding(self):
-    """The private method is only declared for Conv1D to support causal padding."""
+    """Return correct padding for its low-level implementation.
+
+    Note that the private method is only declared for Conv1D
+    to support causal padding. Don't use it anywhere except in
+    _Conv or Conv1D class.
+    """
     return self.padding
 
   def build(self, input_shape):
@@ -226,6 +232,7 @@ class _Conv(base.Layer):
                                       new_space)
 
 
+# TODO(fchollet): Remove it when nn_ops.convolution supports causal padding.
 def _helper_for_causal_padding(dilation_rate, kernel_size):
   """Generate the functions to preprocess inputs and input_shape for causal padding.
 
@@ -266,7 +273,7 @@ def _helper_for_causal_padding(dilation_rate, kernel_size):
     if padding == 'causal':
       return 'valid'
     else:
-      raise ValueError("padding must be `causal`. Received: {}".format(padding))
+      raise ValueError('padding must be `causal`. Received: {}'.format(padding))
 
   return inputs_fn, shape_fn, padding_fn
 
@@ -363,6 +370,7 @@ class Conv1D(_Conv):
         bias_constraint=bias_constraint,
         trainable=trainable,
         name=name, **kwargs)
+    # TODO(fchollet): Remove it when nn_ops.convolution supports causal padding.
     if self.padding == 'causal':
         if self.data_format != 'channels_last':
           raise ValueError('causal padding only supports channels_last (NTC) format.')
@@ -376,6 +384,7 @@ class Conv1D(_Conv):
         self._shape_fn = identity_fn
         self._padding_fn = identity_fn
 
+  # TODO(fchollet): Remove those methods when nn_ops.convolution supports causal padding.
   def _get_padding(self):
     return self._padding_fn(self.padding)
 
