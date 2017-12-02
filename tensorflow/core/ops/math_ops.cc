@@ -85,7 +85,7 @@ REGISTER_OP("BatchMatMul")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {half, float, double, int32, complex64, complex128}")
+    .Attr("T: {half, bfloat16, float, double, int32, complex64, complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn([](InferenceContext* c) {
@@ -184,7 +184,7 @@ _HostCast requires its input and produces its output in host memory.
 REGISTER_OP("Abs")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {half, float, double, int32, int64}")
+    .Attr("T: {half, bfloat16, float, double, int32, int64}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes the absolute value of a tensor.
@@ -210,29 +210,31 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
 )doc");
 
 // Declares cwise unary operations signature: 't -> 't
-#define UNARY()                                                              \
-  Input("x: T")                                                              \
-      .Output("y: T")                                                        \
-      .Attr("T: {half, float, double, int32, int64, complex64, complex128}") \
+#define UNARY()                                                          \
+  Input("x: T")                                                          \
+      .Output("y: T")                                                    \
+      .Attr(                                                             \
+          "T: {half, bfloat16, float, double, int32, int64, complex64, " \
+          "complex128}")                                                 \
       .SetShapeFn(shape_inference::UnchangedShape)
 
-#define UNARY_REAL()                    \
-  Input("x: T")                         \
-      .Output("y: T")                   \
-      .Attr("T: {half, float, double}") \
+#define UNARY_REAL()                              \
+  Input("x: T")                                   \
+      .Output("y: T")                             \
+      .Attr("T: {half, bfloat16, float, double}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
-#define UNARY_COMPLEX()                                        \
-  Input("x: T")                                                \
-      .Output("y: T")                                          \
-      .Attr("T: {half, float, double, complex64, complex128}") \
+#define UNARY_COMPLEX()                                                  \
+  Input("x: T")                                                          \
+      .Output("y: T")                                                    \
+      .Attr("T: {half, bfloat16, float, double, complex64, complex128}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
-#define UNARY_GRADIENT_COMPLEX()                               \
-  Input("y: T")                                                \
-      .Input("dy: T")                                          \
-      .Output("z: T")                                          \
-      .Attr("T: {half, float, double, complex64, complex128}") \
+#define UNARY_GRADIENT_COMPLEX()                                         \
+  Input("y: T")                                                          \
+      .Input("dy: T")                                                    \
+      .Output("z: T")                                                    \
+      .Attr("T: {half, bfloat16, float, double, complex64, complex128}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
 REGISTER_OP("Neg")
@@ -481,7 +483,7 @@ Computes atan of x element-wise.
 REGISTER_OP("IsNan")
     .Input("x: T")
     .Output("y: bool")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns which elements of x are NaN.
@@ -494,7 +496,7 @@ Equivalent to np.isnan
 REGISTER_OP("IsInf")
     .Input("x: T")
     .Output("y: bool")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns which elements of x are Inf.
@@ -507,7 +509,7 @@ Equivalent to np.isinf
 REGISTER_OP("IsFinite")
     .Input("x: T")
     .Output("y: bool")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns which elements of x are finite.
@@ -520,7 +522,9 @@ Equivalent to np.isfinite
 REGISTER_OP("Sign")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {half, float, double, int32, int64, complex64, complex128}")
+    .Attr(
+        "T: {half, bfloat16, float, double, int32, int64, complex64, "
+        "complex128}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns an element-wise indication of the sign of a number.
@@ -533,7 +537,7 @@ For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 REGISTER_OP("Floor")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns element-wise largest integer not greater than x.
@@ -542,7 +546,7 @@ Returns element-wise largest integer not greater than x.
 REGISTER_OP("Ceil")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns element-wise smallest integer in not less than x.
@@ -551,7 +555,7 @@ Returns element-wise smallest integer in not less than x.
 REGISTER_OP("Rint")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns element-wise integer closest to x.
@@ -569,22 +573,23 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
 
 // Declares cwise binary operations signature: 't, 't -> 't.
 
-#define BINARY_MORE()                                                       \
-  Input("x: T").Input("y: T").Output("z: T").Attr(                          \
-      "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, " \
-      "complex64, complex128}")
+#define BINARY_MORE()                                                          \
+  Input("x: T").Input("y: T").Output("z: T").Attr(                             \
+      "T: {half, bfloat16, float, double, uint8, int8, uint16, int16, int32, " \
+      "int64, complex64, complex128}")
 
-#define BINARY_FEWER()                             \
-  Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {half, float, double, int32, int64, complex64, complex128}")
+#define BINARY_FEWER()                                               \
+  Input("x: T").Input("y: T").Output("z: T").Attr(                   \
+      "T: {half, bfloat16, float, double, int32, int64, complex64, " \
+      "complex128}")
 
 REGISTER_OP("Add")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
-        "complex128, string}")
+        "T: {half, bfloat16, float, double, uint8, int8, int16, int32, int64, "
+        "complex64, complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns x + y element-wise.
@@ -600,8 +605,8 @@ REGISTER_OP("AddV2")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
-        "complex128}")
+        "T: {half, bfloat16, float, double, uint8, int8, int16, int32, int64, "
+        "complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .SetIsAggregate()
     .SetIsCommutative()
@@ -757,7 +762,7 @@ REGISTER_OP("Maximum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, int32, int64}")
+    .Attr("T: {half, bfloat16, float, double, int32, int64}")
     .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
@@ -788,7 +793,7 @@ REGISTER_OP("Minimum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, int32, int64}")
+    .Attr("T: {half, bfloat16, float, double, int32, int64}")
     .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
@@ -802,7 +807,7 @@ REGISTER_OP("Mod")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {int32, int64, float, double}")
+    .Attr("T: {int32, int64, bfloat16, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns element-wise remainder of division. This emulates C semantics in that
@@ -817,7 +822,7 @@ REGISTER_OP("FloorMod")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {int32, int64, float, double}")
+    .Attr("T: {int32, int64, bfloat16, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
@@ -832,7 +837,7 @@ REGISTER_OP("TruncateMod")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {int32, int64, float, double}")
+    .Attr("T: {int32, int64, bfloat16, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns element-wise remainder of division. This emulates C semantics in that
@@ -847,7 +852,9 @@ REGISTER_OP("Pow")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, int32, int64, complex64, complex128}")
+    .Attr(
+        "T: {half, bfloat16, float, double, int32, int64, complex64, "
+        "complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Computes the power of one value to another.
@@ -946,7 +953,7 @@ REGISTER_OP("Atan2")
     .Input("y: T")
     .Input("x: T")
     .Output("z: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
@@ -1064,15 +1071,15 @@ Returns the truth value of (x >= y) element-wise.
 
 // --------------------------------------------------------------------------
 
-#define EQUALITY_COMPARISON()                                           \
-  Input("x: T")                                                         \
-      .Input("y: T")                                                    \
-      .Output("z: bool")                                                \
-      .SetIsCommutative()                                               \
-      .Attr(                                                            \
-          "T: {half, float, double, uint8, int8, int16, int32, int64, " \
-          "complex64, "                                                 \
-          "quint8, qint8, qint32, string, bool, complex128}")           \
+#define EQUALITY_COMPARISON()                                              \
+  Input("x: T")                                                            \
+      .Input("y: T")                                                       \
+      .Output("z: bool")                                                   \
+      .SetIsCommutative()                                                  \
+      .Attr(                                                               \
+          "T: {half, bfloat16, float, double, uint8, int8, int16, int32, " \
+          "int64, complex64, quint8, qint8, qint32, string, bool, "        \
+          "complex128}")                                                   \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
 REGISTER_OP("Equal")
@@ -1291,7 +1298,7 @@ REGISTER_OP("MatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {half, float, double, int32, complex64, complex128}")
+    .Attr("T: {half, bfloat16, float, double, int32, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
 Multiply the matrix "a" by the matrix "b".
@@ -1811,10 +1818,11 @@ output: Has same shape as data, except for dimension 0 which
 REGISTER_OP("UnsortedSegmentSum")
     .Input("data: T")
     .Input("segment_ids: Tindices")
-    .Input("num_segments: int32")
+    .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(UnsortedSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
@@ -1849,10 +1857,11 @@ output: Has same shape as data, except for the first `segment_ids.rank`
 REGISTER_OP("UnsortedSegmentMax")
     .Input("data: T")
     .Input("segment_ids: Tindices")
-    .Input("num_segments: int32")
+    .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(UnsortedSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the Max along segments of a tensor.
@@ -2103,7 +2112,7 @@ REGISTER_OP("Range")
     .Input("limit: Tidx")
     .Input("delta: Tidx")
     .Output("output: Tidx")
-    .Attr("Tidx: {float, double, int32, int64} = DT_INT32")
+    .Attr("Tidx: {bfloat16, float, double, int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -2158,7 +2167,7 @@ REGISTER_OP("LinSpace")
     .Input("stop: T")
     .Input("num: Tidx")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;

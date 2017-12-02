@@ -210,6 +210,13 @@ Status FindCompilationCandidates(
         !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
       continue;
     }
+    // _Retval nodes in a top-level function represent fetches.
+    // Do not compile them.
+    if (node->type_string() == "_Retval") {
+      VLOG(2) << "Compilation rejected node: return value " << node->name()
+              << ": " << node->type_string();
+      continue;
+    }
     candidates->insert(node);
   }
   return Status::OK();

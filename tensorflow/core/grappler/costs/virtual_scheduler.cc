@@ -122,7 +122,7 @@ Status VirtualScheduler::Init() {
   // Construct graph properties.
   Status status;
   if (use_static_shapes_) {
-    status = graph_properties_.InferStatically();
+    status = graph_properties_.InferStatically(true);
   } else {
     status = graph_properties_.InferDynamically(cluster_);
   }

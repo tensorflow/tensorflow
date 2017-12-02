@@ -42,10 +42,49 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.training import device_setter as device_setter_lib
 from tensorflow.python.training import training_util
 
 
-def replicate_model_fn(model_fn, optimizer_fn, devices=None):
+class Mode(object):
+  """Modes for variables replication used for forcing a particular mode.
+
+  Forcing a mode is meant for performance experimentation purposes rather than
+  for general use cases.
+  """
+
+  AUTO = 0
+  """Use internal heuristics for choosing the best Mode value.
+
+     This mode is supposed to be the most appropriate in most cases given what
+     is known about the system.
+  """
+  # TODO(isaprykin): Query system configuration to choose modes other than
+  # `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often appropriate.
+
+  SHARED_LOCAL_PARAMETER_SERVER = 2
+  """Variables are placed on a single device and shared across all devices.
+
+  Two ways to achieve this replication over available GPUs are supported:
+    1)  If exactly 1 GPU is detected, then variables and operations are placed
+        onto GPU.
+    2)  If more than 1 GPU is detected, then variables are going to be placed on
+        the CPU.  Replicas of operations are placed on each individual GPU.
+  """
+
+  SHARED_ROUND_ROBIN = 3
+  """Variables are placed on all devices in a round-robin fashion.
+
+  Every subsequent variable is placed on the next device.  There is only one
+  copy of each variable that is shared across all devices.
+  """
+
+  # TODO(isaprykin):  Implement `REPLICATED_ALL_REDUCE`.
+  REPLICATED_ALL_REDUCE = 3
+  """Variables are mirrored on all devices."""
+
+
+def replicate_model_fn(model_fn, optimizer_fn, devices=None, mode=Mode.AUTO):
   """Replicate `Estimator.model_fn` over GPUs within a single host.
 
   The given `model_fn` specifies a single forward pass of a model.  To replicate
@@ -58,14 +97,11 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
   optimizer.
 
   If `devices` are `None`, then all available GPUs are going to be used for
-  replication.  If no GPUs are available, then the model is going to be
-  placed on the CPU.
+  replication: `devices=[<all available GPUs>]`.  If no GPUs are available,
+  then the model is going to be placed on the CPU: `devices=['/device:CPU:0']`.
 
-  Two modes of local replication over available GPUs are supported:
-    1)  If exactly 1 GPU is detected, then variables and operations are placed
-        onto GPU.
-    2)  If more than 1 GPU is detected, then variables are going to be placed on
-        the CPU.  Replicas of operations are placed on each individual GPU.
+  Varibles are placed on to `devices` according to the given `mode`. Operations
+  are going for each tower are going to be copied on each device.
 
   Here is an example of how one might use their `model_fn` to run over GPUs:
     ```python
@@ -127,6 +163,8 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
       argument can be used to replice only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
       If no GPUs are available, then the model is going to be placed on the CPU.
+    mode: An optional argument that specifies the replication method used for
+      distributing variables across devices.
 
   Returns:
     A replicated version of the supplied `model_fn`. Returned function that
@@ -137,16 +175,21 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
   is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0]
-  local_ps_device = '/{}:0'.format('GPU' if is_a_single_gpu_case else 'CPU')
+  consolidation_device = '/{}:0'.format('GPU'
+                                        if is_a_single_gpu_case else 'CPU')
 
-  tf_logging.info('Replicating the `model_fn` across {}.  Local parameter '
-                  'server device is going to be {}.'.format(
-                      devices, local_ps_device))
+  ps_devices = [consolidation_device]
+  if mode == Mode.SHARED_ROUND_ROBIN:
+    ps_devices = devices
+
+  tf_logging.info('Replicating the `model_fn` across {}.  Variables are going '
+                  'to be placed on {}.  Consolidation device is going to be {}.'
+                  .format(devices, ps_devices, consolidation_device))
 
   def replicated_model_fn(features, labels, mode, params=None, config=None):
     """Replicated version of `model_fn` to be used instead."""
     feature_shards, label_shards = _split_batch(
-        features, labels, len(devices), device=local_ps_device)
+        features, labels, len(devices), device=consolidation_device)
     tower_specs = _get_loss_towers(
         model_fn=model_fn,
         mode=mode,
@@ -155,17 +198,17 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
         params=params,
         config=config,
         devices=devices,
-        local_ps_device=local_ps_device)
+        local_ps_devices=ps_devices)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       train_op = _minimize_towers(tower_specs,
                                   _call_optimizer_fn(optimizer_fn, params))
       return _train_spec(
-          tower_specs, train_op, aggregation_device=local_ps_device)
+          tower_specs, train_op, aggregation_device=consolidation_device)
     elif mode == model_fn_lib.ModeKeys.EVAL:
-      return _eval_spec(tower_specs, aggregation_device=local_ps_device)
+      return _eval_spec(tower_specs, aggregation_device=consolidation_device)
     elif mode == model_fn_lib.ModeKeys.PREDICT:
-      return _predict_spec(tower_specs, aggregation_device=local_ps_device)
+      return _predict_spec(tower_specs, aggregation_device=consolidation_device)
 
   return replicated_model_fn
 
@@ -222,7 +265,7 @@ def _get_loss_towers(model_fn,
                      params,
                      config,
                      devices,
-                     local_ps_device,
+                     local_ps_devices,
                      name_scope_pattern=_DEFAULT_NAME_SCOPE_PATTERN):
   """Replicate the loss computation across devices."""
   tower_specs = []
@@ -234,15 +277,22 @@ def _get_loss_towers(model_fn,
   if 'config' in model_fn_args:
     optional_params['config'] = copy.deepcopy(config)
 
+  # pylint: disable=protected-access
+  round_robin_strategy = device_setter_lib._RoundRobinStrategy(
+      num_tasks=len(local_ps_devices))
+  # pylint: enable=protected-access
+
   for i, device in enumerate(devices):
     is_the_first_tower = (i == 0)
 
     device_setter = _local_device_setter(
-        worker_device=device, ps_device=local_ps_device)
+        worker_device=device,
+        ps_devices=local_ps_devices,
+        ps_strategy=round_robin_strategy)
 
-    # We would like to preserve the names of the variables and ops that a user
-    # might be relying on. Names with prefix are going to resolve to variables
-    # and ops of the first tower.
+    # We would like to preserve the names of the variables and ops that the user
+    # might be relying on. Names without a prefix are going to resolve to
+    # variables and ops of the first tower.
     name_scope = name_scope_pattern
     if is_the_first_tower:
       name_scope = ''
@@ -263,7 +313,7 @@ def _get_loss_towers(model_fn,
   return tower_specs
 
 
-def _local_device_setter(ps_device, worker_device):
+def _local_device_setter(worker_device, ps_devices, ps_strategy):
   """A device setter that puts distributes Var/Ops to PS/workers."""
   ps_ops = ['Variable', 'VariableV2', 'VarHandleOp']
 
@@ -273,7 +323,7 @@ def _local_device_setter(ps_device, worker_device):
     node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
     if node_def.op in ps_ops:
       ps_device_spec = framework_device.DeviceSpec.from_string(
-          '{}'.format(ps_device))
+          '{}'.format(ps_devices[ps_strategy(op)]))
 
       ps_device_spec.merge_from(current_device)
       return ps_device_spec.to_string()

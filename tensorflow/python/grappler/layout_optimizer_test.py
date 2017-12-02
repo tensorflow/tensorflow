@@ -190,7 +190,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertEqual(expected_num_transposes, num_transposes)
       self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
                     nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-MaxPool_1',
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-MaxPool_1-0',
                     nodes)
 
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)

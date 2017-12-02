@@ -469,6 +469,24 @@ stop: corresponds to stop in python's xrange().
 step: corresponds to step in python's xrange().
 )doc");
 
+REGISTER_OP("RandomDataset")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a Dataset that returns pseudorandom numbers.
+
+seed: A scalar seed for the random number generator. If either seed or
+  seed2 is set to be non-zero, the random number generator is seeded
+  by the given seed.  Otherwise, a random seed is used.
+seed2: A second scalar seed to avoid seed collision.
+)doc");
+
 REGISTER_OP("ShuffleDataset")
     .Input("input_dataset: variant")
     .Input("buffer_size: int64")

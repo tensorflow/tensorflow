@@ -532,6 +532,49 @@ def TF_Reset(target, containers=None, config=None):
 %unignore TF_GraphGetTensorShapeHelper;
 %ignore TF_GraphGetTensorShape;
 
+// We use TF_GraphSetTensorShape_wrapper instead of
+// TF_GraphSetTensorShape
+%ignore TF_GraphSetTensorShape;
+%unignore tensorflow;
+%unignore TF_GraphSetTensorShape_wrapper;
+
+// $input is a Python list of ints to a vector<int> for TF_GraphSetTensorShape_wrapper
+%typemap(in) (const std::vector<int64_t>& dims)
+    (std::vector<int64_t> dims_local){
+  if ($input != Py_None) {
+    if (!PyList_Check($input)) {
+      SWIG_exception_fail(SWIG_TypeError, tensorflow::strings::Printf(
+              "$symname: expected list but got %s ", Py_TYPE($input)->tp_name).c_str());
+    }
+    size_t size = PyList_Size($input);
+    for (int i = 0; i < size; ++i) {
+      PyObject* item = PyList_GetItem($input, i);
+      dims_local.push_back(PyInt_AsLong(item));
+    }
+    $1 = &dims_local;
+  } else {
+    $1 = nullptr;
+  }
+}
+
+// We use TF_GraphGetTensorShape_wrapper instead of
+// TF_GraphGetTensorShape
+%ignore TF_GraphGetTensorShape;
+%unignore tensorflow;
+%unignore TF_GraphGetTensorShape_wrapper;
+
+// Build a Python list of ints and return it.
+%typemap(out) std::vector<int64_t> tensorflow::TF_GraphGetTensorShape_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyInt_FromLong($1[i]));
+  }
+}
+
 %include "tensorflow/python/client/tf_session_helper.h"
 
 %unignoreall

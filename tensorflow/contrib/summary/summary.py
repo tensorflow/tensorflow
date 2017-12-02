@@ -31,6 +31,7 @@ from tensorflow.contrib.summary.summary_ops import audio
 from tensorflow.contrib.summary.summary_ops import create_summary_db_writer
 from tensorflow.contrib.summary.summary_ops import create_summary_file_writer
 from tensorflow.contrib.summary.summary_ops import eval_dir
+from tensorflow.contrib.summary.summary_ops import flush
 from tensorflow.contrib.summary.summary_ops import generic
 from tensorflow.contrib.summary.summary_ops import graph
 from tensorflow.contrib.summary.summary_ops import histogram

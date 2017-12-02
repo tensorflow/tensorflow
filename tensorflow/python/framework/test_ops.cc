@@ -26,6 +26,16 @@ REGISTER_OP("KernelLabel")
     .Output("result: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("KernelLabelRequired")
+    .Input("input: int32")
+    .Output("result: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &out));
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("GraphDefVersion")
     .Output("version: int32")
     .SetIsStateful()
@@ -103,6 +113,14 @@ REGISTER_KERNEL_BUILDER(Name("KernelLabel")
                             .Device(DEVICE_CPU)
                             .Label("overload_2"),
                         KernelLabelOp<OVERLOAD_2_LABEL>);
+
+// All "KernelLabelRequired" kernels have labels
+REGISTER_KERNEL_BUILDER(
+    Name("KernelLabelRequired").Device(DEVICE_CPU).Label("overload_1"),
+    KernelLabelOp<OVERLOAD_1_LABEL>);
+REGISTER_KERNEL_BUILDER(
+    Name("KernelLabelRequired").Device(DEVICE_CPU).Label("overload_2"),
+    KernelLabelOp<OVERLOAD_2_LABEL>);
 
 class GraphDefVersionOp : public OpKernel {
  public:

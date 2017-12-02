@@ -43,15 +43,14 @@ class MixtureSameFamily(distribution.Distribution):
   #### Examples
 
   ```python
-  import matplotlib.pyplot as plt
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   ### Create a mixture of two scalar Gaussians:
 
-  gm = ds.MixtureSameFamily(
-      mixture_distribution=ds.Categorical(
+  gm = tfd.MixtureSameFamily(
+      mixture_distribution=tfd.Categorical(
           probs=[0.3, 0.7]),
-      components_distribution=ds.Normal(
+      components_distribution=tfd.Normal(
         loc=[-1., 1],       # One for each component.
         scale=[0.1, 0.5]))  # And same here.
 
@@ -63,14 +62,15 @@ class MixtureSameFamily(distribution.Distribution):
 
   # Plot PDF.
   x = np.linspace(-2., 3., int(1e4), dtype=np.float32)
+  import matplotlib.pyplot as plt
   plt.plot(x, gm.prob(x).eval());
 
   ### Create a mixture of two Bivariate Gaussians:
 
-  gm = ds.MixtureSameFamily(
-      mixture_distribution=ds.Categorical(
+  gm = tfd.MixtureSameFamily(
+      mixture_distribution=tfd.Categorical(
           probs=[0.3, 0.7]),
-      components_distribution=ds.MultivariateNormalDiag(
+      components_distribution=tfd.MultivariateNormalDiag(
           loc=[[-1., 1],  # component 1
                [1, -1]],  # component 2
           scale_identity_multiplier=[.3, .6]))

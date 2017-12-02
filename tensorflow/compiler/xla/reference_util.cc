@@ -195,14 +195,26 @@ ReferenceUtil::ReduceWindow1DGeneric(
     const tensorflow::gtl::ArraySlice<int64>& window,
     const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
   std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
-  auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
+  return ReduceWindow1DGeneric(
+      operand, init, reduce_func, window, stride,
+      xla::MakePadding(dim_lengths, window, stride, padding));
+}
 
+/* static  */ std::unique_ptr<std::vector<float>>
+ReferenceUtil::ReduceWindow1DGeneric(
+    const tensorflow::gtl::ArraySlice<float>& operand, float init,
+    const std::function<float(float, float)>& reduce_func,
+    const tensorflow::gtl::ArraySlice<int64>& window,
+    const tensorflow::gtl::ArraySlice<int64>& stride,
+    const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding) {
+  std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
   std::vector<int64> window_counts(window.size(), 0);
   std::vector<int64> pad_low(window.size(), 0);
   for (int64 i = 0; i < window.size(); ++i) {
+    int64 padded_width = padding[i].first + dim_lengths[i] + padding[i].second;
     window_counts[i] =
-        WindowCount(dim_lengths[i], window[i], stride[i], padding);
-    pad_low[i] = padding_both[i].first;
+        window_util::StridedBound(padded_width, window[i], stride[i]);
+    pad_low[i] = padding[i].first;
   }
   auto result = MakeUnique<std::vector<float>>(window_counts[0]);
 

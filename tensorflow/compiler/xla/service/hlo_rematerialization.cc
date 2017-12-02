@@ -566,7 +566,9 @@ Status MemoryUsageTracker::BeginInstruction(Item* item) {
   VLOG(3) << "  memory usage = " << memory_usage_;
   VLOG(10) << ToString();
 
-  DCHECK(Check());
+  if (VLOG_IS_ON(1)) {
+    DCHECK(Check());
+  }
   return Status::OK();
 }
 
@@ -603,8 +605,9 @@ Status MemoryUsageTracker::EndInstruction() {
   VLOG(3) << "  memory usage = " << memory_usage_;
   VLOG(10) << ToString();
 
-  DCHECK(Check());
-
+  if (VLOG_IS_ON(1)) {
+    DCHECK(Check());
+  }
   return Status::OK();
 }
 

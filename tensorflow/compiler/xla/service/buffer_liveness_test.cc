@@ -167,11 +167,10 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
 
   SequentialHloOrdering::HloModuleSequence sequence;
   sequence.insert({entry, {param0, negate, param1, exp, add}});
-  auto liveness = BufferLiveness::Run(
-                      module.get(),
-                      xla::MakeUnique<SequentialHloOrdering>(
-                          module.get(), sequence))
-                      .ConsumeValueOrDie();
+  auto liveness =
+      BufferLiveness::Run(module.get(), xla::MakeUnique<SequentialHloOrdering>(
+                                            module.get(), sequence))
+          .ConsumeValueOrDie();
 
   // Entry parameters interfere as if they are defined simultaneously at
   // the very beginning.
@@ -296,7 +295,7 @@ TEST_F(BufferLivenessTest, OverlappedBuffersSequentialOrder) {
   module_sequence.emplace(computation, order);
   auto liveness =
       BufferLiveness::Run(module.get(), xla::MakeUnique<SequentialHloOrdering>(
-          module.get(), module_sequence))
+                                            module.get(), module_sequence))
           .ConsumeValueOrDie();
 
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
@@ -625,9 +624,8 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
 
     // Run BufferLiveness on 'module'.
     auto liveness =
-        BufferLiveness::Run(module.get(),
-                            xla::MakeUnique<DependencyHloOrdering>(
-                                module.get()))
+        BufferLiveness::Run(
+            module.get(), xla::MakeUnique<DependencyHloOrdering>(module.get()))
             .ConsumeValueOrDie();
     // Return whether or not buffers interference is detected between
     // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
@@ -738,9 +736,8 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     module->AddEmbeddedComputation(builder.Build());
     // Run BufferLiveness on 'module'.
     auto liveness =
-        BufferLiveness::Run(module.get(),
-                            xla::MakeUnique<DependencyHloOrdering>(
-                                module.get()))
+        BufferLiveness::Run(
+            module.get(), xla::MakeUnique<DependencyHloOrdering>(module.get()))
             .ConsumeValueOrDie();
     // Return whether or not buffers interference is detected between
     // 'tuple_param0' and 'tuple_root' at shape index '{1}'.

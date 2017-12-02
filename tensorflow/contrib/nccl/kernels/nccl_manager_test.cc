@@ -30,6 +30,8 @@ namespace tensorflow {
 static std::vector<BaseGPUDevice*> GetGPUDevices() {
   std::vector<Device*> devices;
   SessionOptions session_options;
+  session_options.config.mutable_gpu_options()
+      ->set_per_process_gpu_memory_fraction(0.1);
   session_options.env = Env::Default();
   Status s = DeviceFactory::GetFactory(DEVICE_GPU)
                  ->AddDevices(session_options, "", &devices);

@@ -124,17 +124,17 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
   #### Example Use
 
   ```python
-  ds = tf.contrib.distributions
-  bs = tf.contrib.distributions.bijectors
+  tfd = tf.contrib.distributions
+  tfb = tfd.bijectors
 
   dims = 5
 
   # A common choice for a normalizing flow is to use a Gaussian for the base
   # distribution. (However, any continuous distribution would work.) E.g.,
-  maf = ds.TransformedDistribution(
-      distribution=ds.Normal(loc=0., scale=1.),
-      bijector=bs.MaskedAutoregressiveFlow(
-          shift_and_log_scale_fn=bs.masked_autoregressive_default_template(
+  maf = tfd.TransformedDistribution(
+      distribution=tfd.Normal(loc=0., scale=1.),
+      bijector=tfb.MaskedAutoregressiveFlow(
+          shift_and_log_scale_fn=tfb.masked_autoregressive_default_template(
               hidden_layers=[512, 512])),
       event_shape=[dims])
 
@@ -143,10 +143,10 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
   maf.log_prob(0.)  # Cheap; no `tf.while_loop` despite no Bijector caching.
 
   # [1] also describes an "Inverse Autoregressive Flow", e.g.,
-  iaf = ds.TransformedDistribution(
-      distribution=ds.Normal(loc=0., scale=1.),
-      bijector=bs.Invert(bs.MaskedAutoregressiveFlow(
-          shift_and_log_scale_fn=bs.masked_autoregressive_default_template(
+  iaf = tfd.TransformedDistribution(
+      distribution=tfd.Normal(loc=0., scale=1.),
+      bijector=tfb.Invert(tfb.MaskedAutoregressiveFlow(
+          shift_and_log_scale_fn=tfb.masked_autoregressive_default_template(
               hidden_layers=[512, 512]))),
       event_shape=[dims])
 
@@ -158,10 +158,10 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
   # poor choice. Here's an example of using a "shift only" version and with a
   # different number/depth of hidden layers.
   shift_only = True
-  maf_no_scale_hidden2 = ds.TransformedDistribution(
-      distribution=ds.Normal(loc=0., scale=1.),
-      bijector=bs.MaskedAutoregressiveFlow(
-          bs.masked_autoregressive_default_template(
+  maf_no_scale_hidden2 = tfd.TransformedDistribution(
+      distribution=tfd.Normal(loc=0., scale=1.),
+      bijector=tfb.MaskedAutoregressiveFlow(
+          tfb.masked_autoregressive_default_template(
               hidden_layers=[32],
               shift_only=shift_only),
           is_constant_jacobian=shift_only),
