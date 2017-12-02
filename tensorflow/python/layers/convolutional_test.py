@@ -169,42 +169,46 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
-  def testConv1DWithCausalPadding(self):
-    x = constant_op.constant([1, 2, 3, 4], dtype=dtypes.float32)
-    x = array_ops.expand_dims(x, 0)  # Add batch dimension
-    x = array_ops.expand_dims(x, 2)  # And channel dimension
+  def testConv1DCausalPadding(self):
+    x = np.array([1, 2, 3, 4], dtype=np.float32)
+    # Aad batch and channel dimension: 1x4x1
+    x = x[np.newaxis, ..., np.newaxis]
     # Filters is 2x1x1
     filters = np.array([2, 1], dtype=np.float32)
     filters = filters[..., np.newaxis, np.newaxis]
     filters = init_ops.constant_initializer(filters)
-    with self.test_session(use_gpu=test.is_gpu_available()) as sess:
-      layer = conv_layers.Conv1D(1, 2, padding='causal',
-                                 kernel_initializer=filters,
-                                 activation=None,
-                                 use_bias=False)
-      output_op = layer.apply(x)
-      reduced = array_ops.squeeze(output_op)
+    dilation_rates = [1, 2]
+    except_outputs = [
+        # dilation_rate = 1, causal padding
+        [2 * 0 + 1 * 1, 2 * 1 + 1 * 2, 2 * 2 + 1 * 3, 2 * 3 + 1 * 4],
+        # dilation_rate = 2, causal padding
+        [2 * 0 + 1 * 1, 2 * 0 + 1 * 2, 2 * 1 + 1 * 3, 2 * 2 + 1 * 4]]
+    input_shapes = [[1, 4, 1],
+                    [None, 4, 1],     # Unknown batch channel
+                    [1, None, 1],     # Unknown time channel
+                    [None, None, 1]]  # Unknown batch and time channel
+    for n, dilation_rate in enumerate(dilation_rates):
+      for input_shape in input_shapes:
+        with self.test_session(use_gpu=test.is_gpu_available()) as sess:
+          inputs = array_ops.placeholder(shape=input_shape,
+                                         dtype=dtypes.float32)
+          layer = conv_layers.Conv1D(1, 2, padding='causal',
+                                     dilation_rate=dilation_rate,
+                                     kernel_initializer=filters,
+                                     activation=None,
+                                     use_bias=False)
+          output_op = layer.apply(inputs)
+          reduced = array_ops.squeeze(output_op)
 
-      sess.run(variables.global_variables_initializer())
-      output = reduced.eval()
-      self.assertEqual(len(output), 4)
-      self.assertAllClose(output,
-                          [2 * 0 + 1 * 1, 2 * 1 + 1 * 2, 2 * 2 + 1 * 3, 2 * 3 + 1 * 4])
-    # dilation_rate is 2
-    with self.test_session(use_gpu=test.is_gpu_available()) as sess:
-      layer = conv_layers.Conv1D(1, 2, padding='causal', dilation_rate=2,
-                                 kernel_initializer=filters,
-                                 activation=None,
-                                 use_bias=False)
-      output_op = layer.apply(x)
-      reduced = array_ops.squeeze(output_op)
+          sess.run(variables.global_variables_initializer())
+          output = sess.run(reduced, feed_dict={inputs: x})
+          self.assertEqual(len(output), 4)
+          self.assertAllClose(output, except_outputs[n])
 
-      sess.run(variables.global_variables_initializer())
-      output = reduced.eval()
-      self.assertEqual(len(output), 4)
-      self.assertAllClose(output,
-                          [2 * 0 + 1 * 1, 2 * 0 + 1 * 2, 2 * 1 + 1 * 3, 2 * 2 + 1 * 4])
-
+  def testConv1DCausalPaddingIsInvalid(self):
+    x = constant_op.constant([1, 2, 3, 4], dtype=dtypes.float32)
+    x = array_ops.expand_dims(x, 0)  # Add batch dimension
+    x = array_ops.expand_dims(x, 2)  # And channel dimension
     # incompatible data_format.
     with self.assertRaisesRegexp(ValueError, 'NTC'):
       conv_layers.Conv1D(1, 2, padding='causal', data_format='channels_first')
