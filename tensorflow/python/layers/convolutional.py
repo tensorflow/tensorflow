@@ -376,17 +376,17 @@ class Conv1D(_Conv):
         name=name, **kwargs)
     # TODO(fchollet): Remove it when nn_ops.convolution supports causal padding.
     if self.padding == 'causal':
-        if self.data_format != 'channels_last':
-          raise ValueError('causal padding only supports channels_last (NTC) format.')
-        # Left pad for `causal` padding.
-        self._inputs_fn, self._shape_fn, self._padding_fn = _helper_for_causal_padding(
-            self.dilation_rate[0], self.kernel_size[0])
+      if self.data_format != 'channels_last':
+        raise ValueError('causal padding only supports channels_last (NTC) format.')
+      # Left pad for `causal` padding.
+      self._inputs_fn, self._shape_fn, self._padding_fn = _helper_for_causal_padding(
+          self.dilation_rate[0], self.kernel_size[0])
     else:
-        # Keep original value for `same` and `valid` padding.
-        identity_fn = lambda x: x
-        self._inputs_fn = identity_fn
-        self._shape_fn = identity_fn
-        self._padding_fn = identity_fn
+      # Keep original value for `same` and `valid` padding.
+      identity_fn = lambda x: x
+      self._inputs_fn = identity_fn
+      self._shape_fn = identity_fn
+      self._padding_fn = identity_fn
 
   # TODO(fchollet): Remove those methods when nn_ops.convolution supports causal padding.
   def _get_padding(self):

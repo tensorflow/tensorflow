@@ -171,7 +171,7 @@ class ConvTest(test.TestCase):
 
   def testConv1DCausalPadding(self):
     x = np.array([1, 2, 3, 4], dtype=np.float32)
-    # Aad batch and channel dimension: 1x4x1
+    # Add batch and channel dimension: 1x4x1
     x = x[np.newaxis, ..., np.newaxis]
     # Filters is 2x1x1
     filters = np.array([2, 1], dtype=np.float32)
@@ -209,13 +209,13 @@ class ConvTest(test.TestCase):
     x = constant_op.constant([1, 2, 3, 4], dtype=dtypes.float32)
     x = array_ops.expand_dims(x, 0)  # Add batch dimension
     x = array_ops.expand_dims(x, 2)  # And channel dimension
-    # incompatible data_format.
+    # Incompatible data_format.
     with self.assertRaisesRegexp(ValueError, 'NTC'):
       conv_layers.Conv1D(1, 2, padding='causal', data_format='channels_first')
-    # invalid dilation_rate.
+    # Invalid dilation_rate.
     with self.assertRaisesRegexp(ValueError, 'nonnegative'):
       conv_layers.Conv1D(1, 2, padding='causal', dilation_rate=-1).apply(x)
-    # invalid inputs.
+    # Invalid inputs.
     with self.assertRaisesRegexp(ValueError, '3 dimensions'):
       x_4d = array_ops.expand_dims(x, 3)
       conv_layers.Conv1D(1, 2, padding='causal').build(x_4d.shape)
