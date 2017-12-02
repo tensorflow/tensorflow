@@ -262,11 +262,15 @@ def _helper_for_causal_padding(dilation_rate, kernel_size):
     if input_shape.ndims != 3:
       raise ValueError('The input_shape must be 3 dimensions. '
                        'Received: {}'.format(input_shape))
-    input_list = input_shape.as_list()
-    # Padding on the left side of time channel.
-    input_list[1] += left_pad
-    return tensor_shape.TensorShape([tensor_shape.Dimension(d)
-                                     for d in input_list])
+    if not input_shape[1].value:
+      # Unknown dimension in time channel.
+      return input_shape
+    else:
+      input_list = input_shape.as_list()
+      # Padding on the left side of time channel.
+      input_list[1] += left_pad
+      return tensor_shape.TensorShape([tensor_shape.Dimension(d)
+                                       for d in input_list])
 
   def padding_fn(padding):
     # Use valid convolution after left padding.
