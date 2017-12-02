@@ -43,6 +43,7 @@ bool IsFusedBatchNormGradV1(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsMerge(const NodeDef& node);
 bool IsMul(const NodeDef& node);
+bool IsMatMul(const NodeDef& node);
 bool IsNextIteration(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
