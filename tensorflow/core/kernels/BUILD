@@ -589,6 +589,7 @@ cc_library(
         ":extract_image_patches_op",
         ":gather_nd_op",
         ":gather_op",
+        ":guarantee_const_op",
         ":identity_n_op",
         ":identity_op",
         ":inplace_ops",
@@ -632,6 +633,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "concat_op",
     prefix = "concat_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "guarantee_const_op",
+    prefix = "guarantee_const_op",
     deps = ARRAY_DEPS,
 )
 
@@ -1183,6 +1190,25 @@ tf_cuda_cc_test(
         ":gather_nd_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "guarantee_const_op_test",
+    size = "small",
+    srcs = ["guarantee_const_op_test.cc"],
+    deps = [
+        ":guarantee_const_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
