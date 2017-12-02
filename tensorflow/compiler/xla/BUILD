@@ -175,6 +175,7 @@ cc_library(
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ptr_util",
     ],
 )
 

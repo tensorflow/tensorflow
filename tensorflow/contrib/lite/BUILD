@@ -191,6 +191,9 @@ filegroup(
         exclude = [
             "**/METADATA",
             "**/OWNERS",
+            "downloads",
+            "examples",
+            "gen",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],

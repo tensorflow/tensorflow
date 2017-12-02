@@ -387,6 +387,16 @@ class DropoutTest(test.TestCase):
       self.assertAllClose(np.ones((5, 5)), np_output)
 
   @test_util.run_in_graph_and_eager_modes()
+  def testDynamicNoiseShape(self):
+    inputs = array_ops.ones((5, 3, 2))
+    noise_shape = [None, 1, None]
+    dp = core_layers.Dropout(0.5, noise_shape=noise_shape, seed=1)
+    dropped = dp.apply(inputs, training=True)
+    self.evaluate(variables.global_variables_initializer())
+    np_output = self.evaluate(dropped)
+    self.assertAlmostEqual(0., np_output.min())
+    self.assertAllClose(np_output[:, 0, :], np_output[:, 1, :])
+
   def testCustomNoiseShape(self):
     inputs = array_ops.ones((5, 3, 2))
     noise_shape = [5, 1, 2]

@@ -662,22 +662,36 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
 class ExportImportAcrossScopesTest(test.TestCase):
 
   def testPartionedVariables(self):
-    def make_graph_with_partitioned_variables():
+
+    def make_graph_with_partitioned_variables(use_resource):
       variable_scope.get_variable(
           name="weights",
           partitioner=partitioned_variables.fixed_size_partitioner(3, axis=0),
-          initializer=random_ops.truncated_normal([100, 10]))
-    self._testExportImportAcrossScopes(make_graph_with_partitioned_variables)
+          initializer=random_ops.truncated_normal([100, 10]),
+          use_resource=use_resource)
+      # The next variable illustrates the necessity of restoring collections
+      # in a deterministic fashion when using ResourceVariables.
+      variable_scope.get_variable(
+          name="another",
+          shape=[],
+          collections=["a", "b", "z", "f", "e", "d", "g"],
+          use_resource=use_resource)
 
-  def _testExportImportAcrossScopes(self, graph_fn):
+    self._testExportImportAcrossScopes(
+        make_graph_with_partitioned_variables, use_resource=False)
+    self._testExportImportAcrossScopes(
+        make_graph_with_partitioned_variables, use_resource=True)
+
+  def _testExportImportAcrossScopes(self, graph_fn, use_resource):
     """Tests export and importing a graph across scopes.
 
     Args:
       graph_fn: A closure that creates a graph on the current scope.
+      use_resource: A bool indicating whether or not to use ResourceVariables.
     """
     with ops.Graph().as_default() as original_graph:
       with variable_scope.variable_scope("dropA/dropB/keepA"):
-        graph_fn()
+        graph_fn(use_resource=use_resource)
     exported_meta_graph_def = meta_graph.export_scoped_meta_graph(
         graph=original_graph,
         export_scope="dropA/dropB")[0]
@@ -689,10 +703,32 @@ class ExportImportAcrossScopesTest(test.TestCase):
 
     with ops.Graph().as_default() as expected_graph:
       with variable_scope.variable_scope("importA/keepA"):
-        graph_fn()
+        graph_fn(use_resource=use_resource)
+
+      if use_resource:
+        # Bringing in a collection that contains ResourceVariables adds ops
+        # to the graph, so mimic the same behavior.
+        for collection_key in sorted([
+            ops.GraphKeys.GLOBAL_VARIABLES,
+            ops.GraphKeys.TRAINABLE_VARIABLES,
+        ]):
+          for var in expected_graph.get_collection(collection_key):
+            var._read_variable_op()
 
     result = meta_graph.export_scoped_meta_graph(graph=imported_graph)[0]
     expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]
+
+    if use_resource:
+      # Clear all shared_name attributes before comparing, since they are
+      # supposed to be orthogonal to scopes.
+      for meta_graph_def in [result, expected]:
+        for node in meta_graph_def.graph_def.node:
+          shared_name_attr = "shared_name"
+          shared_name_value = node.attr.get(shared_name_attr, None)
+          if shared_name_value and shared_name_value.HasField("s"):
+            if shared_name_value.s:
+              node.attr[shared_name_attr].s = b""
+
     self.assertProtoEquals(expected, result)
 
 

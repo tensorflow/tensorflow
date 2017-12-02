@@ -165,5 +165,5 @@ py_test(
 filegroup(
     name = "test_export_dir",
     srcs = glob(["test_export_dir/**/*"]),
-    tags = ["nopip"],
+    tags = ["no_pip"],
 )

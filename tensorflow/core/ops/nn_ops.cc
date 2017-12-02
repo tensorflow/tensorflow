@@ -359,7 +359,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 y_backprop: A 4D Tensor for the gradient with respect to y.
 x: A 4D Tensor for input data.
 scale: A 1D Tensor for scaling factor, to scale the normalized x.
-reserve_space_1: When is_training is True, a 1D Tensor for the computed batch 
+reserve_space_1: When is_training is True, a 1D Tensor for the computed batch
                  mean to be reused in gradient computation. When is_training is
                  False, a 1D Tensor for the population mean to be reused in both
                  1st and 2nd order gradient computation.
@@ -407,7 +407,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 y_backprop: A 4D Tensor for the gradient with respect to y.
 x: A 4D Tensor for input data.
 scale: A 1D Tensor for scaling factor, to scale the normalized x.
-reserve_space_1: When is_training is True, a 1D Tensor for the computed batch 
+reserve_space_1: When is_training is True, a 1D Tensor for the computed batch
                  mean to be reused in gradient computation. When is_training is
                  False, a 1D Tensor for the population mean to be reused in both
                  1st and 2nd order gradient computation.
@@ -2290,7 +2290,7 @@ REGISTER_OP("NthElement")
       return Status::OK();
     })
     .Doc(R"doc(
-Finds values of the `n`-th order statistic for the last dmension.
+Finds values of the `n`-th order statistic for the last dimension.
 
 If the input is a vector (rank-1), finds the entries which is the nth-smallest
 value in the vector and outputs their values as scalar tensor.

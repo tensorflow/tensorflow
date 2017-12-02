@@ -18,20 +18,23 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-// hidden_ops should be a comma-separated
-// list of Op names that should get a leading _ in the output.
+// hidden_ops should be a vector of Op names that should get a leading _ in the
+// output.
 // The Print* version prints the output to stdout, Get* version returns the
 // output as a string.
-void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    bool require_shapes);
-string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    bool require_shapes);
-string GetPythonOp(const OpDef& op_def, const string& function_name);
+void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const std::vector<string>& hidden_ops, bool require_shapes);
+string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const std::vector<string>& hidden_ops, bool require_shapes);
+string GetPythonOp(const OpDef& op_def, const ApiDef& api_def,
+                   const string& function_name);
 
 // Get the python wrappers for a list of ops in a OpList.
 // `op_list_buf` should be a pointer to a buffer containing

@@ -124,7 +124,7 @@ class FlatMapDatasetTest(test.TestCase):
 
   def testSparse(self):
     def _map_fn(i):
-      return sparse_tensor.SparseTensor(
+      return sparse_tensor.SparseTensorValue(
           indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
 
     def _flat_map_fn(x):

@@ -71,6 +71,9 @@ class CurlHttpRequest : public HttpRequest {
   /// Sets a request header.
   Status AddHeader(const string& name, const string& value) override;
 
+  Status AddResolveOverride(const string& hostname, int64 port,
+                            const string& ip_addr) override;
+
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
   Status AddAuthBearerHeader(const string& auth_token) override;
 
@@ -146,6 +149,7 @@ class CurlHttpRequest : public HttpRequest {
   std::vector<char>* response_buffer_ = nullptr;
   CURL* curl_ = nullptr;
   curl_slist* curl_headers_ = nullptr;
+  curl_slist* resolve_list_ = nullptr;
 
   std::vector<char> default_response_buffer_;
 

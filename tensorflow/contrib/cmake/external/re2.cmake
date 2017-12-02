@@ -45,4 +45,5 @@ ExternalProject_Add(re2
 		endif()
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_INSTALL_PREFIX:STRING=${re2_INSTALL}
+        -DRE2_BUILD_TESTING:BOOL=OFF
 )

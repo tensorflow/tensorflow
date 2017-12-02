@@ -43,6 +43,10 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+# TODO(ebrevdo): Delete this line after Dec. 4, 2017.
+tensor_array_ops._ENABLE_IDENTICAL_ELEMENT_SHAPES = True
+
+
 def _make_converter(tf_dtype):
   def _converter(x):
     if tf_dtype == dtypes.string:
@@ -185,6 +189,22 @@ class TensorArrayTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros(self):
     self._testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros()
+
+  def _testTensorArrayReadOrPackNotAllValuesAvailableInferShapeFillsZeros(self):
+    ta = tensor_array_ops.TensorArray(
+        dtype=dtypes.float32,
+        tensor_array_name="foo",
+        size=3)
+    self.assertAllEqual(
+        [[0.0, 0.0]], self.evaluate(ta.write(1, [[4.0, 5.0]]).read(0)))
+    self.assertAllEqual([[[0.0, 0.0]], [[4.0, 5.0]], [[0.0, 0.0]]],
+                        self.evaluate(ta.write(1, [[4.0, 5.0]]).stack()))
+    self.assertAllEqual([[0.0, 0.0], [4.0, 5.0], [0.0, 0.0]],
+                        self.evaluate(ta.write(1, [[4.0, 5.0]]).concat()))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testTensorArrayReadOrPackNotAllValuesAvailableInferShapeFillsZeros(self):
+    self._testTensorArrayReadOrPackNotAllValuesAvailableInferShapeFillsZeros()
 
   def _testTensorArrayUnpackRead(self, tf_dtype):
     with self.test_session(use_gpu=True):
@@ -739,7 +759,8 @@ class TensorArrayTest(test.TestCase):
   def testTensorArrayGradientSplitConcat(self):
     with self.test_session(use_gpu=True) as session:
       ta = tensor_array_ops.TensorArray(
-          dtype=dtypes.float32, tensor_array_name="foo", size=2)
+          dtype=dtypes.float32, tensor_array_name="foo", size=2,
+          infer_shape=False)
 
       value = constant_op.constant(
           [[1.0, -1.0], [10.0, -10.0], [100.0, -100.0]])

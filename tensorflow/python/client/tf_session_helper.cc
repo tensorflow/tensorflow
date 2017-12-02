@@ -299,6 +299,33 @@ string EqualGraphDefWrapper(const string& actual, const string& expected) {
   return EqualGraphDef(actual_def, expected_def, &diff) ? "" : diff;
 }
 
+// Return value set to 6 inlined elements so it fits in a 64-byte cache line.
+tensorflow::gtl::InlinedVector<int64_t, 6> TF_GraphGetTensorShapeHelper(
+    TF_Graph* graph, TF_Output output, TF_Status* out_status,
+    bool* unknown_shape) {
+  // Allocate a single variable for holding the result for RVO.
+  tensorflow::gtl::InlinedVector<int64_t, 6> result;
+  *unknown_shape = false;
+  int num_dims = TF_GraphGetTensorNumDims(graph, output, out_status);
+  if (TF_GetCode(out_status) != TF_OK) {
+    return result;
+  }
+  // If shape is unknown, set boolean and return.
+  if (num_dims == -1) {
+    *unknown_shape = true;
+    return result;
+  }
+
+  // If shape is a scalar, avoid another C call and just return {}.
+  if (num_dims == 0) {
+    return result;
+  }
+
+  result.resize(num_dims);
+  TF_GraphGetTensorShape(graph, output, result.data(), num_dims, out_status);
+  return result;
+}
+
 void TF_SessionPRunSetup_wrapper(TF_Session* session,
                                  const std::vector<TF_Output>& inputs,
                                  const std::vector<TF_Output>& outputs,

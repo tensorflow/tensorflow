@@ -441,6 +441,14 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
+  auto old_element_type = operand_shape.element_type();
+  if (primitive_util::IsComplexType(old_element_type) &&
+      !primitive_util::IsComplexType(new_element_type)) {
+    return Unimplemented(
+        "Unsupported conversion from complex to real type: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
   if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -448,6 +456,36 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return InvalidArgument(
         "cannot convert from or to tuple type; requested conversion: %s => %s",
         ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+
+  return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferBitcastConvertShape(
+    const Shape& operand_shape, PrimitiveType new_element_type) {
+  auto old_element_type = operand_shape.element_type();
+  if (primitive_util::IsComplexType(old_element_type) !=
+      primitive_util::IsComplexType(new_element_type)) {
+    return Unimplemented(
+        "Unsupported conversion between real and complex types: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+  if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
+    // Note: we may want to support tuple conversions via this operation in the
+    // future, by recursing into the tuple elements to check all sub-conversions
+    // are valid. For now we just reject them, though.
+    return InvalidArgument(
+        "cannot convert from or to tuple type; requested conversion: %s => %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        PrimitiveType_Name(new_element_type).c_str());
+  }
+  if (primitive_util::BitWidth(old_element_type) !=
+      primitive_util::BitWidth(new_element_type)) {
+    return InvalidArgument(
+        "cannot bitcast types with different bit-widths: %s => %s",
+        PrimitiveType_Name(old_element_type).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
 
@@ -1407,7 +1445,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         ShapeUtil::HumanString(lhs).c_str(),
         ShapeUtil::HumanString(rhs).c_str());
   }
-  if (dnums.spatial_dimensions_size() !=
+  if (dnums.input_spatial_dimensions_size() !=
       dnums.kernel_spatial_dimensions_size()) {
     return InvalidArgument(
         "Both arguments to convolution must have same number of dimensions.\n"
@@ -1415,7 +1453,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         window.DebugString().c_str());
   }
 
-  const int num_spatial_dims = dnums.spatial_dimensions_size();
+  const int num_spatial_dims = dnums.input_spatial_dimensions_size();
   if (window.dimensions_size() != num_spatial_dims) {
     return InvalidArgument(
         "Window must have same number of dimensions as dimension numbers.\n"
@@ -1444,8 +1482,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   std::vector<int64> input_dnums(num_dims);
   input_dnums[0] = dnums.input_batch_dimension();
   input_dnums[1] = dnums.input_feature_dimension();
-  std::copy(dnums.spatial_dimensions().begin(),
-            dnums.spatial_dimensions().end(), input_dnums.begin() + 2);
+  std::copy(dnums.input_spatial_dimensions().begin(),
+            dnums.input_spatial_dimensions().end(), input_dnums.begin() + 2);
   std::sort(input_dnums.begin(), input_dnums.end());
 
   std::vector<int64> window_dnums(num_dims);
@@ -1455,12 +1493,20 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
             dnums.kernel_spatial_dimensions().end(), window_dnums.begin() + 2);
   std::sort(window_dnums.begin(), window_dnums.end());
 
+  std::vector<int64> output_dnums(num_dims);
+  output_dnums[0] = dnums.output_batch_dimension();
+  output_dnums[1] = dnums.output_feature_dimension();
+  std::copy(dnums.output_spatial_dimensions().begin(),
+            dnums.output_spatial_dimensions().end(), output_dnums.begin() + 2);
+  std::sort(output_dnums.begin(), output_dnums.end());
+
   std::vector<int64> expected_dnums(num_dims);
   std::iota(expected_dnums.begin(), expected_dnums.end(), 0);
 
   const auto in_range = [num_dims](int64 i) { return 0 <= i && i < num_dims; };
   if (!std::all_of(input_dnums.begin(), input_dnums.end(), in_range) ||
-      !std::all_of(window_dnums.begin(), window_dnums.end(), in_range)) {
+      !std::all_of(window_dnums.begin(), window_dnums.end(), in_range) ||
+      !std::all_of(output_dnums.begin(), output_dnums.end(), in_range)) {
     return InvalidArgument(
         "A dimension number is out of range in convolution: %s",
         dnums.DebugString().c_str());
@@ -1478,10 +1524,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "once: %s",
         dnums.DebugString().c_str());
   }
+  if (output_dnums != expected_dnums) {
+    return InvalidArgument(
+        "Output dimensions of convolution must contain each dimension exactly "
+        "once: %s",
+        dnums.DebugString().c_str());
+  }
 
   std::vector<int64> input_spatial_dims(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
-    input_spatial_dims[i] = lhs.dimensions(dnums.spatial_dimensions(i));
+    input_spatial_dims[i] = lhs.dimensions(dnums.input_spatial_dimensions(i));
   }
   const int64 input_features = lhs.dimensions(dnums.input_feature_dimension());
   const int64 input_batch = lhs.dimensions(dnums.input_batch_dimension());
@@ -1529,7 +1581,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   dimensions[dnums.output_batch_dimension()] = input_batch;
   dimensions[dnums.output_feature_dimension()] = kernel_output_features;
   for (int i = 0; i < num_spatial_dims; ++i) {
-    dimensions[dnums.spatial_dimensions(i)] = window_output_shape.dimensions(i);
+    dimensions[dnums.output_spatial_dimensions(i)] =
+        window_output_shape.dimensions(i);
   }
 
   return ShapeUtil::MakeShape(lhs.element_type(), dimensions);

@@ -37,7 +37,7 @@ You may optionally specify the `dtype` and initializer to `tf.get_variable`. For
 example:
 
 ``` python
-my_int_variable = tf.get_variable("my_int_variable", [1, 2, 3], dtype=tf.int32, 
+my_int_variable = tf.get_variable("my_int_variable", [1, 2, 3], dtype=tf.int32,
   initializer=tf.zeros_initializer)
 ```
 
@@ -45,7 +45,7 @@ TensorFlow provides many convenient initializers. Alternatively, you may
 initialize a `tf.Variable` to have the value of a `tf.Tensor`. For example:
 
 ``` python
-other_variable = tf.get_variable("other_variable", dtype=tf.int32, 
+other_variable = tf.get_variable("other_variable", dtype=tf.int32,
   initializer=tf.constant([23, 42]))
 ```
 
@@ -66,13 +66,13 @@ By default every `tf.Variable` gets placed in the following two collections:
 multiple devices,
  * `tf.GraphKeys.TRAINABLE_VARIABLES`--- variables for which TensorFlow will
    calculate gradients.
- 
+
 If you don't want a variable to be trainable, add it to the
 `tf.GraphKeys.LOCAL_VARIABLES` collection instead. For example, the following
 snippet demonstrates how to add a variable named `my_local` to this collection:
 
 ``` python
-my_local = tf.get_variable("my_local", shape=(), 
+my_local = tf.get_variable("my_local", shape=(),
 collections=[tf.GraphKeys.LOCAL_VARIABLES])
 ```
 
@@ -80,8 +80,8 @@ Alternatively, you can specify `trainable=False` as an argument to
 `tf.get_variable`:
 
 ``` python
-my_non_trainable = tf.get_variable("my_non_trainable", 
-                                   shape=(), 
+my_non_trainable = tf.get_variable("my_non_trainable",
+                                   shape=(),
                                    trainable=False)
 ```
 
@@ -126,7 +126,7 @@ cluster_spec = {
     "ps": ["ps0:2222", "ps1:2222"],
     "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
 with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
-  v = tf.get_variable("v", shape=[20, 20])  # this variable is placed 
+  v = tf.get_variable("v", shape=[20, 20])  # this variable is placed
                                             # in the parameter server
                                             # by the replica_device_setter
 ```
@@ -142,7 +142,7 @@ high-level frameworks such as `tf.contrib.slim`, `tf.estimator.Estimator` and
 Explicit initialization is otherwise useful because it allows you not to rerun
 potentially expensive initializers when reloading a model from a checkpoint as
 well as allowing determinism when randomly-initialized variables are shared in a
-distributed setting. 
+distributed setting.
 
 To initialize all trainable variables in one go, before training starts, call
 `tf.global_variables_initializer()`. This function returns a single operation

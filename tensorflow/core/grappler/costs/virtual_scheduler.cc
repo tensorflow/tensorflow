@@ -677,10 +677,10 @@ Costs VirtualScheduler::Summary() const {
     critical_path_costs.estimated_max_memory_per_device[name] =
         max_memory_usage;
 
+    const Costs::NanoSeconds wall_time_ns = state.GetCurrTime();
     VLOG(1) << "Device = " << name
             << ", num_nodes = " << state.nodes_executed.size()
-            << ", execution_time = " << state.GetCurrTime().count()
-            << ", memory usage: "
+            << ", wall_time_ns = " << wall_time_ns.count() << ", memory usage: "
             << "persistent = "
             << strings::HumanReadableNumBytes(persistent_memory_usage)
             << ", peak = "
@@ -698,9 +698,11 @@ Costs VirtualScheduler::Summary() const {
       op_to_memory[node->op()] +=
           CalculateOutputSize(node_map_.at(node).output_properties, port);
     }
+    Costs::NanoSeconds total_compute_time_ns;
     for (const auto& op_cost_pair : state.op_to_cost) {
       const auto& op = op_cost_pair.first;
       const auto& cost = op_cost_pair.second.execution_time.count();
+      total_compute_time_ns += op_cost_pair.second.execution_time;
       int64 op_mem_usage = 0;
       auto it = op_to_memory.find(op);
       if (it != op_to_memory.end()) {
@@ -718,6 +720,15 @@ Costs VirtualScheduler::Summary() const {
                 << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
       }
     }
+
+    int utilization = 0;
+    if (wall_time_ns.count() > 0) {
+      utilization = total_compute_time_ns.count() * 100 / wall_time_ns.count();
+    }
+    VLOG(1) << "Device = " << name
+            << ", total_compute_time_ns = " << total_compute_time_ns.count()
+            << ", utilization = " << utilization << "%";
+
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
     }
@@ -741,8 +752,7 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
   if (metadata != nullptr) {
     StepStats* stepstats = metadata->mutable_step_stats();
     for (const auto& device : device_) {
-      GraphDef* device_partition_graph =
-          metadata->mutable_partition_graphs()->Add();
+      GraphDef* device_partition_graph = metadata->add_partition_graphs();
       DeviceStepStats* device_stepstats = stepstats->add_dev_stats();
       device_stepstats->set_device(device.first);
       for (const auto& node_def : device.second.nodes_executed) {
@@ -793,7 +803,7 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
         mem_stats->set_host_persistent_memory_size(host_persistent_memory_size);
         mem_stats->set_device_persistent_memory_size(
             device_persistent_memory_size);
-        *device_partition_graph->mutable_node()->Add() = *node_def;
+        *device_partition_graph->add_node() = *node_def;
       }
     }
   }

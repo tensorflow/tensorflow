@@ -330,24 +330,9 @@ void EagerTensor_dealloc(EagerTensor* self) {
   // We have the global interpreter lock, so use this chance to perform delayed
   // refcount decrements.
   tensorflow::ClearDecrefCache();
-  PyObject* id = PyLong_FromLongLong(self->id);
-  PyObject* func = PyObject_GetAttrString(reinterpret_cast<PyObject*>(self),
-                                          "_delete_trace");
+  auto id = self->id;
   Py_TYPE(self)->tp_free(self);
-  self = nullptr;
-  // Note that we run `func` after calling `tp_free`. Otherwise calling that
-  // function can potentially trigger garbage collection that observes `self`
-  // in this half deleted state and crashes.
-  // Note that `func` is a staticmethod and does not need `self` to be around
-  // for running.
-  // We clear (and later restore) any errors that have already been set. Else
-  // these erorrs may appear randomly as part of the function execution.
-  PyObject *a, *b, *c;
-  PyErr_Fetch(&a, &b, &c);
-  PyObject_CallFunctionObjArgs(func, id, nullptr);
-  PyErr_Restore(a, b, c);
-  Py_DECREF(func);
-  Py_DECREF(id);
+  TFE_Py_TapeStackDeleteTrace(id);
 }
 
 // Getter for `_id`.

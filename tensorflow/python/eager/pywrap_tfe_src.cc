@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <thread>
+
 #include "tensorflow/python/eager/pywrap_tfe.h"
 
 #include "tensorflow/c/c_api.h"
@@ -467,7 +469,8 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
 class GradientTape
     : public tensorflow::eager::GradientTape<PyObject, PyObject> {
  public:
-  GradientTape() {}
+  explicit GradientTape(bool persistent)
+      : tensorflow::eager::GradientTape<PyObject, PyObject>(persistent) {}
 
   void WatchVariable(PyObject* v) {
     watched_variables_.insert(v);
@@ -525,12 +528,65 @@ static PyTypeObject TFE_Py_Tape_Type = {
     "TFE_Py_Tape objects",                        /* tp_doc */
 };
 
-PyObject* TFE_Py_NewTape() {
+// xcode 7 doesn't define thread_local, so for compatibility we implement our
+// own. TODO(apassos) remove once we can deprecate xcode 7.
+#ifndef __APPLE__
+thread_local std::vector<TFE_Py_Tape*>* tape_stack = nullptr;
+std::vector<TFE_Py_Tape*>* GetTapeStack() {
+  if (tape_stack == nullptr) {
+    tape_stack = new std::vector<TFE_Py_Tape*>;
+  }
+  return tape_stack;
+}
+#else
+static tensorflow::mutex stack_mu(tensorflow::LINKER_INITIALIZED);
+static std::unordered_map<std::thread::id, std::vector<TFE_Py_Tape*>*>*
+    tape_stack GUARDED_BY(stack_mu) = nullptr;
+std::vector<TFE_Py_Tape*>* GetTapeStack() {
+  tensorflow::mutex_lock ml(stack_mu);
+  if (tape_stack == nullptr) {
+    tape_stack =
+        new std::unordered_map<std::thread::id, std::vector<TFE_Py_Tape*>*>;
+  }
+  auto it = tape_stack->find(std::this_thread::get_id());
+  if (it != tape_stack->end()) {
+    return it->second;
+  }
+  return tape_stack
+      ->emplace(std::this_thread::get_id(), new std::vector<TFE_Py_Tape*>)
+      .first->second;
+}
+#endif
+
+void TFE_Py_TapeStackPushNew(PyObject* persistent) {
   TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
-  if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return nullptr;
+  if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return;
   TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
-  tape->tape = new GradientTape();
-  return reinterpret_cast<PyObject*>(tape);
+  tape->tape = new GradientTape(persistent == Py_True);
+  GetTapeStack()->push_back(tape);
+}
+
+void TFE_Py_TapeStackPush(PyObject* tape) {
+  Py_INCREF(tape);
+  GetTapeStack()->push_back(reinterpret_cast<TFE_Py_Tape*>(tape));
+}
+
+PyObject* TFE_Py_TapeStackIsEmpty() {
+  if (GetTapeStack()->empty()) {
+    Py_RETURN_TRUE;
+  }
+  Py_RETURN_FALSE;
+}
+
+PyObject* TFE_Py_TapeStackPop() {
+  auto* stack = GetTapeStack();
+  if (stack->empty()) {
+    PyErr_SetString(PyExc_RuntimeError, "tape stack is empty.");
+    return nullptr;
+  }
+  TFE_Py_Tape* top = stack->back();
+  stack->pop_back();
+  return reinterpret_cast<PyObject*>(top);
 }
 
 static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
@@ -557,8 +613,12 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
   return tensor_ids;
 }
 
-PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors) {
+PyObject* TFE_Py_TapeStackShouldRecord(PyObject* tensors) {
   if (tensors == Py_None) {
+    Py_RETURN_FALSE;
+  }
+  auto* stack = GetTapeStack();
+  if (stack->empty()) {
     Py_RETURN_FALSE;
   }
   PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
@@ -575,16 +635,22 @@ PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors) {
     tensor_ids.push_back(FastTensorId(item));
   }
   Py_DECREF(seq);
-  TFE_Py_Tape* tape = reinterpret_cast<TFE_Py_Tape*>(py_tape);
-  if (tape->tape->ShouldRecord(tensor_ids)) {
-    Py_RETURN_TRUE;
-  } else {
-    Py_RETURN_FALSE;
+  for (TFE_Py_Tape* tape : *stack) {
+    if (tape->tape->ShouldRecord(tensor_ids)) {
+      Py_RETURN_TRUE;
+    }
   }
+  Py_RETURN_FALSE;
 }
 
-void TFE_Py_TapeWatch(PyObject* tape, tensorflow::int64 tensor_id) {
-  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->Watch(tensor_id);
+void TFE_Py_TapeStackWatch(PyObject* tensor) {
+  tensorflow::int64 tensor_id = FastTensorId(tensor);
+  if (PyErr_Occurred()) {
+    return;
+  }
+  for (TFE_Py_Tape* tape : *GetTapeStack()) {
+    tape->tape->Watch(tensor_id);
+  }
 }
 
 static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
@@ -639,6 +705,7 @@ std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
     PyObject* tensor = PySequence_Fast_GET_ITEM(seq, i);
     list.push_back(FastTensorId(tensor));
     if (PyErr_Occurred()) {
+      Py_DECREF(seq);
       return list;
     }
   }
@@ -646,8 +713,10 @@ std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
   return list;
 }
 
-void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
-  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->WatchVariable(variable);
+void TFE_Py_TapeStackWatchVariable(PyObject* variable) {
+  for (TFE_Py_Tape* tape : *GetTapeStack()) {
+    tape->tape->WatchVariable(variable);
+  }
 }
 
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
@@ -661,10 +730,14 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
   return result;
 }
 
-void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
-                                PyObject* output_tensors,
-                                PyObject* input_tensors,
-                                PyObject* backward_function) {
+void TFE_Py_TapeStackRecordOperation(PyObject* op_type,
+                                     PyObject* output_tensors,
+                                     PyObject* input_tensors,
+                                     PyObject* backward_function) {
+  auto* stack = GetTapeStack();
+  if (stack->empty()) {
+    return;
+  }
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(input_tensors);
   std::vector<tensorflow::eager::TapeTensor> output_info;
   PyObject* seq = PySequence_Fast(output_tensors,
@@ -697,14 +770,18 @@ void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
     return;
   }
 
-  Py_INCREF(backward_function);
-  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->RecordOperation(
-      op_type_str, output_info, input_ids, backward_function,
-      [backward_function]() { Py_DECREF(backward_function); });
+  for (TFE_Py_Tape* tape : *stack) {
+    Py_INCREF(backward_function);
+    tape->tape->RecordOperation(
+        op_type_str, output_info, input_ids, backward_function,
+        [backward_function]() { Py_DECREF(backward_function); });
+  }
 }
 
-void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id) {
-  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->DeleteTrace(tensor_id);
+void TFE_Py_TapeStackDeleteTrace(tensorflow::int64 tensor_id) {
+  for (TFE_Py_Tape* tape : *GetTapeStack()) {
+    tape->tape->DeleteTrace(tensor_id);
+  }
 }
 
 class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
@@ -814,12 +891,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     PyObject* py_result = PyEval_CallObject(
         reinterpret_cast<PyObject*>(backward_function), grads);
     Py_DECREF(grads);
-    Py_DECREF(backward_function);
     if (py_result == nullptr) {
-      VLOG(1) << "Gradient function threw exceptions";
-      if (VLOG_IS_ON(1)) {
-        PyErr_Print();
-      }
       return tensorflow::errors::Internal("gradient function threw exceptions");
     }
     result->clear();
@@ -844,6 +916,10 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     Py_DECREF(seq);
     Py_DECREF(py_result);
     return tensorflow::Status::OK();
+  }
+
+  void ReleaseBackwardFunction(PyObject* backward_function) const final {
+    Py_DECREF(backward_function);
   }
 
   void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }
@@ -906,6 +982,11 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
   status->status = tape_obj->tape->ComputeGradient(
       c_vspace, target_vec, sources_vec, outgrad_vec, &result);
   if (!status->status.ok()) {
+    if (PyErr_Occurred()) {
+      // Do not propagate the erroneous status as that would swallow the
+      // exception which caused the problem.
+      status->status = tensorflow::Status::OK();
+    }
     return nullptr;
   }
   if (!result.empty()) {

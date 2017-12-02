@@ -142,6 +142,10 @@ class XlaOpKernelContext {
   // SetConstantOutput where possible.
   void SetConstantOutput(int index, const Tensor& host_tensor);
 
+  // Sets output 'index' to an invalid value.
+  // Any subsequent attempt to consume this output will cause an error.
+  void SetInvalidOutput(int index);
+
   // Status handling.
   void SetStatus(const Status& status) { context_->SetStatus(status); }
   Status status() { return context_->status(); }

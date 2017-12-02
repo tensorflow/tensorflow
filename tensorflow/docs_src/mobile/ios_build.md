@@ -24,7 +24,7 @@ If you'd like to add TensorFlow capabilities to your own app, do the following:
 
 - Open `YourProjectName.xcworkspace` and add your code.
 
-- In your app's **Build Settings**, make sure to add `$(inherited)` to the 
+- In your app's **Build Settings**, make sure to add `$(inherited)` to the
   **Other Linker Flags**, and **Header Search Paths** sections.
 
 ## Running the Samples
@@ -98,7 +98,7 @@ There are three demo applications for iOS, all defined in Xcode projects inside
 
 ## Building the TensorFlow iOS libraries from source
 
-While Cocapods is the quickest and easiest way of getting started, you sometimes
+While Cocoapods is the quickest and easiest way of getting started, you sometimes
 need more flexibility to determine which parts of TensorFlow your app should be
 shipped with. For such cases, you can build the iOS libraries from the
 sources. [This

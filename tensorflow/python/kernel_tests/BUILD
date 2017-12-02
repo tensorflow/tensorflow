@@ -2338,6 +2338,7 @@ cuda_py_test(
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:tensor_array_grad",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
@@ -2360,7 +2361,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "slice_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["slice_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2807,11 +2808,14 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
     ],
     tags = [
         "manual",
@@ -2825,18 +2829,12 @@ tf_py_test(
     srcs = ["dataset_from_generator_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
     ],
 )
 
@@ -2939,6 +2937,20 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
+    name = "prefetch_dataset_op_test",
+    size = "small",
+    srcs = ["prefetch_dataset_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -3082,6 +3094,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/util:sparse",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -3096,8 +3109,11 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
     ],
 )

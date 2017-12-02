@@ -108,11 +108,6 @@ static CUdeviceptr AsCudaDevicePtr(DeviceMemoryBase *gpu_mem) {
   return AsCudaDevicePtr(*gpu_mem);
 }
 
-static CudaContext* GetCudaContext(Stream *stream) {
-  return static_cast<CUDAExecutor *>(stream->parent()->implementation())
-      ->cuda_context();
-}
-
 CudaContext* ExtractCudaContext(CUDAExecutor *cuda_exec) {
   CHECK(cuda_exec != nullptr);
   return cuda_exec->cuda_context();
@@ -380,11 +375,11 @@ bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
 
   void **kernel_params = const_cast<void **>(args.argument_addresses().data());
 
-  if (!CUDADriver::LaunchKernel(GetCudaContext(stream), cufunc, block_dims.x,
-                                block_dims.y, block_dims.z, thread_dims.x,
-                                thread_dims.y, thread_dims.z,
-                                args.number_of_shared_bytes(), custream,
-                                kernel_params, nullptr /* = extra */)) {
+  if (!CUDADriver::LaunchKernel(context_, cufunc, block_dims.x, block_dims.y,
+                                block_dims.z, thread_dims.x, thread_dims.y,
+                                thread_dims.z, args.number_of_shared_bytes(),
+                                custream, kernel_params,
+                                nullptr /* = extra */)) {
     LOG(ERROR) << "failed to launch CUDA kernel with args: "
                << args.number_of_arguments()
                << "; thread dim: " << thread_dims.ToString()

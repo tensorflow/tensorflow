@@ -59,9 +59,29 @@ message CreateWorkerSessionRequest {
 
   // Defines the configuration of a TensorFlow worker.
   ServerDef server_def = 2;
+
+  // If true, any resources such as Variables used in the session will not be
+  // shared with other sessions.
+  bool isolate_session_state = 3;
 }
 
 message CreateWorkerSessionResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// DeleteSession method request/response messages
+//
+// Deletes all worker-side state associated with the given session handle.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message DeleteWorkerSessionRequest {
+  // Sessions are identified by a given handle.
+  string session_handle = 1;
+}
+
+message DeleteWorkerSessionResponse {
 }
 
 ////////////////////////////////////////////////////////////////////////////////

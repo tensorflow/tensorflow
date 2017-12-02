@@ -145,11 +145,13 @@ TEST_F(HloShardingTest, NestedTuple) {
       ShapeUtil::MakeShape(F32, {4, 6}),
   });
 
+  HloSharding tiled_sharding = HloSharding::Tile(
+      ShapeUtil::MakeShape(F32, {4, 3}), Array<int64>({{0, 1}}));
   OpSharding proto;
   proto.set_type(OpSharding::Type::OpSharding_Type_TUPLE);
   *proto.add_tuple_shardings() = HloSharding::Replicate().ToProto();
   *proto.add_tuple_shardings() = HloSharding::AssignDevice(0).ToProto();
-  *proto.add_tuple_shardings() = HloSharding::AssignDevice(1).ToProto();
+  *proto.add_tuple_shardings() = tiled_sharding.ToProto();
   HloSharding tuple_sharding =
       HloSharding::FromProto(proto).ConsumeValueOrDie();
 
@@ -157,7 +159,15 @@ TEST_F(HloShardingTest, NestedTuple) {
       tuple_sharding.GetAsShapeTree(nested_tuple_shape);
   EXPECT_EQ(shape_tree.element({0}), HloSharding::Replicate());
   EXPECT_EQ(shape_tree.element({1, 0}), HloSharding::AssignDevice(0));
-  EXPECT_EQ(shape_tree.element({2}), HloSharding::AssignDevice(1));
+  EXPECT_EQ(shape_tree.element({2}), tiled_sharding);
+
+  EXPECT_IS_OK(tuple_sharding.Validate(nested_tuple_shape, /*num_devices=*/5));
+  // Test should fail because tuple element count does not match.
+  EXPECT_IS_NOT_OK(tuple_sharding.Validate(ShapeUtil::MakeTupleShape({}),
+                                           /*num_devices=*/5));
+  // Test should fail because the input type is not a tuple.
+  EXPECT_IS_NOT_OK(tuple_sharding.Validate(ShapeUtil::MakeShape(F32, {}),
+                                           /*num_devices=*/5));
 }
 
 TEST_F(HloShardingTest, Hash) {
