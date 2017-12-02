@@ -288,7 +288,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
-          self.model_fn, self.optimizer_fn)
+          self.model_fn, self.optimizer_fn, devices=['/gpu:0'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
       session.run(variables.global_variables_initializer())
