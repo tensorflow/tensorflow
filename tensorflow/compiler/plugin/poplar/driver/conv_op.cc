@@ -52,7 +52,7 @@ GetConvolutionParameters(const HloInstruction* inst) {
   std::vector<unsigned int> d_i;
   std::vector<unsigned int> d_w;
   for (int64 i=0; i < window.dimensions().size(); i++) {
-    n_s.push_back(input_dims[dims.spatial_dimensions(i)]);
+    n_s.push_back(input_dims[dims.input_spatial_dimensions(i)]);
     f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
     w_s.push_back(window.dimensions(i).stride());
     p_l.push_back(window.dimensions(i).padding_low());
@@ -98,7 +98,7 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
   std::vector<unsigned int> d_i;
   std::vector<unsigned int> d_w;
   for (int64 i=0; i < window.dimensions().size(); i++) {
-    n_s.push_back(input_dims[dims.spatial_dimensions(i)]);
+    n_s.push_back(input_dims[dims.input_spatial_dimensions(i)]);
     f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
     w_s.push_back(window.dimensions(i).stride());
     p_l.push_back(window.dimensions(i).padding_low());
@@ -142,11 +142,11 @@ ShuffleConvolutionInputToPoplar(const HloInstruction* inst,
                                 const poplar::Tensor& tensor) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
 
-  std::vector<unsigned int> shuffle(2 + d.spatial_dimensions_size());
+  std::vector<unsigned int> shuffle(2 + d.input_spatial_dimensions_size());
   shuffle[0] = d.input_batch_dimension();
   shuffle[1] = d.input_feature_dimension();
-  for (int64 i = 0; i < d.spatial_dimensions_size(); i++) {
-    shuffle[2 + i] = d.spatial_dimensions(i);
+  for (int64 i = 0; i < d.input_spatial_dimensions_size(); i++) {
+    shuffle[2 + i] = d.input_spatial_dimensions(i);
   }
 
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
@@ -178,11 +178,11 @@ ShuffleConvolutionInputToTensorflow(const HloInstruction* inst,
                                     const poplar::Tensor& tensor) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
 
-  std::vector<unsigned int> shuffle(2 + d.spatial_dimensions_size());
+  std::vector<unsigned int> shuffle(2 + d.input_spatial_dimensions_size());
   shuffle[d.input_batch_dimension()] = 0;
   shuffle[d.input_feature_dimension()] = 1;
-  for (int64 i = 0; i < d.spatial_dimensions_size(); i++) {
-    shuffle[d.spatial_dimensions(i)] = i + 2;
+  for (int64 i = 0; i < d.input_spatial_dimensions_size(); i++) {
+    shuffle[d.input_spatial_dimensions(i)] = i + 2;
   }
 
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
@@ -196,7 +196,7 @@ ShuffleConvolutionWeightsToTensorflow(const HloInstruction* inst,
   std::vector<unsigned int> shuffle(2 + d.kernel_spatial_dimensions_size());
   shuffle[d.kernel_output_feature_dimension()] = 0;
   shuffle[d.kernel_input_feature_dimension()] = 1;
-  for (int64 i = 0; i < d.spatial_dimensions_size(); i++) {
+  for (int64 i = 0; i < d.kernel_spatial_dimensions_size(); i++) {
     shuffle[d.kernel_spatial_dimensions(i)] = i + 2;
   }
 
@@ -208,11 +208,11 @@ ShuffleConvolutionOutputToTensorflow(const HloInstruction* inst,
                                      const poplar::Tensor& tensor) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
 
-  std::vector<unsigned int> shuffle(2 + d.spatial_dimensions_size());
+  std::vector<unsigned int> shuffle(2 + d.output_spatial_dimensions_size());
   shuffle[d.output_batch_dimension()] = 0;
   shuffle[d.output_feature_dimension()] = 1;
-  for (int64 i = 0; i < d.spatial_dimensions_size(); i++) {
-    shuffle[d.spatial_dimensions(i)] = i + 2;
+  for (int64 i = 0; i < d.output_spatial_dimensions_size(); i++) {
+    shuffle[d.output_spatial_dimensions(i)] = i + 2;
   }
 
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);

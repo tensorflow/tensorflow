@@ -105,7 +105,7 @@ bool IsConvFilterSpatialReverse(const HloInstruction *inst) {
   HloInstruction* conv = inst->users()[0];
   const ConvolutionDimensionNumbers& d(conv->convolution_dimension_numbers());
 
-  if (rev.size() != d.spatial_dimensions_size()) return false;
+  if (rev.size() != d.kernel_spatial_dimensions_size()) return false;
   for (int64 i = 0; i < rev.size(); i++) {
     if (d.kernel_spatial_dimensions(i) != rev[i]) return false;
   }

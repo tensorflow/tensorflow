@@ -50,6 +50,8 @@ private:
   // Should return true when target 'a' should be used over 'b'
   bool CompareConvolutionTargets(const TensorTarget& a, const TensorTarget& b);
   bool CompareDotTargets(const TensorTarget& a, const TensorTarget& b);
+
+  std::set<HloInstruction*> visited;
 };
 
 }

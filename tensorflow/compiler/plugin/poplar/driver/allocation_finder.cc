@@ -86,42 +86,45 @@ AllocationFinder::CompareDotTargets(const TensorTarget& a,
 void
 AllocationFinder::FindConsumers(HloInstruction* src, HloInstruction* tgt) {
   for (auto user : tgt->users()) {
-    int64 op_index = user->operand_index(tgt);
-    switch (user->opcode()) {
-      case HloOpcode::kConvolution:
-      {
-        auto t = std::make_pair(user, op_index);
-        auto i = tensor_allocation_map.find(src);
-        if (i != tensor_allocation_map.end() &&
-            CompareConvolutionTargets(t, i->second)) {
-          tensor_allocation_map.erase(src);
+    if (visited.count(user) == 0) {
+      visited.insert(user);
+      int64 op_index = user->operand_index(tgt);
+      switch (user->opcode()) {
+        case HloOpcode::kConvolution:
+        {
+          auto t = std::make_pair(user, op_index);
+          auto i = tensor_allocation_map.find(src);
+          if (i != tensor_allocation_map.end() &&
+              CompareConvolutionTargets(t, i->second)) {
+            tensor_allocation_map.erase(src);
+          }
+          tensor_allocation_map.insert(std::make_pair(src, t));
+          return;
         }
-        tensor_allocation_map.insert(std::make_pair(src, t));
-        return;
-      }
-      case HloOpcode::kDot:
-      {
-        auto t = std::make_pair(user, op_index);
-        auto i = tensor_allocation_map.find(src);
-        if (i != tensor_allocation_map.end() &&
-            CompareDotTargets(t, i->second)) {
-          tensor_allocation_map.erase(src);
+        case HloOpcode::kDot:
+        {
+          auto t = std::make_pair(user, op_index);
+          auto i = tensor_allocation_map.find(src);
+          if (i != tensor_allocation_map.end() &&
+              CompareDotTargets(t, i->second)) {
+            tensor_allocation_map.erase(src);
+          }
+          tensor_allocation_map.insert(std::make_pair(src, t));
+          return;
         }
-        tensor_allocation_map.insert(std::make_pair(src, t));
-        return;
-      }
-      case HloOpcode::kCall:
-      {
-        HloComputation* comp = user->to_apply();
-        HloInstruction* param = comp->parameter_instruction(op_index);
-        FindConsumers(src, param);
-        break;
-      }
-      default:
-        if (ShapeUtil::Equal(src->shape(), user->shape())) {
-          FindConsumers(src, user);
+        case HloOpcode::kCall:
+        {
+          HloComputation* comp = user->to_apply();
+          HloInstruction* param = comp->parameter_instruction(op_index);
+          FindConsumers(src, param);
+          break;
         }
-        break;
+        default:
+          if (ShapeUtil::Equal(src->shape(), user->shape())) {
+            FindConsumers(src, user);
+          }
+          break;
+      }
     }
   }
   return;
@@ -134,6 +137,7 @@ Status AllocationFinder::CreateAllocationMap(HloModule* module) {
     TF_RETURN_IF_ERROR(comp->Accept(&finder));
 
     for (auto inst : finder.allocating_instructions) {
+      visited.clear();
       FindConsumers(inst, inst);
     }
   }
