@@ -57,14 +57,14 @@ public class TensorFlowInferenceInterface {
   private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
 
   /**
-   * Copies resource to a cache file.
+   * Copies resource to internal storage .
    * @param  context context The context that contains the files
-   * @param  String filename  Filename--take note that it checks for .pb in asset case
+   * @param  String filename
    * @param  boolean res Is it from res/raw
    *
    * @return File reference to cache file.
    */
-  private File createCacheFile(Context context, String filename, boolean res)
+  private File copyFile(Context context, String filename, boolean res)
       throws IOException {
     InputStream inputStream = null;
     if (res) {
@@ -74,25 +74,24 @@ public class TensorFlowInferenceInterface {
       }
       inputStream = context.getResources().openRawResource(resourceId);
     } else {
-      if (!filename.endsWith(".pb")) {
-        filename += ".pb";
-      }
       inputStream = context.getAssets().open(filename);
     }
-    File cacheFile = new File(context.getCacheDir(), filename);
-    if (cacheFile.createNewFile() == false) {
-      cacheFile.delete();
-      cacheFile.createNewFile();
+    File copy = new File(context.getFilesDir(), filename);
+    if (copy.createNewFile() == false) {
+      copy.delete();
+      copy.createNewFile();
     }
-    FileOutputStream fileOutputStream = new FileOutputStream(cacheFile);
-    byte[] buffer = new byte[1024 * 512];
+
+    FileOutputStream fileOutputStream = new FileOutputStream(copy);
+
+    byte[] buffer = new byte[1024];
     int count;
     while ((count = inputStream.read(buffer)) != -1) {
       fileOutputStream.write(buffer, 0, count);
     }
     fileOutputStream.close();
     inputStream.close();
-    return cacheFile;
+    return copy;
   }
 
   /*
@@ -113,20 +112,16 @@ public class TensorFlowInferenceInterface {
     MappedByteBuffer buffer = null;
     FileChannel fileChannel = null;
     RandomAccessFile raf = null;
-    File cacheFile = null;
+    File copy = null;
     try {
-      cacheFile = createCacheFile(ctx, modelName, true);
-      if (cacheFile != null) {
-        //maybe do fis
-        raf = new RandomAccessFile(cacheFile, "r");
+      copy = copyFile(ctx, modelName, true);
+      if (copy != null) {
+        raf = new RandomAccessFile(copy, "r");
         fileChannel = raf.getChannel();
       } else {
         //try assets
-        if (!modelName.endsWith(".pb")) {
-          modelName += ".pb";
-        }
-        cacheFile = createCacheFile(ctx, modelName, false);
-        raf = new RandomAccessFile(cacheFile, "r");
+        copy = copyFile(ctx, modelName, false);
+        raf = new RandomAccessFile(copy, "r");
         fileChannel = raf.getChannel();
       }
     } catch (IOException e) {
@@ -148,8 +143,8 @@ public class TensorFlowInferenceInterface {
         if (raf != null) {
           raf.close();
         }
-        if (cacheFile != null) {
-          cacheFile.delete();
+        if (copy != null) {
+          copy.delete();
         }
       } catch (IOException ioe) {
         throw new RuntimeException("Failed to close RandomAccessFile " + raf, ioe);
@@ -277,7 +272,7 @@ public class TensorFlowInferenceInterface {
       throw new RuntimeException("Failed to load model from the input stream", e);
     }
   }
-  
+
   /*
    * Construct a TensorFlowInferenceInterface with provided Graph
    *
@@ -285,7 +280,7 @@ public class TensorFlowInferenceInterface {
    */
   public TensorFlowInferenceInterface(Graph g) {
     prepareNativeRuntime();
-      
+
     // modelName is redundant here, here is for
     // avoiding error in initialization as modelName is marked final.
     this.modelName = "";
@@ -407,7 +402,7 @@ public class TensorFlowInferenceInterface {
    */
   public void feed(String inputName, boolean[] src, long... dims) {
     byte[] b = new byte[src.length];
-    
+
     for (int i = 0; i < src.length; i++) {
       b[i] = src[i] ? (byte) 1 : (byte) 0;
     }
