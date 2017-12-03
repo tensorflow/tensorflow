@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 
 from tensorflow.contrib.learn.python.learn.estimators import estimator
