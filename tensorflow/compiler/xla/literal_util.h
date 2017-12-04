@@ -285,11 +285,11 @@ class Literal {
   std::unique_ptr<Literal> Relayout(const Layout& new_layout,
                                     const ShapeIndex& shape_index = {}) const;
 
-  // Creates a new literal by reshaping this literal to have 'shape'. Both the
-  // original shape and 'shape' must contain the same number of elements. The
+  // Creates a new literal by reshaping this literal to have the given
+  // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.
   StatusOr<std::unique_ptr<Literal>> Reshape(
-      tensorflow::gtl::ArraySlice<int64> shape) const;
+      tensorflow::gtl::ArraySlice<int64> dimensions) const;
 
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers

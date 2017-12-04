@@ -220,7 +220,8 @@ string BuildWavFile(int32 samples_per_second, int32 channel_count,
 Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
                     uint32* frames) {
   string data;
-  ReadFileToString(Env::Default(), filename, &data);
+  TF_QCHECK_OK(ReadFileToString(Env::Default(), filename, &data))
+      << "Could not read FFmpeg file: " << filename;
   bool in_output = false;
   bool in_mapping = false;
   uint32 frames_value = 0;
@@ -377,7 +378,7 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
         open(stderr_filename.c_str(), O_RDWR | O_CREAT | O_APPEND, 0600);
     if (fd < 0) {
       const int error = errno;
-      LOG(ERROR) << "FFmpeg stderr file coule not be created: "
+      LOG(ERROR) << "FFmpeg stderr file could not be created: "
                  << strerror(error);
       ::_exit(error);
     }

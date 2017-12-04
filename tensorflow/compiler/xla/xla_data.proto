@@ -357,6 +357,10 @@ message WindowDimension {
   // means no dilation. base_dilation - 1 no-op entries ("holes") are implicitly
   // placed between each base area element. See documentation for convolution.
   int64 base_dilation = 6;
+
+  // Window reversal means that this dimension was logically reversed before the
+  // operation.
+  bool window_reversal = 7;
 }
 
 // Describes the windowing in an operation such as convolution.
@@ -413,15 +417,9 @@ message ConvolutionDimensionNumbers {
   // The number of the dimension that represents features in the input.
   int64 input_feature_dimension = 8;
 
-  // The number of the dimension that represents batch in the output.
-  int64 output_batch_dimension = 9;
-
-  // The number of the dimension that represents features in the output.
-  int64 output_feature_dimension = 10;
-
   // The dimension numbers for the spatial dimensions that the window
-  // moves through in the input (lhs) and output.
-  repeated int64 spatial_dimensions = 5;
+  // moves through in the input.
+  repeated int64 input_spatial_dimensions = 11;
 
   // The number of the dimension that represents input features in the
   // convolutional kernel (rhs).
@@ -435,12 +433,24 @@ message ConvolutionDimensionNumbers {
   // moves through in the kernel (rhs). window.strides(0) is the
   // stride in the kernel_spatial_dimensions(0) dimension.
   repeated int64 kernel_spatial_dimensions = 6;
+
+  // The number of the dimension that represents batch in the output.
+  int64 output_batch_dimension = 9;
+
+  // The number of the dimension that represents features in the output.
+  int64 output_feature_dimension = 10;
+
+  // The dimension numbers for the spatial dimensions that the window
+  // moves through in the output.
+  repeated int64 output_spatial_dimensions = 12;
+
+  // Next = 13
 };
 
 message ConvolveRequest {
   ComputationDataHandle lhs = 2;
   ComputationDataHandle rhs = 3;  // This is the filter/kernel.
-  Window window = 4;              // Describes the filter/kenel.
+  Window window = 4;              // Describes the filter/kernel.
   ConvolutionDimensionNumbers dimension_numbers = 5;
 }
 
@@ -486,6 +496,23 @@ message CustomCallRequest {
   string call_target_name = 2;
   repeated ComputationDataHandle operands = 3;
   Shape shape = 4;
+}
+
+message DotDimensionNumbers {
+  // The dimension numbers that represent the 'lhs' contracting dimensions.
+  repeated int64 lhs_contracting_dimensions = 1;
+  // The dimension numbers that represent the 'rhs' contracting dimensions.
+  repeated int64 rhs_contracting_dimensions = 2;
+  // The dimension numbers that represent the 'lhs' batch dimensions.
+  repeated int64 lhs_batch_dimensions = 3;
+  // The dimension numbers that represent the 'rhs' batch dimensions.
+  repeated int64 rhs_batch_dimensions = 4;
+};
+
+message DotRequest {
+  ComputationDataHandle lhs = 2;
+  ComputationDataHandle rhs = 3;
+  DotDimensionNumbers dimension_numbers = 4;
 }
 
 message MapRequest {
@@ -722,9 +749,6 @@ enum BinaryOperation {
   BINOP_LT = 9;
   BINOP_NE = 10;
 
-  // Dot product, matrix multiply.
-  BINOP_DOT = 12;
-
   // Element-wise maximum.
   BINOP_MAX = 14;
 
@@ -875,6 +899,7 @@ message OpRequest {
     ConvolveRequest convolve_request = 8;
     CrossReplicaSumRequest cross_replica_sum_request = 9;
     CustomCallRequest custom_call_request = 10;
+    DotRequest dot_request = 43;
     DynamicSliceRequest dynamic_slice_request = 11;
     DynamicUpdateSliceRequest dynamic_update_slice_request = 12;
     GetTupleElementRequest get_tuple_element_request = 13;
@@ -903,7 +928,8 @@ message OpRequest {
     BatchNormGradRequest batch_norm_grad_request = 37;
     BatchNormInferenceRequest batch_norm_inference_request = 38;
     FftRequest fft_request = 41;
-    // Next: 42
+    ConvertRequest bitcast_convert_request = 42;
+    // Next: 44
   }
 }
 

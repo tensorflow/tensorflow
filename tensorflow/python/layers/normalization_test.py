@@ -101,15 +101,13 @@ class BNTest(test.TestCase):
       loss_val = sess.run(loss, feed_dict={image: image_val})
       return loss_val
 
-  def _trainEvalSequence(self,
-                         dtype,
-                         train1_use_gpu,
-                         train2_use_gpu,
+  def _trainEvalSequence(self, dtype, train1_use_gpu, train2_use_gpu,
                          infer_use_gpu):
     batch, height, width, input_channels = 2, 4, 5, 3
     shape = [batch, height, width, input_channels]
     checkpoint = os.path.join(self.get_temp_dir(), 'cp_%s_%s_%s_%s' %
-        (dtype, train1_use_gpu, train2_use_gpu, infer_use_gpu))
+                              (dtype, train1_use_gpu, train2_use_gpu,
+                               infer_use_gpu))
 
     self._train(
         checkpoint,
@@ -130,30 +128,27 @@ class BNTest(test.TestCase):
         dtype=dtype)
 
     np.random.seed(0)
-    image_val = np.random.rand(batch,
-                               height,
-                               width,
-                               input_channels).astype(dtype.as_numpy_dtype)
-    loss_val = self._infer(checkpoint, image_val, shape,
-                           use_gpu=infer_use_gpu, is_fused=True)
+    image_val = np.random.rand(batch, height, width, input_channels).astype(
+        dtype.as_numpy_dtype)
+    loss_val = self._infer(
+        checkpoint, image_val, shape, use_gpu=infer_use_gpu, is_fused=True)
 
     return train_vars, loss_val
 
   def testHalfPrecision(self):
-    ref_vars, ref_loss = self._trainEvalSequence(dtype=dtypes.float32,
-                                                 train1_use_gpu=True,
-                                                 train2_use_gpu=True,
-                                                 infer_use_gpu=True)
- 
+    ref_vars, ref_loss = self._trainEvalSequence(
+        dtype=dtypes.float32,
+        train1_use_gpu=True,
+        train2_use_gpu=True,
+        infer_use_gpu=True)
+
     self.assertEqual(len(ref_vars), 5)
 
     for train1_use_gpu in [True, False]:
       for train2_use_gpu in [True, False]:
         for infer_use_gpu in [True, False]:
-          test_vars, test_loss = self._trainEvalSequence(dtypes.float16,
-                                                         train1_use_gpu,
-                                                         train2_use_gpu,
-                                                         infer_use_gpu)
+          test_vars, test_loss = self._trainEvalSequence(
+              dtypes.float16, train1_use_gpu, train2_use_gpu, infer_use_gpu)
           self.assertEqual(len(test_vars), 5)
           for test_var, ref_var in zip(test_vars, ref_vars):
             self.assertAllClose(test_var, ref_var, rtol=1.e-3, atol=1.e-3)
@@ -281,9 +276,8 @@ class BNTest(test.TestCase):
   def testCreateFusedBNFloat16(self):
     # Call layer.
     bn = normalization_layers.BatchNormalization(axis=1, fused=True)
-    inputs = random_ops.random_uniform((5, 4, 3, 3),
-                                       seed=1,
-                                       dtype=dtypes.float16)
+    inputs = random_ops.random_uniform(
+        (5, 4, 3, 3), seed=1, dtype=dtypes.float16)
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 

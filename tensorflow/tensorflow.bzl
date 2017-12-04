@@ -167,7 +167,19 @@ WIN_COPTS = [
 ]
 
 # LINT.IfChange
-def tf_copts():
+def tf_copts(android_optimization_level_override="-O2"):
+  # For compatibility reasons, android_optimization_level_override
+  # is currently only being set for Android.
+  # To clear this value, and allow the CROSSTOOL default
+  # to be used, pass android_optimization_level_override=None
+  android_copts = [
+      "-std=c++11",
+      "-DTF_LEAN_BINARY",
+      "-Wno-narrowing",
+      "-fomit-frame-pointer",
+  ]
+  if android_optimization_level_override:
+    android_copts.append(android_optimization_level_override)
   return (
       if_not_windows([
           "-DEIGEN_AVOID_STL_ARRAY",
@@ -180,13 +192,7 @@ def tf_copts():
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
       + select({
-            clean_dep("//tensorflow:android"): [
-                "-std=c++11",
-                "-DTF_LEAN_BINARY",
-                "-O2",
-                "-Wno-narrowing",
-                "-fomit-frame-pointer",
-            ],
+            clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:darwin"): [],
             clean_dep("//tensorflow:windows"): WIN_COPTS,
             clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,
@@ -316,7 +322,9 @@ def tf_gen_op_wrapper_cc(name,
                          op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
                          deps=None,
                          override_file=None,
-                         include_internal_ops=0):
+                         include_internal_ops=0,
+                         # ApiDefs will be loaded in the order specified in this list.
+                         api_def_srcs=[]):
   # Construct an op generator binary for these ops.
   tool = out_ops_file + "_gen_cc"
   if deps == None:
@@ -328,12 +336,26 @@ def tf_gen_op_wrapper_cc(name,
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
       deps=[op_gen] + deps)
 
+  srcs = api_def_srcs[:]
+
   if override_file == None:
-    srcs = []
     override_arg = ","
   else:
-    srcs = [override_file]
+    srcs += [override_file]
     override_arg = "$(location " + override_file + ")"
+
+  if not api_def_srcs:
+    api_def_args_str = ","
+  else:
+    api_def_args = []
+    for api_def_src in api_def_srcs:
+      # Add directory of the first ApiDef source to args.
+      # We are assuming all ApiDefs in a single api_def_src are in the
+      # same directory.
+      api_def_args.append(
+          " $$(dirname $$(echo $(locations " + api_def_src +
+          ") | cut -d\" \" -f1))")
+    api_def_args_str = ",".join(api_def_args)
   native.genrule(
       name=name + "_genrule",
       outs=[
@@ -344,7 +366,7 @@ def tf_gen_op_wrapper_cc(name,
       tools=[":" + tool] + tf_binary_additional_srcs(),
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
            "$(location :" + out_ops_file + ".cc) " + override_arg + " " +
-           str(include_internal_ops)))
+           str(include_internal_ops) + " " + api_def_args_str))
 
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -387,7 +409,9 @@ def tf_gen_op_wrappers_cc(name,
                           op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
                           override_file=None,
                           include_internal_ops=0,
-                          visibility=None):
+                          visibility=None,
+                          # ApiDefs will be loaded in the order apecified in this list.
+                          api_def_srcs=[]):
   subsrcs = other_srcs[:]
   subhdrs = other_hdrs[:]
   internalsrcs = []
@@ -399,7 +423,8 @@ def tf_gen_op_wrappers_cc(name,
         pkg=pkg,
         op_gen=op_gen,
         override_file=override_file,
-        include_internal_ops=include_internal_ops)
+        include_internal_ops=include_internal_ops,
+        api_def_srcs=api_def_srcs)
     subsrcs += ["ops/" + n + ".cc"]
     subhdrs += ["ops/" + n + ".h"]
     internalsrcs += ["ops/" + n + "_internal.cc"]

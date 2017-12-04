@@ -761,8 +761,10 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Divide(op::Constant(), param0));
-  EXPECT_EQ(root->operand(0)->literal().GetFirstElement<float>(), 1);
+  EXPECT_THAT(root, op::Divide(op::Broadcast(), param0));
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kBroadcast);
+  EXPECT_EQ(root->operand(0)->operand(0)->literal().GetFirstElement<float>(),
+            1);
 }
 
 TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
@@ -1622,8 +1624,11 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     ConvolutionDimensionNumbers dnums;
     std::vector<int64> in_dims;
     int in_channel_idx = -1;
-    dnums.add_spatial_dimensions(-1);  // filled in later
-    dnums.add_spatial_dimensions(-1);  // filled in later
+    // filled in later
+    dnums.add_input_spatial_dimensions(-1);
+    dnums.add_output_spatial_dimensions(-1);
+    dnums.add_input_spatial_dimensions(-1);
+    dnums.add_output_spatial_dimensions(-1);
     for (int i = 0; i < strlen(options.dim_order); ++i) {
       char ch = options.dim_order[i];
       if (ch == 'N') {
@@ -1631,10 +1636,12 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         dnums.set_output_batch_dimension(i);
         in_dims.push_back(options.in_batch);
       } else if (ch == 'H') {
-        dnums.set_spatial_dimensions(0, i);
+        dnums.set_input_spatial_dimensions(0, i);
+        dnums.set_output_spatial_dimensions(0, i);
         in_dims.push_back(options.in_height);
       } else if (ch == 'W') {
-        dnums.set_spatial_dimensions(1, i);
+        dnums.set_input_spatial_dimensions(1, i);
+        dnums.set_output_spatial_dimensions(1, i);
         in_dims.push_back(options.in_width);
       } else if (ch == 'C') {
         dnums.set_input_feature_dimension(i);
@@ -2131,8 +2138,10 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, r1f32, "x"));
   HloInstruction* y =
       builder.AddInstruction(HloInstruction::CreateParameter(1, r1f32, "y"));
-  builder.AddInstruction(
-      HloInstruction::CreateBinary(r1f32, HloOpcode::kDot, x, y));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(HloInstruction::CreateDot(r1f32, x, y, dot_dnums));
   std::unique_ptr<HloComputation> dot_computation(builder.Build());
 
   HloComputation::Builder call_builder(TestName() + ".Call");

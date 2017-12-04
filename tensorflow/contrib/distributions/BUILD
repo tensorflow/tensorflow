@@ -205,6 +205,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "half_normal_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/half_normal_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
     name = "inverse_gamma_test",
     srcs = ["python/kernel_tests/inverse_gamma_test.py"],
     additional_deps = [

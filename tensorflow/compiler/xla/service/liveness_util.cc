@@ -103,7 +103,7 @@ namespace {
 
 // Returns all uses of all aliases of 'instruction' at 'index' in 'uses'.
 // Each use in 'uses' is a pair (HloInstruction* user, int64 operand_index)
-// where 'user' is a user of an alias of 'intruction' at 'index', and
+// where 'user' is a user of an alias of 'instruction' at 'index', and
 // 'operand_index' is the operand index at which the alias appears in the
 // operand list of 'user'.
 std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
@@ -243,6 +243,31 @@ bool CanShareOperandBufferWithUser(
     std::vector<int64> operand_indices = user->OperandIndices(operand);
     return operand_indices.size() == 1 && operand_indices[0] == 0;
   }
+  if (user->opcode() == HloOpcode::kCall) {
+    // TODO(b/62548313): Remove when buffer assignment is module scoped and
+    // does not assign buffers to calls.
+    // Find called computation parameter associated with 'operand'.
+    const std::vector<int64> operand_indices = user->OperandIndices(operand);
+    if (operand_indices.size() > 1) {
+      return false;
+    }
+    CHECK_EQ(1, operand_indices.size());
+    auto* param = user->to_apply()->parameter_instruction(operand_indices[0]);
+    // Get all uses of 'operand' at 'index' in called computation.
+    auto param_uses = GetAllUsesOfInstructionAtIndex(param, operand_index,
+                                                     points_to_analysis);
+
+    // Return true iff:
+    // *) There exists exactly one use of 'operand' in called computation.
+    // *) The unique use is by the root instruction of called computation.
+    //    (Note: we check the root of the called computation, because the
+    //     root result buffer is required to alias with the Call result buffer).
+    // *) The root instruction of the called computation is element-wise on
+    //    'operand'.
+    auto* callee_root = user->to_apply()->root_instruction();
+    return param_uses.size() == 1 && param_uses[0].first == callee_root &&
+           callee_root->IsElementwiseOnOperand(param_uses[0].second);
+  }
   // Check if 'user' is element-wise.
   return user->IsElementwise();
 }
@@ -321,6 +346,31 @@ bool CanShareOperandBufferWithUser(HloInstruction* operand,
     // so here we just need to check that the use is at operand index 0.
     std::vector<int64> operand_indices = user->OperandIndices(operand);
     return operand_indices.size() == 1 && operand_indices[0] == 0;
+  }
+  if (user->opcode() == HloOpcode::kCall) {
+    // Get all uses of value defined by 'operand' at 'operand_index'.
+    const auto& uses =
+        dataflow.GetValueDefinedAt(operand, operand_index).uses();
+    // Return true iff:
+    // *) There exists two uses of 'operand'.
+    // *) One use is by 'user' (caller).
+    // *) One use is by root instruction of called computation (callee root).
+    //    (Note: we check the root of the called computation, because the
+    //     root result buffer is required to alias with the Call result buffer).
+    // *) The root instruction of the called computation is element-wise on
+    //    'operand'.
+    const bool found_caller_use =
+        std::find_if(uses.begin(), uses.end(), [user](const HloUse& use) {
+          return use.instruction == user;
+        }) != uses.end();
+    auto* callee_root = user->to_apply()->root_instruction();
+    const bool found_elementwise_callee_use =
+        std::find_if(
+            uses.begin(), uses.end(), [callee_root](const HloUse& use) {
+              return use.instruction == callee_root &&
+                     callee_root->IsElementwiseOnOperand(use.operand_number);
+            }) != uses.end();
+    return uses.size() == 2 && found_caller_use && found_elementwise_callee_use;
   }
   // Check if 'user' is element-wise.
   return user->IsElementwise();

@@ -332,7 +332,7 @@ Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
           ". ", dep.explanation(), ".");
     } else {
       // Warn only once for each op name, and do it in a threadsafe manner.
-      static mutex mu;
+      static mutex mu(LINKER_INITIALIZED);
       static std::unordered_set<string> warned;
       bool warn;
       {

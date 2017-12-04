@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -156,6 +157,20 @@ class StatefulScatterNdTest(test.TestCase):
       sess.run(init)
       result = sess.run(scatter)
       self.assertAllClose(result, expected)
+
+  def testSimpleResource(self):
+    indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
+    ref = resource_variable_ops.ResourceVariable(
+        [0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.float32)
+    expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
+    scatter = state_ops.scatter_nd_update(ref, indices, updates)
+    init = variables.global_variables_initializer()
+
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(init)
+      sess.run(scatter)
+      self.assertAllClose(ref.eval(), expected)
 
   def testSimple2(self):
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)

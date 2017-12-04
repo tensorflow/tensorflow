@@ -13,6 +13,28 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## BitcastConvertType
+
+See also
+[`ComputationBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
+operation from a data shape to a target shape. The dimensions must match, and
+the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
+via bitcast routine. Bitcast is implemented as a low-level cast, so machines
+with different floating point representations will give different results.
+
+<b> `BitcastConvertType(operand, new_element_type)` </b>
+
+Arguments          | Type                    | Semantics
+------------------ | ----------------------- | ---------------------------
+`operand`          | `ComputationDataHandle` | array of type T with dims D
+`new_element_type` | `PrimitiveType`         | type U
+
+The dimensions of the operand and the target shape must match. The bit-width of
+the source and destination element types must be equal. The source
+and destination element types must not be tuples.
+
 ## Broadcast
 
 See also
@@ -75,14 +97,14 @@ Clamps an operand to within the range between a minimum and maximum value.
 | `computation` | `Computation`           | computation of type `T_0, T_1,   |
 :               :                         : ..., T_N -> S` with N parameters :
 :               :                         : of arbitrary type                :
-| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `min`         | `ComputationDataHandle` | array of type T                  |
+| `operand`     | `ComputationDataHandle` | array of type T                  |
 | `max`         | `ComputationDataHandle` | array of type T                  |
 
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+range.  That is, `clamp(a, x, b) =  max(min(a, x), b)`.
 
 All three arrays must be the same shape. Alternately, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -94,7 +116,7 @@ let operand: s32[3] = {-1, 5, 9};
 let min: s32 = 0;
 let max: s32 = 6;
 ==>
-Clamp(operand, min, max) = s32[3]{0, 5, 6};
+Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ```
 
 ## Collapse
@@ -234,9 +256,8 @@ Arguments          | Type                    | Semantics
 `operand`          | `ComputationDataHandle` | array of type T with dims D
 `new_element_type` | `PrimitiveType`         | type U
 
-If the dimensions of the operand and the target shape do not match, or an
-invalid conversion is requested (e.g. to/from a tuple) an error will be
-produced.
+The dimensions of the operand and the target shape must match. The source and
+destination element types must not be tuples.
 
 A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
 conversion routine such as round-to-nearest-even.
@@ -490,6 +511,87 @@ contracted dimensions of `lhs` and `rhs` must be of the same size. In practice,
 it can be used to perform dot products between vectors, vector/matrix
 multiplications or matrix/matrix multiplications.
 
+## DotGeneral
+
+See also
+[`ComputationBuilder::DotGeneral`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `DotGeneral(lhs, rhs, dimension_numbers)` </b>
+
+| Arguments | Type                    | Semantics
+| --------- | ----------------------- | ---------------
+| `lhs`     | `ComputationDataHandle` | array of type T
+| `rhs`     | `ComputationDataHandle` | array of type T
+| `dimension_numbers` | `DotDimensionNumbers` | array of type T
+
+As Dot, but allows contracting and batch dimension numbers to be specified for
+both the 'lhs' and 'rhs'.
+
+| DotDimensionNumbers Fields | Type                    | Semantics
+| --------- | ----------------------- | ---------------
+| 'lhs_contracting_dimensions' | repeated int64 | 'lhs' contracting dimension numbers |
+| 'rhs_contracting_dimensions' | repeated int64 | 'rhs' contracting dimension numbers |
+| 'lhs_batch_dimensions' | repeated int64 | 'lhs' batch dimension numbers |
+| 'rhs_batch_dimensions' | repeated int64 | 'rhs' batch dimension numbers |
+
+DotGeneral performs the sum of products over contracting dimensions specified
+in 'dimension_numbers'.
+
+Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
+to be the same, but must be listed in the same order in both
+'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
+
+Example with contracting dimension numbers:
+
+```
+lhs = { {1.0, 2.0, 3.0},
+        {4.0, 5.0, 6.0} }
+
+rhs = { {1.0, 1.0, 1.0},
+        {2.0, 2.0, 2.0} }
+
+DotDimensionNumbers dnums;
+dnums.add_lhs_contracting_dimensions(1);
+dnums.add_rhs_contracting_dimensions(1);
+
+DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
+                                 {15.0, 30.0} }
+```
+
+Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
+dimension number, must be listed in the same order in both arrays, and must
+have the same dimension sizes.
+
+Example with batch dimension numbers (batch size 2, 2x2 matrices):
+
+```
+lhs = { { {1.0, 2.0},
+          {3.0, 4.0} },
+        { {5.0, 6.0},
+          {7.0, 8.0} } }
+
+rhs = { { {1.0, 0.0},
+          {0.0, 1.0} },
+        { {1.0, 0.0},
+          {0.0, 1.0} } }
+
+DotDimensionNumbers dnums;
+dnums.add_lhs_contracting_dimensions(2);
+dnums.add_rhs_contracting_dimensions(1);
+dnums.add_lhs_batch_dimensions(0);
+dnums.add_rhs_batch_dimensions(0);
+
+DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
+                                   {3.0, 4.0} },
+                                 { {5.0, 6.0},
+                                   {7.0, 8.0} } }
+```
+
+| Input                               | Output            | Semantics        |
+| ----------------------------------- | ----------------- | ---------------- |
+| [b0, m, k] `dot` [b0, k, n]         | [b0, m, n]        |  batch matmul    |
+| [b0, b1, m, k] `dot` [b0, b1, k, n] | [b0, b1, m, n]    |  batch matmul    |
+
 ## Element-wise binary arithmetic operations
 
 See also
@@ -646,8 +748,8 @@ Normalizes an array across batch and spatial dimensions.
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the mean and variance
 across all the other dimensions and use the mean and variance to normalize each
-element in `operand`. If an invalid `feature_index` is passed, an error is
-produced.
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
 
 The algorithm goes as follows for each batch in `operand` \\(x\\) that
 contains `m` elements with `w` and `h` as the size of spatial dimensions (
@@ -702,8 +804,8 @@ Normalizes an array across batch and spatial dimensions.
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the mean and variance
 across all the other dimensions and use the mean and variance to normalize each
-element in `operand`. If an invalid `feature_index` is passed, an error is
-produced.
+element in `operand`. The `feature_index` must be a valid index for the feature
+dimension in `operand`.
 
 `BatchNormInference`  is equivalent to calling `BatchNormTraining` without
 computing `mean` and `variance` for each batch. It uses the input `mean` and
@@ -742,8 +844,8 @@ Calculates gradients of batch norm.
 
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the gradients with
-respect to `operand`, `offset` and `scale` across all the other dimensions. If
-an invalid `feature_index` is passed, an error is produced.
+respect to `operand`, `offset` and `scale` across all the other dimensions. The
+`feature_index` must be a valid index for the feature dimension in `operand`.
 
 The three gradients are defined by the following formulas:
 
@@ -808,8 +910,7 @@ device, interpreting the data as the given shape and its layout, and returns a
 `ComputationDataHandle` of the data. Multiple Infeed operations are allowed in a
 computation, but there must be a total order among the Infeed operations. For
 example, two Infeeds in the code below have a total order since there is a
-dependency between the while loops. The compiler issues an error if there isn't
-a total order.
+dependency between the while loops.
 
 ```
 result1 = while (condition, init = init_value) {

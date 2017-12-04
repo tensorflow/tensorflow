@@ -287,6 +287,13 @@ TEST(CAPI, SetShape) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(-1, num_dims);
 
+  // Set the shape to be unknown, expect no change.
+  TF_GraphSetTensorShape(graph, feed_out_0, /*dims=*/nullptr, -1, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  num_dims = TF_GraphGetTensorNumDims(graph, feed_out_0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(-1, num_dims);
+
   // Set the shape to be 2 x Unknown
   int64_t dims[] = {2, -1};
   TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
@@ -315,7 +322,17 @@ TEST(CAPI, SetShape) {
   EXPECT_EQ(dims[0], returned_dims[0]);
   EXPECT_EQ(dims[1], returned_dims[1]);
 
-  // Try to set 'unknown' on the shape and see that
+  // Try to set 'unknown' with unknown rank on the shape and see that
+  // it doesn't change.
+  TF_GraphSetTensorShape(graph, feed_out_0, /*dims=*/nullptr, -1, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(2, num_dims);
+  EXPECT_EQ(2, returned_dims[0]);
+  EXPECT_EQ(3, returned_dims[1]);
+
+  // Try to set 'unknown' with same rank on the shape and see that
   // it doesn't change.
   dims[0] = -1;
   dims[1] = -1;

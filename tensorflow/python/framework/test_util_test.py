@@ -183,11 +183,13 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
   def _WeMustGoDeeper(self, msg):
     with self.assertRaisesOpError(msg):
-      node_def = ops._NodeDef("op_type", "name")
-      node_def_orig = ops._NodeDef("op_type_orig", "orig")
-      op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
-      op = ops.Operation(node_def, ops.get_default_graph(), original_op=op_orig)
-      raise errors.UnauthenticatedError(node_def, op, "true_err")
+      with ops.Graph().as_default():
+        node_def = ops._NodeDef("op_type", "name")
+        node_def_orig = ops._NodeDef("op_type_orig", "orig")
+        op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
+        op = ops.Operation(node_def, ops.get_default_graph(),
+                           original_op=op_orig)
+        raise errors.UnauthenticatedError(node_def, op, "true_err")
 
   def testAssertRaisesOpErrorDoesNotPassMessageDueToLeakedStack(self):
     with self.assertRaises(AssertionError):
@@ -328,6 +330,15 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_callable_evaluate(self):
+    def model():
+      return resource_variable_ops.ResourceVariable(
+          name="same_name",
+          initial_value=1) + 1
+    with context.eager_mode():
+      self.assertEqual(2, self.evaluate(model))
+
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
@@ -418,7 +429,6 @@ class IsolationTest(test_util.TensorFlowTestCase):
       with context.eager_mode():
         with self.assertRaises(ValueError):
           first_container_variable.read_value()
-
 
 if __name__ == "__main__":
   googletest.main()

@@ -83,7 +83,7 @@ def events_from_logdir(logdir):
   """
   assert gfile.Exists(logdir)
   files = gfile.ListDirectory(logdir)
-  assert len(files) == 1, "Found not exactly one file in logdir: %s" % files
+  assert len(files) == 1, 'Found not exactly one file in logdir: %s' % files
   return events_from_file(os.path.join(logdir, files[0]))
 
 

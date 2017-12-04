@@ -88,8 +88,6 @@ HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
       return HloOpcode::kAtan2;
     case BINOP_COMPLEX:
       return HloOpcode::kComplex;
-    case BINOP_DOT:
-      return HloOpcode::kDot;
     case BINOP_MUL:
       return HloOpcode::kMultiply;
     case BINOP_ADD:
@@ -994,6 +992,32 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvertInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddBitcastConvertInstruction(
+    const ConvertRequest& convert_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(convert_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(Shape new_shape, ShapeInference::InferConvertShape(
+                                           operand->output_shape(),
+                                           convert_request.new_element_type()));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = new_shape;
+  *request.mutable_request()->mutable_bitcast_convert_request() =
+      convert_request;
+
+  VLOG(1) << "AddBitcastConvertInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << convert_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddReducePrecisionInstruction(
     const ReducePrecisionRequest& reduce_precision_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1178,6 +1202,33 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
   VLOG(1) << "AddCustomCallInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << custom_call_request.ShortDebugString();
+  return handle;
+}
+
+StatusOr<ComputationDataHandle> UserComputation::AddDotInstruction(
+    const DotRequest& dot_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* lhs,
+                      LookUpRequest(dot_request.lhs()));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* rhs,
+                      LookUpRequest(dot_request.rhs()));
+
+  TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferDotOpShape(
+                                       lhs->output_shape(), rhs->output_shape(),
+                                       dot_request.dimension_numbers()));
+
+  const ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = shape;
+  *request.mutable_request()->mutable_dot_request() = dot_request;
+
+  VLOG(1) << "AddDotInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << dot_request.ShortDebugString();
   return handle;
 }
 
@@ -1603,6 +1654,15 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kDotRequest: {
+      const DotRequest& dot_request = request.request().dot_request();
+      PureFunctionalVisitor(session_computation, dot_request.lhs(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation, dot_request.rhs(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
     case OpRequest::kSendRequest: {
       *is_functional = false;
       break;
@@ -1708,6 +1768,14 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
     case OpRequest::kConvertRequest: {
       const ConvertRequest& convert_request =
           request.request().convert_request();
+      PureFunctionalVisitor(session_computation, convert_request.operand(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
+    case OpRequest::kBitcastConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().bitcast_convert_request();
       PureFunctionalVisitor(session_computation, convert_request.operand(),
                             num_parameters, visited, is_functional);
       break;
@@ -2370,6 +2438,13 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kBitcastConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().bitcast_convert_request();
+      apply(convert_request.operand());
+      break;
+    }
+
     case OpRequest::kWhileRequest: {
       const WhileRequest& while_request = request.request().while_request();
       apply(while_request.init());
@@ -2409,6 +2484,13 @@ static void ForEachOperand(
       for (const ComputationDataHandle& operand : cc_request.operands()) {
         apply(operand);
       }
+      break;
+    }
+
+    case OpRequest::kDotRequest: {
+      const DotRequest& dot_request = request.request().dot_request();
+      apply(dot_request.rhs());
+      apply(dot_request.lhs());
       break;
     }
 
@@ -2691,6 +2773,15 @@ void ComputationLowerer::Visit(
       break;
     }
 
+    case OpRequest::kDotRequest: {
+      const DotRequest& dot_request = request.request().dot_request();
+      HloInstruction* lhs = lookup_instruction(dot_request.lhs());
+      HloInstruction* rhs = lookup_instruction(dot_request.rhs());
+      hlo_instruction = add_instruction(HloInstruction::CreateDot(
+          request.output_shape(), lhs, rhs, dot_request.dimension_numbers()));
+      break;
+    }
+
     case OpRequest::kCrossReplicaSumRequest: {
       const CrossReplicaSumRequest& cross_replica_sum_request =
           request.request().cross_replica_sum_request();
@@ -2954,6 +3045,15 @@ void ComputationLowerer::Visit(
       break;
     }
 
+    case OpRequest::kBitcastConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().bitcast_convert_request();
+      HloInstruction* operand = lookup_instruction(convert_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateBitcastConvert(
+          request.output_shape(), operand));
+      break;
+    }
+
     case OpRequest::kWhileRequest: {
       const WhileRequest& while_request = request.request().while_request();
       CHECK_EQ(2, request.embedded_computation_versions_size());
@@ -2978,6 +3078,25 @@ void ComputationLowerer::Visit(
       HloInstruction* rhs = lookup_instruction(ternary_op_request.rhs());
       HloInstruction* ehs = lookup_instruction(ternary_op_request.ehs());
       auto hlo_opcode = TernaryOperationToHloOpcode(ternary_op_request.triop());
+
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
+        if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
+          // lhs side is being implicitly broadcast. Change to explicit.
+          lhs =
+              ImplicitBroadcastToExplicitBroadcast(lhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
+          rhs =
+              ImplicitBroadcastToExplicitBroadcast(rhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), ehs->shape())) {
+          ehs =
+              ImplicitBroadcastToExplicitBroadcast(ehs, request.output_shape());
+        }
+      }
+
       hlo_instruction = add_instruction(HloInstruction::CreateTernary(
           request.output_shape(), hlo_opcode, lhs, rhs, ehs));
       break;
@@ -3082,8 +3201,7 @@ void ComputationLowerer::Visit(
         lhs = (lhs == operand_to_broadcast) ? broadcasted_operand : lhs;
         rhs = (rhs == operand_to_broadcast) ? broadcasted_operand : rhs;
       }
-      if (debug_options_.xla_eliminate_hlo_implicit_broadcast() &&
-          binary_op_request.binop() != BINOP_DOT) {
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
         if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
           // lhs side is being implicitly broadcast. Change to explicit.
           lhs =
@@ -3137,7 +3255,7 @@ void ComputationLowerer::Visit(
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
   (*instructions)[handle.handle()] = hlo_instruction;
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace
 

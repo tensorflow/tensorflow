@@ -910,42 +910,41 @@ void TestComputeLerp4xAll() {
 
 }  // namespace tensorflow
 
-#if defined(__ANDROID__)
-int main(int argc, char** argv) {
-#define RUN_TEST(t)            \
-  LOG(INFO) << "Test: " << #t; \
-  tensorflow::t();
-#else
 #define RUN_TEST(t) \
   TEST(QuantizationUtilsTest, t) { tensorflow::t(); }
-#endif
 
-  RUN_TEST(TestFloatToQuantized);
-  RUN_TEST(TestQuantizedToFloat);
-  RUN_TEST(TestAvoidBias);
-  RUN_TEST(TestRequantizeInNewRange);
-  RUN_TEST(TestRequantizeInNewRangeRealData);
-  RUN_TEST(TestRequantizeInNewRange32To8Bit);
-  RUN_TEST(TestRequantizeManyInNewRange32To8Bit);
-  RUN_TEST(TestRequantizeManyInNewRange32To8BitUsingEigen);
-  RUN_TEST(TestRequantizeManyInNewRange32To8BitEigenVsNonEigen);
-  RUN_TEST(TestRequantizeManyInNewRange32To8BitSignedEigenVsNonEigen);
-  RUN_TEST(TestFloatTensorToQuantized);
-  RUN_TEST(TestRequantizeManyInNewRange8To32Bit);
-  RUN_TEST(TestFloatToQuantizedInPlaceUsingEigen);
-  RUN_TEST(TestOverflowWithEigen);
-  RUN_TEST(TestQuantizedTensorToFloat);
-  RUN_TEST(TestQuantizedToFloatInPlaceUsingEigen);
+RUN_TEST(TestFloatToQuantized);
+RUN_TEST(TestQuantizedToFloat);
+RUN_TEST(TestAvoidBias);
+RUN_TEST(TestRequantizeInNewRange);
+RUN_TEST(TestRequantizeInNewRangeRealData);
+RUN_TEST(TestRequantizeInNewRange32To8Bit);
+RUN_TEST(TestRequantizeManyInNewRange32To8Bit);
+RUN_TEST(TestRequantizeManyInNewRange32To8BitUsingEigen);
+RUN_TEST(TestRequantizeManyInNewRange32To8BitEigenVsNonEigen);
+RUN_TEST(TestRequantizeManyInNewRange32To8BitSignedEigenVsNonEigen);
+RUN_TEST(TestFloatTensorToQuantized);
+RUN_TEST(TestRequantizeManyInNewRange8To32Bit);
+RUN_TEST(TestFloatToQuantizedInPlaceUsingEigen);
+RUN_TEST(TestOverflowWithEigen);
+RUN_TEST(TestQuantizedTensorToFloat);
+RUN_TEST(TestQuantizedToFloatInPlaceUsingEigen);
 
 #if defined(__ANDROID__)
+
+RUN_TEST(BenchmarkRequantizeManyInNewRange);
+
 #ifdef QUANTIZATION_UTILS_USE_NEON
-  RUN_TEST(TestDivide64x2PowAll);
-  RUN_TEST(TestComputeLerp4xAll);
-#endif
 
-  tensorflow::BenchmarkRequantizeManyInNewRange();
+RUN_TEST(TestDivide64x2PowAll);
+RUN_TEST(TestComputeLerp4xAll);
 
-  LOG(INFO) << "All tests complete.";
-  return 0;
+#endif  // QUANTIZATION_UTILS_USE_NEON
+
+#endif  // __ANDROID__
+
+int main(int argc, char** argv) {
+  // On Linux, add: FLAGS_logtostderr = true;
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
-#endif

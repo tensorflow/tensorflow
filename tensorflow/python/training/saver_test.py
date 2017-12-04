@@ -164,6 +164,18 @@ class SaverTest(test.TestCase):
   def testResourceBasic(self):
     self.basicSaveRestore(resource_variable_ops.ResourceVariable)
 
+  def testResourceVariableReadOpsAddedDeterministically(self):
+    graph_defs = []
+    num_graphs = 10
+    for _ in range(num_graphs):
+      with ops_lib.Graph().as_default() as g:
+        for i in range(20):
+          resource_variable_ops.ResourceVariable(i, name="var%s" % i)
+        saver_module.Saver()
+        graph_defs.append(g.as_graph_def())
+    for i in range(num_graphs - 1):
+      self.assertEqual(graph_defs[i], graph_defs[i + 1])
+
   def testEagerBasic(self):
     with context.eager_mode():
       ckpt_prefix = os.path.join(self.get_temp_dir(), "ckpt")
@@ -714,6 +726,8 @@ class SaverTest(test.TestCase):
 
 class SaveRestoreShardedTest(test.TestCase):
 
+  _WRITE_VERSION = saver_pb2.SaverDef.V1
+
   def _get_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
@@ -739,6 +753,7 @@ class SaveRestoreShardedTest(test.TestCase):
               "t0": t0.saveable,
               "t1": t1.saveable
           },
+          write_version=self._WRITE_VERSION,
           sharded=True)
       variables.global_variables_initializer().run()
       t0.insert("k1", 30.0).run()
@@ -759,7 +774,13 @@ class SaveRestoreShardedTest(test.TestCase):
         with sess.graph.device("/cpu:0"):
           v0 = variables.Variable(111, name="v0")
           t0 = saver_test_utils.CheckpointedOp(name="t0")
-        save = saver_module.Saver({"v0": v0, "t0": t0.saveable}, sharded=True)
+        save = saver_module.Saver(
+            {
+                "v0": v0,
+                "t0": t0.saveable
+            },
+            write_version=self._WRITE_VERSION,
+            sharded=True)
         variables.global_variables_initializer().run()
         t0.insert("k11", 33.0).run()
         self.assertEqual(111, v0.eval())
@@ -777,7 +798,13 @@ class SaveRestoreShardedTest(test.TestCase):
         with sess.graph.device("/cpu:0"):
           v1 = variables.Variable(222)
           t1 = saver_test_utils.CheckpointedOp(name="t1")
-        save = saver_module.Saver({"v1": v1, "t1": t1.saveable}, sharded=True)
+        save = saver_module.Saver(
+            {
+                "v1": v1,
+                "t1": t1.saveable
+            },
+            write_version=self._WRITE_VERSION,
+            sharded=True)
         variables.global_variables_initializer().run()
         t1.insert("k22", 44.0).run()
         self.assertEqual(222, v1.eval())
@@ -805,6 +832,7 @@ class SaveRestoreShardedTest(test.TestCase):
               "t0": t0.saveable,
               "t1": t1.saveable
           },
+          write_version=self._WRITE_VERSION,
           sharded=True)
       variables.global_variables_initializer().run()
       t0.insert("k11", 33.0).run()
@@ -968,6 +996,10 @@ class SaveRestoreShardedTest(test.TestCase):
 
   def testPartitionedResourceVariable(self):
     self._testPartitionedVariables(use_resource=True)
+
+
+class SaveRestoreShardedTestV2(SaveRestoreShardedTest):
+  _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
 class MaxToKeepTest(test.TestCase):

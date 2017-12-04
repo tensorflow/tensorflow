@@ -352,14 +352,20 @@ class ControlFlowTest(test.TestCase):
     grad = gradients_impl.gradients(y, [v])
     self.assertAllEqual([None], grad)
 
-  def testFetchables(self):
+  def testFetchable(self):
     with self.test_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
       control_flow_ops.cond(
           constant_op.constant(True), lambda: x + 2, lambda: x + 0)
-      tensor_names = all_fetchables()
-      for name in tensor_names:
-        sess.run(name, feed_dict={x: 3})
+      graph = ops.get_default_graph()
+      for op in graph.get_operations():
+        for t in op.inputs:
+          if graph.is_fetchable(t.op):
+            sess.run(t, feed_dict={x: 3})
+          else:
+            with self.assertRaisesRegexp(ValueError,
+                                         "has been marked as not fetchable"):
+              sess.run(t, feed_dict={x: 3})
 
   def testFeedable(self):
     with self.test_session() as sess:

@@ -663,7 +663,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
         [part for part in [graph.get_name_scope(), import_scope] if part])
 
     # Restores all the other collections.
-    for key, col_def in meta_graph_def.collection_def.items():
+    for key, col_def in sorted(meta_graph_def.collection_def.items()):
       # Don't add unbound_inputs to the new graph.
       if key == unbound_inputs_col_name:
         continue

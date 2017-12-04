@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,13 @@ set -e
 
 DOWNLOADS_DIR=tensorflow/contrib/lite/downloads
 BZL_FILE_PATH=tensorflow/workspace.bzl
+
+# Ensure it is being run from repo root
+if [ ! -f $BZL_FILE_PATH ]; then
+  echo "Could not find ${BZL_FILE_PATH}":
+  echo "Likely you are not running this from the root directory of the repository.";
+  exit 1;
+fi
 
 EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
 GEMMLOWP_URL="$(grep -o 'https://mirror.bazel.build/github.com/google/gemmlowp/.*zip' "${BZL_FILE_PATH}" | head -n1)"
@@ -56,11 +63,19 @@ download_and_extract() {
   elif [[ "${url}" == *zip ]]; then
     tempdir=$(mktemp -d)
     tempdir2=$(mktemp -d)
-    wget -P ${tempdir} ${url}
-    unzip ${tempdir}/* -d ${tempdir2}
-    # unzip has no strip components, so unzip to a temp dir, and move the files
-    # we want from the tempdir to destination.
-    echo cp `find ${tempdir2} -type f` ${dir}/
+
+    curl -L ${url} > ${tempdir}/zipped.zip
+    unzip ${tempdir}/zipped.zip -d ${tempdir2}
+
+    # If the zip file contains nested directories, extract the files from the
+    # inner directory.
+    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+      # unzip has no strip components, so unzip to a temp dir, and move the
+      # files we want from the tempdir to destination.
+      cp -R ${tempdir2}/*/* ${dir}/
+    else
+      cp -R ${tempdir2}/* ${dir}/
+    fi
     rm -rf ${tempdir2} ${tempdir}
   fi
 

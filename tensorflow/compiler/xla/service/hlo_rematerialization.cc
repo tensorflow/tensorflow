@@ -62,18 +62,11 @@ bool IsRematerializable(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kOutfeed:
-    case HloOpcode::kInfeed:
     case HloOpcode::kParameter:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kTrace:
     case HloOpcode::kWhile:
       return false;
     default:
-      return true;
+      return !instruction->HasSideEffect();
   }
 }
 
@@ -573,7 +566,9 @@ Status MemoryUsageTracker::BeginInstruction(Item* item) {
   VLOG(3) << "  memory usage = " << memory_usage_;
   VLOG(10) << ToString();
 
-  DCHECK(Check());
+  if (VLOG_IS_ON(1)) {
+    DCHECK(Check());
+  }
   return Status::OK();
 }
 
@@ -610,8 +605,9 @@ Status MemoryUsageTracker::EndInstruction() {
   VLOG(3) << "  memory usage = " << memory_usage_;
   VLOG(10) << ToString();
 
-  DCHECK(Check());
-
+  if (VLOG_IS_ON(1)) {
+    DCHECK(Check());
+  }
   return Status::OK();
 }
 

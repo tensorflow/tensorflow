@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
@@ -83,12 +84,16 @@ class HloInstruction {
   //     must contain all operands of the newly constructed instruction.
   //   computation_map: a map from computation name to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
-  //     calls. If the instruction is a fusion instruction, then the fusion
-  //     computation is added to this map and the module.
+  //     calls.
+  //   add_fused_computation: A function to call to add a fused
+  //     computation. Used (clearly) when the instruction is a fusion
+  //     instruction.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       HloModule* module, const HloInstructionProto& proto,
       const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
-      tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map);
+      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
+      const std::function<void(std::unique_ptr<HloComputation>)>&
+          add_fused_computation);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
@@ -155,6 +160,12 @@ class HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
+  // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
+  // dimensions specified in 'dimension_numbers'.
+  static std::unique_ptr<HloInstruction> CreateDot(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dimension_numbers);
+
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
@@ -170,6 +181,11 @@ class HloInstruction {
   // shape is the target shape for the conversion.
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
                                                        HloInstruction* operand);
+
+  // Creates a bitcast conversion instruction, where operand is the data to
+  // convert and shape is the target shape for the conversion.
+  static std::unique_ptr<HloInstruction> CreateBitcastConvert(
+      const Shape& shape, HloInstruction* operand);
 
   // Creates an infeed instruction, which reads data of the given shape from the
   // Infeed interface of the device.
@@ -305,6 +321,11 @@ class HloInstruction {
                                                      HloComputation* body,
                                                      HloInstruction* init);
 
+  static std::unique_ptr<HloInstruction> CreateConditional(
+      const Shape& shape, HloInstruction* pred,
+      HloInstruction* true_computation_arg, HloComputation* true_computation,
+      HloInstruction* false_computation_arg, HloComputation* false_computation);
+
   // Creates a fusion instruction. A fusion instruction contains one or more
   // fused instructions forming an expression with a single root
   // "fused_root". Additional instructions can be added to the fusion
@@ -406,7 +427,7 @@ class HloInstruction {
   Status RemoveControlDependencyTo(HloInstruction* instruction);
 
   // Returns the set of control predecessors (successors) of this
-  // instruction. Control predecessors (sucessors) must execute before (after)
+  // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
   const std::vector<HloInstruction*>& control_predecessors() const {
     return control_predecessors_;
@@ -607,6 +628,15 @@ class HloInstruction {
   HloComputation* scatter() const;
   void set_select(HloComputation* select);
   void set_scatter(HloComputation* scatter);
+
+  // Gets/sets the true and false HloComputation for Conditional. The setters
+  // should only be called by HloModule or HloComputation methods.
+  //
+  // Precondition: The instruction is a Conditional instruction.
+  HloComputation* true_computation() const;
+  HloComputation* false_computation() const;
+  void set_true_computation(HloComputation* true_computation);
+  void set_false_computation(HloComputation* false_computation);
 
   // Returns a string for the signature of this instruction if considered as a
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
@@ -891,6 +921,15 @@ class HloInstruction {
   // Returns the dump string of the convolution dimension numbers.
   string ConvolutionDimensionNumbersToString() const;
 
+  // Returns data on the dimension numbers used for a dot operation.
+  const DotDimensionNumbers& dot_dimension_numbers() const {
+    CHECK(dot_dimension_numbers_ != nullptr);
+    return *dot_dimension_numbers_;
+  }
+
+  // Returns the dump string of the dot dimension numbers.
+  string DotDimensionNumbersToString() const;
+
   // Returns the random distribution for this rng node.
   //
   // Precondition: opcode() == HloOpcode::kRng
@@ -1149,6 +1188,9 @@ class HloInstruction {
   // Describes the dimension numbers used for a convolution.
   std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
 
+  // Describes the dimension numbers used for a dot.
+  std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
+
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
@@ -1192,6 +1234,10 @@ class HloInstruction {
     // kSelectAndScatter computations.
     kSelectComputationIndex = 0,
     kScatterComputationIndex = 1,
+
+    // kConditional computations.
+    kTrueComputationIndex = 0,
+    kFalseComputationIndex = 1,
   };
 
   // Outfeed configuration information, only present for kOutfeed.

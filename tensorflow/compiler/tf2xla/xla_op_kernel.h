@@ -210,6 +210,11 @@ class XlaOpKernelContext {
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
 
+  // Gets an XLA lambda to compute Mul. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMul(const DataType type);
+
  private:
   OpKernelContext* const context_;
 };

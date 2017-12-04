@@ -299,6 +299,33 @@ string EqualGraphDefWrapper(const string& actual, const string& expected) {
   return EqualGraphDef(actual_def, expected_def, &diff) ? "" : diff;
 }
 
+// Return value set to 6 inlined elements so it fits in a 64-byte cache line.
+tensorflow::gtl::InlinedVector<int64_t, 6> TF_GraphGetTensorShapeHelper(
+    TF_Graph* graph, TF_Output output, TF_Status* out_status,
+    bool* unknown_shape) {
+  // Allocate a single variable for holding the result for RVO.
+  tensorflow::gtl::InlinedVector<int64_t, 6> result;
+  *unknown_shape = false;
+  int num_dims = TF_GraphGetTensorNumDims(graph, output, out_status);
+  if (TF_GetCode(out_status) != TF_OK) {
+    return result;
+  }
+  // If shape is unknown, set boolean and return.
+  if (num_dims == -1) {
+    *unknown_shape = true;
+    return result;
+  }
+
+  // If shape is a scalar, avoid another C call and just return {}.
+  if (num_dims == 0) {
+    return result;
+  }
+
+  result.resize(num_dims);
+  TF_GraphGetTensorShape(graph, output, result.data(), num_dims, out_status);
+  return result;
+}
+
 void TF_SessionPRunSetup_wrapper(TF_Session* session,
                                  const std::vector<TF_Output>& inputs,
                                  const std::vector<TF_Output>& outputs,
@@ -378,6 +405,25 @@ TF_Function* TF_GraphToFunction_wrapper(
                             opers_array, inputs.size(), inputs.data(),
                             outputs.size(), outputs.data(), output_names_ptr,
                             opts, description, out_status);
+}
+
+void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
+                                    const std::vector<int64_t>& dims,
+                                    bool unknown_shape, TF_Status* status) {
+  if (unknown_shape) {
+    TF_GraphSetTensorShape(graph, output, nullptr, -1, status);
+    return;
+  }
+  TF_GraphSetTensorShape(graph, output, dims.data(), dims.size(), status);
+}
+
+std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
+                                                    TF_Output output,
+                                                    int num_dims,
+                                                    TF_Status* status) {
+  std::vector<int64_t> dims(num_dims);
+  TF_GraphGetTensorShape(graph, output, dims.data(), num_dims, status);
+  return dims;
 }
 
 }  // namespace tensorflow

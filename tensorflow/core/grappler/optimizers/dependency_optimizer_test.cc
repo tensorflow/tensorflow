@@ -104,6 +104,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop) {
   }
 }
 
+// TODO(rmlarsen): Add test to make sure we skip Switch and Merge.
 TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});

@@ -16,4 +16,3 @@
 #import <UIKit/UIKit.h>
 
 std::vector<uint8_t> LoadImageFromUIImage(UIImage *img);
-

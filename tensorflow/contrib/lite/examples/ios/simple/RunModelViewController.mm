@@ -14,10 +14,10 @@
 
 #import "RunModelViewController.h"
 
-#include <fstream>
-#include <iostream>
 #include <pthread.h>
 #include <unistd.h>
+#include <fstream>
+#include <iostream>
 #include <queue>
 #include <sstream>
 #include <string>
@@ -30,7 +30,11 @@
 #include "ios_image_load.h"
 
 #define LOG(x) std::cerr
-#define CHECK(x) if (!(x)) { LOG(ERROR) << #x << "failed"; exit(1); }
+#define CHECK(x)                  \
+  if (!(x)) {                     \
+    LOG(ERROR) << #x << "failed"; \
+    exit(1);                      \
+  }
 
 static void GetTopN(const float* prediction,
                     const int prediction_size,

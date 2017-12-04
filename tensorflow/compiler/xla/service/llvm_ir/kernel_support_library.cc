@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 void KernelSupportLibrary::For(
@@ -62,4 +63,47 @@ void KernelSupportLibrary::If(
   false_block_generator();
   llvm_ir::SetToLastInsertPoint(if_data.after_block, ir_builder_);
 }
+
+void KernelSupportLibrary::EmitAndCallOutlinedKernel(
+    llvm::IRBuilder<>* ir_builder, tensorflow::StringPiece kernel_name,
+    KernelSupportLibrary::ArgumentVector arguments,
+    const std::function<void(KernelSupportLibrary::ArgumentVector)>&
+        kernel_body_generator) {
+  llvm::Module* module = ir_builder->GetInsertBlock()->getModule();
+  llvm::Function* function =
+      module->getFunction(llvm_ir::AsStringRef(kernel_name));
+  if (!function) {
+    VLOG(2) << "Generating kernel for " << kernel_name;
+    std::vector<llvm::Type*> arg_types;
+    std::transform(arguments.begin(), arguments.end(),
+                   std::back_inserter(arg_types),
+                   [](llvm::Value* arg) { return arg->getType(); });
+
+    auto* function_type = llvm::FunctionType::get(
+        ir_builder->getVoidTy(), arg_types, /*isVarArg=*/false);
+
+    function = llvm::Function::Create(
+        function_type, llvm::GlobalValue::InternalLinkage,
+        llvm_ir::AsStringRef(kernel_name), module);
+
+    llvm::IRBuilder<>::InsertPointGuard guard(*ir_builder);
+
+    auto* entry_bb =
+        llvm::BasicBlock::Create(ir_builder->getContext(), "entry", function);
+    auto* return_inst = llvm::ReturnInst::Create(ir_builder->getContext(),
+                                                 /*retVal=*/nullptr, entry_bb);
+    // Set the insert point to before return_inst.
+    ir_builder->SetInsertPoint(return_inst);
+
+    std::vector<llvm::Value*> arg_values;
+    std::transform(function->arg_begin(), function->arg_end(),
+                   std::back_inserter(arg_values), std::addressof<llvm::Value>);
+    kernel_body_generator(arg_values);
+  } else {
+    VLOG(3) << "Re-using kernel for " << kernel_name;
+  }
+
+  ir_builder->CreateCall(function, llvm_ir::AsArrayRef(arguments));
+}
+
 }  // namespace xla

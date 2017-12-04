@@ -25,10 +25,11 @@ from tensorflow.python.platform import test
 
 
 class PrefetchDatasetTest(test.TestCase):
+
   def testBufferSize(self):
     buffer_size = array_ops.placeholder(dtypes.int64, shape=[])
     iterator = dataset_ops.Dataset.range(10).prefetch(
-      buffer_size=buffer_size).make_initializable_iterator()
+        buffer_size=buffer_size).make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -42,7 +43,7 @@ class PrefetchDatasetTest(test.TestCase):
   def testInvalidBufferSize(self):
     buffer_size = array_ops.placeholder(dtypes.int64, shape=[])
     iterator = dataset_ops.Dataset.range(10).prefetch(
-      buffer_size=buffer_size).make_initializable_iterator()
+        buffer_size=buffer_size).make_initializable_iterator()
     init_op = iterator.initializer
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "buffer_size"):

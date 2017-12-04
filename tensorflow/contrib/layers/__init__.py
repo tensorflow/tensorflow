@@ -42,6 +42,9 @@ See the @{$python/contrib.layers} guide.
 @@relu
 @@relu6
 @@repeat
+@@recompute_grad
+@@RevBlock
+@@rev_block
 @@safe_embedding_lookup_sparse
 @@scale_gradient
 @@separable_conv2d

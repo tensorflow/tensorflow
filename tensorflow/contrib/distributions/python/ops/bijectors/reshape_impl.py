@@ -36,70 +36,77 @@ __all__ = [
 ]
 
 
+def _static_ndims_from_shape(shape):
+  return shape.shape.with_rank_at_least(1)[0].value
+
+
+def _ndims_from_shape(shape):
+  return array_ops.shape(shape)[0]
+
+
 class Reshape(bijector_lib.Bijector):
   """Reshapes the `event_shape` of a `Tensor`.
 
   The semantics generally follow that of `tf.reshape()`, with
   a few differences:
-   * The user must provide both the input and output shape, so that
-     the transformation can be inverted.
-   * The `Reshape` bijector automatically broadcasts over the leftmost
-     dimensions of its input (`sample_shape` and `batch_shape`); only
-     the rightmost `event_ndims_in` dimensions are reshaped. The
-     number of dimensions to reshape is inferred from the provided
-     `event_shape_in` (`event_ndims_in = len(event_shape_in)`).
-   * The `Reshape` bijector does not currently support
-     partially-specified shapes, i.e., those with a dimension
-     implicitly specified by `-1`.
+
+  * The user must provide both the input and output shape, so that
+    the transformation can be inverted. If an input shape is not
+    specified, the default assumes a vector-shaped input, i.e.,
+    event_shape_in = (-1,).
+  * The `Reshape` bijector automatically broadcasts over the leftmost
+    dimensions of its input (`sample_shape` and `batch_shape`); only
+    the rightmost `event_ndims_in` dimensions are reshaped. The
+    number of dimensions to reshape is inferred from the provided
+    `event_shape_in` (`event_ndims_in = len(event_shape_in)`).
 
   Example usage:
   ```python
 
-  bs = tf.contrib.distributions.bijectors
+  tfd = tf.contrib.distributions
 
-  reverse = bs.Reshape(event_shape_out=[1,2],
-                       event_shape_in=[2,])
+  r = tfd.bijectors.Reshape(event_shape_out=[1, -1])
 
-  reverse.forward([1., 2.])    # shape [2,]
-  # ==> [[1., 2.]]             # shape [1,2]
+  r.forward([3., 4.])    # shape [2]
+  # ==> [[3., 4.]]       # shape [1, 2]
 
-  reverse.forward([[1., 2.], [3., 4.]])  # shape [2, 2]
-  # ==> [[[1., 2.]], [[3., 4.]]]         # shape [2, 1, 2]
+  r.forward([[1., 2.], [3., 4.]])  # shape [2, 2]
+  # ==> [[[1., 2.]],
+  #      [[3., 4.]]]   # shape [2, 1, 2]
 
-  reverse.inverse([[1., 2.]])  # shape [1,2]
-  # ==> [1., 2.]               # shape [2,]
+  r.inverse([[3., 4.]])  # shape [1,2]
+  # ==> [3., 4.]         # shape [2]
 
-  reverse.forward_log_det_jacobian(any_value)
+  r.forward_log_det_jacobian(any_value)
   # ==> 0.
 
-  reverse.inverse_log_det_jacobian(any_value)
+  r.inverse_log_det_jacobian(any_value)
   # ==> 0.
   ```
 
   """
 
-  def __init__(self, event_shape_out, event_shape_in,
+  def __init__(self, event_shape_out, event_shape_in=(-1,),
                validate_args=False, name=None):
     """Creates a `Reshape` bijector.
 
     Args:
       event_shape_out: An `int`-like vector-shaped `Tensor`
-        representing the fully specified (no -1's) event shape of the
-        transformed output.
-      event_shape_in: An `int`-like vector-shaped `Tensor`
-        representing the fully specified (no -1's) event shape of the
-        input.
+        representing the event shape of the transformed output.
+      event_shape_in: An optional `int`-like vector-shape `Tensor`
+        representing the event shape of the input. This is required in
+        order to define inverse operations; the default of (-1,)
+        assumes a vector-shaped input.
       validate_args: Python `bool` indicating whether arguments should
         be checked for correctness.
       name: Python `str`, name given to ops managed by this object.
 
     Raises:
       TypeError: if either `event_shape_in` or `event_shape_out` has
-       non-vector shape (`rank > 1`), or non-integer `dtype`.
-      ValueError: if either `event_shape_in` or `event_shape_out`
-       contains non-positive entries, or if their sizes do not match
-       (`prod(event_shape_in)` != `prod(event_shape_out)`), or if
-       their dimensionality(s) cannot be statically inferred.
+        non-integer `dtype`.
+      ValueError: if either of `event_shape_in` or `event_shape_out`
+       has non-vector shape (`rank > 1`), or if their sizes do not
+       match.
     """
     with ops.name_scope(name, "reshape",
                         values=[event_shape_out, event_shape_in]):
@@ -111,105 +118,74 @@ class Reshape(bijector_lib.Bijector):
                                              name="event_shape_in",
                                              preferred_dtype=dtypes.int32)
 
-      # check that input shapes are positive integers
       assertions = []
-      assertions += self._maybe_check_valid_shape(
-          event_shape_out, "event_shape_out",
-          validate_args=validate_args)
-      assertions += self._maybe_check_valid_shape(
-          event_shape_in, "event_shape_in", validate_args=validate_args)
-
-      # check that prod(event_shape_in) = prod(event_shape_out)
-      assertions += self._maybe_check_matching_sizes(
-          event_shape_in, event_shape_out, validate_args=validate_args)
+      assertions.extend(self._maybe_check_valid_shape(
+          event_shape_out, validate_args))
+      assertions.extend(self._maybe_check_valid_shape(
+          event_shape_in, validate_args))
 
       self._assertions = assertions
       self._event_shape_in = event_shape_in
       self._event_shape_out = event_shape_out
-      self._event_shape_in_static = tensor_util.constant_value_as_shape(
-          event_shape_in)
-      self._event_shape_out_static = tensor_util.constant_value_as_shape(
-          event_shape_out)
 
       super(Reshape, self).__init__(is_constant_jacobian=True,
                                     validate_args=validate_args,
                                     name=name or "reshape")
 
-  def _maybe_check_valid_shape(self, shape_tensor, label,
-                               validate_args=False):
-    """Check that a shape Tensor is int-type and positive."""
-
-    assertions = []
-
-    if not shape_tensor.dtype.is_integer:
+  def _maybe_check_valid_shape(self, shape, validate_args):
+    """Check that a shape Tensor is int-type and otherwise sane."""
+    if not shape.dtype.is_integer:
       raise TypeError("{} dtype ({}) should be `int`-like.".format(
-          label, shape_tensor.dtype.name))
-
-    shape_rank = tensor_util.constant_value(array_ops.rank(shape_tensor))
-    if shape_rank is not None and shape_rank > 1:
-      raise ValueError("{} rank should be <= 1.".format(label))
-
-    s = tensor_util.constant_value(shape_tensor)
-    if s is not None:
-      if (s <= 0).any():
-        raise ValueError("{} entries must be positive, but found {}".format(
-            label, s))
-    elif validate_args:
-      assertions.append(check_ops.assert_positive(
-          shape_tensor, message="{} entries must be positive".format(label)))
-
-    return assertions
-
-  def _maybe_check_matching_sizes(self, event_shape_in, event_shape_out,
-                                  validate_args=False):
-    """Check that prod(event_shape_in)==prod(event_shape_out)."""
-
-    def _get_size_from_shape(shape):
-      """Computes size from a shape `Tensor`, statically if possible."""
-      s = tensor_util.constant_value(shape)
-      if s is not None:
-        return [np.int32(np.prod(s))]*2
-      return None, math_ops.reduce_prod(shape, name="size")
-
-    # Ensure `event_shape_in` is compatible with `event_shape_out`.
-    event_size_in_, event_size_in = _get_size_from_shape(  # pylint: disable=unbalanced-tuple-unpacking
-        event_shape_in)
-    event_size_out_, event_size_out = _get_size_from_shape(  # pylint: disable=unbalanced-tuple-unpacking
-        event_shape_out)
+          shape.op.name, shape.dtype.name))
 
     assertions = []
-    if event_size_in_ is not None and event_size_out_ is not None:
-      if event_size_in_ != event_size_out_:
-        raise ValueError(
-            "Input `event_size` ({}) does not match output `event_size` ({}).".
-            format(event_size_in, event_size_out_))
-    elif validate_args:
-      assertions.append(check_ops.assert_equal(
-          event_size_in, event_size_out,
-          message="Input/output `event_size`s do not match."))
 
+    ndims = array_ops.rank(shape)
+    ndims_ = tensor_util.constant_value(ndims)
+    if ndims_ is not None and ndims_ > 1:
+      raise ValueError("`{}` rank ({}) should be <= 1.".format(
+          shape.op.name, ndims_))
+    elif validate_args:
+      assertions.append(check_ops.assert_less_equal(
+          ndims, 1, message="`{}` rank should be <= 1.".format(shape.op.name)))
+
+    shape_ = tensor_util.constant_value_as_shape(shape)
+    if shape_.is_fully_defined():
+      es = np.int32(shape_.as_list())
+      if sum(es == -1) > 1:
+        raise ValueError(
+            "`{}` must have at most one `-1` (given {})"
+            .format(shape.op.name, es))
+      if np.any(es < -1):
+        raise ValueError(
+            "`{}` elements must be either positive integers or `-1`"
+            "(given {})."
+            .format(shape.op.name, es))
+    elif validate_args:
+      assertions.extend([
+          check_ops.assert_less_equal(
+              math_ops.reduce_sum(
+                  math_ops.cast(math_ops.equal(shape, -1), dtypes.int32)),
+              1,
+              message="`{}` elements must have at most one `-1`."
+              .format(shape.op.name)),
+          check_ops.assert_greater_equal(
+              shape, -1,
+              message="`{}` elements must be either positive integers or `-1`."
+              .format(shape.op.name)),
+      ])
     return assertions
 
   def _reshape_helper(self, x, event_shape_in, event_shape_out):
     """Reshape only the event_shape of an input `Tensor`."""
 
-    def _get_rank_from_shape(shape):
-      """Computes rank from a shape `Tensor`, statically if possible."""
-      # Uses fact that rank is "shape of shape".
-      ndims = shape.shape.with_rank_at_least(1)[0].value
-      if ndims is not None:
-        return ndims, ndims
-      return None, array_ops.shape(shape)[0]
-
-    event_ndims_in_, event_ndims_in = _get_rank_from_shape(event_shape_in)
+    event_ndims_in_ = _static_ndims_from_shape(event_shape_in)
+    event_ndims_in = _ndims_from_shape(event_shape_in)
+    x_ndims_, x_ndims = x.shape.ndims, array_ops.rank(x)
 
     assertions = []
-    # Ensure x.event_shape is compatible with event_shape_in.
-    if x.shape.ndims is not None:
-      x_ndims_, x_ndims = [x.shape.ndims]*2
-    else:
-      x_ndims_, x_ndims = None, array_ops.rank(x)
 
+    # Ensure x.event_shape is compatible with event_shape_in.
     if (event_ndims_in_ is not None
         and x_ndims_ is not None
         and x.shape.with_rank_at_least(event_ndims_in_)[
@@ -223,13 +199,35 @@ class Reshape(bijector_lib.Bijector):
     event_shape_in_ = tensor_util.constant_value(event_shape_in)
 
     if x_event_shape_ is not None and event_shape_in_ is not None:
-      if not np.equal(x_event_shape_, event_shape_in_).all():
+      # Compare the shape dimensions that are fully specified in the
+      # input (i.e., for which event_shape_in is not -1). If x_event_shape
+      # matches along all of these dimensions, it is compatible with
+      # the desired input shape and any further mismatches (i.e.,
+      # imcompatibility with the desired *output* shape) will be
+      # caught inside of array_ops.reshape() below.
+      x_event_shape_specified_ = x_event_shape_[event_shape_in_ >= 0]
+      event_shape_in_specified_ = event_shape_in_[event_shape_in_ >= 0]
+      if not np.equal(x_event_shape_specified_,
+                      event_shape_in_specified_).all():
         raise ValueError(
-            "Input `event_shape` ({}) does not match `event_shape_in` ({}).".
+            "Input `event_shape` does not match `event_shape_in` ({} vs {}).".
             format(x_event_shape_, event_shape_in_))
     elif self.validate_args:
+      # Similarly to the static case, we compare the shape dimensions
+      # that are fully specified in the input. We extract these
+      # dimensions using boolean_mask(), which requires that the mask
+      # have known ndims. We can assume that shape Tensors always have
+      # ndims==1 (this assumption is verified inside of
+      # _maybe_check_valid_shape), so the reshape operation is just a
+      # no-op that formally encodes this fact to make boolean_mask()
+      # happy.
+      event_shape_mask = array_ops.reshape(event_shape_in >= 0, [-1])
+      x_event_shape_specified = array_ops.boolean_mask(x_event_shape,
+                                                       event_shape_mask)
+      event_shape_in_specified = array_ops.boolean_mask(event_shape_in,
+                                                        event_shape_mask)
       assertions.append(check_ops.assert_equal(
-          x_event_shape, event_shape_in,
+          x_event_shape_specified, event_shape_in_specified,
           message="Input `event_shape` does not match `event_shape_in`."))
 
     if assertions:
@@ -243,8 +241,19 @@ class Reshape(bijector_lib.Bijector):
     sample_and_batch_shape = sample_and_batch_shape[
         :(ndims - math_ops.abs(event_ndims_in))]
 
-    new_shape = array_ops.concat(
-        [sample_and_batch_shape, event_shape_out], axis=0)
+    if (event_ndims_in_ is not None
+        and x_ndims_ is not None
+        and event_ndims_in_ == x_ndims_):
+      # Hack to allow forward/inverse_event_shape to do shape
+      # inference by calling this helper method with a dummy Tensor of
+      # shape event_shape_in. In this special case,
+      # sample_and_batch_shape will be empty so we can preserve static
+      # shape information by avoiding the concat operation below
+      # (which would be a no-op).
+      new_shape = event_shape_out
+    else:
+      new_shape = array_ops.concat(
+          [sample_and_batch_shape, event_shape_out], axis=0)
 
     return array_ops.reshape(x, new_shape)
 
@@ -269,29 +278,37 @@ class Reshape(bijector_lib.Bijector):
       return constant_op.constant(0., dtype=x.dtype)
 
   def _forward_event_shape(self, input_shape):
-    self._event_shape_in_static.assert_is_compatible_with(input_shape)
-    return self._event_shape_out_static
+    # NOTE: this method and the other *_event_shape* methods
+    # compute shape by explicit transformation of a dummy
+    # variable. This approach is not generally recommended because it
+    # bloats the graph and could in general trigger side effects.
+    #
+    # In this particular case of the Reshape bijector, the
+    # forward and inverse transforms have no side effects, and we
+    # believe the reduction in code complexity from delegating the
+    # heavy lifting to tf.reshape() is worth the added graph ops.
+    # However, you should think hard before implementing this approach
+    # in other Bijectors; it is strongly preferred to compute
+    # shapes explicitly whenever it's feasible to do so.
+    with ops.control_dependencies(self._assertions):
+      dummy = array_ops.zeros(dtype=dtypes.float32, shape=input_shape)
+      dummy_reshaped = self.forward(dummy)
+      return dummy_reshaped.shape
 
   def _inverse_event_shape(self, output_shape):
-    self._event_shape_out_static.assert_is_compatible_with(output_shape)
-    return self._event_shape_in_static
+    with ops.control_dependencies(self._assertions):
+      dummy = array_ops.zeros(dtype=dtypes.float32, shape=output_shape)
+      dummy_reshaped = self.inverse(dummy)
+      return dummy_reshaped.shape
 
   def _forward_event_shape_tensor(self, input_shape):
-    input_assertions = self._maybe_check_valid_shape(
-        input_shape, "input event shape", validate_args=self.validate_args)
-    input_assertions += self._maybe_check_matching_sizes(
-        input_shape, self._event_shape_out,
-        validate_args=self.validate_args)
-
-    return control_flow_ops.with_dependencies(
-        input_assertions + self._assertions, self._event_shape_out)
+    with ops.control_dependencies(self._assertions):
+      dummy = array_ops.zeros(dtype=dtypes.float32, shape=input_shape)
+      dummy_reshaped = self.forward(dummy)
+      return array_ops.shape(dummy_reshaped)
 
   def _inverse_event_shape_tensor(self, output_shape):
-
-    output_assertions = self._maybe_check_valid_shape(
-        output_shape, "output event shape", validate_args=self.validate_args)
-    output_assertions += self._maybe_check_matching_sizes(
-        output_shape, self._event_shape_in, validate_args=self.validate_args)
-
-    return control_flow_ops.with_dependencies(
-        output_assertions + self._assertions, self._event_shape_in)
+    with ops.control_dependencies(self._assertions):
+      dummy = array_ops.zeros(dtype=dtypes.float32, shape=output_shape)
+      dummy_reshaped = self.inverse(dummy)
+      return array_ops.shape(dummy_reshaped)
