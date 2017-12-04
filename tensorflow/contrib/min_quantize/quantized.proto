@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option cc_enable_arenas = false;
+
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/graph.proto";
+
+enum ValueType {
+    // value = base + raw
+    RAW = 0;
+    // value = index * step + base
+    SIMPLE = 1;
+    // value = table[index]
+    TABLE = 2;
+}
+
+message QuantizedItem {
+    // info
+    string name = 1;
+    tensorflow.DataType dtype = 2;
+    repeated int32 shape = 3;
+    ValueType vtype = 4;
+
+    // base
+    float base = 5;
+
+    // step
+    float step = 6;
+
+    // table & index
+    repeated uint32 index = 7;
+    repeated sint32 int_table = 8;
+    repeated float float_table = 9;
+
+    // raw value
+    repeated sint32 int_raw = 10;
+    repeated float float_raw = 11;
+}
+
+message QuantizedGraph {
+    tensorflow.GraphDef graph = 1;
+    repeated QuantizedItem items = 2;
+}
