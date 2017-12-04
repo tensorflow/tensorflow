@@ -1741,8 +1741,9 @@ class BatchNormTest(test.TestCase):
 
   def testBatchNormCenterFalse(self)
     a = array_ops.placeholder(dtype.float32, shape=(10, 10, 10, 10))
-    b = _layers.batch_norm(a, center=False, data_format='NCHW',
-                           zero_debias_moving_mean=True)
+    # Test that center=False builds a valid graph.
+    _layers.batch_norm(a, center=False, data_format='NCHW',
+                       zero_debias_moving_mean=True)
 
   def testUnknownShape(self):
     with ops.Graph().as_default() as g, self.test_session(g):
