@@ -243,11 +243,12 @@ int IrEmitter::MinimumAlignmentForBufferSize(int64 buffer_size) {
 
 // Calculate the alignment of a buffer allocated for a given primitive type.
 int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
-  int64 buffer_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-  DCHECK_GE(buffer_size, 0);
-  DCHECK_LE(buffer_size, SIZE_MAX);
-
-  return MinimumAlignmentForBufferSize(buffer_size);
+  int64 byte_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
+  DCHECK_GE(byte_size, 0);
+  // Largest scalar is a complex64 so we don't need to worry about the
+  // int64->int truncation here.
+  DCHECK_LE(byte_size, 8);
+  return byte_size;
 }
 
 int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
@@ -256,6 +257,10 @@ int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
 
 // Calculate the alignment of a buffer allocated for a given shape.
 int IrEmitter::MinimumAlignmentForShape(const Shape& shape) {
+  if (ShapeUtil::IsScalar(shape)) {
+    return MinimumAlignmentForPrimitiveType(shape.element_type());
+  }
+
   int64 buffer_size = ByteSizeOf(shape);
   DCHECK_GE(buffer_size, 0);
   DCHECK_LE(buffer_size, SIZE_MAX);
