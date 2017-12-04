@@ -387,11 +387,7 @@ endif()
 
 # Let's get to work!
 include(tf_core_framework.cmake)
-# NOTE: Disabled until issue #3996 is fixed.
-# include(tf_stream_executor.cmake)
-if (tensorflow_ENABLE_GPU)
-    include(tf_stream_executor.cmake)
-endif()
+include(tf_stream_executor.cmake)
 
 include(tf_core_cpu.cmake)
 include(tf_core_ops.cmake)
