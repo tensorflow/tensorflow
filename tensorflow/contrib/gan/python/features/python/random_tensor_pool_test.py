@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.contrib.gan.python.features.tensor_pool."""
+"""Tests for tf.contrib.gan.python.features.random_tensor_pool."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.gan.python.features.python import tensor_pool_impl as tensor_pool
+from tensorflow.contrib.gan.python.features.python.random_tensor_pool_impl import tensor_pool
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -32,7 +32,7 @@ class TensorPoolTest(test.TestCase):
     """Checks that `input_value` can have unknown shape."""
     input_value = array_ops.placeholder(
         dtype=dtypes.int32, shape=[None, None, 3])
-    output_value = tensor_pool.tensor_pool(input_value, pool_size=10)
+    output_value = tensor_pool(input_value, pool_size=10)
 
     with self.test_session(use_gpu=True) as session:
       for i in range(10):
@@ -43,7 +43,7 @@ class TensorPoolTest(test.TestCase):
   def test_pool_sequence(self):
     """Checks that values are pooled and returned maximally twice."""
     input_value = array_ops.placeholder(dtype=dtypes.int32, shape=[])
-    output_value = tensor_pool.tensor_pool(input_value, pool_size=10)
+    output_value = tensor_pool(input_value, pool_size=10)
 
     with self.test_session(use_gpu=True) as session:
       outs = []
@@ -59,7 +59,7 @@ class TensorPoolTest(test.TestCase):
   def test_never_pool(self):
     """Checks that setting `pooling_probability` to zero works."""
     input_value = array_ops.placeholder(dtype=dtypes.int32, shape=[])
-    output_value = tensor_pool.tensor_pool(
+    output_value = tensor_pool(
         input_value, pool_size=10, pooling_probability=0.0)
 
     with self.test_session(use_gpu=True) as session:
@@ -72,7 +72,7 @@ class TensorPoolTest(test.TestCase):
     input_value = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     pool_size = 10
     pooling_probability = 0.2
-    output_value = tensor_pool.tensor_pool(
+    output_value = tensor_pool(
         input_value,
         pool_size=pool_size,
         pooling_probability=pooling_probability)
@@ -88,6 +88,22 @@ class TensorPoolTest(test.TestCase):
           (not_pooled - pool_size) / (total - pool_size),
           1 - pooling_probability,
           atol=0.03)
+
+  def test_input_values_tuple(self):
+    """Checks that `input_values` can be a tuple."""
+    input_values = (array_ops.placeholder(dtype=dtypes.int32, shape=[]),
+                    array_ops.placeholder(dtype=dtypes.int32, shape=[]))
+    output_values = tensor_pool(input_values, pool_size=3)
+    self.assertEqual(len(output_values), len(input_values))
+
+    with self.test_session(use_gpu=True) as session:
+      for i in range(10):
+        outs = session.run(output_values, {
+            input_values[0]: i,
+            input_values[1]: i + 1
+        })
+        self.assertEqual(len(outs), len(input_values))
+        self.assertEqual(outs[1] - outs[0], 1)
 
 
 if __name__ == '__main__':

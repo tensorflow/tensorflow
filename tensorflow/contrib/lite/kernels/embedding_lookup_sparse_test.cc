@@ -158,9 +158,7 @@ TEST(EmbeddingLookupOpTest, Indices3DTest) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-#ifdef OS_LINUX
-  tflite::LogToStderr();
-#endif
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

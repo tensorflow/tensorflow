@@ -408,6 +408,9 @@ class FunctionLibraryRuntime {
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
                              Handle* handle) = 0;
 
+  // Releases state associated with the handle.
+  virtual Status ReleaseHandle(Handle handle) = 0;
+
   // Returns the function body for the instantiated function given its
   // handle 'h'. Returns nullptr if "h" is not found.
   //

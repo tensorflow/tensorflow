@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -51,7 +52,7 @@ TEST_F(TopologicalSortTest, NoLoop) {
   *graph.add_node() = CreateNode("5", {});
   *graph.add_node() = CreateNode("4", {});
 
-  TopologicalSort(&graph);
+  TF_EXPECT_OK(TopologicalSort(&graph));
   std::vector<string> order = {"5", "4", "2", "0", "3", "1"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
@@ -67,7 +68,7 @@ TEST_F(TopologicalSortTest, WithLoop) {
   *graph.add_node() = CreateNode("5", "NextIteration", {"4"});
   *graph.add_node() = CreateNode("1", {});
 
-  TopologicalSort(&graph);
+  TF_EXPECT_OK(TopologicalSort(&graph));
   std::vector<string> order = {"1", "2", "3", "4", "5"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
@@ -82,7 +83,7 @@ TEST_F(TopologicalSortTest, WithIllegalLoop) {
   *graph.add_node() = CreateNode("3", {"2"});
   *graph.add_node() = CreateNode("1", {});
 
-  TopologicalSort(&graph);
+  EXPECT_FALSE(TopologicalSort(&graph).ok());
   std::vector<string> order = {"2", "3", "1"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
@@ -94,7 +95,7 @@ TEST_F(TopologicalSortTest, DuplicatedInputs) {
   *graph.add_node() = CreateNode("2", {"1", "1"});
   *graph.add_node() = CreateNode("1", {});
 
-  TopologicalSort(&graph);
+  TF_EXPECT_OK(TopologicalSort(&graph));
   std::vector<string> order = {"1", "2"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);

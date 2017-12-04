@@ -39,8 +39,8 @@ class SummaryDbTest(test_util.TensorFlowTestCase):
     if os.path.exists(self.db_path):
       os.unlink(self.db_path)
     self.db = sqlite3.connect(self.db_path)
-    self.create_summary_db_writer = functools.partial(
-        summary_ops.create_summary_db_writer,
+    self.create_db_writer = functools.partial(
+        summary_ops.create_db_writer,
         db_uri=self.db_path,
         experiment_name='experiment',
         run_name='run',

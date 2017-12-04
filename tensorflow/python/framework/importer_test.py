@@ -1056,8 +1056,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(123.0, a[0].get_attr("default_float"))
 
   def testDefaultAttrsRemoved(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     producer_op_list = op_def_pb2.OpList()
     text_format.Merge("""
       op {
@@ -1074,19 +1072,26 @@ class ImportGraphDefTest(test.TestCase):
           """),
           return_elements=["A"],
           producer_op_list=producer_op_list)
-      with self.assertRaisesRegexp(ValueError, "No attr named 'default_int'"):
+      if ops._USE_C_API:
+        error_msg = "Operation 'import/A' has no attr named 'default_int'."
+      else:
+        error_msg = "No attr named 'default_int'"
+      with self.assertRaisesRegexp(ValueError, error_msg):
         a[0].get_attr("default_int")
 
-    # Attr only in producer_op_list with non-default value is preserved.
-    with ops.Graph().as_default():
-      a = importer.import_graph_def(
-          self._MakeGraphDef("""
-          node { name: 'A' op: 'OpWithFutureDefaultAttr'
-                 attr { key: 'default_int' value { i: 987 } } }
-          """),
-          return_elements=["A"],
-          producer_op_list=producer_op_list)
-      self.assertEqual(987, a[0].get_attr("default_int"))
+    # Unknown attrs cannot be imported using C API. This test will eventually be
+    # deleted.
+    if not ops._USE_C_API:
+      # Attr only in producer_op_list with non-default value is preserved.
+      with ops.Graph().as_default():
+        a = importer.import_graph_def(
+            self._MakeGraphDef("""
+            node { name: 'A' op: 'OpWithFutureDefaultAttr'
+                   attr { key: 'default_int' value { i: 987 } } }
+            """),
+            return_elements=["A"],
+            producer_op_list=producer_op_list)
+        self.assertEqual(987, a[0].get_attr("default_int"))
 
   def testFunctions(self):
     if ops._USE_C_API: return  # TODO(skyewm): make this work with C API

@@ -330,7 +330,10 @@ class VirtualScheduler {
 
   // Stats:
   std::map<string, int> op_counts_;  // Op counts with key with input shape.
-  std::map<string, int> op_costs_;   // Individual op costs (with input shapes).
+  // Individual op costs (with input shapes).
+  // Boolean field for whether the cost is accurate.
+  std::map<string, std::pair<int, bool>> op_costs_;
+
   Costs graph_costs_;                // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 

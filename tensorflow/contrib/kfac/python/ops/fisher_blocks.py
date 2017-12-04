@@ -38,6 +38,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import enum  # pylint: disable=g-bad-import-order
 
 import six
 
@@ -52,13 +53,53 @@ from tensorflow.python.ops import math_ops
 #   damping /= num_replications ** NORMALIZE_DAMPING_POWER
 NORMALIZE_DAMPING_POWER = 1.0
 
+# Methods for adjusting damping for FisherBlocks. See
+# _compute_pi_adjusted_damping() for details.
+PI_OFF_NAME = "off"
+PI_TRACENORM_NAME = "tracenorm"
+PI_TYPE = PI_TRACENORM_NAME
 
-def set_global_constants(normalize_damping_power=None):
+
+def set_global_constants(normalize_damping_power=None, pi_type=None):
   """Sets various global constants used by the classes in this module."""
   global NORMALIZE_DAMPING_POWER
+  global PI_TYPE
 
   if normalize_damping_power is not None:
     NORMALIZE_DAMPING_POWER = normalize_damping_power
+
+  if pi_type is not None:
+    PI_TYPE = pi_type
+
+
+def _compute_pi_tracenorm(left_cov, right_cov):
+  """Computes the scalar constant pi for Tikhonov regularization/damping.
+
+  pi = sqrt( (trace(A) / dim(A)) / (trace(B) / dim(B)) )
+  See section 6.3 of https://arxiv.org/pdf/1503.05671.pdf for details.
+
+  Args:
+    left_cov: The left Kronecker factor "covariance".
+    right_cov: The right Kronecker factor "covariance".
+
+  Returns:
+    The computed scalar constant pi for these Kronecker Factors (as a Tensor).
+  """
+  # Instead of dividing by the dim of the norm, we multiply by the dim of the
+  # other norm. This works out the same in the ratio.
+  left_norm = math_ops.trace(left_cov) * right_cov.shape.as_list()[0]
+  right_norm = math_ops.trace(right_cov) * left_cov.shape.as_list()[0]
+  return math_ops.sqrt(left_norm / right_norm)
+
+
+def _compute_pi_adjusted_damping(left_cov, right_cov, damping):
+
+  if PI_TYPE == PI_TRACENORM_NAME:
+    pi = _compute_pi_tracenorm(left_cov, right_cov)
+    return (damping * pi, damping / pi)
+
+  elif PI_TYPE == PI_OFF_NAME:
+    return (damping, damping)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -153,7 +194,7 @@ class FullFB(FisherBlock):
     self._factor.register_damped_inverse(damping)
 
   def multiply_inverse(self, vector):
-    inverse = self._factor.get_inverse(self._damping)
+    inverse = self._factor.get_damped_inverse(self._damping)
     out_flat = math_ops.matmul(inverse, utils.tensors_to_column(vector))
     return utils.column_to_tensors(vector, out_flat)
 
@@ -411,7 +452,7 @@ class ConvDiagonalFB(FisherBlock):
         (self._strides[1] * self._strides[2]))
 
     if NORMALIZE_DAMPING_POWER:
-      damping /= self._num_locations ** NORMALIZE_DAMPING_POWER
+      damping /= self._num_locations**NORMALIZE_DAMPING_POWER
     self._damping = damping
 
     self._factor = self._layer_collection.make_or_get_factor(
@@ -465,11 +506,10 @@ class KroneckerProductFB(FisherBlock):
     Args:
       damping: The base damping factor (float or Tensor) for the damped inverse.
     """
-    pi = utils.compute_pi(self._input_factor.get_cov(),
-                          self._output_factor.get_cov())
-
-    self._input_damping = (damping**0.5) * pi
-    self._output_damping = (damping**0.5) / pi
+    self._input_damping, self._output_damping = _compute_pi_adjusted_damping(
+        self._input_factor.get_cov(),
+        self._output_factor.get_cov(),
+        damping**0.5)
 
     self._input_factor.register_damped_inverse(self._input_damping)
     self._output_factor.register_damped_inverse(self._output_damping)
@@ -487,8 +527,9 @@ class KroneckerProductFB(FisherBlock):
     return 1.0
 
   def multiply_inverse(self, vector):
-    left_factor_inv = self._input_factor.get_inverse(self._input_damping)
-    right_factor_inv = self._output_factor.get_inverse(self._output_damping)
+    left_factor_inv = self._input_factor.get_damped_inverse(self._input_damping)
+    right_factor_inv = self._output_factor.get_damped_inverse(
+        self._output_damping)
     reshaped_vector = utils.layer_params_to_mat2d(vector)
     reshaped_out = math_ops.matmul(left_factor_inv,
                                    math_ops.matmul(reshaped_vector,
@@ -720,3 +761,202 @@ def _concat_along_batch_dim(tensor_list):
 def _num_conv_locations(input_shape, strides):
   """Returns the number of locations a Conv kernel is applied to."""
   return input_shape[1] * input_shape[2] // (strides[1] * strides[2])
+
+
+class SeriesFBApproximation(enum.IntEnum):
+  """See FullyConnectedSeriesFB.__init__ for description and usage."""
+  option1 = 1
+  option2 = 2
+
+
+class FullyConnectedSeriesFB(FisherBlock):
+  """FisherBlock for fully-connected RNN cells.
+
+  See the following preprint for details:
+    https://openreview.net/pdf?id=HyMTkQZAb
+
+  See the end of the appendix of the paper for a pseudo-code of the
+  algorithm being implemented by multiply_inverse here.  Note that we are
+  using pre-computed versions of certain matrix-matrix products to speed
+  things up.  This is explicitly explained wherever it is done.
+  """
+
+  def __init__(self,
+               layer_collection,
+               inputs,
+               outputs,
+               has_bias=False,
+               option=SeriesFBApproximation.option2):
+    """Constructs a new `FullyConnectedSeriesFB`.
+
+    Args:
+      layer_collection: The collection of all layers in the K-FAC approximate
+        Fisher information matrix to which this FisherBlock belongs.
+      inputs: List of tensors of shape [batch_size, input_size].
+        Inputs to the layer.
+      outputs: List of tensors of shape [batch_size, input_size].
+        Outputs of the layer (before activations).
+      has_bias: Whether the layer includes a bias parameter.
+      option: A `SeriesFBApproximation` specifying the simplifying assumption
+        to be used in this block. `option1` approximates the cross-covariance
+        over time as a symmetric matrix, while `option2` makes
+        the assumption that training sequences are infinitely long. See section
+        3.5 of the paper for more details.
+    """
+
+    assert len(inputs) == len(outputs)
+    # We need to make sure inputs and outputs are tuples and not lists so that
+    # they get hashed by layer_collection.make_or_get_factor properly.
+    self._inputs = tuple(inputs)
+    self._outputs = tuple(outputs)
+    self._has_bias = has_bias
+    self._num_timesteps = len(inputs)
+    self._option = option
+
+    super(FullyConnectedSeriesFB, self).__init__(layer_collection)
+
+  @property
+  def num_registered_minibatches(self):
+    # TODO(b/69411207): Add support for registering additional minibatches.
+    return 1
+
+  def instantiate_factors(self, grads_list, damping):
+
+    self._input_factor = self._layer_collection.make_or_get_factor(
+        fisher_factors.FullyConnectedMultiKF, ((self._inputs,), self._has_bias))
+
+    self._output_factor = self._layer_collection.make_or_get_factor(
+        fisher_factors.FullyConnectedMultiKF, (grads_list,))
+
+    damping /= self._num_timesteps**NORMALIZE_DAMPING_POWER
+
+    self._damping_input, self._damping_output = _compute_pi_adjusted_damping(
+        self._input_factor.get_cov(),
+        self._output_factor.get_cov(),
+        damping**0.5)
+
+    if self._option == SeriesFBApproximation.option1:
+      self._input_factor.register_option1quants(self._damping_input)
+      self._output_factor.register_option1quants(self._damping_output)
+    elif self._option == SeriesFBApproximation.option2:
+      self._input_factor.register_option2quants(self._damping_input)
+      self._output_factor.register_option2quants(self._damping_output)
+    else:
+      raise ValueError(
+          "Unrecognized FullyConnectedSeriesFB approximation: {}".format(
+              self._option))
+
+  def multiply_inverse(self, vector):
+    # pylint: disable=invalid-name
+
+    Z = utils.layer_params_to_mat2d(vector)
+
+    # Derivations were done for "batch_dim==1" case so we need to convert to
+    # that orientation:
+    Z = array_ops.transpose(Z)
+
+    if self._option == SeriesFBApproximation.option1:
+
+      # Note that L_A = A0^(-1/2) * U_A and L_G = G0^(-1/2) * U_G.
+      L_A, psi_A = self._input_factor.get_option1quants(self._damping_input)
+      L_G, psi_G = self._output_factor.get_option1quants(self._damping_output)
+
+      def gamma(x):
+        # We are assuming that each case has the same number of time-steps.
+        # If this stops being the case one shouldn't simply replace this T
+        # with its average value.  Instead, one needs to go back to the
+        # definition of the gamma function from the paper.
+        T = self._num_timesteps
+        return (1 - x)**2 / (T * (1 - x**2) - 2 * x * (1 - x**T))
+
+      # Y = gamma( psi_G*psi_A^T ) (computed element-wise)
+      # Even though Y is Z-independent we are recomputing it from the psi's
+      # each since Y depends on both A and G quantities, and it is relatively
+      # cheap to compute.
+      Y = gamma(array_ops.reshape(psi_G, [int(psi_G.shape[0]), -1]) * psi_A)
+
+      # Z = L_G^T * Z * L_A
+      # This is equivalent to the following computation from the original
+      # pseudo-code:
+      # Z = G0^(-1/2) * Z * A0^(-1/2)
+      # Z = U_G^T * Z * U_A
+      Z = math_ops.matmul(L_G, math_ops.matmul(Z, L_A), transpose_a=True)
+
+      # Z = Z .* Y
+      Z *= Y
+
+      # Z = L_G * Z * L_A^T
+      # This is equivalent to the following computation from the original
+      # pseudo-code:
+      # Z = U_G * Z * U_A^T
+      # Z = G0^(-1/2) * Z * A0^(-1/2)
+      Z = math_ops.matmul(L_G, math_ops.matmul(Z, L_A, transpose_b=True))
+
+    elif self._option == SeriesFBApproximation.option2:
+
+      # Note that P_A = A_1^T * A_0^(-1) and P_G = G_1^T * G_0^(-1),
+      # and K_A = A_0^(-1/2) * E_A and K_G = G_0^(-1/2) * E_G.
+      P_A, K_A, mu_A = self._input_factor.get_option2quants(self._damping_input)
+      P_G, K_G, mu_G = self._output_factor.get_option2quants(
+          self._damping_output)
+
+      # Our approach differs superficially from the pseudo-code in the paper
+      # in order to reduce the total number of matrix-matrix multiplies.
+      # In particular, the first three computations in the pseudo code are
+      # Z = G0^(-1/2) * Z * A0^(-1/2)
+      # Z = Z - hPsi_G^T * Z * hPsi_A
+      # Z = E_G^T * Z * E_A
+      # Noting that hPsi = C0^(-1/2) * C1 * C0^(-1/2), so that
+      # C0^(-1/2) * hPsi = C0^(-1) * C1 * C0^(-1/2) = P^T * C0^(-1/2)
+      # the entire computation can be written as
+      # Z = E_G^T * (G0^(-1/2) * Z * A0^(-1/2)
+      #     - hPsi_G^T * G0^(-1/2) * Z * A0^(-1/2) * hPsi_A) * E_A
+      #   = E_G^T * (G0^(-1/2) * Z * A0^(-1/2)
+      #     - G0^(-1/2) * P_G * Z * P_A^T * A0^(-1/2)) * E_A
+      #   = E_G^T * G0^(-1/2) * Z * A0^(-1/2) * E_A
+      #     -  E_G^T* G0^(-1/2) * P_G * Z * P_A^T * A0^(-1/2) * E_A
+      #   = K_G^T * Z * K_A  -  K_G^T * P_G * Z * P_A^T * K_A
+      # This final expression is computed by the following two lines:
+      # Z = Z - P_G * Z * P_A^T
+      Z -= math_ops.matmul(P_G, math_ops.matmul(Z, P_A, transpose_b=True))
+      # Z = K_G^T * Z * K_A
+      Z = math_ops.matmul(K_G, math_ops.matmul(Z, K_A), transpose_a=True)
+
+      # Z = Z ./ (1*1^T - mu_G*mu_A^T)
+      # Be careful with the outer product.  We don't want to accidentally
+      # make it an inner-product instead.
+      tmp = 1.0 - array_ops.reshape(mu_G, [int(mu_G.shape[0]), -1]) * mu_A
+      # Prevent some numerical issues by setting 0 eigs to 1.0
+      tmp += 1.0 * array_ops.cast(math_ops.equal(tmp, 0.0), dtype=tmp.dtype)
+      Z /= tmp
+
+      # We now perform the transpose/reverse version of the operations
+      # derived above, whose derivation from the original pseudo-code is
+      # analgous.
+      # Z = K_G * Z * K_A^T
+      Z = math_ops.matmul(K_G, math_ops.matmul(Z, K_A, transpose_b=True))
+
+      # Z = Z - P_G^T * Z * P_A
+      Z -= math_ops.matmul(P_G, math_ops.matmul(Z, P_A), transpose_a=True)
+
+      # Z = normalize (1/E[T]) * Z
+      # Note that this normalization is done because we compute the statistics
+      # by averaging, not summing, over time. (And the gradient is presumably
+      # summed over time, not averaged, and thus their scales are different.)
+      Z /= array_ops.cast(self._num_timesteps, Z.dtype)
+
+    # Convert back to the "batch_dim==0" orientation.
+    Z = array_ops.transpose(Z)
+
+    return utils.mat2d_to_layer_params(vector, Z)
+
+    # pylint: enable=invalid-name
+
+  def multiply(self, vector):
+    raise NotImplementedError
+
+  def tensors_to_compute_grads(self):
+    return self._outputs
+
+  def num_inputs(self):
+    return len(self._inputs)

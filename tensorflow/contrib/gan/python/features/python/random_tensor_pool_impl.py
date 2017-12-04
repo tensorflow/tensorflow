@@ -42,7 +42,13 @@ __all__ = [
 ]
 
 
-def tensor_pool(input_value,
+def _to_tuple(x):
+  if isinstance(x, (list, tuple)):
+    return tuple(x)
+  return (x,)
+
+
+def tensor_pool(input_values,
                 pool_size,
                 pooling_probability=0.5,
                 name='tensor_pool'):
@@ -57,15 +63,17 @@ def tensor_pool(input_value,
   `pool_size` = 0 or `pooling_probability` = 0.
 
   Args:
-    input_value: A `Tensor` from which to read values to be pooled.
+    input_values: A `Tensor`, or a list or tuple of `Tensor`s from which to read
+      values to be pooled.
     pool_size: An integer specifying the maximum size of the pool.
     pooling_probability: A float `Tensor` specifying the probability of getting
       a value from the pool, as opposed to just the current input.
     name: A string prefix for the name scope for all tensorflow ops.
 
   Returns:
-    A `Tensor` which is with given probability either the `input_value` or a
-    randomly chosen sample that was previously inserted in the pool.
+    A `Tensor`, or a list or tuple of `Tensor`s (according to the type ofx
+    `input_values`) which is with given probability either the `input_values` or
+    a randomly chosen sample that was previously inserted in the pool.
 
   Raises:
     ValueError: If `pool_size` is negative.
@@ -74,45 +82,53 @@ def tensor_pool(input_value,
   if pool_size < 0:
     raise ValueError('`pool_size` is negative.')
   elif pool_size == 0:
-    return input_value
+    return input_values
 
-  with ops.name_scope('{}_pool_queue'.format(name),
-                      values=[input_value, pooling_probability]):
+  original_input_values = input_values
+  input_values = _to_tuple(input_values)
+
+  with ops.name_scope(
+      '{}_pool_queue'.format(name),
+      values=input_values + (pooling_probability,)):
     pool_queue = data_flow_ops.RandomShuffleQueue(
         capacity=pool_size,
         min_after_dequeue=0,
-        dtypes=[input_value.dtype],
+        dtypes=[v.dtype for v in input_values],
         shapes=None)
 
     # In pseudeo code this code does the following:
     # if not pool_full:
-    #   enqueue(input_value)
-    #   return input_value
+    #   enqueue(input_values)
+    #   return input_values
     # else
-    #   dequeue_value = dequeue_random_sample()
-    #   enqueue(input_value)
+    #   dequeue_values = dequeue_random_sample()
+    #   enqueue(input_values)
     #   if rand() < pooling_probability:
-    #     return dequeue_value
+    #     return dequeue_values
     #   else
-    #     return input_value
+    #     return input_values
 
     def _get_input_value_pooled():
-      enqueue_op = pool_queue.enqueue(input_value)
+      enqueue_op = pool_queue.enqueue(input_values)
       with ops.control_dependencies([enqueue_op]):
-        return array_ops.identity(input_value)
+        return tuple(array_ops.identity(v) for v in input_values)
 
     def _get_random_pool_value_and_enqueue_input():
-      dequeue_value = pool_queue.dequeue()
-      with ops.control_dependencies([dequeue_value]):
-        enqueue_op = pool_queue.enqueue(input_value)
+      dequeue_values = _to_tuple(pool_queue.dequeue())
+      with ops.control_dependencies(dequeue_values):
+        enqueue_op = pool_queue.enqueue(input_values)
         with ops.control_dependencies([enqueue_op]):
           prob = random_ops.random_uniform(
               (), dtype=dtypes.float32) < pooling_probability
-          return control_flow_ops.cond(prob, lambda: dequeue_value,
-                                       lambda: input_value)
+          return control_flow_ops.cond(prob, lambda: dequeue_values,
+                                       lambda: input_values)
 
-    output_value = control_flow_ops.cond(
+    output_values = _to_tuple(control_flow_ops.cond(
         pool_queue.size() < pool_size, _get_input_value_pooled,
-        _get_random_pool_value_and_enqueue_input)
+        _get_random_pool_value_and_enqueue_input))
 
-  return output_value
+  if isinstance(original_input_values, list):
+    return list(output_values)
+  elif isinstance(original_input_values, tuple):
+    return output_values
+  return output_values[0]

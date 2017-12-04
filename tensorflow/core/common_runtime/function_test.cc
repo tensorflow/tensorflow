@@ -207,7 +207,19 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
     FunctionLibraryRuntime::Options opts;
-    return Run(flr, handle, opts, args, std::move(rets));
+    status = Run(flr, handle, opts, args, rets);
+    if (!status.ok()) return status;
+
+    // Release the handle and try running again. It should not succeed.
+    status = flr->ReleaseHandle(handle);
+    if (!status.ok()) return status;
+
+    Status status2 = Run(flr, handle, opts, args, std::move(rets));
+    EXPECT_TRUE(errors::IsInvalidArgument(status2));
+    EXPECT_TRUE(
+        StringPiece(status2.error_message()).contains("remote execution."));
+
+    return status;
   }
 
   std::unique_ptr<Graph> GetFuncBody(FunctionLibraryRuntime* flr,
@@ -498,7 +510,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_12__cf__2")
+        s.WithOpName("x4/x2/scale/_12__cf__3")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
@@ -694,13 +706,13 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
     auto scale = ops::Const(
-        s.WithOpName("scale/_5__cf__6")
+        s.WithOpName("scale/_5__cf__7")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
     auto const0 = ops::Const(
-        s.WithOpName("Func/_1/sy/_6__cf__7")
+        s.WithOpName("Func/_1/sy/_6__cf__8")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(
