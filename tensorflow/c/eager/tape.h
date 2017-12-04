@@ -491,6 +491,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
     state.op_tape.erase(op_it);
     std::vector<Gradient*> out_gradients;
     out_gradients.reserve(trace.output_tensor_info.size());
+    bool any_gradient_nonzero = false;
     for (int i = 0; i < trace.output_tensor_info.size(); ++i) {
       const int64 id = trace.output_tensor_info[i].id;
       auto grad_it = gradients.find(id);
@@ -506,6 +507,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
                            trace.output_tensor_info[i].dtype));
         }
       } else {
+        any_gradient_nonzero = true;
         out_gradients.push_back(vspace.AggregateGradients(grad_it->second));
         if (sources_set.find(grad_it->first) == sources_set.end()) {
           gradients.erase(grad_it);
@@ -513,14 +515,21 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
       }
     }
     std::vector<Gradient*> in_gradients;
-    Status s = vspace.CallBackwardFunction(trace.backward_function,
-                                           out_gradients, &in_gradients);
-    if (!persistent_) {
-      vspace.ReleaseBackwardFunction(trace.backward_function);
-    }
-    if (!s.ok()) {
-      cleanup();
-      return s;
+    if (any_gradient_nonzero) {
+      Status s = vspace.CallBackwardFunction(trace.backward_function,
+                                             out_gradients, &in_gradients);
+      if (!persistent_) {
+        vspace.ReleaseBackwardFunction(trace.backward_function);
+      }
+      if (!s.ok()) {
+        cleanup();
+        return s;
+      }
+    } else {
+      in_gradients.resize(trace.input_tensor_id.size());
+      if (!persistent_) {
+        vspace.ReleaseBackwardFunction(trace.backward_function);
+      }
     }
     VLOG(1) << "Got " << in_gradients.size() << " in_gradients for "
             << trace.input_tensor_id.size() << " sources";

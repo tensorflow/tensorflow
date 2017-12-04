@@ -13,6 +13,7 @@ tf_cc_binary(
         "//tensorflow/contrib/lite/tools:gen_op_registration",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 

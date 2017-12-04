@@ -706,6 +706,26 @@ memory_region_name: Name of readonly memory region used by the tensor, see
   NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
 )doc");
 
+REGISTER_OP("GuaranteeConst")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return UnchangedShape(c);
+    })
+    // We don't want this to be optimized away.
+    .SetIsStateful()
+    .Doc(R"(
+Gives a guarantee to the TF runtime that the input tensor is a constant.
+
+The runtime is then free to make optimizations based on this.
+
+Only accepts value typed tensors as inputs and rejects resource variable handles
+as input.
+
+Returns the input tensor without modification.
+)");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
     .Input("x: T")

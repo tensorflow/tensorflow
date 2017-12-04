@@ -160,7 +160,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   if (already_optimized) {
-    TopologicalSort(optimized_graph);
+    TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     // Make sure that the optimizers preserved the graph version and library.
     DCHECK_GE(optimized_graph->library().function_size(),
               item.graph.library().function_size());

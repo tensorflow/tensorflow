@@ -46,7 +46,7 @@ class MutableOpResolver : public OpResolver {
   void AddCustom(const char* name, TfLiteRegistration* registration);
 
  private:
-  std::map<tflite::BuiltinOperator, TfLiteRegistration*> builtins_;
+  std::map<int, TfLiteRegistration*> builtins_;
   std::map<std::string, TfLiteRegistration*> custom_ops_;
 };
 

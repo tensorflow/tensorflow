@@ -55,6 +55,27 @@ struct LeftUpdate<T, scatter_nd_op::UpdateOp::SUB> {
   }
 };
 
+// Specializations for std::complex, updating real and imaginary part
+// individually. Even though this is not an atomic op anymore, it is safe
+// because there is only one type of op per kernel.
+template <typename T>
+struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::ADD> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(
+      std::complex<T>* out, const std::complex<T>& val) {
+    T* ptr = reinterpret_cast<T*>(out);
+    CudaAtomicAdd(ptr, val.real());
+    CudaAtomicAdd(ptr, val.imag());
+  }
+};
+
+template <typename T>
+struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::SUB> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(
+      std::complex<T>* out, const std::complex<T>& val) {
+    LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::ADD>()(out, -val);
+  }
+};
+
 }  // namespace
 
 template <typename T, typename Index, scatter_nd_op::UpdateOp op, int IXDIM>
@@ -136,7 +157,9 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 2); \
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 3); \
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 4); \
-  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5);
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 6); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 7);
 
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                                \
   DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::ASSIGN); \

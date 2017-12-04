@@ -158,6 +158,13 @@ TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
 }
 
+TEST(ArrayOpsTest, GuaranteeConst_ShapeFn) {
+  ShapeInferenceTestOp op("GuaranteeConst");
+  INFER_OK(op, "?", "in0");
+  INFER_OK(op, "[]", "in0");
+  INFER_OK(op, "[1,2,?,4,5]", "in0");
+}
+
 TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   const char* op_name = "Identity";
   ShapeInferenceTestOp op(op_name);
