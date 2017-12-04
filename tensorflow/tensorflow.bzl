@@ -437,7 +437,8 @@ def tf_gen_op_wrappers_cc(name,
 #     "name" arg)
 #   op_whitelist: if not empty, only op names in this list will be wrapped. It
 #     is invalid to specify both "hidden" and "op_whitelist".
-#   cc_linkopts: Optional link options for cc_binary.
+##  cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
+#     sepcified ops.
 def tf_gen_op_wrapper_py(name,
                          out=None,
                          hidden=None,
