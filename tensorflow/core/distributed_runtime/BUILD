@@ -269,7 +269,6 @@ cc_library(
     hdrs = ["worker_cache_wrapper.h"],
     deps = [
         ":worker_cache",
-        ":worker_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
