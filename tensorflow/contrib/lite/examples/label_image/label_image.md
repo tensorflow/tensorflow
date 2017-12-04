@@ -6,7 +6,7 @@ To build it for android ARMv8:
   --crosstool_top=//external:android/crosstool \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
   --cpu=arm64-v8a \
-  //tensorflow/contrib/lite/tools:label_image
+  //tensorflow/contrib/lite/examples/label_image:label_image
 ```
 To build it for android arm-v7a:
 ```
@@ -14,11 +14,11 @@ To build it for android arm-v7a:
   --crosstool_top=//external:android/crosstool \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
   --cpu=armeabi-v7a \
-  //tensorflow/contrib/lite/tools:label_image
+  //tensorflow/contrib/lite/examples/label_image:label_image
 ```
 Build it for desktop machines (tested on Ubuntu and OS X)
 ```
-> bazel build --config opt --cxxopt=-std=c++11 //tensorflow/contrib/lite/tools:label_image
+> bazel build --config opt --cxxopt=-std=c++11 //tensorflow/contrib/lite/examples/label_image:label_image
 ```
 To run it. Prepare `./mobilenet_quant_v1_224.tflite`, `./grace_hopper.txt`, and `./labels.txt`.
 Run it:
