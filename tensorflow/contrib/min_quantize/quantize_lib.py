@@ -200,7 +200,7 @@ def isclose(a, b, rel_tol=None):
   return abs(a - b) <= rel_tol
 
 
-def reshaped_view(ary: np.ndarray, shape=None):
+def reshaped_view(ary, shape=None):
   """
   :param ary: source data
   :param shape: target shape, default (-1,) as flat view
