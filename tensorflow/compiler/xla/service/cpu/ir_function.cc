@@ -112,11 +112,11 @@ void IrFunction::Initialize(const string& function_name,
   // Functions with local linkage get an inlining bonus.  Because we know
   // a-priori that embedded functions (non-entry functions) will not have its
   // name resolved, give it local linkage.
-  function_ = llvm::Function::Create(/*Ty=*/function_type,
-                                     /*Linkage=*/linkage,
-                                     /*N=*/AsStringRef(function_name),
-                                     /*M=*/llvm_module_);
-  function_->setCallingConv(llvm::CallingConv::C);
+  function_ =
+      llvm_ir::CreateFunction(function_type, linkage,
+                              /*enable_fast_math=*/enable_fast_math,
+                              /*optimize_for_size=*/optimize_for_size_requested,
+                              function_name, llvm_module_);
 
   // Set meaningful names for the function's arguments: useful for debugging.
   llvm::Function::arg_iterator arg_iter = function_->arg_begin();
@@ -145,20 +145,6 @@ void IrFunction::Initialize(const string& function_name,
       continue;
     }
     function_->addAttribute(argument.getArgNo() + 1, llvm::Attribute::NoAlias);
-  }
-
-  // Add the optize attribute to the function if optimizing for size. This
-  // controls internal behavior of some optimization passes (e.g. loop
-  // unrolling).
-  if (optimize_for_size_requested) {
-    function_->addFnAttr(llvm::Attribute::OptimizeForSize);
-  }
-
-  if (enable_fast_math) {
-    function_->addFnAttr("unsafe-fp-math", "true");
-    function_->addFnAttr("no-infs-fp-math", "true");
-    function_->addFnAttr("no-nans-fp-math", "true");
-    function_->addFnAttr("no-signed-zeros-fp-math", "true");
   }
 
   ir_builder_->SetInsertPoint(llvm::BasicBlock::Create(

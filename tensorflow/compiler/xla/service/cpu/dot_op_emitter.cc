@@ -581,6 +581,11 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   llvm::Value* rhs_op =
       swap_operands ? lhs_array_.GetBasePointer() : rhs_array_.GetBasePointer();
 
+  const bool enable_fast_math =
+      hlo_module_config_.debug_options().xla_enable_fast_math();
+  const bool optimize_for_size =
+      options::OptimizeForSizeRequested(hlo_module_config_);
+
   if (is_column_major_matrix_vector) {
     VLOG(2) << "Emitting column major matrix-vector multiply with m = " << m
             << " and k = " << k;
@@ -592,7 +597,9 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
         "_", tile_cols, "_", m, "_", k);
 
     KernelSupportLibrary::EmitAndCallOutlinedKernel(
-        ir_builder_, kernel_name, lhs_op, rhs_op, result_op,
+        /*enable_fast_math=*/enable_fast_math,
+        /*optimize_for_size=*/optimize_for_size, ir_builder_, kernel_name,
+        lhs_op, rhs_op, result_op,
         [this, tile_rows, tile_cols, m, k, primitive_type](
             llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* result_op) {
           ColumnMajorMatrixVectorProductEmitter emitter(
@@ -611,7 +618,9 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
         "_", tile_cols, "_", m, "_", k);
 
     KernelSupportLibrary::EmitAndCallOutlinedKernel(
-        ir_builder_, kernel_name, lhs_op, rhs_op, result_op,
+        /*enable_fast_math=*/enable_fast_math,
+        /*optimize_for_size=*/optimize_for_size, ir_builder_, kernel_name,
+        lhs_op, rhs_op, result_op,
         [this, tile_rows, tile_cols, m, k, primitive_type](
             llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* result_op) {
           RowMajorMatrixVectorProductEmitter emitter(
