@@ -99,7 +99,8 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
 
     std::vector<llvm::Value*> arg_values;
     std::transform(function->arg_begin(), function->arg_end(),
-                   std::back_inserter(arg_values), std::addressof<llvm::Value>);
+                   std::back_inserter(arg_values),
+                   [](llvm::Value& v) { return &v; });
     kernel_body_generator(arg_values);
   } else {
     VLOG(3) << "Re-using kernel for " << kernel_name;
