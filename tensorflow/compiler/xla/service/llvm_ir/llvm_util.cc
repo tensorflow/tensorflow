@@ -684,6 +684,8 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
   llvm::Function* function =
       llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
   function->setCallingConv(llvm::CallingConv::C);
+  function->addFnAttr("no-frame-pointer-elim", "false");
+
   if (enable_fast_math) {
     function->addFnAttr("unsafe-fp-math", "true");
     function->addFnAttr("no-infs-fp-math", "true");
