@@ -75,10 +75,11 @@ export GCC_HOST_COMPILER_PATH=/usr/bin/gcc
 # Also ensure to not require too recent CPU: AVX2/FMA introduced by:
 #  - Intel with Haswell (2013)
 #  - AMD with Excavator (2015)
+# For better compatibility, AVX ony might be better.
 #
 # Build for generic amd64 platforms, no device-specific optimization
 # See https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html for targetting specific CPUs
-CC_OPT_FLAGS="-mtune=generic -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mavx -mavx2 -mfma"
+CC_OPT_FLAGS="-mtune=generic -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mavx"
 BAZEL_OPT_FLAGS=""
 for flag in ${CC_OPT_FLAGS};
 do
