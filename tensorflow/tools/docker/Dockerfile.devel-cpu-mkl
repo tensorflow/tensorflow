@@ -54,7 +54,7 @@ RUN ./configure
 RUN LD_LIBRARY_PATH=${LD_LIBRARY_PATH} \
     bazel build --config=mkl \
                 --config="opt" \
-                --copt="-march=native" \
+                --copt="-march=broadwell" \
                 --copt="-O3" \
                 //tensorflow/tools/pip_package:build_pip_package && \
     mkdir ${WHL_DIR} && \
@@ -81,5 +81,3 @@ RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/issue && cat /etc/motd' \
 ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||\n\
 \n "\
 	> /etc/motd
-
-CMD ["/bin/bash"]
