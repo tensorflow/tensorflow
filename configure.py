@@ -1023,6 +1023,15 @@ def create_android_bazelrc_configs():
 def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
 
+def set_windows_build_flags():
+  if is_windows():
+    # The non-monolithic build is not supported yet
+    write_to_bazelrc('build --config monolithic')
+    # Suppress warning messages
+    write_to_bazelrc('build --copt=-w --host_copt=-w')
+    # Output more verbose information when something goes wrong
+    write_to_bazelrc('build --verbose_failures')
+
 
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
@@ -1101,6 +1110,7 @@ def main():
   set_cc_opt_flags(environ_cp)
   set_mkl()
   set_monolithic()
+  set_windows_build_flags()
   create_android_bazelrc_configs()
 
 if __name__ == '__main__':
