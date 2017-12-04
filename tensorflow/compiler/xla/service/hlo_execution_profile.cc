@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-HloToProfileIndex::HloToProfileIndex(const HloModule& module) {
+HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
   size_t current_profile_index = 0;
   for (xla::HloComputation* computation : module.MakeComputationPostOrder()) {
     InsertOrDie(&computation_to_profile_idx_, computation,
@@ -41,24 +41,24 @@ HloToProfileIndex::HloToProfileIndex(const HloModule& module) {
 }
 
 static HloProfilePrinter CreateOwnedHloProfilePrinter(
-    const HloToProfileIndex& hlo_to_profile_index,
+    const HloProfileIndexMap& hlo_profile_index_map,
     const HloCostAnalysis& cost_analysis) {
   using HloComputationInfo = HloProfilePrinter::HloComputationInfo;
   using HloInstructionInfo = HloProfilePrinter::HloInstructionInfo;
 
   HloComputationInfo* computation_infos =
-      new HloComputationInfo[hlo_to_profile_index.computation_count()];
+      new HloComputationInfo[hlo_profile_index_map.computation_count()];
 
   // There are two "indices" in play here.  The first one is the index of the
   // HloComputationInfo or HloInstructionInfo in the array that contains said
   // HloComputationInfo or HloInstructionInfo.  The second index is the index of
   // the HloComputationInfo or HloInstructionInfo in the profile counters array,
-  // as decided by hlo_to_profile_index.  The latter index is always referred to
-  // as "profile_index".
+  // as decided by hlo_profile_index_map.  The latter index is always referred
+  // to as "profile_index".
 
   size_t computation_index_in_static_data = 0;
-  size_t max_profile_index = hlo_to_profile_index.total_count();
-  for (const auto& pair : hlo_to_profile_index.computation_to_profile_idx()) {
+  size_t max_profile_index = hlo_profile_index_map.total_count();
+  for (const auto& pair : hlo_profile_index_map.computation_to_profile_idx()) {
     CHECK_LT(pair.second, max_profile_index);
     const HloComputation* computation = pair.first;
     size_t current_computation_index = computation_index_in_static_data++;
@@ -85,7 +85,7 @@ static HloProfilePrinter CreateOwnedHloProfilePrinter(
       instruction_info->bytes_accessed = cost_analysis.bytes_accessed(*hlo);
       instruction_info->seconds = cost_analysis.seconds(*hlo);
       instruction_info->profile_index =
-          hlo_to_profile_index.GetProfileIndexFor(*hlo);
+          hlo_profile_index_map.GetProfileIndexFor(*hlo);
       CHECK_LT(instruction_info->profile_index, max_profile_index);
     }
   }
@@ -109,26 +109,26 @@ static HloProfilePrinter CreateOwnedHloProfilePrinter(
   };
 
   return HloProfilePrinter(computation_infos,
-                           hlo_to_profile_index.computation_count(), deleter);
+                           hlo_profile_index_map.computation_count(), deleter);
 }
 
 HloExecutionProfile::HloExecutionProfile(const HloModule& module,
                                          const HloCostAnalysis& cost_analysis)
-    : hlo_to_profile_index_(module),
+    : hlo_profile_index_map_(module),
       hlo_profile_printer_(
-          CreateOwnedHloProfilePrinter(hlo_to_profile_index_, cost_analysis)),
+          CreateOwnedHloProfilePrinter(hlo_profile_index_map_, cost_analysis)),
       profile_counters_(
-          /*count*/ hlo_to_profile_index_.total_count(),
+          /*count*/ hlo_profile_index_map_.total_count(),
           /*value*/ 0) {}
 
 void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
                                            uint64 cycles_taken) {
-  profile_counters_[hlo_to_profile_index_.GetProfileIndexFor(*hlo)] =
+  profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(*hlo)] =
       cycles_taken;
 }
 
 uint64 HloExecutionProfile::GetCyclesTakenBy(const HloInstruction& hlo) const {
-  return profile_counters_[hlo_to_profile_index_.GetProfileIndexFor(hlo)];
+  return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(hlo)];
 }
 
 string HloExecutionProfile::ToString(

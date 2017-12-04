@@ -53,18 +53,21 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
                                                  std::move(other_arguments),
                                                  &captured_func));
 
-    *output = new Dataset(input, std::move(captured_func), output_types_,
-                          output_shapes_);
+    *output = new Dataset(ctx, input, func_, std::move(captured_func),
+                          output_types_, output_shapes_);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(const DatasetBase* input,
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : input_(input),
+        : GraphDatasetBase(ctx),
+          input_(input),
+          func_(func),
           captured_func_(std::move(captured_func)),
           output_types_(output_types),
           output_shapes_(output_shapes) {
@@ -87,6 +90,37 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() override { return "MapDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+
+      DataTypeVector other_arguments_types(
+          captured_func_->captured_inputs().size());
+      std::vector<NodeBuilder::NodeOut> other_arguments(
+          captured_func_->captured_inputs().size());
+      for (const Tensor& t : captured_func_->captured_inputs()) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        other_arguments.emplace_back(node);
+        other_arguments_types.emplace_back(t.dtype());
+      }
+      AttrValue f;
+      b->BuildAttrValue(func_, &f);
+      AttrValue other_arguments_types_attr;
+      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
+          {std::make_pair(1, other_arguments)},         // Tensor list inputs.
+          {std::make_pair("f", f),
+           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+          output));
+      return Status::OK();
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -133,11 +167,24 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        return Status::OK();
+      }
+
      private:
       const std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* const input_;
+    const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;

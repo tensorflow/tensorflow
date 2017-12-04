@@ -203,12 +203,12 @@ class KerasCallbacksTest(test.TestCase):
           callbacks=cbks,
           epochs=4,
           verbose=1)
-      assert os.path.exists(filepath.format(epoch=1))
-      assert os.path.exists(filepath.format(epoch=3))
-      os.remove(filepath.format(epoch=1))
-      os.remove(filepath.format(epoch=3))
-      assert not os.path.exists(filepath.format(epoch=0))
-      assert not os.path.exists(filepath.format(epoch=2))
+      assert os.path.exists(filepath.format(epoch=2))
+      assert os.path.exists(filepath.format(epoch=4))
+      os.remove(filepath.format(epoch=2))
+      os.remove(filepath.format(epoch=4))
+      assert not os.path.exists(filepath.format(epoch=1))
+      assert not os.path.exists(filepath.format(epoch=3))
 
       # Invalid use: this will raise a warning but not an Exception.
       keras.callbacks.ModelCheckpoint(
@@ -273,12 +273,12 @@ class KerasCallbacksTest(test.TestCase):
       stopper = keras.callbacks.EarlyStopping(monitor='acc', patience=patience)
       weights = model.get_weights()
 
-      hist = model.fit(data, labels, callbacks=[stopper], verbose=0)
+      hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
       assert len(hist.epoch) >= patience
 
       # This should allow training to go for at least `patience` epochs
       model.set_weights(weights)
-      hist = model.fit(data, labels, callbacks=[stopper], verbose=0)
+      hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
     assert len(hist.epoch) >= patience
 
   def test_RemoteMonitor(self):
@@ -571,7 +571,6 @@ class KerasCallbacksTest(test.TestCase):
           loss='categorical_crossentropy',
           optimizer='sgd',
           metrics=['accuracy'])
-
       tsb = keras.callbacks.TensorBoard(
           log_dir=temp_dir, histogram_freq=1, write_images=True,
           write_grads=True, batch_size=5)

@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
 
@@ -342,14 +343,19 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
     predictions = {}
     metrics = {}
     losses = []
-    for head, spec in zip(self._heads, all_estimator_spec):
-      losses.append(spec.loss)
-      head_name = head.name
-      # Metric keys already contain head.name.
-      metrics.update(spec.eval_metric_ops or {})
-      for k, v in six.iteritems(spec.predictions):
-        predictions[(head_name, k)] = v
-    loss = _merge_losses(losses, self._head_weights)
+    with ops.name_scope('merge_eval'):
+      for head, spec in zip(self._heads, all_estimator_spec):
+        losses.append(spec.loss)
+        head_name = head.name
+        # Loss metric is not added by default.
+        loss_name = head_lib._summary_key(  # pylint:disable=protected-access
+            head_name, metric_keys.MetricKeys.LOSS)
+        metrics[loss_name] = metrics_lib.mean(spec.loss, name=loss_name)
+        # Metric keys already contain head.name.
+        metrics.update(spec.eval_metric_ops or {})
+        for k, v in six.iteritems(spec.predictions):
+          predictions[(head_name, k)] = v
+      loss = _merge_losses(losses, self._head_weights)
 
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.EVAL,

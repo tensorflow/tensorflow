@@ -96,6 +96,17 @@ class FunctionTest(test.TestCase):
 
     self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
+  def testDefunCanBeDifferentiatedTwice(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def f():
+      return v * v
+
+    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
+    # Ensure that v is watched again.
+    self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
+
   def testGraphModeCaptureVariable(self):
     with context.graph_mode(), self.test_session() as sess:
 

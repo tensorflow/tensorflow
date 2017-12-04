@@ -455,6 +455,7 @@ tf_cuda_library(
         "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
+        "util/ptr_util.h",
         "util/reffed_status_callback.h",
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
@@ -491,6 +492,11 @@ cc_library(
         ":framework_lite",
         ":lib",
     ],
+)
+
+cc_library(
+    name = "ptr_util",
+    hdrs = ["util/ptr_util.h"],
 )
 
 cc_library(

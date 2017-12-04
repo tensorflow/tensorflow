@@ -157,8 +157,7 @@ class Compiler {
 
  private:
   // Mutex that guards the platform-compiler map.
-  static tensorflow::mutex* platform_compiler_mutex_;
-  static void LazyInitMutex();
+  static tensorflow::mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
   static std::map<perftools::gputools::Platform::Id, CompilerFactory>*

@@ -165,6 +165,20 @@ class GraphDefBuilder {
   // by name), and makes sure the resulting graph is valid.
   Status ToGraph(Graph* graph) const;
 
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+    return graph_.AddFunctionLibrary(fdef_lib);
+  }
+
+  // Returns whether a user-defined function with `name` already exists in the
+  // graph.
+  bool HasFunction(const string& name) {
+    return graph_.flib_def().Find(name) != nullptr;
+  }
+
  private:
   Graph graph_;
   Status status_;

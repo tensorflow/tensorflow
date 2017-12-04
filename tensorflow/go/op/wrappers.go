@@ -14797,6 +14797,21 @@ func TensorArrayV3ClearAfterRead(value bool) TensorArrayV3Attr {
 	}
 }
 
+// TensorArrayV3IdenticalElementShapes sets the optional identical_element_shapes attribute to value.
+//
+// value: If true (default is false), then all
+// elements in the TensorArray will be expected to have have identical shapes.
+// This allows certain behaviors, like dynamically checking for
+// consistent shapes on write, and being able to fill in properly
+// shaped zero tensors on stack -- even if the element_shape attribute
+// is not fully defined.
+// If not specified, defaults to false
+func TensorArrayV3IdenticalElementShapes(value bool) TensorArrayV3Attr {
+	return func(m optionalAttr) {
+		m["identical_element_shapes"] = value
+	}
+}
+
 // TensorArrayV3TensorArrayName sets the optional tensor_array_name attribute to value.
 //
 // value: Overrides the name used for the temporary tensor_array
@@ -20553,6 +20568,27 @@ func Sub(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Writes a `GraphDef` protocol buffer to a `SummaryWriter`.
+//
+// Arguments:
+//	writer: Handle of `SummaryWriter`.
+//	global_step: The step to write the summary for.
+//	tensor: A scalar string of the serialized tf.GraphDef proto.
+//
+// Returns the created operation.
+func WriteGraphSummary(scope *Scope, writer tf.Output, global_step tf.Output, tensor tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteGraphSummary",
+		Input: []tf.Input{
+			writer, global_step, tensor,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // MaxPool3DGradGradAttr is an optional argument to MaxPool3DGradGrad.
 type MaxPool3DGradGradAttr func(optionalAttr)
 
@@ -24226,7 +24262,7 @@ func NthElementReverse(value bool) NthElementAttr {
 	}
 }
 
-// Finds values of the `n`-th order statistic for the last dmension.
+// Finds values of the `n`-th order statistic for the last dimension.
 //
 // If the input is a vector (rank-1), finds the entries which is the nth-smallest
 // value in the vector and outputs their values as scalar tensor.

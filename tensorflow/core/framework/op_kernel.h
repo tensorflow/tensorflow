@@ -301,6 +301,9 @@ class OpKernelConstruction {
   template <class T>
   Status GetAttr(StringPiece attr_name, T* value) const;
 
+  // Return true if the attr_name is defined in def().
+  bool HasAttr(StringPiece attr_name) const;
+
   // Return the device type.
   const DeviceType& device_type() const { return device_type_; }
 

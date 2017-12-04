@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
+#include "tensorflow/contrib/lite/toco/types.pb.h"
 
 // TODO(aselle): Replace with using a container specific hash override instead.
 namespace std {

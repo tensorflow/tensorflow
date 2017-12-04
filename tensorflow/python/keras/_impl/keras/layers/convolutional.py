@@ -793,6 +793,7 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
                strides=(1, 1),
                padding='valid',
                data_format=None,
+               dilation_rate=1,
                depth_multiplier=1,
                activation=None,
                use_bias=True,
@@ -815,6 +816,7 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
         strides=strides,
         padding=padding,
         data_format=data_format,
+        dilation_rate=dilation_rate,
         activation=activations.get(activation),
         use_bias=use_bias,
         depthwise_initializer=initializers.get(depthwise_initializer),
@@ -831,30 +833,42 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
 
   def get_config(self):
     config = {
-        'filters': self.filters,
-        'kernel_size': self.kernel_size,
-        'strides': self.strides,
-        'padding': self.padding,
-        'data_format': self.data_format,
-        'activation': activations.serialize(self.activation),
-        'use_bias': self.use_bias,
-        'depthwise_initializer': initializers.serialize(
-            self.depthwise_initializer),
-        'pointwise_initializer': initializers.serialize(
-            self.pointwise_initializer),
-        'bias_initializer': initializers.serialize(self.bias_initializer),
-        'depthwise_regularizer': regularizers.serialize(
-            self.depthwise_regularizer),
-        'pointwise_regularizer': regularizers.serialize(
-            self.pointwise_regularizer),
-        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+        'filters':
+            self.filters,
+        'kernel_size':
+            self.kernel_size,
+        'strides':
+            self.strides,
+        'padding':
+            self.padding,
+        'data_format':
+            self.data_format,
+        'dilation_rate':
+            self.dilation_rate,
+        'activation':
+            activations.serialize(self.activation),
+        'use_bias':
+            self.use_bias,
+        'depthwise_initializer':
+            initializers.serialize(self.depthwise_initializer),
+        'pointwise_initializer':
+            initializers.serialize(self.pointwise_initializer),
+        'bias_initializer':
+            initializers.serialize(self.bias_initializer),
+        'depthwise_regularizer':
+            regularizers.serialize(self.depthwise_regularizer),
+        'pointwise_regularizer':
+            regularizers.serialize(self.pointwise_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'depthwise_constraint': constraints.serialize(
-            self.depthwise_constraint),
-        'pointwise_constraint': constraints.serialize(
-            self.pointwise_constraint),
-        'bias_constraint': constraints.serialize(self.bias_constraint)
+        'depthwise_constraint':
+            constraints.serialize(self.depthwise_constraint),
+        'pointwise_constraint':
+            constraints.serialize(self.pointwise_constraint),
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
     }
     base_config = super(SeparableConv2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
