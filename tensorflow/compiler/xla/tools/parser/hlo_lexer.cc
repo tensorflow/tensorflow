@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -153,15 +152,15 @@ TokKind HloLexer::LexToken() {
   }
 }
 
-// Lex a shape, name, keyword, opcode, attribute name, or the dim labels
-// pattern.
+// Lex a shape, name, keyword, attribute name, the dim labels pattern, and
+// other identifiers.
 //
 // shape    ::= ([a-zA-Z0-9_]*[0-9]*)\[([0-9,]*)\](?:\s*{([0-9,]*)})?
 // name     ::= [a-zA-Z_][a-zA-Z0-9_.-]*:
 // keyword  ::= HloModule, ENTRY, ...
-// opcode   ::= add, greater-than, ...
 // attribute_name ::= condition, body, dimensions, ...
 // dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+// identifiers ::= other cases that match [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexIdentifier() {
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
@@ -220,20 +219,6 @@ TokKind HloLexer::LexIdentifier() {
 
 #undef KEYWORD
 
-  // See if this is an opcode.
-  auto opcode = StringToHloOpcode(identifier.ToString());
-  if (opcode.ok()) {
-    opcode_val_ = opcode.ValueOrDie();
-    return TokKind::kOpcode;
-  }
-
-  // See if this is an fusion kind.
-  auto kind = xla::StringToFusionKind(identifier.ToString());
-  if (kind.ok()) {
-    fusion_kind_val_ = kind.ValueOrDie();
-    return TokKind::kFusionKind;
-  }
-
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     static LazyRE2 dim_labels_pattern = {
@@ -244,8 +229,9 @@ TokKind HloLexer::LexIdentifier() {
       return TokKind::kDimLabels;
     }
   }
-  current_ptr_ = token_start_ + 1;
-  return TokKind::kError;
+
+  str_val_ = identifier.ToString();
+  return TokKind::kIdent;
 }
 
 // Lex names after a % character.
@@ -428,14 +414,12 @@ string TokKindToString(TokKind kind) {
       return "kDxD";
     case TokKind::kPad:
       return "kPad";
+    case TokKind::kIdent:
+      return "kIdent";
     case TokKind::kString:
       return "kString";
     case TokKind::kShape:
       return "kShape";
-    case TokKind::kOpcode:
-      return "kOpcode";
-    case TokKind::kFusionKind:
-      return "kFusionKind";
     case TokKind::kInt:
       return "kInt";
     case TokKind::kDecimal:

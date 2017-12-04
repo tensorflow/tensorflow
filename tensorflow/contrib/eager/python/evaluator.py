@@ -110,7 +110,7 @@ class Evaluator(object):
         return self._all_metric_results()
     else:
       def f():
-        with summary_ops.create_summary_file_writer(
+        with summary_ops.create_file_writer(
             summary_logdir).as_default(), summary_ops.always_record_summaries():
           return self._all_metric_results()
       if context.in_eager_mode():

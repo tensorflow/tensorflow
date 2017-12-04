@@ -25,11 +25,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.gan.python.features.python import tensor_pool_impl
+from tensorflow.contrib.gan.python.features.python import random_tensor_pool_impl
 # pylint: disable=wildcard-import
-from tensorflow.contrib.gan.python.features.python.tensor_pool_impl import *
+from tensorflow.contrib.gan.python.features.python.random_tensor_pool_impl import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import remove_undocumented
 
-__all__ = tensor_pool_impl.__all__
+__all__ = random_tensor_pool_impl.__all__
 remove_undocumented(__name__, __all__)

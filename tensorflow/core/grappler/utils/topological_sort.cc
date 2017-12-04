@@ -19,13 +19,14 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
 // Kahn's algorithm is implemented.
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
-void TopologicalSort(GraphDef* graph) {
+Status TopologicalSort(GraphDef* graph) {
   OutputMap output_map(graph);
   std::vector<NodeDef*> ready_nodes;
   ready_nodes.reserve(graph->node_size());
@@ -63,17 +64,19 @@ void TopologicalSort(GraphDef* graph) {
     front++;
   }
 
-  if (back == graph->node_size()) {
-    GraphDef new_graph;
-    new_graph.mutable_node()->Reserve(graph->node_size());
-    for (int i = 0; i < graph->node_size(); i++) {
-      auto new_node = new_graph.add_node();
-      new_node->Swap(ready_nodes[i]);
-    }
-    graph->mutable_node()->Swap(new_graph.mutable_node());
-  } else {
-    LOG(ERROR) << "The graph couldn't be sorted in topological order.";
+  if (back != graph->node_size()) {
+    return errors::InvalidArgument(
+        "The graph couldn't be sorted in topological order.");
   }
+
+  GraphDef new_graph;
+  new_graph.mutable_node()->Reserve(graph->node_size());
+  for (int i = 0; i < graph->node_size(); i++) {
+    auto new_node = new_graph.add_node();
+    new_node->Swap(ready_nodes[i]);
+  }
+  graph->mutable_node()->Swap(new_graph.mutable_node());
+  return Status::OK();
 }
 
 }  // namespace grappler

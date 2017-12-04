@@ -38,8 +38,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.util import tf_contextlib
+
 
 # Name for a collection which is expected to have at most a single boolean
 # Tensor. If this tensor is True the summary ops will record summaries.
@@ -102,8 +104,8 @@ class SummaryWriter(object):
   """Encapsulates a stateful summary writer resource.
 
   See also:
-  - @{tf.contrib.summary.create_summary_file_writer}
-  - @{tf.contrib.summary.create_summary_db_writer}
+  - @{tf.contrib.summary.create_file_writer}
+  - @{tf.contrib.summary.create_db_writer}
   """
 
   def  __init__(self, resource):
@@ -169,11 +171,11 @@ def initialize(
     session.run(_graph(x, 0), feed_dict={x: data})
 
 
-def create_summary_file_writer(logdir,
-                               max_queue=None,
-                               flush_millis=None,
-                               filename_suffix=None,
-                               name=None):
+def create_file_writer(logdir,
+                       max_queue=None,
+                       flush_millis=None,
+                       filename_suffix=None,
+                       name=None):
   """Creates a summary file writer in the current context.
 
   Args:
@@ -210,11 +212,11 @@ def create_summary_file_writer(logdir,
         filename_suffix=filename_suffix)
 
 
-def create_summary_db_writer(db_uri,
-                             experiment_name=None,
-                             run_name=None,
-                             user_name=None,
-                             name=None):
+def create_db_writer(db_uri,
+                     experiment_name=None,
+                     run_name=None,
+                     user_name=None,
+                     name=None):
   """Creates a summary database writer in the current context.
 
   This can be used to write tensors from the execution graph directly
@@ -498,7 +500,7 @@ _graph = graph  # for functions with a graph parameter
 def import_event(tensor, name=None):
   """Writes a @{tf.Event} binary proto.
 
-  When using create_summary_db_writer(), this can be used alongside
+  When using create_db_writer(), this can be used alongside
   @{tf.TFRecordReader} to load event logs into the database. Please
   note that this is lower level than the other summary functions and
   will ignore any conditions set by methods like
@@ -540,6 +542,13 @@ def flush(writer=None, name=None):
 def eval_dir(model_dir, name=None):
   """Construct a logdir for an eval summary writer."""
   return os.path.join(model_dir, "eval" if not name else "eval_" + name)
+
+
+def create_summary_file_writer(*args, **kwargs):
+  """Please use @{tf.contrib.summary.create_file_writer}."""
+  logging.warning("Deprecation Warning: create_summary_file_writer was renamed "
+                  "to create_file_writer")
+  return create_file_writer(*args, **kwargs)
 
 
 def _serialize_graph(arbitrary_graph):

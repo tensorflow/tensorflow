@@ -143,11 +143,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "com_googlesource_code_re2",
       urls = [
-          "https://mirror.bazel.build/github.com/google/re2/archive/b94b7cd42e9f02673cd748c1ac1d16db4052514c.tar.gz",
-          "https://github.com/google/re2/archive/b94b7cd42e9f02673cd748c1ac1d16db4052514c.tar.gz",
+          "https://mirror.bazel.build/github.com/google/re2/archive/26cd968b735e227361c9703683266f01e5df7857.tar.gz",
+          "https://github.com/google/re2/archive/26cd968b735e227361c9703683266f01e5df7857.tar.gz",
+
       ],
-      sha256 = "bd63550101e056427c9e7ff12a408c1c8b74e9803f393ca916b2926fc2c4906f",
-      strip_prefix = "re2-b94b7cd42e9f02673cd748c1ac1d16db4052514c",
+      sha256 = "e57eeb837ac40b5be37b2c6197438766e73343ffb32368efea793dfd8b28653b",
+      strip_prefix = "re2-26cd968b735e227361c9703683266f01e5df7857",
   )
 
   tf_http_archive(
@@ -396,11 +397,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/54e8f37e537794c2d814c1604c1282125f64f093.tar.gz",
-          "https://github.com/grpc/grpc/archive/54e8f37e537794c2d814c1604c1282125f64f093.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/f836c7e941beb003289dc6e9a58a6e47f5caa5f0.tar.gz",
+          "https://github.com/grpc/grpc/archive/f836c7e941beb003289dc6e9a58a6e47f5caa5f0.tar.gz",
       ],
-      sha256 = "c2166b6d96daddf72fe45b2c594210c65ca17ec3c1b2e12089159a9529edb5e4",
-      strip_prefix = "grpc-54e8f37e537794c2d814c1604c1282125f64f093",
+      sha256 = "676425fc19e0290443b21f1804e5d1096456b6512b349606e3eae8e63299e6ee",
+      strip_prefix = "grpc-f836c7e941beb003289dc6e9a58a6e47f5caa5f0",
   )
 
   tf_http_archive(
@@ -744,4 +745,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.bind(
       name = "zlib",
       actual = "@zlib_archive//:zlib",
+  )
+
+  native.new_http_archive(
+      name = "tflite_smartreply",
+      build_file = str(Label("//third_party:tflite_smartreply.BUILD")),
+      sha256 = "8980151b85a87a9c1a3bb1ed4748119e4a85abd3cb5744d83da4d4bd0fbeef7c",
+      urls = [
+          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip"
+      ],
   )

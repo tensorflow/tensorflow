@@ -40,11 +40,6 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
       static_data.temp_sizes, static_data.num_temps, temps_,
       /*annotate_initialized=*/true);
 
-  // The runtime context is always the last arg, if it is required.
-  if (static_data.requires_runtime_context) {
-    args_[static_data.num_args - 1] = &context_;
-  }
-
   // If Hlo profiling is enabled the generated code expects an appropriately
   // sized buffer to be passed in as the last argument.  If Hlo profiling is
   // disabled the last function argument is still present in the function

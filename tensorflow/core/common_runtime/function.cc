@@ -153,6 +153,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Status Instantiate(const string& function_name, AttrSlice attrs,
                      Handle* handle) override;
 
+  Status ReleaseHandle(Handle handle) override;
+
   const FunctionBody* GetFunctionBody(Handle handle) override;
 
   Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) override;
@@ -190,18 +192,21 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   mutable mutex mu_;
 
-  // func_graphs_ never shrinks or reorders its members.
-  std::vector<FunctionBody*> func_graphs_ GUARDED_BY(mu_);
+  int next_handle_ GUARDED_BY(mu_);
 
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item : public core::RefCounted {
     const Graph* graph = nullptr;  // Owned by exec.
+    FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
 
-    ~Item() override { delete this->exec; }
+    ~Item() override {
+      delete this->func_graph;
+      delete this->exec;
+    }
   };
-  std::vector<Item*> items_;
+  std::unordered_map<Handle, Item*> items_ GUARDED_BY(mu_);
 
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 
@@ -236,6 +241,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       device_name_(device_ == nullptr
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
                        : device_->name()),
+      next_handle_(0),
       parent_(parent) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return lib_def_->LookUpOpDef(op, sig);
@@ -246,9 +252,9 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
 }
 
 FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
-  for (FunctionBody* p : func_graphs_) delete p;
-  for (Item* item : items_)
-    if (item) item->Unref();
+  for (auto item : items_) {
+    if (item.second) item.second->Unref();
+  }
 }
 
 // An asynchronous op kernel which executes an instantiated function
@@ -309,9 +315,8 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   }
 
   mutex_lock l(mu_);
-  CHECK_LE(0, local_handle);
-  CHECK_LT(local_handle, func_graphs_.size());
-  return func_graphs_[local_handle];
+  CHECK_EQ(1, items_.count(local_handle));
+  return items_[local_handle]->func_graph;
 }
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
@@ -478,10 +483,28 @@ Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
     if (*handle != kInvalidHandle) {
       delete fbody;
     } else {
-      *handle = parent_->AddHandle(key, device_name_, func_graphs_.size());
-      func_graphs_.push_back(fbody);
-      items_.resize(func_graphs_.size());
+      *handle = parent_->AddHandle(key, device_name_, next_handle_);
+      Item* item = new Item;
+      item->func_graph = fbody;
+      items_.insert({next_handle_, item});
+      next_handle_++;
     }
+  }
+  return Status::OK();
+}
+
+Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
+  if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
+    return parent_->ReleaseHandle(handle);
+  }
+
+  LocalHandle h = parent_->GetHandleOnDevice(device_name_, handle);
+  mutex_lock l(mu_);
+  CHECK_EQ(1, items_.count(h));
+  Item* item = items_[h];
+  if (item->Unref()) {
+    items_.erase(h);
+    TF_RETURN_IF_ERROR(parent_->RemoveHandle(handle));
   }
   return Status::OK();
 }
@@ -529,9 +552,16 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   Executor* exec;
   TF_RETURN_IF_ERROR(NewLocalExecutor(params, g.release(), &exec));
 
-  *item = new Item;
-  (*item)->graph = graph;
-  (*item)->exec = exec;
+  {
+    // Guard item since it is already inserted in items_.
+    mutex_lock l(mu_);
+    if ((*item)->exec) {
+      delete exec;
+    } else {
+      (*item)->graph = graph;
+      (*item)->exec = exec;
+    }
+  }
   return Status::OK();
 }
 
@@ -539,29 +569,18 @@ Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
   {
     mutex_lock l(mu_);
-    if (local_handle >= items_.size()) {
+    if (items_.count(local_handle) == 0) {
       return errors::NotFound("Function handle ", handle,
                               " is not valid. Likely an internal error.");
     }
     *item = items_[local_handle];
-    if (*item != nullptr) {
-      (*item)->Ref();
+    if ((*item)->exec != nullptr) {
       return Status::OK();
     }
   }
   // NOTE: We need to call CreateItem out of mu_ because creating an
   // executor needs to call CreateKernel.
-  TF_RETURN_IF_ERROR(CreateItem(handle, item));
-
-  {
-    mutex_lock l(mu_);
-    if (items_[local_handle] == nullptr) {
-      // Install *item in items_.
-      items_[local_handle] = *item;
-      (*item)->Ref();
-    }
-  }
-  return Status::OK();
+  return CreateItem(handle, item);
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
@@ -617,7 +636,6 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
             *exec_args, [item, frame, rets, done, source_device, target_device,
                          target_incarnation, rendezvous, device_context,
                          remote_args, exec_args](const Status& status) {
-              item->Unref();
               Status s = status;
               if (s.ok()) {
                 s = frame->ConsumeRetvals(rets);
@@ -701,7 +719,6 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       *exec_args,
       // Done callback.
       [item, frame, rets, done, exec_args](const Status& status) {
-        item->Unref();
         Status s = status;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);

@@ -57,7 +57,7 @@ TEST(L2NormOpTest, SimpleTest) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: tflite::LogToStderr();
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
