@@ -152,7 +152,7 @@ def truncated_normal(shape,
     mean: A 0-D Tensor or Python value of type `dtype`. The mean of the
       truncated normal distribution.
     stddev: A 0-D Tensor or Python value of type `dtype`. The standard deviation
-      of the truncated normal distribution.
+      of the normal distribution, before truncation.
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
