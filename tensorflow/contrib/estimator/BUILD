@@ -93,6 +93,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
+        "notap",  # b/62204861
         "notsan",
     ],
     deps = [
@@ -346,7 +347,7 @@ py_library(
 
 cuda_py_test(
     name = "replicate_model_fn_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],
     additional_deps = [
         "//tensorflow/python/estimator",

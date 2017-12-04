@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // XLA implementation of BatchNorm operations.
-#include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -42,27 +42,44 @@ class FusedBatchNormOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
+    xla::PrimitiveType input_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
+    xla::PrimitiveType stats_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(ctx->input_type(1), &stats_type));
+
+    xla::ComputationBuilder* builder = ctx->builder();
+
+    xla::ComputationDataHandle input = ctx->Input(0);
+
+    // TODO(b/69928690): support mixed precision in the XLA batch normalization
+    // operators. As a workaround, cast everything to the statistics type (which
+    // may be more precise than the input type).
+    input = builder->ConvertElementType(input, stats_type);
+
     if (is_training_) {
-      xla::ComputationDataHandle output = ctx->builder()->BatchNormTraining(
-          ctx->Input(0), ctx->Input(1), ctx->Input(2), epsilon_,
-          feature_index_);
+      xla::ComputationDataHandle output = builder->BatchNormTraining(
+          input, ctx->Input(1), ctx->Input(2), epsilon_, feature_index_);
 
       // In training mode, outputs the normalized value as well as the
       // calculated mean and variance.
-      for (int i = 0; i < 3; i++) {
-        ctx->SetOutput(i, ctx->builder()->GetTupleElement(output, i));
-      }
+      ctx->SetOutput(0, builder->ConvertElementType(
+                            builder->GetTupleElement(output, 0), input_type));
+      ctx->SetOutput(1, builder->GetTupleElement(output, 1));
+      ctx->SetOutput(2, builder->GetTupleElement(output, 2));
+
       // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
       // space 1 & 2". They are used to pass the per-batch mean and
       // variance to the gradient. Here we maintain the same behavior by setting
       // them to the mean and variance calculated by BatchNormTraining.
-      ctx->SetOutput(3, ctx->builder()->GetTupleElement(output, 1));
-      ctx->SetOutput(4, ctx->builder()->GetTupleElement(output, 2));
+      ctx->SetOutput(3, builder->GetTupleElement(output, 1));
+      ctx->SetOutput(4, builder->GetTupleElement(output, 2));
     } else {
-      xla::ComputationDataHandle output = ctx->builder()->BatchNormInference(
-          ctx->Input(0), ctx->Input(1), ctx->Input(2), ctx->Input(3),
-          ctx->Input(4), epsilon_, feature_index_);
-      ctx->SetOutput(0, output);
+      xla::ComputationDataHandle output = builder->BatchNormInference(
+          input, ctx->Input(1), ctx->Input(2), ctx->Input(3), ctx->Input(4),
+          epsilon_, feature_index_);
+      ctx->SetOutput(0, builder->ConvertElementType(output, input_type));
       // Directly send input to output as mean and variance in inference mode.
       ctx->SetOutput(1, ctx->Input(3));
       ctx->SetOutput(2, ctx->Input(4));
@@ -78,6 +95,7 @@ class FusedBatchNormOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("FusedBatchNorm"), FusedBatchNormOp);
+REGISTER_XLA_OP(Name("FusedBatchNormV2"), FusedBatchNormOp);
 
 class FusedBatchNormGradOp : public XlaOpKernel {
  public:
@@ -101,19 +119,36 @@ class FusedBatchNormGradOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
+    xla::ComputationBuilder* builder = ctx->builder();
+
     auto grad_output = ctx->Input(0);
     auto activation = ctx->Input(1);
     auto scale = ctx->Input(2);
     auto mean = ctx->Input(3);
     auto var = ctx->Input(4);
-    xla::ComputationDataHandle output = ctx->builder()->BatchNormGrad(
+
+    xla::PrimitiveType input_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
+    xla::PrimitiveType stats_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(ctx->input_type(3), &stats_type));
+
+    // TODO(b/69928690): support mixed precision in the XLA batch normalization
+    // operators. As a workaround, cast everything to the statistics type (which
+    // may be more precise than the input type).
+    grad_output = builder->ConvertElementType(grad_output, stats_type);
+    activation = builder->ConvertElementType(activation, stats_type);
+
+    xla::ComputationDataHandle output = builder->BatchNormGrad(
         activation, scale, mean, var, grad_output, epsilon_, feature_index_);
 
-    for (int i = 0; i < 3; i++) {
-      ctx->SetOutput(i, ctx->builder()->GetTupleElement(output, i));
-    }
-    ctx->SetOutput(3, ctx->builder()->GetTupleElement(output, 1));
-    ctx->SetOutput(4, ctx->builder()->GetTupleElement(output, 2));
+    ctx->SetOutput(0, builder->ConvertElementType(
+                          builder->GetTupleElement(output, 0), input_type));
+    ctx->SetOutput(1, builder->GetTupleElement(output, 1));
+    ctx->SetOutput(2, builder->GetTupleElement(output, 2));
+    ctx->SetOutput(3, builder->GetTupleElement(output, 1));
+    ctx->SetOutput(4, builder->GetTupleElement(output, 2));
   }
 
  private:
@@ -122,6 +157,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("FusedBatchNormGrad"), FusedBatchNormGradOp);
+REGISTER_XLA_OP(Name("FusedBatchNormGradV2"), FusedBatchNormGradOp);
 
 }  // namespace
 }  // namespace tensorflow

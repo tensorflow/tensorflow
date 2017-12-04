@@ -143,6 +143,7 @@ py_test(
     size = "small",
     srcs = ["filter_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
@@ -276,7 +277,7 @@ py_test(
 
 py_test(
     name = "map_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
@@ -312,6 +313,7 @@ py_test(
     size = "small",
     srcs = ["prefetch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/python:platform",
@@ -417,12 +419,15 @@ py_test(
 
 py_test(
     name = "shuffle_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
+        "//tensorflow/contrib/data/python/ops:shuffle_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

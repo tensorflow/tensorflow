@@ -1381,6 +1381,9 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status =
           computation->AddCustomCallInstruction(arg->custom_call_request());
       break;
+    case OpRequest::kDotRequest:
+      handle_status = computation->AddDotInstruction(arg->dot_request());
+      break;
     case OpRequest::kDynamicSliceRequest:
       handle_status =
           computation->AddDynamicSliceInstruction(arg->dynamic_slice_request());

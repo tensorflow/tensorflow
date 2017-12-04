@@ -178,6 +178,10 @@ class BatchScheduler {
   // This method is useful for monitoring, or for guaranteeing a future slot in
   // the schedule (but being mindful about the caveats listed above).
   virtual size_t SchedulingCapacity() const = 0;
+
+  // Returns the maximum allowed size of tasks submitted to the scheduler. (This
+  // is typically equal to a configured maximum batch size.)
+  virtual size_t max_task_size() const = 0;
 };
 
 //////////

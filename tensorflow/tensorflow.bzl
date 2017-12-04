@@ -167,7 +167,19 @@ WIN_COPTS = [
 ]
 
 # LINT.IfChange
-def tf_copts():
+def tf_copts(android_optimization_level_override="-O2"):
+  # For compatibility reasons, android_optimization_level_override
+  # is currently only being set for Android.
+  # To clear this value, and allow the CROSSTOOL default
+  # to be used, pass android_optimization_level_override=None
+  android_copts = [
+      "-std=c++11",
+      "-DTF_LEAN_BINARY",
+      "-Wno-narrowing",
+      "-fomit-frame-pointer",
+  ]
+  if android_optimization_level_override:
+    android_copts.append(android_optimization_level_override)
   return (
       if_not_windows([
           "-DEIGEN_AVOID_STL_ARRAY",
@@ -180,13 +192,7 @@ def tf_copts():
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
       + select({
-            clean_dep("//tensorflow:android"): [
-                "-std=c++11",
-                "-DTF_LEAN_BINARY",
-                "-O2",
-                "-Wno-narrowing",
-                "-fomit-frame-pointer",
-            ],
+            clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:darwin"): [],
             clean_dep("//tensorflow:windows"): WIN_COPTS,
             clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,

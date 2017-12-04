@@ -580,6 +580,9 @@ class ConvDiagonalFactor(DiagonalFactor):
     # the target entry of _outputs_grads changes with idx.)
     with _maybe_colocate_with(inputs, self._colocate_cov_ops_with_inputs):
       filter_height, filter_width, _, _ = self._filter_shape
+
+      # TODO(b/64144716): there is potential here for a big savings in terms of
+      # memory use.
       patches = array_ops.extract_image_patches(
           inputs,
           ksizes=[1, filter_height, filter_width, 1],
@@ -739,6 +742,9 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     # TODO(jamesmartens): factor this patches stuff out into a utility function
     with _maybe_colocate_with(self._inputs, self._colocate_cov_ops_with_inputs):
       filter_height, filter_width, in_channels, _ = self._filter_shape
+
+      # TODO(b/64144716): there is potential here for a big savings in terms of
+      # memory use.
       patches = array_ops.extract_image_patches(
           self._inputs,
           ksizes=[1, filter_height, filter_width, 1],

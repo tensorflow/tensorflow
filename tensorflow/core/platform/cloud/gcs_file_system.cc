@@ -697,6 +697,9 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                   bucket, "/", object);
 
+  VLOG(1) << "Successful read of gs://" << bucket << "/" << object << " @ "
+          << offset << " of size: " << out->size();
+
   if (out->size() < block_size()) {
     // Check stat cache to see if we encountered an interrupted read.
     FileStatistics stat;
@@ -706,6 +709,8 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
             "File contents are inconsistent for file: %s @ %lu.",
             filename.c_str(), offset));
       }
+      VLOG(2) << "Successful integrity check for: gs://" << bucket << "/"
+              << object << " @ " << offset;
     }
   }
 
@@ -867,6 +872,11 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
         string updated;
         TF_RETURN_IF_ERROR(GetStringValue(root, "updated", &updated));
         TF_RETURN_IF_ERROR(ParseRfc3339Time(updated, &(stat->mtime_nsec)));
+
+        VLOG(1) << "Stat of: gs://" << bucket << "/" << object << " -- "
+                << " length: " << stat->length
+                << "; mtime_nsec: " << stat->mtime_nsec
+                << "; updated: " << updated;
 
         stat->is_directory = false;
         return Status::OK();

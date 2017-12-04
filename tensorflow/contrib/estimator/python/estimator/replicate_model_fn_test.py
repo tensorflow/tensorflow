@@ -49,15 +49,29 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import device_setter
 from tensorflow.python.training import gradient_descent
 
 
+# TODO(isaprykin):  Parametrize all the tests on replicate_model_fn.Mode when
+#   it's supported.
 class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
 
-  def test_complete_flow(self):
+  def test_complete_flow_with_mode_auto(self):
+    return self._complete_flow_with_mode(replicate_model_fn.Mode.AUTO)
+
+  def test_complete_flow_with_mode_local_ps_server(self):
+    return self._complete_flow_with_mode(
+        replicate_model_fn.Mode.SHARED_LOCAL_PARAMETER_SERVER)
+
+  def test_complete_flow_with_mode_round_robin(self):
+    return self._complete_flow_with_mode(
+        replicate_model_fn.Mode.SHARED_ROUND_ROBIN)
+
+  def _complete_flow_with_mode(self, mode):
     n_classes = 3
     input_dimension = 2
     batch_size = 12
@@ -109,7 +123,8 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
         model_fn=replicate_model_fn.replicate_model_fn(
             estimator.model_fn,
             optimizer_fn,
-            devices=['/gpu:0', '/gpu:1', '/gpu:2']),
+            devices=['/gpu:0', '/gpu:1', '/gpu:2'],
+            mode=mode),
         model_dir=estimator.model_dir,
         config=estimator.config,
         params=estimator.params)
@@ -359,7 +374,7 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
           params=None,
           config=None,
           devices=['/gpu:0', '/gpu:1'],
-          local_ps_device='/gpu:0',
+          local_ps_devices=['/gpu:0'],
           name_scope_pattern='test_tower_{}')
       session.run(variables.global_variables_initializer())
 
@@ -381,6 +396,54 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
       with variable_scope.variable_scope('', reuse=True):
         c = variable_scope.get_variable('c', dtype=dtypes.float64)
         self.assertEqual(0.25, session.run(c))
+
+  def test_variables_are_round_robined_correctly(self):
+    """Test that creates multiple variables and tests round-robin placement."""
+
+    def model_fn(mode, features, labels, params):
+      del params
+      for variable_name in ['a', 'b', 'c', 'd']:
+        c = variable_scope.get_variable(
+            variable_name,
+            initializer=constant_op.constant(0.25, dtype=dtypes.float64),
+            dtype=dtypes.float64)
+
+      predictions = math_ops.add(np.array([0.1, 0.2, 0.3, features[0]]), c)
+      labels = np.array([0.1, 0.2, 0.3, labels[0]])
+      loss = losses.absolute_difference(
+          labels=labels,
+          predictions=predictions,
+          reduction=losses.Reduction.SUM)
+      return model_fn_lib.EstimatorSpec(
+          mode=mode, loss=math_ops.reduce_sum(loss))
+
+    with self.test_session() as session:
+      tower_specs = replicate_model_fn._get_loss_towers(
+          model_fn,
+          mode=None,
+          features=[[0.6], [1.6], [2.6]],
+          labels=[[0.6], [0.6], [2.6]],
+          params=None,
+          config=None,
+          devices=['/gpu:0', '/gpu:1', '/gpu:3'],
+          local_ps_devices=['/gpu:0', '/gpu:1', '/gpu:3'],
+          name_scope_pattern='test_tower_{}')
+      session.run(variables.global_variables_initializer())
+
+      self.assertEqual(len(tower_specs), 3)
+      self.assertEqual('/device:GPU:0', tower_specs[0].loss.device)
+      self.assertEqual('/device:GPU:1', tower_specs[1].loss.device)
+      self.assertEqual('/device:GPU:3', tower_specs[2].loss.device)
+
+      with variable_scope.variable_scope('', reuse=True):
+        a = variable_scope.get_variable('a', dtype=dtypes.float64)
+        self.assertEqual('/device:GPU:0', a.device)
+        b = variable_scope.get_variable('b', dtype=dtypes.float64)
+        self.assertEqual('/device:GPU:1', b.device)
+        c = variable_scope.get_variable('c', dtype=dtypes.float64)
+        self.assertEqual('/device:GPU:3', c.device)
+        d = variable_scope.get_variable('d', dtype=dtypes.float64)
+        self.assertEqual('/device:GPU:0', d.device)
 
 
 class SplitBatchTest(test_util.TensorFlowTestCase):
@@ -604,7 +667,7 @@ class PredictSpecTest(test_util.TensorFlowTestCase):
           params=None,
           config=None,
           devices=['/gpu:0', '/gpu:1'],
-          local_ps_device='/gpu:0',
+          local_ps_devices=['/gpu:0'],
       )
       session.run(variables.global_variables_initializer())
 
@@ -850,24 +913,65 @@ class GetLocalDevicesTest(test_util.TensorFlowTestCase):
 class LocalDeviceSetterTest(test_util.TensorFlowTestCase):
 
   def test_vars_are_on_ps_but_ops_are_on_workers(self):
+    ps_devices = ['/device:GPU:3']
+    round_robin = device_setter._RoundRobinStrategy(num_tasks=len(ps_devices))
+
     local_device_setter = replicate_model_fn._local_device_setter(
-        ps_device='/device:GPU:3', worker_device='/device:GPU:2')
+        ps_devices=ps_devices,
+        ps_strategy=round_robin,
+        worker_device='/device:GPU:2')
 
     with ops_lib.device(local_device_setter):
-      c = variables.Variable(0.01)
+      a = variables.Variable(0.01)
+      self.assertEqual('/device:GPU:3', a.device)
+
+      b = variables.Variable(0.02)
+      self.assertEqual('/device:GPU:3', b.device)
+
+      c = variables.Variable(0.03)
       self.assertEqual('/device:GPU:3', c.device)
 
-      cc = variables.Variable(0.02)
-      self.assertEqual('/device:GPU:3', cc.device)
+      a_op = array_ops.concat(a, axis=0)
+      self.assertEqual('/device:GPU:2', a_op.device)
 
-      ccc = variables.Variable(0.03)
-      self.assertEqual('/device:GPU:3', ccc.device)
+      b_op = array_ops.concat(b, axis=0)
+      self.assertEqual('/device:GPU:2', b_op.device)
+
+  def test_round_robin_placement(self):
+    ps_devices = [
+        '/device:GPU:0', '/device:GPU:1', '/device:GPU:3', '/device:GPU:4'
+    ]
+    round_robin = device_setter._RoundRobinStrategy(num_tasks=len(ps_devices))
+
+    local_device_setter = replicate_model_fn._local_device_setter(
+        ps_devices=ps_devices,
+        ps_strategy=round_robin,
+        worker_device='/device:GPU:2')
+
+    with ops_lib.device(local_device_setter):
+      a = variables.Variable(0.01)
+      self.assertEqual('/device:GPU:0', a.device)
+
+      b = variables.Variable(0.02)
+      self.assertEqual('/device:GPU:1', b.device)
+
+      c = variables.Variable(0.03)
+      self.assertEqual('/device:GPU:3', c.device)
+
+      a_op = array_ops.concat(a, axis=0)
+      self.assertEqual('/device:GPU:2', a_op.device)
+
+      b_op = array_ops.concat(b, axis=0)
+      self.assertEqual('/device:GPU:2', b_op.device)
+
+      c = variables.Variable(0.03)
+      self.assertEqual('/device:GPU:4', c.device)
+
+      d = variables.Variable(0.03)
+      self.assertEqual('/device:GPU:0', d.device)
 
       c_op = array_ops.concat(c, axis=0)
       self.assertEqual('/device:GPU:2', c_op.device)
-
-      cc_op = array_ops.concat(cc, axis=0)
-      self.assertEqual('/device:GPU:2', cc_op.device)
 
 
 class ComputeSumWithDevicePlacementTest(test_util.TensorFlowTestCase):

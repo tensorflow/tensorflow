@@ -75,7 +75,11 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleDot(HloInstruction* dot) override {
-    return CheckBinaryShape(dot);
+    TF_ASSIGN_OR_RETURN(const Shape expected,
+                        ShapeInference::InferDotOpShape(
+                            dot->operand(0)->shape(), dot->operand(1)->shape(),
+                            dot->dot_dimension_numbers()));
+    return CheckShape(dot, expected);
   }
 
   Status HandleConvolution(HloInstruction* convolution) override {
@@ -143,9 +147,13 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBitcast(HloInstruction* bitcast) override {
-    // Bitcasts can be any shape, as long as the size matches the operand size.
-    TF_RET_CHECK(shape_size_fn_(bitcast->shape()) ==
-                 shape_size_fn_(bitcast->operand(0)->shape()));
+    // Bitcasts that are not the root of a computation can be any shape.
+    // Bitcasts that are the root of a computation must have the same shape
+    // byte size as their operand.
+    if (bitcast->parent()->root_instruction() == bitcast) {
+      TF_RET_CHECK(shape_size_fn_(bitcast->shape()) ==
+                   shape_size_fn_(bitcast->operand(0)->shape()));
+    }
     return tensorflow::Status::OK();
   }
 

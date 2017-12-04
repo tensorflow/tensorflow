@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_MATH_MATH_UTIL_H_
 #define TENSORFLOW_LIB_MATH_MATH_UTIL_H_
 
+#include <type_traits>
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -59,6 +61,9 @@ class MathUtil {
   template <typename IntegralType, bool ceil>
   static IntegralType CeilOrFloorOfRatio(IntegralType numerator,
                                          IntegralType denominator);
+
+  template <typename IntegralType>
+  static IntegralType GCD(IntegralType x, IntegralType y);
 };
 
 // ---- CeilOrFloorOfRatio ----
@@ -105,6 +110,18 @@ IntegralType MathUtil::CeilOrFloorOfRatio(IntegralType numerator,
     const IntegralType floor_of_ratio = rounded_toward_zero - adjustment;
     return floor_of_ratio;
   }
+}
+
+template <typename IntegralType>
+IntegralType MathUtil::GCD(IntegralType a, IntegralType b) {
+  static_assert(std::is_unsigned<IntegralType>::value,
+                "signed GCD not supported!");
+  while (b != 0) {
+    IntegralType r = a % b;
+    a = b;
+    b = r;
+  }
+  return a;
 }
 
 }  // namespace tensorflow

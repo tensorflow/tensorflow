@@ -118,6 +118,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         MakeUnique<ConvolutionDimensionNumbers>(
             proto.convolution_dimension_numbers());
   }
+  if (proto.has_dot_dimension_numbers()) {
+    instruction->dot_dimension_numbers_ =
+        MakeUnique<DotDimensionNumbers>(proto.dot_dimension_numbers());
+  }
   for (const HloInstructionProto::SliceDimensions& slice_dimensions :
        proto.slice_dimensions()) {
     instruction->slice_starts_.push_back(slice_dimensions.start());
@@ -329,6 +333,17 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   instruction->window_ = MakeUnique<Window>(window);
   instruction->convolution_dimension_numbers_ =
       MakeUnique<ConvolutionDimensionNumbers>(dimension_numbers);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kDot, shape));
+  instruction->AppendOperand(lhs);
+  instruction->AppendOperand(rhs);
+  instruction->dot_dimension_numbers_ =
+      MakeUnique<DotDimensionNumbers>(dimension_numbers);
   return instruction;
 }
 
@@ -1086,7 +1101,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kLe:
     case HloOpcode::kLt:
     case HloOpcode::kNe:
-    case HloOpcode::kDot:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kPower:
@@ -1137,6 +1151,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
                              *convolution_dimension_numbers_);
+      break;
+    case HloOpcode::kDot:
+      CHECK_EQ(new_operands.size(), 2);
+      clone = CreateDot(shape, new_operands[0], new_operands[1],
+                        *dot_dimension_numbers_);
       break;
     case HloOpcode::kCrossReplicaSum:
       CHECK_EQ(new_operands.size(), 1);
@@ -1509,7 +1528,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCos:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kDivide:
-    case HloOpcode::kDot:
     case HloOpcode::kEq:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
@@ -1582,6 +1600,10 @@ bool HloInstruction::IdenticalSlowPath(
              protobuf_util::ProtobufEquals(
                  convolution_dimension_numbers(),
                  other.convolution_dimension_numbers());
+    // Check dot dimension numbers.
+    case HloOpcode::kDot:
+      return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
+                                           other.dot_dimension_numbers());
 
     // Reduction results are determined by the reduction dimension and the
     // reduction computation.
@@ -1990,6 +2012,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (convolution_dimension_numbers_ != nullptr) {
     extra.push_back(ConvolutionDimensionNumbersToString());
   }
+  if (dot_dimension_numbers_ != nullptr) {
+    extra.push_back(DotDimensionNumbersToString());
+  }
 
   if (opcode() == HloOpcode::kWhile) {
     extra.push_back(StrCat("condition=%", while_condition()->name()));
@@ -2085,6 +2110,9 @@ HloInstructionProto HloInstruction::ToProto() const {
   if (convolution_dimension_numbers_ != nullptr) {
     *proto.mutable_convolution_dimension_numbers() =
         *convolution_dimension_numbers_;
+  }
+  if (dot_dimension_numbers_ != nullptr) {
+    *proto.mutable_dot_dimension_numbers() = *dot_dimension_numbers_;
   }
   for (int i = 0; i < slice_starts_.size(); ++i) {
     auto* slice_dimension = proto.add_slice_dimensions();
@@ -3048,6 +3076,30 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
   append_dims(rhs_dims, operand(1)->shape());
   result += "->";
   append_dims(output_dims, shape());
+  return result;
+}
+
+string HloInstruction::DotDimensionNumbersToString() const {
+  string result;
+  if (dot_dimension_numbers_ == nullptr) {
+    return result;
+  }
+  const DotDimensionNumbers& dnums = *dot_dimension_numbers_;
+  if (!dnums.lhs_batch_dimensions().empty()) {
+    result += "lhs_batch_dims=";
+    StrAppend(&result, Join(dnums.lhs_batch_dimensions(), ","));
+  }
+  result += "lhs_contracting_dims=";
+  StrAppend(&result, Join(dnums.lhs_contracting_dimensions(), ","));
+
+  result += ",";
+  if (!dnums.rhs_batch_dimensions().empty()) {
+    result += "rhs_batch_dims=";
+    StrAppend(&result, Join(dnums.rhs_batch_dimensions(), ","));
+  }
+  result += "rhs_contracting_dims=";
+  StrAppend(&result, Join(dnums.rhs_contracting_dimensions(), ","));
+
   return result;
 }
 

@@ -126,7 +126,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
       DataTypeVector other_arguments_types;
       other_arguments_types.reserve(captured_func_->captured_inputs().size());
-      std::vector<NodeBuilder::NodeOut> other_arguments;
+      std::vector<Node*> other_arguments;
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
