@@ -120,7 +120,7 @@ class PruningTest(test.TestCase):
             "weights", initializer=math_ops.linspace(1.0, 100.0, 100))
         masked_weights = pruning.apply_mask(
             weights, scope=variable_scope.get_variable_scope())
-      p = pruning.Pruning(sparsity=sparsity, partitioner=partitioner)
+      p = pruning.Pruning(sparsity=sparsity)
       p._spec.threshold_decay = 0.0
       mask_update_op = p.mask_update_op()
       variables.global_variables_initializer().run()

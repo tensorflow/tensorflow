@@ -34,9 +34,9 @@ namespace functor {
   __global__ void ReduceSliceDeviceKernel##reduceop(                           \
       Cuda3DLaunchConfig config, Index indices_width, Index bound,             \
       const T begin, const Index *indices, const T *input, T *out) {           \
-    CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {                 \
-      CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {               \
-        CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {             \
+    CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {               \
+      CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {             \
+        CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {           \
           Index outidx = x * config.virtual_thread_count.y *                   \
                              config.virtual_thread_count.z +                   \
                          y * config.virtual_thread_count.z + z;                \
@@ -68,8 +68,9 @@ namespace functor {
       if (sizex * sizey * sizez == 0) {                                        \
         return;                                                                \
       }                                                                        \
-      Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(sizex, sizey, sizez, d,\
-          ReduceSliceDeviceKernel##reduceop<T, Index>, 0, 0);                  \
+      Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(                       \
+          sizex, sizey, sizez, d, ReduceSliceDeviceKernel##reduceop<T, Index>, \
+          0, 0);                                                               \
                                                                                \
       ReduceSliceDeviceKernel##reduceop<T, Index>                              \
           <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(    \

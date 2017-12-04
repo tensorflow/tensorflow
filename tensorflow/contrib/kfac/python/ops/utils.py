@@ -30,6 +30,7 @@ from tensorflow.python.ops import random_ops
 
 # Method used for inverting matrices.
 POSDEF_INV_METHOD = "cholesky"
+POSDEF_EIG_METHOD = "self_adjoint"
 
 
 def set_global_constants(posdef_inv_method=None):
@@ -161,33 +162,11 @@ def mat2d_to_layer_params(vector_template, mat2d):
     return array_ops.reshape(mat2d, vector_template.shape)
 
 
-def compute_pi(left_factor, right_factor):
-  """Computes the scalar constant pi for Tikhonov regularization/damping.
-
-  pi = sqrt( (trace(A) / dim(A)) / (trace(B) / dim(B)) )
-  See section 6.3 of https://arxiv.org/pdf/1503.05671.pdf for details.
-
-  Args:
-    left_factor: The left Kronecker factor Tensor.
-    right_factor: The right Kronecker factor Tensor.
-
-  Returns:
-    The computed scalar constant pi for these Kronecker Factors (as a Tensor).
-  """
-  # Instead of dividing by the dim of the norm, we multiply by the dim of the
-  # other norm. This works out the same in the ratio.
-  left_norm = math_ops.trace(left_factor) * right_factor.get_shape().as_list()[
-      0]
-  right_norm = math_ops.trace(right_factor) * left_factor.get_shape().as_list()[
-      0]
-  return math_ops.sqrt(left_norm / right_norm)
-
-
 def posdef_inv(tensor, damping):
   """Computes the inverse of tensor + damping * identity."""
   identity = linalg_ops.eye(tensor.shape.as_list()[0], dtype=tensor.dtype)
   damping = math_ops.cast(damping, dtype=tensor.dtype)
-  return posdef_inv_funcs[POSDEF_INV_METHOD](tensor, identity, damping)
+  return posdef_inv_functions[POSDEF_INV_METHOD](tensor, identity, damping)
 
 
 def posdef_inv_matrix_inverse(tensor, identity, damping):
@@ -209,10 +188,36 @@ def posdef_inv_eig(tensor, identity, damping):
       eigenvectors / eigenvalues, eigenvectors, transpose_b=True)
 
 
-posdef_inv_funcs = {
+posdef_inv_functions = {
     "matrix_inverse": posdef_inv_matrix_inverse,
     "cholesky": posdef_inv_cholesky,
     "eig": posdef_inv_eig,
+}
+
+
+def posdef_eig(mat):
+  """Computes the eigendecomposition of a positive semidefinite matrix."""
+  return posdef_eig_functions[POSDEF_EIG_METHOD](mat)
+
+
+def posdef_eig_svd(mat):
+  """Computes the singular values and left singular vectors of a matrix."""
+  evals, evecs, _ = linalg_ops.svd(mat)
+
+  return evals, evecs
+
+
+def posdef_eig_self_adjoint(mat):
+  """Computes eigendecomposition using self_adjoint_eig."""
+  evals, evecs = linalg_ops.self_adjoint_eig(mat)
+  evals = math_ops.abs(evals)  # Should be equivalent to svd approach.
+
+  return evals, evecs
+
+
+posdef_eig_functions = {
+    "self_adjoint": posdef_eig_self_adjoint,
+    "svd": posdef_eig_svd,
 }
 
 

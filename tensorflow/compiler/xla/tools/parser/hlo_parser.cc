@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -104,6 +105,7 @@ class HloParser {
     kPaddingConfig,
     kMetadata,
     kFusionKind,
+    kDistribution,
   };
 
   struct AttrConfig {
@@ -174,6 +176,7 @@ class HloParser {
   bool ParseShape(Shape* result);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
+  bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseInt64(int64* result);
   bool ParseDouble(double* result);
   bool ParseBool(bool* result);
@@ -816,10 +819,36 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands[0], config ? *config : ""));
       break;
     }
+    case HloOpcode::kRng: {
+      optional<RandomDistribution> distribution;
+      attrs["distribution"] = {/*required=*/true, AttrTy::kDistribution,
+                               &distribution};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateRng(shape, *distribution, operands));
+      break;
+    }
+    case HloOpcode::kReducePrecision: {
+      optional<int64> exponent_bits;
+      optional<int64> mantissa_bits;
+      attrs["exponent_bits"] = {/*required=*/true, AttrTy::kInt64,
+                                &exponent_bits};
+      attrs["mantissa_bits"] = {/*required=*/true, AttrTy::kInt64,
+                                &mantissa_bits};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateReducePrecision(
+              shape, operands[0], static_cast<int>(*exponent_bits),
+              static_cast<int>(*mantissa_bits)));
+      break;
+    }
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kReducePrecision:
-    case HloOpcode::kRng:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
@@ -1548,6 +1577,15 @@ bool HloParser::ParseAttributeHelper(
         static_cast<optional<OpMetadata>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kDistribution: {
+        RandomDistribution result;
+        if (!ParseRandomDistribution(&result)) {
+          return false;
+        }
+        static_cast<optional<RandomDistribution>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
     }
   }();
   if (!success) {
@@ -2024,20 +2062,51 @@ bool HloParser::ParseMetadata(OpMetadata* metadata) {
 
 bool HloParser::ParseOpcode(HloOpcode* result) {
   VLOG(1) << "ParseOpcode";
-  if (lexer_.GetKind() != TokKind::kOpcode) {
+  if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects opcode");
   }
-  *result = lexer_.GetOpcodeVal();
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToHloOpcode(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        Printf("expects opcode but sees: %s, error: %s", val.c_str(),
+               status_or_result.status().error_message().c_str()));
+  }
+  *result = status_or_result.ValueOrDie();
   lexer_.Lex();
   return true;
 }
 
 bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
   VLOG(1) << "ParseFusionKind";
-  if (lexer_.GetKind() != TokKind::kFusionKind) {
+  if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fusion kind");
   }
-  *result = lexer_.GetFusionKindVal();
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToFusionKind(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        Printf("expects fusion kind but sees: %s, error: %s", val.c_str(),
+               status_or_result.status().error_message().c_str()));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
+  VLOG(1) << "ParseRandomDistribution";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects random distribution");
+  }
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToRandomDistribution(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        Printf("expects random distribution but sees: %s, error: %s",
+               val.c_str(), status_or_result.status().error_message().c_str()));
+  }
+  *result = status_or_result.ValueOrDie();
   lexer_.Lex();
   return true;
 }

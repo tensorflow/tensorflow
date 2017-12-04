@@ -52,11 +52,11 @@ __global__ void Count1D(CudaLaunchConfig config, int bufsize, int* outbuf) {
   }
 }
 __global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int* outbuf) {
-  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
+  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
-    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
+    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {
       if (y < 0) {  // y might overflow when testing extreme case
         break;
       }
@@ -66,15 +66,15 @@ __global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int* outbuf) {
   }
 }
 __global__ void Count3D(Cuda3DLaunchConfig config, int bufsize, int* outbuf) {
-  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
+  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
-    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
+    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {
       if (y < 0) {  // y might overflow when testing extreme case
         break;
       }
-      CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {
+      CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {
         if (z < 0) {  // z might overflow when testing extreme case
           break;
         }
@@ -94,7 +94,7 @@ class CudaLaunchConfigTest : public ::testing::Test {
   const int bufsize = 1024;
   int* outbuf = nullptr;
   Eigen::CudaStreamDevice stream;
-  GPUDevice d = GPUDevice(&stream);
+  Eigen::GpuDevice d = Eigen::GpuDevice(&stream);
 
   virtual void SetUp() {
     cudaError_t err = cudaMallocManaged(&outbuf, sizeof(int) * bufsize);

@@ -33,10 +33,11 @@ class Mfcc {
   bool Initialize(int input_length,
                   double input_sample_rate);
 
-  // Input is a single magnitude spectrogram frame. The input spectrum
-  // is filtered into bands using a triangular mel filterbank and a
-  // discrete cosine transform (DCT) of the values is taken. Output is
-  // populated with the lowest dct_coefficient_count of these values.
+  // Input is a single squared-magnitude spectrogram frame. The input spectrum
+  // is converted to linear magnitude and weighted into bands using a
+  // triangular mel filterbank, and a discrete cosine transform (DCT) of the
+  // values is taken. Output is populated with the lowest dct_coefficient_count
+  // of these values.
   void Compute(const std::vector<double>& spectrogram_frame,
                std::vector<double>* output) const;
 

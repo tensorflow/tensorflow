@@ -44,7 +44,7 @@ class TargetTest(test_util.TensorFlowTestCase):
     logdir = '/tmp/apath/that/doesnt/exist'
     self.assertFalse(gfile.Exists(logdir))
     with self.assertRaises(errors.NotFoundError):
-      summary_ops.create_summary_file_writer(logdir, max_queue=0, name='t0')
+      summary_ops.create_file_writer(logdir, max_queue=0, name='t0')
 
   def testShouldRecordSummary(self):
     self.assertFalse(summary_ops.should_record_summaries())
@@ -54,7 +54,7 @@ class TargetTest(test_util.TensorFlowTestCase):
   def testSummaryOps(self):
     training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logdir, max_queue=0,
         name='t0').as_default(), summary_ops.always_record_summaries():
       summary_ops.generic('tensor', 1, '')
@@ -69,7 +69,7 @@ class TargetTest(test_util.TensorFlowTestCase):
   def testDefunSummarys(self):
     training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logdir, max_queue=0,
         name='t1').as_default(), summary_ops.always_record_summaries():
 
@@ -85,7 +85,7 @@ class TargetTest(test_util.TensorFlowTestCase):
   def testSummaryName(self):
     training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logdir, max_queue=0,
         name='t2').as_default(), summary_ops.always_record_summaries():
 
@@ -98,7 +98,7 @@ class TargetTest(test_util.TensorFlowTestCase):
   def testSummaryGlobalStep(self):
     step = training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logdir, max_queue=0,
         name='t2').as_default(), summary_ops.always_record_summaries():
 
@@ -110,7 +110,7 @@ class TargetTest(test_util.TensorFlowTestCase):
 
   def testMaxQueue(self):
     logs = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logs, max_queue=2, flush_millis=999999,
         name='lol').as_default(), summary_ops.always_record_summaries():
       get_total = lambda: len(summary_test_util.events_from_logdir(logs))
@@ -123,7 +123,7 @@ class TargetTest(test_util.TensorFlowTestCase):
 
   def testFlush(self):
     logs = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logs, max_queue=999999, flush_millis=999999,
         name='lol').as_default(), summary_ops.always_record_summaries():
       get_total = lambda: len(summary_test_util.events_from_logdir(logs))
@@ -150,7 +150,7 @@ class DbTest(summary_test_util.SummaryDbTest):
       return sum_
 
     with summary_ops.always_record_summaries():
-      with self.create_summary_db_writer().as_default():
+      with self.create_db_writer().as_default():
         self.assertEqual(5, adder(int64(2), int64(3)).numpy())
 
     six.assertCountEqual(self, [1, 1, 1],
@@ -162,7 +162,7 @@ class DbTest(summary_test_util.SummaryDbTest):
     sum_id = get_one(self.db, 'SELECT tag_id FROM Tags WHERE tag_name = "sum"')
 
     with summary_ops.always_record_summaries():
-      with self.create_summary_db_writer().as_default():
+      with self.create_db_writer().as_default():
         self.assertEqual(9, adder(int64(4), int64(5)).numpy())
 
     six.assertCountEqual(self, [1, 1, 1, 2, 2, 2],
@@ -185,26 +185,26 @@ class DbTest(summary_test_util.SummaryDbTest):
 
   def testBadExperimentName(self):
     with self.assertRaises(ValueError):
-      self.create_summary_db_writer(experiment_name='\0')
+      self.create_db_writer(experiment_name='\0')
 
   def testBadRunName(self):
     with self.assertRaises(ValueError):
-      self.create_summary_db_writer(run_name='\0')
+      self.create_db_writer(run_name='\0')
 
   def testBadUserName(self):
     with self.assertRaises(ValueError):
-      self.create_summary_db_writer(user_name='-hi')
+      self.create_db_writer(user_name='-hi')
     with self.assertRaises(ValueError):
-      self.create_summary_db_writer(user_name='hi-')
+      self.create_db_writer(user_name='hi-')
     with self.assertRaises(ValueError):
-      self.create_summary_db_writer(user_name='@')
+      self.create_db_writer(user_name='@')
 
   def testGraphSummary(self):
     training_util.get_or_create_global_step()
     name = 'hi'
     graph = graph_pb2.GraphDef(node=(node_def_pb2.NodeDef(name=name),))
     with summary_ops.always_record_summaries():
-      with self.create_summary_db_writer().as_default():
+      with self.create_db_writer().as_default():
         summary_ops.graph(graph)
     six.assertCountEqual(self, [name],
                          get_all(self.db, 'SELECT node_name FROM Nodes'))
