@@ -466,6 +466,7 @@ tf_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
     ],
 )
 
