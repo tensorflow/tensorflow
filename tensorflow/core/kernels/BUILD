@@ -3940,6 +3940,8 @@ tf_kernel_library(
         "scatter_nd_op_cpu_impl_3.cc",
         "scatter_nd_op_cpu_impl_4.cc",
         "scatter_nd_op_cpu_impl_5.cc",
+        "scatter_nd_op_cpu_impl_6.cc",
+        "scatter_nd_op_cpu_impl_7.cc",
     ],
     hdrs = [
         "scatter_nd_op.h",
@@ -4512,6 +4514,8 @@ filegroup(
         "gather_nd_op_cpu_impl_3.cc",
         "gather_nd_op_cpu_impl_4.cc",
         "gather_nd_op_cpu_impl_5.cc",
+        "gather_nd_op_cpu_impl_6.cc",
+        "gather_nd_op_cpu_impl_7.cc",
         "gather_op.cc",
         "identity_n_op.cc",
         "identity_n_op.h",

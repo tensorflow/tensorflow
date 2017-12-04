@@ -136,7 +136,9 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 2); \
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 3); \
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 4); \
-  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5);
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 6); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 7);
 
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                                \
   DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::ASSIGN); \
