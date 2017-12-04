@@ -53,7 +53,7 @@ class Disassembler {
   // Returns a DisassemblerResult for the given object file, containing the
   // disassembled code.
   //
-  // If we couldnt' retrieve a disassembler for this platform, an error status
+  // If we couldn't retrieve a disassembler for this platform, an error status
   // is returned.
   StatusOr<DisassemblerResult> DisassembleObjectFile(
       const llvm::object::ObjectFile& object_file) const;
