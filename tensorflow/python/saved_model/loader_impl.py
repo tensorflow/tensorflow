@@ -199,7 +199,9 @@ def load(sess, tags, export_dir, **saver_kwargs):
     # Build the SavedModel protocol buffer and find requested meta graph def.
     saved_model = _parse_saved_model(export_dir)
     found_match = False
+    available_tags = []
     for meta_graph_def in saved_model.meta_graphs:
+      available_tags.append(set(meta_graph_def.meta_info_def.tags))
       if set(meta_graph_def.meta_info_def.tags) == set(tags):
         meta_graph_def_to_load = meta_graph_def
         found_match = True
@@ -210,6 +212,7 @@ def load(sess, tags, export_dir, **saver_kwargs):
           "MetaGraphDef associated with tags " + str(tags).strip("[]") +
           " could not be found in SavedModel. To inspect available tag-sets in"
           " the SavedModel, please use the SavedModel CLI: `saved_model_cli`"
+          "\navailable_tags: " + str(available_tags)
       )
 
     # Build a saver by importing the meta graph def to load.
