@@ -3416,7 +3416,7 @@ filegroup(
 
 filegroup(
     name = "python_api_def",
-    data = glob(["api_def/python_api/*"]),
+    srcs = glob(["api_def/python_api/*"]),
 )
 
 tf_cc_test(
