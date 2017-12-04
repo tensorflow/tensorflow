@@ -458,6 +458,8 @@ def tf_gen_op_wrappers_cc(name,
 #     "name" arg)
 #   op_whitelist: if not empty, only op names in this list will be wrapped. It
 #     is invalid to specify both "hidden" and "op_whitelist".
+#   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
+#     specified ops.
 def tf_gen_op_wrapper_py(name,
                          out=None,
                          hidden=None,
@@ -466,7 +468,8 @@ def tf_gen_op_wrapper_py(name,
                          require_shape_functions=False,
                          hidden_file=None,
                          generated_target_name=None,
-                         op_whitelist=[]):
+                         op_whitelist=[],
+                         cc_linkopts=[]):
   if (hidden or hidden_file) and op_whitelist:
     fail('Cannot pass specify both hidden and op_whitelist.')
 
@@ -476,7 +479,7 @@ def tf_gen_op_wrapper_py(name,
     deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
   tf_cc_binary(
       name=tool_name,
-      linkopts=["-lm"],
+      linkopts=["-lm"] + cc_linkopts,
       copts=tf_copts(),
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
       deps=([
