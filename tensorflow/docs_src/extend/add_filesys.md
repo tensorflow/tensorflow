@@ -35,6 +35,7 @@ Note that TensorFlow already includes many filesystem implementations, such as:
 
 *   HDFS - the Hadoop File System
 *   GCS - Google Cloud Storage filesystem
+*   S3 - Amazon Simple Storage Service filesystem
 *   A "memory-mapped-file" filesystem
 
 The rest of this guide describes how to implement a custom filesystem.
