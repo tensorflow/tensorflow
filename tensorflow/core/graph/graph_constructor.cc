@@ -203,7 +203,11 @@ class GraphConstructor {
 
   // Returns true if `name` already exists in `g_` (either as a node name or
   // prefix).
-  bool NameExists(StringPiece name);
+  bool NameExistsInGraph(StringPiece name);
+
+  // Returns true if `name` already exists in the GraphDef being imported
+  // (either as a node name or prefix).
+  bool NameExistsInGraphDef(StringPiece name);
 
   // Returns a unique version of `original_name`, or `original_name` if it's
   // already unique in the graph.
@@ -242,6 +246,9 @@ class GraphConstructor {
   // TODO(vrv): Profile this data structure to see if we should use an
   // alternative implementation of std::unordered_map.
   std::unordered_map<StringPiece, NodeInfo, StringPieceHasher> gdef_nodes_;
+
+  // Prefixes already used in the GraphDef being imported.
+  std::unordered_set<StringPiece, StringPieceHasher> gdef_prefixes_;
 
   // Mapping from node name to the existing node in g_.
   std::unordered_map<StringPiece, Node*, StringPieceHasher> existing_nodes_;
@@ -305,6 +312,16 @@ bool NodeNameInValues(const std::vector<string>& control_dependencies,
                    node_name) != control_dependencies.end();
 }
 
+// Adds any prefixes of `node_name` (not including the full name itself) to
+// `prefixes`.
+void AddPrefixes(StringPiece node_name,
+                 std::unordered_set<StringPiece, StringPieceHasher>* prefixes) {
+  size_t idx = -1;
+  while ((idx = node_name.find('/', idx + 1)) != StringPiece::npos) {
+    prefixes->insert(node_name.substr(0, idx));
+  }
+}
+
 Status GraphConstructor::EnsureNoNameCollisions() {
   existing_nodes_.reserve(g_->num_nodes());
   // Populate existing_nodes_ and existing_prefixes_.
@@ -323,17 +340,12 @@ Status GraphConstructor::EnsureNoNameCollisions() {
             n->name(), "'");
       }
     }
-    // Add all of node's prefixes to existing_prefixes_ (if it has any).
-    size_t idx = -1;
-    while ((idx = n->name().find('/', idx + 1)) != string::npos) {
-      StringPiece name(n->name());
-      existing_prefixes_.insert(name.substr(0, idx));
-    }
+    AddPrefixes(n->name(), &existing_prefixes_);
   }
   if (opts_.prefix.empty() && opts_.importing && !opts_.uniquify_names) {
     for (const NodeDef* n : node_defs_) {
       const string& name = n->name();
-      if (NameExists(name)) {
+      if (NameExistsInGraph(name)) {
         return errors::InvalidArgument("Node name '", name,
                                        "' already exists in the Graph");
       }
@@ -346,7 +358,7 @@ Status GraphConstructor::EnsureNoNameCollisions() {
                                      opts_.prefix,
                                      "' would lead to invalid node names");
     }
-    if (NameExists(prefix_no_slash)) {
+    if (NameExistsInGraph(prefix_no_slash)) {
       return errors::InvalidArgument("Import node name prefix '",
                                      prefix_no_slash,
                                      "' conflicts with "
@@ -384,7 +396,7 @@ Status GraphConstructor::ValidateInputMapAndControlDependencies() {
 }
 
 Status GraphConstructor::BuildNodeIndex() {
-  // Validate the node names and add them to gdef_nodes_.
+  // Validate the node names and add them to gdef_nodes_ and gdef_prefixes_.
   for (int n = 0; n < node_defs_.size(); ++n) {
     const NodeDef& node_def = *node_defs_[n];
     if (!IsValidNodeName(node_def.name(), opts_.allow_internal_ops)) {
@@ -419,6 +431,8 @@ Status GraphConstructor::BuildNodeIndex() {
             "': Control dependencies must come after regular dependencies");
       }
     }
+    // Update gdef_prefixes_.
+    AddPrefixes(node_def.name(), &gdef_prefixes_);
   }
   return Status::OK();
 }
@@ -750,10 +764,13 @@ void GraphConstructor::AddPrefixToNodeDef(
 
 void GraphConstructor::UniquifyNames(
     const std::vector<bool>& input_already_exists, NodeDef* node_def) {
-  if (NameExists(node_def->name())) {
+  if (NameExistsInGraph(node_def->name())) {
     string old_name = node_def->name();
     node_def->set_name(FindUniqueName(node_def->name()));
     uniquified_names_[old_name] = node_def->name();
+    // Note that we don't have to update gdef_nodes_ or gdef_prefixes_ with
+    // `name` because we guarantee the original NodeDef names are unique,
+    // meaning we won't generate this name again.
   }
   for (int i = 0; i < node_def->input_size(); ++i) {
     // Skip remapped inputs (which already exist in g_ and are not being
@@ -783,16 +800,25 @@ void GraphConstructor::UniquifyNames(
   }
 }
 
-bool GraphConstructor::NameExists(StringPiece name) {
+bool GraphConstructor::NameExistsInGraph(StringPiece name) {
   if (existing_nodes_.find(name) != existing_nodes_.end()) return true;
-  return existing_prefixes_.find(name) != existing_prefixes_.end();
+  if (existing_prefixes_.find(name) != existing_prefixes_.end()) return true;
+  return false;
+}
+
+bool GraphConstructor::NameExistsInGraphDef(StringPiece name) {
+  if (gdef_nodes_.find(name) != gdef_nodes_.end()) return true;
+  if (gdef_prefixes_.find(name) != gdef_prefixes_.end()) return true;
+  return false;
 }
 
 string GraphConstructor::FindUniqueName(StringPiece original_name) {
   string name = original_name.ToString();
-  int count = 1;
-  while (NameExists(name)) {
-    name = strings::StrCat(original_name, "_", count++);
+  int count = 0;
+  // Check that any generated names don't collide with imported NodeDefs (as
+  // well as nodes in g_).
+  while (NameExistsInGraph(name) || (count > 0 && NameExistsInGraphDef(name))) {
+    name = strings::StrCat(original_name, "_", ++count);
   }
   return name;
 }
