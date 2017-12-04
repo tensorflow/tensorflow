@@ -507,13 +507,13 @@ class ConvolutionTest(test.TestCase):
         self.assertEqual(
             len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
 
-  def testConvWithNorm(self):
+  def testConvWithBatchNorm(self):
     height, width = 7, 9
     with self.test_session():
       images = random_ops.random_uniform((5, height, width, 32), seed=1)
       with arg_scope(
           [layers_lib.convolution2d],
-          normalizer_fn=_layers._norm,
+          normalizer_fn=_layers.batch_norm,
           normalizer_params={'decay': 0.9}):
         net = layers_lib.convolution2d(images, 32, [3, 3])
         net = layers_lib.convolution2d(net, 32, [3, 3])
@@ -3693,7 +3693,7 @@ class LegacyFullyConnectedTest(test.TestCase):
                                    'rank of x must be at least 2 not: 1'):
         x = constant_op.constant([[]], shape=[0])
         _layers.legacy_fully_connected(x, 2, activation_fn=nn_ops.softmax)
-    
-    
+
+
 if __name__ == '__main__':
   test.main()
