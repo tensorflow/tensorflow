@@ -245,16 +245,47 @@ CreateWhileOp(poplar::Graph &graph,
   }
 
   // Body
+
   poplar::program::Sequence body_seq;
-  for (unsigned int i=0; i<param_count; i++) {
-    if (body_outputs[i] != body_inputs[i]) {
-      if (body_outputs[i].intersectsWith(body_inputs[i])) {
-        poplar::Tensor temp = graph.clone(body_outputs[i]);
-        body_seq.add(poplar::program::Copy(body_outputs[i], temp));
-        body_seq.add(poplar::program::Copy(temp, body_inputs[i]));
-      } else {
-        body_seq.add(poplar::program::Copy(body_outputs[i], body_inputs[i]));
+
+  // A body output can be:
+  // - an independent new tensor (0)
+  // - containing an alias for one of the inputs (1)
+  // - a simple passthrough of its own input (2)
+
+  // Find outputs which are aliases of inputs
+  std::vector<int> alias_type(param_count, 0);
+  for (unsigned int o = 0; o < param_count; o++) {
+    for (unsigned int i=0; i<param_count; i++) {
+      if (body_outputs[o].intersectsWith(body_inputs[i])) {
+        alias_type[o] = 1;
       }
+    }
+    if (body_outputs[o] == body_inputs[o]) {
+      alias_type[o] = 2;
+    }
+  }
+
+  // Create a temporary copy location for outputs which need preserving
+  std::vector<poplar::Tensor> copies(param_count);
+  for (unsigned int o=0; o<param_count; o++) {
+    if (alias_type[o] == 1) {
+      copies[o] = graph.clone(body_outputs[o]);
+      body_seq.add(poplar::program::Copy(body_outputs[o], copies[o]));
+    }
+  }
+
+  for (unsigned int o=0; o<param_count; o++) {
+    switch (alias_type[o]) {
+      case 0:
+        body_seq.add(poplar::program::Copy(body_outputs[o], body_inputs[o]));
+        break;
+      case 1:
+        body_seq.add(poplar::program::Copy(copies[o], body_inputs[o]));
+        break;
+      case 2:
+        // nothing required
+        break;
     }
   }
   body_seq.add(body->second.sequence);
