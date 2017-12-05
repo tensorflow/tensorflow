@@ -6,9 +6,12 @@ import re
 import numpy as np
 from tensorflow.contrib.min_quantize.quantized_pb2 import QuantizedGraph, QuantizedItem, RAW, SIMPLE, TABLE
 from tensorflow.core.framework.node_def_pb2 import NodeDef
+from tensorflow.core.protobuf.config_pb2 import ConfigProto, OptimizerOptions
 
 from tensorflow.python.framework.dtypes import float32, int32
+from tensorflow.python.framework.graph_util_impl import extract_sub_graph
 from tensorflow.python.framework.importer import import_graph_def
+from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.tensor_shape import as_shape
 from tensorflow.python.framework.tensor_util import MakeNdarray
 
@@ -20,44 +23,64 @@ __all__ = [
 while_node_name_reg = re.compile(r'(^|.*/)while(_\d+)?($|/.*)')
 
 
-def quantize_graph_def(graph_def, skip=None, rel_tol=None, only=None):
+def quantize_graph_def(graph_def, skip=None, output_nodes=None, rel_tol=None, only=None):
   """
   :type graph_def: GraphDef
   :type skip: set|list
+  :type output_nodes: list
   :type rel_tol: float
   :type only: str
   :return: QuantizedGraph
   """
+  if output_nodes is not None and len(output_nodes) > 0:
+    graph_def = extract_sub_graph(graph_def, output_nodes)
+
   nodes = []
   items = []
   for node in graph_def.node:
+    # check skip
     if should_skip(node, skip):
       nodes.append(node)
-    else:
-      value = MakeNdarray(node.attr['value'].tensor)  # type: np.ndarray
-      same_value = all_same_value(value, rel_tol)
-      if same_value is not None:
-        nodes.append(const_node(node.attr['dtype'].type,
-                                np.array([same_value], dtype=value.dtype),
-                                value.shape))
-      elif value.size < 4096:
-        nodes.append(node)
-      else:
-        processed_node = NodeDef()
-        processed_node.name = node.name
-        processed_node.op = 'Placeholder'
-        processed_node.attr['dtype'].type = node.attr['dtype'].type
-        processed_node.attr['shape'].shape.CopyFrom(as_shape(value.shape).as_proto())
-        nodes.append(processed_node)
+      continue
 
-        item = QuantizedItem()
-        item.name = node.name
-        item.dtype = node.attr['dtype'].type
-        item.shape.extend(value.shape)
-        print('quantize {}'.format(node.name))
-        _fill(item, value, only=only)
-        items.append(item)
+    # try convert to constant
+    try:
+      value = MakeNdarray(node.attr['value'].tensor)  # type: np.ndarray
+    except TypeError:
+      nodes.append(node)
+      continue
+
+    # check repeated field
+    same_value = all_same_value(value, rel_tol)
+    if same_value is not None:
+      nodes.append(const_node(node.attr['dtype'].type,
+                              np.array([same_value], dtype=value.dtype),
+                              value.shape))
+      continue
+
+    # check data size
+    elif value.size < 4096:
+      nodes.append(node)
+      continue
+
+    # finally
+    processed_node = NodeDef()
+    processed_node.name = node.name
+    processed_node.op = 'Placeholder'
+    processed_node.attr['dtype'].type = node.attr['dtype'].type
+    processed_node.attr['shape'].shape.CopyFrom(as_shape(value.shape).as_proto())
+    nodes.append(processed_node)
+
+    item = QuantizedItem()
+    item.name = node.name
+    item.dtype = node.attr['dtype'].type
+    item.shape.extend(value.shape)
+    print('quantize {}'.format(node.name))
+    _fill(item, value, only=only)
+    items.append(item)
   graph = QuantizedGraph()
+  graph.graph.versions.CopyFrom(graph_def.versions)
+  graph.graph.library.CopyFrom(graph_def.library)
   graph.graph.node.extend(nodes)
   graph.items.extend(items)
   return graph

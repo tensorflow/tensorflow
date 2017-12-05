@@ -28,9 +28,9 @@ flags = flags_lib
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("input", None, """input graph path""")
+flags.DEFINE_string("output", None, """output graph path""")
 flags.DEFINE_boolean("text_proto", False, """graph in text proto format""")
 flags.DEFINE_boolean("quantized", False, """input is quantized graph""")
-flags.DEFINE_string("output_graph", None, """output graph path""")
 flags.DEFINE_string("output_mapping", None, """output mapping path""")
 flags.DEFINE_multi_string("keep", [], """node name keeps, could be node name or node_name:desired_name""")
 
@@ -40,7 +40,7 @@ def main(unused_args):
   in_path = FLAGS.input  # type: str
   in_is_text = FLAGS.text_proto  # type: bool
   quantized = FLAGS.quantized  # type: bool
-  out_path = FLAGS.output_graph  # type: str
+  out_path = FLAGS.output  # type: str
   out_mapping_path = FLAGS.output_mapping  # type: str
   keeps = [s if ':' not in s else tuple(s.split(':')) for s in FLAGS.keep]
 

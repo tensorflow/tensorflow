@@ -21,9 +21,10 @@ def obfuscate_graph_def(graph_def, keeps=None):
   :return: (obfuscated graph def, mapping)
   """
   mapper = _NodeNameMapper(keeps)
+  mapping = {}
   for node in graph_def.node:
-    mapper.map(node.name)
-  return _replace_graph_node_names(graph_def, mapper.mapping), mapper.mapping
+    mapping[node.name] = mapper.map(node.name)
+  return _replace_graph_node_names(graph_def, mapping), mapping
 
 
 def obfuscate_quantized_graph(quantized_graph, keeps=None):
@@ -50,16 +51,12 @@ def obfuscate_quantized_graph(quantized_graph, keeps=None):
   return new_quantized_graph, mapping
 
 
-_node_name_regex_tpl = r'(s: "loc:@|input: "|name: "\^?)(?P<name>{})[:"]'
+_node_name_regex_tpl = r'(s: "loc:|input: "|name: ")\^?(?P<name>{})[:"]'
 
 
 def _replace_graph_node_names(graph, mapping):
-  # get all nodes, sort by node name length
-  all_nodes = [node.name for node in graph.node if len(node.name) > 0]
-  all_nodes.sort(key=lambda k: len(k), reverse=True)
-
-  # regex, match all node name
-  all_nodes_regex = re.compile(_node_name_regex_tpl.format('|'.join(all_nodes)))
+  # regex, match all mapped name
+  all_nodes_regex = re.compile(_node_name_regex_tpl.format('|'.join(mapping.keys())))
 
   # old graph text
   graph_text = MessageToString(graph)

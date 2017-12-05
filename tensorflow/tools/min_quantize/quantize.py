@@ -39,7 +39,7 @@ def main(unused_args):
   in_is_text = FLAGS.text_proto  # type: bool
   out_path = FLAGS.output  # type: str
   skip = FLAGS.skip  # type: list
-  output_nodes = FLAGS.output_node # type: list
+  output_nodes = FLAGS.output_node  # type: list
 
   # validate param
   if in_path is None or len(in_path) == 0:
@@ -58,7 +58,7 @@ def main(unused_args):
       in_graph.ParseFromString(fp.read())
 
   # quantize
-  quantized = quantize_graph_def(in_graph, set(skip))
+  quantized = quantize_graph_def(in_graph, set(skip), output_nodes)
 
   # write
   with open(out_path, "wb") as fp:

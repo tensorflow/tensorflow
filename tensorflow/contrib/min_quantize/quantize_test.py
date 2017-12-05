@@ -25,7 +25,7 @@ class QuantizeTest(TestCase):
         # matmul to scalar
         z = matmul(x, y, name='c3')
       self._desire_z = session.run(z)
-      self._quantized_raw = quantize_graph_def(session.graph_def, only='raw')
+      self._quantized_raw = quantize_graph_def(session.graph_def, output_nodes=['c3'], only='raw')
       self._quantized_simple = quantize_graph_def(session.graph_def, only='simple')
       self._quantized_full = quantize_graph_def(session.graph_def)
 
