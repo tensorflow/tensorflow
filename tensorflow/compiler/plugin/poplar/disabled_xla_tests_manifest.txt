@@ -12,6 +12,7 @@ MultiOutputFusionTest.DiffentTypesNoFusion POPLAR // F64
 MultiOutputFusionTest.DiffentTypesFusion POPLAR // F64
 
 Bfloat16Test POPLAR // No bfloat16
+ReshapeTest POPLAR // No bfloat16 - crap test setup
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
