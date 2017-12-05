@@ -518,7 +518,7 @@ void ArithmeticOptimizer::DedupComputations() {
   } while (!stop);
 
   // Delete duplicates
-  if (!duplicates.empty()) {
+  if (fetch_nodes_known_ && !duplicates.empty()) {
     int last = optimized_graph_->node_size() - 1;
     for (auto it = duplicates.rbegin(); it != duplicates.rend(); ++it) {
       int index = *it;
