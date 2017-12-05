@@ -60,13 +60,11 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape);
 
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
+//
+// Will handle special cases such as making sure that indices used for dynamic
+// slices are bounded, reduces that call adds use 0 as an init value, etc.
 StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
-    const HloModule& module);
-
-// Reductions using Adds, ReduceWindow, and SelectAndScatter, require their
-// init_value to be replaced with the constant 0.0f when testing, otherwise we
-// may generate a bad init_value when looking at the op in isolation.
-Status ReplaceInitsWithConstants(HloModule* const module);
+    HloModule* const module);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.
