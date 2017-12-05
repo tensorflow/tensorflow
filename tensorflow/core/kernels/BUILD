@@ -3495,9 +3495,9 @@ tf_kernel_library(
 cc_library(
     name = "parsing",
     deps = [
+        ":decode_compressed_op",
         ":decode_csv_op",
         ":decode_raw_op",
-        ":decode_compressed_op",
         ":example_parsing_ops",
         ":parse_tensor_op",
         ":string_to_number_op",
