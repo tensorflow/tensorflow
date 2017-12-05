@@ -1000,6 +1000,7 @@ bool HloInstruction::HasSideEffect() const {
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
+    case HloOpcode::kRng:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
