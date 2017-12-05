@@ -982,6 +982,10 @@ class VariableScope(object):
     """Reuse variables in this scope."""
     self._reuse = True
 
+  def auto_reuse_variables(self):
+    """Auto reuse variables in this scope."""
+    self._reuse = AUTO_REUSE
+
   def set_initializer(self, initializer):
     """Set initializer for this scope."""
     self._initializer = initializer
