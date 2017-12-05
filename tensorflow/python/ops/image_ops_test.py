@@ -771,14 +771,15 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
   def testRandomFlipLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
+    seed = 42
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf)
+      y = image_ops.random_flip_left_right(x_tf, seed=seed)
 
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(50):
+      for _ in range(100):
         y_tf = y.eval()
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
@@ -786,18 +787,23 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         else:
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
-      self.assertGreaterEqual(count_flipped, 1)
-      self.assertGreaterEqual(count_unflipped, 1)
+      # 100 trials
+      # Mean: 50
+      # Std Dev: ~5
+      # Six Sigma: 50 - (5 * 6) = 20
+      self.assertGreaterEqual(count_flipped, 20)
+      self.assertGreaterEqual(count_unflipped, 20)
 
   def testRandomFlipLeftRightWithBatch(self):
     x_np = np.array([[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
                     dtype=np.uint8).reshape([2, 2, 3, 1])
     y_np = np.array([[[3, 2, 1], [3, 2, 1]], [[3, 2, 1], [3, 2, 1]]],
                     dtype=np.uint8).reshape([2, 2, 3, 1])
+    seed = 42
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape).eval()
-      y = image_ops.random_flip_left_right(x_tf)
+      y = image_ops.random_flip_left_right(x_tf, seed=seed)
       count_flipped = 0
       count_unflipped = 0
       for _ in range(50):
@@ -813,8 +819,12 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
           else:
             self.assertAllEqual(current_y_tf, current_y_np)
             count_flipped += 1
-      self.assertGreaterEqual(count_flipped, 1)
-      self.assertGreaterEqual(count_unflipped, 1)
+      # Batch size 2 * 50 trials = 100
+      # Mean: 50
+      # Std Dev: ~5
+      # Six Sigma: 50 - (5 * 6) = 20
+      self.assertGreaterEqual(count_flipped, 20)
+      self.assertGreaterEqual(count_unflipped, 20)
 
   def testInvolutionUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
@@ -860,13 +870,14 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
   def testRandomFlipUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+    seed = 42
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf)
+      y = image_ops.random_flip_up_down(x_tf, seed=42)
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(50):
+      for _ in range(100):
         y_tf = y.eval()
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
@@ -874,18 +885,23 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         else:
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
-      self.assertGreaterEqual(count_flipped, 1)
-      self.assertGreaterEqual(count_unflipped, 1)
+      # 100 trials
+      # Mean: 50
+      # Std Dev: ~5
+      # Six Sigma: 50 - (5 * 6) = 20
+      self.assertGreaterEqual(count_flipped, 20)
+      self.assertGreaterEqual(count_unflipped, 20)
 
   def testRandomFlipUpDownWithBatch(self):
     x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]],
                     dtype=np.uint8).reshape([2, 2, 3, 1])
     y_np = np.array([[[4, 5, 6], [1, 2, 3]], [[4, 5, 6], [1, 2, 3]]],
                     dtype=np.uint8).reshape([2, 2, 3, 1])
+    seed = 42
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape).eval()
-      y = image_ops.random_flip_up_down(x_tf)
+      y = image_ops.random_flip_up_down(x_tf, seed=42)
       count_flipped = 0
       count_unflipped = 0
       for _ in range(50):
@@ -900,8 +916,12 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         else:
           self.assertAllEqual(current_y_tf, current_y_np)
           count_flipped += 1
-      self.assertGreaterEqual(count_flipped, 1)
-      self.assertGreaterEqual(count_unflipped, 1)
+      # Batch size 2 * 50 trials = 100
+      # Mean: 50
+      # Std Dev: ~5
+      # Six Sigma: 50 - (5 * 6) = 20
+      self.assertGreaterEqual(count_flipped, 20)
+      self.assertGreaterEqual(count_unflipped, 20)
 
   def testInvolutionTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
