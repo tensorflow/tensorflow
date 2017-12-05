@@ -3773,16 +3773,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "monitored_session_test",
     size = "medium",
     srcs = ["training/monitored_session_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",
-        "notsan",  # b/67945581
-    ],
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client_testlib",
         ":control_flow_ops",
@@ -3796,6 +3791,11 @@ py_test(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/core:protos_all_py",
+    ],
+    tags = [
+        "multi_gpu",
+        "no_windows",
+        "notsan",  # b/67945581
     ],
 )
 
