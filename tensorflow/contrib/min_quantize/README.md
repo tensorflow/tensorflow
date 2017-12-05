@@ -1,6 +1,12 @@
 # min quantize
 a quantize&obfuscate library for tensorflow graph
 
+## Features
+* quantize library without Quantize/Dequantize Ops
+* quantize dynamic_rnn without frame error
+* use KMeans for better quantize accuracy
+* obfuscate graph node name, prevent easily graph extraction
+
 ## Usage
 in case of a graph with following structure:
 
@@ -119,8 +125,3 @@ inputs.push_back(std::make_pair("x", ...));
 std::vector<tensorflow::Tensor> output;
 session.Run(inputs, {"y"}, {}, &output);
 ```
-
-## Features
-* quantize library without Quantize/Dequantize Ops
-* use KMeans for better quantize accuracy
-* obfuscate graph node name, prevent easily graph extraction
