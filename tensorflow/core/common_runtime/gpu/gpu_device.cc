@@ -949,7 +949,7 @@ Status EnablePeerAccess(gpu::Platform* platform,
         if (!status.ok()) {
           LOG(WARNING)
               << "Unable to enable peer access between device ordinals "
-              << i_gpu_id << " and " << j_gpu_id;
+              << i_gpu_id << " and " << j_gpu_id << ", status: " << status;
         } else {
           ++enabled_peer_count;
         }

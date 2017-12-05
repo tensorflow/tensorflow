@@ -212,6 +212,9 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
 
   def _forward(self, x):
     event_size = array_ops.shape(x)[-1]
+    y0 = array_ops.zeros_like(x, name="y0")
+    # call the template once to ensure creation
+    _ = self._shift_and_log_scale_fn(y0)
     def _loop_body(index, y0):
       """While-loop body for autoregression calculation."""
       # Set caching device to avoid re-getting the tf.Variable for every while
@@ -230,7 +233,7 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
     _, y = control_flow_ops.while_loop(
         cond=lambda index, _: index < event_size,
         body=_loop_body,
-        loop_vars=[0, array_ops.zeros_like(x, name="y0")])
+        loop_vars=[0, y0])
     return y
 
   def _inverse(self, y):

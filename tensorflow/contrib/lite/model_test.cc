@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/testing/util.h"
 
 // Comparison for TfLiteRegistration. Since TfLiteRegistration is a C object,
 // we must declare this in global namespace, so argument-dependent operator
@@ -261,7 +262,7 @@ TEST(BasicFlatBufferModel, TestBuildModelFromCorruptedData) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: tflite::LogToStderr();
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

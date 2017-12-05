@@ -90,6 +90,12 @@ bool IsIdentity(const NodeDef& node) {
   return op == "Identity" || op == "RefIdentity";
 }
 
+bool IsMatMul(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "MatMul" || op == "BatchMatMul" || op == "QuantizedMatMul" ||
+         op == "SparseMatMul";
+}
+
 bool IsMerge(const NodeDef& node) {
   const auto op = node.op();
   return op == "Merge" || op == "RefMerge";

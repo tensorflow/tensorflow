@@ -48,7 +48,7 @@ class DbTest(summary_test_util.SummaryDbTest):
     name = 'hi'
     graph = graph_pb2.GraphDef(node=(node_def_pb2.NodeDef(name=name),))
     with self.test_session():
-      with self.create_summary_db_writer().as_default():
+      with self.create_db_writer().as_default():
         summary_ops.initialize(graph=graph)
     six.assertCountEqual(self, [name],
                          get_all(self.db, 'SELECT node_name FROM Nodes'))
@@ -57,7 +57,7 @@ class DbTest(summary_test_util.SummaryDbTest):
     with ops.Graph().as_default(), self.test_session():
       training_util.get_or_create_global_step()
       logdir = tempfile.mkdtemp()
-      with summary_ops.create_summary_file_writer(
+      with summary_ops.create_file_writer(
           logdir, max_queue=0,
           name='t2').as_default(), summary_ops.always_record_summaries():
         summary_ops.initialize()
@@ -78,7 +78,7 @@ class DbTest(summary_test_util.SummaryDbTest):
     with ops.Graph().as_default(), self.test_session():
       training_util.get_or_create_global_step()
       logdir = tempfile.mkdtemp()
-      with summary_ops.create_summary_file_writer(
+      with summary_ops.create_file_writer(
           logdir, max_queue=0,
           name='t2').as_default(), summary_ops.always_record_summaries():
         summary_ops.initialize()
