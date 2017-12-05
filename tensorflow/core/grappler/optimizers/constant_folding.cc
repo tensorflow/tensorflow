@@ -1254,8 +1254,11 @@ void ConstantFolding::ReplaceAddOrMulWithIdentity(int input_to_forward,
 Status ConstantFolding::ReplaceAddOrMulWithConstant(
     double value, const TensorShapeProto& shape, NodeDef* node) {
   AttrValue tensor_attr;
-  TF_RETURN_IF_ERROR(CreateConstantTensorAttrValue(node->attr().at("T").type(),
-                                                   value, shape, &tensor_attr));
+  AttrValue dtype_attr = node->attr().at("T");
+  TF_RETURN_IF_ERROR(CreateConstantTensorAttrValue(dtype_attr.type(), value,
+                                                   shape, &tensor_attr));
+  node->clear_attr();
+  node->mutable_attr()->insert({"dtype", dtype_attr});
   node->mutable_attr()->insert({"value", tensor_attr});
   node->set_op("Const");
   // Convert all inputs to control dependencies.
@@ -1333,54 +1336,43 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
           properties.GetOutputProperties(node.name())[0].shape();
       const TensorShapeProto& x_shape =
           properties.GetInputProperties(node.name())[0].shape();
-
-      // Simplify multiplication by or addition of zeros.
-      const bool x_is_zero = IsZeros(*x);
-      const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
-      if (x_is_zero) {
-        if ((is_mul && x_matches_output_shape) || is_matmul) {
-          // 0 * y = 0
-          ReplaceAddOrMulWithIdentity(0, &node);
-        } else {
-          // 0 + y = y.
-          ReplaceAddOrMulWithIdentity(1, &node);
-        }
-        continue;
-      }
       const TensorShapeProto& y_shape =
           properties.GetInputProperties(node.name())[1].shape();
+      const bool x_is_zero = IsZeros(*x);
+      const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
       const bool y_is_zero = IsZeros(*y);
       const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
-      if (y_is_zero) {
-        if ((is_mul && y_matches_output_shape) || is_matmul) {
-          // x * 0 = 0
+
+      // Simplify addition of zeros.
+      if (is_add) {
+        if (x_is_zero && y_matches_output_shape) {
+          // 0 + y = y.
           ReplaceAddOrMulWithIdentity(1, &node);
-        } else {
+          continue;
+        } else if (y_is_zero && x_matches_output_shape) {
           // x + 0 = y.
           ReplaceAddOrMulWithIdentity(0, &node);
-        }
-        continue;
-      }
-
-      if (is_mul) {
-        // Simplify scalar multiplication by zeros where, due to broadcasting,
-        // the output shape does not match the shape of the zero input.
-        if (x_is_zero || y_is_zero) {
-          TF_RETURN_IF_ERROR(
-              ReplaceAddOrMulWithConstant(0, output_shape, &node));
           continue;
         }
+      }
 
-        // Simplify multiplication by ones.
+      // Simplify element-wise multiplication by ones.
+      if (is_mul) {
         if (IsOnes(*x) && y_matches_output_shape) {
           // 1 * y = y.
           ReplaceAddOrMulWithIdentity(1, &node);
           continue;
-        } else if (IsOnes(*y) && x_matches_output_shape) {
+        }
+        if (IsOnes(*y) && x_matches_output_shape) {
           // x * 1 = x.
           ReplaceAddOrMulWithIdentity(0, &node);
           continue;
         }
+      }
+
+      // Simplify multiplication and matmul by zeros.
+      if (x_is_zero || y_is_zero) {
+        TF_RETURN_IF_ERROR(ReplaceAddOrMulWithConstant(0, output_shape, &node));
       }
     }
   }
