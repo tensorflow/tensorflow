@@ -48,6 +48,20 @@ output: A Tensor with one more dimension than the input `bytes`.  The
   of `bytes` divided by the number of bytes to represent `out_type`.
 )doc");
 
+REGISTER_OP("DecodeCompressed")
+    .Input("bytes: string")
+    .Output("output: string")
+    .Attr("compression_type: string = ''")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Reinterpret the bytes of a string as a vector of numbers.
+
+bytes: All the elements must have the same length.
+compression_type: A scalar containing either (i) the empty string (no
+  compression), (ii) "ZLIB", or (iii) "GZIP".
+output: A Tensor with the same shape as input `bytes`.
+)doc");
+
 REGISTER_OP("ParseExample")
     .Input("serialized: string")
     .Input("names: string")
