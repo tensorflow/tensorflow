@@ -74,6 +74,11 @@ class DecodeCompressedOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("compression_type", &compression_type_));
+    OP_REQUIRES(context,
+                (compression_type_ == "" || compression_type_ == "ZLIB" ||
+                 compression_type_ == "GZIP"),
+                errors::InvalidArgument(
+                    "Only ZLIB, GZIP or NONE are supported compressions"));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -86,19 +91,26 @@ class DecodeCompressedOp : public OpKernel {
                    context->allocate_output("output", bytes_tensor->shape(),
                                             &output_tensor));
     auto output_flat = output_tensor->flat<string>();
-    const io::ZlibCompressionOptions zlib_options =
-        compression_type_ == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
-                                    : io::ZlibCompressionOptions::GZIP();
-    for (int64 i = 0; i < bytes_flat.size(); i++) {
-      std::unique_ptr<MemoryInputStream> input_stream(
-          new MemoryInputStream(bytes_flat(i).data(), bytes_flat(i).size()));
-      std::unique_ptr<io::ZlibInputStream> zlib_stream(new io::ZlibInputStream(
-          input_stream.get(), static_cast<size_t>(kBufferSize),
-          static_cast<size_t>(kBufferSize), zlib_options));
-      std::string output_string;
-      Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
-      OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
-      output_flat(i) = output_string;
+    if (compression_type_ == "") {
+      for (int64 i = 0; i < bytes_flat.size(); i++) {
+        output_flat(i) = bytes_flat(i);
+      }
+    } else {
+      const io::ZlibCompressionOptions zlib_options =
+          compression_type_ == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
+                                      : io::ZlibCompressionOptions::GZIP();
+      for (int64 i = 0; i < bytes_flat.size(); i++) {
+        std::unique_ptr<MemoryInputStream> input_stream(
+            new MemoryInputStream(bytes_flat(i).data(), bytes_flat(i).size()));
+        std::unique_ptr<io::ZlibInputStream> zlib_stream(
+            new io::ZlibInputStream(
+                input_stream.get(), static_cast<size_t>(kBufferSize),
+                static_cast<size_t>(kBufferSize), zlib_options));
+        std::string output_string;
+        Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
+        OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
+        output_flat(i) = output_string;
+      }
     }
   }
 
