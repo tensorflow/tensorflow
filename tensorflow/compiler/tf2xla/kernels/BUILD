@@ -86,6 +86,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:batch_dot",
         "//tensorflow/compiler/tf2xla/lib:cholesky",
+        "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/tf2xla/ops:sendrecv_ops",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

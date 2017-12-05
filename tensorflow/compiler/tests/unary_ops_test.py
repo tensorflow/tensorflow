@@ -76,6 +76,12 @@ class UnaryOpsTest(XLATestCase):
           array_ops.diag_part,
           np.arange(36).reshape([2, 3, 2, 3]).astype(dtype),
           np.array([[0, 7, 14], [21, 28, 35]], dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          array_ops.diag, np.array([[1, 2], [3, 4]], dtype=dtype),
+          np.array(
+              [[[[1, 0], [0, 0]], [[0, 2], [0, 0]]], [[[0, 0], [3, 0]],
+                                                      [[0, 0], [0, 4]]]],
+              dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           array_ops.identity,
@@ -86,6 +92,21 @@ class UnaryOpsTest(XLATestCase):
           array_ops.matrix_diag,
           np.array([[1, 2], [3, 4]], dtype=dtype),
           np.array([[[1, 0], [0, 2]], [[3, 0], [0, 4]]], dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          array_ops.matrix_diag, np.array([1, 2, 3, 4], dtype=dtype),
+          np.array(
+              [[1, 0, 0, 0], [0, 2, 0, 0], [0, 0, 3, 0], [0, 0, 0, 4]],
+              dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          array_ops.matrix_diag,
+          np.array(
+              [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]], dtype=dtype),
+          np.array(
+              [[[[1, 0, 0], [0, 2, 0], [0, 0, 3]],
+                [[4, 0, 0], [0, 5, 0], [0, 0, 6]]],
+               [[[7, 0, 0], [0, 8, 0], [0, 0, 9]],
+                [[10, 0, 0], [0, 11, 0], [0, 0, 12]]]],
+              dtype=dtype))
       self._assertOpOutputMatchesExpected(
           array_ops.matrix_diag_part,
           np.arange(3 * 2 * 4).reshape([3, 2, 4]).astype(dtype),
