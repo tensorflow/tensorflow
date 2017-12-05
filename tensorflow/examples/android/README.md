@@ -164,7 +164,7 @@ download-models.gradle.
 
 **Optional**: If you wish to place the models in your assets manually, remove
 all of the `model_files` entries from the `assets` list in `tensorflow_demo`
-found in the `[BUILD](BUILD)` file. Then download and extract the archives
+found in the [`BUILD`](BUILD#L92) file. Then download and extract the archives
 yourself to the `assets` directory in the source tree:
 
 ```bash
