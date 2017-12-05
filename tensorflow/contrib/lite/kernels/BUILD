@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite:string_util",
+        "//tensorflow/contrib/lite/testing:util",
         "//tensorflow/core:lib",
         "@com_google_googletest//:gtest",
     ],

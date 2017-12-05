@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/tf2xla/xla_local_runtime_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -267,7 +266,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   // Builds an XLA allocator for the device.
   XlaAllocator xla_allocator(client->platform(), ctx);
-  XlaLocalRuntimeContext local_runtime_context;
 
   std::unique_ptr<xla::ShapedBuffer> output;
   // Build xla::ShapedBuffers that point directly to the Tensor buffers.
@@ -300,18 +298,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, xla_allocator.RegisterArgument(t));
   }
 
-  // Make the final parameter point at local_runtime_context.
-  if (kernel->requires_runtime_context) {
-    gpu::DeviceMemoryBase local_runtime_context_dmem(
-        &local_runtime_context, sizeof(local_runtime_context));
-    arg_buffers.push_back(
-        xla::ShapedBuffer::MakeArrayShapedBuffer(
-            xla::ShapeUtil::MakeOpaqueShape(), client->platform(),
-            client->default_device_ordinal(), local_runtime_context_dmem)
-            .ConsumeValueOrDie());
-    arg_ptrs.push_back(arg_buffers.back().get());
-  }
-
   // Execute the computation.
   VLOG(2) << "Executing computation.";
   xla::ExecutableRunOptions run_options;
@@ -322,12 +308,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   auto start_time = env->NowMicros();
   auto run_result = executable->Run(arg_ptrs, run_options);
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
-
-  if (local_runtime_context.error) {
-    ctx->CtxFailure(errors::InvalidArgument("Compiled kernel returned error: ",
-                                            local_runtime_context.error_msg));
-    return;
-  }
 
   output = run_result.ConsumeValueOrDie()->release();
   auto elapsed = env->NowMicros() - start_time;

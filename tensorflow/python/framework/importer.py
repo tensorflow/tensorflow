@@ -193,6 +193,36 @@ def _FindAttrInOpDef(attr_name, op_def):
   return None
 
 
+def _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def):
+  """Removes unknown default attrs according to `producer_op_list`.
+
+  Removes any unknown attrs in `graph_def` (i.e. attrs that do not appear in
+  the OpDefs in `op_dict`) that have a default value in `producer_op_list`.
+
+  Args:
+    op_dict: dict mapping operation name to OpDef.
+    producer_op_list: OpList proto.
+    graph_def: GraphDef proto
+  """
+  producer_op_dict = {op.name: op for op in producer_op_list.op}
+  for node in graph_def.node:
+    # Remove any default attr values that aren't in op_def.
+    if node.op in producer_op_dict:
+      op_def = op_dict[node.op]
+      producer_op_def = producer_op_dict[node.op]
+      # We make a copy of node.attr to iterate through since we may modify
+      # node.attr inside the loop.
+      for key in list(node.attr):
+        if _FindAttrInOpDef(key, op_def) is None:
+          # No attr_def in consumer, look in producer.
+          attr_def = _FindAttrInOpDef(key, producer_op_def)
+          if (attr_def and attr_def.HasField('default_value') and
+              node.attr[key] == attr_def.default_value):
+            # Unknown attr had default value in producer, delete it so it can be
+            # understood by consumer.
+            del node.attr[key]
+
+
 def _ConvertInputMapValues(name, input_map):
   """Ensures all input map values are tensors.
 
@@ -396,10 +426,9 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
   op_dict = op_def_registry.get_registered_ops()
 
-  if producer_op_list is None:
-    producer_op_dict = None
-  else:
-    producer_op_dict = {op.name: op for op in producer_op_list.op}
+  if producer_op_list is not None:
+    # TODO(skyewm): make a copy of graph_def so we're not mutating the argument?
+    _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def)
 
   graph = ops.get_default_graph()
 
@@ -489,21 +518,6 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             value = node.attr[key]
             if value is None or value.WhichOneof('value') is None:
               node.attr[key].CopyFrom(attr_def.default_value)
-        if producer_op_dict:
-          # Remove any default attr values that aren't in op_def.
-          if node.op in producer_op_dict:
-            producer_op_def = producer_op_dict[node.op]
-            # We make a copy of node.attr to iterate through since we
-            # may modify node.attr inside the loop.
-            for key in list(node.attr):
-              if _FindAttrInOpDef(key, op_def) is None:
-                # No attr_def in consumer, look in producer.
-                attr_def = _FindAttrInOpDef(key, producer_op_def)
-                if (attr_def and attr_def.HasField('default_value') and
-                    node.attr[key] == attr_def.default_value):
-                  # Unknown attr had default value in producer, delete it
-                  # so it can be understood by consumer.
-                  del node.attr[key]
 
         output_types = _OutputTypes(node, op_dict)
         name_to_op[node.name] = g.create_op(

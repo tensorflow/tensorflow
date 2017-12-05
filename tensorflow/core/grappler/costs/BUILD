@@ -133,8 +133,8 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":op_performance_data_cc",
-        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
@@ -307,6 +307,7 @@ cc_library(
         ":virtual_placer",
         ":virtual_scheduler",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",

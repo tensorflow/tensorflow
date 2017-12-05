@@ -123,6 +123,12 @@ class ProcessFunctionLibraryRuntime {
   Status Instantiate(const string& function_name, AttrSlice attrs,
                      FunctionLibraryRuntime::Handle* handle);
 
+  // Delegates to the local FLR that owns state corresponding to `handle` and
+  // tells it to release it. If the `handle` isnt' needed at all, the local FLR
+  // might call RemoveHandle on this to get rid of the state owned by the Proc
+  // FLR.
+  Status ReleaseHandle(FunctionLibraryRuntime::Handle handle);
+
   // Runs the function with given `handle`. Function could have been
   // instantiated on any device. More details in framework/function.h
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -140,6 +146,9 @@ class ProcessFunctionLibraryRuntime {
   // of the device where the function is registered.
   string GetDeviceName(FunctionLibraryRuntime::Handle handle);
 
+  // Removes handle from the state owned by this object.
+  Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
+
   friend class FunctionLibraryRuntimeImpl;
 
   mutable mutex mu_;
@@ -151,6 +160,7 @@ class ProcessFunctionLibraryRuntime {
     FunctionData(const string& target_device,
                  FunctionLibraryRuntime::LocalHandle local_handle)
         : target_device(target_device), local_handle(local_handle) {}
+    FunctionData() : FunctionData("", -1) {}
   };
 
   const DeviceMgr* const device_mgr_;
@@ -158,8 +168,10 @@ class ProcessFunctionLibraryRuntime {
   // Holds all the function invocations here.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
       GUARDED_BY(mu_);
-  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
+  std::unordered_map<FunctionLibraryRuntime::Handle, FunctionData>
+      function_data_ GUARDED_BY(mu_);
   std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
+  int next_handle_ GUARDED_BY(mu_);
   DistributedFunctionLibraryRuntime* const parent_;
 };
 

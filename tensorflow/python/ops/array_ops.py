@@ -70,6 +70,7 @@ See the @{$python/array_ops} guide.
 @@quantize_v2
 @@quantized_concat
 @@setdiff1d
+@@guarantee_const
 @@fake_quant_with_min_max_args
 @@fake_quant_with_min_max_args_gradient
 @@fake_quant_with_min_max_vars
