@@ -651,15 +651,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party/flatbuffers:flatbuffers.BUILD")),
   )
 
-  tf_http_archive(
-      name = "double_conversion",
-      urls = [
-          "https://mirror.bazel.build/github.com/google/double-conversion/archive/5664746c5e64dc265e7fbc1a890a6698e6ad0ebb.tar.gz",
-          "https://github.com/google/double-conversion/archive/5664746c5e64dc265e7fbc1a890a6698e6ad0ebb.tar.gz",
-      ],
-      sha256 = "ce651ba63faa55f86333f50bdd58a574327ca1565a65b875b11f5132c7c72bb6",
-      strip_prefix = "double-conversion-5664746c5e64dc265e7fbc1a890a6698e6ad0ebb",
-  )
 
   tf_http_archive(
       name = "tflite_mobilenet",
