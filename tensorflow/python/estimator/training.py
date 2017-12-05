@@ -43,6 +43,8 @@ _DELAY_SECS_PER_WORKER = 5
 _TF_CONFIG_ENV = 'TF_CONFIG'
 _ENVIRONMENT_KEY = 'environment'
 _ENVIRONMENT_GOOGLE_VALUE = 'google'
+_TRAINER_JOBS = (run_config_lib.TaskType.CHIEF, run_config_lib.TaskType.MASTER,
+                 run_config_lib.TaskType.WORKER)
 
 
 def _validate_input_fn(input_fn):
@@ -624,11 +626,28 @@ class _TrainingExecutor(object):
 
   def _start_std_server(self, config):
     """Creates, starts, and returns a server_lib.Server."""
-    if (not config.cluster_spec or not config.task_type or not config.master or
+    if (not config.cluster_spec or not config.task_type or
         config.task_id is None):
       raise RuntimeError('Could not start server; be sure to specify '
-                         'cluster_spec, task_type, master, and task in '
+                         'cluster_spec, task_type, and task in '
                          'RunConfig or set the TF_CONFIG environment variable.')
+
+    if not config.master:
+      jobs = config.cluster_spec.jobs
+      if (len(jobs) == 1 and len(config.cluster_spec.job_tasks(jobs[0])) == 1
+          and config.task_type in _TRAINER_JOBS):
+        # For distributed training, config.master is empty if and only if it has
+        # a single node in the cluster spec. In this case, we should not start
+        # the server.
+        logging.info('Skip starting Tensorflow server as there is only one '
+                     'node in the cluster.')
+        return
+      else:
+        raise RuntimeError(
+            'Could not start server; be sure to specify master in '
+            'RunConfig or set the TF_CONFIG environment variable.')
+
+    logging.info('Start Tensorflow server.')
     server = server_lib.Server(
         config.cluster_spec,
         job_name=config.task_type,
