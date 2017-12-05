@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for ElasticAverageOptimizer."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import portpicker
 from tensorflow.python.framework import constant_op
