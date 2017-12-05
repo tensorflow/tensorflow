@@ -179,10 +179,7 @@ tf_py_test(
     size = "small",
     srcs = ["platform/app_test.py"],
     additional_deps = [":platform"],
-    tags = [
-        "manual",
-        "notap",
-    ],
+    tags = ["notap"],
 )
 
 cc_library(

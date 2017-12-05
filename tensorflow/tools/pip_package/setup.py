@@ -32,7 +32,7 @@ from setuptools.dist import Distribution
 _VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
-    'absl-py',
+    'absl-py >= 0.1.6',
     # weakref.finalize introduced in Python 3.4
     'backports.weakref >= 1.0rc1; python_version < "3.4"',
     # enum module introduced in Python 3.4
