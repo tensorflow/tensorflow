@@ -33,6 +33,17 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
 
+def nhwc_to_format(x, data_format):
+  """Converts a numpy array from NHWC format to `data_format`."""
+  rank = len(x.shape)
+  if data_format == "NCHW":
+    return np.transpose(x, [0, rank - 1] + list(range(1, rank - 1)))
+  elif data_format == "NHWC":
+    return x
+  else:
+    raise ValueError("Unknown format {}".format(data_format))
+
+
 class UnaryOpsTest(XLATestCase):
   """Test cases for unary operators."""
 
@@ -662,55 +673,88 @@ class UnaryOpsTest(XLATestCase):
         equality_test=self.ListsAreClose)
 
   def testDepthToSpace(self):
+    def make_op(data_format):
+      def op(x):
+        return array_ops.depth_to_space(x, block_size=2,
+                                        data_format=data_format)
+      return op
+
     for dtype in self.numeric_types:
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.depth_to_space(x, block_size=2),
-          np.array([[[[1, 2, 3, 4]]]], dtype=dtype),
-          expected=np.array([[[[1], [2]],
-                              [[3], [4]]]], dtype=dtype))
+      for data_format in ["NCHW", "NHWC"]:
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(np.array([[[[1, 2, 3, 4]]]], dtype=dtype),
+                           data_format),
+            expected=nhwc_to_format(np.array([[[[1], [2]],
+                                               [[3], [4]]]], dtype=dtype),
+                                    data_format))
 
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.depth_to_space(x, block_size=2),
-          np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]], dtype=dtype),
-          expected=np.array([[[[1, 2, 3], [4, 5, 6]],
-                              [[7, 8, 9], [10, 11, 12]]]], dtype=dtype))
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(
+                np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]],
+                         dtype=dtype),
+                data_format),
+            expected=nhwc_to_format(
+                np.array([[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]],
+                         dtype=dtype),
+                data_format))
 
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.depth_to_space(x, block_size=2),
-          np.array([[[[1, 2, 3, 4],
-                      [5, 6, 7, 8]],
-                     [[9, 10, 11, 12],
-                      [13, 14, 15, 16]]]], dtype=dtype),
-          expected=np.array([[[[1], [2], [5], [6]],
-                              [[3], [4], [7], [8]],
-                              [[9], [10], [13], [14]],
-                              [[11], [12], [15], [16]]]], dtype=dtype))
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(
+                np.array([[[[1, 2, 3, 4],
+                            [5, 6, 7, 8]],
+                           [[9, 10, 11, 12],
+                            [13, 14, 15, 16]]]], dtype=dtype),
+                data_format),
+            expected=nhwc_to_format(
+                np.array([[[[1], [2], [5], [6]],
+                           [[3], [4], [7], [8]],
+                           [[9], [10], [13], [14]],
+                           [[11], [12], [15], [16]]]], dtype=dtype),
+                data_format))
 
   def testSpaceToDepth(self):
+    def make_op(data_format):
+      def op(x):
+        return array_ops.space_to_depth(x, block_size=2,
+                                        data_format=data_format)
+      return op
+
     for dtype in self.numeric_types:
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.space_to_depth(x, block_size=2),
-          np.array([[[[1], [2]],
-                     [[3], [4]]]], dtype=dtype),
-          expected=np.array([[[[1, 2, 3, 4]]]], dtype=dtype))
+      for data_format in ["NCHW", "NHWC"]:
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(np.array([[[[1], [2]],
+                                      [[3], [4]]]], dtype=dtype),
+                           data_format),
+            expected=nhwc_to_format(np.array([[[[1, 2, 3, 4]]]], dtype=dtype),
+                                    data_format))
 
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.space_to_depth(x, block_size=2),
-          np.array([[[[1, 2, 3], [4, 5, 6]],
-                     [[7, 8, 9], [10, 11, 12]]]], dtype=dtype),
-          expected=np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]],
-                            dtype=dtype))
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(np.array([[[[1, 2, 3], [4, 5, 6]],
+                                      [[7, 8, 9], [10, 11, 12]]]], dtype=dtype),
+                           data_format),
+            expected=nhwc_to_format(
+                np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]],
+                         dtype=dtype),
+                data_format))
 
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.space_to_depth(x, block_size=2),
-          np.array([[[[1], [2], [5], [6]],
-                     [[3], [4], [7], [8]],
-                     [[9], [10], [13], [14]],
-                     [[11], [12], [15], [16]]]], dtype=dtype),
-          expected=np.array([[[[1, 2, 3, 4],
-                               [5, 6, 7, 8]],
-                              [[9, 10, 11, 12],
-                               [13, 14, 15, 16]]]], dtype=dtype))
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(np.array([[[[1], [2], [5], [6]],
+                                      [[3], [4], [7], [8]],
+                                      [[9], [10], [13], [14]],
+                                      [[11], [12], [15], [16]]]], dtype=dtype),
+                           data_format),
+            expected=nhwc_to_format(
+                np.array([[[[1, 2, 3, 4],
+                            [5, 6, 7, 8]],
+                           [[9, 10, 11, 12],
+                            [13, 14, 15, 16]]]], dtype=dtype),
+                data_format))
 
   def _assertSoftplusMatchesExpected(self, features, dtype):
     features = np.array(features, dtype=dtype)
