@@ -92,7 +92,6 @@ function main() {
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
     mkdir "${TMPDIR}/external"
-    # Note: this makes an extra copy of org_tensorflow.
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${TMPDIR}/external"
@@ -123,7 +122,6 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       mkdir "${TMPDIR}/external"
-      # Note: this makes an extra copy of org_tensorflow.
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
