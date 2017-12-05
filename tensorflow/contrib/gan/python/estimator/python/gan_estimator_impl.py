@@ -133,8 +133,10 @@ class GANEstimator(estimator.Estimator):
         work.
       discriminator_optimizer: Same as `generator_optimizer`, but for the
         discriminator updates.
-      get_hooks_fn: A function that takes a GANTrainOps tuple and returns a list
-        of hooks.
+      get_hooks_fn: A function that takes a `GANTrainOps` tuple and returns a
+        list of hooks. These hooks are run on the generator and discriminator
+        train ops, and can be used to implement the GAN training scheme.
+        Defaults to `train.get_sequential_train_hooks()`.
       add_summaries: `None`, a single `SummaryType`, or a list of `SummaryType`.
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
