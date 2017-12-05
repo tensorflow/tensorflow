@@ -193,3 +193,11 @@ sh_binary(
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )
+
+genrule(
+  name = "build_pip_package_marker",
+  srcs = [":build_pip_package"],
+  outs = ["build_pip_package_marker"],
+  cmd = "touch $@",
+  visibility = ["//visibility:public"],
+)
