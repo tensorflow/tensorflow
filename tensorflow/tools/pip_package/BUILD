@@ -195,12 +195,12 @@ sh_binary(
 )
 
 genrule(
-  name = "build_pip_package_marker",
-  srcs = [
-      ":build_pip_package",
-      ":simple_console_for_windows",
-  ],
-  outs = ["build_pip_package_marker_file"],
-  cmd = "md5sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
-  visibility = ["//visibility:public"],
+    name = "build_pip_package_marker",
+    srcs = [
+        ":build_pip_package",
+        ":simple_console_for_windows",
+    ],
+    outs = ["build_pip_package_marker_file"],
+    cmd = "md5sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
+    visibility = ["//visibility:public"],
 )
