@@ -55,6 +55,19 @@ class DecodeCompressedOpTest(test.TestCase):
                                   self._compress("bBbb", compression_type)]})
         self.assertAllEqual(["AaAA", "bBbb"], result)
 
+  def testDecompressWithRaw(self):
+    for compression_type in ["ZLIB", "GZIP"]:
+      with self.test_session():
+        in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
+        decompressed = parsing_ops.decode_compressed(
+            in_bytes, compression_type=compression_type)
+        decode = parsing_ops.decode_raw(decompressed, out_type=dtypes.int16)
+
+        result = decode.eval(
+            feed_dict={in_bytes: [self._compress("AaBC", compression_type)]})
+        self.assertAllEqual(
+            [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
+
 
 if __name__ == "__main__":
   test.main()
