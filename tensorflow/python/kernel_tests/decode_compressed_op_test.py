@@ -34,7 +34,9 @@ from tensorflow.python.platform import test
 class DecodeCompressedOpTest(test.TestCase):
 
   def _compress(self, bytes, compression_type):
-    if compression_type == "ZLIB":
+    if compression_type == "":
+      return bytes
+    elif compression_type == "ZLIB":
       return zlib.compress(bytes)
     else:
       out = StringIO()
@@ -43,7 +45,7 @@ class DecodeCompressedOpTest(test.TestCase):
       return out.getvalue()
 
   def testDecompress(self):
-    for compression_type in ["ZLIB", "GZIP"]:
+    for compression_type in ["ZLIB", "GZIP", ""]:
       with self.test_session():
         in_bytes = array_ops.placeholder(dtypes.string, shape=[2])
         decompressed = parsing_ops.decode_compressed(
@@ -56,7 +58,7 @@ class DecodeCompressedOpTest(test.TestCase):
         self.assertAllEqual(["AaAA", "bBbb"], result)
 
   def testDecompressWithRaw(self):
-    for compression_type in ["ZLIB", "GZIP"]:
+    for compression_type in ["ZLIB", "GZIP", ""]:
       with self.test_session():
         in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
         decompressed = parsing_ops.decode_compressed(
