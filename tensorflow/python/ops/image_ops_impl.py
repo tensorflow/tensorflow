@@ -390,16 +390,17 @@ def rot90(image, k=1, name=None):
              (math_ops.equal(k, 2), _rot180),
              (math_ops.equal(k, 3), _rot270)]
 
-    ret = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
+    result = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
                                 name=scope)
 
     shape = image.get_shape()
-    ret.set_shape([shape[0], None, None, shape[3]])
+    result.set_shape([shape[0], None, None, shape[3]])
 
-    if is_batch != True:
-      ret = array_ops.squeeze(ret, squeeze_dims=[0])
+    if is_batch == True:
+      return result
 
-    return ret
+    result = array_ops.squeeze(result, squeeze_dims=[0])
+    return result
 
 
 def transpose_image(image):
