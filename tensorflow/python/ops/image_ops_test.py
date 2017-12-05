@@ -729,7 +729,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
 
 class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
-  def testIdempotentLeftRight(self):
+  def testInvolutionLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -737,7 +737,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, x_np)
 
-  def testIdempotentLeftRightWithBatch(self):
+  def testInvolutionLeftRightWithBatch(self):
     x_np = np.array([[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
                     dtype=np.uint8).reshape([2, 2, 3, 1])
     with self.test_session(use_gpu=True):
@@ -816,7 +816,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       self.assertGreaterEqual(count_flipped, 1)
       self.assertGreaterEqual(count_unflipped, 1)
 
-  def testIdempotentUpDown(self):
+  def testInvolutionUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
 
     with self.test_session(use_gpu=True):
@@ -825,7 +825,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, x_np)
 
-  def testIdempotentUpDownWithBatch(self):
+  def testInvolutionUpDownWithBatch(self):
     x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
                     dtype=np.uint8).reshape([2, 2, 3, 1])
 
@@ -903,7 +903,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       self.assertGreaterEqual(count_flipped, 1)
       self.assertGreaterEqual(count_unflipped, 1)
 
-  def testIdempotentTranspose(self):
+  def testInvolutionTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
 
     with self.test_session(use_gpu=True):
@@ -912,7 +912,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, x_np)
 
-  def testIdempotentTransposeWithBatch(self):
+  def testInvolutionTransposeWithBatch(self):
     x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
                     dtype=np.uint8).reshape([2, 2, 3, 1])
 
