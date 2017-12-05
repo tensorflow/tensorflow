@@ -159,6 +159,7 @@ class GraphConstructor {
     TF_RETURN_IF_ERROR(UpdateVersionDef());
     TF_RETURN_IF_ERROR(PopulateReturnTensors());
     TF_RETURN_IF_ERROR(PopulateReturnNodes());
+    UpdateUniquifiedColocationNames();
     FixupSourceAndSinkEdges(g_);
     return Status::OK();
   }
@@ -200,6 +201,11 @@ class GraphConstructor {
   // nodes.
   void UniquifyNames(const std::vector<bool>& input_already_exists,
                      NodeDef* node_def);
+
+  // Updates any constructed nodes' colocation group names if the name has been
+  // updated by UniquifyNames. This is called after all the nodes have been
+  // constructed so all the names have been uniquified if necessary.
+  void UpdateUniquifiedColocationNames();
 
   // Returns true if `name` already exists in `g_` (either as a node name or
   // prefix).
@@ -785,17 +791,29 @@ void GraphConstructor::UniquifyNames(
     id.first = iter->second;
     node_def->set_input(i, id.ToString());
   }
-  // Update names of colocation groups
-  if (node_def->attr().find(kColocationAttrName) != node_def->attr().end()) {
-    auto* list =
-        node_def->mutable_attr()->at(kColocationAttrName).mutable_list();
-    for (int i = 0; i < list->s_size(); ++i) {
-      StringPiece v(list->s(i));
-      if (v.Consume(kColocationGroupPrefix)) {
-        auto iter = uniquified_names_.find(v.ToString());
-        if (iter == uniquified_names_.end()) continue;
-        list->set_s(i, strings::StrCat(kColocationGroupPrefix, iter->second));
+}
+
+void GraphConstructor::UpdateUniquifiedColocationNames() {
+  for (const auto& pair : gdef_nodes_) {
+    Node* node = pair.second.node;
+    if (node == nullptr) continue;
+    std::vector<string> coloc_values;
+    Status status =
+        GetNodeAttr(node->attrs(), kColocationAttrName, &coloc_values);
+    if (!status.ok()) continue;
+    bool updated = false;
+    for (int i = 0; i < coloc_values.size(); ++i) {
+      StringPiece val(coloc_values[i]);
+      if (val.Consume(kColocationGroupPrefix)) {
+        const auto& name_pair = uniquified_names_.find(val.ToString());
+        if (name_pair == uniquified_names_.end()) continue;
+        updated = true;
+        coloc_values[i] =
+            strings::StrCat(kColocationGroupPrefix, name_pair->second);
       }
+    }
+    if (updated) {
+      node->AddAttr(kColocationAttrName, coloc_values);
     }
   }
 }
