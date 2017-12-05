@@ -127,6 +127,7 @@ load(
     "tf_additional_verbs_lib_defines",
     "tf_additional_mpi_lib_defines",
     "tf_additional_gdr_lib_defines",
+    "tf_additional_monolithic_defines",
     "tf_additional_device_tracer_srcs",
     "tf_additional_device_tracer_deps",
     "tf_additional_device_tracer_cuda_deps",
@@ -1432,7 +1433,8 @@ LIB_INTERNAL_DEFINES = (tf_additional_lib_defines() + [
                             "TF_USE_SNAPPY",
                         ] + tf_additional_verbs_lib_defines() +
                         tf_additional_mpi_lib_defines() +
-                        tf_additional_gdr_lib_defines())
+                        tf_additional_gdr_lib_defines() +
+                        tf_additional_monolithic_defines())
 
 cc_library(
     name = "lib_internal",
