@@ -19,7 +19,6 @@ limitations under the License.
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <queue>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -37,6 +36,8 @@ limitations under the License.
 #include "tensorflow/contrib/lite/optional_debug_tools.h"
 #include "tensorflow/contrib/lite/string_util.h"
 
+#include "label_image.h"
+
 #define LOG(x) std::cerr
 #define CHECK(x)                  \
   if (!(x)) {                     \
@@ -44,8 +45,8 @@ limitations under the License.
     exit(1);                      \
   }
 
-namespace tensorflow {
-namespace label_image_tflite {
+namespace tflite {
+namespace label_image {
 
 using std::string;
 
@@ -83,162 +84,6 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
   return kTfLiteOk;
 }
 
-// Returns the top N confidence values over threshold in the provided vector,
-// sorted by confidence in descending order.
-template <class T>
-static void get_top_n(std::unique_ptr<tflite::Interpreter>& interpreter,
-                      const int prediction_size, const size_t num_results,
-                      const float threshold,
-                      std::vector<std::pair<float, int>>* top_results) {
-  T* prediction = interpreter->typed_output_tensor<T>(0);
-
-  // Will contain top N results in ascending order.
-  std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>,
-                      std::greater<std::pair<float, int>>>
-      top_result_pq;
-
-  const long count = prediction_size;
-  for (int i = 0; i < count; ++i) {
-    float value;
-    if (input_floating)
-      value = prediction[i];
-    else
-      value = prediction[i] / 255.0;
-    // Only add it if it beats the threshold and has a chance at being in
-    // the top N.
-    if (value < threshold) {
-      continue;
-    }
-
-    top_result_pq.push(std::pair<float, int>(value, i));
-
-    // If at capacity, kick the smallest value out.
-    if (top_result_pq.size() > num_results) {
-      top_result_pq.pop();
-    }
-  }
-
-  // Copy to output vector and reverse into descending order.
-  while (!top_result_pq.empty()) {
-    top_results->push_back(top_result_pq.top());
-    top_result_pq.pop();
-  }
-  std::reverse(top_results->begin(), top_results->end());
-}
-
-uint8_t* decode_bmp(const uint8_t* input, const int row_size,
-                    uint8_t* const output, const int width, const int height,
-                    const int channels, bool top_down) {
-  for (int i = 0; i < height; i++) {
-    int src_pos;
-    int dst_pos;
-
-    for (int j = 0; j < width; j++) {
-      if (!top_down) {
-        src_pos = ((height - 1 - i) * row_size) + j * channels;
-      } else {
-        src_pos = i * row_size + j * channels;
-      }
-
-      dst_pos = (i * width + j) * channels;
-
-      switch (channels) {
-        case 1:
-          output[dst_pos] = input[src_pos];
-          break;
-        case 3:
-          // BGR -> RGB
-          output[dst_pos] = input[src_pos + 2];
-          output[dst_pos + 1] = input[src_pos + 1];
-          output[dst_pos + 2] = input[src_pos];
-          break;
-        case 4:
-          // BGRA -> RGBA
-          output[dst_pos] = input[src_pos + 2];
-          output[dst_pos + 1] = input[src_pos + 1];
-          output[dst_pos + 2] = input[src_pos];
-          output[dst_pos + 3] = input[src_pos + 3];
-          break;
-        default:
-          LOG(FATAL) << "Unexpected number of channels: " << channels;
-          break;
-      }
-    }
-  }
-
-  return output;
-}
-
-uint8_t* read_bmp(const std::string& input_bmp_name, int& width, int& height,
-                  int& channels) {
-  int begin, end;
-
-  std::ifstream file(input_bmp_name, std::ios::in | std::ios::binary);
-  if (!file) {
-    LOG(FATAL) << "input file " << input_bmp_name << " not found\n";
-    exit(-1);
-  }
-
-  begin = file.tellg();
-  file.seekg(0, std::ios::end);
-  end = file.tellg();
-  size_t len = end - begin;
-
-  if (verbose) LOG(INFO) << "len: " << len << "\n";
-
-  const uint8_t* img_bytes = new uint8_t[len];
-  file.seekg(0, std::ios::beg);
-  file.read((char*)img_bytes, len);
-  const int32_t header_size =
-      *(reinterpret_cast<const int32_t*>(img_bytes + 10));
-  width = *(reinterpret_cast<const int32_t*>(img_bytes + 18));
-  height = *(reinterpret_cast<const int32_t*>(img_bytes + 22));
-  const int32_t bpp = *(reinterpret_cast<const int32_t*>(img_bytes + 28));
-  channels = bpp / 8;
-
-  if (verbose)
-    LOG(INFO) << "width, height, channels: " << width << ", " << height << ", "
-              << channels << "\n";
-
-  // there may be padding bytes when the width is not a multiple of 4 bytes
-  // 8 * channels == bits per pixel
-  const int row_size = (8 * channels * width + 31) / 32 * 4;
-
-  // if height is negative, data layout is top down
-  // otherwise, it's bottom up
-  bool top_down = (height < 0);
-
-  // Decode image, allocating tensor once the image size is known
-  uint8_t* output = new uint8_t[abs(height) * width * channels];
-  const uint8_t* bmp_pixels = &img_bytes[header_size];
-  return decode_bmp(bmp_pixels, row_size, output, width, abs(height), channels,
-                    top_down);
-}
-
-template <class T>
-void downsize(std::unique_ptr<tflite::Interpreter>& interpreter, int input,
-              uint8_t* in, int image_height, int image_width,
-              int image_channels, int wanted_height, int wanted_width,
-              int wanted_channels) {
-  T* out = interpreter->typed_tensor<T>(input);
-  for (int y = 0; y < wanted_height; ++y) {
-    const int in_y = (y * image_height) / wanted_height;
-    uint8_t* in_row = in + (in_y * image_width * image_channels);
-    T* out_row = out + (y * wanted_width * wanted_channels);
-    for (int x = 0; x < wanted_width; ++x) {
-      const int in_x = (x * image_width) / wanted_width;
-      uint8_t* in_pixel = in_row + (in_x * image_channels);
-      T* out_pixel = out_row + (x * wanted_channels);
-      for (int c = 0; c < wanted_channels; ++c) {
-        if (input_floating)
-          out_pixel[c] = (in_pixel[c] - input_mean) / input_std;
-        else
-          out_pixel[c] = in_pixel[c];
-      }
-    }
-  }
-}
-
 void RunInference(const std::string& graph, const std::string& input_layer_type,
                   int num_threads, const std::string& input_bmp_name,
                   const std::string& labels_file_name) {
@@ -258,7 +103,7 @@ void RunInference(const std::string& graph, const std::string& input_layer_type,
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
 
-  tflite::InterpreterBuilder (*model, resolver)(&interpreter);
+  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
     LOG(FATAL) << "Failed to construct interpreter\n";
     exit(-1);
@@ -318,13 +163,13 @@ void RunInference(const std::string& graph, const std::string& input_layer_type,
   int wanted_channels = dims->data[3];
 
   if (input_floating)
-    downsize<float>(interpreter, input, in, image_height, image_width,
-                    image_channels, wanted_height, wanted_width,
+    downsize<float>(interpreter->typed_tensor<float>(input), in, image_height,
+                    image_width, image_channels, wanted_height, wanted_width,
                     wanted_channels);
   else
-    downsize<uint8_t>(interpreter, input, in, image_height, image_width,
-                      image_channels, wanted_height, wanted_width,
-                      wanted_channels);
+    downsize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
+                      image_height, image_width, image_channels, wanted_height,
+                      wanted_width, wanted_channels);
 
   struct timeval start_time, stop_time;
   gettimeofday(&start_time, NULL);
@@ -346,11 +191,11 @@ void RunInference(const std::string& graph, const std::string& input_layer_type,
   std::vector<std::pair<float, int>> top_results;
 
   if (input_floating)
-    get_top_n<float>(interpreter, output_size, num_results, threshold,
-                     &top_results);
+    get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
+                     num_results, threshold, &top_results);
   else
-    get_top_n<uint8_t>(interpreter, output_size, num_results, threshold,
-                       &top_results);
+    get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
+                       output_size, num_results, threshold, &top_results);
 
   std::vector<string> labels;
   size_t label_count;
@@ -459,9 +304,9 @@ int Main(int argc, char** argv) {
   return 0;
 }
 
-}  // namespace label_image_tflite
-}  // namespace tensorflow
+}  // namespace label_image
+}  // namespace tflite
 
 int main(int argc, char** argv) {
-  return tensorflow::label_image_tflite::Main(argc, argv);
+  return tflite::label_image::Main(argc, argv);
 }
