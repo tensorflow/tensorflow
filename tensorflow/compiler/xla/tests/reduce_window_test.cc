@@ -41,14 +41,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// We can remove the GPU define here once we have complete GPU support in place.
-#if defined(XLA_TEST_BACKEND_CPU) || defined(XLA_TEST_BACKEND_CPU_PARALLEL) || \
-    defined(XLA_TEST_BACKEND_GPU)
-// Only tests F32.
-static std::array<bool, 1> use_bfloat16_params{false};
-#else
+#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
 // Tests both F32 and BF16.
 static std::array<bool, 2> use_bfloat16_params{false, true};
+#else
+// Only tests F32.
+static std::array<bool, 1> use_bfloat16_params{false};
 #endif
 
 class ReduceWindowTestBase : public ClientLibraryTestBase {
