@@ -196,7 +196,8 @@ sh_binary(
 
 genrule(
   name = "build_pip_package_marker",
-  srcs = [":build_pip_package"],
+  srcs = [":build_pip_package",
+          ":simple_console_for_windows"],
   outs = ["build_pip_package_marker"],
   cmd = "touch $@",
   visibility = ["//visibility:public"],
