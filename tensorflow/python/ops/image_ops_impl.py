@@ -225,7 +225,6 @@ def _flip_image(image, axis, random=False, seed=None):
 
   Raises:
     ValueError: if image is not a 3-D or 4-D Tensor.
-    ValueError: if image is not a 3-D or 4-D Tensor.
 
   Returns:
     A tensor of the same type and shape as `image`
