@@ -183,7 +183,7 @@ def _CheckAtLeast3DImage(image, require_static=True):
 
 
 def _EnsureTensorIs4D(image):
-  """Converts `image` to a 4-D Tensor if it is not already one
+  """Converts `image` to a 4-D Tensor if it is not already one.
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
@@ -210,6 +210,46 @@ def _EnsureTensorIs4D(image):
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
   return (image, is_batch)
+
+def _flip_image(image, axis, random=False, seed=None):
+  """
+  Flips image(s) around a given axis.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
+
+    axis:  A Tensor. Must be one of the following types: int32, int64. 1-D.
+           The indices of the dimensions to reverse. Must be in the range
+           [-rank(tensor), rank(tensor))
+
+  Raises:
+    ValueError: if image is not a 3-D or 4-D Tensor.
+    ValueError: if image is not a 3-D or 4-D Tensor.
+
+  Returns:
+    A tensor of the same type and shape as `image`
+  """
+  image = ops.convert_to_tensor(image, name='image')
+  original_image = image
+  image, is_batch = _EnsureTensorIs4D(image)
+
+  image = control_flow_ops.with_dependencies(
+    _CheckAtLeast3DImage(image, require_static=False), image)
+
+  batch, _, _, _ = _ImageDimensions(image, rank=4)
+  flipped = array_ops.reverse(image, axis)
+
+  if random == True:
+    uniform_random = random_ops.random_uniform([batch], 0, 1.0, seed=seed)
+    mirror_cond = math_ops.less(uniform_random, 0.5)
+    flipped = array_ops.where(mirror_cond, x=image, y=flipped)
+
+  if is_batch:
+    return fix_image_flip_shape(original_image, flipped, rank=4)
+
+  flipped = array_ops.squeeze(flipped, squeeze_dims=[0])
+  return fix_image_flip_shape(original_image, flipped, rank=3)
 
 
 def fix_image_flip_shape(image, result, rank=3):
@@ -250,24 +290,7 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  original_image = image
-  image, is_batch = _EnsureTensorIs4D(image)
-  image = control_flow_ops.with_dependencies(
-      _CheckAtLeast3DImage(image, require_static=False), image)
-
-  batch, _, _, _ = _ImageDimensions(image, rank=4)
-
-  uniform_random = random_ops.random_uniform([batch], 0, 1.0, seed=seed)
-  mirror_cond = math_ops.less(uniform_random, .5)
-  result = array_ops.where(mirror_cond, x=image,
-                           y=array_ops.reverse(image, [1]))
-
-  if is_batch:
-    return fix_image_flip_shape(original_image, result, rank=4)
-
-  result = array_ops.squeeze(result, squeeze_dims=[0])
-  return fix_image_flip_shape(original_image, result, rank=3)
+  return _flip_image(image, [1], random=True, seed=seed)
 
 
 def random_flip_left_right(image, seed=None):
@@ -289,24 +312,7 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  original_image = image
-  image, is_batch = _EnsureTensorIs4D(image)
-  image = control_flow_ops.with_dependencies(
-      _CheckAtLeast3DImage(image, require_static=False), image)
-
-  batch, _, _, _ = _ImageDimensions(image, rank=4)
-
-  uniform_random = random_ops.random_uniform([batch], 0, 1.0, seed=seed)
-  mirror_cond = math_ops.less(uniform_random, .5)
-
-  result = array_ops.where(mirror_cond, x=image,
-                           y=array_ops.reverse(image, [2]))
-  if is_batch:
-    return fix_image_flip_shape(original_image, result, rank=4)
-
-  result = array_ops.squeeze(result, squeeze_dims=[0])
-  return fix_image_flip_shape(original_image, result, rank=3)
+  return _flip_image(image, [2], random=True, seed=seed)
 
 
 def flip_left_right(image):
@@ -326,20 +332,7 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  original_image = image
-  image, is_batch = _EnsureTensorIs4D(image)
-  image = control_flow_ops.with_dependencies(
-      _CheckAtLeast3DImage(image, require_static=False), image)
-
-  result = array_ops.reverse(image, [2])
-
-  if is_batch:
-    return fix_image_flip_shape(original_image, result, rank=4)
-
-  result = array_ops.squeeze(result, squeeze_dims=[0])
-  return fix_image_flip_shape(original_image, result, rank=3)
-
+  return _flip_image(image, [2], random=False)
 
 def flip_up_down(image):
   """Flip an image vertically (upside down).
@@ -358,19 +351,7 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  original_image = image
-  image, is_batch = _EnsureTensorIs4D(image)
-  image = control_flow_ops.with_dependencies(
-      _CheckAtLeast3DImage(image, require_static=False), image)
-
-  result = array_ops.reverse(image, [1])
-
-  if is_batch:
-    return fix_image_flip_shape(original_image, result, rank=4)
-
-  result = array_ops.squeeze(result, squeeze_dims=[0])
-  return fix_image_flip_shape(original_image, result, rank=3)
+  return _flip_image(image, [1], random=False)
 
 
 def rot90(image, k=1, name=None):
