@@ -1806,6 +1806,21 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
   EXPECT_EQ(results.return_nodes[1]->name(), "B_2");
   EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_2:0");
 
+  // Import with an already-used prefix
+  opts.prefix = "A";
+  opts.uniquify_prefix = true;
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_3/A");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A_3/B");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_3/A");
+
+  // Create B_3 node to keep the A/B numbering in sync
+  opts = ImportGraphDefOptions();
+  ExpectOK("node { name: 'B_3' op: 'TestInput' }");
+
   // Import with existing de-duped node names
   opts = ImportGraphDefOptions();
   opts.uniquify_names = true;
@@ -1827,24 +1842,24 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
   opts = ImportGraphDefOptions();
   opts.uniquify_names = true;
   opts.return_nodes.push_back("A");
-  opts.return_nodes.push_back("A_3");
+  opts.return_nodes.push_back("A_4");
   opts.return_nodes.push_back("B");
-  opts.return_nodes.push_back("B_3/B");
+  opts.return_nodes.push_back("B_4/B");
   results = ImportGraphDefResults();
   ExpectOK(
       "node { name: 'A' op: 'TestInput' }"
-      "node { name: 'A_3' op: 'TestInput' }"
+      "node { name: 'A_4' op: 'TestInput' }"
       "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A'] }"
-      "node { name: 'B_3/B' op: 'TestOneInputTwoOutputs' input: ['A_3'] }",
+      "node { name: 'B_4/B' op: 'TestOneInputTwoOutputs' input: ['A_4'] }",
       opts, &refiner, &results);
 
   ASSERT_EQ(results.return_nodes.size(), 4);
-  EXPECT_EQ(results.return_nodes[0]->name(), "A_4");
-  EXPECT_EQ(results.return_nodes[1]->name(), "A_3");
-  EXPECT_EQ(results.return_nodes[2]->name(), "B_4");
-  EXPECT_EQ(results.return_nodes[2]->def().input(0), "A_4:0");
-  EXPECT_EQ(results.return_nodes[3]->name(), "B_3/B");
-  EXPECT_EQ(results.return_nodes[3]->def().input(0), "A_3");
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_5");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A_4");
+  EXPECT_EQ(results.return_nodes[2]->name(), "B_5");
+  EXPECT_EQ(results.return_nodes[2]->def().input(0), "A_5:0");
+  EXPECT_EQ(results.return_nodes[3]->name(), "B_4/B");
+  EXPECT_EQ(results.return_nodes[3]->def().input(0), "A_4");
 
   // Create node with prefix and then import node with same name
   ExpectOK("node { name: 'foo/abc' op: 'ABC' }");
@@ -1895,8 +1910,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
   ExpectOK(graph_def_str, opts, &refiner, &results);
 
   ASSERT_EQ(results.return_nodes.size(), 2);
-  EXPECT_EQ(results.return_nodes[0]->name(), "A_5");
-  EXPECT_EQ(results.return_nodes[1]->name(), "B_5");
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_6");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_6");
   EXPECT_EQ(results.return_nodes[1]->def().input(0), "A:0");
 }
 

@@ -77,6 +77,7 @@ class GraphConstructor {
                      ? in.prefix
                      : in.prefix + "/"),
           uniquify_names(in.uniquify_names),
+          uniquify_prefix(in.uniquify_prefix),
           input_map(in.input_map),
           skip_mapped_nodes(in.skip_mapped_nodes),
           control_dependencies(in.control_dependencies),
@@ -90,6 +91,7 @@ class GraphConstructor {
 
     string prefix;
     bool uniquify_names;
+    bool uniquify_prefix;
     std::map<TensorId, TensorId> input_map;
     bool skip_mapped_nodes;
     std::vector<string> control_dependencies;
@@ -144,6 +146,7 @@ class GraphConstructor {
         library_(library),
         g_(g),
         original_versions_(g->versions()),
+        prefix_(opts.prefix),
         refiner_(refiner),
         return_tensors_(return_tensors),
         return_nodes_(return_nodes),
@@ -226,6 +229,9 @@ class GraphConstructor {
   const FunctionDefLibrary* library_;
   Graph* g_;
   const VersionDef original_versions_;
+
+  // A copy of opts_.prefix, possibly uniquified.
+  string prefix_;
 
   ShapeRefiner* refiner_;
 
@@ -348,7 +354,7 @@ Status GraphConstructor::EnsureNoNameCollisions() {
     }
     AddPrefixes(n->name(), &existing_prefixes_);
   }
-  if (opts_.prefix.empty() && opts_.importing && !opts_.uniquify_names) {
+  if (prefix_.empty() && opts_.importing && !opts_.uniquify_names) {
     for (const NodeDef* n : node_defs_) {
       const string& name = n->name();
       if (NameExistsInGraph(name)) {
@@ -356,19 +362,22 @@ Status GraphConstructor::EnsureNoNameCollisions() {
                                        "' already exists in the Graph");
       }
     }
-  } else if (!opts_.prefix.empty()) {
-    StringPiece prefix_no_slash(opts_.prefix);
+  } else if (!prefix_.empty()) {
+    StringPiece prefix_no_slash(prefix_);
     prefix_no_slash.remove_suffix(1);
     if (!IsValidNodeName(prefix_no_slash, false)) {
-      return errors::InvalidArgument("Imported node name prefix '",
-                                     opts_.prefix,
+      return errors::InvalidArgument("Imported node name prefix '", prefix_,
                                      "' would lead to invalid node names");
     }
     if (NameExistsInGraph(prefix_no_slash)) {
-      return errors::InvalidArgument("Import node name prefix '",
-                                     prefix_no_slash,
-                                     "' conflicts with "
-                                     "name already used in the graph");
+      if (opts_.uniquify_prefix) {
+        prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
+      } else {
+        return errors::InvalidArgument("Import node name prefix '",
+                                       prefix_no_slash,
+                                       "' conflicts with "
+                                       "name already used in the graph");
+      }
     }
   }
   return Status::OK();
@@ -740,8 +749,8 @@ void GraphConstructor::AddControlDependencies(
 
 void GraphConstructor::AddPrefixToNodeDef(
     const std::vector<bool>& input_already_exists, NodeDef* node_def) {
-  if (opts_.prefix.empty()) return;
-  node_def->set_name(strings::StrCat(opts_.prefix, node_def->name()));
+  if (prefix_.empty()) return;
+  node_def->set_name(strings::StrCat(prefix_, node_def->name()));
   // Update names of input nodes
   for (int i = 0; i < node_def->input_size(); ++i) {
     StringPiece input(node_def->input(i));
@@ -749,9 +758,9 @@ void GraphConstructor::AddPrefixToNodeDef(
     // imported).
     if (input_already_exists[i]) continue;
     if (input.Consume("^")) {
-      node_def->set_input(i, strings::StrCat("^", opts_.prefix, input));
+      node_def->set_input(i, strings::StrCat("^", prefix_, input));
     } else {
-      node_def->set_input(i, strings::StrCat(opts_.prefix, input));
+      node_def->set_input(i, strings::StrCat(prefix_, input));
     }
   }
   // Update names of colocation groups
@@ -761,8 +770,7 @@ void GraphConstructor::AddPrefixToNodeDef(
     for (int i = 0; i < list->s_size(); ++i) {
       StringPiece v(list->s(i));
       if (v.Consume(kColocationGroupPrefix)) {
-        list->set_s(i,
-                    strings::StrCat(kColocationGroupPrefix, opts_.prefix, v));
+        list->set_s(i, strings::StrCat(kColocationGroupPrefix, prefix_, v));
       }
     }
   }
@@ -975,7 +983,7 @@ Status GraphConstructor::Convert() {
 
     Node* node;
     if (opts_.importing) {
-      if (!opts_.prefix.empty()) {
+      if (!prefix_.empty()) {
         AddPrefixToNodeDef(input_already_exists, &imported_node_def);
       } else if (opts_.uniquify_names) {
         UniquifyNames(input_already_exists, &imported_node_def);
