@@ -79,6 +79,7 @@ py_library(
         "//tensorflow/contrib/slim:nets",
         "//tensorflow/contrib/solvers:solvers_py",
         "//tensorflow/contrib/sparsemax:sparsemax_py",
+        "//tensorflow/contrib/sparse_ops:sparse_ops_py",
         "//tensorflow/contrib/specs",
         "//tensorflow/contrib/staging",
         "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",

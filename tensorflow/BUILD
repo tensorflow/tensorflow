@@ -541,6 +541,7 @@ filegroup(
         "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
         "//tensorflow/contrib/solvers:all_files",
+        "//tensorflow/contrib/sparse_ops:all_files",
         "//tensorflow/contrib/sparsemax:all_files",
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/staging:all_files",
