@@ -531,6 +531,12 @@ def tf_additional_gdr_lib_defines():
       "//conditions:default": [],
   })
 
+def tf_additional_monolithic_defines():
+  return select({
+      "//tensorflow:framework_shared_object": [],
+      "//conditions:default": ["TENSORFLOW_MONOLITHIC"],
+  })
+
 def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
                             **kwargs):
   pass
