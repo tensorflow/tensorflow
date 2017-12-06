@@ -164,7 +164,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     const auto output_nodes = node_map_->GetOutputs(node->name());
     const int num_outputs = output_nodes.size();
     const int num_inputs = node->input_size();
-    if (num_inputs > 1 && num_outputs > 1) {
+    if (num_inputs * num_outputs > num_inputs + num_outputs) {
       return;
     }
     VLOG(1) << "***** Rerouting input around  " << node->name();
