@@ -30,7 +30,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import gfile
 
 # CVDF mirror of http://yann.lecun.com/exdb/mnist/
-DEFAULT_SOURCE_URL = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
+# DEFAULT_SOURCE_URL = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
 
 
 def _read32(bytestream):
@@ -215,8 +215,7 @@ def read_data_sets(train_dir,
                    dtype=dtypes.float32,
                    reshape=True,
                    validation_size=5000,
-                   seed=None,
-                   source_url=DEFAULT_SOURCE_URL):
+                   seed=None):
   if fake_data:
 
     def fake():
@@ -228,31 +227,27 @@ def read_data_sets(train_dir,
     test = fake()
     return base.Datasets(train=train, validation=validation, test=test)
 
-  if not source_url:  # empty string check
-    source_url = DEFAULT_SOURCE_URL
+  # if not source_url:  # empty string check
+  #   source_url = DEFAULT_SOURCE_URL
 
   TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
   TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
   TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
   TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
 
-  local_file = base.maybe_download(TRAIN_IMAGES, train_dir,
-                                   source_url + TRAIN_IMAGES)
+  local_file = TRAIN_IMAGES
   with gfile.Open(local_file, 'rb') as f:
     train_images = extract_images(f)
 
-  local_file = base.maybe_download(TRAIN_LABELS, train_dir,
-                                   source_url + TRAIN_LABELS)
+  local_file = TRAIN_LABELS
   with gfile.Open(local_file, 'rb') as f:
     train_labels = extract_labels(f, one_hot=one_hot)
 
-  local_file = base.maybe_download(TEST_IMAGES, train_dir,
-                                   source_url + TEST_IMAGES)
+  local_file = TEST_IMAGES
   with gfile.Open(local_file, 'rb') as f:
     test_images = extract_images(f)
 
-  local_file = base.maybe_download(TEST_LABELS, train_dir,
-                                   source_url + TEST_LABELS)
+  local_file = TEST_LABELS
   with gfile.Open(local_file, 'rb') as f:
     test_labels = extract_labels(f, one_hot=one_hot)
 
