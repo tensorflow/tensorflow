@@ -216,12 +216,16 @@ def _flip_image(image, axis, random=False, seed=None):
   Flips image(s) around a given axis.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
-
-    axis:  A Tensor. Must be one of the following types: int32, int64. 1-D.
-           The indices of the dimensions to reverse. Must be in the range
-           [-rank(tensor), rank(tensor))
+    image:  4-D Tensor of shape `[batch, height, width, channels]` or
+            3-D Tensor of shape `[height, width, channels]`.
+    axis:   A Python integer representing the axis on which the image(s)
+            will be flipped. Note: The provided axis must be specified relative
+            to the shape `[batch, height, width, channels]` as .3-D images will
+            be expanded to fit this shape before being flipped.
+    random: A boolean representing whether or not we should flip the
+            image(s) at random.
+    seed:   Python integer. Used to create a random seed. See
+            tf.set_random_seed for behavior.
 
   Raises:
     ValueError: if image is not a 3-D or 4-D Tensor.
@@ -237,7 +241,7 @@ def _flip_image(image, axis, random=False, seed=None):
     _CheckAtLeast3DImage(image, require_static=False), image)
 
   batch, _, _, _ = _ImageDimensions(image, rank=4)
-  flipped = array_ops.reverse(image, axis)
+  flipped = array_ops.reverse(image, [axis])
 
   if random == True:
     uniform_random = random_ops.random_uniform([batch], 0, 1.0, seed=seed)
@@ -289,7 +293,7 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _flip_image(image, [1], random=True, seed=seed)
+  return _flip_image(image, axis=1, random=True, seed=seed)
 
 
 def random_flip_left_right(image, seed=None):
@@ -311,7 +315,7 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _flip_image(image, [2], random=True, seed=seed)
+  return _flip_image(image, axis=2, random=True, seed=seed)
 
 
 def flip_left_right(image):
@@ -331,7 +335,7 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _flip_image(image, [2], random=False)
+  return _flip_image(image, axis=2, random=False)
 
 def flip_up_down(image):
   """Flip an image vertically (upside down).
@@ -350,7 +354,7 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _flip_image(image, [1], random=False)
+  return _flip_image(image, axis=1, random=False)
 
 
 def rot90(image, k=1, name=None):
