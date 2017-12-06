@@ -380,9 +380,9 @@ bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
                                 thread_dims.z, args.number_of_shared_bytes(),
                                 custream, kernel_params,
                                 nullptr /* = extra */)) {
-    LOG(ERROR) << "failed to launch CUDA kernel with args: "
+    LOG(ERROR) << "failed to launch CUDA kernel " << kernel.name() << " with "
                << args.number_of_arguments()
-               << "; thread dim: " << thread_dims.ToString()
+               << " args; thread dim: " << thread_dims.ToString()
                << "; block dim: " << block_dims.ToString();
     return false;
   }
