@@ -6231,6 +6231,7 @@ tf_kernel_library(
     name = "tensor_slice_dataset_op",
     srcs = ["tensor_slice_dataset_op.cc"],
     deps = [
+        ":batch_util",
         ":dataset",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
