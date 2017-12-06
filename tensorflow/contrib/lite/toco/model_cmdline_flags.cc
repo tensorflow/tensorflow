@@ -349,6 +349,8 @@ void ReadModelFlagsFromCommandLineFlags(
       }
     }
   }
+
+  CheckInputArraysAreNotOutputArrays(*model_flags);
 }
 
 ParsedModelFlags* UncheckedGlobalParsedModelFlags(bool must_already_exist) {
@@ -381,6 +383,16 @@ void ParseModelFlagsOrDie(int* argc, char* argv[]) {
     fprintf(stderr, "%s", msg.c_str());
     fflush(stderr);
     abort();
+  }
+}
+
+void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags) {
+  for (const auto& input_array : model_flags.input_arrays()) {
+    for (const string& output_array : model_flags.output_arrays()) {
+      QCHECK_NE(input_array.name(), output_array)
+          << "The array " << output_array
+          << " is listed in both --input_arrays and --output_arrays.";
+    }
   }
 }
 
