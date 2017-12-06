@@ -36,7 +36,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-const char kDimConst[] = "LayoutOptimizerDimConst";
+const char kDim[] = "LayoutOptimizerDim";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
 const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
@@ -952,10 +952,6 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 
  protected:
-  bool ShouldProcess() const override {
-    return AgnosticNodeProcessor::ShouldProcess() && DimSupported();
-  }
-
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos;
     int start = (IsConcatV1(*node_)) ? 1 : 0;
@@ -968,33 +964,19 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    string dim_const_name = AddNodeDimConst()->name();
-    node_map_->AddOutput(dim_const_name, node_->name());
-    *node_->mutable_input(axis_node_pos_) = dim_const_name;
+    auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
+    if (IsConstant(*dim_node)) {
+      AddNodeDimConst();
+    } else {
+      AddNodeDataFormatDimMap();
+    }
     return Status::OK();
   }
 
   int axis_node_pos_;
 
  private:
-  bool DimSupported() const {
-    auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
-    // TODO(yaozhang): Support non-constant axis node.
-    if (!IsConstant(*dim_node)) {
-      return false;
-    }
-    if (HasAttribute(*dim_node, "value").ok()) {
-      auto tensor = dim_node->attr().at({"value"}).tensor();
-      if (tensor.tensor_shape().dim_size() == 0 && tensor.int_val_size() == 1) {
-        if (tensor.int_val(0) < 4 && tensor.int_val(0) >= -4) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  NodeDef* AddNodeDimConst() {
+  void AddNodeDimConst() {
     auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
     auto tensor = dim_node->attr().at({"value"}).tensor();
     int value = tensor.int_val(0);
@@ -1010,10 +992,34 @@ class ConcatProcessor : public AgnosticNodeProcessor {
     // to ensure added_node is in the same frame with node_.
     NodeDef* added_node = graph_->add_node();
     *added_node = *dim_node;
-    added_node->set_name(strings::StrCat(kDimConst, "-", node_->name()));
+    added_node->set_name(strings::StrCat(kDim, "-", node_->name()));
+    node_map_->AddNode(added_node->name(), added_node);
     added_node->mutable_attr()->at({"value"}).mutable_tensor()->set_int_val(
         0, value);
-    return added_node;
+    node_map_->RemoveOutput(node_->input(axis_node_pos_), node_->name());
+    *node_->mutable_input(axis_node_pos_) = added_node->name();
+    node_map_->AddOutput(added_node->name(), node_->name());
+  }
+
+  void AddNodeDataFormatDimMap() {
+    NodeDef* added_node = graph_->add_node();
+    added_node->set_name(strings::StrCat(kDim, "-", node_->name()));
+    added_node->set_op("DataFormatDimMap");
+    node_map_->AddNode(added_node->name(), added_node);
+    added_node->set_device(node_->device());
+    AttrValue attr_data_type;
+    attr_data_type.set_type(DT_INT32);
+    added_node->mutable_attr()->insert({"T", attr_data_type});
+    AttrValue attr_format;
+    attr_format.set_s("NHWC");
+    added_node->mutable_attr()->insert({"src_format", attr_format});
+    attr_format.set_s("NCHW");
+    added_node->mutable_attr()->insert({"dst_format", attr_format});
+    *added_node->add_input() = node_->input(axis_node_pos_);
+    *node_->mutable_input(axis_node_pos_) = added_node->name();
+    node_map_->UpdateOutput(added_node->input(0), node_->name(),
+                            added_node->name());
+    node_map_->AddOutput(added_node->name(), node_->name());
   }
 };
 
