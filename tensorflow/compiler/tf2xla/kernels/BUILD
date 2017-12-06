@@ -60,6 +60,7 @@ tf_kernel_library(
         "sendrecv_ops.cc",
         "sequence_ops.cc",
         "shape_op.cc",
+        "shape_util.cc",
         "slice_op.cc",
         "softmax_op.cc",
         "spacetobatch_op.cc",
@@ -79,6 +80,7 @@ tf_kernel_library(
     hdrs = [
         "gather_op.h",
         "index_ops.h",
+        "shape_util.h",
     ],
     deps = [
         ":while_op",
