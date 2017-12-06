@@ -703,6 +703,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":c_api_util",
+        ":control_flow_util",
         ":device",
         ":dtypes",
         ":op_def_registry",
@@ -1285,7 +1286,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:no_op_op_lib",
@@ -1553,6 +1557,7 @@ py_library(
     deps = [
         ":control_flow_ops",
         ":control_flow_ops_gen",
+        ":control_flow_util",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
@@ -1569,6 +1574,7 @@ py_library(
         ":array_ops_gen",
         ":constant_op",
         ":control_flow_ops_gen",
+        ":control_flow_util",
         ":data_flow_ops_gen",
         ":dtypes",
         ":framework_ops",
@@ -1581,6 +1587,15 @@ py_library(
         ":util",
         "//tensorflow/core:protos_all_py",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "control_flow_util",
+    srcs = ["ops/control_flow_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":platform",
     ],
 )
 
@@ -1657,6 +1672,7 @@ py_library(
         ":bitwise_ops",
         ":control_flow_grad",
         ":control_flow_ops",
+        ":control_flow_util",
         ":framework",
         ":framework_for_generated_wrappers",
         ":functional_ops",
