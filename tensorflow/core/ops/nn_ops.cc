@@ -751,6 +751,23 @@ Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
 
 }  // namespace
 
+REGISTER_OP("DataFormatDimMap")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .Attr("src_format: string = 'NHWC'")
+    .Attr("dst_format: string = 'NCHW'")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns the dimension index in the destination data format given the one in
+the source data format.
+
+x: Scalar. Dimension index in source data format. Must be in the range [-4, 4).
+y: Scalar. Dimension index in destination data format.
+src_format: source data format.
+dst_format: destination data format.
+)doc");
+
 REGISTER_OP("FusedResizeAndPadConv2D")
     .Input("input: T")
     .Input("size: int32")
