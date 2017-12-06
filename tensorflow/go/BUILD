@@ -19,6 +19,7 @@ sh_test(
         "//tensorflow/c:headers",  # C library header
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",  # Testdata for LoadSavedModel
     ],
+    tags = ["no_oss"],
 )
 
 filegroup(
