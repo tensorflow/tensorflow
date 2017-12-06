@@ -18,7 +18,10 @@ cc_library(
 
 filegroup(
     name = "test_data",
-    srcs = glob(["testdata/*.txt", "testdata/*.seq"]),
+    srcs = glob([
+        "testdata/*.txt",
+        "testdata/*.seq",
+    ]),
 )
 
 tf_cc_test(
