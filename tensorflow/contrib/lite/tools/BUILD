@@ -19,10 +19,6 @@ tf_cc_binary(
 tf_cc_binary(
     name = "benchmark_model",
     srcs = ["benchmark_model.cc"],
-    deps = [
-        ":mutable_op_resolver",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
-    ],
     linkopts = select({
         "//tensorflow:android": [
             "-pie",
@@ -33,6 +29,10 @@ tf_cc_binary(
         ],
         "//conditions:default": [],
     }),
+    deps = [
+        ":mutable_op_resolver",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+    ],
 )
 
 cc_library(
