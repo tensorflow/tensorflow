@@ -333,7 +333,8 @@ public abstract class CameraActivity extends Activity
           continue;
         }
 
-        useCamera2API = isHardwareLevelSupported(characteristics,
+        useCamera2API = facing == CameraCharacteristics.LENS_FACING_EXTERNAL || 
+            isHardwareLevelSupported(characteristics,
             CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
         LOGGER.i("Camera API lv2?: %s", useCamera2API);
         return cameraId;
