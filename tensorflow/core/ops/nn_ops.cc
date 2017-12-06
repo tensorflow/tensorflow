@@ -2924,6 +2924,25 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("__MklDummyConv2DWithBias")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("bias: T")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Doc(R"doc(
+Dummy node that enables fusing Conv2D and BiasAdd operator for MKL. This node
+does not perform anything. It is just created as an intermediate output of
+merging Conv2D and BiasAdd.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklConv2DWithBias")
     .Input("input: T")
     .Input("filter: T")
@@ -2971,6 +2990,88 @@ REGISTER_OP("_MklConv2DBackpropFilter")
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter. Uses MKL DNN APIs to compute the
+gradients of convolution with respect to the filter.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Output("bias_grad: T")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input_shape;
+      // Fetch the data_format attribute, which may not exist.
+      string data_format;
+      Status s = c->GetAttr("data_format", &data_format);
+
+      if (s.ok() && data_format == "NCHW") {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+        c->set_output(1, c->Vector(c->Dim(input_shape, -3)));
+      } else {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+        c->set_output(1, c->Vector(c->Dim(input_shape, -1)));
+      }
+      ShapeHandle sh;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
+      TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
+      c->set_output(0, sh);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Dummy node that enables fusing Conv2DBackpropFilter and BiasAddGrad operator
+for MKL. This node does not perform anything. It is just created as an
+intermediate output of merging Conv2DBackpropFilter and BiasAddGrad.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklConv2DBackpropFilterWithBias")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter_size: uint8")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("bias_grad: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_bias_grad: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input_shape;
+      // Fetch the data_format attribute, which may not exist.
+      string data_format;
+      Status s = c->GetAttr("data_format", &data_format);
+
+      if (s.ok() && data_format == "NCHW") {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+        c->set_output(1, c->Vector(c->Dim(input_shape, -3)));
+      } else {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+        c->set_output(1, c->Vector(c->Dim(input_shape, -1)));
+      }
+      ShapeHandle sh;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
+      TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
+      c->set_output(0, sh);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of Conv2DBackpropFilterWithBias. Uses MKL DNN APIs to compute the
 gradients of convolution with respect to the filter.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
@@ -3049,6 +3150,78 @@ REGISTER_OP("_MklReluGrad")
 MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
 linear gradients for Relu operation.
 
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklElu")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of Elu operator. Uses MKL DNN APIs to implement Elu operator.
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklEluGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of EluGrad operator. Uses MKL DNN APIs to compute Elu
+gradients for Elu operation.
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklSoftmax")
+    .Input("logits: T")
+    .Input("mkl_logits: uint8")
+    .Output("softmax: T")
+    .Output("mkl_softmax: uint8")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
+    })
+    .Doc(R"doc(
+MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
+linear gradients for Relu operation.
+)doc");
+
+REGISTER_OP("_MklTanh")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of Tanh operator. Uses MKL DNN APIs to implement Tanh operator.
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklTanhGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of TanhGrad operator. Uses MKL DNN APIs to compute tanh
+gradients for Tanh operation.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
