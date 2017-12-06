@@ -36,7 +36,7 @@ To try the code for this tutorial:
 1.  Download the [tutorial code]
 (https://github.com/tensorflow/models/tree/master/tutorials/rnn/quickdraw/train_model.py).
 1.  [Download the data](#download-the-data) in `TFRecord` format from
-    [here](http://todo.url/deselaers) and unzip it. More details about [how to
+    [here](http://download.tensorflow.org/data/quickdraw_tutorial_dataset_v1.tar.gz) and unzip it. More details about [how to
     obtain the original Quick, Draw!
     data](#optional-download-the-full-quick-draw-data) and [how to convert that
     to `TFRecord` files](#optional-converting-the-data) is available below.
