@@ -1024,7 +1024,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
       HloInstruction* best = best_item->instruction;
       VLOG(1) << "Rematerializing instruction " << best->name() << " (saving "
-              << memory_tracker.MemoryReducedIfRematerialized(best_item) << ")";
+              << HumanReadableNumBytes(
+                     memory_tracker.MemoryReducedIfRematerialized(best_item))
+              << ")";
       changed = true;
       remat_count++;
 
@@ -1104,8 +1106,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         net_instructions_added++;
       }
 
-      VLOG(3) << "memory_usage after rematerialization = "
-              << memory_tracker.memory_usage();
+      VLOG(1) << "memory_usage after rematerialization = "
+              << HumanReadableNumBytes(memory_tracker.memory_usage());
     }
 
     const CallSite* callsite = call_graph_node.GetCallSite(instruction);
