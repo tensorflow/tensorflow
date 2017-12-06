@@ -134,23 +134,20 @@ class SoftmaxCentered(bijector.Bijector):
     # Pad the last dim with a zeros vector. We need this because it lets us
     # infer the scale in the inverse function.
     y = array_ops.expand_dims(x, dim=-1) if self._static_event_ndims == 0 else x
-    ndims = (y.get_shape().ndims if y.get_shape().ndims is not None
-             else array_ops.rank(y))
-    y = array_ops.pad(y,
-                      paddings=array_ops.concat(
-                          (array_ops.zeros(
-                              (ndims - 1, 2), dtype=dtypes.int32), [[0, 1]]),
-                          0))
-
+    ndims = _get_ndims(y)
+    y = array_ops.pad(y, paddings=array_ops.one_hot(indices=[-1, ndims - 1],
+                                                    depth=ndims,
+                                                    axis=0,
+                                                    dtype=dtypes.int32))
     # Set shape hints.
-    if x.get_shape().ndims is not None:
-      shape = x.get_shape().as_list()
+    if x.shape.ndims is not None:
+      shape = x.shape.as_list()
       if self._static_event_ndims == 0:
         shape += [2]
       elif shape[-1] is not None:
         shape[-1] += 1
       shape = tensor_shape.TensorShape(shape)
-      y.get_shape().assert_is_compatible_with(shape)
+      y.shape.assert_is_compatible_with(shape)
       y.set_shape(shape)
 
     # Since we only support event_ndims in [0, 1] and we do padding, we always
@@ -166,10 +163,10 @@ class SoftmaxCentered(bijector.Bijector):
     # x[i] = log(exp(x[i])) - log(y[end]) - log(normalization)
     #      = log(exp(x[i])/normalization) - log(y[end])
     #      = log(y[i]) - log(y[end])
-    shape = (np.asarray(y.get_shape().as_list(), dtype=np.int32)
-             if y.get_shape().is_fully_defined()
+    shape = (np.asarray(y.shape.as_list(), dtype=np.int32)
+             if y.shape.is_fully_defined()
              else array_ops.shape(y, name="shape"))
-    ndims = y.get_shape().ndims or math_ops.rank(y, name="ndims")
+    ndims = _get_ndims(y)
 
     # Do this first to make sure CSE catches that it'll happen again in
     # _inverse_log_det_jacobian.
@@ -195,14 +192,14 @@ class SoftmaxCentered(bijector.Bijector):
       x = array_ops.squeeze(x, squeeze_dims=[ndims-1])
 
     # Set shape hints.
-    if y.get_shape().ndims is not None:
-      shape = y.get_shape().as_list()
+    if y.shape.ndims is not None:
+      shape = y.shape.as_list()
       if self._static_event_ndims == 0:
         shape = shape[:-1]
       elif shape[-1] is not None:
         shape[-1] -= 1
       shape = tensor_shape.TensorShape(shape)
-      x.get_shape().assert_is_compatible_with(shape)
+      x.shape.assert_is_compatible_with(shape)
       x.set_shape(shape)
 
     return x
@@ -243,3 +240,10 @@ class SoftmaxCentered(bijector.Bijector):
                                   axis=-1,
                                   keep_dims=True))
       return array_ops.squeeze(fldj, squeeze_dims=-1)
+
+
+def _get_ndims(x):
+  """Returns `ndims`, statically if possible."""
+  if x.shape.ndims is not None:
+    return x.shape.ndims
+  return array_ops.rank(x, name="ndims")
