@@ -276,9 +276,7 @@ cc_library(
         "platform/types.h",
     ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
-    deps = tf_lib_proto_parsing_deps() + [
-        "@double_conversion//:double-conversion",
-    ],
+    deps = tf_lib_proto_parsing_deps(),
 )
 
 # This build rule (along with :lib_internal, :framework, and
@@ -1026,7 +1024,6 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
-        "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1051,7 +1048,6 @@ cc_library(
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
-        "@double_conversion//:double-conversion",
         "@fft2d//:fft2d",
         "@gemmlowp//:gemmlowp",
         "@nsync//:nsync_cpp",
@@ -1117,7 +1113,6 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
-        "@double_conversion//:double-conversion",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -1139,7 +1134,6 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
-        "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1501,7 +1495,6 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
         "@zlib_archive//:zlib",
-        "@double_conversion//:double-conversion",
         "@protobuf_archive//:protobuf",
     ] + tf_protos_all_impl(),
 )
