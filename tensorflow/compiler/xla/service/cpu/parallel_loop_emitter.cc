@@ -24,8 +24,8 @@ namespace cpu {
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
-    const llvm_ir::IrArray& target_array, const LoopBounds* dynamic_loop_bounds,
-    llvm::IRBuilder<>* ir_builder)
+    const llvm_ir::IrArray& target_array,
+    const DynamicLoopBounds* dynamic_loop_bounds, llvm::IRBuilder<>* ir_builder)
     : LoopEmitter(target_element_generator, target_array, ir_builder),
       dynamic_loop_bounds_(dynamic_loop_bounds) {}
 

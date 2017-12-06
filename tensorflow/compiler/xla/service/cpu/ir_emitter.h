@@ -237,7 +237,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Get the llvm::Value* that represents the "prof_counters" argument of the
   // computation function being emitted by this emitter.
-  llvm::Argument* GetProfileCountersArgument();
+  llvm::Value* GetProfileCountersArgument();
 
   // Get the xla::ExecutableRunOptions that represents the "run_options"
   // argument of the computation function being emitted by this emitter.
@@ -299,18 +299,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       llvm::Function* function, const Shape& return_shape, int64 element_count,
       tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
       tensorflow::StringPiece name);
-
-  // Returns an array of compute function call arguments.
-  std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-      llvm::Value* return_value_buffer, tensorflow::StringPiece name);
-
-  // Emits a call to a runtime fork/join function which dispatches parallel
-  // calls to 'parallel_function' (and joins threads before returning).
-  Status EmitParallelForkJoin(
-      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-      llvm::Value* output_address, HloComputation* computation,
-      llvm::Function* parallel_function);
 
   // Verifies that the element types of all of the given operand instructions
   // match and are of one of the given supported types.
@@ -493,7 +481,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
           use_rdtscp_(false),
           prof_counters_(nullptr) {}
     ProfilingState(bool is_top_level_computation, bool use_rdtscp,
-                   llvm::Argument* prof_counters)
+                   llvm::Value* prof_counters)
         : is_top_level_computation_(is_top_level_computation),
           use_rdtscp_(use_rdtscp),
           prof_counters_(prof_counters) {}
@@ -526,7 +514,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
     bool use_rdtscp_;
 
     // The argument which corresponds to the profile counter buffer.
-    llvm::Argument* prof_counters_;
+    llvm::Value* prof_counters_;
 
     // The first read cycle counter in the program.
     llvm::Value* first_read_cycle_start_ = nullptr;
