@@ -24,7 +24,7 @@ function real_path() {
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
-  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*'`; do
+  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*org_tensorflow*'`; do
     cp -R "$f" "$dest_dir"
   done
 }
@@ -92,7 +92,6 @@ function main() {
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
     mkdir "${TMPDIR}/external"
-    # Note: this makes an extra copy of org_tensorflow.
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${TMPDIR}/external"
@@ -123,7 +122,6 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       mkdir "${TMPDIR}/external"
-      # Note: this makes an extra copy of org_tensorflow.
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"

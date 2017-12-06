@@ -123,6 +123,13 @@ def if_not_windows(a):
       "//conditions:default": a,
   })
 
+def if_windows(a):
+  return select({
+      clean_dep("//tensorflow:windows"): a,
+      clean_dep("//tensorflow:windows_msvc"): a,
+      "//conditions:default": [],
+  })
+
 def if_linux_x86_64(a):
   return select({
       clean_dep("//tensorflow:linux_x86_64"): a,
@@ -1298,11 +1305,32 @@ def tf_py_wrap_cc(name,
           "//conditions:default": [":" + cc_library_name],
       }))
 
-def py_test(deps=[], **kwargs):
+# This macro is for running python tests against system installed pip package
+# on Windows.
+#
+# py_test is built as an exectuable python zip file on Windows, which contains all
+# dependencies of the target. Because of the C++ extensions, it would be very
+# inefficient if the py_test zips all runfiles, plus we don't need them when running
+# tests against system installed pip package. So we'd like to get rid of the deps
+# of py_test in this case.
+#
+# In order to trigger the tests without bazel clean after getting rid of deps,
+# we introduce the following :
+# 1. When --define=no_tensorflow_py_deps=true, the py_test depends on a marker
+#    file of the pip package, the test gets to rerun when the pip package change.
+#    Note that this only works on Windows. See the definition of
+#    //tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
+# 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
+def py_test(deps=[], data=[], **kwargs):
   native.py_test(
       deps=select({
           "//conditions:default": deps,
-          clean_dep("//tensorflow:no_tensorflow_py_deps"): []
+          clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
+      }),
+      data = data + select({
+          "//conditions:default": [],
+          clean_dep("//tensorflow:no_tensorflow_py_deps"):
+          ["//tensorflow/tools/pip_package:win_pip_package_marker"],
       }),
       **kwargs)
 
@@ -1324,7 +1352,7 @@ def tf_py_test(name,
                xla_enabled=False):
   if xla_enabled:
     additional_deps = additional_deps + tf_additional_xla_deps_py()
-  native.py_test(
+  py_test(
       name=name,
       size=size,
       srcs=srcs,
@@ -1334,13 +1362,10 @@ def tf_py_test(name,
       visibility=[clean_dep("//tensorflow:internal")],
       shard_count=shard_count,
       data=data,
-      deps=select({
-          "//conditions:default": [
-              clean_dep("//tensorflow/python:extra_py_tests_deps"),
-              clean_dep("//tensorflow/python:gradient_checker"),
+      deps=[
+            clean_dep("//tensorflow/python:extra_py_tests_deps"),
+            clean_dep("//tensorflow/python:gradient_checker"),
           ] + additional_deps,
-          clean_dep("//tensorflow:no_tensorflow_py_deps"): []
-      }),
       flaky=flaky,
       srcs_version="PY2AND3")
 
