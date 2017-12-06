@@ -175,7 +175,8 @@ class HloInstruction {
 
   // Creates a cross replica sum op.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.

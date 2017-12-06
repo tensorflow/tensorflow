@@ -666,6 +666,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         result, executable->ExecuteOnStreamWrapper<se::DeviceMemoryBase>(
                     &run_options[0], profile, arguments));
   } else {
+    // TODO(b/69985541): Support profiling also on this path.
     std::vector<
         tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
         repeated_arguments(options_.number_of_replicas(), arguments);
@@ -1535,8 +1536,12 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddRecvInstruction(arg->recv_request());
       break;
     }
+    case OpRequest::kFftRequest:
+      return Unimplemented("FftRequest not implemented in XLA service.");
+    case OpRequest::OP_NOT_SET:
+      return InvalidArgument("XLA service received OpRequest with OP_NOT_SET");
     default:
-      return InvalidArgument("Unsupported operation");
+      return InvalidArgument("Unsupported operation in XLA service");
   }
   TF_ASSIGN_OR_RETURN(*result->mutable_output(), handle_status);
 
