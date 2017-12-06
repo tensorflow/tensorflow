@@ -896,7 +896,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   //   AddN(Mul(x, y1), Mul(y2, x), Mul(x, y3), ... Mul(x, yn))
   // to the following:
   //   Mul(x, AddN(y1, y2, y3, ... yn))
-  if (IsAggregate(*node) && NumNonControlInputs(*node) > 1 &&
+  if (opt_level_ == RewriterConfig::AGGRESSIVE && IsAggregate(*node) &&
+      NumNonControlInputs(*node) > 1 &&
       !OptimizedNodeExists(StrCat(node->name(), "_hoist_add"))) {
     // Determine the set of common factors if the input nodes are all Mul nodes.
     std::set<string> common_factors;
@@ -1108,10 +1109,13 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   int num_frames;
   TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
                                                &frame_map_, &num_frames));
-  graph_properties_.reset(new GraphProperties(item));
   // Shapes are only needed in aggressive mode.
-  TF_RETURN_IF_ERROR(graph_properties_->InferStatically(false));
-  TF_RETURN_IF_ERROR(graph_properties_->AnnotateOutputShapes(optimized_graph_));
+  if (opt_level_ == RewriterConfig::AGGRESSIVE) {
+    graph_properties_.reset(new GraphProperties(item));
+    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(false));
+    TF_RETURN_IF_ERROR(
+        graph_properties_->AnnotateOutputShapes(optimized_graph_));
+  }
 
   // Perform the optimizations.
   DedupComputations();
