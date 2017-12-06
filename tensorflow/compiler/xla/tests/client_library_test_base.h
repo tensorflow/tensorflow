@@ -268,6 +268,14 @@ class ClientLibraryTestBase : public ::testing::Test {
     return CreateConstantFromLiteral(*Literal::CreateFromArray(array), builder);
   }
 
+  // Same as CreateConstantFromArray, but for scalars.
+  template <typename NativeT>
+  ComputationDataHandle CreateConstantFromScalar(NativeT value,
+                                                 ComputationBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateR0<NativeT>(value),
+                                     builder);
+  }
+
   // Creates a parameter instruction that wraps a given value and then stores
   // into "data_handle" the global handle for that parameter.
   //
