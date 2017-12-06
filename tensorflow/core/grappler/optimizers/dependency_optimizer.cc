@@ -40,7 +40,7 @@ int RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
     if (node->input(pos) == input) {
       node->mutable_input()->SwapElements(pos, node->input_size() - 1);
       node->mutable_input()->RemoveLast();
-      node_map->RemoveOutput(node->name(), NodeName(input));
+      node_map->RemoveOutput(NodeName(input), node->name());
     } else {
       ++pos;
     }
@@ -119,7 +119,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     std::unordered_set<string> ctrl_inputs;
     int pos = 0;
     while (pos < node->input_size()) {
-      const string& old_input = node->input(pos);
+      const string old_input = node->input(pos);
       if (IsControlInput(old_input)) {
         if (!ctrl_inputs.insert(old_input).second) {
           // We found a duplicate control input. Remove it.
@@ -142,8 +142,6 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     }
     node->set_op("NoOp");
     node->clear_attr();
-    nodes_to_simplify->PushBack(node_idx);
-    return;
   }
 
   // Remove NoOp nodes if their fan-in or fan-out is less than 2.
@@ -164,6 +162,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     const auto output_nodes = node_map_->GetOutputs(node->name());
     const int num_outputs = output_nodes.size();
     const int num_inputs = node->input_size();
+
     if (num_inputs * num_outputs > num_inputs + num_outputs) {
       return;
     }
@@ -171,23 +170,23 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     std::vector<NodeDef*> input_nodes;
     for (int i = 0; i < num_inputs; ++i) {
       NodeDef* tmp = node_map_->GetNode(node->input(i));
-      if (tmp != nullptr) {
-        input_nodes.push_back(tmp);
-      }
+      CHECK_NE(tmp, nullptr);
+      input_nodes.push_back(tmp);
     }
+
     for (auto consumer : output_nodes) {
       bool updated_consumer = false;
       VLOG(1) << "***** Considering consumer  " << consumer->name() << "\n"
               << consumer->DebugString();
       for (int i = 0; i < num_inputs; ++i) {
-        const string& input = node->input(i);
+        const NodeDef* input = input_nodes[i];
         // Forward dependency from input to consumer if it doesn't already
         // depend on it.
-        if (node_map_->GetOutputs(NodeName(input)).count(consumer) == 0) {
-          consumer->add_input(input);
+        if (node_map_->GetOutputs(input->name()).count(consumer) == 0) {
+          consumer->add_input(AsControlDependency(input->name()));
           updated_consumer = true;
-          node_map_->AddOutput(NodeName(input), consumer->name());
-          nodes_to_simplify->PushBack(node_to_idx_[input_nodes[i]]);
+          node_map_->AddOutput(input->name(), consumer->name());
+          nodes_to_simplify->PushBack(node_to_idx_[input]);
         }
       }
       // Remove dependency on node from consumer.
@@ -200,9 +199,15 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       }
     }
 
-    if (nodes_to_preserve_.find(node->name()) == nodes_to_preserve_.end()) {
+    node_map_->RemoveOutputs(node->name());
+    if (fetch_nodes_known_ &&
+        nodes_to_preserve_.find(node->name()) == nodes_to_preserve_.end()) {
       // Mark the node for deletion.
       nodes_to_delete->insert(node_idx);
+
+      // Unconnect the node from its inputs to enable further optimizations.
+      node_map_->RemoveInputs(node->name());
+      node->clear_input();
     }
   }
 }
