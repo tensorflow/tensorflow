@@ -14,7 +14,10 @@ exports_files(glob([
 tf_cc_binary(
     name = "label_image",
     srcs = ["label_image.cc"],
-    linkopts = tflite_linkopts() + ["-lm"],
+    linkopts = tflite_linkopts() + [
+        "-pie",  # Android 5.0 and later supports only PIE
+        "-lm",
+    ],
     deps = [
         ":bitmap_helpers",
         ":get_top_n",
