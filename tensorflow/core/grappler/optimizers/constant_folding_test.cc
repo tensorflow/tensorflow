@@ -915,7 +915,7 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
       EXPECT_EQ("Identity", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("v", node.input(0));
-      EXPECT_EQ("^v", node.input(1));
+      EXPECT_EQ("^i", node.input(1));
     }
   }
   EXPECT_TRUE(found);
@@ -974,20 +974,20 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
       EXPECT_EQ("Identity", node.op());
       ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("v1", node.input(0));
-      EXPECT_EQ("^d1", node.input(1));
-      EXPECT_EQ("^v1", node.input(2));
+      EXPECT_EQ("^i1", node.input(1));
+      EXPECT_EQ("^d1", node.input(2));
     } else if (node.name() == "r3") {
       ++found;
       EXPECT_EQ("Identity", node.op());
       ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("v3", node.input(0));
-      EXPECT_EQ("^v3", node.input(1));
+      EXPECT_EQ("^i3", node.input(1));
     } else if (node.name() == "r4") {
       ++found;
       EXPECT_EQ("Identity", node.op());
       ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("v4", node.input(0));
-      EXPECT_EQ("^v4", node.input(1));
+      EXPECT_EQ("^i4", node.input(1));
     } else if (node.name() == "r2") {
       ++found;
       EXPECT_EQ("Reshape", node.op());
