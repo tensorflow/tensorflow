@@ -828,19 +828,15 @@ class AddNProcessor : public AgnosticNodeProcessor {
 class BinaryOpProcessor : public AgnosticNodeProcessor {
  public:
   explicit BinaryOpProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {
-    is_4d_with_vector_ = IsNDOperateWithMD(4, 1);
-  }
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   bool ShouldProcess() const override {
-    // TODO(yaozhang): Support IsNDOperateWithMD(1, 4): first input is a vector
-    // and the second input is a 4D tensor; and update CustomizedProcessing()
-    // accordingly.
     return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() &&
            (IsNDOperateWithMD(4, 0) || IsNDOperateWithMD(4, 1) ||
-            IsNDOperateWithMD(4, 4) || IsNDOperateWithMD(0, 4)) &&
+            IsNDOperateWithMD(4, 4) || IsNDOperateWithMD(0, 4) ||
+            IsNDOperateWithMD(1, 4)) &&
            IsOnGPU();
   }
 
@@ -915,31 +911,35 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    if (is_4d_with_vector_) {
-      string base_name = strings::StrCat(node_->name(), "-", node_->input(1));
+    int vector_index = -1;
+    if (IsNDOperateWithMD(4, 1)) {
+      vector_index = 1;
+    } else if (IsNDOperateWithMD(1, 4)) {
+      vector_index = 0;
+    }
+    if (vector_index != -1) {
+      string base_name =
+          strings::StrCat(node_->name(), "-", node_->input(vector_index));
       string reshape_node_name =
           AddPrefixToNodeName(base_name, kReshapeNHWCToNCHW, "-");
       string shape_const_node_name =
           AddPrefixToNodeName(base_name, kReshapeConst, "-");
-      auto input_node = node_map_->GetNode(node_->input(1));
+      auto input_node = node_map_->GetNode(node_->input(vector_index));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       int vector_size =
           input_node->attr().at("_output_shapes").list().shape(0).dim(0).size();
       AddNodeShapeConst(shape_const_node_name, vector_size);
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
-      AddNodeReshape(reshape_node_name, node_->input(1), shape_const_node_name,
-                     node_->attr().at("T").type());
+      AddNodeReshape(reshape_node_name, node_->input(vector_index),
+                     shape_const_node_name, node_->attr().at("T").type());
       node_map_->AddOutput(shape_const_node_name, reshape_node_name);
-      node_map_->UpdateOutput(node_->input(1), node_->name(),
+      node_map_->UpdateOutput(node_->input(vector_index), node_->name(),
                               reshape_node_name);
       node_map_->AddOutput(reshape_node_name, node_->name());
-      *node_->mutable_input(1) = reshape_node_name;
+      *node_->mutable_input(vector_index) = reshape_node_name;
     }
     return Status::OK();
   }
-
- private:
-  bool is_4d_with_vector_;
 };
 
 class ConcatProcessor : public AgnosticNodeProcessor {

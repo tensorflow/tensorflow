@@ -755,11 +755,15 @@ TEST_F(LayoutOptimizerTest, MulVectorAnd4D) {
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   auto mul_node = node_map.GetNode("mul");
-  // TODO(yaozhang): Support vector as the first input and 4d tensor as the
-  // second input for BinaryOpProcessor.
-  EXPECT_EQ(mul_node->input(0), "vector");
-  EXPECT_EQ(mul_node->input(1),
-            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-mul-1");
+  EXPECT_EQ(mul_node->input(0), "LayoutOptimizerReshapeNHWCToNCHW-mul-vector");
+  EXPECT_EQ(mul_node->input(1), "Conv2D");
+  auto mul_const = node_map.GetNode("LayoutOptimizerReshapeConst-mul-vector");
+  Tensor tensor;
+  EXPECT_TRUE(
+      tensor.FromProto(mul_const->mutable_attr()->at({"value"}).tensor()));
+  Tensor tensor_expected(DT_INT32, {4});
+  test::FillValues<int>(&tensor_expected, {1, 2, 1, 1});
+  test::ExpectTensorEqual<int>(tensor_expected, tensor);
 }
 
 TEST_F(LayoutOptimizerTest, SliceConst) {
