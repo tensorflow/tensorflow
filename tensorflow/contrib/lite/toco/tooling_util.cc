@@ -914,9 +914,9 @@ void CreateOrCheckRnnStateArray(const string& name, int size, Model* model) {
     // Pick 'num_dims' and 'batch' from the first input_arrays, unless we find
     // a better match by name.
     if (input_array.name() == name || num_dims == -1) {
-      num_dims = input_array.shape_size();
-      if (num_dims != 0) {
-        batch = input_array.shape(0);
+      num_dims = input_array.shape().dims_size();
+      if (num_dims > 0) {
+        batch = input_array.shape().dims(0);
       }
     }
   }
@@ -985,29 +985,29 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     RESOLVE_MODEL_FLAG(mean_value);
 #undef RESOLVE_MODEL_FLAG
 
-    if (!specified_input_array.shape().empty()) {
-      if (!dst_input_array->shape().empty()) {
-        QCHECK_EQ(specified_input_array.shape().size(),
-                  dst_input_array->shape().size())
+    if (specified_input_array.has_shape()) {
+      if (dst_input_array->has_shape()) {
+        QCHECK_EQ(specified_input_array.shape().dims_size(),
+                  dst_input_array->shape().dims_size())
             << "For input array '" << specified_input_array.name() << "', "
             << "size of specified input shape flag with size: "
-            << specified_input_array.shape().size()
+            << specified_input_array.shape().dims_size()
             << " does not agree with already defined input shape"
                " of this model, with size: "
-            << dst_input_array->shape().size();
+            << dst_input_array->shape().dims_size();
         // We treat the first dimension as a special case, since it is often
         // a batch size and the input_shape flag is effectively overriding
         // the model.
-        for (int i = 1; i < specified_input_array.shape().size(); i++) {
-          QCHECK_EQ(specified_input_array.shape().Get(i),
-                    dst_input_array->shape().Get(i))
+        for (int i = 1; i < specified_input_array.shape().dims_size(); i++) {
+          QCHECK_EQ(specified_input_array.shape().dims(i),
+                    dst_input_array->shape().dims(i))
               << "At dimension number " << i << " of input array "
               << specified_input_array.name() << ", the specified shape's "
               << "dimension flag with dimension: "
-              << specified_input_array.shape().Get(i)
+              << specified_input_array.shape().dims(i)
               << " does not agree with already defined shape"
               << " of this model, with dimension: "
-              << dst_input_array->shape().Get(i);
+              << dst_input_array->shape().dims(i);
         }
       } else {
         dst_input_array->mutable_shape()->CopyFrom(
@@ -1089,7 +1089,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     }
 
     if (!input_array.has_shape()) {
-      QCHECK(!input_array_proto.shape().empty())
+      QCHECK(!input_array_proto.shape().dims().empty())
           << "This model does not have shape defined for input array "
           << input_array_proto.name();
     }
@@ -1098,14 +1098,14 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     // the actual input array's shape.
     auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
     if (input_array_dims.empty()) {
-      for (auto dim : input_array_proto.shape()) {
+      for (auto dim : input_array_proto.shape().dims()) {
         CHECK_GE(dim, 1);
         input_array_dims.push_back(dim);
       }
     } else {
-      CHECK_EQ(input_array_dims.size(), input_array_proto.shape_size());
+      CHECK_EQ(input_array_dims.size(), input_array_proto.shape().dims_size());
       for (int i = 0; i < input_array_dims.size(); i++) {
-        CHECK_EQ(input_array_dims[i], input_array_proto.shape(i));
+        CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
       }
     }
 

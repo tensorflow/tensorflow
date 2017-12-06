@@ -16,7 +16,11 @@ import "tensorflow/contrib/lite/toco/types.proto";
 
 package toco;
 
-// Next ID to USE: 6.
+message InputArrayShape {
+  repeated int32 dims = 2;
+}
+
+// Next ID to USE: 7.
 message InputArray {
   // Name of the input arrays, i.e. the arrays from which input activations
   // will be read.
@@ -28,7 +32,7 @@ message InputArray {
   //
   // The last dimension is typically called 'depth' or 'channels'. For example,
   // for an image model taking RGB images as input, this would have the value 3.
-  repeated int32 shape = 2;
+  optional InputArrayShape shape = 6;
 
   // mean_value and std_value parameters control the interpretation of raw input
   // activation values (elements of the input array) as real numbers. The
