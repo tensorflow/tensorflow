@@ -220,7 +220,7 @@ def _flip_image(image, axis, random=False, seed=None):
             3-D Tensor of shape `[height, width, channels]`.
     axis:   A Python integer representing the axis on which the image(s)
             will be flipped. Note: The provided axis must be specified relative
-            to the shape `[batch, height, width, channels]` as .3-D images will
+            to the shape `[batch, height, width, channels]` as 3-D images will
             be expanded to fit this shape before being flipped.
     random: A boolean representing whether or not we should flip the
             image(s) at random.
