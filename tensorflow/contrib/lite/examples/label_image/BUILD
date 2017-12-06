@@ -14,12 +14,12 @@ exports_files(glob([
 tf_cc_binary(
     name = "label_image",
     srcs = ["label_image.cc"],
+    linkopts = tflite_linkopts() + ["-lm"],
     deps = [
         ":bitmap_helpers",
         ":get_top_n",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
-    linkopts = tflite_linkopts() + ["-lm"],
 )
 
 cc_library(
