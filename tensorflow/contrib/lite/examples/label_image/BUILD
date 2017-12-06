@@ -13,11 +13,16 @@ exports_files(glob([
 
 tf_cc_binary(
     name = "label_image",
-    srcs = ["label_image.cc"],
-    linkopts = tflite_linkopts() + [
-        "-pie",  # Android 5.0 and later supports only PIE
-        "-lm",
+    srcs = [
+        "label_image.cc",
     ],
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":bitmap_helpers",
         ":get_top_n",
@@ -28,20 +33,23 @@ tf_cc_binary(
 cc_library(
     name = "bitmap_helpers",
     srcs = ["bitmap_helpers.cc"],
-    hdrs = ["label_image.h"],
+    hdrs = [
+        "bitmap_helpers.h",
+        "label_image.h",
+    ],
 )
 
 cc_library(
     name = "get_top_n",
     srcs = ["get_top_n.cc"],
-    hdrs = ["label_image.h"],
+    hdrs = ["get_top_n.h"],
 )
 
 cc_test(
     name = "label_image_test",
     srcs = ["label_image_test.cc"],
     data = [
-        "testdata/lena.bmp",
+        "testdata/grace_hopper.bmp",
     ],
     deps = [
         ":bitmap_helpers",

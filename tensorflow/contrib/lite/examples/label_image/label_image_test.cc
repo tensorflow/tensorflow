@@ -16,40 +16,38 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "label_image.h"
+#include "tensorflow/contrib/lite/examples/label_image/bitmap_helpers.h"
+#include "tensorflow/contrib/lite/examples/label_image/get_top_n.h"
+#include "tensorflow/contrib/lite/examples/label_image/label_image.h"
 
 using ::testing::ElementsAreArray;
 
 namespace tflite {
 namespace label_image {
 
-bool verbose = false;
-int input_floating = false;
-float input_mean = 127.5;
-float input_std = 127.5;
-
-TEST(LabelImageTest, Lena) {
+TEST(LabelImageTest, GraceHopper) {
   std::string lena_file =
-      "tensorflow/contrib/lite/examples/label_image/testdata/lena.bmp";
+      "tensorflow/contrib/lite/examples/label_image/testdata/grace_hopper.bmp";
   int height, width, channels;
+  settings s;
   uint8_t *data;
 
-  data = read_bmp(lena_file, width, height, channels);
-  ASSERT_EQ(height, 26);
-  ASSERT_EQ(width, 51);
+  data = read_bmp(lena_file, &width, &height, &channels, &s);
+  ASSERT_EQ(height, 606);
+  ASSERT_EQ(width, 517);
   ASSERT_EQ(channels, 3);
 
-  uint8_t *out = new uint8_t[26 * 26 * 3];
-  downsize<uint8_t>(out, data, 26, 51, 3, 26, 26, 3);
-  ASSERT_EQ(out[0], 0xe1);
-  ASSERT_EQ(out[26 * 26 * 3 - 1], 0x4b);
+  uint8_t *out = new uint8_t[606 * 517 * 3];
+  downsize<uint8_t>(out, data, 606, 517, 3, 214, 214, 3, &s);
+  ASSERT_EQ(out[0], 0x15);
+  ASSERT_EQ(out[214 * 214 * 3 - 1], 0x12);
 }
 
 TEST(LabelImageTest, GetTopN) {
   uint8_t in[] = {1, 1, 2, 2, 4, 4, 16, 32, 128, 64};
 
   std::vector<std::pair<float, int>> top_results;
-  get_top_n<uint8_t>(in, 10, 5, 0.025, &top_results);
+  get_top_n<uint8_t>(in, 10, 5, 0.025, &top_results, false);
   ASSERT_EQ(top_results.size(), 4);
   ASSERT_EQ(top_results[0].second, 8);
 }

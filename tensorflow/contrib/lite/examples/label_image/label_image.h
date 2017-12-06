@@ -13,26 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H_
-#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H
+#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H
 
-namespace tflite {
-namespace label_image {
+#ifndef HAS_GLOBAL_STRING
+using std::string;
+#endif
 
-uint8_t* read_bmp(const std::string& input_bmp_name, int& width, int& height,
-                  int& channels);
+struct settings {
+  bool verbose = false;
+  bool accel = true;
+  bool input_floating = false;
+  int loop_count = 1;
+  float input_mean = 127.5f;
+  float input_std = 127.5f;
+  string model_name = "./mobilenet_quant_v1_224.tflite";
+  string input_bmp_name = "./grace_hopper.bmp";
+  string labels_file_name = "./labels.txt";
+  string input_layer_type = "uint8_t";
+  int number_of_threads = 4;
+};
 
-template <class T>
-void downsize(T* out, uint8_t* in, int image_height, int image_width,
-              int image_channels, int wanted_height, int wanted_width,
-              int wanted_channels);
-
-template <class T>
-void get_top_n(T* prediction, const int prediction_size,
-               const size_t num_results, const float threshold,
-               std::vector<std::pair<float, int>>* top_results);
-
-}  // label_image
-}  // tflite
+// #include "tensorflow/contrib/lite/examples/label_image/bitmap_helpers.h"
+// #include "tensorflow/contrib/lite/examples/label_image/get_top_n.h"
 
 #endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H

@@ -26,7 +26,7 @@ extern bool input_floating;
 template <class T>
 void get_top_n(T* prediction, const int prediction_size,
                const size_t num_results, const float threshold,
-               std::vector<std::pair<float, int>>* top_results) {
+               std::vector<std::pair<float, int>>* top_results, bool input_floating) {
   // Will contain top N results in ascending order.
   std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>,
                       std::greater<std::pair<float, int>>>
@@ -63,9 +63,9 @@ void get_top_n(T* prediction, const int prediction_size,
 
 // explicit instantiation so that we can use them otherwhere
 template void get_top_n<uint8_t>(uint8_t*, const int, const size_t, const float,
-                                 std::vector<std::pair<float, int>>*);
+                                 std::vector<std::pair<float, int>>*, bool);
 template void get_top_n<float>(float*, const int, const size_t, const float,
-                               std::vector<std::pair<float, int>>*);
+                               std::vector<std::pair<float, int>>*, bool);
 
 }  // namespace label_image
 }  // namespace tflite

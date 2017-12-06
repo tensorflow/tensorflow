@@ -8,6 +8,12 @@ To build it for android ARMv8:
   --cpu=arm64-v8a \
   //tensorflow/contrib/lite/examples/label_image:label_image
 ```
+or
+```
+> bazel build --config android_arm64 --cxxopt=-std=c++11 \
+  //tensorflow/contrib/lite/examples/label_image:label_image
+```
+
 To build it for android arm-v7a:
 ```
 > bazel build --cxxopt=-std=c++11 \
@@ -16,11 +22,18 @@ To build it for android arm-v7a:
   --cpu=armeabi-v7a \
   //tensorflow/contrib/lite/examples/label_image:label_image
 ```
+or
+```
+> bazel build --config android_arm --cxxopt=-std=c++11 \
+  //tensorflow/contrib/lite/examples/label_image:label_image
+```
+
 Build it for desktop machines (tested on Ubuntu and OS X)
 ```
 > bazel build --config opt --cxxopt=-std=c++11 //tensorflow/contrib/lite/examples/label_image:label_image
 ```
-To run it. Prepare `./mobilenet_quant_v1_224.tflite`, `./grace_hopper.txt`, and `./labels.txt`.
+To run it. Prepare `./mobilenet_quant_v1_224.tflite`, `./grace_hopper.bmp`, and `./labels.txt`.
+
 Run it:
 ```
 > ./label_image                                        

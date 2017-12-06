@@ -36,27 +36,13 @@ limitations under the License.
 #include "tensorflow/contrib/lite/optional_debug_tools.h"
 #include "tensorflow/contrib/lite/string_util.h"
 
-#include "label_image.h"
+#include "tensorflow/contrib/lite/examples/label_image/bitmap_helpers.h"
+#include "tensorflow/contrib/lite/examples/label_image/get_top_n.h"
 
 #define LOG(x) std::cerr
-#define CHECK(x)                  \
-  if (!(x)) {                     \
-    LOG(ERROR) << #x << "failed"; \
-    exit(1);                      \
-  }
 
 namespace tflite {
 namespace label_image {
-
-using std::string;
-
-bool verbose = false;
-bool accel = true;
-bool input_floating = false;
-int loop_count = 1;
-
-float input_mean = 127.5f;
-float input_std = 127.5f;
 
 double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 
@@ -84,34 +70,39 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
   return kTfLiteOk;
 }
 
-void RunInference(const std::string& graph, const std::string& input_layer_type,
-                  int num_threads, const std::string& input_bmp_name,
-                  const std::string& labels_file_name) {
-  CHECK(graph.c_str());
+#if 0
+void RunInference(const string& graph, const string& input_layer_type,
+                  int num_threads, const string& input_bmp_name,
+                  const string& labels_file_name) {
+#endif
+void RunInference(settings* s) {
+  if (!s->model_name.c_str()) {
+    LOG(ERROR) << "no model file name\n";
+    exit(-1);
+  }
 
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
-
-  model = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
+  model = tflite::FlatBufferModel::BuildFromFile(s->model_name.c_str());
   if (!model) {
-    LOG(FATAL) << "\nFailed to mmap model " << graph << "\n";
+    LOG(FATAL) << "\nFailed to mmap model " << s->model_name << "\n";
     exit(-1);
   }
-  LOG(INFO) << "Loaded model " << graph << "\n";
+  LOG(INFO) << "Loaded model " << s->model_name << "\n";
   model->error_reporter();
   LOG(INFO) << "resolved reporter\n";
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
 
-  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
+  tflite::InterpreterBuilder (*model, resolver)(&interpreter);
   if (!interpreter) {
     LOG(FATAL) << "Failed to construct interpreter\n";
     exit(-1);
   }
 
-  if (!accel) interpreter->UseNNAPI(accel);
+  if (!s->accel) interpreter->UseNNAPI(s->accel);
 
-  if (verbose) {
+  if (s->verbose) {
     LOG(INFO) << "tensors size: " << interpreter->tensors_size() << "\n";
     LOG(INFO) << "nodes size: " << interpreter->nodes_size() << "\n";
     LOG(INFO) << "inputs: " << interpreter->inputs().size() << "\n";
@@ -128,23 +119,23 @@ void RunInference(const std::string& graph, const std::string& input_layer_type,
     }
   }
 
-  if (num_threads != -1) {
-    interpreter->SetNumThreads(num_threads);
+  if (s->number_of_threads != -1) {
+    interpreter->SetNumThreads(s->number_of_threads);
   }
 
   int image_width = 224;
   int image_height = 224;
   int image_channels = 3;
-  uint8_t* in =
-      read_bmp(input_bmp_name, image_width, image_height, image_channels);
+  uint8_t* in = read_bmp(s->input_bmp_name, &image_width, &image_height,
+                         &image_channels, s);
 
   int input = interpreter->inputs()[0];
-  if (verbose) LOG(INFO) << "input: " << input << "\n";
+  if (s->verbose) LOG(INFO) << "input: " << input << "\n";
 
   const std::vector<int> inputs = interpreter->inputs();
   const std::vector<int> outputs = interpreter->outputs();
 
-  if (verbose) {
+  if (s->verbose) {
     LOG(INFO) << "number of inputs: " << inputs.size() << "\n";
     LOG(INFO) << "number of outputs: " << outputs.size() << "\n";
   }
@@ -153,7 +144,7 @@ void RunInference(const std::string& graph, const std::string& input_layer_type,
     LOG(FATAL) << "Failed to allocate tensors!";
   }
 
-  if (verbose) PrintInterpreterState(interpreter.get());
+  if (s->verbose) PrintInterpreterState(interpreter.get());
 
   // get input dimension from the input tensor metadata
   // assuming one input only
@@ -162,18 +153,19 @@ void RunInference(const std::string& graph, const std::string& input_layer_type,
   int wanted_width = dims->data[2];
   int wanted_channels = dims->data[3];
 
-  if (input_floating)
+  if (s->input_floating) {
     downsize<float>(interpreter->typed_tensor<float>(input), in, image_height,
                     image_width, image_channels, wanted_height, wanted_width,
-                    wanted_channels);
-  else
+                    wanted_channels, s);
+  } else {
     downsize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
                       image_height, image_width, image_channels, wanted_height,
-                      wanted_width, wanted_channels);
+                      wanted_width, wanted_channels, s);
+  }
 
   struct timeval start_time, stop_time;
   gettimeofday(&start_time, NULL);
-  for (int i = 0; i < loop_count; i++) {
+  for (int i = 0; i < s->loop_count; i++) {
     if (interpreter->Invoke() != kTfLiteOk) {
       LOG(FATAL) << "Failed to invoke tflite!\n";
     }
@@ -181,7 +173,7 @@ void RunInference(const std::string& graph, const std::string& input_layer_type,
   gettimeofday(&stop_time, NULL);
   LOG(INFO) << "invoked \n";
   LOG(INFO) << "average time: "
-            << (get_us(stop_time) - get_us(start_time)) / (loop_count * 1000)
+            << (get_us(stop_time) - get_us(start_time)) / (s->loop_count * 1000)
             << " ms \n";
 
   const int output_size = 1000;
@@ -190,17 +182,19 @@ void RunInference(const std::string& graph, const std::string& input_layer_type,
 
   std::vector<std::pair<float, int>> top_results;
 
-  if (input_floating)
+  if (s->input_floating) {
     get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                     num_results, threshold, &top_results);
-  else
+                     num_results, threshold, &top_results, s->input_floating);
+  } else {
     get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
-                       output_size, num_results, threshold, &top_results);
+                       output_size, num_results, threshold, &top_results,
+                       s->input_floating);
+  }
 
   std::vector<string> labels;
   size_t label_count;
 
-  if (ReadLabelsFile(labels_file_name, &labels, &label_count) != kTfLiteOk)
+  if (ReadLabelsFile(s->labels_file_name, &labels, &label_count) != kTfLiteOk)
     exit(-1);
 
   for (const auto& result : top_results) {
@@ -227,12 +221,7 @@ void display_usage() {
 }
 
 int Main(int argc, char** argv) {
-  // std::string model_name = "/data/local/tmp/mobilenet_quant_v1_224.tflite";
-  string model_name = "./mobilenet_quant_v1_224.tflite";
-  string input_bmp_name = "./grace_hopper.bmp";
-  string labels_file_name = "./labels.txt";
-  string input_layer_type = "uint8_t";
-  int number_of_threads = 4;
+  struct settings s;
 
   int c;
   while (1) {
@@ -260,35 +249,35 @@ int Main(int argc, char** argv) {
 
     switch (c) {
       case 'a':
-        accel = optarg;
+        s.accel = optarg;
         break;
       case 'b':
-        input_mean = strtod(optarg, NULL);
+        s.input_mean = strtod(optarg, NULL);
         break;
       case 'c':
-        loop_count = strtol(optarg, (char**)NULL, 10);
+        s.loop_count = strtol(optarg, (char**)NULL, 10);
         break;
       case 'f':
-        input_floating = strtol(optarg, (char**)NULL, 10);
-        input_layer_type = "float";
+        s.input_floating = strtol(optarg, (char**)NULL, 10);
+        s.input_layer_type = "float";
         break;
       case 'i':
-        input_bmp_name = optarg;
+        s.input_bmp_name = optarg;
         break;
       case 'l':
-        labels_file_name = optarg;
+        s.labels_file_name = optarg;
         break;
       case 'm':
-        model_name = optarg;
+        s.model_name = optarg;
         break;
       case 's':
-        input_std = strtod(optarg, NULL);
+        s.input_std = strtod(optarg, NULL);
         break;
       case 't':
-        number_of_threads = strtol(optarg, (char**)NULL, 10);
+        s.number_of_threads = strtol(optarg, (char**)NULL, 10);
         break;
       case 'v':
-        verbose = strtol(optarg, (char**)NULL, 10);
+        s.verbose = strtol(optarg, (char**)NULL, 10);
         break;
       case 'h':
       case '?':
@@ -299,8 +288,7 @@ int Main(int argc, char** argv) {
         exit(-1);
     }
   }
-  RunInference(model_name, input_layer_type, number_of_threads, input_bmp_name,
-               labels_file_name);
+  RunInference(&s);
   return 0;
 }
 
