@@ -125,7 +125,7 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "MONOLITHIC"
+    name: "MONOLITHIC_BUILD"
     mtype: "<type \'int\'>"
   }
   member {

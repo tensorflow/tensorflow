@@ -263,7 +263,7 @@ _allowed_symbols.extend([
     'GIT_VERSION',
     'COMPILER_VERSION',
     'CXX11_ABI_FLAG',
-    'MONOLITHIC',
+    'MONOLITHIC_BUILD',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
@@ -283,7 +283,7 @@ _exported_dunders = set([
     '__git_version__',
     '__compiler_version__',
     '__cxx11_abi_flag__',
-    '__monolithic__',
+    '__monolithic_build__',
 ])
 
 # Expose symbols minus dunders, unless they are whitelisted above.
