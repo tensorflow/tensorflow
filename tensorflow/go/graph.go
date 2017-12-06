@@ -28,7 +28,8 @@ package tensorflow
 //                                 int num_shapes) {
 //  const int64_t** dims =
 //    (const int64_t**)malloc(sizeof(const int64_t*) * num_shapes);
-//  for (int i = 0; i < num_shapes; i++) {
+//  int i = 0;
+//  for (i = 0; i < num_shapes; i++) {
 //    dims[i] = flat_dims;
 //    if (num_dims[i] > 0) {
 //      // flat_dims will be NULL iff num_shapes is 0 or all elements in num_dims are <= 0.
