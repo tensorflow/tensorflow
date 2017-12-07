@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdio.h>
 #include <sstream>
 #include <unordered_map>
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
@@ -480,15 +481,15 @@ string GenPythonOp::Code() {
   }
   // This has all the input args followed by those attrs that don't have
   // defaults.
-  std::vector<string> args_no_default;
+  std::vector<ParamNames> params_no_default;
   // The parameters with defaults (these have to be listed after those without).
   // No input args are included, just attrs.
-  std::vector<string> args_with_defaults;
+  std::vector<ParamNames> params_with_default;
 
   for (int i = 0; i < api_def_.arg_order_size(); ++i) {
     const auto& arg = *FindInputArg(api_def_.arg_order(i), op_def_);
     const auto& api_def_arg = *FindInputArg(api_def_.arg_order(i), api_def_);
-    args_no_default.push_back(api_def_arg.rename_to());
+    params_no_default.emplace_back(api_def_arg.name(), api_def_arg.rename_to());
     if (!arg.type_attr().empty()) {
       gtl::InsertIfNotPresent(&inferred_attrs_, arg.type_attr(), arg.name());
     } else if (!arg.type_list_attr().empty()) {
@@ -504,9 +505,9 @@ string GenPythonOp::Code() {
     // Do not add inferred attrs to the Python function signature.
     if (inferred_attrs_.find(attr.name()) == inferred_attrs_.end()) {
       if (attr.has_default_value()) {
-        args_with_defaults.push_back(attr.rename_to());
+        params_with_default.emplace_back(attr.name(), attr.rename_to());
       } else {
-        args_no_default.push_back(attr.rename_to());
+        params_no_default.emplace_back(attr.name(), attr.rename_to());
       }
     }
   }
@@ -515,27 +516,30 @@ string GenPythonOp::Code() {
   // those with defaults go at the end.
   // Get the attrs in the order we want by taking the attrs without defaults
   // from the end of args_no_default, and adding args_no_default.
-  attrs_.reserve(args_no_default.size() - op_def_.input_arg_size() +
-                 args_with_defaults.size());
-  attrs_.insert(attrs_.end(),
-                args_no_default.begin() + op_def_.input_arg_size(),
-                args_no_default.end());
-  attrs_.insert(attrs_.end(), args_with_defaults.begin(),
-                args_with_defaults.end());
+  attrs_.reserve(params_no_default.size() - op_def_.input_arg_size() +
+                 params_with_default.size());
+  for (int i = op_def_.input_arg_size(); i < params_no_default.size(); ++i) {
+    attrs_.push_back(params_no_default[i].GetName());
+  }
+  for (int i = 0; i < params_with_default.size(); ++i) {
+    attrs_.push_back(params_with_default[i].GetName());
+  }
 
-  param_names_.reserve(args_no_default.size() + args_with_defaults.size());
-  string parameters;
-  for (const string& name : args_no_default) {
-    AddDelimiter(&parameters, ", ");
-    const string param = AvoidPythonReserved(name);
-    strings::StrAppend(&parameters, param);
+  param_names_.reserve(params_no_default.size() + params_with_default.size());
+  param_names_.insert(param_names_.begin(), params_no_default.begin(),
+                      params_no_default.end());
+  for (const auto& param : params_with_default) {
     param_names_.push_back(param);
   }
-  for (const string& name : args_with_defaults) {
+
+  string parameters;
+  for (const auto& param : params_no_default) {
     AddDelimiter(&parameters, ", ");
-    const string param = AvoidPythonReserved(name);
-    strings::StrAppend(&parameters, param, "=None");
-    param_names_.push_back(param);
+    strings::StrAppend(&parameters, param.GetRenameTo());
+  }
+  for (const auto& param_and_default : params_with_default) {
+    AddDelimiter(&parameters, ", ");
+    strings::StrAppend(&parameters, param_and_default.GetRenameTo(), "=None");
   }
   AddDelimiter(&parameters, ", ");
   strings::StrAppend(&parameters, "name=None");
@@ -557,10 +561,11 @@ string GenPythonOp::Code() {
 }
 
 void GenPythonOp::AddExport() {
-  if (api_def_.visibility() != api_def_.VISIBLE) {
+  if (api_def_.visibility() != ApiDef::VISIBLE) {
     return;
   }
-  strings::StrAppend(&result_, "tf_export(");
+
+  strings::StrAppend(&result_, "@tf_export(");
 
   // Add all endpoint names to tf_export.
   bool first_endpoint = true;
@@ -603,9 +608,9 @@ void GenPythonOp::AddDocStringInputs() {
     StringPiece description = api_def_arg.description();
     string desc;
     if (ConsumeEquals(&description)) {  // Skip the generated type info.
-      desc = strings::StrCat(param_names_[i], ": ");
+      desc = strings::StrCat(param_names_[i].GetRenameTo(), ": ");
     } else {
-      desc = strings::StrCat(param_names_[i], ": ",
+      desc = strings::StrCat(param_names_[i].GetRenameTo(), ": ",
                              ArgTypeName(op_def_, arg, inferred_attrs_, false));
     }
     if (!description.empty()) {
@@ -750,7 +755,8 @@ void GenPythonOp::AddBody(const string& prefix) {
 void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
   string args = strings::StrCat("\"", op_def_.name(), "\", ");
   for (size_t i = 0; i < param_names_.size(); ++i) {
-    strings::StrAppend(&args, param_names_[i], "=", param_names_[i], ", ");
+    strings::StrAppend(&args, AvoidPythonReserved(param_names_[i].GetName()),
+                       "=", param_names_[i].GetRenameTo(), ", ");
   }
   strings::StrAppend(&args, "name=name)");
 

@@ -29,6 +29,9 @@ namespace batch_util {
 // for DT_STRING tensors.
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
 
+// Copies the index^th slice of parent (in the 0th dimension) into element.
+Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
+
 }  // namespace batch_util
 }  // namespace tensorflow
 

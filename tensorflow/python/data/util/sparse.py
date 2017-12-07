@@ -57,7 +57,7 @@ def as_dense_shapes(shapes, classes):
 
 
 def as_dense_types(types, classes):
-  """Converts sparse tensor types to `dtypes.string`.
+  """Converts sparse tensor types to `dtypes.variant`.
 
   Args:
     types: a structure of types to convert.
@@ -65,11 +65,11 @@ def as_dense_types(types, classes):
 
   Returns:
     a structure matching the nested structure of `types`, containing
-    `dtypes.string` at positions where `classes` contains `tf.SparseTensor` and
+    `dtypes.variant` at positions where `classes` contains `tf.SparseTensor` and
     matching contents of `types` otherwise
   """
   ret = nest.pack_sequence_as(types, [
-      dtypes.string if c is sparse_tensor.SparseTensor else ty
+      dtypes.variant if c is sparse_tensor.SparseTensor else ty
       for ty, c in zip(nest.flatten(types), nest.flatten(classes))
   ])
   return ret
@@ -116,6 +116,24 @@ def get_classes(tensors):
   ])
 
 
+def serialize_many_sparse_tensors(tensors):
+  """Serializes many sparse tensors into a batch.
+
+  Args:
+    tensors: a tensor structure to serialize.
+
+  Returns:
+    `tensors` with any sparse tensors replaced by the serialized batch.
+  """
+
+  ret = nest.pack_sequence_as(tensors, [
+      sparse_ops.serialize_many_sparse(tensor, out_type=dtypes.variant)
+      if sparse_tensor.is_sparse(tensor) else tensor
+      for tensor in nest.flatten(tensors)
+  ])
+  return ret
+
+
 def serialize_sparse_tensors(tensors):
   """Serializes sparse tensors.
 
@@ -127,7 +145,7 @@ def serialize_sparse_tensors(tensors):
   """
 
   ret = nest.pack_sequence_as(tensors, [
-      sparse_ops.serialize_sparse(tensor)
+      sparse_ops.serialize_sparse(tensor, out_type=dtypes.variant)
       if isinstance(tensor, sparse_tensor.SparseTensor) else tensor
       for tensor in nest.flatten(tensors)
   ])

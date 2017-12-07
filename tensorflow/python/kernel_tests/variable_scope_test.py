@@ -901,35 +901,6 @@ def axis0_into3_partitioner(shape=None, **unused_kwargs):
 
 class VariableScopeWithPartitioningTest(test.TestCase):
 
-  def testInitFromNonInitializer(self):
-    with self.test_session() as sess:
-      # Test various dtypes with zeros initializer as following:
-      types = [
-          dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.uint16, dtypes.int32,
-          dtypes.int64, dtypes.bool
-      ]
-
-      # Use different variable_name to distinguish various dtypes
-      for (i, dtype) in enumerate(types):
-        x = variable_scope.get_variable(
-            name="x%d" % i,
-            shape=(3, 4),
-            dtype=dtype,
-            partitioner=axis0_into2_partitioner)
-        y = variable_scope.get_variable(
-            name="y%d" % i,
-            shape=(6, 4),
-            dtype=dtype,
-            partitioner=axis0_into2_partitioner,
-            initializer=init_ops.zeros_initializer(dtype=dtype))
-
-        variables_lib.global_variables_initializer().run()
-        # x and y would become var list after partition
-        val_x = sess.run(list(x))
-        val_y = sess.run(list(y))
-
-        self.assertAllEqual(val_x, val_y)
-
   def testResultNameMatchesRequested(self):
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into2_partitioner):

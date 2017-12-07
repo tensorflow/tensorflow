@@ -953,5 +953,25 @@ class MomentsTest(test_lib.TestCase):
     self.doOutputTest((10, 10, 10, 30), (1, 2, 3))
 
 
+class DataFormatDimMapTest(test_lib.TestCase):
+
+  def _test(self, x_val, y_val_expected):
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertEqual(y_val, y_val_expected)
+
+  def test(self):
+    self._test(0, 0)
+    self._test(1, 2)
+    self._test(2, 3)
+    self._test(3, 1)
+    self._test(-1, 1)
+    self._test(-2, 3)
+    self._test(-3, 2)
+    self._test(-4, 0)
+
+
 if __name__ == "__main__":
   test_lib.main()

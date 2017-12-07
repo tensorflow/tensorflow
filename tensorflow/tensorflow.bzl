@@ -123,6 +123,13 @@ def if_not_windows(a):
       "//conditions:default": a,
   })
 
+def if_windows(a):
+  return select({
+      clean_dep("//tensorflow:windows"): a,
+      clean_dep("//tensorflow:windows_msvc"): a,
+      "//conditions:default": [],
+  })
+
 def if_linux_x86_64(a):
   return select({
       clean_dep("//tensorflow:linux_x86_64"): a,
@@ -334,6 +341,7 @@ def tf_gen_op_wrapper_cc(name,
           " $$(dirname $$(echo $(locations " + api_def_src +
           ") | cut -d\" \" -f1))")
     api_def_args_str = ",".join(api_def_args)
+
   native.genrule(
       name=name + "_genrule",
       outs=[
@@ -469,7 +477,8 @@ def tf_gen_op_wrapper_py(name,
                          hidden_file=None,
                          generated_target_name=None,
                          op_whitelist=[],
-                         cc_linkopts=[]):
+                         cc_linkopts=[],
+                         api_def_srcs=[]):
   if (hidden or hidden_file) and op_whitelist:
     fail('Cannot pass specify both hidden and op_whitelist.')
 
@@ -502,22 +511,39 @@ def tf_gen_op_wrapper_py(name,
     op_list_arg = "''"
     op_list_is_whitelist = False
 
+  # Prepare ApiDef directories to pass to the genrule.
+  if not api_def_srcs:
+    api_def_args_str = ","
+  else:
+    api_def_args = []
+    for api_def_src in api_def_srcs:
+      # Add directory of the first ApiDef source to args.
+      # We are assuming all ApiDefs in a single api_def_src are in the
+      # same directory.
+      api_def_args.append(
+          "$$(dirname $$(echo $(locations " + api_def_src +
+          ") | cut -d\" \" -f1))")
+    api_def_args_str = ",".join(api_def_args)
+
   if hidden_file:
     # `hidden_file` is file containing a list of op names to be hidden in the
     # generated module.
     native.genrule(
         name=name + "_pygenrule",
         outs=[out],
-        srcs=[hidden_file],
+        srcs=api_def_srcs + [hidden_file],
         tools=[tool_name] + tf_binary_additional_srcs(),
-        cmd=("$(location " + tool_name + ") @$(location " + hidden_file + ") " +
+        cmd=("$(location " + tool_name + ") " + api_def_args_str +
+             " @$(location " + hidden_file + ") " +
              ("1" if require_shape_functions else "0") + " > $@"))
   else:
     native.genrule(
         name=name + "_pygenrule",
         outs=[out],
+        srcs=api_def_srcs,
         tools=[tool_name] + tf_binary_additional_srcs(),
-        cmd=("$(location " + tool_name + ") " + op_list_arg + " " +
+        cmd=("$(location " + tool_name + ") " + api_def_args_str + " " +
+             op_list_arg + " " +
              ("1" if require_shape_functions else "0") + " " +
              ("1" if op_list_is_whitelist else "0") + " > $@"))
 
@@ -1298,11 +1324,32 @@ def tf_py_wrap_cc(name,
           "//conditions:default": [":" + cc_library_name],
       }))
 
-def py_test(deps=[], **kwargs):
+# This macro is for running python tests against system installed pip package
+# on Windows.
+#
+# py_test is built as an exectuable python zip file on Windows, which contains all
+# dependencies of the target. Because of the C++ extensions, it would be very
+# inefficient if the py_test zips all runfiles, plus we don't need them when running
+# tests against system installed pip package. So we'd like to get rid of the deps
+# of py_test in this case.
+#
+# In order to trigger the tests without bazel clean after getting rid of deps,
+# we introduce the following :
+# 1. When --define=no_tensorflow_py_deps=true, the py_test depends on a marker
+#    file of the pip package, the test gets to rerun when the pip package change.
+#    Note that this only works on Windows. See the definition of
+#    //tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
+# 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
+def py_test(deps=[], data=[], **kwargs):
   native.py_test(
       deps=select({
           "//conditions:default": deps,
-          clean_dep("//tensorflow:no_tensorflow_py_deps"): []
+          clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
+      }),
+      data = data + select({
+          "//conditions:default": [],
+          clean_dep("//tensorflow:no_tensorflow_py_deps"):
+          ["//tensorflow/tools/pip_package:win_pip_package_marker"],
       }),
       **kwargs)
 
@@ -1324,7 +1371,7 @@ def tf_py_test(name,
                xla_enabled=False):
   if xla_enabled:
     additional_deps = additional_deps + tf_additional_xla_deps_py()
-  native.py_test(
+  py_test(
       name=name,
       size=size,
       srcs=srcs,
@@ -1334,13 +1381,10 @@ def tf_py_test(name,
       visibility=[clean_dep("//tensorflow:internal")],
       shard_count=shard_count,
       data=data,
-      deps=select({
-          "//conditions:default": [
-              clean_dep("//tensorflow/python:extra_py_tests_deps"),
-              clean_dep("//tensorflow/python:gradient_checker"),
+      deps=[
+            clean_dep("//tensorflow/python:extra_py_tests_deps"),
+            clean_dep("//tensorflow/python:gradient_checker"),
           ] + additional_deps,
-          clean_dep("//tensorflow:no_tensorflow_py_deps"): []
-      }),
       flaky=flaky,
       srcs_version="PY2AND3")
 

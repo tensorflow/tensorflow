@@ -294,7 +294,8 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
 }  // namespace
 
 GpuCompiler::GpuCompiler()
-    : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
+    : pointer_size_(llvm::DataLayout(kDataLayout)
+                        .getPointerSize(0 /* default address space */)) {}
 
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/) {
