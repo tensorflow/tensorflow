@@ -1384,7 +1384,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "dynamic_partition_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["dynamic_partition_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
