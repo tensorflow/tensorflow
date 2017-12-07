@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -122,21 +123,22 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop) {
 
   EXPECT_EQ(item.graph.node_size(), output.node_size());
   for (int i = 0; i < item.graph.node_size(); ++i) {
-    const NodeDef& original = item.graph.node(i);
-    const NodeDef& optimized = output.node(i);
-    EXPECT_EQ(original.name(), optimized.name());
-    if (original.name() == "add") {
-      EXPECT_EQ("NoOp", optimized.op());
-    } else {
-      EXPECT_EQ(original.op(), optimized.op());
-    }
-    EXPECT_EQ(original.input_size(), optimized.input_size());
-    for (int j = 0; j < original.input_size(); ++j) {
-      if (original.name() == "add") {
-        EXPECT_EQ(AsControlDependency(original.input(j)), optimized.input(j));
-      } else {
-        EXPECT_EQ(original.input(j), optimized.input(j));
-      }
+    const NodeDef& node = item.graph.node(i);
+    if (node.name() == "add") {
+      EXPECT_EQ("NoOp", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("^x", node.input(0));
+      EXPECT_EQ("^y", node.input(1));
+    } else if (node.name() == "id1") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^y", node.input(1));
+    } else if (node.name() == "id2") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("^x", node.input(1));
     }
   }
 }
@@ -160,6 +162,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
+  TF_CHECK_OK(TopologicalSort(&item.graph));
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
@@ -232,6 +235,27 @@ TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
       EXPECT_EQ("^x", node.input(1));
     }
   }
+}
+
+TEST_F(DependencyOptimizerTest, Transitive_Reduction_Simple) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  Output x = ops::Square(s.WithOpName("x"), c);
+  Output id1 = ops::Identity(s.WithOpName("id1"), x);
+  Output id2 =
+      ops::Identity(s.WithOpName("id2").WithControlDependencies({x}), id1);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("id2");
+  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(4, output.node_size());
+  EXPECT_EQ("id2", output.node(3).name());
+  EXPECT_EQ(1, output.node(3).input_size());
+  EXPECT_EQ("id1", output.node(3).input(0));
 }
 
 }  // namespace
