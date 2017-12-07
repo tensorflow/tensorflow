@@ -243,11 +243,12 @@ int IrEmitter::MinimumAlignmentForBufferSize(int64 buffer_size) {
 
 // Calculate the alignment of a buffer allocated for a given primitive type.
 int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
-  int64 buffer_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-  DCHECK_GE(buffer_size, 0);
-  DCHECK_LE(buffer_size, SIZE_MAX);
-
-  return MinimumAlignmentForBufferSize(buffer_size);
+  int64 byte_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
+  DCHECK_GE(byte_size, 0);
+  // Largest scalar is a complex64 so we don't need to worry about the
+  // int64->int truncation here.
+  DCHECK_LE(byte_size, 8);
+  return byte_size;
 }
 
 int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
@@ -256,6 +257,10 @@ int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
 
 // Calculate the alignment of a buffer allocated for a given shape.
 int IrEmitter::MinimumAlignmentForShape(const Shape& shape) {
+  if (ShapeUtil::IsScalar(shape)) {
+    return MinimumAlignmentForPrimitiveType(shape.element_type());
+  }
+
   int64 buffer_size = ByteSizeOf(shape);
   DCHECK_GE(buffer_size, 0);
   DCHECK_LE(buffer_size, SIZE_MAX);
@@ -1356,7 +1361,7 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   //
   // Where Param is the actual element type of the underlying buffer (for
   // example, float for an XLA F32 element type).
-  llvm::Argument* params = compute_function_->parameters_arg();
+  llvm::Value* params = compute_function_->parameters_arg();
   llvm::Value* param_address_offset =
       llvm_ir::EmitBufferIndexingGEP(params, param_number, &ir_builder_);
   llvm::LoadInst* param_address_untyped =
@@ -2196,9 +2201,17 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
       !parallel_cpu_backend_) {
     // ParallelTaskAssignment assigned partitions, emit call to
     // ParallelForkJoin.
-    TF_RETURN_IF_ERROR(EmitParallelForkJoin(parameter_addresses,
-                                            emitted_value_[call], computation,
-                                            call_ir_function));
+    std::vector<llvm::Value*> call_args = GetArrayFunctionCallArguments(
+        parameter_addresses, &ir_builder_, computation->name(),
+        /*return_value_buffer=*/emitted_value_[call],
+        /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
+        /*temp_buffers_arg=*/GetTempBuffersArgument(),
+        /*profile_counters_arg=*/GetProfileCountersArgument());
+
+    HloInstruction* root = computation->root_instruction();
+    TF_RETURN_IF_ERROR(EmitCallToParallelForkJoin(
+        call_args, root->shape(), root->outer_dimension_partitions(),
+        &ir_builder_, call_ir_function, computation->name()));
   } else {
     EmitArrayFunctionCallInto(call_ir_function, parameter_addresses,
                               emitted_value_[call], computation->name());
@@ -2673,7 +2686,7 @@ llvm::Type* IrEmitter::IrShapeType(const Shape& shape) {
   return llvm_ir::ShapeToIrType(shape, module_);
 }
 
-llvm::Argument* IrEmitter::GetProfileCountersArgument() {
+llvm::Value* IrEmitter::GetProfileCountersArgument() {
   return compute_function_->profile_counters_arg();
 }
 
@@ -2747,42 +2760,6 @@ llvm::Value* IrEmitter::EmitElementFunctionCall(
       AsStringRef(tensorflow::strings::StrCat(name, "_return_value")));
 }
 
-// Emits code to allocate an array of parameter address pointers, and store
-// each address from 'parameter_addresses'.
-// Returns an array of compute function call arguments (including parameter
-// address buffer).
-std::vector<llvm::Value*> IrEmitter::GetArrayFunctionCallArguments(
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
-  llvm::Value* parameter_addresses_buffer =
-      llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-          ir_builder_.getInt8PtrTy(),
-          ir_builder_.getInt32(parameter_addresses.size()),
-          tensorflow::strings::StrCat(name, "_parameter_addresses"),
-          &ir_builder_);
-  for (size_t i = 0; i < parameter_addresses.size(); ++i) {
-    llvm::Value* parameter_as_i8ptr = ir_builder_.CreateBitCast(
-        parameter_addresses[i], ir_builder_.getInt8PtrTy(),
-        AsStringRef(tensorflow::strings::StrCat(name, "_parameter_", i,
-                                                "_address_as_i8ptr")));
-    llvm::Value* slot_in_param_adresses = ir_builder_.CreateInBoundsGEP(
-        parameter_addresses_buffer, {ir_builder_.getInt64(i)});
-    ir_builder_.CreateStore(parameter_as_i8ptr, slot_in_param_adresses);
-  }
-
-  const auto to_int8_ptr = [this](llvm::Value* ptr) {
-    return ir_builder_.CreatePointerCast(ptr, ir_builder_.getInt8PtrTy());
-  };
-  std::vector<llvm::Value*> arguments{
-      to_int8_ptr(return_value_buffer),
-      to_int8_ptr(GetExecutableRunOptionsArgument()),
-      parameter_addresses_buffer, GetTempBuffersArgument()};
-  if (auto* profile_counters = GetProfileCountersArgument()) {
-    arguments.push_back(profile_counters);
-  }
-  return arguments;
-}
-
 // Emits a core function call based on the following pseudo-code.
 //
 //   char** parameter_addresses_buffer =
@@ -2798,8 +2775,12 @@ void IrEmitter::EmitArrayFunctionCallInto(
     tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
     llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
   ir_builder_.CreateCall(
-      function, GetArrayFunctionCallArguments(parameter_addresses,
-                                              return_value_buffer, name));
+      function, GetArrayFunctionCallArguments(
+                    parameter_addresses, &ir_builder_, name,
+                    /*return_value_buffer=*/return_value_buffer,
+                    /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
+                    /*temp_buffers_arg=*/GetTempBuffersArgument(),
+                    /*profile_counters_arg=*/GetProfileCountersArgument()));
 }
 
 llvm::Value* IrEmitter::EmitArrayFunctionCall(
@@ -2817,111 +2798,6 @@ llvm::Value* IrEmitter::EmitArrayFunctionCall(
   EmitArrayFunctionCallInto(function, parameter_addresses, return_value_buffer,
                             name);
   return return_value_buffer;
-}
-
-// Emits a call to a runtime fork/join function which dispatches parallel
-// calls to 'parallel_function' (and joins threads before returning).
-Status IrEmitter::EmitParallelForkJoin(
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::Value* output_address, HloComputation* computation,
-    llvm::Function* parallel_function) {
-  HloInstruction* root = computation->root_instruction();
-
-  // Build ParallelForkJoin function type.
-  std::vector<llvm::Type*> compute_function_params =
-      compute_function_->GetComputeFunctionParams();
-  // Number of parallel compute functions.
-  compute_function_params.push_back(ir_builder_.getInt32Ty());
-  // Array of partitions. There is an array element for each
-  // partition x partition_dim x 2 (for dimension start and limit).
-  compute_function_params.push_back(
-      llvm::Type::getInt64PtrTy(module_->getContext()));
-  // Number of partitioned most-major dimensions in 'root.shape'.
-  compute_function_params.push_back(ir_builder_.getInt32Ty());
-  // Function pointer for compute function to be dispatched in parallel.
-  compute_function_params.push_back(
-      llvm::Type::getInt8PtrTy(module_->getContext()));
-
-  llvm::FunctionType* fork_join_type = llvm::FunctionType::get(
-      /*Result=*/llvm::Type::getVoidTy(module_->getContext()),
-      /*Params=*/compute_function_params,
-      /*isVarArg=*/false);
-
-  llvm::Function* fork_join_func =
-      llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-          runtime::kParallelForkJoinSymbolName, fork_join_type));
-  fork_join_func->setCallingConv(llvm::CallingConv::C);
-  fork_join_func->setDoesNotThrow();
-
-  // Add common compute function arguments.
-  const string name = computation->name();
-  std::vector<llvm::Value*> arguments =
-      GetArrayFunctionCallArguments(parameter_addresses, output_address, name);
-
-  // Create ShapePartitionIterator to generate all partitions of 'root.shape'.
-  ShapePartitionIterator partition_iterator(root->shape(),
-                                            root->outer_dimension_partitions());
-  const int64 num_partitions = partition_iterator.GetTotalPartitionCount();
-  // Add argument specifying the number of parallel partitions.
-  arguments.push_back(ir_builder_.getInt32(num_partitions));
-
-  // The number of partitioned most-major dimensions in 'root.shape'.
-  const int32 num_partitioned_dims = root->outer_dimension_partitions().size();
-  // A dimension partition consists of two elements: [start_index, limit_index).
-  const int32 dim_partition_size = 2;
-  // Calculate array partition stride.
-  const int32 array_partition_stride =
-      num_partitioned_dims * dim_partition_size;
-  // Calculate the total number of elements in the partition array.
-  const int32 partition_array_size =
-      dim_partition_size * num_partitioned_dims * num_partitions;
-
-  // Store dimension partition values as llvm constants in 'partitions'.
-  // See comments in runtime_fork_join.cc for array layout description.
-  std::vector<llvm::Constant*> partitions(partition_array_size);
-  for (int32 i = 0; i < num_partitions; ++i) {
-    std::vector<std::pair<int64, int64>> dim_partitions =
-        partition_iterator.GetPartition(i);
-    CHECK_EQ(num_partitioned_dims, dim_partitions.size());
-    const int32 partition_index = i * array_partition_stride;
-    for (int32 j = 0; j < num_partitioned_dims; ++j) {
-      const std::pair<int64, int64>& dim_partition = dim_partitions[j];
-      const int32 index = partition_index + j * dim_partition_size;
-      // Store partition [dim_start, dim_limit) intervals for each dimension.
-      partitions[index] = ir_builder_.getInt64(dim_partition.first);
-      partitions[index + 1] =
-          ir_builder_.getInt64(dim_partition.first + dim_partition.second);
-    }
-  }
-
-  // Create global variable out of dimension partitions in 'partitions'.
-  llvm::ArrayType* partitions_array_type =
-      llvm::ArrayType::get(ir_builder_.getInt64Ty(), partition_array_size);
-  llvm::Constant* partitions_array =
-      llvm::ConstantArray::get(partitions_array_type, partitions);
-  llvm::GlobalVariable* global_partitions_array = new llvm::GlobalVariable(
-      /*Module=*/*module_,
-      /*Type=*/partitions_array_type,
-      /*isConstant=*/true,
-      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-      /*Initializer=*/partitions_array,
-      /*Name=*/
-      AsStringRef(
-          tensorflow::strings::StrCat(name, "_parallel_dimension_partitions")));
-
-  // Add argument specifying parallel dimension partitions.
-  arguments.push_back(ir_builder_.CreateBitCast(
-      global_partitions_array,
-      llvm::Type::getInt64PtrTy(module_->getContext())));
-  // Add argument specifying the number of partitioned most-major dimensions.
-  arguments.push_back(ir_builder_.getInt32(num_partitioned_dims));
-  // Add argument for parallel compute function pointer.
-  arguments.push_back(
-      ir_builder_.CreateBitCast(parallel_function, ir_builder_.getInt8PtrTy()));
-  // Emit call to parallel fork/join.
-  ir_builder_.CreateCall(fork_join_func, arguments);
-
-  return Status::OK();
 }
 
 Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
@@ -2992,14 +2868,8 @@ Status IrEmitter::EmitTargetElementLoop(
   } else {
     if (ShouldEmitParallelLoopFor(*target_op)) {
       // Emit code to read dynamic loop bounds from compute function argument.
-      ParallelLoopEmitter::LoopBounds dynamic_loop_bounds(
-          num_dynamic_loop_bounds_);
-      for (int i = 0; i < num_dynamic_loop_bounds_; ++i) {
-        dynamic_loop_bounds[i].first =
-            compute_function_->GetDynamicLoopBound(i * 2 + 0);
-        dynamic_loop_bounds[i].second =
-            compute_function_->GetDynamicLoopBound(i * 2 + 1);
-      }
+      std::vector<std::pair<llvm::Value*, llvm::Value*>> dynamic_loop_bounds =
+          compute_function_->GetDynamicLoopBounds();
       // Emit parallel loop with dynamic loop bounds for most-major dimensions.
       TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, target_array,
                                              &dynamic_loop_bounds, &ir_builder_)

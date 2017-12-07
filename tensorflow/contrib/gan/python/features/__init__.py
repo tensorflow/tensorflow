@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API. Please see README.md for details and usage."""
+"""TFGAN features module.
+
+This module includes support for virtual batch normalization, buffer replay,
+conditioning, etc.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

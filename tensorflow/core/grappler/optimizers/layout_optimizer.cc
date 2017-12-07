@@ -36,7 +36,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-const char kDimConst[] = "LayoutOptimizerDimConst";
+const char kDim[] = "LayoutOptimizerDim";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
 const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
@@ -828,19 +828,15 @@ class AddNProcessor : public AgnosticNodeProcessor {
 class BinaryOpProcessor : public AgnosticNodeProcessor {
  public:
   explicit BinaryOpProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {
-    is_4d_with_vector_ = IsNDOperateWithMD(4, 1);
-  }
+      : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
   bool ShouldProcess() const override {
-    // TODO(yaozhang): Support IsNDOperateWithMD(1, 4): first input is a vector
-    // and the second input is a 4D tensor; and update CustomizedProcessing()
-    // accordingly.
     return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() &&
            (IsNDOperateWithMD(4, 0) || IsNDOperateWithMD(4, 1) ||
-            IsNDOperateWithMD(4, 4) || IsNDOperateWithMD(0, 4)) &&
+            IsNDOperateWithMD(4, 4) || IsNDOperateWithMD(0, 4) ||
+            IsNDOperateWithMD(1, 4)) &&
            IsOnGPU();
   }
 
@@ -915,31 +911,35 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    if (is_4d_with_vector_) {
-      string base_name = strings::StrCat(node_->name(), "-", node_->input(1));
+    int vector_index = -1;
+    if (IsNDOperateWithMD(4, 1)) {
+      vector_index = 1;
+    } else if (IsNDOperateWithMD(1, 4)) {
+      vector_index = 0;
+    }
+    if (vector_index != -1) {
+      string base_name =
+          strings::StrCat(node_->name(), "-", node_->input(vector_index));
       string reshape_node_name =
           AddPrefixToNodeName(base_name, kReshapeNHWCToNCHW, "-");
       string shape_const_node_name =
           AddPrefixToNodeName(base_name, kReshapeConst, "-");
-      auto input_node = node_map_->GetNode(node_->input(1));
+      auto input_node = node_map_->GetNode(node_->input(vector_index));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       int vector_size =
           input_node->attr().at("_output_shapes").list().shape(0).dim(0).size();
       AddNodeShapeConst(shape_const_node_name, vector_size);
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
-      AddNodeReshape(reshape_node_name, node_->input(1), shape_const_node_name,
-                     node_->attr().at("T").type());
+      AddNodeReshape(reshape_node_name, node_->input(vector_index),
+                     shape_const_node_name, node_->attr().at("T").type());
       node_map_->AddOutput(shape_const_node_name, reshape_node_name);
-      node_map_->UpdateOutput(node_->input(1), node_->name(),
+      node_map_->UpdateOutput(node_->input(vector_index), node_->name(),
                               reshape_node_name);
       node_map_->AddOutput(reshape_node_name, node_->name());
-      *node_->mutable_input(1) = reshape_node_name;
+      *node_->mutable_input(vector_index) = reshape_node_name;
     }
     return Status::OK();
   }
-
- private:
-  bool is_4d_with_vector_;
 };
 
 class ConcatProcessor : public AgnosticNodeProcessor {
@@ -952,10 +952,6 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 
  protected:
-  bool ShouldProcess() const override {
-    return AgnosticNodeProcessor::ShouldProcess() && DimSupported();
-  }
-
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos;
     int start = (IsConcatV1(*node_)) ? 1 : 0;
@@ -968,33 +964,19 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    string dim_const_name = AddNodeDimConst()->name();
-    node_map_->AddOutput(dim_const_name, node_->name());
-    *node_->mutable_input(axis_node_pos_) = dim_const_name;
+    auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
+    if (IsConstant(*dim_node)) {
+      AddNodeDimConst();
+    } else {
+      AddNodeDataFormatDimMap();
+    }
     return Status::OK();
   }
 
   int axis_node_pos_;
 
  private:
-  bool DimSupported() const {
-    auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
-    // TODO(yaozhang): Support non-constant axis node.
-    if (!IsConstant(*dim_node)) {
-      return false;
-    }
-    if (HasAttribute(*dim_node, "value").ok()) {
-      auto tensor = dim_node->attr().at({"value"}).tensor();
-      if (tensor.tensor_shape().dim_size() == 0 && tensor.int_val_size() == 1) {
-        if (tensor.int_val(0) < 4 && tensor.int_val(0) >= -4) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  NodeDef* AddNodeDimConst() {
+  void AddNodeDimConst() {
     auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
     auto tensor = dim_node->attr().at({"value"}).tensor();
     int value = tensor.int_val(0);
@@ -1010,10 +992,34 @@ class ConcatProcessor : public AgnosticNodeProcessor {
     // to ensure added_node is in the same frame with node_.
     NodeDef* added_node = graph_->add_node();
     *added_node = *dim_node;
-    added_node->set_name(strings::StrCat(kDimConst, "-", node_->name()));
+    added_node->set_name(strings::StrCat(kDim, "-", node_->name()));
+    node_map_->AddNode(added_node->name(), added_node);
     added_node->mutable_attr()->at({"value"}).mutable_tensor()->set_int_val(
         0, value);
-    return added_node;
+    node_map_->RemoveOutput(node_->input(axis_node_pos_), node_->name());
+    *node_->mutable_input(axis_node_pos_) = added_node->name();
+    node_map_->AddOutput(added_node->name(), node_->name());
+  }
+
+  void AddNodeDataFormatDimMap() {
+    NodeDef* added_node = graph_->add_node();
+    added_node->set_name(strings::StrCat(kDim, "-", node_->name()));
+    added_node->set_op("DataFormatDimMap");
+    node_map_->AddNode(added_node->name(), added_node);
+    added_node->set_device(node_->device());
+    AttrValue attr_data_type;
+    attr_data_type.set_type(DT_INT32);
+    added_node->mutable_attr()->insert({"T", attr_data_type});
+    AttrValue attr_format;
+    attr_format.set_s("NHWC");
+    added_node->mutable_attr()->insert({"src_format", attr_format});
+    attr_format.set_s("NCHW");
+    added_node->mutable_attr()->insert({"dst_format", attr_format});
+    *added_node->add_input() = node_->input(axis_node_pos_);
+    *node_->mutable_input(axis_node_pos_) = added_node->name();
+    node_map_->UpdateOutput(added_node->input(0), node_->name(),
+                            added_node->name());
+    node_map_->AddOutput(added_node->name(), node_->name());
   }
 };
 

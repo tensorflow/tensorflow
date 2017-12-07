@@ -46,6 +46,10 @@ struct bfloat16 {
   EIGEN_DEVICE_FUNC bfloat16() {}
 
   EIGEN_DEVICE_FUNC explicit bfloat16(const float v) {
+    if (isnan(v)) {
+      value = NAN_VALUE;
+      return;
+    }
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     value = p[0];
@@ -132,6 +136,9 @@ struct bfloat16 {
   }
 
   uint16_t value;
+
+  // A value that represents "not a number".
+  static const uint16_t NAN_VALUE = 0x7FC0;
 };
 
 inline bfloat16 operator+(bfloat16 a, bfloat16 b) {

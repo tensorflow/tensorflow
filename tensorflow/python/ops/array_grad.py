@@ -524,6 +524,16 @@ def _TransposeGrad(op, grad):
   return [array_ops.transpose(grad, array_ops.invert_permutation(p)), None]
 
 
+@ops.RegisterGradient("ConjugateTranspose")
+def _ConjugateTransposeGrad(op, grad):
+  """Returns conj(unshuffle(grad))."""
+  p = op.inputs[1]
+  return [
+      array_ops.transpose(
+          grad, array_ops.invert_permutation(p), conjugate=True), None
+  ]
+
+
 ops.NotDifferentiable("Shape")
 
 

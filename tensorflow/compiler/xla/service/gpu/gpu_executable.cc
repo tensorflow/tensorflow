@@ -167,9 +167,16 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
+    // If this thunk requests it, wait for all currently-executing thunks to
+    // finish.  This is useful e.g. if the thunk is about to perform autotuning.
+    if (thunk->ShouldHaltAllActivityBeforeRunning(stream)) {
+      main_stream->BlockHostUntilDone();
+    }
+
     profiler.StartOperation();
     VLOG(2) << "Executing the thunk for "
-            << thunk->hlo_instruction()->ToString();
+            << thunk->hlo_instruction()->ToString() << " on stream "
+            << stream_no;
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = MakeUnique<se::Event>(main_stream->parent());

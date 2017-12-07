@@ -97,11 +97,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/429aa5254200.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/429aa5254200.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/b6e6d0cf6a77.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/b6e6d0cf6a77.tar.gz",
       ],
-      sha256 = "61d8b6fc4279dd1dda986fb1677d15e3d641c07a3ea5abe255790b1f0c0c14e9",
-      strip_prefix = "eigen-eigen-429aa5254200",
+      sha256 = "0840c497f2749b5e90bda666aab96be6da90dc75b4e21ca9843cae69b7fed52a",
+      strip_prefix = "eigen-eigen-b6e6d0cf6a77",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -254,11 +254,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "absl_py",
       urls = [
-          "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/231e3870b976c1dc61dce1749138661d21556028.tar.gz",
-          "https://github.com/abseil/abseil-py/archive/231e3870b976c1dc61dce1749138661d21556028.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
+          "https://github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
       ],
-      sha256 = "8ea2b23bfdb9ae7622f3e5d95236bc600c8d8509a2f38c84732b3145585d4f73",
-      strip_prefix = "abseil-py-231e3870b976c1dc61dce1749138661d21556028",
+      sha256 = "29e4584e778bee13aa4093824133d131d927cc160561892880118d9ff7b95a6a",
+      strip_prefix = "abseil-py-acec853355ef987eae48a8d87a79351c15dff593",
   )
 
   tf_http_archive(
@@ -624,11 +624,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "bazel_toolchains",
       urls = [
-          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/af4681c3d19f063f090222ec3d04108c4e0ca255.tar.gz",
-          "https://github.com/bazelbuild/bazel-toolchains/archive/af4681c3d19f063f090222ec3d04108c4e0ca255.tar.gz",
+          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/b49ba3689f46ac50e9277dafd8ff32b26951f82e.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/b49ba3689f46ac50e9277dafd8ff32b26951f82e.tar.gz",
       ],
-      sha256 = "d58bb2d6c8603f600d522b6104d6192a65339aa26cbba9f11ff5c4b36dedb928",
-      strip_prefix = "bazel-toolchains-af4681c3d19f063f090222ec3d04108c4e0ca255",
+      sha256 = "1266f1e27b4363c83222f1a776397c7a069fbfd6aacc9559afa61cdd73e1b429",
+      strip_prefix = "bazel-toolchains-b49ba3689f46ac50e9277dafd8ff32b26951f82e",
   )
 
   tf_http_archive(

@@ -3115,6 +3115,7 @@ cc_library(
         ":batch_norm_op",
         ":bias_op",
         ":conv_ops",
+        ":data_format_ops",
         ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":dilation_ops",
@@ -3149,6 +3150,12 @@ NN_DEPS = [
 tf_kernel_library(
     name = "batch_norm_op",
     prefix = "batch_norm_op",
+    deps = NN_DEPS,
+)
+
+tf_kernel_library(
+    name = "data_format_ops",
+    prefix = "data_format_ops",
     deps = NN_DEPS,
 )
 
@@ -4603,6 +4610,7 @@ filegroup(
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_ops.h",
+        "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
         "fake_quant_ops_functor.h",
@@ -4716,6 +4724,7 @@ filegroup(
         "cwise_op_squared_difference.cc",
         "cwise_op_sub.cc",
         "cwise_op_tanh.cc",
+        "data_format_ops.cc",
         "decode_wav_op.cc",
         "deep_conv2d.cc",
         "deep_conv2d.h",
@@ -6222,6 +6231,7 @@ tf_kernel_library(
     name = "tensor_slice_dataset_op",
     srcs = ["tensor_slice_dataset_op.cc"],
     deps = [
+        ":batch_util",
         ":dataset",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

@@ -34,7 +34,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-typedef Eigen::GpuDevice GPUDevice;
 using Eigen::GpuDevice;
 
 // Returns whether depthwise convolution forward or backward input pass can be
@@ -1029,7 +1028,7 @@ __device__ __forceinline__ T WarpSumReduce(T val) {
   int zeros = sub_warp * kWidth;
   unsigned mask = ((1UL << kWidth) - 1) << zeros;
   for (int delta = kWidth / 2; delta > 0; delta /= 2) {
-    val += CudaShuffleXorSync(mask, val, delta);
+    val += CudaShuffleXor(mask, val, delta);
   }
   return val;
 }
@@ -1146,7 +1145,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
 
     // Note: the condition to reach this is uniform across the entire block.
     __syncthreads();
-    unsigned active_threads = CudaBallotSync(kCudaWarpAll, depth_in_range);
+    unsigned active_threads = CudaBallot(CUDA_WARP_ALL, depth_in_range);
 
     if (depth_in_range) {
       const T* const out_ptr = inout_offset + output;
@@ -1160,7 +1159,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
           T val = out1 * tile_ptr[0] + out2 * tile_ptr[tile_offset];
           // Warp-accumulate pixels of the same depth and write to accumulator.
           for (int delta = 16; delta >= kBlockSlices; delta /= 2) {
-            val += CudaShuffleDownSync(active_threads, val, delta);
+            val += CudaShuffleDown(active_threads, val, delta);
           }
           if (!(thread_idx & 32 - kBlockSlices) /* lane_idx < kBlockSlices */) {
             *accum_ptr = val;
@@ -1400,7 +1399,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
 
     // Note: the condition to reach this is uniform across the entire block.
     __syncthreads();
-    unsigned active_threads = CudaBallotSync(kCudaWarpAll, slice_in_range);
+    unsigned active_threads = CudaBallot(CUDA_WARP_ALL, slice_in_range);
 
     if (slice_in_range) {
       const T* const out_ptr = inout_offset + output;
@@ -1414,7 +1413,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
           T val = out1 * tile_ptr[0] + out2 * tile_ptr[tile_offset];
           // Warp-accumulate pixels of the same depth and write to accumulator.
           for (int delta = 16 / kBlockSlices; delta > 0; delta /= 2) {
-            val += CudaShuffleDownSync(active_threads, val, delta);
+            val += CudaShuffleDown(active_threads, val, delta);
           }
           if (!(thread_idx & 32 / kBlockSlices - 1)) {
             *accum_ptr = val;

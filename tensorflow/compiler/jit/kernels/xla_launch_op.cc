@@ -102,7 +102,6 @@ xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
   }
   void* data =
       reinterpret_cast<void*>(const_cast<char*>(t.tensor_data().data()));
-  TF_RET_CHECK(data != nullptr);
   tensors_[data] = t;
   return gpu::DeviceMemoryBase(data, size);
 }
@@ -110,7 +109,6 @@ xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
 Status XlaAllocator::RegisterArgument(const Tensor* t) {
   void* data =
       reinterpret_cast<void*>(const_cast<char*>(t->tensor_data().data()));
-  TF_RET_CHECK(data != nullptr);
   tensors_[data] = *t;
   return Status::OK();
 }
