@@ -743,6 +743,31 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(op.outputs), 1)
     self.assertEqual(op.outputs[0].shape, tensor_shape.matrix(2, 3))
 
+  def testUniqueName(self):
+    g = ops.Graph()
+    with g.as_default():
+      if ops._USE_C_API:
+        c_op = ops._create_c_op(
+            g, ops._NodeDef("IntOutput", "myop"), [], [])
+        c_op2 = ops._create_c_op(
+            g, ops._NodeDef("IntOutput", "myop_1"), [], [])
+        op = g._create_op_from_tf_operation(c_op)
+        op2 = g._create_op_from_tf_operation(c_op2)
+      else:
+        # Test pure-Python version to make sure C API has same behavior.
+        op = test_ops.int_output(name="myop").op
+        op2 = test_ops.int_output(name="myop_1").op
+
+      # Create ops with same names as op1 and op2. We expect the new names to be
+      # uniquified.
+      op3 = test_ops.int_output(name="myop").op
+      op4 = test_ops.int_output(name="myop_1").op
+
+    self.assertEqual(op.name, "myop")
+    self.assertEqual(op2.name, "myop_1")
+    self.assertEqual(op3.name, "myop_2")
+    self.assertEqual(op4.name, "myop_1_1")
+
   def testCond(self):
     g = ops.Graph()
     with g.as_default():

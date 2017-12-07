@@ -3181,6 +3181,14 @@ class Graph(object):
     input_ops = set(self._get_operation_by_tf_operation(output.oper)
                     for output in tf_outputs)
     control_inputs = self._control_dependencies_for_inputs(input_ops)
+
+    # Update _names_in_use before calling the Operation constructor since the
+    # control flow code may create more Operations, and we don't want the names
+    # to conflict.
+    op_name = c_api.TF_OperationName(c_op)
+    assert op_name not in self._names_in_use
+    self._names_in_use[op_name] = 1
+
     ret = Operation(c_op, self, control_inputs=control_inputs)
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
