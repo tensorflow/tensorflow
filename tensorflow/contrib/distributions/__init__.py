@@ -36,6 +36,7 @@ from tensorflow.contrib.distributions.python.ops.distribution_util import softpl
 from tensorflow.contrib.distributions.python.ops.distribution_util import tridiag
 from tensorflow.contrib.distributions.python.ops.estimator import *
 from tensorflow.contrib.distributions.python.ops.geometric import *
+from tensorflow.contrib.distributions.python.ops.half_normal import *
 from tensorflow.contrib.distributions.python.ops.independent import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
@@ -107,6 +108,7 @@ _allowed_symbols = [
     'Gamma',
     'GammaWithSoftplusConcentrationRate',
     'Geometric',
+    'HalfNormal',
     'Independent',
     'InverseGamma',
     'InverseGammaWithSoftplusConcentrationRate',

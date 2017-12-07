@@ -20,6 +20,7 @@
 
 - (BOOL)application:(UIApplication *)application
     didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+
   UITabBarController *bar = [[UITabBarController alloc] init];
   [bar setViewControllers:@[ [[RunModelViewController alloc] init] ]];
   bar.selectedIndex = 0;

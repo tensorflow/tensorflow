@@ -67,9 +67,20 @@ struct RemoteMR {
   uint64_t remote_addr;
   uint32_t rkey;
 };
-enum BufferStatus { none, idle, busy };
-enum Location { local, remote };
-enum BufferType { ACK, MESSAGE, TENSOR };
+enum BufferStatus {
+  none,
+  idle,
+  busy
+};
+enum Location {
+  local,
+  remote
+};
+enum BufferType {
+  ACK,
+  MESSAGE,
+  TENSOR
+};
 enum RdmaMessageType {
   RDMA_MESSAGE_ACK,
   RDMA_MESSAGE_BUFFER_IDLE,
@@ -96,6 +107,7 @@ class RdmaAdapter {
   ~RdmaAdapter();
   // Adapter name, e.g. mlx5_0.
   string name() const;
+  void StartPolling();
   void Process_CQ();
 
  protected:
@@ -150,6 +162,15 @@ class RdmaChannel {
   void RemoveRecvCallback(const string& key);
   void RunRecvCallback(const string& key);
   static const int kNumMessageBuffers = 4;
+  static const int kPingRecvWrid = 0;
+
+ private:
+  static const int kPingBuffSize = 1024;
+  char ping_buff_[kPingBuffSize];
+  struct ibv_mr* mr_;
+  struct ibv_sge ping_sge_list_;
+  int PingPostRecv();
+  int PingPostSend();
 
  protected:
   const RdmaAdapter* adapter_;
@@ -202,7 +223,7 @@ class RdmaBuffer {
   }
   void FreeBuffer();
   void EnqueueItem(string Item);
-  virtual void SendNextItem(){};
+  virtual void SendNextItem() {};
   void CreateCPUBuffer(size_t size, bool lock = true);
   void SetRemoteMR(RemoteMR rmi, bool override);
   uint32_t LookupBufferIndex(const string& buffer_name) {

@@ -31,6 +31,7 @@ std::vector<uint8_t> LoadImageFromFile(const char* file_name, int* out_width, in
   std::vector<uint8_t> file_data(bytes_in_file);
   fread(file_data.data(), 1, bytes_in_file, file_handle);
   fclose(file_handle);
+
   CFDataRef file_data_ref =
       CFDataCreateWithBytesNoCopy(NULL, file_data.data(), bytes_in_file, kCFAllocatorNull);
   CGDataProviderRef image_provider = CGDataProviderCreateWithCFData(file_data_ref);
@@ -63,6 +64,7 @@ std::vector<uint8_t> LoadImageFromFile(const char* file_name, int* out_width, in
   const int bytes_in_image = (bytes_per_row * height);
   std::vector<uint8_t> result(bytes_in_image);
   const int bits_per_component = 8;
+
   CGContextRef context =
       CGBitmapContextCreate(result.data(), width, height, bits_per_component, bytes_per_row,
                             color_space, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/maxpooling_op.h"
 
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"

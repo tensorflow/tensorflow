@@ -57,6 +57,8 @@ if sys.version_info.major == 3:
   REQUIRED_PACKAGES.append('wheel >= 0.26')
 else:
   REQUIRED_PACKAGES.append('wheel')
+  # mock comes with unittest.mock for python3, need to install for python2
+  REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
 # tf-nightly should depend on tb-nightly
 if 'tf_nightly' in project_name:
@@ -64,6 +66,11 @@ if 'tf_nightly' in project_name:
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.5.0a0, < 1.6.0a0'
       break
+
+# weakref.finalize and enum were introduced in Python 3.4
+if sys.version_info < (3, 4):
+  REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
+  REQUIRED_PACKAGES.append('enum34 >= 1.1.6')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [

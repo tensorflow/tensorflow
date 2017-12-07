@@ -18,11 +18,14 @@ limitations under the License.
 #include "tensorflow/contrib/verbs/rdma.h"
 #include <fcntl.h>
 #include <cstdlib>
+#include <fcntl.h>
 #include "tensorflow/contrib/verbs/verbs_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
+#endif
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 
@@ -418,9 +422,6 @@ RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
                       0);
   CHECK(cq_) << "Failed to create completion queue";
   CHECK(!ibv_req_notify_cq(cq_, 0)) << "Failed to request CQ notification";
-  polling_thread_.reset(Env::Default()->StartThread(
-      ThreadOptions(), "RdmaAdapterCQThread", [this] { Process_CQ(); }));
-  VLOG(2) << "Start RdmaAdapter: " << name();
 }
 
 RdmaAdapter::~RdmaAdapter() {
@@ -430,6 +431,12 @@ RdmaAdapter::~RdmaAdapter() {
       << "Failed to destroy channel";
   CHECK(!ibv_dealloc_pd(pd_)) << "Failed to deallocate PD";
   CHECK(!ibv_close_device(context_)) << "Failed to release context";
+}
+
+void RdmaAdapter::StartPolling() {
+  polling_thread_.reset(Env::Default()->StartThread(
+      ThreadOptions(), "RdmaAdapterCQThread", [this] { Process_CQ(); }));
+  VLOG(2) << "Start RdmaAdapter: " << name();
 }
 
 string RdmaAdapter::name() const { return string(context_->device->name); }
@@ -452,9 +459,9 @@ void RdmaAdapter::Process_CQ() {
     CHECK_GE(ne, 0);
     for (int i = 0; i < ne; ++i) {
       CHECK(wc_[i].status == IBV_WC_SUCCESS)
-          << "Failed status \n"
-          << ibv_wc_status_str(wc_[i].status) << " " << wc_[i].status << " "
-          << static_cast<int>(wc_[i].wr_id) << " " << wc_[i].vendor_err;
+          << "Failed status \n" << ibv_wc_status_str(wc_[i].status) << " "
+          << wc_[i].status << " " << static_cast<int>(wc_[i].wr_id) << " "
+          << wc_[i].vendor_err;
       if (wc_[i].opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
         RdmaChannel* rc = reinterpret_cast<RdmaChannel*>(wc_[i].wr_id);
         // put back a recv wr.
@@ -557,9 +564,44 @@ void RdmaAdapter::Process_CQ() {
   }
 }
 
+int RdmaChannel::PingPostRecv() {
+  struct ibv_recv_wr wr, *bad_wr;
+  memset(&wr, 0, sizeof(wr));
+  wr.sg_list = &ping_sge_list_;
+  wr.num_sge = 1;
+  wr.wr_id = kPingRecvWrid;
+
+  return ibv_post_recv(qp_, &wr, &bad_wr);
+}
+
+int RdmaChannel::PingPostSend() {
+  struct ibv_send_wr wr, *bad_wr;
+  memset(&wr, 0, sizeof(wr));
+  wr.wr_id = (uint64_t) this;
+  wr.sg_list = &ping_sge_list_;
+  wr.num_sge = 1;
+  wr.opcode = IBV_WR_SEND;
+  wr.send_flags = IBV_SEND_SIGNALED;
+
+  return ibv_post_send(qp_, &wr, &bad_wr);
+}
+
 RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
                          const string remote_name)
     : adapter_(adapter), local_name_(local_name), remote_name_(remote_name) {
+
+  struct ibv_sge list;
+
+  mr_ = ibv_reg_mr(adapter_->pd_, ping_buff_, kPingBuffSize,
+                   IBV_ACCESS_LOCAL_WRITE);
+  CHECK(mr_) << "Failed to register memory region";
+
+  memset(&list, 0, sizeof(list));
+  list.addr = (uintptr_t)ping_buff_;
+  list.length = kPingBuffSize;
+  list.lkey = mr_->lkey;
+
+  ping_sge_list_ = list;
   // Create queue pair
   {
     struct ibv_qp_init_attr attr;
@@ -610,7 +652,7 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
   // create message and ack buffers, then initialize the tables.
   {
     const string buffer_names[] = {"tx_message_buffer", "rx_message_buffer",
-                                   "tx_ack_buffer", "rx_ack_buffer"};
+                                   "tx_ack_buffer",     "rx_ack_buffer"};
     tx_message_buffer_ = new RdmaMessageBuffer(this, buffer_names[0]);
     rx_message_buffer_ = new RdmaMessageBuffer(this, buffer_names[1]);
     tx_ack_buffer_ = new RdmaAckBuffer(this, buffer_names[2]);
@@ -632,15 +674,13 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
       buffer_index_name_table_.insert({index, buffer_names[i]});
       buffer_name_index_table_.insert({buffer_names[i], index});
     }
-
-    // Initiate recv
-    for (int i = 0; i < 100; i++) {
-      Recv();
-    }
   }
+  CHECK(PingPostRecv() == 0) << "Couldn't post receive from " << remote_name_
+                             << " with error " << std::strerror(errno);
 }
 
 RdmaChannel::~RdmaChannel() {
+  ibv_dereg_mr(mr_);
   CHECK(!ibv_destroy_qp(qp_)) << "Failed to destroy QP";
   delete tx_message_buffer_;
   delete rx_message_buffer_;
@@ -671,7 +711,7 @@ void RdmaChannel::SetRemoteAddress(const RdmaAddress& ra, bool override) {
 void RdmaChannel::Recv() {
   struct ibv_recv_wr wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr_id = (uint64_t)this;
+  wr.wr_id = (uint64_t) this;
   struct ibv_recv_wr* bad_wr;
   CHECK(!ibv_post_recv(qp_, &wr, &bad_wr)) << "Failed to post recv";
 }
@@ -825,11 +865,11 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.ah_attr.grh.traffic_class = adapter_->params_.traffic_class;
 
     int r;
-    CHECK(!(r = ibv_modify_qp(qp_, &attr,
-                              IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU |
-                                  IBV_QP_DEST_QPN | IBV_QP_RQ_PSN |
-                                  IBV_QP_MAX_DEST_RD_ATOMIC |
-                                  IBV_QP_MIN_RNR_TIMER)))
+    CHECK(!(r = ibv_modify_qp(qp_, &attr, IBV_QP_STATE | IBV_QP_AV |
+                                              IBV_QP_PATH_MTU |
+                                              IBV_QP_DEST_QPN | IBV_QP_RQ_PSN |
+                                              IBV_QP_MAX_DEST_RD_ATOMIC |
+                                              IBV_QP_MIN_RNR_TIMER)))
         << "QP to Ready to Receive " << r;
 
     memset(&attr, 0, sizeof(ibv_qp_attr));
@@ -840,10 +880,10 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.rnr_retry = 7; /* infinite */
     attr.max_rd_atomic = 1;
 
-    CHECK(!(r = ibv_modify_qp(qp_, &attr,
-                              IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT |
-                                  IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN |
-                                  IBV_QP_MAX_QP_RD_ATOMIC)))
+    CHECK(!(r = ibv_modify_qp(qp_, &attr, IBV_QP_STATE | IBV_QP_TIMEOUT |
+                                              IBV_QP_RETRY_CNT |
+                                              IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN |
+                                              IBV_QP_MAX_QP_RD_ATOMIC)))
         << "QP to Ready to Send " << r;
 
     connected_ = true;
@@ -930,7 +970,7 @@ void RdmaBuffer::Write(uint32_t imm_data, size_t buffer_size) {
 
   struct ibv_send_wr wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr_id = (uint64_t)this;
+  wr.wr_id = (uint64_t) this;
   wr.sg_list = &list;
   wr.num_sge = 1;
   wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
@@ -1025,9 +1065,10 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
     TensorProto proto;
     if (src_dev->tensorflow_gpu_device_info() &&
         (!send_args.alloc_attrs.on_host())) {
-      CHECK(send_args.device_context)
-          << "send dev name: " << src_dev->name()
-          << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
+#if GOOGLE_CUDA
+      CHECK(send_args.device_context) << "send dev name: " << src_dev->name()
+                                      << " gpu_info: "
+                                      << src_dev->tensorflow_gpu_device_info();
 
       if (can_memcpy) {
         AllocatorAttributes host_alloc_attrs;
@@ -1053,8 +1094,8 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
         // aync instead
         GPUUtil::SetProtoFromGPU(
             in, src_dev, send_args.device_context, &proto, is_dead,
-            [this, proto, buffer_size, key, in, step_id, key_with_step_id,
-             is_dead, send_args, recv_args](const Status& s) mutable {
+	    [this, proto, buffer_size, key, in, step_id, key_with_step_id,
+            is_dead, send_args, recv_args](const Status& s) mutable {
               CHECK(s.ok()) << "copy proto from gpu sync";
               auto tensor_bytes = proto.ByteSize();
               buffer_size += tensor_bytes;
@@ -1063,6 +1104,7 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
                                  &proto, NULL, send_args, recv_args);
             });
       }
+#endif  // GOOGLE_CUDA
     } else {
       // tensor is in CPU memory.
       StringPiece copy_buf;

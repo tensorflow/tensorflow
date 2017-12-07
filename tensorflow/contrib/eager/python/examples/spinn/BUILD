@@ -38,4 +38,5 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    tags = ["no_pip"],  # because spinn.py is under third_party/.
 )

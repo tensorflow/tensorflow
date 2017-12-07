@@ -31,6 +31,7 @@ void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 #endif
 
 #define LOG(x) std::cerr
+
 #define CHECK(x)                  \
   if (!(x)) {                     \
     LOG(ERROR) << #x << "failed"; \

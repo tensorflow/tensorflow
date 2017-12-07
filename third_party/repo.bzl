@@ -96,6 +96,7 @@ tf_http_archive = repository_rule(
         "build_file": attr.label(),
     })
 """Downloads and creates Bazel repos for dependencies.
+
 This is a swappable replacement for both http_archive() and
 new_http_archive() that offers some additional features. It also helps
 ensure best practices are followed.
