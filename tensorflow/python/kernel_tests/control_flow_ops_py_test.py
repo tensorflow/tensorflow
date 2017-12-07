@@ -1450,7 +1450,8 @@ class ControlFlowTest(test.TestCase):
     gpu_dev_name = test.gpu_device_name() if test.is_gpu_available(
     ) else "/device:GPU:0"
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    graph = ops.Graph()
+    with graph.as_default():
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
 
@@ -1461,7 +1462,8 @@ class ControlFlowTest(test.TestCase):
       loop = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
       r = gradients_impl.gradients(
           loop, v, colocate_gradients_with_ops=colocate)[0]
-    r_ops = r.graph.get_operations()
+
+    r_ops = graph.get_operations()
     r_devices = [(op.name, op.device) for op in r_ops]
 
     self.assertTrue(any("Square" in op.name for op in r_ops))
@@ -1475,7 +1477,9 @@ class ControlFlowTest(test.TestCase):
         self.assertTrue(gpu_dev_name in dev)
       else:
         self.assertFalse(gpu_dev_name in dev)
-    self.assertAllClose(1024.0, sess.run(r))
+
+    with self.test_session(graph=graph) as sess:
+      self.assertAllClose(1024.0, sess.run(r))
 
   def testWhileGrad_ColocateGradients(self):
     self._testWhileGrad_ColocateGradients(colocate=False)
