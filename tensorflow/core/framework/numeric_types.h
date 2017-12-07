@@ -46,7 +46,7 @@ struct bfloat16 {
   EIGEN_DEVICE_FUNC bfloat16() {}
 
   EIGEN_DEVICE_FUNC explicit bfloat16(const float v) {
-    if (isnan(v)) {
+    if (std::isnan(v)) {
       value = NAN_VALUE;
       return;
     }
