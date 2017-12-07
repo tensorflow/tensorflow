@@ -1650,8 +1650,9 @@ class LinearModelTest(test.TestCase):
         indices=((0,), (1,)),
         values=('sedan', 'hardtop'),
         dense_shape=(2,))
+    country_data = np.array(['US', 'CA'])
 
-    net = fc.linear_model(features, [price_buckets, body_style])
+    net = fc.linear_model(features, [price_buckets, body_style, country])
     bias = get_linear_model_bias()
     price_buckets_var = get_linear_model_column_var(price_buckets)
     body_style_var = get_linear_model_column_var(body_style)
@@ -1660,15 +1661,14 @@ class LinearModelTest(test.TestCase):
       sess.run(body_style_var.assign([[-10.], [-100.], [-1000.]]))
       sess.run(bias.assign([5.]))
 
-      self.assertAllClose(
-          [[10 - 1000 + 5.], [1000 - 10 + 5.]],
-          sess.run(net, feed_dict={
-              features['price']: price_data,
-              features['body-style']: body_style_data}))
-
-    # Dense categorical_column with unknown shape is not allowed.
-    with self.assertRaisesRegexp(ValueError, 'Undefined input_tensor shape.'):
-      fc.linear_model(features, [price_buckets, body_style, country])
+      self.assertAllClose([[10 - 1000 + 5.], [1000 - 10 + 5.]],
+                          sess.run(
+                              net,
+                              feed_dict={
+                                  features['price']: price_data,
+                                  features['body-style']: body_style_data,
+                                  features['country']: country_data
+                              }))
 
   def test_with_rank_0_feature(self):
     price = fc.numeric_column('price')
@@ -2119,9 +2119,9 @@ class FunctionalInputLayerTest(test.TestCase):
 
   def test_with_1d_unknown_shape_sparse_tensor(self):
     embedding_values = (
-        (1., 2., 3., 4., 5.),  # id 0
-        (6., 7., 8., 9., 10.),  # id 1
-        (11., 12., 13., 14., 15.)  # id 2
+        (1., 2.),  # id 0
+        (6., 7.),  # id 1
+        (11., 12.)  # id 2
     )
     def _initializer(shape, dtype, partition_info):
       del shape, dtype, partition_info
@@ -2138,8 +2138,8 @@ class FunctionalInputLayerTest(test.TestCase):
     # embedded_body_style has 5 dims in input_layer.
     country = fc.categorical_column_with_vocabulary_list(
         'country', vocabulary_list=['US', 'JP', 'CA'])
-    embedded_country = fc.embedding_column(country, dimension=5,
-                                           initializer=_initializer)
+    embedded_country = fc.embedding_column(
+        country, dimension=2, initializer=_initializer)
 
     # Provides 1-dim tensor and dense tensor.
     features = {
@@ -2157,22 +2157,24 @@ class FunctionalInputLayerTest(test.TestCase):
         indices=((0,), (1,)),
         values=('sedan', 'hardtop'),
         dense_shape=(2,))
+    country_data = np.array([['US'], ['CA']])
 
-    # Dense categorical_column with unknown shape is not allowed.
-    with self.assertRaisesRegexp(ValueError, 'Undefined input_tensor shape.'):
-      fc.input_layer(features, [price, one_hot_body_style, embedded_country])
-
-    net = fc.input_layer(features, [price, one_hot_body_style])
-    self.assertEqual(1 + 3, net.shape[1])
+    net = fc.input_layer(features,
+                         [price, one_hot_body_style, embedded_country])
+    self.assertEqual(1 + 3 + 2, net.shape[1])
     with _initialized_session() as sess:
 
       # Each row is formed by concatenating `embedded_body_style`,
       # `one_hot_body_style`, and `price` in order.
       self.assertAllEqual(
-          [[0., 0., 1., 11.], [1., 0., 0., 12.]],
-          sess.run(net, feed_dict={
-              features['price']: price_data,
-              features['body-style']: body_style_data}))
+          [[0., 0., 1., 1., 2., 11.], [1., 0., 0., 11., 12., 12.]],
+          sess.run(
+              net,
+              feed_dict={
+                  features['price']: price_data,
+                  features['body-style']: body_style_data,
+                  features['country']: country_data
+              }))
 
   def test_with_rank_0_feature(self):
     # price has 1 dimension in input_layer
