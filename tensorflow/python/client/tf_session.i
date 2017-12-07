@@ -145,6 +145,25 @@ tensorflow::ImportNumpy();
   }
 }
 
+%ignore TF_OperationOutputConsumers;
+%unignore TF_OperationOutputConsumers_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_OperationGetOutputConsumers_wrapper;
+
+// Build a Python list of unicode strings and return it. (Operation names are
+// always represented as unicode.)
+%typemap(out) std::vector<const char*>
+tensorflow::TF_OperationOutputConsumers_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyUnicode_FromString($1[i]));
+  }
+}
+
 %unignore GetOperationInputs;
 // See comment for "%noexception TF_SessionRun_wrapper;"
 %noexception GetOperationInputs;
@@ -157,10 +176,10 @@ tensorflow::ImportNumpy();
     SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
   }
 
-  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>> via &
-  std::vector<TF_Output>* tf_outputs = &$1;
-  for (size_t i = 0; i < $1.size(); ++i) {
-    PyList_SET_ITEM($result, i, CreateWrappedTFOutput((*tf_outputs)[i]));
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>>
+  const std::vector<TF_Output>& tf_outputs = $1;
+  for (size_t i = 0; i < tf_outputs.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput(tf_outputs[i]));
   }
 }
 
