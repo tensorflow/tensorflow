@@ -1645,6 +1645,8 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
     tags = ["no_windows"],
 )

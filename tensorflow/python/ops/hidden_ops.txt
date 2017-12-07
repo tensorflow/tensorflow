@@ -341,6 +341,7 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
 
