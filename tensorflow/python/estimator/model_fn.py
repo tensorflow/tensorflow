@@ -24,6 +24,7 @@ import collections
 import six
 
 from tensorflow.python.estimator.export.export_output import ExportOutput
+from tensorflow.python.estimator.export.export_output import PredictOutput
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -220,11 +221,19 @@ class EstimatorSpec(
 
     # Validate export_outputs.
     if export_outputs is not None:
+      if isinstance(export_outputs, ops.Tensor):
+          export_outputs = {
+              signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                  PredictOutput(export_outputs)
+          }
+
       if not isinstance(export_outputs, dict):
         raise TypeError('export_outputs must be dict, given: {}'.format(
             export_outputs))
-      for v in six.itervalues(export_outputs):
-        if not isinstance(v, ExportOutput):
+      for k in six.iterkeys(export_outputs):
+        if isinstance(export_outputs[k], ops.Tensor):
+            export_outputs[k] = PredictOutput({k: export_outputs[k]})
+        elif not isinstance(export_outputs[k], ExportOutput):
           raise TypeError(
               'Values in export_outputs must be ExportOutput objects. '
               'Given: {}'.format(export_outputs))
