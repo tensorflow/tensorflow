@@ -626,7 +626,7 @@ class _TrainingExecutorTrainingTest(object):
 
     self._run_task(training._TrainingExecutor(mock_est, mock_train_spec,
                                               mock_eval_spec))
-    mock_est.train.assert_called()
+    self.assertTrue(mock_est.train.called)
     mock_server.assert_not_called()
 
   def test_fail_with_empty_task_type(self):
@@ -836,7 +836,7 @@ class TrainingExecutorRunMasterTest(test.TestCase):
     executor.run_master()
 
     mock_server.assert_not_called()
-    mock_est.train.assert_called()
+    self.assertTrue(mock_est.train.called)
 
   def test_fail_with_empty_task_type(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
