@@ -73,7 +73,7 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteRegistration* Register_SIN() {
-  static TfLiteRegistration r = {nullptr, nullptr, SinResize, SinEval};
+  static TfLiteRegistration r = {nullptr, nullptr, SinPrepare, SinEval};
   return &r;
 }
 ```
