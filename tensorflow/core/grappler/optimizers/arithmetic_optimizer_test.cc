@@ -69,6 +69,7 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   Output div = ops::Div(s.WithOpName("div"), c1, c2);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"div"};
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
@@ -102,6 +103,7 @@ TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
                         check1, check2);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"div"};
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
@@ -130,6 +132,7 @@ TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
   Output div1 = ops::Div(s.WithOpName("div1"), mul1, mul2);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"div"};
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
@@ -347,7 +350,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   for (int i = 0; i < item.graph.node_size(); ++i) {
     item.graph.mutable_node(i)->set_device(devices[i]);
   }
-  ArithmeticOptimizer optimizer;
+  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -420,7 +423,7 @@ TEST_F(ArithmeticOptimizerTest, HoistFactor) {
 
       GrapplerItem item;
       TF_CHECK_OK(s.ToGraphDef(&item.graph));
-      ArithmeticOptimizer optimizer;
+      ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
       GraphDef output;
       Status status = optimizer.Optimize(nullptr, item, &output);
       TF_EXPECT_OK(status);

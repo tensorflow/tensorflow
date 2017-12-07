@@ -1014,12 +1014,11 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
                            zero_error_spec_, &expected->shape());
 }
 
-#if defined(XLA_TEST_BACKEND_CPU) || defined(XLA_TEST_BACKEND_CPU_PARALLEL) || \
-    defined(XLA_TEST_BACKEND_GPU)
+#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
+INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest, ::testing::Bool());
+#else
 INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest,
                         ::testing::ValuesIn(std::vector<bool>{false}));
-#else
-INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest, ::testing::Bool());
 #endif
 
 }  // namespace

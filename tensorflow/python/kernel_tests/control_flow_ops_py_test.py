@@ -2622,6 +2622,122 @@ class ControlFlowTest(test.TestCase):
           1)
 
 
+class ControlFlowContextCheckTest(test.TestCase):
+
+  def _getWhileTensor(self):
+    """Creates and returns a tensor from a while context."""
+    tensor = []
+
+    def body(i):
+      if not tensor:
+        tensor.append(constant_op.constant(1))
+      return i + tensor[0]
+
+    control_flow_ops.while_loop(lambda i: i < 10, body, [0])
+    return tensor[0]
+
+  def _getCondTensor(self):
+    cond_tensor = []
+    def true_fn():
+      if not cond_tensor:
+        cond_tensor.append(constant_op.constant(1))
+      return cond_tensor[0]
+    control_flow_ops.cond(math_ops.less(1, 2), true_fn,
+                          lambda: constant_op.constant(0))
+    return cond_tensor[0]
+
+  def testInvalidContext(self):
+    # Accessing a while loop tensor outside of control flow is illegal.
+    while_tensor = self._getWhileTensor()
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Cannot use 'while/Const_1' as input to 'Add' because 'while/Const_1' "
+        "is in a while loop. See info log for more details."):
+      math_ops.add(1, while_tensor)
+
+  def testInvalidContextInCond(self):
+    # Accessing a while loop tensor in cond is illegal.
+    while_tensor = self._getWhileTensor()
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Cannot use 'while/Const_1' as input to 'cond/Add' because "
+        "'while/Const_1' is in a while loop. See info log for more details."):
+      # TODO(skyewm): this passes if we return while_tensor directly instead
+      # of using it as input to another op.
+      control_flow_ops.cond(math_ops.less(1, 2),
+                            lambda: math_ops.add(1, while_tensor),
+                            lambda: constant_op.constant(0))
+
+  def testInvalidContextInWhile(self):
+    # Accessing a while loop tensor in a different while loop is illegal.
+    while_tensor = self._getWhileTensor()
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Cannot use 'while_1/Add' as input to 'while/Const_1' because they are "
+        "in different while loops. See info log for more details."):
+      control_flow_ops.while_loop(lambda i: i < 10,
+                                  lambda x: math_ops.add(1, while_tensor), [0])
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Cannot use 'while_2/NextIteration' as input to 'while/Const_1' "
+        "because they are in different while loops. See info log for more "
+        "details."):
+      control_flow_ops.while_loop(lambda i: i < 10, lambda i: while_tensor, [0])
+
+  def testValidCondContext(self):
+    # Accessing a tensor from a cond context is OK (although dangerous).
+    cond_tensor = self._getCondTensor()
+    math_ops.add(1, cond_tensor)
+
+  def testValidCondContextBranches(self):
+    # Accessing a tensor from a cond context from the other branch's cond
+    # context is OK (although dangerous).
+    cond_tensor = []
+    def branch_fn():
+      if not cond_tensor:
+        cond_tensor.append(constant_op.constant(1))
+      return cond_tensor[0]
+
+    control_flow_ops.cond(math_ops.less(1, 2), branch_fn, branch_fn)
+
+  def testValidWhileContext(self):
+    # Accessing a tensor in a nested while is OK.
+    def body(_):
+      c = constant_op.constant(1)
+      return control_flow_ops.while_loop(lambda i: i < 3, lambda i: i + c, [0])
+
+    control_flow_ops.while_loop(lambda i: i < 5, body, [0])
+
+  def testValidNestedContexts(self):
+    # Accessing a tensor from a cond context in a while context, all inside an
+    # outer while context, is OK.
+    def body(_):
+      cond_tensor = self._getCondTensor()
+      # Create another cond containing the while loop for good measure
+      return control_flow_ops.cond(
+          math_ops.less(1, 2),
+          lambda: control_flow_ops.while_loop(lambda i: i < 3,
+                                              lambda i: i + cond_tensor, [0]),
+          lambda: constant_op.constant(0))
+
+    control_flow_ops.while_loop(lambda i: i < 5, body, [0])
+
+  def testInvalidNestedContexts(self):
+    # Accessing a tensor from a while context in a different while context, all
+    # inside a cond context, is illegal.
+    def true_fn():
+      while_tensor = self._getWhileTensor()
+      return control_flow_ops.while_loop(lambda i: i < 3,
+                                         lambda i: i + while_tensor, [0])
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Cannot use 'cond/while_1/add' as input to 'cond/while/Const_1' because"
+        " they are in different while loops. See info log for more details."):
+      control_flow_ops.cond(math_ops.less(1, 2), true_fn,
+                            lambda: constant_op.constant(0))
+
+
 class TupleTest(test.TestCase):
 
   def testTensors(self):

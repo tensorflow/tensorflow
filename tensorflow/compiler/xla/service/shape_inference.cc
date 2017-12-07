@@ -1701,10 +1701,19 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCrossReplicaSumShape(
-    const Shape& operand) {
-  TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand, "operand of cross replica sum"));
-  return operand;
+    tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
+  for (const Shape* operand_shape : operand_shapes) {
+    TF_RETURN_IF_ERROR(
+        ExpectNotTupleOrOpaque(*operand_shape, "operand of cross replica sum"));
+  }
+  if (operand_shapes.size() == 1) {
+    return *operand_shapes[0];
+  }
+  std::vector<Shape> operand_shape_values;
+  for (const Shape* operand_shape : operand_shapes) {
+    operand_shape_values.push_back(*operand_shape);
+  }
+  return ShapeUtil::MakeTupleShape(operand_shape_values);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceShape(

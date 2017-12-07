@@ -244,10 +244,13 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       continue;
     }
 
-    std::vector<OpInfo::TensorProperties> output =
+    const std::vector<OpInfo::TensorProperties>& output =
         properties.GetOutputProperties(node.name());
-    std::vector<OpInfo::TensorProperties> input =
+    const std::vector<OpInfo::TensorProperties>& input =
         properties.GetInputProperties(node.name());
+    if (input.empty() || output.empty()) {
+      continue;
+    }
     if (op == "Shape" || op == "Size" || op == "Rank") {
       CHECK_EQ(1, output.size());
       CHECK_EQ(1, input.size());
@@ -449,8 +452,8 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
     }
   }
 
-  auto outputs = node_map_->GetOutputs(node.name());
-  for (const auto& output : outputs) {
+  const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
+  for (NodeDef* output : outputs) {
     for (int k = 0; k < output->input_size(); ++k) {
       int port;
       string node_name = ParseNodeName(output->input(k), &port);
@@ -475,8 +478,12 @@ Status ConstantFolding::MaterializeReductionIndices(
     return Status::OK();
   }
 
-  const OpInfo::TensorProperties& input_prop =
-      properties.GetInputProperties(node->name())[0];
+  const std::vector<OpInfo::TensorProperties>& input_props =
+      properties.GetInputProperties(node->name());
+  if (input_props.size() != 2) {
+    return Status::OK();
+  }
+  const OpInfo::TensorProperties& input_prop = input_props[0];
   if (input_prop.shape().unknown_rank()) {
     // We can't do anything if we don't know the rank of the input.
     return Status::OK();
@@ -486,8 +493,12 @@ Status ConstantFolding::MaterializeReductionIndices(
     // Unexpected graph, don't try to change it.
     return Status::OK();
   }
-  const OpInfo::TensorProperties& output_prop =
-      properties.GetOutputProperties(node->name())[0];
+  const std::vector<OpInfo::TensorProperties>& output_props =
+      properties.GetOutputProperties(node->name());
+  if (output_props.size() != 1) {
+    return Status::OK();
+  }
+  const OpInfo::TensorProperties& output_prop = output_props[0];
   PartialTensorShape output_shape(output_prop.shape());
   if (output_shape.num_elements() != 1) {
     bool full_reduction = false;
@@ -495,8 +506,12 @@ Status ConstantFolding::MaterializeReductionIndices(
       if (!IsReshape(*fanout)) {
         continue;
       }
-      const OpInfo::TensorProperties& reshape_prop =
-          properties.GetOutputProperties(fanout->name())[0];
+      const std::vector<OpInfo::TensorProperties>& reshape_props =
+          properties.GetOutputProperties(fanout->name());
+      if (reshape_props.size() != 1) {
+        return Status::OK();
+      }
+      const OpInfo::TensorProperties& reshape_prop = reshape_props[0];
       PartialTensorShape shape(reshape_prop.shape());
       if (shape.num_elements() != 1) {
         return Status::OK();
@@ -509,8 +524,7 @@ Status ConstantFolding::MaterializeReductionIndices(
     }
   }
 
-  const OpInfo::TensorProperties& reduction_prop =
-      properties.GetInputProperties(node->name())[1];
+  const OpInfo::TensorProperties& reduction_prop = input_props[1];
   DataType dtype = reduction_prop.dtype();
   if (dtype != DT_INT32 && dtype != DT_INT64) {
     return Status::OK();
@@ -1254,8 +1268,11 @@ void ConstantFolding::ReplaceAddOrMulWithIdentity(int input_to_forward,
 Status ConstantFolding::ReplaceAddOrMulWithConstant(
     double value, const TensorShapeProto& shape, NodeDef* node) {
   AttrValue tensor_attr;
-  TF_RETURN_IF_ERROR(CreateConstantTensorAttrValue(node->attr().at("T").type(),
-                                                   value, shape, &tensor_attr));
+  AttrValue dtype_attr = node->attr().at("T");
+  TF_RETURN_IF_ERROR(CreateConstantTensorAttrValue(dtype_attr.type(), value,
+                                                   shape, &tensor_attr));
+  node->clear_attr();
+  node->mutable_attr()->insert({"dtype", dtype_attr});
   node->mutable_attr()->insert({"value", tensor_attr});
   node->set_op("Const");
   // Convert all inputs to control dependencies.
@@ -1276,7 +1293,6 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     if (IsSimplifiableReduction(node)) {
       // Replace the reduction node with an identity node, that can be further
       // optimized by the model pruner.
-      const NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
       DataType output_type;
       if (node.attr().count("T") > 0) {
         output_type = node.attr().at("T").type();
@@ -1287,32 +1303,17 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       node.set_op("Identity");
       node.clear_attr();
       (*node.mutable_attr())["T"].set_type(output_type);
-      if (node.input_size() > 2) {
-        node.mutable_input()->SwapElements(1, node.input_size() - 1);
-      }
-      node.mutable_input()->RemoveLast();
-      for (const auto& input : reductions_indices->input()) {
-        DCHECK(IsControlInput(input));
-        *node.add_input() = input;
-      }
+      *node.mutable_input(1) = AsControlDependency(node.input(1));
     }
     const bool safe_to_use_shapes =
         use_shape_info &&
         (feed_nodes_.empty() || opt_level_ == RewriterConfig::AGGRESSIVE);
     if (safe_to_use_shapes && IsSimplifiableReshape(node, properties)) {
-      const NodeDef* new_shape = node_map_->GetNode(node.input(1));
       DataType output_type = node.attr().at("T").type();
       node.set_op("Identity");
       node.clear_attr();
       (*node.mutable_attr())["T"].set_type(output_type);
-      if (node.input_size() > 2) {
-        node.mutable_input()->SwapElements(1, node.input_size() - 1);
-      }
-      node.mutable_input()->RemoveLast();
-      for (const auto& input : new_shape->input()) {
-        DCHECK(IsControlInput(input));
-        *node.add_input() = input;
-      }
+      *node.mutable_input(1) = AsControlDependency(node.input(1));
     }
 
     // Simplify multiplication by ones or zeros, and addition of zeros.
@@ -1333,54 +1334,43 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
           properties.GetOutputProperties(node.name())[0].shape();
       const TensorShapeProto& x_shape =
           properties.GetInputProperties(node.name())[0].shape();
-
-      // Simplify multiplication by or addition of zeros.
-      const bool x_is_zero = IsZeros(*x);
-      const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
-      if (x_is_zero) {
-        if ((is_mul && x_matches_output_shape) || is_matmul) {
-          // 0 * y = 0
-          ReplaceAddOrMulWithIdentity(0, &node);
-        } else {
-          // 0 + y = y.
-          ReplaceAddOrMulWithIdentity(1, &node);
-        }
-        continue;
-      }
       const TensorShapeProto& y_shape =
           properties.GetInputProperties(node.name())[1].shape();
+      const bool x_is_zero = IsZeros(*x);
+      const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
       const bool y_is_zero = IsZeros(*y);
       const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
-      if (y_is_zero) {
-        if ((is_mul && y_matches_output_shape) || is_matmul) {
-          // x * 0 = 0
+
+      // Simplify addition of zeros.
+      if (is_add) {
+        if (x_is_zero && y_matches_output_shape) {
+          // 0 + y = y.
           ReplaceAddOrMulWithIdentity(1, &node);
-        } else {
+          continue;
+        } else if (y_is_zero && x_matches_output_shape) {
           // x + 0 = y.
           ReplaceAddOrMulWithIdentity(0, &node);
-        }
-        continue;
-      }
-
-      if (is_mul) {
-        // Simplify scalar multiplication by zeros where, due to broadcasting,
-        // the output shape does not match the shape of the zero input.
-        if (x_is_zero || y_is_zero) {
-          TF_RETURN_IF_ERROR(
-              ReplaceAddOrMulWithConstant(0, output_shape, &node));
           continue;
         }
+      }
 
-        // Simplify multiplication by ones.
+      // Simplify element-wise multiplication by ones.
+      if (is_mul) {
         if (IsOnes(*x) && y_matches_output_shape) {
           // 1 * y = y.
           ReplaceAddOrMulWithIdentity(1, &node);
           continue;
-        } else if (IsOnes(*y) && x_matches_output_shape) {
+        }
+        if (IsOnes(*y) && x_matches_output_shape) {
           // x * 1 = x.
           ReplaceAddOrMulWithIdentity(0, &node);
           continue;
         }
+      }
+
+      // Simplify multiplication and matmul by zeros.
+      if (x_is_zero || y_is_zero) {
+        TF_RETURN_IF_ERROR(ReplaceAddOrMulWithConstant(0, output_shape, &node));
       }
     }
   }
@@ -1416,14 +1406,10 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
 
   if (can_use_shape_info) {
     TF_RETURN_IF_ERROR(MaterializeShapes(properties));
-
-    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-      TF_RETURN_IF_ERROR(MaterializeConstants(properties));
-    }
+    TF_RETURN_IF_ERROR(MaterializeConstants(properties));
   }
 
   TF_RETURN_IF_ERROR(FoldGraph(output));
-
   TF_RETURN_IF_ERROR(SimplifyGraph(output, properties, can_use_shape_info));
 
   return Status::OK();

@@ -37,7 +37,7 @@ from tensorflow.python.platform import test
 class DatasetConstructorTest(test.TestCase):
 
   def testFromTensors(self):
-    """Test an dataset that represents a single tuple of tensors."""
+    """Test a dataset that represents a single tuple of tensors."""
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
 
     iterator = (dataset_ops.Dataset.from_tensors(components)
@@ -62,7 +62,7 @@ class DatasetConstructorTest(test.TestCase):
     self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testFromTensorsSparse(self):
-    """Test an dataset that represents a single tuple of tensors."""
+    """Test a dataset that represents a single tuple of tensors."""
     components = (sparse_tensor.SparseTensorValue(
         indices=np.array([[0]]),
         values=np.array([0]),
@@ -125,7 +125,7 @@ class DatasetConstructorTest(test.TestCase):
         sess.run(get_next)
 
   def testFromTensorSlices(self):
-    """Test an dataset that represents the slices from a tuple of tensors."""
+    """Test a dataset that represents the slices from a tuple of tensors."""
     components = (
         np.tile(np.array([[1], [2], [3], [4]]), 20), np.tile(
             np.array([[12], [13], [14], [15]]), 22),
@@ -150,7 +150,7 @@ class DatasetConstructorTest(test.TestCase):
         sess.run(get_next)
 
   def testFromTensorSlicesSparse(self):
-    """Test an dataset that represents the slices from a tuple of tensors."""
+    """Test a dataset that represents the slices from a tuple of tensors."""
     components = (sparse_tensor.SparseTensorValue(
         indices=np.array([[0, 0], [1, 0], [2, 0]]),
         values=np.array([0, 0, 0]),
@@ -206,7 +206,7 @@ class DatasetConstructorTest(test.TestCase):
         sess.run(get_next)
 
   def testFromTensorSlicesMixed(self):
-    """Test an dataset that represents the slices from a tuple of tensors."""
+    """Test a dataset that represents the slices from a tuple of tensors."""
     components = (np.tile(np.array([[1], [2], [3]]), 20),
                   np.tile(np.array([[12], [13], [14]]), 22),
                   np.array([37.0, 38.0, 39.0]),

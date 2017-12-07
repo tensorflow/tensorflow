@@ -151,6 +151,16 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           // Build the output tuple component by copying one slice
           // from each input element in the batch.
           for (size_t i = 0; i < num_batch_elements; ++i) {
+            if (batch_elements[i][component_index].shape() !=
+                first_element.shape()) {
+              return errors::InvalidArgument(
+                  "Cannot batch tensors with different shapes in component ",
+                  component_index, ". First element had shape ",
+                  first_element.shape().DebugString(), " and element ", i,
+                  " had shape ",
+                  batch_elements[i][component_index].shape().DebugString(),
+                  ".");
+            }
             TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
                 std::move(batch_elements[i][component_index]), &batch_component,
                 i));

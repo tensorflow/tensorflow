@@ -48,6 +48,7 @@ from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -965,7 +966,7 @@ def internal_convert_to_tensor(value,
     # Fast path for EagerTensors that don't need any conversion.
     if isinstance(value, EagerTensor):
       # Note that we don't check that value's dtype matches the dtype
-      # argument.  We exepct that the C runtime will do that checking
+      # argument.  We expect that the C runtime will do that checking
       # when we execute the kernel.
       return value
 
@@ -1651,6 +1652,8 @@ class Operation(object):
 
     # Add this op to the current control flow context.
     self._control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
+    for input_tensor in self.inputs:
+      control_flow_util.CheckInputFromValidContext(self, input_tensor.op)
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
     # NOTE(keveman): Control flow context's AddOp could be creating new ops and
@@ -2888,6 +2891,20 @@ class Graph(object):
     """
     self._control_flow_context = ctx
 
+  def _copy_functions_to_graph_def(self, graph_def, starting_bytesize):
+    """If this graph contains functions, copy them to `graph_def`."""
+    bytesize = starting_bytesize
+    for f in self._functions.values():
+      bytesize += f.definition.ByteSize()
+      if bytesize >= (1 << 31) or bytesize < 0:
+        raise ValueError("GraphDef cannot be larger than 2GB.")
+      graph_def.library.function.extend([f.definition])
+      if f.grad_func_name:
+        grad_def = function_pb2.GradientDef()
+        grad_def.function_name = f.name
+        grad_def.gradient_func = f.grad_func_name
+        graph_def.library.gradient.extend([grad_def])
+
   def _as_graph_def(self, from_version=None, add_shapes=False):
     # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
@@ -2931,17 +2948,7 @@ class Graph(object):
           bytesize += op.node_def.ByteSize()
           if bytesize >= (1 << 31) or bytesize < 0:
             raise ValueError("GraphDef cannot be larger than 2GB.")
-      if self._functions:
-        for f in self._functions.values():
-          bytesize += f.definition.ByteSize()
-          if bytesize >= (1 << 31) or bytesize < 0:
-            raise ValueError("GraphDef cannot be larger than 2GB.")
-          graph.library.function.extend([f.definition])
-          if f.grad_func_name:
-            grad_def = function_pb2.GradientDef()
-            grad_def.function_name = f.name
-            grad_def.gradient_func = f.grad_func_name
-            graph.library.gradient.extend([grad_def])
+      self._copy_functions_to_graph_def(graph, bytesize)
       return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):

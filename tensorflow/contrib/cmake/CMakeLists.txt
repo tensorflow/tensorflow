@@ -185,7 +185,6 @@ include(protobuf)
 include(re2)
 include(cub)
 include(sqlite)
-include(double_conversion)
 # if need GRPC or using protobuf from external GRPC package
 if(tensorflow_ENABLE_GRPC_SUPPORT OR (tensorflow_GRPC_PROVIDER STREQUAL "package" AND tensorflow_PROTOBUF_PROVIDER STREQUAL "package"))
   include(grpc)
@@ -208,7 +207,6 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${PROTOBUF_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
-    ${double_conversion_STATIC_LIBRARIES}
 )
 set(tensorflow_EXTERNAL_DEPENDENCIES
     lmdb_copy_headers_to_destination
@@ -221,7 +219,6 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     fft2d
     re2
     sqlite_copy_headers_to_destination
-    double_conversion
 )
 
 include_directories(
@@ -244,7 +241,6 @@ include_directories(
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
     ${sqlite_INCLUDE_DIR}
-    ${double_conversion_INCLUDE_DIR}
 )
 
 if(tensorflow_EIGEN_PROVIDER STREQUAL module)

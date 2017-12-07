@@ -184,11 +184,12 @@ class ResourceVariable(variables.Variable):
     assign = a.assign(2.0)
     with tf.control_dependencies([assign]):
       b = a.read_value()
-
-    other_assign = a.assign(3.0)
+    with tf.control_dependencies([b]):
+      other_assign = a.assign(3.0)
     with tf.control_dependencies([other_assign]):
-      tf.Print(b, [b]).run()  # Will print 2.0 because the value was read before
-                              # other_assign ran.
+      # Will print 2.0 because the value was read before other_assign ran. If
+      # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
+      tf.Print(b, [b]).eval()
   ```
 
   To enforce these consistency properties tf.ResourceVariable might make more

@@ -159,16 +159,11 @@ cc_library(
         "toco_types.h",
     ],
     deps = [
+        # Placeholder for internal file dependency.
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:darwin": [],
-        "//tensorflow:ios": [],
-        "//conditions:default": [],
-        "//tensorflow:dummy_disabled_internal": [],
-    }),
+    ],
 )
 
 cc_library(

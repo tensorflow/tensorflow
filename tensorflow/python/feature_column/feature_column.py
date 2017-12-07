@@ -134,7 +134,7 @@ import math
 import numpy as np
 import six
 
-from tensorflow.python.eager import context
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -150,12 +150,72 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
+
+
+def _internal_input_layer(features,
+                          feature_columns,
+                          weight_collections=None,
+                          trainable=True,
+                          cols_to_vars=None,
+                          scope=None):
+  """See input_layer. `scope` is a name or variable scope to use."""
+
+  feature_columns = _clean_feature_columns(feature_columns)
+  for column in feature_columns:
+    if not isinstance(column, _DenseColumn):
+      raise ValueError(
+          'Items of feature_columns must be a _DenseColumn. '
+          'You can wrap a categorical column with an '
+          'embedding_column or indicator_column. Given: {}'.format(column))
+  weight_collections = list(weight_collections or [])
+  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
+  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+
+  # a non-None `scope` can allow for variable reuse, when, e.g., this function
+  # is wrapped by a `make_template`.
+  with variable_scope.variable_scope(
+      scope, default_name='input_layer', values=features.values()):
+    builder = _LazyBuilder(features)
+    output_tensors = []
+    ordered_columns = []
+    for column in sorted(feature_columns, key=lambda x: x.name):
+      ordered_columns.append(column)
+      with variable_scope.variable_scope(
+          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
+        if column._var_scope_name == column.name:  # pylint: disable=protected-access
+          tensor = _get_dense_tensor(
+              column=column,
+              builder=builder,
+              weight_collections=weight_collections,
+              trainable=trainable)
+        else:
+          # This is typically the case for shared_embedding_columns. The
+          # embedding weights variable will be under the common variable_scope,
+          # but the ops for each column will be under a separate name_scope.
+          with ops.name_scope(column.name):
+            tensor = _get_dense_tensor(
+                column=column,
+                builder=builder,
+                weight_collections=weight_collections,
+                trainable=trainable)
+        output_tensors.append(tensor)
+        if cols_to_vars is not None:
+          # Retrieve any variables created (some _DenseColumn's don't create
+          # variables, in which case an empty list is returned).
+          cols_to_vars[column] = ops.get_collection(
+              ops.GraphKeys.GLOBAL_VARIABLES,
+              scope=variable_scope.get_variable_scope().name)
+    _verify_static_batch_size_equality(output_tensors, ordered_columns)
+    return array_ops.concat(output_tensors, 1)
 
 
 def input_layer(features,
@@ -194,7 +254,7 @@ def input_layer(features,
       `bucketized_column`, `indicator_column`. If you have categorical features,
       you can wrap them with an `embedding_column` or `indicator_column`.
     weight_collections: A list of collection names to which the Variable will be
-      added. Note that, variables will also be added to collections
+      added. Note that variables will also be added to collections
       `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
@@ -216,52 +276,66 @@ def input_layer(features,
   Raises:
     ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
   """
-  feature_columns = _clean_feature_columns(feature_columns)
-  for column in feature_columns:
-    if not isinstance(column, _DenseColumn):
-      raise ValueError(
-          'Items of feature_columns must be a _DenseColumn. '
-          'You can wrap a categorical column with an '
-          'embedding_column or indicator_column. Given: {}'.format(column))
-  weight_collections = list(weight_collections or [])
-  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
-  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
-  with variable_scope.variable_scope(
-      None, default_name='input_layer', values=features.values()):
-    builder = _LazyBuilder(features)
-    output_tensors = []
-    ordered_columns = []
-    for column in sorted(feature_columns, key=lambda x: x.name):
-      ordered_columns.append(column)
-      with variable_scope.variable_scope(
-          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
-        if column._var_scope_name == column.name:  # pylint: disable=protected-access
-          tensor = _get_dense_tensor(
-              column=column,
-              builder=builder,
-              weight_collections=weight_collections,
-              trainable=trainable)
-        else:
-          # This is typically the case for shared_embedding_columns. The
-          # embedding weights variable will be under the common variable_scope,
-          # but the ops for each column will be under a separate name_scope.
-          with ops.name_scope(column.name):
-            tensor = _get_dense_tensor(
-                column=column,
-                builder=builder,
-                weight_collections=weight_collections,
-                trainable=trainable)
-        output_tensors.append(tensor)
-        if cols_to_vars is not None:
-          # Retrieve any variables created (some _DenseColumn's don't create
-          # variables, in which case an empty list is returned).
-          cols_to_vars[column] = ops.get_collection(
-              ops.GraphKeys.GLOBAL_VARIABLES,
-              scope=variable_scope.get_variable_scope().name)
-    _verify_static_batch_size_equality(output_tensors, ordered_columns)
-    return array_ops.concat(output_tensors, 1)
+  return _internal_input_layer(features, feature_columns, weight_collections,
+                               trainable, cols_to_vars)
+
+
+# TODO(akshayka): InputLayer should be a subclass of Layer, and it
+# should implement the logic in input_layer using Layer's build-and-call
+# paradigm; input_layer should create an instance of InputLayer and
+# return the result of inovking its apply method, just as functional layers do.
+class InputLayer(object):
+  """An object-oriented version of `input_layer` that reuses variables."""
+
+  def __init__(self,
+               feature_columns,
+               weight_collections=None,
+               trainable=True,
+               cols_to_vars=None):
+    """See `input_layer`."""
+
+    self._feature_columns = feature_columns
+    self._weight_collections = weight_collections
+    self._trainable = trainable
+    self._cols_to_vars = cols_to_vars
+    self._input_layer_template = template.make_template(
+        'feature_column_input_layer',
+        _internal_input_layer,
+        create_scope_now_=True)
+    self._scope = self._input_layer_template.variable_scope
+
+  def __call__(self, features):
+    return self._input_layer_template(
+        features=features,
+        feature_columns=self._feature_columns,
+        weight_collections=self._weight_collections,
+        trainable=self._trainable,
+        cols_to_vars=None,
+        scope=self._scope)
+
+  @property
+  def non_trainable_variables(self):
+    return self._input_layer_template.non_trainable_variables
+
+  @property
+  def non_trainable_weights(self):
+    return self._input_layer_template.non_trainable_weights
+
+  @property
+  def trainable_variables(self):
+    return self._input_layer_template.trainable_variables
+
+  @property
+  def trainable_weights(self):
+    return self._input_layer_template.trainable_weights
+
+  @property
+  def variables(self):
+    return self._input_layer_template.variables
+
+  @property
+  def weights(self):
+    return self._input_layer_template.weights
 
 
 def linear_model(features,
@@ -579,10 +653,6 @@ def embedding_column(
       is specified.
     ValueError: if `initializer` is specified and is not callable.
     RuntimeError: If eager execution is enabled.
-
-  @compatibility(eager)
-  Not compatible with eager execution.
-  @end_compatibility
   """
   if (dimension is None) or (dimension < 1):
     raise ValueError('Invalid dimension {}.'.format(dimension))
@@ -594,8 +664,6 @@ def embedding_column(
     raise ValueError('initializer must be callable if specified. '
                      'Embedding of column_name: {}'.format(
                          categorical_column.name))
-  if not context.in_graph_mode():
-    raise RuntimeError('Embedding_column not supported in eager mode.')
   if initializer is None:
     initializer = init_ops.truncated_normal_initializer(
         mean=0.0, stddev=1 / math.sqrt(dimension))

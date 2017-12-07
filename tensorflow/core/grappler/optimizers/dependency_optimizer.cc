@@ -40,7 +40,7 @@ int RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
     if (node->input(pos) == input) {
       node->mutable_input()->SwapElements(pos, node->input_size() - 1);
       node->mutable_input()->RemoveLast();
-      node_map->RemoveOutput(node->name(), NodeName(input));
+      node_map->RemoveOutput(NodeName(input), node->name());
     } else {
       ++pos;
     }
@@ -106,8 +106,10 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
   return do_not_rewrite_ops.find(node.op()) == do_not_rewrite_ops.end();
 }
 
-string DependencyOptimizer::TryOptimizeDependencies(
-    NodeDef* node, SetVector<NodeDef*>* nodes_to_simplify) {
+void DependencyOptimizer::OptimizeNode(int node_idx,
+                                       SetVector<int>* nodes_to_simplify,
+                                       std::set<int>* nodes_to_delete) {
+  NodeDef* node = optimized_graph_->mutable_node(node_idx);
   // Change ops that only have control dependencies as outputs to NoOps.
   if (node->op() != "NoOp" && SafeToConvertToNoOp(*node)) {
     VLOG(1) << "***** Replacing  " << node->name() << " (" << node->op()
@@ -117,7 +119,7 @@ string DependencyOptimizer::TryOptimizeDependencies(
     std::unordered_set<string> ctrl_inputs;
     int pos = 0;
     while (pos < node->input_size()) {
-      const string& old_input = node->input(pos);
+      const string old_input = node->input(pos);
       if (IsControlInput(old_input)) {
         if (!ctrl_inputs.insert(old_input).second) {
           // We found a duplicate control input. Remove it.
@@ -133,15 +135,13 @@ string DependencyOptimizer::TryOptimizeDependencies(
       if (ctrl_inputs.insert(ctrl_input).second) {
         node->set_input(pos, ctrl_input);
         node_map_->UpdateInput(node->name(), old_input, ctrl_input);
-        auto old_input_node = node_map_->GetNode(old_input);
-        nodes_to_simplify->PushBack(old_input_node);
+        const NodeDef* old_input_node = node_map_->GetNode(old_input);
+        nodes_to_simplify->PushBack(node_to_idx_[old_input_node]);
       }
       ++pos;
     }
     node->set_op("NoOp");
     node->clear_attr();
-    nodes_to_simplify->PushBack(node);
-    return "";
   }
 
   // Remove NoOp nodes if their fan-in or fan-out is less than 2.
@@ -158,35 +158,35 @@ string DependencyOptimizer::TryOptimizeDependencies(
   //    x --^> | NoOp | --^> b  ==>    | x | --^> b
   //           |      | ...            |   | ...
   //           +------+ --^> c         +---+ --^> c
-  if (node->op() == "NoOp" &&
-      nodes_to_preserve_.find(node->name()) == nodes_to_preserve_.end()) {
+  if (node->op() == "NoOp") {
     const auto output_nodes = node_map_->GetOutputs(node->name());
     const int num_outputs = output_nodes.size();
     const int num_inputs = node->input_size();
-    if (num_inputs > 1 && num_outputs > 1) {
-      return "";
+
+    if (num_inputs * num_outputs > num_inputs + num_outputs) {
+      return;
     }
     VLOG(1) << "***** Rerouting input around  " << node->name();
     std::vector<NodeDef*> input_nodes;
     for (int i = 0; i < num_inputs; ++i) {
       NodeDef* tmp = node_map_->GetNode(node->input(i));
-      if (tmp != nullptr) {
-        input_nodes.push_back(tmp);
-      }
+      CHECK_NE(tmp, nullptr);
+      input_nodes.push_back(tmp);
     }
+
     for (auto consumer : output_nodes) {
       bool updated_consumer = false;
       VLOG(1) << "***** Considering consumer  " << consumer->name() << "\n"
               << consumer->DebugString();
       for (int i = 0; i < num_inputs; ++i) {
-        const string& input = node->input(i);
+        const NodeDef* input = input_nodes[i];
         // Forward dependency from input to consumer if it doesn't already
         // depend on it.
-        if (node_map_->GetOutputs(NodeName(input)).count(consumer) == 0) {
-          consumer->add_input(input);
+        if (node_map_->GetOutputs(input->name()).count(consumer) == 0) {
+          consumer->add_input(AsControlDependency(input->name()));
           updated_consumer = true;
-          node_map_->AddOutput(NodeName(input), consumer->name());
-          nodes_to_simplify->PushBack(input_nodes[i]);
+          node_map_->AddOutput(input->name(), consumer->name());
+          nodes_to_simplify->PushBack(node_to_idx_[input]);
         }
       }
       // Remove dependency on node from consumer.
@@ -195,71 +195,72 @@ string DependencyOptimizer::TryOptimizeDependencies(
       if (updated_consumer) {
         VLOG(1) << "***** Updated consumer  " << consumer->name() << " ("
                 << consumer->op() << ")";
-        nodes_to_simplify->PushBack(consumer);
+        nodes_to_simplify->PushBack(node_to_idx_[consumer]);
       }
     }
 
-    // Clear all (control) inputs to this NoOp node.
-    if (fetch_nodes_known_) {
+    node_map_->RemoveOutputs(node->name());
+    if (fetch_nodes_known_ &&
+        nodes_to_preserve_.find(node->name()) == nodes_to_preserve_.end()) {
+      // Mark the node for deletion.
+      nodes_to_delete->insert(node_idx);
+
+      // Unconnect the node from its inputs to enable further optimizations.
       node_map_->RemoveInputs(node->name());
       node->clear_input();
     }
   }
+}
 
-  return "";
+void DependencyOptimizer::CleanControlInputs() {
+  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
+    PruneControlInputs(optimized_graph_->mutable_node(i));
+  }
+}
+
+void DependencyOptimizer::DeleteNodes(const std::set<int>& nodes_to_delete) {
+  int last = optimized_graph_->node_size() - 1;
+  for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend(); ++it) {
+    const int index = *it;
+    optimized_graph_->mutable_node()->SwapElements(index, last);
+    last--;
+  }
+  optimized_graph_->mutable_node()->DeleteSubrange(last + 1,
+                                                   nodes_to_delete.size());
+  // Rebuild the NodeMap which was invalidated by the node swapping above.
+  node_map_.reset(new NodeMap(optimized_graph_));
+  BuildNodeToIdx();
 }
 
 Status DependencyOptimizer::OptimizeDependencies() {
-  // TODO(rmlarsen,bsteiner): The following code is similar to the control loop
-  // in the ArithmeticOptimizer. Dedup this.
-  SetVector<NodeDef*> nodes_to_simplify;
+  SetVector<int> nodes_to_simplify;
+  std::set<int> nodes_to_delete;
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    NodeDef* node = optimized_graph_->mutable_node(i);
-    if (node->op() == "NoOp" || SafeToConvertToNoOp(*node)) {
-      PruneControlInputs(node);
-      nodes_to_simplify.PushBack(node);
+    const NodeDef& node = optimized_graph_->node(i);
+    if (node.op() == "NoOp" || SafeToConvertToNoOp(node)) {
+      nodes_to_simplify.PushBack(i);
     }
   }
   while (!nodes_to_simplify.Empty()) {
-    NodeDef* node = nodes_to_simplify.PopBack();
-    const string simplified_tensor =
-        TryOptimizeDependencies(node, &nodes_to_simplify);
-    if (!simplified_tensor.empty() &&
-        NodeName(simplified_tensor) != node->name()) {
-      // Always consider simplified_tensor for further optimizations.
-      NodeDef* simplified_node = node_map_->GetNode(simplified_tensor);
-      if (simplified_node != nullptr) {
-        nodes_to_simplify.PushBack(simplified_node);
-      }
-      // When `node` is simplifed to another node rather than in-place, the
-      // consumers of `node` are already redirected to `simplified_tensor`.
-      // Re-push the consumers into `nodes_to_simplify` for further
-      // optimizations.
-      std::set<NodeDef*> consumers = node_map_->GetOutputs(node->name());
-      for (NodeDef* consumer : consumers) {
-        // Update `consumer`'s use of `node` to `input`'s operand.
-        for (int i = 0; i < consumer->input_size(); ++i) {
-          int operand_pos;
-          string operand_node_name =
-              ParseNodeName(consumer->input(i), &operand_pos);
-          if (operand_node_name == node->name()) {
-            *consumer->mutable_input(i) =
-                (operand_pos < 0
-                     ? AsControlDependency(NodeName(simplified_tensor))
-                     : simplified_tensor);
-          }
-        }
-        node_map_->UpdateInput(consumer->name(), node->name(),
-                               simplified_tensor);
-        nodes_to_simplify.PushBack(consumer);
-      }
-    }
+    OptimizeNode(nodes_to_simplify.PopBack(), &nodes_to_simplify,
+                 &nodes_to_delete);
   }
-  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    NodeDef* node = optimized_graph_->mutable_node(i);
-    PruneControlInputs(node);
+
+  if (fetch_nodes_known_) {
+    VLOG(1) << "Deleted " << nodes_to_delete.size() << " out of "
+            << optimized_graph_->node_size() << " nodes.";
+    DeleteNodes(nodes_to_delete);
   }
   return Status::OK();
+}
+
+void DependencyOptimizer::BuildNodeToIdx() {
+  // Set up &node -> index map.
+  node_to_idx_.clear();
+  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
+    const NodeDef& node = optimized_graph_->node(i);
+    node_to_idx_[&node] = i;
+  }
 }
 
 Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -267,10 +268,14 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   optimized_graph_ = optimized_graph;
   *optimized_graph_ = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
-  node_map_.reset(new NodeMap(optimized_graph));
   fetch_nodes_known_ = !item.fetch.empty();
+  node_map_.reset(new NodeMap(optimized_graph_));
+  BuildNodeToIdx();
+
   VLOG(1) << "Graph before optimization:\n" << optimized_graph_->DebugString();
   TF_RETURN_IF_ERROR(OptimizeDependencies());
+
+  CleanControlInputs();
   VLOG(1) << "Graph after optimization:\n" << optimized_graph_->DebugString();
 
   return Status::OK();

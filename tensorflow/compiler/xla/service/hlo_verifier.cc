@@ -93,8 +93,12 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override {
-    return CheckShape(crs, ShapeInference::InferCrossReplicaSumShape(
-                               crs->operand(0)->shape()));
+    std::vector<const Shape*> operand_shapes;
+    for (const HloInstruction* operand : crs->operands()) {
+      operand_shapes.push_back(&operand->shape());
+    }
+    return CheckShape(
+        crs, ShapeInference::InferCrossReplicaSumShape(operand_shapes));
   }
 
   Status HandleReducePrecision(HloInstruction* reduce_precision) override {
