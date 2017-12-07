@@ -59,10 +59,14 @@ class LiteralTestUtil {
   static void AssertEqualShapesAndLayouts(const Shape& expected,
                                           const Shape& actual);
 
-  // Converts a bfloat16 literal to a float literal.
+  // If the given literal's data type is bfloat16, converts it to a float
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
   static std::unique_ptr<Literal> ConvertBF16ToF32(const Literal& bf16_literal);
 
-  // Converts a float literal to a bfloat16 literal.
+  // If the given literal's data type is float, converts it to a bfloat16
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
   static std::unique_ptr<Literal> ConvertF32ToBF16(const Literal& f32_literal);
 
   // Asserts that the expected and actual literals are (bitwise) equal for all
