@@ -233,7 +233,6 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/py/numpy:headers",
         "//util/python:python_headers",
     ],
 )
